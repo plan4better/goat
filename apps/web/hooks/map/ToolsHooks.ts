@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
-
-import { useTranslation } from 'react-i18next'
 
 import { useProjectLayers } from "@/lib/api/projects";
 import { resolveProjectLayer } from "@/lib/utils/map/layer";
@@ -22,9 +21,10 @@ import type { SelectorItem } from "@/types/map/common";
 
 import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
 
-export const usePTTimeSelectorValues = () => {
+/** The public transport modes, as the routing tools offer them: their labels and icons. */
+export const usePTModeItems = (): SelectorItem[] => {
   const { t } = useTranslation("common");
-  const ptModes: SelectorItem[] = useMemo(() => {
+  return useMemo(() => {
     return [
       {
         value: PTRoutingModes.Enum.bus,
@@ -68,6 +68,11 @@ export const usePTTimeSelectorValues = () => {
       },
     ];
   }, [t]);
+};
+
+export const usePTTimeSelectorValues = () => {
+  const { t } = useTranslation("common");
+  const ptModes = usePTModeItems();
 
   const ptDays: SelectorItem[] = useMemo(() => {
     return [
@@ -300,10 +305,7 @@ export const useLayerDatasetId = (layerId: number | undefined, projectId: string
   const { layers } = useProjectLayers(projectId as string);
   // D7: refuses a locked layer — every caller uses the returned id to fetch
   // feature data/fields from geoapi for that dataset.
-  const layerDatasetId = useMemo(
-    () => resolveProjectLayer(layers, layerId).layerId,
-    [layerId, layers]
-  );
+  const layerDatasetId = useMemo(() => resolveProjectLayer(layers, layerId).layerId, [layerId, layers]);
 
   return layerDatasetId;
 };

@@ -462,7 +462,8 @@ services:
       ALLOW_ORGANIZATION_CREATION: ${ALLOW_ORGANIZATION_CREATION:-true}
       CLIENT_URL: ${GOAT_PUBLIC_URL}
       API_URL: ${GOAT_PUBLIC_URL}/api/v2
-      # A COG layer's bounds, which core stores as its extent when it is added.
+      # A COG layer's bounds, which core stores as its extent when it is added
+      # or its file address changes.
       GOAT_GEOAPI_URL: ${GOAT_GEOAPI_URL:-http://geoapi:8000}
       # The 3D sources the browser loads (the web's NEXT_PUBLIC_ twins below);
       # core checks a project's scene against them. Empty stays empty: no source.
@@ -590,6 +591,9 @@ services:
       WINDMILL_TOKEN_FILE: /app/data/windmill/.token
       TRAVELTIME_MATRICES_DIR: /app/data/traveltime_matrices
       PRINT_BASE_URL: http://web:3000
+      # Where the project export and import jobs reach core: they carry icons
+      # and images through core's API (export reads them, import uploads them).
+      CORE_URL: http://core:8000
       # Three DuckDB connections (analytics, SQL previews, layer search) get
       # this budget each; with the mirror lists' fixed 256 MB they fit the
       # memory limit below.

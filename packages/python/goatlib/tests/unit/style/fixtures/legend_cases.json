@@ -38,7 +38,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -100,7 +100,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -295,7 +295,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -457,7 +457,7 @@
    "geometry": "line",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -608,7 +608,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -743,7 +743,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -880,7 +880,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -1120,7 +1120,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -1296,7 +1296,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -1575,7 +1575,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -1759,7 +1759,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -1931,7 +1931,7 @@
    "geometry": "line",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -2093,7 +2093,7 @@
    "geometry": "polygon",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -2227,7 +2227,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -2392,7 +2392,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -2458,7 +2458,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -2579,7 +2579,7 @@
    "geometry": "polygon",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -2684,7 +2684,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -2800,7 +2800,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -2890,7 +2890,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -3121,7 +3121,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -3271,7 +3271,7 @@
    "geometry": "polygon",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -3384,7 +3384,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -3600,7 +3600,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -3840,7 +3840,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -3963,7 +3963,7 @@
    "geometry": "polygon",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -4191,7 +4191,7 @@
    "geometry": "polygon",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -4295,7 +4295,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -4364,7 +4364,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -4487,7 +4487,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -4610,7 +4610,7 @@
    "geometry": "line",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -4704,7 +4704,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -4837,7 +4837,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -4964,7 +4964,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -5119,7 +5119,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -5230,7 +5230,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -5360,7 +5360,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -5460,7 +5460,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -5675,7 +5675,7 @@
    "geometry": "line",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -5795,7 +5795,7 @@
    "geometry": "polygon",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -5897,7 +5897,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -5972,7 +5972,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -6080,7 +6080,7 @@
    "geometry": "line",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -6194,7 +6194,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -6400,7 +6400,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -6545,7 +6545,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -6661,7 +6661,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -6762,7 +6762,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -6964,7 +6964,7 @@
    "geometry": "polygon",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -7091,7 +7091,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -7162,7 +7162,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -7289,7 +7289,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -7386,7 +7386,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -7474,7 +7474,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -7571,7 +7571,7 @@
    "geometry": "polygon",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -7677,7 +7677,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -7769,7 +7769,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -7908,7 +7908,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8047,7 +8047,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8192,7 +8192,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8297,7 +8297,7 @@
    "geometry": "line",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -8428,7 +8428,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -8556,7 +8556,7 @@
    "geometry": "polygon",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -8645,7 +8645,7 @@
    "geometry": "point",
    "zoom": 8,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8790,7 +8790,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8888,7 +8888,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -8988,7 +8988,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9083,7 +9083,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9190,7 +9190,7 @@
    "geometry": "line",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -9262,7 +9262,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -9340,7 +9340,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9476,7 +9476,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9615,7 +9615,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9700,7 +9700,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -9827,7 +9827,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -9907,7 +9907,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -9987,7 +9987,7 @@
    "geometry": "point",
    "zoom": 16,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10102,7 +10102,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10206,7 +10206,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10334,7 +10334,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -10466,7 +10466,7 @@
    "geometry": "point",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10551,7 +10551,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10659,7 +10659,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10762,7 +10762,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -10860,7 +10860,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -10941,7 +10941,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -11020,7 +11020,7 @@
    "geometry": "line",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -11162,7 +11162,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11288,7 +11288,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11416,7 +11416,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11552,7 +11552,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11683,7 +11683,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11808,7 +11808,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -11897,7 +11897,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -11982,7 +11982,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -12067,7 +12067,7 @@
    "geometry": "point",
    "zoom": 4,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12176,7 +12176,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12279,7 +12279,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12364,7 +12364,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12449,7 +12449,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -12530,7 +12530,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -12567,7 +12567,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12739,7 +12739,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -12855,7 +12855,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -12934,7 +12934,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13016,7 +13016,7 @@
    "geometry": "polygon",
    "zoom": 20,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -13095,7 +13095,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13180,7 +13180,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13276,7 +13276,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13360,7 +13360,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13445,7 +13445,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -13526,7 +13526,7 @@
    "geometry": "line",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "line": {
@@ -13565,7 +13565,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -13604,7 +13604,7 @@
    "geometry": "polygon",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "fill": {
@@ -13685,7 +13685,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {
@@ -13728,7 +13728,7 @@
    "geometry": "point",
    "zoom": 12,
    "style": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {
      "marker": {

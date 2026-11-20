@@ -56,6 +56,7 @@ import {
   roundBox,
   sqlColumn,
 } from "@/hooks/addLayer/useFetchFlow";
+import { usePTModeItems } from "@/hooks/map/ToolsHooks";
 
 import UploadDestinationPill from "@/components/addLayer/UploadDestinationPill";
 import { SpatialPickerMap } from "@/components/dashboard/catalog/CatalogSpatialPicker";
@@ -84,6 +85,30 @@ const sizeWarningColor = (theme: Theme) => {
   for (let step = 0; step < 12 && getContrastRatio(color, paper) < 4.5; step += 1)
     color = darken(color, 0.08);
   return color;
+};
+
+/** The modes whose lines a public transport network cut keeps, picked as the routing tools pick
+ * theirs: a checkbox list, "All" while every mode is ticked. */
+const PtModes = ({ flow }: { flow: FetchFlow["fetch"] }) => {
+  const { t } = useTranslation("common");
+  const items = usePTModeItems();
+  const selected = useMemo(
+    () => items.filter((i) => flow.ptModes.includes(String(i.value))),
+    [items, flow.ptModes]
+  );
+  return (
+    <Selector
+      selectedItems={selected}
+      setSelectedItems={(picked) =>
+        flow.setPtModes((Array.isArray(picked) ? picked : picked ? [picked] : []).map((i) => String(i.value)))
+      }
+      items={items}
+      multiple
+      label={t("select_pt_mode")}
+      placeholder={t("select_options")}
+      allSelectedLabel={t("all")}
+    />
+  );
 };
 
 /**
@@ -1646,6 +1671,12 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
                 <SettingsSection label={t("fetch_features_area")} icon={ICON_NAME.BOUNDING_BOX}>
                   <AreaSettings flow={flow} />
                 </SettingsSection>
+                {/* The public transport network's lines, by mode: the routing tools' choice. */}
+                {flow.source === "pt_network" && (
+                  <SettingsSection label={t("fetch_features_section_modes")} icon={ICON_NAME.BUS}>
+                    <PtModes flow={flow} />
+                  </SettingsSection>
+                )}
                 {isNetwork ? null : (
                   <SettingsSection label={t("fetch_features_section_features")} icon={ICON_NAME.FILTER}>
                     <FeatureChoice flow={flow} />

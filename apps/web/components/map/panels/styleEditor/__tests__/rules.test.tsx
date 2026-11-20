@@ -66,7 +66,7 @@ function setup(rules: object[] = [], geometry: "line" | "point" = "line", layerI
     </PopoverProvider>,
     {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol:
           geometry === "line" ? { line: { color: "#2166ac", width: 3 } } : { marker: { color: "#1a6b4d" } },

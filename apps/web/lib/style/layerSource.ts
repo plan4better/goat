@@ -1,7 +1,6 @@
 // Where a layer's data comes from, for the compiler (spec 16): geoapi's vector tiles with the layer's filter, the
-// points themselves for clusters, geoapi's raster service for a raster file, a map service, or features held in the
-// browser. The compiler adds
-// the style's parts (label anchors, line decorations) to these URLs.
+// points themselves for clusters, geoapi's image and value tiles for a raster file, a map service, or features held in
+// the browser. The compiler adds the style's parts (label anchors, line decorations) to these URLs.
 import { GEOAPI_BASE_URL } from "@/lib/constants";
 import type { CompileSource } from "@/lib/style/compile/types";
 import type { ServiceStyle } from "@/lib/utils/externalService";
@@ -104,22 +103,27 @@ export interface SourceOptions {
   geoapiUrl?: string;
 }
 
+/** The address of a raster dataset's value tiles (`valuesUrl` adds what they hold). */
+export const coverageUrl = (datasetId: string, base = GEOAPI_BASE_URL): string =>
+  `${base}/collections/${datasetId}/coverage/tiles/WebMercatorQuad`;
+
 /** The compiler's source for a layer; null when the layer has nothing to draw from. */
 export function compileSourceFor(layer: SourceLayer, opts: SourceOptions): CompileSource | null {
   const id = opts.id ?? `src-${layer.id}`;
   if (opts.data) return { type: "points", id, data: opts.data };
   const raster = sourceOf(layer);
   if (raster?.kind === "cog") {
-    // The raster service colors the file; the coloring is added to the tile URL by the compiler.
+    // geoapi colors images (the compiler adds the coloring to the tile URL) and sends the cells' values for the
+    // browser to color.
     const base = opts.geoapiUrl ?? GEOAPI_BASE_URL;
     if (!base) return null;
-    const root = `${base}/collections/${String(layer.layer_id ?? layer.id)}/raster`;
+    const dataset = String(layer.layer_id ?? layer.id);
     const version = versionParam(opts.version);
     return {
       type: "raster",
       id,
-      tiles: `${root}/tiles/{z}/{x}/{y}.webp`,
-      dem: `${root}/dem/{z}/{x}/{y}.webp`,
+      tiles: `${base}/collections/${dataset}/raster/tiles/{z}/{x}/{y}.webp`,
+      coverage: coverageUrl(dataset, base),
       ...(version ? { version } : {}),
     };
   }

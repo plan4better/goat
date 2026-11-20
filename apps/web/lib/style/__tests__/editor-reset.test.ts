@@ -8,7 +8,7 @@ import { sameAsWritten } from "@/lib/style/json";
 const reset = (...args: Parameters<typeof resetParts>) =>
   resetParts(...args) as LayerStyle & { classify?: unknown[] };
 
-const doc = (extra: object) => ({ version: 1, kind: "vector", ...extra }) as LayerStyle;
+const doc = (extra: object) => ({ version: "1.0.0", kind: "vector", ...extra }) as LayerStyle;
 
 const FILL_BY_USE = {
   id: "use",

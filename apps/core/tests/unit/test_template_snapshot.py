@@ -418,6 +418,37 @@ def test_bind_resolves_ask_input_with_a_new_layer() -> None:
     assert "unresolved" not in data
 
 
+def test_bind_to_another_layer_drops_the_types_of_the_templates_layer() -> None:
+    # The author's step read a raster: bound to another layer, the step keeps
+    # no type of it, and the editor reads the bound layer's own.
+    config = _workflow_config()
+    data = config["nodes"][0]["data"]
+    data["layerType"], data["geometryType"] = "raster", None
+    inputs = [TemplateInput(key="node:n1", label="Buildings", mode="ask")]
+    frozen = freeze_workflow_config(config, inputs)
+
+    bound, _ = bind_workflow_config(frozen, {"node:n1": (UUID(NEW_LAYER_ID), 55)})
+
+    data = _node(bound, "n1")["data"]
+    assert data["layerId"] == NEW_LAYER_ID
+    assert "layerType" not in data and "geometryType" not in data
+
+
+def test_bind_to_the_shipped_layer_keeps_its_types() -> None:
+    config = _workflow_config()
+    inputs = [
+        TemplateInput(
+            key="node:n1", label="Buildings", mode="ship", layer_id=UUID(LAYER_ID)
+        )
+    ]
+    frozen = freeze_workflow_config(config, inputs)
+
+    bound, _ = bind_workflow_config(frozen, {"node:n1": (UUID(LAYER_ID), 99)})
+
+    data = _node(bound, "n1")["data"]
+    assert (data["layerType"], data["geometryType"]) == ("feature", "polygon")
+
+
 def test_bind_reports_unresolved_keys_when_no_binding_is_supplied() -> None:
     config = _workflow_config()
     inputs = [

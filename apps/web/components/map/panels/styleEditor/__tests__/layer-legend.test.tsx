@@ -26,7 +26,7 @@ function setup(extra: object = {}, data: Partial<StyleData> = {}) {
     </PopoverProvider>,
     {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" } },
         ...extra,
@@ -153,7 +153,7 @@ describe("legend section", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: { color: "#cccccc" } },
           classify: CLASSIFY,
@@ -211,7 +211,7 @@ describe("legend section", () => {
       getLayer: () => ({}),
       queryRenderedFeatures: () => [{ properties: { density: 25 } }],
     };
-    const style = { version: 1, kind: "vector", ...doc };
+    const style = { version: "1.0.0", kind: "vector", ...doc };
     const watch = watchViewPresence(map, MAP_SCOPE, () => [{ key: "7", style }], {
       layerIds: () => ["7-fill"],
     });

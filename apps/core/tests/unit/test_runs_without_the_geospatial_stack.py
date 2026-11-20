@@ -137,7 +137,7 @@ def test_a_raster_style_with_a_band_formula_validates_without_the_raster_stack(
     context = importlib.import_module("goatlib.style.context")
     band = {"name": "NDVI", "expression": "(b4 - b1) / (b4 +"}
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "continuous", "band": band, "domain": [-1, 1]},
     }

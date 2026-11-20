@@ -30,12 +30,16 @@ export function LegendSection() {
   const next = useNextLevel();
   const legend = useStyleValue<unknown>("legend");
   const count = useStyleSelector<number>(classifyCount);
+  const raster = useStyleValue<unknown>("kind") === "raster";
   const shown = legend !== false && !(isObject(legend) && legend.show === false);
   const title = isObject(legend) && typeof legend.title === "string" ? legend.title : "";
   const caption = isObject(legend) && typeof legend.caption === "string" ? legend.caption : "";
   const contents = [
     caption ? t("style_editor.caption") : undefined,
-    count ? t("style_editor.n_classifications", { count }) : undefined,
+    // A raster's colors are one classification: its classes say more.
+    count
+      ? t(raster ? "style_editor.count_classes" : "style_editor.n_classifications", { count })
+      : undefined,
   ].filter(Boolean);
   return (
     <PanelSection title={t("style_editor.section_legend")}>

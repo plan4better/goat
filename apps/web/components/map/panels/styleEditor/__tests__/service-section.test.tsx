@@ -24,7 +24,7 @@ const service = (extra: object = {}) => ({
 });
 const setup = (data: object) =>
   renderPanel(<ServiceSection />, {
-    document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
+    document: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
     data: { service: service(data) },
   });
 
@@ -47,6 +47,16 @@ describe("service section", () => {
     expect(screen.queryByText("style_editor.service_style")).toBeNull();
   });
 
+  it("a map service shows no one-option render row", () => {
+    const { unmount } = setup({});
+    expect(screen.getByText("style_editor.service_style")).toBeDefined();
+    expect(screen.queryByText("style_editor.draw_as")).toBeNull();
+    unmount();
+    // Without a style choice the section has nothing to show.
+    setup({ kind: "xyz", layers: 1, styles: [] });
+    expect(screen.queryByText("style_editor.section_general")).toBeNull();
+  });
+
   it("a layer added before styles were stored reads them from the service; a refusal shows none", async () => {
     vi.stubGlobal(
       "fetch",
@@ -57,7 +67,7 @@ describe("service section", () => {
     setup({ styles: [] });
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText("style_editor.service_style")).toBeNull();
-    expect(screen.getByText("style_editor.draw_as")).toBeDefined();
+    expect(screen.queryByText("style_editor.section_general")).toBeNull();
   });
 
   it("the legend shows the chosen style's legend image", async () => {
@@ -67,7 +77,7 @@ describe("service section", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "raster",
           render: { type: "image", service_style: "grey" },
         } as LayerStyle,

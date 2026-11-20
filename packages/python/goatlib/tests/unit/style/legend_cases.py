@@ -567,7 +567,7 @@ def to_style(values: Values) -> dict[str, Any]:
     geometry = GEOMETRY[values["geometry"]]
     symbol = _symbol(values["geometry"])
     _base(symbol, values, geometry)
-    doc: dict[str, Any] = {"version": 1, "kind": "vector", "symbol": symbol}
+    doc: dict[str, Any] = {"version": "1.0.0", "kind": "vector", "symbol": symbol}
     if values["render"] != "features":
         doc["render"] = copy.deepcopy(RENDERS[values["render"]])
     if values["method"] != "none":

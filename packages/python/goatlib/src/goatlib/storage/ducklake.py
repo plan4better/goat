@@ -87,6 +87,9 @@ CONNECTION_ERROR_PATTERNS = [
     "connection reset",
     "broken pipe",
     "failed to get data file list",
+    # DuckDB invalidates a database after an internal error in any of its
+    # queries; every connection to it fails until it is opened again.
+    "database has been invalidated",
 ]
 
 # TCP keepalive settings to prevent SSL EOF errors on idle PostgreSQL connections
@@ -1473,8 +1476,29 @@ class DuckLakePool:
         self._pool.put((con, time.time(), self._generation))
 
     # A rebuild completed this recently satisfies an allow_same re-apply
-    # request (reconnect storms after a PG blip coalesce onto one rebuild).
+    # request (reconnect storms after a PG blip coalesce onto one rebuild),
+    # as long as its base still answers.
     REBUILD_DEDUP_SECONDS = 5.0
+
+    def _current_base_answers(self) -> bool:
+        """Whether the serving base still runs a query.
+
+        DuckDB invalidates a database after an internal error in one of its
+        queries; a base built moments ago is then rebuilt rather than kept.
+        """
+        with self._rebuild_lock:
+            entry = self._bases.get(self._generation)
+        if entry is None:
+            return False
+        try:
+            cursor = entry[0].cursor()
+            try:
+                cursor.execute("SELECT 1").fetchone()
+            finally:
+                cursor.close()
+        except Exception:
+            return False
+        return True
 
     def _apply_snapshot(self, snapshot_id: int, allow_same: bool = False) -> None:
         """Swap the pool to cursors of a fresh base pinned at snapshot_id.
@@ -1510,7 +1534,10 @@ class DuckLakePool:
                     return
                 if applied == snapshot_id and (
                     not allow_same
-                    or time.monotonic() - applied_at < self.REBUILD_DEDUP_SECONDS
+                    or (
+                        time.monotonic() - applied_at < self.REBUILD_DEDUP_SECONDS
+                        and self._current_base_answers()
+                    )
                 ):
                     return
 

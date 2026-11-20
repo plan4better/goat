@@ -132,6 +132,13 @@ export function StyleEditorProvider({
 
 export const useEditorMap = (): MaplibreMap | null => useContext(MapContext);
 
+/** Whether the rows that need a raster file's info wait for it: the raster service has not answered yet, or could
+ * not read the file. False for other layers. */
+export function useRasterWaiting(): boolean {
+  const { raster } = useStyleData();
+  return !!raster && !raster.info;
+}
+
 /** A band's values from the raster service's statistics (its 2nd to 98th percentile and distinct values); null
  * before the info arrived or for a band without values. */
 export function useRasterSample(): (band: number) => Promise<ValueSample | null> {

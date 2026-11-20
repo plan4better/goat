@@ -90,7 +90,9 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
   const layerType = activeLayer?.type;
   const store = useLayerStyle(projectId, layerType === "table" ? undefined : (activeLayer ?? undefined));
   const { setLayerState, mutate } = useProjectMap(projectId);
-  const { featureCount } = useFeatureCount(activeLayer?.layer_id ?? undefined);
+  // The header counts a layer's features; a raster file, a map service and a table show no count and ask for none.
+  const counted = layerType !== "raster" && layerType !== "table";
+  const { featureCount } = useFeatureCount(counted ? (activeLayer?.layer_id ?? undefined) : undefined);
   // Who may make a style the dataset's default: a project editor who may write the dataset.
   const { userProfile } = useUserProfile();
   const { project } = useProject(projectId);
@@ -276,7 +278,7 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
           <StyleHeader
             layer={editorLayer}
             store={store}
-            featureCount={layerType === "raster" || layerType === "table" ? undefined : featureCount}
+            featureCount={counted ? featureCount : undefined}
             noHint={!activeLayer || layerType === "table"}
           />
         }

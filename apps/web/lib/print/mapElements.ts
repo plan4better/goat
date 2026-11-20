@@ -12,7 +12,7 @@
  */
 import type { StyleSpecification } from "maplibre-gl";
 
-import { isObject } from "@/lib/style/json";
+import { isDrawableStyle } from "@/lib/style/version";
 import type { ProjectViewState } from "@/lib/validations/project";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 
@@ -73,9 +73,9 @@ const hasView = (config: MapConfig): boolean => {
   );
 };
 
-/** A frozen style the renderer can draw: a GOAT Style document. A snapshot taken before GOAT Style holds layer
- * properties instead, and the live style is drawn. */
-const frozenDocument = (value: unknown) => (isObject(value) && value.version === 1 ? value : undefined);
+/** A frozen style the renderer can draw: a GOAT Style document of major 1. A snapshot taken before GOAT Style holds
+ * layer properties instead, and the live style is drawn, as for a document of another major. */
+const frozenDocument = (value: unknown) => (isDrawableStyle(value) ? value : undefined);
 
 /**
  * The layers a map element draws: the locked ones (shown whatever the project's

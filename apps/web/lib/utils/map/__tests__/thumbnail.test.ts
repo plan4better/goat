@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderLayersOf } from "@/lib/style/render/viewLayers";
 import { parseThumbnailData, thumbnailLayers, thumbnailView } from "@/lib/utils/map/thumbnail";
 
-const FILL = { version: 1, kind: "vector", symbol: { fill: { color: "#ff0000" } } };
+const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#ff0000" } } };
 
 describe("thumbnails", () => {
   it("the thumbnail page renders the payload's styles", () => {
@@ -62,6 +62,20 @@ describe("thumbnails", () => {
       ])
     );
     expect(layer.entry.time).toEqual({ value: 2016 });
+  });
+
+  it("a style of major 1 is drawn, the integer 1 of older payloads too; another major draws nothing", () => {
+    const row = (id: number, version: unknown) => ({
+      id,
+      layer_id: `d${id}`,
+      type: "feature",
+      feature_layer_geometry_type: "polygon",
+      style: { ...FILL, version },
+    });
+    const layers = renderLayersOf(
+      thumbnailLayers([row(1, "1.0.0"), row(2, "1.3.0"), row(3, 1), row(4, "2.0.0"), row(5, 2)])
+    );
+    expect(layers.map((l) => l.key)).toEqual(["1", "2", "3"]);
   });
 });
 

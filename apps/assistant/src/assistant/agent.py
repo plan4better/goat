@@ -42,7 +42,14 @@ from pydantic_graph import End
 from assistant.budget import RunBudget, StepGuard, next_call
 from assistant.events import DataPart, RunEvent, TextReplaced
 from assistant.history import shorten_earlier_results
-from assistant.language import clear_language, names_a_language
+from assistant.language import (
+    LANGUAGE_FALLBACK_WORDS,
+    MESSAGE_LANGUAGE_WORDS,
+    clear_language,
+    may_be_german,
+    names_a_language,
+    shows_no_language,
+)
 from assistant.prompt import (
     ADD_WHAT_WAS_PICKED,
     ANSWER_IN_TEXT,
@@ -50,7 +57,6 @@ from assistant.prompt import (
     ANSWER_NOW_CARD,
     CARD_AFTER_TEXT,
     INSTRUCTIONS,
-    LANGUAGE_FALLBACK_WORDS,
     NO_ANSWER_TEXT,
     RUN_WHAT_YOU_BUILT,
     answer_in_language,
@@ -119,6 +125,10 @@ class RunDeps:
     #: The text of the user message, without the notes: the answer's language
     #: is checked against it (``ends_with_text``). Empty: no check.
     prompt_text: str = ""
+    #: The interface language: the note names it for a message that shows no
+    #: language (assistant.prompt.render_note), and the answer to such a
+    #: message is checked against it. None: no such check.
+    prompt_locale: Locale | None = None
     #: The runs (their ids) whose answer was asked for again in the language
     #: of the user message (``ends_with_text``): once per run.
     language_asked: set[str | None] = field(default_factory=set)
@@ -417,18 +427,21 @@ class StageNote(AbstractCapability[RunDeps]):
         return End(FinalResult(text))
 
 
-#: The grammar words (``assistant.language.clear_language``) a user message
-#: and an answer need at the least for their language to count.
-MESSAGE_LANGUAGE_WORDS = 2
+#: The grammar words (``assistant.language.clear_language``) an answer needs
+#: at the least for its language to count.
 ANSWER_LANGUAGE_WORDS = 5
 
 
-def wrong_language(deps: RunDeps, output: str) -> tuple[Locale, Locale] | None:
-    """The language of the user message and the other one ``output`` is in,
-    when both are clear; None in doubt. A message under
-    ``LANGUAGE_FALLBACK_WORDS`` words has the interface language answer it,
-    a card's answer is the labels of the options picked, and a message that
-    names a language may ask for it: none of them is checked."""
+def wrong_language(deps: RunDeps, output: str) -> str | None:
+    """What to ask again when ``output`` is clearly in the other language than
+    the one asked for; None in doubt. The language asked for is the user
+    message's when it is clear, and the interface language when the message
+    shows no language (``shows_no_language``, as the note says): nouns, names
+    and numbers, unless they hold German letters and the answer is German. A
+    message under ``LANGUAGE_FALLBACK_WORDS`` words (which the interface
+    language answers too, but which can still show one), a card's answer (the
+    labels of the options picked), a message that names a language and one
+    with a few grammar words but no clear language are not checked."""
     message = deps.prompt_text
     if (
         deps.prompt_answer
@@ -436,11 +449,20 @@ def wrong_language(deps: RunDeps, output: str) -> tuple[Locale, Locale] | None:
         or names_a_language(message)
     ):
         return None
-    asked = clear_language(message, MESSAGE_LANGUAGE_WORDS)
     answered = clear_language(output, ANSWER_LANGUAGE_WORDS)
-    if asked is None or answered is None or asked == answered:
+    if answered is None:
         return None
-    return asked, answered
+    if not shows_no_language(message):
+        asked = clear_language(message, MESSAGE_LANGUAGE_WORDS)
+        if asked is None or asked == answered:
+            return None
+        return answer_in_language(asked, answered)
+    asked = deps.prompt_locale
+    if asked is None or asked == answered:
+        return None
+    if answered == "de" and may_be_german(message):
+        return None
+    return answer_in_language(asked, answered, interface=True)
 
 
 async def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
@@ -469,7 +491,7 @@ async def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
     ctx.deps.language_asked.add(ctx.run_id)
     if ctx.deps.response_texts:
         await ctx.deps.emit(TextReplaced(part_ids=list(ctx.deps.response_texts)))
-    raise ModelRetry(answer_in_language(*wrong))
+    raise ModelRetry(wrong)
 
 
 def build_agent(model: Model | str) -> Agent[RunDeps, str]:

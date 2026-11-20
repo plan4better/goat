@@ -31,7 +31,13 @@ export function deepEqual(a: unknown, b: unknown, skip?: ReadonlySet<string>): b
 /** What the server computes into a style (a classification's breaks, a value form's domain): not the author's. */
 const COMPUTED = new Set(["computed"]);
 
-/** Two styles, or parts of them, the same as the author wrote them: equal as JSON, what the server computed aside. */
-export const sameAsWritten = (a: unknown, b: unknown): boolean => deepEqual(a, b, COMPUTED);
+/** A document without its version: the server stamps it on save, and a document read before the server stamped
+ * "1.0.0" (a cached answer, an older tab) still holds the integer 1 for the same content. */
+const unversioned = (value: unknown) => (isObject(value) ? { ...value, version: undefined } : value);
+
+/** Two styles, or parts of them, the same as the author wrote them: equal as JSON, what the server computed and the
+ * document's version aside. */
+export const sameAsWritten = (a: unknown, b: unknown): boolean =>
+  deepEqual(unversioned(a), unversioned(b), COMPUTED);
 
 export const clone = <T>(value: T): T => (value === undefined ? value : (structuredClone(value) as T));

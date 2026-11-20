@@ -14,7 +14,7 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `models/` | Pydantic models shared across services |
 | `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
 | `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits |
-| `raster/` | Raster files read and colored on the server: band formulas, the coloring a tile URL carries, coloring, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
+| `raster/` | Raster files read on the server: band formulas, value tiles the browser colors (`values.py`), the coloring an image tile's URL carries and coloring those tiles, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
 | `computed_columns/`, `i18n/`, `config/`, `utils/` | Supporting modules |
@@ -142,6 +142,14 @@ READMEs means section N of that file.
   rules about the document as a whole (`check.py`), and rules against the data
   (`data_check.py`), which read a `DataContext` built by whoever can see the data.
   `validate.py` runs all three.
+- **Versions are three numbers** (`style/version.py`, spec 14 and 21), one for
+  layer styles and the map document. A written document gets the lowest
+  version its keys need (`stamp`, which every writer calls: core's saves,
+  `stored_document`, the map document): the keys of 1.0.0 (catalogue palettes and
+  library icons count as keys) are listed in `style/data/keys-1.0.0.json`,
+  later ones in `SINCE`, and a test fails for a schema key in neither, so a
+  document that uses nothing newer stays readable by older servers. A newer major or minor is refused (`newer_version`), a
+  newer patch only warns, and the integer 1 of earlier documents reads as 1.0.0.
 - **Styles before GOAT Style are version 0.** `convert_v0.py` turns them into
   documents and returns map state (`visibility`, `legend.collapsed`) and what it
   could not keep separately; it never raises, because the server never validated
@@ -303,18 +311,38 @@ features pass.
 
 ## Raster files (`raster/`)
 
-Raster layers are COG addresses read in place over HTTP: geoapi serves colored
-tiles, elevation tiles, statistics and point values from them, processes computes
-a raster style's values. Both install the `raster` extra (rio-tiler; rasterio's
-wheel bundles its own GDAL, so neither image needs a system GDAL). core needs
-none of it: `formula` and `token` import no raster stack, so validation runs in
-core too.
+Raster layers are COG addresses read in place over HTTP: geoapi serves value
+tiles, colored tiles for images, statistics and point values from them,
+processes computes a raster style's values. Both install the `raster` extra
+(rio-tiler; rasterio's wheel bundles its own GDAL, so neither image needs a
+system GDAL). core needs none of it: `formula` and `token` import no raster
+stack, so validation runs in core too.
 
 - **One formula grammar** (`formula.py`): `b1`, `b2`, ... up to the file's band
   count, numbers, `+ - * /`, brackets, parsed into a small tree and evaluated with
   numpy, never `eval`. Validation (`style.data_check`) and evaluation use the same
   parser. Division by zero is no data.
-- **The coloring travels in the tile URL** (`token.py`): the web resolves the
+- **Value tiles hold the cells' values; the browser colors them** (`values.py`):
+  each pixel holds a code `q = R * 65536 + G * 256 + B` for the value
+  `base + q * step`, `q = 0` for no data, which a MapLibre `raster-dem` source
+  with the custom encoding decodes. A color edit is then a paint change in the
+  browser, and hillshade shades the same values. Unscaled 8 and 16 bit whole
+  numbers are stored exactly, 32 bit ones too when their range fits in the codes;
+  everything else steps by eight float32 units at the range's magnitude, with a
+  tenth of the span as room below the sampled minimum (statistics come from an
+  overview). MapLibre decodes in float32, which sets the limits: a narrow range
+  far from zero gets few levels (1,000,000 to 1,000,010 gets 20), a 32 bit range
+  wider than the codes is stored in steps (32 for 0 to 40,000,000), and whole
+  numbers beyond 2^24 are no longer exact in the browser. `ENCODING_VERSION`
+  joins every value tile's version, so a changed encoding never serves old tiles:
+  caches keep a value tile for good, so any change in a tile's pixels for the same
+  address (the packing, the read, the resampling, which is the reprojection's
+  too) bumps it, and `tests/unit/raster/test_reference_value_tiles.py` pins
+  reference tiles to catch one.
+- **An image tile's coloring travels in its URL** (`token.py`): for image renders,
+  colors over float values of an unknown range (their codes cover only a stand-in
+  span), and colorings with more stops than the browser takes whose coloring fits
+  in a URL (longer ones are reported as not supported), the web resolves the
   style into a coloring (palette colors, class bounds and colors) and sends it as
   base64url JSON; the service needs no palette catalogue and no lookup, and the
   token is its own cache key. `tests/unit/raster/fixtures/web_tokens.json` holds
@@ -327,12 +355,19 @@ core too.
   public addresses or are listed by the service (`private_hosts`); redirects
   answered to a HEAD request are followed hop by hop with the same check
   (`io/remote_source/url_guard.py`, shared with WFS imports), the result kept ten
-  minutes. GDAL resolves the name again and follows redirects a server sends only
-  to its reads: the residual `url_guard` names, so deployments also restrict the
-  services' outgoing traffic. A file that does not answer fails within seconds
-  (no retries, a stalled transfer cut after five seconds) and then fails at once
-  for 30 seconds. A read that would decimate the coarsest overview more than 8x
-  is skipped, so a COG without overviews is never downloaded whole.
+  minutes. The same HEAD gives the file's ETag or Last-Modified
+  (`remote_validator`; none from a HEAD that fails, as a host that refuses HEAD
+  may still send one), which geoapi adds to the value tiles' version, so a file
+  replaced at the same address gets new tiles. GDAL keeps what it read of a
+  remote file for the process, so a check that finds another validator, or none,
+  drops those blocks (`forget_cached_reads`). GDAL resolves the name again and
+  follows redirects a server sends only to its reads: the residual `url_guard`
+  names, so deployments also restrict the services' outgoing traffic. A file
+  that does not answer fails within seconds (no retries, a stalled transfer cut
+  after five seconds) and then fails at once for 30 seconds; geoapi marks a file
+  failing in the same memory when a tile read runs past its deadline
+  (`remember_failure`). A read that would decimate the coarsest overview more
+  than 8x is skipped, so a COG without overviews is never downloaded whole.
 
 ## Styles of the layers goatlib creates
 
@@ -355,7 +390,12 @@ documents goatlib built or upgraded:
   project layer's named styles with the active one, the map state of layers and
   groups, and the uploaded icons the styles name (`asset:<id>`, remapped to the
   imported assets); archives before 1.2 carry `properties`, which the import
-  converts.
+  converts. The import reads the version of every style in the archive first
+  (`tools/project_import.py`): a newer GOAT Style minor or major refuses the
+  whole import before anything is written, since `stored_document` would swap
+  such a style for the default one; a newer patch is imported with the version
+  its keys need, the styles inside workflow and report layout configs too, and
+  the job result lists it under `warnings`.
 ## GTFS bundles are stored typed
 
 A GTFS bundle keeps one member layer per file of the feed, every column as
@@ -700,6 +740,18 @@ features). Data already written is therefore never reordered: a re-run of
 key stay as they are. DuckLake offers no way around it: a rewrite, and
 `SET SORTED BY` with `ducklake_merge_adjacent_files`, both number the rows
 anew. The `project_import` copy keeps its export's order on purpose.
+
+## Uploaded files are core's
+
+Uploaded icons, images and documents (`uploaded_asset`) are core's alone: core decides where the files live (the
+assets bucket, or the data bucket under `ASSETS_PREFIX` in `storage/s3_config.py` when it serves them itself) and
+the Windmill workers get no access to that store. Project export and import carry icons and images through core's
+HTTP API instead (`tools/core_api.py`), with core's address from processes. `project_export` reads each file from
+core's public `/asset/<id>/file` (following the redirect to the image link) and needs no token; documents are not
+exported. `project_import` uploads each file through `/asset/upload` with the user's access token as its first step,
+while the token is fresh (core keeps it, records it and reuses an identical file of the user's), and writes the
+records with the ids core returns. Nothing refreshes the token: a file core refuses stays out with a warning and the
+import goes on. A failed import deletes the uploads it created, with the same token, as far as it can.
 
 ## Files another pod just wrote
 

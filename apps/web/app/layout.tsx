@@ -29,8 +29,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return getLocalizedMetadata(lng);
 }
 
+// Upright and italic: the style panel's "Aa" samples of an italic label font draw in Mulish's own italic.
 const mulish = Mulish({
   subsets: ["latin"],
+  style: ["normal", "italic"],
 });
 
 export const dynamic = "force-dynamic";

@@ -14,7 +14,7 @@ from tests.styles.conftest import StyleWorld
 
 API = settings.API_V2_STR
 S = settings.SCHEMA
-DOC = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
+DOC = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 
 
 async def style_of(db: AsyncSession, layer_project_id: int) -> UUID:

@@ -4,7 +4,7 @@ import { applyFix, issueTarget } from "@/lib/style/editor/issues";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 const doc = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc" }, outline: { width: 1.26 } },
   classify: [
@@ -56,7 +56,7 @@ describe("issue targets", () => {
   // The cases of goatlib's tests/unit/style/test_ops.py: the panel applies a fix exactly as the server does.
   it("retarget moves the key the class records set (goatlib apply_fix)", () => {
     const d = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       classify: [
         {
@@ -79,7 +79,7 @@ describe("issue targets", () => {
 
   it("use_field sets the field its path names, round goes half up (goatlib apply_fix)", () => {
     const d = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       rules: [
         { id: "r1", visible: false, min_zoom: 12.5, when: { op: "isNull", args: [{ property: "name" }] } },

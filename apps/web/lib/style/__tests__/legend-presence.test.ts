@@ -15,7 +15,7 @@ import {
 const STAMP = { at: "2026-01-01T00:00:00Z", data: "synthetic:1", scope: "dataset" };
 
 const KINDS = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { marker: { shape: "circle", color: "#9aa3ad", size: 8 } },
   classify: [
@@ -37,7 +37,7 @@ const KINDS = {
 
 // Numeric classes without ids: the legend and the counts key them by position.
 const SIZES = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc" } },
   classify: [
@@ -169,6 +169,26 @@ describe("buildLegend with the classes present", () => {
     expect(idsOf(twin, { present: { kind: present(["c2"]) } })).toEqual([["c2"]]);
   });
 
+  it("the block keeps the first one's class ids where the others' classes have ids of their own", () => {
+    // The panel gives each class of each classification its own id.
+    const sizes = KINDS.classify[0].classes.map((k, i) => ({
+      ...k,
+      id: `s${i + 1}`,
+      marker: { size: 6 + i },
+    }));
+    const twin = {
+      ...KINDS,
+      classify: [
+        KINDS.classify[0],
+        { ...KINDS.classify[0], id: "kind_size", target: "marker.size", classes: sizes, computed: undefined },
+      ],
+    };
+    expect(idsOf(twin)).toEqual([["c1", "c2", "c3", "other", "no_data"]]);
+    expect(
+      idsOf(twin, { present: { kind: present(["c2"]), kind_size: present(["s1", "s2", "s3"]) } })
+    ).toEqual([["c2"]]);
+  });
+
   it("`all` lists every class whatever the counts say", () => {
     const all = { ...KINDS, legend: { classes: "all" } };
     expect(idsOf(all, { present: { kind: present([]) } })).toEqual([["c1", "c2", "c3", "other", "no_data"]]);
@@ -203,7 +223,7 @@ describe("buildLegend with the classes present", () => {
 
   it("ramps, size samples and rules do not change", () => {
     const doc = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: { field: "size", palette: ["#000000", "#ffffff"], domain: [0, 10] } } },
       classify: [KINDS.classify[0]],
@@ -258,10 +278,10 @@ describe("classIndexOf", () => {
 
 describe("legendClasses", () => {
   it("filter by default, else what the style says; rasters list every class", () => {
-    expect(legendClasses({ version: 1, kind: "vector" })).toBe("filter");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "view" } })).toBe("view");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "all" } })).toBe("all");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "nearby" } })).toBe("filter");
-    expect(legendClasses({ version: 1, kind: "raster", legend: { classes: "view" } })).toBe("all");
+    expect(legendClasses({ version: "1.0.0", kind: "vector" })).toBe("filter");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "view" } })).toBe("view");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "all" } })).toBe("all");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "nearby" } })).toBe("filter");
+    expect(legendClasses({ version: "1.0.0", kind: "raster", legend: { classes: "view" } })).toBe("all");
   });
 });

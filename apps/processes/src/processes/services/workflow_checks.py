@@ -134,6 +134,13 @@ def _config(node: dict[str, Any]) -> dict[str, Any]:
     return config if isinstance(config, dict) else {}
 
 
+def _raster(node: dict[str, Any]) -> bool:
+    """Whether a dataset step holds a raster layer (its `layerType`), which
+    workflows do not take: it is an issue, and its layer has no fields or
+    features to look up."""
+    return _data(node).get("layerType") == "raster"
+
+
 def _kind(node: dict[str, Any]) -> str:
     """The step type the runner dispatches on (`data.type`)."""
     return str(_data(node).get("type") or node.get("type") or "")
@@ -601,6 +608,18 @@ class _WorkflowCheck:
                     "layer_not_chosen",
                     "error",
                     f"{step}: no layer is chosen.",
+                    (str(node["id"]),),
+                    params={"step": step},
+                )
+            ]
+        if _raster(node):
+            step = self._step_name(node)
+            return [
+                Issue(
+                    "layer_raster_not_supported",
+                    "error",
+                    f"{step}: workflows cannot use raster layers; choose a feature "
+                    "layer or a table.",
                     (str(node["id"]),),
                     params={"step": step},
                 )
@@ -1169,6 +1188,8 @@ class _WorkflowCheck:
         layer_id = data.get("layerId")
         if self.layer_feature_count is None or data.get("unresolved") is True:
             return None
+        if _raster(node):
+            return None
         if not isinstance(layer_id, str) or not layer_id:
             return None
         if str(node["id"]) in self.unreadable_steps:
@@ -1243,7 +1264,7 @@ class _WorkflowCheck:
         """A dataset step's fields; None for a layer the caller may not read
         (never looked up) or whose fields are unknown."""
         layer_id = _data(node).get("layerId")
-        if not isinstance(layer_id, str) or not layer_id:
+        if not isinstance(layer_id, str) or not layer_id or _raster(node):
             return None
         if str(node["id"]) in self.unreadable_steps:
             return None

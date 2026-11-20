@@ -48,7 +48,7 @@ describe("the number locale of a map", () => {
 
     // The map document carries the project's locale; the renderer gives it to every number label.
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: "#ff0000" }, label: { text: "{population}" } },
     } as LayerStyle;

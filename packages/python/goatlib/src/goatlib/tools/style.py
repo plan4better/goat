@@ -159,7 +159,7 @@ def bundle_role_style(
     symbol = BUNDLE_ROLE_SYMBOLS.get(key)
     if symbol is None:
         return default_style(DataContext(kind="vector", geometry=geometry), seed=seed)
-    return {"version": 1, "kind": "vector", "symbol": copy.deepcopy(symbol)}
+    return {"version": "1.0.0", "kind": "vector", "symbol": copy.deepcopy(symbol)}
 
 
 #: ÖV-Güteklassen: A (best) to F (worst).
@@ -222,7 +222,7 @@ def oev_gueteklassen_stations_style() -> dict[str, Any]:
 def starting_points_style() -> dict[str, Any]:
     """The starting points of a catchment area: a map pin standing on the point."""
     return {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "marker": {

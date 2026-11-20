@@ -5,7 +5,7 @@
 import { Box } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-import { setIn } from "@/lib/style/editor/store";
+import { type Path, setIn } from "@/lib/style/editor/store";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { isObject } from "@/lib/style/json";
@@ -125,35 +125,29 @@ function WeightRow() {
 
 /** The weight's range: written with the field's pick, then typed. */
 function WeightRange() {
+  const weight = useStyleValue<unknown>("render.weight");
+  if (!(isObject(weight) && typeof weight.field === "string")) return null;
+  return <DomainRow path="render.weight.domain" />;
+}
+
+/** A value's range as its lowest and highest number, typed (a weight's, a cluster value's). */
+export function DomainRow({ path }: { path: Path }) {
   const { t } = useTranslation("common");
   const store = useEditor();
-  const weight = useStyleValue<unknown>("render.weight");
-  const field = isObject(weight) && typeof weight.field === "string" ? weight.field : undefined;
-  const domain =
-    isObject(weight) && Array.isArray(weight.domain) ? (weight.domain as [number, number]) : undefined;
-  if (!field) return null;
+  const value = useStyleValue<unknown>(path);
+  const domain = Array.isArray(value) ? (value as [number, number]) : undefined;
   return (
     <Row label={t("style_editor.range")}>
       <Box sx={{ display: "flex", gap: 2, flex: 1, minWidth: 0 }}>
         <NumberInput
           value={domain?.[0]}
           ariaLabel={t("style_editor.range_lowest")}
-          onChange={(v) =>
-            store.update(
-              (doc) => setIn(doc, "render.weight.domain", [v, domain?.[1] ?? v]),
-              "render.weight.domain"
-            )
-          }
+          onChange={(v) => store.update((doc) => setIn(doc, path, [v, domain?.[1] ?? v]), path)}
         />
         <NumberInput
           value={domain?.[1]}
           ariaLabel={t("style_editor.range_highest")}
-          onChange={(v) =>
-            store.update(
-              (doc) => setIn(doc, "render.weight.domain", [domain?.[0] ?? v, v]),
-              "render.weight.domain"
-            )
-          }
+          onChange={(v) => store.update((doc) => setIn(doc, path, [domain?.[0] ?? v, v]), path)}
         />
       </Box>
     </Row>

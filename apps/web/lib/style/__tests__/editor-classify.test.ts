@@ -11,6 +11,7 @@ import {
   classColorsByHand,
   classValuesByHand,
   classesPending,
+  classifyCount,
   classifyTargets,
   clearClassValues,
   isIntentEdit,
@@ -32,7 +33,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
 
 const doc = (extra: object = {}) =>
-  ({ version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } }, ...extra }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } }, ...extra }) as LayerStyle;
 const classified = () => doc({ classify: [{ id: "c1", field: "density", method: "quantile", count: 5 }] });
 
 function setup(document: LayerStyle) {
@@ -188,6 +189,27 @@ describe("classification edits", () => {
     expect(
       classify(retarget(retarget(d, 0, "outline.width", "polygon"), 0, "fill.color", "polygon"))[0].target
     ).toBeUndefined();
+  });
+
+  it("retargets a Font classification: its classes lose the style with the weight", () => {
+    const d = doc({
+      classify: [
+        {
+          id: "c",
+          field: "kind",
+          method: "categories",
+          target: "label.font.weight",
+          classes: [
+            { values: ["a"], label: { font: { weight: "regular", style: "italic" }, size: 14 } },
+            { values: ["b"], label: { font: { weight: "bold", style: "normal" } } },
+          ],
+        },
+      ],
+    });
+    expect(classify(retarget(d, 0, "label.size", "point"))[0].classes).toEqual([
+      { values: ["a"], label: { size: 14 } },
+      { values: ["b"] },
+    ]);
   });
 
   it("a manual bound sets the class's from and the previous class's to", () => {
@@ -457,6 +479,15 @@ describe("classification targets", () => {
         expect(de.style_editor, key).toHaveProperty(label);
       }
     expect(classifyTargets("point")).not.toContain("outline.dash");
+    // Only polygon outlines run inside or outside their edge (spec 3.1).
+    expect(classifyTargets("point")).not.toContain("outline.position");
+    expect(classifyTargets("polygon")).toContain("outline.position");
+    expect(classifyTargets("line")).toContain("label.transform");
+    // The Font sets the weight and the style as one choice: the style is no target of its own.
+    expect(classifyTargets("point")).toContain("label.font.weight");
+    expect(classifyTargets("point")).not.toContain("label.font.style");
+    // Letter spacing, like the label's width and offset, is a class's own setting, not a classification's target.
+    expect(classifyTargets("polygon")).not.toContain("label.letter_spacing");
     // A class draws hollow markers with the Fill switch in its scope.
     expect(classifyTargets("point")).not.toContain("marker.fill");
     expect(classifyTargets("polygon").slice(0, 2)).toEqual(["fill.color", "fill.opacity"]);
@@ -498,5 +529,58 @@ describe("scoped view", () => {
     expect(scopedView(d, { classify: 0, key: "other" }).writePath("symbol.fill.color")).toBe(
       "classify.0.other.fill.color"
     );
+  });
+});
+
+describe("classifyCount", () => {
+  const raster = (render: object) => ({ version: "1.0.0", kind: "raster", render }) as unknown as LayerStyle;
+  const classes = [{ to: 10 }, { from: 10, to: 20, visible: false }, { from: 20 }];
+
+  it("counts a vector style's classifications", () => {
+    expect(classifyCount(classified())).toBe(1);
+    expect(classifyCount(doc())).toBe(0);
+  });
+
+  it("counts a raster's classes and categories, hidden ones too", () => {
+    expect(
+      classifyCount(
+        raster({ type: "continuous", palette: "goat:elevation", classify: { method: "manual", classes } })
+      )
+    ).toBe(3);
+    expect(
+      classifyCount(
+        raster({
+          type: "categorical",
+          classes: [{ value: 1 }, { value: 2, visible: false }],
+        })
+      )
+    ).toBe(2);
+    expect(
+      classifyCount(
+        raster({ type: "hillshade", palette: "goat:elevation", classify: { method: "manual", classes } })
+      )
+    ).toBe(3);
+  });
+
+  it("a classification whose classes are still computed counts its count", () => {
+    expect(
+      classifyCount(
+        raster({
+          type: "continuous",
+          palette: "goat:elevation",
+          classify: { method: "equal_interval", count: 5 },
+        })
+      )
+    ).toBe(5);
+  });
+
+  it("own stops, shading without colors and an image have no classes", () => {
+    const stops = [
+      { value: 0, color: "#000000" },
+      { value: 9, color: "#ffffff" },
+    ];
+    expect(classifyCount(raster({ type: "continuous", stops, classify: { classes } }))).toBe(0);
+    expect(classifyCount(raster({ type: "hillshade", classify: { method: "manual", classes } }))).toBe(0);
+    expect(classifyCount(raster({ type: "image", classes: [{ value: 1 }] }))).toBe(0);
   });
 });

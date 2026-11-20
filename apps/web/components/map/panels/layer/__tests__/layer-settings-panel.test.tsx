@@ -1,9 +1,9 @@
 import { configureStore } from "@reduxjs/toolkit";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { layerReducer, setSelectedLayers } from "@/lib/store/layer/slice";
 import { mapReducer, setActiveRightPanel } from "@/lib/store/map/slice";
@@ -25,7 +25,15 @@ vi.mock("@/lib/style/transports/core", () => ({
     load: () => new Promise(() => undefined),
   }),
 }));
-vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
+const { requested } = vi.hoisted(() => ({ requested: [] as string[] }));
+vi.mock("@/lib/api/fetcher", () => ({
+  renewAccessToken: async () => true,
+  // The processes requests the panel sends (the feature count).
+  apiRequestAuth: async (url: string) => {
+    requested.push(url);
+    return { ok: true, json: async () => ({ count: 375 }) };
+  },
+}));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
 // The filter tab shows whether it is told it is on screen: its popovers close and its area leaves the map when not.
@@ -48,7 +56,7 @@ vi.mock("@/lib/api/map", async (original) => ({
   useProjectMap: () => ({ setLayerState: async () => undefined, mutate: async () => undefined }),
 }));
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const layer = {
   id: 5,
   layer_id: "dataset-5",
@@ -60,6 +68,10 @@ const layer = {
   style: { id: "s5", name: "Density", position: 0, revision: 1, document: DOC, issues: [], stale: false },
   otherStyles: [{ id: "s6", name: "Plain" }],
 } as unknown as MapLayer;
+
+beforeEach(() => {
+  requested.length = 0;
+});
 
 function renderPanel(shown: MapLayer = layer) {
   const store = configureStore({ reducer: { map: mapReducer, layers: layerReducer } });
@@ -117,6 +129,34 @@ describe("the layer settings panel", () => {
     expect(screen.getByTestId("filter-tab").dataset.visible).toBe("true");
     await userEvent.click(screen.getByRole("tab", { name: "style" }));
     expect(screen.getByTestId("filter-tab").dataset.visible).toBe("false");
+  });
+
+  it("a vector layer's header counts its features", async () => {
+    renderPanel();
+    await waitFor(() => expect(requested.some((url) => url.includes("/feature-count/"))).toBe(true));
+  });
+
+  it("a raster layer asks for no feature count: a file or a map service has no features", async () => {
+    for (const data_type of ["cog", "wms"]) {
+      requested.length = 0;
+      const { unmount } = renderPanel({
+        ...layer,
+        type: "raster",
+        data_type,
+        url: "https://files.example/dem.tif",
+        feature_layer_geometry_type: null,
+        style: null,
+      } as unknown as MapLayer);
+      await screen.findByTestId("layer-settings-header");
+      expect(requested.filter((url) => url.includes("/feature-count/"))).toEqual([]);
+      unmount();
+    }
+  });
+
+  it("a table asks for no feature count: its header shows none", async () => {
+    renderPanel({ ...layer, type: "table", feature_layer_geometry_type: null } as unknown as MapLayer);
+    await screen.findByTestId("filter-tab");
+    expect(requested.filter((url) => url.includes("/feature-count/"))).toEqual([]);
   });
 
   it("a table's filter tab knows it is off screen once its metadata is open", async () => {

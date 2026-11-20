@@ -143,7 +143,7 @@ def test_a_conversion_that_stopped_early_falls_back_to_the_default(
 def test_null_or_missing_properties_convert_from_nothing() -> None:
     for value in (None, "x", []):
         m = migrate_style(value, DISTRICTS, fingerprint=None, at="t")
-        assert m.document["version"] == 1 and not m.fell_back
+        assert m.document["version"] == "1.0.0" and not m.fell_back
         assert errors(m.document, DISTRICTS) == []
 
 
@@ -152,7 +152,7 @@ def test_stamping_touches_only_what_the_server_computes() -> None:
     doc = migrate_style(manual, DISTRICTS, fingerprint=None, at="t").document
     doc["classify"][0]["method"] = "manual"
     assert "computed" not in stamp_computed(doc, "ducklake:1", "t")["classify"][0]
-    raster = {"version": 1, "kind": "raster", "render": {"type": "image"}}
+    raster = {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}}
     assert stamp_computed(raster, "ducklake:1", "t") == raster
 
 
@@ -176,11 +176,15 @@ def test_a_stored_document_is_current_valid_or_the_default() -> None:
     from goatlib.style.migrate import stored_document
 
     converted = stored_document(QUANTILE_V0, DISTRICTS, seed="L")
-    assert converted["version"] == 1 and errors(converted, DISTRICTS) == []
-    valid = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+    assert converted["version"] == "1.0.0" and errors(converted, DISTRICTS) == []
+    valid = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#00aa00"}},
+    }
     assert stored_document(valid, DISTRICTS, seed="L") == valid
     broken = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"color": "green-ish"}},
     }
@@ -191,3 +195,25 @@ def test_a_stored_document_is_current_valid_or_the_default() -> None:
     assert stored_document([1, 2], DISTRICTS, seed="L") == default_style(
         DISTRICTS, seed="L"
     )
+
+
+def test_a_stored_document_gets_the_lowest_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catalog promotion, workflow output styles and project import store through
+    `stored_document`: a newer patch is stored as the version its keys need, and a
+    key a later version added raises it."""
+    from goatlib.style import version
+    from goatlib.style.migrate import stored_document
+
+    doc = {
+        "version": "1.0.9",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#00aa00"}},
+    }
+    stored = stored_document(doc, DISTRICTS, seed="L")
+    assert stored == {**doc, "version": "1.0.0"}
+    monkeypatch.setattr(version, "SPEC_VERSION", "1.2.0")
+    monkeypatch.setattr(version, "SINCE", {"VectorStyle.opacity": "1.2.0"})
+    faded = {**doc, "version": "1.0.0", "opacity": 0.5}
+    assert stored_document(faded, DISTRICTS, seed="L")["version"] == "1.2.0"

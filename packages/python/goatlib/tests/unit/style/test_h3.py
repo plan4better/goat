@@ -17,7 +17,7 @@ from goatlib.style.validate import validate
 
 
 def doc(**render: object) -> dict:
-    return {"version": 1, "kind": "vector", "render": {"type": "h3", **render}}
+    return {"version": "1.0.0", "kind": "vector", "render": {"type": "h3", **render}}
 
 
 @pytest.fixture
@@ -213,7 +213,7 @@ def test_h3_extrude() -> None:
     from .conftest import codes
 
     doc: dict = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "geometry": "point",
         "render": {
@@ -242,7 +242,11 @@ def test_extrude_only_on_h3_renders() -> None:
 
     from .conftest import codes
 
-    doc = {"version": 1, "kind": "vector", "render": {"type": "heatmap", "extrude": {}}}
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "render": {"type": "heatmap", "extrude": {}},
+    }
     assert codes(VectorStyle, doc) == ["unknown_key"]
 
 

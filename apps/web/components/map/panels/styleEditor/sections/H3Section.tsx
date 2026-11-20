@@ -6,7 +6,8 @@
 import { Box, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-import { SLIDERS } from "@/lib/style/editor/defaults";
+import { CLASS_COUNTS } from "@/lib/style/editor/classify";
+import { SLIDERS, withStored } from "@/lib/style/editor/defaults";
 import { setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { isObject } from "@/lib/style/json";
@@ -19,8 +20,12 @@ import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightR
 import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
-import { anchorTopOf, useNextLevel, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
+import {
+  anchorTopOf,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
   ColorField,
@@ -40,7 +45,6 @@ const BASE: PartRow = { type: "number", key: "base", label: "style_editor.base_h
 const WIDTH_M: Record<number, number> = { 5: 19700, 6: 7400, 7: 2800, 8: 1100, 9: 400, 10: 150 };
 const METHODS = ["quantile", "equal_interval", "natural_breaks", "std_dev", "heads_and_tails"];
 const CONTINUOUS = "continuous";
-const COUNTS = [3, 4, 5, 6, 7, 8, 9];
 /** Classes a method makes when the classification gives no count (goatlib DEFAULT_COUNT). */
 const DEFAULTS_COUNT = 5;
 const COUNT = "count";
@@ -70,7 +74,15 @@ function SizeRow() {
   );
 }
 
-function ValueRow() {
+/** What a hexagon's or a cluster's value is: the number of its points, or the `ops` of a number field (spec 8.2, 8.3).
+ * Writes `render.value` unless `onChange` takes the pick. */
+export function ValueRow({
+  ops = ["sum", "mean"],
+  onChange,
+}: {
+  ops?: string[];
+  onChange?: (value: { op: string; field: string } | undefined) => void;
+}) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { fields } = useStyleData();
@@ -80,21 +92,24 @@ function ValueRow() {
       ? `${value.op}:${value.field}`
       : COUNT;
   const numbers = fields.filter((f) => f.type === "number" || f.type === "integer");
+  const write = onChange ?? ((next) => store.set("render.value", next));
   return (
     <ChoiceRow<string>
       label={t("style_editor.h3_value")}
       value={current}
       options={[
         { value: COUNT, label: t("style_editor.h3_value_count") },
-        ...numbers.flatMap((f) => [
-          { value: `sum:${f.name}`, label: t("style_editor.h3_value_sum", { field: f.label }) },
-          { value: `mean:${f.name}`, label: t("style_editor.h3_value_mean", { field: f.label }) },
-        ]),
+        ...numbers.flatMap((f) =>
+          ops.map((op) => ({
+            value: `${op}:${f.name}`,
+            label: t(`style_editor.h3_value_${op}`, { field: f.label }),
+          }))
+        ),
       ]}
       onChange={(next) => {
-        if (next === COUNT) return store.set("render.value", undefined);
+        if (next === COUNT) return write(undefined);
         const [op, ...field] = next.split(":");
-        store.set("render.value", { op, field: field.join(":") });
+        write({ op, field: field.join(":") });
       }}
     />
   );
@@ -137,7 +152,7 @@ function ClassesRows() {
         <ChoiceRow<string>
           label={t("style_editor.count")}
           value={String(count)}
-          options={COUNTS.map((n) => ({
+          options={withStored(CLASS_COUNTS, count).map((n) => ({
             value: String(n),
             label: t("style_editor.count_classes", { count: n }),
           }))}

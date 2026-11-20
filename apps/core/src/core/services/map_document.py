@@ -41,9 +41,11 @@ from goatlib.style.fingerprint import (
 from goatlib.style.issues import Issue
 from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document, map_view
 from goatlib.style.merge import diff
+from goatlib.style.parse import as_read
 from goatlib.style.scene import extrudes
 from goatlib.style.upgrade import upgrade
 from goatlib.style.validate import validate_map
+from goatlib.style.version import SPEC_VERSION
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -289,7 +291,9 @@ async def checked_scene(
         # which ones do is the web's basemap registry, so: unknown.
         buildings_source=True if settings.BUILDINGS_TILES_URL else None,
     )
-    issues: list[Issue] = validate_map({"version": 1, "scene": scene}, context)
+    issues: list[Issue] = validate_map(
+        {"version": SPEC_VERSION, "scene": scene}, context
+    )
     if any(i.level == "error" for i in issues):
         raise HTTPException(
             status_code=422,
@@ -420,8 +424,9 @@ async def published_styles_differ(
     for key, snapshot in published.items():
         if int(key) not in current:
             continue
-        then = {s["id"]: s["document"] for s in snapshot}
-        now = current[int(key)]
+        # A style stored with the integer 1 is the "1.0.0" publishing wrote.
+        then = {s["id"]: as_read(s["document"]) for s in snapshot}
+        now = {k: as_read(d) for k, d in current[int(key)].items()}
         if set(then) != set(now):
             reason: str | None = "edited"
         else:

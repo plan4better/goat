@@ -45,17 +45,21 @@ export const datasetRows = (nodes: CanvasNode[], edges: CanvasEdge[]): DatasetRo
   });
 };
 
-const LAYER_TYPES = new Set(["feature", "table", "raster"]);
+/** Workflows take feature layers and tables; a raster layer (a raster file or a map service) is not offered and is
+ * not added as a dataset. */
+export const takesLayer = (layer: { type?: string | null }): boolean => layer.type !== "raster";
+
+const LAYER_TYPES = new Set(["feature", "table"]);
 
 /** The project layers a dataset node can be pointed at: same geometry and
- * layer type as the node declares, not locked, one entry per dataset. A
- * node whose type is not one of the layer types (older configs carry
- * "layer") is matched on geometry alone. */
+ * layer type as the node declares, not locked, not raster, one entry per
+ * dataset. A node whose type is not one of the layer types (older configs
+ * carry "layer"; a raster step) is matched on geometry alone. */
 export const sameShapeLayers = (layers: ProjectLayer[], data: DatasetNodeData): ProjectLayer[] => {
   const seen = new Set<string>();
   const layerType = data.layerType && LAYER_TYPES.has(data.layerType) ? data.layerType : null;
   return layers.filter((layer) => {
-    if (layer.locked) return false;
+    if (layer.locked || !takesLayer(layer)) return false;
     if (layerType && layer.type !== layerType) return false;
     if (data.geometryType && layer.feature_layer_geometry_type !== data.geometryType) return false;
     if (seen.has(layer.layer_id)) return false;
@@ -80,6 +84,53 @@ export const currentDatasetType = (
   return {
     layerType: (layer.type as DatasetNodeData["layerType"]) || undefined,
     geometryType: layer.feature_layer_geometry_type || undefined,
+  };
+};
+
+/** A dataset node that holds a raster layer, which workflows do not take (a workflow may still carry one): its layer
+ * is asked for no fields, features or counts. The type as `currentDatasetType` gives it: the layer's own once `layers`
+ * carries it. */
+export const isRasterDataset = (data: DatasetNodeData, layers?: ProjectLayer[]): boolean =>
+  currentDatasetType(data, layers).layerType === "raster";
+
+/** Whether a dataset of the project is a raster layer, by its dataset id; false for one the project does not carry. */
+export const isRasterLayer = (layerId: string | null | undefined, layers?: ProjectLayer[]): boolean =>
+  !!layerId && layers?.find((layer) => layer.layer_id === layerId)?.type === "raster";
+
+/** A project layer dragged onto the workflow canvas. */
+export interface LayerDrag {
+  projectLayerId?: number;
+  layerId: string;
+  layerName: string;
+  geometryType?: string;
+  layerType?: string;
+  layerCql?: { op: string; args: unknown[] };
+}
+
+/** The dataset node a layer dropped on the canvas becomes, with the layer's filter copied (one way); null for a
+ * raster layer, which workflows do not take. */
+export const droppedDatasetNode = (
+  drag: LayerDrag,
+  position: { x: number; y: number },
+  id: string
+): CanvasNode | null => {
+  if (!takesLayer({ type: drag.layerType })) return null;
+  return {
+    id,
+    type: "dataset",
+    position,
+    data: {
+      type: "dataset",
+      label: drag.layerName,
+      projectLayerId: drag.projectLayerId,
+      layerId: drag.layerId,
+      layerName: drag.layerName,
+      geometryType: drag.geometryType || undefined,
+      layerType: (drag.layerType as DatasetNodeData["layerType"]) || undefined,
+      filter: inheritedNodeFilter(drag.layerCql),
+      // Initialized: the settings panel does not copy the layer's filter again.
+      filterInitialized: true,
+    },
   };
 };
 

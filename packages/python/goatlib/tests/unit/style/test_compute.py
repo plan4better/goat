@@ -16,7 +16,7 @@ from goatlib.style.context import DataContext
 from goatlib.style.validate import validate
 
 QUANTILE = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#cccccc"}},
     "classify": [
@@ -266,7 +266,7 @@ def test_choice_targets_and_no_geometry_get_bounds_only() -> None:
 
 def test_top_categories_domains_and_manual() -> None:
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"id": "t", "field": "type", "method": "categories", "count": 2}],
     }
@@ -280,7 +280,7 @@ def test_top_categories_domains_and_manual() -> None:
     )
     assert "other" not in out["classify"][0]
     marker = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "marker": {
@@ -333,7 +333,7 @@ def test_top_categories_domains_and_manual() -> None:
 
 def test_categories_recompute_keeps_classes_by_value() -> None:
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"color": "#999999"}},
         "classify": [
@@ -377,7 +377,7 @@ def test_categories_recompute_keeps_classes_by_value() -> None:
 
 def test_value_forms_in_zoom_stops_and_scales() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "marker": {
@@ -403,7 +403,7 @@ def test_value_forms_in_zoom_stops_and_scales() -> None:
 
 def test_a_color_on_a_log_scale_reads_its_range_above_zero() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "marker": {
@@ -448,7 +448,7 @@ def test_numeric_classes_keep_the_data_minimum_and_maximum() -> None:
     assert [("from" in k, "to" in k) for k in c["classes"]] == [(False, False)]
     assert c["computed"]["domain"] == [4.5, 4.5]
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"id": "t", "field": "type", "method": "categories", "count": 2}],
     }
@@ -485,7 +485,7 @@ def test_a_stamped_copy_keeps_the_data_ends() -> None:
 
 def test_categories_with_classes_but_no_count_are_the_authors() -> None:
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {
@@ -530,7 +530,7 @@ def test_malformed_classifications_are_left_to_the_checks(change: dict) -> None:
 
 def test_malformed_value_forms_are_left_to_the_checks() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"size": {"field": "pupils", "range": ["a", "b"]}}},
     }
@@ -557,7 +557,7 @@ def test_count_above_a_hundred_is_invalid() -> None:
 def test_parts_no_longer_computed_lose_their_stamp() -> None:
     stale = {"at": "t0", "data": "f0", "scope": "dataset"}
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "fill": {
@@ -647,7 +647,7 @@ def test_a_new_target_drops_what_was_generated_for_the_old_one() -> None:
 
 def test_generated_category_colors_stay_with_their_values() -> None:
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"id": "t", "field": "type", "method": "categories", "count": 3}],
     }
@@ -669,7 +669,7 @@ def test_generated_category_colors_stay_with_their_values() -> None:
 
 def test_fields_without_values_say_so() -> None:
     cats = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"id": "t", "field": "type", "method": "categories", "count": 3}],
         "symbol": {"marker": {"size": {"field": "pupils", "range": [2, 12]}}},

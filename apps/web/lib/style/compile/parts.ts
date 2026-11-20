@@ -23,6 +23,13 @@ export interface PartContext {
   images: ImageCollector;
   out: CompiledLayer;
   input: CompileInput;
+  /** The marker icon when it is not the cascade's (a cluster drawn like its points takes the icon of the category it
+   * mostly holds): the icons it can pick, and its expression with each icon `map`ped, `fallback` where the base sets
+   * none. */
+  icon?: { refs: string[]; pick: (map: (ref: string) => Expr, fallback: Expr) => Expr };
+  /** The marker color when it is not the cascade's (a cluster drawn like its points takes the color of the category it
+   * mostly holds). */
+  color?: Expr;
 }
 
 /** MapLibre's own defaults: a property equal to one of these that no record sets is left out. */
@@ -39,6 +46,9 @@ const MAPLIBRE_DEFAULTS: Record<string, unknown> = {
   "icon-rotate": 0,
   "text-opacity": 1,
   "text-max-width": 10,
+  "text-transform": "none",
+  "text-letter-spacing": 0,
+  "text-line-height": 1.2,
   "heatmap-intensity": 1,
   "heatmap-opacity": 1,
   "heatmap-weight": 1,
@@ -101,6 +111,40 @@ function zooms(ctx: PartContext, part: string): { minzoom?: number; maxzoom?: nu
   const min = Math.max(num(ctx.style.min_zoom, 0), num(node.min_zoom, 0));
   const max = Math.min(num(ctx.style.max_zoom, 24), num(node.max_zoom, 24));
   return { ...(min > 0 ? { minzoom: min } : {}), ...(max < 24 ? { maxzoom: max } : {}) };
+}
+
+/** A kind of geoapi's decoration points (spec 15): a line's start, end or center. */
+export type Decoration = "start" | "end" | "center";
+
+const DECORATIONS: readonly Decoration[] = ["start", "end", "center"];
+
+/** The kinds of decoration points each layer on them draws on. */
+const decorated = new WeakMap<object, Decoration[]>();
+
+/** `layer` draws on the decoration points of `kinds`: the tile URL asks for them (spec 15). */
+export function onDecorations<T extends LayerSpecification>(
+  ctx: PartContext,
+  kinds: Decoration[],
+  layer: T
+): T {
+  // GeoJSON features are the lines themselves.
+  if (!ctx.vectorSource) return layer;
+  const all = new Set([...(ctx.out.tileParams.decorations ?? []), ...kinds]);
+  ctx.out.tileParams.decorations = DECORATIONS.filter((k) => all.has(k));
+  decorated.set(layer, kinds);
+  return layer;
+}
+
+/** Where the tiles carry decoration points of more kinds than a layer draws on, the layer keeps to its own (spec 16). */
+export function keepDecorations(out: CompiledLayer): void {
+  const all = out.tileParams.decorations ?? [];
+  for (const layer of out.layers) {
+    const kinds = decorated.get(layer);
+    if (!kinds || all.every((k) => kinds.includes(k))) continue;
+    const own: Expr = ["match", ["get", "_decoration"], kinds, true, false];
+    const target = layer as { filter?: unknown };
+    target.filter = target.filter === undefined ? own : ["all", target.filter, own];
+  }
 }
 
 /** One MapLibre layer of a part: `${id}-${suffix}` on the layer's source, with the feature filter and zooms. */

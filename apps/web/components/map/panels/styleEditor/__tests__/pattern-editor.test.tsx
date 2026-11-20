@@ -17,7 +17,7 @@ const render = (fill: object) =>
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", symbol: { fill } } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", symbol: { fill } } as LayerStyle,
       data: { geometry: "polygon", fields: [{ name: "use", type: "string", label: "use" }] },
     }
   );
@@ -96,7 +96,7 @@ describe("pattern editor", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: { color: "#cccccc" } },
           classify: [
@@ -129,7 +129,7 @@ describe("pattern editor", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: { color: "#cccccc", pattern: "hatch_45" } },
           classify: [

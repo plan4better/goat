@@ -71,7 +71,42 @@ def test_raster_color_range_becomes_stops(contexts: dict) -> None:
             {"value": 600, "color": "#74c476"},
         ],
         "interpolate": "nearest",
+        "outside": "hide",
     }
+
+
+def test_raster_color_range_hides_cells_outside_its_stops(contexts: dict) -> None:
+    """Today's color range draws cells beyond its first and last value transparent."""
+    style = {
+        "style_type": "color_range",
+        "color_map": [[0, "#000000"], [10, "#ffffff"]],
+    }
+    r = convert_v0({"style": style}, contexts["elevation"])
+    assert r.document["render"]["outside"] == "hide"
+    assert r.lossy == ()
+    assert errors(r.document, contexts["elevation"]) == []
+
+
+@pytest.mark.parametrize(
+    ("bounds", "lossy"),
+    [
+        ({"min_value": 0, "max_value": 10}, []),
+        ({"min_value": 2}, ["style.min_value"]),
+        ({"max_value": 12}, ["style.max_value"]),
+    ],
+)
+def test_raster_color_range_bounds_other_than_its_end_stops_are_reported(
+    contexts: dict, bounds: dict, lossy: list
+) -> None:
+    """Today's `min_value` and `max_value` hid the cells outside them; GOAT Style
+    hides the cells outside the first and last stop."""
+    style = {
+        "style_type": "color_range",
+        "color_map": [[0, "#000000"], [10, "#ffffff"]],
+        **bounds,
+    }
+    r = convert_v0({"style": style}, contexts["elevation"])
+    assert [n.key for n in r.lossy] == lossy
 
 
 def test_map_state_leaves_the_style(contexts: dict) -> None:
@@ -99,13 +134,55 @@ def test_cluster_until_zoom_is_max_zoom_plus_one(contexts: dict) -> None:
     )
 
 
+def test_clusters_of_a_marker_layer_draw_the_marker_with_a_count_badge(
+    contexts: dict,
+) -> None:
+    props = {
+        "custom_marker": True,
+        "marker": {"name": "school", "url": "x", "source": "library"},
+        "marker_field": {"name": "type", "type": "string"},
+        "marker_mapping": [
+            [["primary"], {"name": "college", "url": "x", "source": "library"}],
+        ],
+        "cluster": {
+            "enabled": True,
+            "color": [40, 56, 178],
+            "text_color": [255, 255, 255],
+        },
+    }
+    r = convert_v0(props, contexts["schools"])
+    render = r.document["render"]
+    assert render["look"] == "points"
+    assert render["count"] == "badge"
+    # The old cluster colors color the badge and its number.
+    assert render["symbol"] == {
+        "marker": {"color": "#2838b2"},
+        "label": {"text": "{count}", "color": "#ffffff"},
+    }
+    assert errors(r.document, contexts["schools"]) == []
+
+
+def test_clusters_without_a_marker_stay_circles(contexts: dict) -> None:
+    r = convert_v0(
+        {"radius": 5, "cluster": {"enabled": True, "color": [40, 56, 178]}},
+        contexts["schools"],
+    )
+    assert "look" not in r.document["render"]
+    assert "count" not in r.document["render"]
+    # A custom marker without any icon is switched off: its clusters stay circles too.
+    off = convert_v0(
+        {"custom_marker": True, "cluster": {"enabled": True}}, contexts["schools"]
+    )
+    assert "look" not in off.document["render"]
+
+
 def test_service_layers_get_an_image_style(contexts: dict) -> None:
     r = convert_v0(
         {"visibility": True, "opacity": 0.7, "min_zoom": 10, "resampling": "linear"},
         contexts["wms"],
     )
     assert r.document == {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "opacity": 0.7,
         "min_zoom": 10,
@@ -258,7 +335,7 @@ def test_converter_never_raises_on_junk(junk: dict, contexts: dict) -> None:
 
 def test_upgrade_reads_version_0_and_keeps_version_1(contexts: dict) -> None:
     assert upgrade({"color": [1, 2, 3]}, contexts["districts"]).version_from == 0
-    v1 = {"version": 1, "kind": "vector"}
+    v1 = {"version": "1.0.0", "kind": "vector"}
     r = upgrade(v1, contexts["districts"])
     assert (r.document, r.version_from, r.lossy, r.map_state) == (v1, 1, (), {})
 
@@ -336,6 +413,23 @@ def test_todays_label_defaults_are_not_lossy(contexts: dict) -> None:
         "background_color": [0, 0, 0, 0],
     }
     assert convert_v0({"text_label": tl}, contexts["schools"]).lossy == ()
+
+
+def test_a_bold_label_font_stays_bold(contexts: dict) -> None:
+    """Today's form stored Open Sans Regular or Bold (never drawn): Bold becomes the bold weight."""
+
+    def converted(font_family: object) -> tuple[object, tuple]:
+        tl = {"field": "name", "anchor": "center", "font_family": font_family}
+        r = convert_v0({"text_label": tl}, contexts["schools"])
+        return r.document["symbol"]["label"].get("font"), r.lossy
+
+    assert converted(["Open Sans Bold", "Arial Unicode MS Regular"]) == (
+        {"weight": "bold"},
+        (),
+    )
+    assert converted(["Open Sans Bold"]) == ({"weight": "bold"}, ())
+    assert converted(["Open Sans Regular", "Arial Unicode MS Regular"]) == (None, ())
+    assert converted(["Open Sans Regular"]) == (None, ())
 
 
 def test_library_icons_missing_from_the_catalogue_stay_library_icons(
@@ -499,16 +593,90 @@ def test_boolean_category_values_read_as_true_and_false(contexts: dict) -> None:
     assert c["classes"][0]["values"] == ["true"]
 
 
-def test_every_label_anchor_but_center_and_bottom_is_a_loss(contexts: dict) -> None:
-    assert any(
-        n.key == "text_label.anchor"
-        for n in convert_v0(
-            {"text_label": {"field": "name"}}, contexts["schools"]
-        ).lossy
+@pytest.mark.parametrize(
+    ("anchor", "placement"),
+    [
+        ("center", "center"),
+        ("top", "below"),
+        ("bottom", "above"),
+        ("left", "right"),
+        ("right", "left"),
+        ("top-left", "below_right"),
+        ("top-right", "below_left"),
+        ("bottom-left", "above_right"),
+        ("bottom-right", "above_left"),
+    ],
+)
+def test_each_label_anchor_becomes_the_side_the_label_sits_on(
+    anchor: str, placement: str, contexts: dict
+) -> None:
+    r = convert_v0(
+        {"text_label": {"field": "name", "anchor": anchor}}, contexts["schools"]
     )
-    assert not convert_v0(
-        {"text_label": {"field": "name", "anchor": "bottom"}}, contexts["schools"]
-    ).lossy
+    assert r.document["symbol"]["label"]["placement"] == placement
+    assert not [n for n in r.lossy if n.key == "text_label.anchor"]
+    assert errors(r.document, contexts["schools"]) == []
+
+
+def test_a_label_without_anchor_sits_below_the_point_as_drawn_today(
+    contexts: dict,
+) -> None:
+    r = convert_v0({"text_label": {"field": "name"}}, contexts["schools"])
+    assert r.document["symbol"]["label"]["placement"] == "below"
+    assert not r.lossy
+
+
+@pytest.mark.parametrize(
+    ("anchor", "offset"),
+    [("bottom", [0, -6]), ("top", [0, 6]), (None, [0, 6]), ("center", None)],
+)
+def test_a_line_label_above_or_below_the_line_keeps_its_side_as_an_offset(
+    anchor: str | None, offset: list | None, contexts: dict
+) -> None:
+    # Today the anchor's edge of the text sits on the line: half of MapLibre's line
+    # height (1.2 em) away from the center, 6 px at size 10. An absent anchor is
+    # the renderer's `top` (below the line).
+    tl = {"field": "name", "size": 10, **({"anchor": anchor} if anchor else {})}
+    r = convert_v0({"text_label": tl}, contexts["routes"])
+    label = r.document["symbol"]["label"]
+    assert label["placement"] == "line"
+    assert label.get("offset") == offset
+    assert not r.lossy
+    assert errors(r.document, contexts["routes"]) == []
+
+
+def test_a_line_label_offset_adds_to_its_side(contexts: dict) -> None:
+    r = convert_v0(
+        {
+            "text_label": {
+                "field": "name",
+                "size": 10,
+                "anchor": "bottom",
+                "offset": [1, -1],
+            }
+        },
+        contexts["routes"],
+    )
+    assert r.document["symbol"]["label"]["offset"] == [10, -16]
+
+
+def test_a_line_label_anchor_at_a_side_loses_the_shift_along_the_line(
+    contexts: dict,
+) -> None:
+    r = convert_v0(
+        {"text_label": {"field": "name", "size": 10, "anchor": "bottom-left"}},
+        contexts["routes"],
+    )
+    assert r.document["symbol"]["label"]["offset"] == [0, -6]
+    assert [n.key for n in r.lossy] == ["text_label.anchor"]
+
+
+def test_an_unknown_label_anchor_becomes_automatic_placement(contexts: dict) -> None:
+    r = convert_v0(
+        {"text_label": {"field": "name", "anchor": "middle"}}, contexts["schools"]
+    )
+    assert r.document["symbol"]["label"]["placement"] == "auto"
+    assert [n.key for n in r.lossy] == ["text_label.anchor"]
 
 
 def test_repeated_color_breaks_pair_like_todays_renderer(contexts: dict) -> None:
@@ -598,7 +766,7 @@ def test_unfilled_points_become_hollow_markers(contexts: dict) -> None:
 
 def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) -> None:
     terrain = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 360, "exaggeration": 1.5},
     }
@@ -613,7 +781,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
     assert errors(r.document, contexts["elevation"]) == []
 
     heatmap = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "render": {
             "type": "heatmap",
@@ -628,7 +796,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
     assert errors(r.document, contexts["schools"]) == []
 
     arrows = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"line": {"offset": -4}, "arrows": {"spacing": 0}},
     }
@@ -640,7 +808,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
 
 def test_upgrade_brings_arrows_in_rules_and_classes_inside(contexts: dict) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "rules": [{"id": "r1", "arrows": {"spacing": 0}}],
         "classify": [{"id": "k", "classes": [{"id": "c1", "arrows": {"spacing": -5}}]}],
@@ -656,7 +824,7 @@ def test_upgrade_brings_arrows_in_rules_and_classes_inside(contexts: dict) -> No
 
 def test_upgrade_keeps_a_document_inside_the_bounds_as_it_is(contexts: dict) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 359, "exaggeration": 1},
     }
@@ -670,7 +838,7 @@ def test_a_strict_upgrade_leaves_a_current_document_for_the_validator(
     """A document written now is not brought inside: its values outside the
     bounds are errors with their place, the value and the bound."""
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 360},
     }
@@ -683,7 +851,7 @@ def test_a_strict_upgrade_leaves_a_current_document_for_the_validator(
     assert issues[0].message == "360 is more than 359, the most this takes."
 
     arrows = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"line": {"offset": -4}, "arrows": {"spacing": 0}},
     }
@@ -731,7 +899,7 @@ def test_todays_hillshade_and_arrows_convert_inside_maplibres_bounds(
 
 def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
     stored = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "terrain", "direction": 315},
     }
@@ -741,7 +909,7 @@ def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
     assert [n.key for n in result.lossy] == ["/render/type"]
     assert errors(result.document, contexts["elevation"]) == []
     outside = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "terrain", "direction": 360},
     }
@@ -751,8 +919,17 @@ def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
 
 
 def test_terrain_is_refused_on_write(contexts: dict) -> None:
-    doc = {"version": 1, "kind": "raster", "render": {"type": "terrain"}}
+    doc = {"version": "1.0.0", "kind": "raster", "render": {"type": "terrain"}}
     assert [i.code for i in parse_for_write(doc)[1]] == ["invalid_value"]
     assert upgrade(doc, contexts["elevation"], strict=True).document is doc
     doc["render"]["type"] = "hillshade"
     assert parse_for_write(doc)[1] == []
+
+
+def test_v0_arrows_keep_turning_with_the_line(contexts: dict) -> None:
+    """v0 decorations were always GOAT's arrow, which turns with the line by default (spec 3.2)."""
+    props = {"decoration_type": "arrow", "decoration_placement": "repeat"}
+    r = convert_v0(props, contexts["routes"])
+    assert "turn_with_line" not in r.document["symbol"]["arrows"]
+    assert "icon" not in r.document["symbol"]["arrows"]
+    assert errors(r.document, contexts["routes"]) == []

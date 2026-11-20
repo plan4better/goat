@@ -11,7 +11,8 @@ from goatlib.style.context import DataContext
 #: published in the JSON Schema as `x-defaults`. Defaults that depend on the
 #: document (the pattern color is the fill color, arrows take the line color, the
 #: icon on a hollow marker takes the marker color, the label placement follows the
-#: geometry) are the compiler's.
+#: geometry, a raster color scale draws crisp cells while `raster.resampling` holds
+#: for images and hillshade alone) are the compiler's.
 REFERENCE_DEFAULTS: dict[str, Any] = {
     "opacity": 1,
     "min_zoom": 0,
@@ -25,6 +26,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "outline.width": 1,
     "outline.opacity": 1,
     "outline.dash": "solid",
+    "outline.position": "center",
     "line.color": "#2166ac",
     "line.width": 2,
     "line.opacity": 1,
@@ -40,6 +42,8 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "arrows.direction": "forward",
     "arrows.spacing": 100,
     "arrows.size": 10,
+    "arrows.icon": "goat:arrow",
+    "arrows.turn_with_line": True,
     "marker.shape": "circle",
     "marker.color": "#2bb381",
     "marker.fill": True,
@@ -55,8 +59,14 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "label.halo.color": "#ffffff",
     "label.halo.width": 1.5,
     "label.font.weight": "regular",
+    "label.font.style": "normal",
     "label.offset": [0, 0],
     "label.max_width": 120,
+    "label.transform": "none",
+    "label.letter_spacing": 0,
+    "label.line_height": 1.2,
+    "label.spacing": 250,
+    "label.padding": 2,
     "label.allow_overlap": False,
     "extrude.height": 10,
     "extrude.base": 0,
@@ -72,6 +82,9 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "heatmap.opacity": 1,
     "heatmap.weight": 1,
     "heatmap.palette": "d3:magma",
+    "cluster.look": "circle",
+    "cluster.count": "center",
+    "cluster.value": {"op": "count"},
     "cluster.radius": 50,
     "cluster.cluster_until_zoom": 14,
     "cluster.min_points": 2,
@@ -113,10 +126,14 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
 #: Today's look for new layers: a color from the Spectral palette, picked by the
 #: layer id instead of at random, so the same layer always gets the same color.
 DEFAULT_PALETTE = "colorbrewer:Spectral"
+#: Spectral's light yellows and greens, left out: they are hard to see on a light basemap.
+_PALE = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
 
 
 def _color(seed: str | None) -> str:
-    colors = palette_colors(DEFAULT_PALETTE) or ["#2bb381"]
+    colors = [c for c in palette_colors(DEFAULT_PALETTE) if c.lower() not in _PALE] or [
+        "#2bb381"
+    ]
     if seed is None:
         return colors[0]
     return colors[hashlib.sha256(seed.encode()).digest()[0] % len(colors)]
@@ -127,7 +144,7 @@ def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any
     if ctx.kind == "raster":
         # Files and map services start slightly see-through, as they always did.
         return {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "opacity": 0.8,
             "render": {"type": "image"},
@@ -141,4 +158,4 @@ def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any
         symbol = {"line": {"color": color, "width": 2}}
     else:
         symbol = {"fill": {"color": color, "opacity": 0.8}, "outline": False}
-    return {"version": 1, "kind": "vector", "symbol": symbol}
+    return {"version": "1.0.0", "kind": "vector", "symbol": symbol}

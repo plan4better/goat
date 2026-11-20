@@ -48,6 +48,8 @@ Richten Sie Ihren eigenen Speicher ein, bevor Sie GOAT zum ersten Mal starten. D
 
 - **Assets-Bucket** (`ASSETS_BUCKET_NAME`, Vorgabe `goat-assets`) für Profilbilder und Bilder. Er muss ohne Zugangsdaten unter der Adresse lesbar sein, die Sie als `ASSETS_URL` eintragen. Erlaubt Ihr Speicher keinen öffentlich lesbaren Bucket, lassen Sie ihn weg: Setzen Sie `ASSETS_SERVED_BY_CORE=true` und `ASSETS_URL=<GOAT_PUBLIC_URL>/api/v2/asset/file`. GOAT legt die Bilder dann im Upload-Bucket unter `assets/` ab und liefert sie selbst aus.
 
+Projektexporte und -importe nehmen hochgeladene Symbole und Bilder über die API von GOAT mit: Die Analyse-Worker laden jedes Bild über seinen Link, sie müssen also die Adresse in `ASSETS_URL` erreichen (mit `ASSETS_SERVED_BY_CORE` auch die öffentliche Adresse des Upload-Buckets). processes gibt diesen Jobs die Adresse von core als `CORE_URL` mit; das Bundle setzt sie auf `http://core:8000`.
+
 Auf beide Buckets wird mit demselben Zugangsschlüssel zugegriffen.
 
 ### 2. `.env` einrichten {#s3-env}

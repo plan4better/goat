@@ -48,6 +48,8 @@ Set up your own storage before you start GOAT for the first time. Data already i
 
 - **Assets bucket** (`ASSETS_BUCKET_NAME`, default `goat-assets`) for avatars and images. It must be readable without credentials at the address you set as `ASSETS_URL`. If your storage allows no publicly readable bucket, skip it: set `ASSETS_SERVED_BY_CORE=true` and `ASSETS_URL=<GOAT_PUBLIC_URL>/api/v2/asset/file`. GOAT then keeps the images in the uploads bucket under `assets/` and serves them itself.
 
+Project exports and imports carry uploaded icons and images through GOAT's API: the analysis workers fetch each image from its link, so they must reach the address in `ASSETS_URL` (with `ASSETS_SERVED_BY_CORE`, also the uploads bucket's public address). processes passes core's address to these jobs as `CORE_URL`; the bundle sets it to `http://core:8000`.
+
 Both buckets are accessed with the same access key.
 
 ### 2. Configure `.env` {#s3-env}

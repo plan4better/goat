@@ -24,8 +24,8 @@ import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
-import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
-import { legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
+import { useAppDispatch } from "@/hooks/store/ContextHooks";
+import { legendLayerOf, useLayerLegend, useLegendZoom } from "@/hooks/style/useLegendPresence";
 
 import { selectableChipSx } from "@/components/builder/widgets/common/selectableChipSx";
 import { useWidgetLayerTree } from "@/components/builder/widgets/information/useWidgetLayerTree";
@@ -53,7 +53,7 @@ const ActiveLayerLegend = ({
   simple: boolean;
   hideHeading: boolean;
 }) => {
-  const zoom = useAppSelector((state) => Math.round(state.map.currentZoom ?? 12));
+  const zoom = useLegendZoom();
   const style = (layer.style?.document ?? null) as JsonObject | null;
   const shown = !!style && style.legend !== false && !(isObject(style.legend) && style.legend.show === false);
   // The classes its `legend.classes` lists: those the layer's filter keeps, or those in the map's view.

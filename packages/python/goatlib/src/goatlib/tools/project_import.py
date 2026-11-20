@@ -19,6 +19,7 @@ import re
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,11 +32,20 @@ from pydantic import BaseModel, Field
 from goatlib.io.bbox_columns import is_bbox_struct
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
 from goatlib.style.compute import stamp_computed
+from goatlib.style.configs import config_styles, stamp_config_styles, versioned
 from goatlib.style.context import DataContext
 from goatlib.style.fingerprint import fingerprint
 from goatlib.style.map_rows import MAX_STYLES
 from goatlib.style.migrate import context_for, migrate_style, stored_document
+from goatlib.style.parse import check_version
+from goatlib.style.version import (
+    RELEASES,
+    SPEC_VERSION,
+    format_version,
+    parse_version,
+)
 from goatlib.tools.base import SimpleToolRunner, drops_unrecorded_tables
+from goatlib.tools.core_api import CoreAddressInput, CoreSession, CoreTokenInput
 from goatlib.tools.project_schemas import (
     EXTERNAL_DATA_TYPES,
     FORMAT_VERSION,
@@ -93,7 +103,7 @@ def group_state(group: ExportLayerGroup) -> tuple[bool, bool]:
     )
 
 
-class ProjectImportParams(ToolInputBase):
+class ProjectImportParams(ToolInputBase, CoreAddressInput, CoreTokenInput):
     """Parameters for project import tool."""
 
     s3_key: str = Field(..., description="S3 key of the uploaded ZIP archive")
@@ -114,16 +124,21 @@ class ProjectImportOutput(BaseModel):
     workflow_count: int = 0
     report_count: int = 0
     wm_labels: list[str] = Field(default_factory=list)
+    #: What was imported although it did not match this server exactly.
+    warnings: list[str] = Field(default_factory=list)
 
 
 @dataclass
 class ImportCleanupTracker:
-    """Tracks the S3 objects an import uploaded, for rollback on failure.
+    """Tracks the S3 objects an import uploaded, for rollback on failure, and
+    the uploads it created through core (`core`, with the user's token).
 
     Its DuckLake tables are tracked by the runner (`_track_new_table`).
     """
 
     s3_keys: list[str] = field(default_factory=list)
+    upload_ids: list[str] = field(default_factory=list)
+    core: CoreSession | None = None
 
 
 class ProjectImportRunner(SimpleToolRunner):
@@ -159,6 +174,78 @@ class ProjectImportRunner(SimpleToolRunner):
                 f"Incompatible format version: expected {FORMAT_VERSION}, got {manifest.format_version}"
             )
         return manifest
+
+    def _archive_styles(self: Self, archive_dir: Path) -> Iterator[tuple[str, Any]]:
+        """Every GOAT Style document of the archive, with where it is: the
+        datasets' default styles, the project layers' named styles, the
+        workflows' output styles and the report layouts' locked styles. A style
+        without `version` is today's format, converted on import: left out."""
+        layer_index = ExportLayerIndex(layers=[])
+        index_path = archive_dir / "layers" / "index.json"
+        if index_path.exists():
+            with open(index_path) as f:
+                layer_index = ExportLayerIndex.model_validate(json.load(f))
+        found: list[tuple[str, Any]] = [
+            (f'The default style of layer "{layer.name}"', layer.style)
+            for layer in layer_index.layers
+        ]
+        for link in self._load_layer_project_links(archive_dir, layer_index):
+            name = link.get("name") or link.get("layer_id")
+            found += [
+                (f'The style "{style["name"]}" of layer "{name}"', style["document"])
+                for style in link.get("styles") or []
+            ]
+        for folder, kind in (("workflows", "workflow"), ("reports", "report layout")):
+            for path in sorted((archive_dir / folder).glob("*.json")):
+                with open(path) as f:
+                    entry = json.load(f)
+                found += [
+                    (f'A style in the {kind} "{entry.get("name")}"', document)
+                    for document in config_styles(entry.get("config"))
+                ]
+        for where, document in found:
+            if versioned(document):
+                yield where, document
+
+    def _check_style_versions(
+        self: Self, archive_dir: Path, manifest: ExportManifest
+    ) -> list[str]:
+        """The GOAT Style versions of the archive's styles, read before anything
+        is written (spec 14). A newer minor or major version refuses the import:
+        this server cannot tell what its newer keys mean, and would swap the
+        style for the default one. A newer patch only corrects drawing rules: it
+        is imported, and the returned warning says so."""
+        warnings: list[str] = []
+        for where, document in self._archive_styles(archive_dir):
+            codes = {issue.code for issue in check_version(document)}
+            parsed = parse_version(document["version"])
+            if parsed is None or not codes & {"newer_version", "newer_patch"}:
+                continue
+            version = format_version(parsed)
+            if "newer_patch" in codes:
+                warnings.append(
+                    f"{where} uses GOAT Style {version}, a later patch than this "
+                    f"server's {SPEC_VERSION}: it was imported and may draw "
+                    "slightly differently here."
+                )
+                continue
+            if manifest.goat_version:
+                newer = (
+                    f"was exported from GOAT {manifest.goat_version}, which "
+                    f"writes GOAT Style {version}"
+                )
+            else:
+                newer = (
+                    f"needs GOAT Style {version} "
+                    f"({RELEASES.get(version, 'a newer GOAT')})"
+                )
+            raise ValueError(
+                f"{where} {newer}; this server reads up to {SPEC_VERSION}. "
+                "Update GOAT to import this project."
+            )
+        for warning in warnings:
+            logger.warning(warning)
+        return warnings
 
     def _generate_id_mapping(self: Self, archive_dir: Path) -> dict[str, str]:
         """Generate old->new UUID mapping for layers, groups, workflows, reports."""
@@ -196,13 +283,8 @@ class ProjectImportRunner(SimpleToolRunner):
                     rpt = ExportReportLayout.model_validate(json.load(f))
                 id_map[rpt.id] = str(uuid4())
 
-        # Assets
-        assets_index_path = archive_dir / "assets" / "index.json"
-        if assets_index_path.exists():
-            with open(assets_index_path) as f:
-                asset_manifest = ExportAssetManifest.model_validate(json.load(f))
-            for asset in asset_manifest.assets:
-                id_map[asset.id] = str(uuid4())
+        # Uploaded files get no ids here: core gives them theirs when the
+        # import uploads them (`_upload_archive_uploads`).
 
         logger.info("Generated %d ID mappings", len(id_map))
         return id_map
@@ -218,57 +300,31 @@ class ProjectImportRunner(SimpleToolRunner):
 
     @staticmethod
     def _asset_file(archive_dir: Path, asset: ExportAssetEntry) -> Path | None:
-        """The asset's file inside the archive, if it carries one."""
+        """The upload's file inside the archive, if it carries one."""
         if asset.archive_path is None:
             return None
         path = (archive_dir / asset.archive_path).resolve()
         if not path.is_relative_to(archive_dir.resolve()):
             logger.warning("Skipping unsafe asset path: %s", asset.archive_path)
             return None
-        return path if path.exists() else None
+        return path if path.is_file() else None
 
-    @staticmethod
-    def _asset_key(user_id: str, asset_id: str, file_name: str) -> str:
-        return f"assets/{user_id}/{asset_id}{Path(file_name).suffix}"
+    @classmethod
+    def _asset_for_url(
+        cls, archive_dir: Path, asset_ids: dict[str, str]
+    ) -> Callable[[str], str | None]:
+        """For an icon a style before 1.2 names by its URL: the upload whose
+        object key the URL ends with, by the id core gave it in this import,
+        else by the id it has where it was exported."""
+        id_by_key = {
+            a.s3_key: a.id for a in cls._archive_assets(archive_dir) if a.s3_key
+        }
 
-    async def _insert_assets(
-        self: Self,
-        conn: Any,
-        schema: str,
-        archive_dir: Path,
-        id_map: dict[str, str],
-        user_id: str,
-    ) -> dict[str, str]:
-        """Rows for the assets the archive carries files of, under their new ids
-        and object keys. Returns old id -> new id for those."""
-        imported: dict[str, str] = {}
-        for asset in self._archive_assets(archive_dir):
-            path = self._asset_file(archive_dir, asset)
-            new_id = id_map.get(asset.id)
-            if path is None or new_id is None:
-                continue
-            content = path.read_bytes()
-            await conn.execute(
-                f"""
-                INSERT INTO {schema}.uploaded_asset
-                    (id, user_id, s3_key, file_name, display_name, category,
-                     mime_type, file_size, asset_type, content_hash,
-                     created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-                """,
-                uuid.UUID(new_id),
-                uuid.UUID(user_id),
-                self._asset_key(user_id, new_id, asset.file_name),
-                asset.file_name,
-                asset.display_name,
-                asset.category,
-                asset.mime_type,
-                len(content),
-                asset.asset_type,
-                hashlib.sha256(content).hexdigest(),
-            )
-            imported[asset.id] = new_id
-        return imported
+        def asset_for_url(path: str) -> str | None:
+            old = next((i for key, i in id_by_key.items() if path.endswith(key)), None)
+            return asset_ids.get(old, old) if old else None
+
+        return asset_for_url
 
     @staticmethod
     def _link_styles(
@@ -647,6 +703,80 @@ class ProjectImportRunner(SimpleToolRunner):
         self._track_new_table(new_layer_id, table_path)
         logger.info("Created DuckLake table: %s", table_path)
 
+    def _upload_archive_files(
+        self: Self, core: CoreSession, archive_dir: Path
+    ) -> dict[str, str]:
+        """Upload the icons and images the archive carries through core, as
+        the user; old id -> the id core returns. A missing file or a failed
+        upload is left out with a warning."""
+        new_ids: dict[str, str] = {}
+        for asset in self._archive_assets(archive_dir):
+            path = self._asset_file(archive_dir, asset)
+            if path is None:
+                logger.warning(
+                    "Uploaded file %s (%s) is not in the archive.",
+                    asset.id,
+                    asset.file_name,
+                )
+                continue
+            try:
+                new_ids[asset.id] = core.upload(
+                    path,
+                    file_name=asset.file_name,
+                    mime_type=asset.mime_type,
+                    asset_type=asset.asset_type,
+                    display_name=asset.display_name,
+                    category=asset.category,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Uploaded file %s (%s) is not imported: %s",
+                    asset.id,
+                    asset.file_name,
+                    e,
+                )
+        return new_ids
+
+    def _upload_archive_uploads(
+        self: Self,
+        params: ProjectImportParams,
+        archive_dir: Path,
+        tracker: ImportCleanupTracker,
+    ) -> dict[str, str]:
+        """The archive's icons and images, uploaded through core as the user
+        with the access token, while it is fresh: old id -> the id core gave
+        it. The uploads core created (not an identical file the user already
+        had, which core reuses) go into `tracker`, so a failed import can
+        delete them again. Without core's address the uploads stay out."""
+        uploads = self._archive_assets(archive_dir)
+        if not uploads:
+            return {}
+        if not params.core_url:
+            for asset in uploads:
+                logger.warning(
+                    "Uploaded file %s (%s) is not imported: no address of core.",
+                    asset.id,
+                    asset.file_name,
+                )
+            return {}
+        core = CoreSession(params.core_url, params.access_token)
+        tracker.core = core
+        try:
+            had: set[str] | None = core.upload_ids()
+        except Exception as e:
+            logger.warning(
+                "The user's uploads could not be listed (%s): a failed import "
+                "will not delete the ones it uploads.",
+                e,
+            )
+            had = None
+        new_ids = self._upload_archive_files(core, archive_dir)
+        if had is not None:
+            tracker.upload_ids = [
+                i for i in dict.fromkeys(new_ids.values()) if i not in had
+            ]
+        return new_ids
+
     def _upload_s3_asset(
         self: Self,
         local_path: Path,
@@ -677,8 +807,12 @@ class ProjectImportRunner(SimpleToolRunner):
         target_folder_id: str,
         project_name_override: str | None = None,
         data_snapshots: dict[str, int] | None = None,
+        asset_ids: dict[str, str] | None = None,
     ) -> None:
         """Insert all PostgreSQL records in a single transaction.
+
+        `asset_ids` maps the archive's uploads to the ids core gave them in
+        this import (`_upload_archive_uploads`); the styles name those.
 
         `data_snapshots` names, by archive layer id, the DuckLake snapshot that
         wrote each imported table: the archive's rows are the data its styles'
@@ -865,26 +999,10 @@ class ProjectImportRunner(SimpleToolRunner):
                             old_gid, 0
                         )
 
-                # Uploaded icons and images the archive carries: rows for their
-                # new ids (the files were uploaded under those ids), so the
-                # styles' `asset:<id>` references resolve.
-                asset_ids = await self._insert_assets(
-                    conn, schema, archive_dir, id_map, new_user_id
-                )
-                old_id_by_key = {
-                    a.s3_key: a.id
-                    for a in self._archive_assets(archive_dir)
-                    if a.s3_key
-                }
-
-                def asset_for_url(path: str) -> str | None:
-                    """An icon a style before 1.2 names by its URL: the asset
-                    whose old object key the URL ends with, by its new id."""
-                    old_id = next(
-                        (i for key, i in old_id_by_key.items() if path.endswith(key)),
-                        None,
-                    )
-                    return asset_ids.get(old_id) if old_id else None
+                # Uploaded icons and images by the ids core gave them in this
+                # import; one it did not take keeps its old id.
+                asset_ids = asset_ids or {}
+                asset_for_url = self._asset_for_url(archive_dir, asset_ids)
 
                 # 4a. Insert one layer row per unique dataset. Skipped layers
                 # (e.g. street_network) are not entered in old_to_new_layer_id,
@@ -1084,8 +1202,10 @@ class ProjectImportRunner(SimpleToolRunner):
                 # 5. Insert workflows
                 for wf in workflows:
                     new_wf_id = id_map.get(wf.id, str(uuid4()))
-                    remapped_config = self._remap_workflow_config(
-                        wf.config, id_map, layer_project_id_map
+                    remapped_config = stamp_config_styles(
+                        self._remap_workflow_config(
+                            wf.config, id_map, layer_project_id_map
+                        )
                     )
                     await conn.execute(
                         f"""
@@ -1106,7 +1226,9 @@ class ProjectImportRunner(SimpleToolRunner):
                 # 6. Insert reports
                 for rpt in reports:
                     new_rpt_id = id_map.get(rpt.id, str(uuid4()))
-                    remapped_config = self._remap_report_config(rpt.config, id_map)
+                    remapped_config = stamp_config_styles(
+                        self._remap_report_config(rpt.config, id_map)
+                    )
                     await conn.execute(
                         f"""
                         INSERT INTO {schema}.report_layout
@@ -1147,6 +1269,16 @@ class ProjectImportRunner(SimpleToolRunner):
                 logger.info("Deleted S3 object: %s", s3_key)
             except Exception as e:
                 logger.warning("Failed to delete S3 object %s: %s", s3_key, e)
+
+        # The uploads this import created, through core with the same token
+        # (best effort: one that cannot be deleted stays the user's).
+        if tracker.core is not None:
+            for asset_id in tracker.upload_ids:
+                try:
+                    tracker.core.delete_upload(asset_id)
+                    logger.info("Deleted upload: %s", asset_id)
+                except Exception as e:
+                    logger.warning("Failed to delete upload %s: %s", asset_id, e)
 
     @drops_unrecorded_tables
     def run(self: Self, params: ProjectImportParams) -> dict:
@@ -1232,6 +1364,14 @@ class ProjectImportRunner(SimpleToolRunner):
                 )
                 self._verify_checksums(manifest_for_verify, archive_dir)
 
+                # 4a. Styles of a GOAT Style version this server cannot read
+                # refuse the import here, before anything is written.
+                warnings = self._check_style_versions(archive_dir, manifest)
+
+                # 4b. Uploaded icons and images through core as the user, first,
+                # while the access token is fresh; the records take their ids.
+                asset_ids = self._upload_archive_uploads(params, archive_dir, tracker)
+
                 # 5. Generate ID mapping
                 id_map = self._generate_id_mapping(archive_dir)
 
@@ -1297,20 +1437,7 @@ class ProjectImportRunner(SimpleToolRunner):
                                 old_layer_id,
                             )
 
-                # 7. Upload S3 assets (their rows are written with the records)
-                for asset in self._archive_assets(archive_dir):
-                    local_asset_path = self._asset_file(archive_dir, asset)
-                    if local_asset_path is not None and asset.id in id_map:
-                        self._upload_s3_asset(
-                            local_path=local_asset_path,
-                            s3_key=self._asset_key(
-                                new_user_id, id_map[asset.id], asset.file_name
-                            ),
-                            content_type=asset.mime_type,
-                            tracker=tracker,
-                        )
-
-                # 8. Upload thumbnail if present
+                # 7. Upload thumbnail if present
                 thumbnail_path = archive_dir / "assets" / "thumbnail.png"
                 if thumbnail_path.exists():
                     thumbnail_s3_key = f"thumbnails/{new_project_id}/thumbnail.png"
@@ -1321,7 +1448,7 @@ class ProjectImportRunner(SimpleToolRunner):
                         tracker=tracker,
                     )
 
-                # 9. Insert all PostgreSQL records
+                # 8. Insert all PostgreSQL records
                 asyncio.run(
                     self._insert_pg_records(
                         archive_dir=archive_dir,
@@ -1331,6 +1458,7 @@ class ProjectImportRunner(SimpleToolRunner):
                         target_folder_id=params.target_folder_id,
                         project_name_override=params.project_name,
                         data_snapshots=data_snapshots,
+                        asset_ids=asset_ids,
                     )
                 )
 
@@ -1341,6 +1469,7 @@ class ProjectImportRunner(SimpleToolRunner):
                     workflow_count=manifest.workflow_count,
                     report_count=manifest.report_count,
                     wm_labels=wm_labels,
+                    warnings=warnings,
                 )
                 logger.info(
                     "Import complete: project_id=%s, name=%s",
@@ -1353,6 +1482,9 @@ class ProjectImportRunner(SimpleToolRunner):
             logger.exception("Import failed, rolling back")
             self._cleanup_on_failure(tracker)
             raise
+        finally:
+            if tracker.core is not None:
+                tracker.core.close()
 
 
 def main(params: ProjectImportParams) -> dict:

@@ -41,9 +41,10 @@ A layer without classes shows one swatch. Each classification (see [By classes](
 The legend lists what the map draws:
 
 - A class hidden with the eye and a rule that hides features have no entry.
+- A classification that changes only what a swatch does not show (a label, a symbol's rotation, offset or anchor, a line's offset, blur, cap or join, the outline's position, the base height of raised features or the arrows' size) has no section of its own. Its classes hidden with the eye still hide their features, on the map and in the legend.
 - A layer drawn as <code>Heatmap</code> shows a ramp from <code>Low</code> to <code>High</code>, and one drawn as <code>H3 hexagons</code> the classes or the ramp of the hexagons. With <code>Points</code> set to <code>From zoom</code> and a zoom level, the legend changes to the classes of the points from that zoom on.
-- A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom.
-- Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other.
+- A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom, then the single points: their classes, or in a layer without classes <code>Single points</code>.
+- Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other. A size that follows a field and grows with the zoom shows its samples at the sizes the map draws halfway between its first and last stop.
 - A name too long for its row is cut. Hover it to read it in full.
 
 In <code>Contents</code>, each classification has these settings:
@@ -54,7 +55,7 @@ In <code>Contents</code>, each classification has these settings:
 - <code>Numbers</code> (number fields): how the class bounds read, with <code>Decimals</code>, <code>Thousands</code>, <code>Abbreviate</code>, <code>Sign</code>, <code>Prefix</code> and <code>Suffix</code>. <code>As in the dataset</code> keeps the dataset's own format.
 - <code>Order</code> (with several classifications): the place of the classification. It is also the order in which they apply: where two set the same property, the later one wins.
 
-For a raster with a color range, <code>Contents</code> also has <code>Unit</code>, <code>Lowest label</code> and <code>Highest label</code>, which replace the end values of the ramp.
+For a raster, <code>Contents</code> also has <code>Unit</code>: a unit after the numbers in the legend, at the ends of a ramp, in class bounds and after category values, such as m or dB(A). A raster drawn as a ramp without classes or categories also has <code>Lowest label</code> and <code>Highest label</code>, which replace the end values of the ramp. For a raster with classes or categories, the <code>Contents</code> row shows how many it has, for example <code>5 classes</code>.
 
 While the legend settings differ from the dataset's style, the header of the editor shows <code>Reset to the dataset's style</code> (a circular arrow), which puts them back as the dataset's style has them.
 

@@ -134,6 +134,36 @@ describe("ReplaceDatasetsDialog", () => {
     expect(within(menu).queryByRole("option", { name: "Districts" })).toBeNull();
   });
 
+  it("offers no raster layer; a raster step is offered the feature layers to replace it", () => {
+    storeState.nodes = [
+      ...storeState.nodes,
+      {
+        ...dataset("d3", "L6", 16, "DEM"),
+        data: { ...dataset("d3", "L6", 16, "DEM").data, geometryType: undefined, layerType: "raster" },
+      } as Node,
+    ];
+    const raster = (id: number, layerId: string, name: string) => ({
+      ...layer(id, layerId, name),
+      type: "raster",
+      feature_layer_geometry_type: null,
+    });
+    layersMock.mockReturnValue({
+      layers: [
+        layer(11, "L1", "Stops (old)"),
+        layer(12, "L2", "Districts", "polygon"),
+        layer(13, "L3", "Stops (mine)"),
+        raster(16, "L6", "DEM"),
+        raster(17, "L7", "Orthophoto"),
+      ],
+    });
+    render(<ReplaceDatasetsDialog projectId="p1" workflowName="WF" onClose={() => {}} />);
+
+    const menu = openPicker("d3");
+    expect(within(menu).getByRole("option", { name: "Stops (mine)" })).toBeInTheDocument();
+    expect(within(menu).getByRole("option", { name: "Districts" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("option", { name: "Orthophoto" })).toBeNull();
+  });
+
   it("warns about a field the picked layer lacks and applies the node changes on Replace", async () => {
     const onClose = vi.fn();
     render(<ReplaceDatasetsDialog projectId="p1" workflowName="WF" onClose={onClose} />);

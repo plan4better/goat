@@ -36,6 +36,7 @@ import type { FilterModel } from "@/lib/filter/model";
 import type { AppDispatch } from "@/lib/store";
 import { selectActiveDataPanelView } from "@/lib/store/workflow/selectors";
 import { requestMapView, requestTableView, updateNode } from "@/lib/store/workflow/slice";
+import { isRasterDataset, takesLayer } from "@/lib/utils/workflowDatasets";
 import { inheritedNodeFilter, nodeFilterFrom, nodeFilterModel } from "@/lib/utils/workflowFilter";
 import type { ContentItem } from "@/lib/validations/content";
 import type { ProjectLayer } from "@/lib/validations/project";
@@ -110,6 +111,8 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
   // Fetch project layers (for "From project" selector)
   const { layers: fetchedLayers } = useFilteredProjectLayers(projectId as string);
   const layers = fetchedLayers || projectLayers;
+  // The layers a step can take: workflows take no raster layers.
+  const offeredLayers = useMemo(() => layers.filter(takesLayer), [layers]);
 
   // Get layer ID from node data
   const nodeLayerId = useMemo(() => {
@@ -119,7 +122,11 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
 
   // Fetch full layer details using layerId
   const { dataset: selectedLayer } = useDataset(nodeLayerId || "");
-  const { featureCount } = useFeatureCount(selectedLayer?.id);
+  // A step that holds a raster layer (workflows take none) asks for no fields and no feature count.
+  const raster =
+    (node.type === "dataset" && node.data.type === "dataset" && isRasterDataset(node.data, layers)) ||
+    selectedLayer?.type === "raster";
+  const { featureCount } = useFeatureCount(raster ? undefined : selectedLayer?.id);
 
   // Tab state
   const [tabValue, setTabValue] = useState(0);
@@ -136,14 +143,15 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
 
   // The step's own filter (not the project layer's), as the filter panel's rows. The fields first: read without them
   // the rows would guess their types.
-  const { fields, fieldInfos, isLoading: areFieldsLoading } = useFilterFields(nodeLayerId || undefined);
+  const fieldsLayerId = raster ? undefined : nodeLayerId || undefined;
+  const { fields, fieldInfos, isLoading: areFieldsLoading } = useFilterFields(fieldsLayerId);
   const storedFilter = node.type === "dataset" && node.data.type === "dataset" ? node.data.filter : undefined;
   const filterModel = useMemo(() => nodeFilterModel(storedFilter, fields), [storedFilter, fields]);
   const filterRowIssues = useMemo(() => filterIssues(filterModel, fields), [filterModel, fields]);
 
   // Convert layers to selector items
   const layerSelectorItems: SelectorItem[] = useMemo(() => {
-    return layers.map((layer) => ({
+    return offeredLayers.map((layer) => ({
       value: String(layer.id),
       label: layer.name,
       icon:
@@ -155,7 +163,7 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
               ? ICON_NAME.POLYGON_FEATURE
               : ICON_NAME.TABLE,
     }));
-  }, [layers]);
+  }, [offeredLayers]);
 
   // Menu items for "Add Dataset" dropdown
   const menuItems = [
@@ -196,7 +204,7 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
     (item: SelectorItem | SelectorItem[] | undefined) => {
       if (!item || Array.isArray(item)) return;
 
-      const layer = layers.find((l) => String(l.id) === item.value);
+      const layer = offeredLayers.find((l) => String(l.id) === item.value);
       if (!layer || node.type !== "dataset") return;
 
       // Copy layer's existing filter to the workflow node (one-way sync)
@@ -230,7 +238,7 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
 
       setShowLayerSelector(false);
     },
-    [layers, node, dispatch]
+    [offeredLayers, node, dispatch]
   );
 
   // Handle dataset selection from the dataset shelf (workflow-only, no project add)
@@ -565,6 +573,8 @@ export default function DatasetNodeSettings({ node, projectLayers = [], onBack }
             open={myDatasetsOpen}
             onClose={() => setMyDatasetsOpen(false)}
             onPick={handleMyDatasetsPick}
+            canPick={(item) => takesLayer({ type: item.layer_type })}
+            cannotPickLabel={t("workflow_raster_not_supported")}
           />
         </Box>
       }

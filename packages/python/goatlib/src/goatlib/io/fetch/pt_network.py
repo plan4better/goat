@@ -14,13 +14,18 @@ between a kept and a dropped stop goes, a feed-wide row (feed_info, a fare
 product) stays. The lines drawn for the map are drawn again from the cut, as
 the import draws them.
 
+Lines can be kept by mode (``modes``, the routing tools' modes): only those
+whose ``route_type`` is one of them, as the routing groups route types into
+modes (``packages/cpp/routing/src/pt/nigiri_routing.cpp``). No modes, or all
+of them, keeps every line: coaches and any other type too.
+
 The tables cut from are the GTFS importer's own output
 (``goatlib.bundles.importers.pt_network.store``), and so is what this writes.
 """
 
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 from goatlib.bundles.importers.base import ExtractedLayer
 from goatlib.bundles.importers.pt_network.gtfs import GtfsImporter
@@ -44,6 +49,36 @@ TOO_MANY_TRIPS = (
     "This area is served by too many lines to cut out. Draw a smaller area, or "
     "fewer parts on major stations."
 )
+
+#: Each mode's GTFS route types, basic and extended (``rt`` an integer), as the
+#: routing groups them: rail is regional, long-distance and suburban rail; a
+#: cable car is an aerial lift, as a gondola is.
+MODE_ROUTE_TYPES: Dict[str, str] = {
+    "bus": "rt IN (3, 11) OR rt BETWEEN 700 AND 899",
+    "tram": "rt IN (0, 5) OR rt BETWEEN 900 AND 999",
+    "rail": "rt = 2 OR rt BETWEEN 100 AND 199 OR rt BETWEEN 300 AND 399",
+    "subway": "rt IN (1, 12) OR rt BETWEEN 400 AND 699",
+    "ferry": "rt = 4 OR rt BETWEEN 1000 AND 1099 OR rt BETWEEN 1200 AND 1299",
+    "cable_car": "rt = 6 OR rt BETWEEN 1300 AND 1399",
+    "gondola": "rt = 6 OR rt BETWEEN 1300 AND 1399",
+    "funicular": "rt = 7 OR rt BETWEEN 1400 AND 1499",
+}
+NO_SERVICE_OF_MODES = (
+    "The GOAT public transport network has no service of the chosen modes in this area."
+)
+
+
+def _modes_filter(modes: Optional[Sequence[str]]) -> Optional[str]:
+    """The route types of ``modes`` as a condition on ``rt``; None to keep every
+    line (no modes, or all of them)."""
+    chosen = set(modes or ())
+    if not chosen or set(MODE_ROUTE_TYPES) <= chosen:
+        return None
+    unknown = chosen - set(MODE_ROUTE_TYPES)
+    if unknown:
+        raise ValueError(f"Unknown mode(s): {', '.join(sorted(unknown))}")
+    return " OR ".join(f"({MODE_ROUTE_TYPES[m]})" for m in sorted(chosen))
+
 
 #: Columns naming an id a cut can drop, by their GTFS name, and the kept set
 #: they must be in. A reference column not listed here names something every
@@ -110,8 +145,12 @@ def _kept(column: str, keep: str) -> str:
     )
 
 
-def _select_lines(con: Any, src: Dict[str, str]) -> int:
-    """keep_routes: the lines serving a stop in the area or its station."""
+def _select_lines(
+    con: Any, src: Dict[str, str], modes: Optional[Sequence[str]] = None
+) -> int:
+    """keep_routes: the lines serving a stop in the area or its station, of
+    ``modes`` where given."""
+    by_mode = _modes_filter(modes)
     stops = src["stops"]
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE area_stations AS
@@ -132,10 +171,19 @@ def _select_lines(con: Any, src: Dict[str, str]) -> int:
             WHERE stop_id IN (SELECT id FROM area_stations)
                OR parent_station IN (SELECT id FROM area_stations))
     """)
+    if by_mode is not None:
+        con.execute(f"""
+            DELETE FROM keep_routes WHERE id NOT IN (
+                SELECT route_id FROM (
+                    SELECT route_id, TRY_CAST(route_type AS INTEGER) AS rt FROM {src["routes"]}
+                ) WHERE {by_mode})
+        """)
     (lines,) = con.execute("SELECT count(*) FROM keep_routes").fetchone()
     if not lines:
         raise ValueError(
-            "The GOAT public transport network has no service in this area."
+            NO_SERVICE_OF_MODES
+            if by_mode is not None
+            else "The GOAT public transport network has no service in this area."
         )
     return int(lines)
 
@@ -261,10 +309,15 @@ def _cut_table(con: Any, table: Dict[str, Any], relation: str, workdir: str) -> 
 
 
 def export_pt_network(
-    con: Any, *, area: dict, store_dir: str, workdir: str
+    con: Any,
+    *,
+    area: dict,
+    store_dir: str,
+    workdir: str,
+    modes: Optional[Sequence[str]] = None,
 ) -> List[ExtractedLayer]:
-    """Cut the network in ``store_dir`` to ``area``; return the bundle's layers,
-    written to ``workdir``."""
+    """Cut the network in ``store_dir`` to ``area``, its lines of ``modes``
+    (none: all); return the bundle's layers, written to ``workdir``."""
     con.execute("INSTALL spatial; LOAD spatial;")
     if area_cells(con, area) > MAX_CELLS:
         raise ValueError(TOO_LARGE)
@@ -275,7 +328,7 @@ def export_pt_network(
     if missing:
         raise ValueError(f"The network's tables lack {', '.join(sorted(missing))}.")
 
-    lines = _select_lines(con, src)
+    lines = _select_lines(con, src, modes)
     _close(con, src)
     (trips,) = con.execute("SELECT count(*) FROM keep_trips").fetchone()
     if trips > MAX_TRIPS:

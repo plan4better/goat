@@ -17,7 +17,7 @@ from tests.styles.test_style_routes import viewer_world
 
 API = settings.API_V2_STR
 S = settings.SCHEMA
-EXTRUDED = {"version": 1, "kind": "vector", "symbol": {"extrude": {"height": 10}}}
+EXTRUDED = {"version": "1.0.0", "kind": "vector", "symbol": {"extrude": {"height": 10}}}
 #: Sun position is no longer offered: a write with its keys is refused.
 SUN_POSITION = {"light": {"mode": "sun", "month": 6, "day": 21}}
 

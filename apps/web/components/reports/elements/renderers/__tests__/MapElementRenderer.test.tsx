@@ -1,6 +1,8 @@
 // A report map element in 3D (3D spec 10): a tilted view prints tilted with the project's scene, an atlas page flat.
+// A print waits for its raster layers' values.
 import { ThemeProvider, createTheme } from "@mui/material";
 import { act, render } from "@testing-library/react";
+import { forwardRef, useImperativeHandle } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AtlasPage } from "@/lib/print/atlas-utils";
@@ -13,13 +15,31 @@ const { recorded } = vi.hoisted(() => ({
     map: {} as Record<string, unknown>,
     scene: {} as Record<string, unknown>,
     compiled: null as object | null,
+    renderLayers: [] as object[],
+    styled: null as Record<string, unknown> | null,
+    maplibre: {
+      idle: [] as Array<() => void>,
+      once: vi.fn(),
+      off: vi.fn(),
+      triggerRepaint: vi.fn(),
+    },
   },
 }));
 
 vi.mock("react-map-gl/maplibre", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  Map: (props: Record<string, unknown>) => {
+  Map: forwardRef(function MockMap(props: Record<string, unknown>, ref) {
     recorded.map = props;
+    useImperativeHandle(ref, () => ({ getMap: () => recorded.maplibre }));
+    return <>{props.children as React.ReactNode}</>;
+  }),
+}));
+vi.mock("@/hooks/reports/useMapElementRenderLayers", () => ({
+  useMapElementRenderLayers: () => recorded.renderLayers,
+}));
+vi.mock("@/components/map/StyledLayers", () => ({
+  StyledLayers: (props: Record<string, unknown>) => {
+    recorded.styled = props;
     return null;
   },
 }));
@@ -34,7 +54,17 @@ beforeEach(() => {
   recorded.map = {};
   recorded.scene = {};
   recorded.compiled = null;
+  recorded.renderLayers = [];
+  recorded.styled = null;
+  recorded.maplibre.idle = [];
+  recorded.maplibre.once.mockReset();
+  recorded.maplibre.once.mockImplementation((_type: string, listener: () => void) =>
+    recorded.maplibre.idle.push(listener)
+  );
+  recorded.maplibre.triggerRepaint.mockReset();
 });
+
+const idleAfterRepaint = () => act(() => recorded.maplibre.idle.forEach((listener) => listener()));
 
 const element = (viewState: Record<string, unknown>, config: Record<string, unknown> = {}) =>
   ({
@@ -103,6 +133,52 @@ describe("MapElementRenderer in 3D", () => {
     renderMap({ element: element({ ...TILTED, pitch: 0 }), onMapLoaded: ready });
     act(() => (recorded.map.onLoad as () => void)());
     act(() => (recorded.map.onIdle as () => void)());
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
+  it("a print with raster layers is ready once their values are in and the map is idle after that", () => {
+    recorded.renderLayers = [{ key: "1", style: { version: "1.0.0", kind: "raster" }, entry: {} }];
+    const ready = vi.fn();
+    renderMap({ element: element({ ...TILTED, pitch: 0 }), onMapLoaded: ready });
+    const fire = (name: "onLoad" | "onIdle") => act(() => (recorded.map[name] as () => void)());
+    const pending = (value: boolean) =>
+      act(() => (recorded.styled?.onValuesPending as (pending: boolean) => void)(value));
+    fire("onLoad");
+    fire("onIdle");
+    pending(true);
+    fire("onIdle");
+    expect(ready).not.toHaveBeenCalled();
+    // A failed description adds nothing to the map: a repaint makes sure another idle comes.
+    pending(false);
+    expect(recorded.maplibre.triggerRepaint).toHaveBeenCalled();
+    expect(recorded.maplibre.once).toHaveBeenCalledWith("idle", expect.any(Function));
+    expect(ready).not.toHaveBeenCalled();
+    idleAfterRepaint();
+    fire("onIdle");
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
+  it("an atlas page waits for the raster layers' values too", () => {
+    recorded.renderLayers = [{ key: "1", style: { version: "1.0.0", kind: "raster" }, entry: {} }];
+    const ready = vi.fn();
+    const page = {
+      index: 0,
+      pageNumber: 1,
+      totalPages: 1,
+      label: "1",
+      bounds: [11.0, 47.4, 11.2, 47.6],
+      center: [11.1, 47.5],
+    } as AtlasPage;
+    renderMap({
+      element: element(TILTED, { atlas: { enabled: true, mode: "best_fit" } }),
+      atlasPage: page,
+      onMapLoaded: ready,
+    });
+    act(() => (recorded.map.onLoad as () => void)());
+    expect(ready).not.toHaveBeenCalled();
+    act(() => (recorded.styled?.onValuesPending as (pending: boolean) => void)(false));
+    expect(ready).not.toHaveBeenCalled();
+    idleAfterRepaint();
     expect(ready).toHaveBeenCalledTimes(1);
   });
 });

@@ -3,34 +3,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { FieldType } from "@/lib/style/compile/types";
+import type { SampleDataset, SpecExample } from "./fixtureTypes";
+
+export * from "./fixtureTypes";
 
 const FIXTURES = resolve(__dirname, "../../../../../packages/python/goatlib/tests/unit/style/fixtures");
 
 const read = <T>(name: string): T => JSON.parse(readFileSync(resolve(FIXTURES, name), "utf8")) as T;
-
-export interface SpecExample {
-  line: number;
-  target: string;
-  expect: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  doc: any;
-}
-
-export interface SampleField {
-  name: string;
-  type: FieldType;
-  values?: unknown[];
-  min?: number;
-  max?: number;
-}
-
-export interface SampleDataset {
-  kind: "vector" | "raster";
-  geometry?: "point" | "line" | "polygon";
-  fields?: SampleField[];
-  [key: string]: unknown;
-}
 
 export interface MergeCase {
   name: string;
@@ -63,6 +42,3 @@ export function goldenPairs(): Array<{
     return [{ doc: source.doc, dataset: datasets[source.target], expected: example.doc as unknown[] }];
   });
 }
-
-export const fieldTypes = (dataset: SampleDataset): Record<string, FieldType> =>
-  Object.fromEntries((dataset.fields ?? []).map((f) => [f.name, f.type]));

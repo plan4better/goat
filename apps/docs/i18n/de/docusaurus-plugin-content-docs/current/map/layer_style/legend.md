@@ -41,9 +41,10 @@ Ein Layer ohne Klassen zeigt ein Farbfeld. Jede Klassifizierung (siehe [Nach Kla
 Die Legende führt auf, was die Karte zeichnet:
 
 - Eine mit dem Auge ausgeblendete Klasse und eine Regel, die Objekte ausblendet, haben keinen Eintrag.
+- Eine Klassifizierung, die nur ändert, was ein Farbfeld nicht zeigt (eine Beschriftung, die Drehung, den Versatz oder Ankerpunkt eines Symbols, Versatz, Unschärfe, Enden oder Ecken einer Linie, die Lage des Umrisses, die Grundhöhe angehobener Objekte oder die Größe der Pfeile), hat keinen eigenen Abschnitt. Ihre mit dem Auge ausgeblendeten Klassen blenden ihre Objekte trotzdem aus, auf der Karte und in der Legende.
 - Ein als <code>Heatmap</code> dargestellter Layer zeigt einen Verlauf von <code>Niedrig</code> bis <code>Hoch</code>, ein als <code>H3-Sechsecke</code> dargestellter die Klassen oder den Verlauf der Sechsecke. Steht <code>Punkte</code> auf <code>Ab Zoom</code> mit einer Zoomstufe, wechselt die Legende ab dieser Zoomstufe zu den Klassen der Punkte.
-- Ein als <code>Cluster</code> dargestellter Layer führt zuerst <code>Cluster</code> auf, solange die Karte bei der aktuellen Zoomstufe noch gruppiert.
-- Farben, die sich mit dem Zoom ändern, folgen der Karte. Symbolgrößen nicht: Jedes Symbol behält in der Legende eine Größe, damit sich die Legende beim Zoomen nicht verschiebt. Nur Klassen nach Größe werden in verschiedenen Größen gezeichnet, im Verhältnis zueinander.
+- Ein als <code>Cluster</code> dargestellter Layer führt zuerst <code>Cluster</code> auf, solange die Karte bei der aktuellen Zoomstufe noch gruppiert, dann die einzelnen Punkte: ihre Klassen, oder in einem Layer ohne Klassen <code>Einzelne Punkte</code>.
+- Farben, die sich mit dem Zoom ändern, folgen der Karte. Symbolgrößen nicht: Jedes Symbol behält in der Legende eine Größe, damit sich die Legende beim Zoomen nicht verschiebt. Nur Klassen nach Größe werden in verschiedenen Größen gezeichnet, im Verhältnis zueinander. Eine Größe, die einem Feld folgt und mit dem Zoom wächst, zeigt ihre Beispiele in den Größen, die die Karte in der Mitte zwischen ihrem ersten und letzten Stopp zeichnet.
 - Ein Name, der zu lang für seine Zeile ist, wird gekürzt. Halten Sie den Mauszeiger darüber, um ihn ganz zu lesen.
 
 Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
@@ -54,7 +55,7 @@ Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 - <code>Zahlen</code> (bei Zahlenfeldern): wie die Klassengrenzen erscheinen, mit <code>Dezimalstellen</code>, <code>Tausender</code>, <code>Abkürzen</code>, <code>Vorzeichen</code>, <code>Präfix</code> und <code>Suffix</code>. <code>Wie im Datensatz</code> behält das Format des Datensatzes.
 - <code>Reihenfolge</code> (bei mehreren Klassifizierungen): der Platz der Klassifizierung. Er ist auch die Reihenfolge, in der sie gelten: Wo zwei dieselbe Eigenschaft setzen, gewinnt die spätere.
 
-Bei einem Raster mit Farbverlauf hat <code>Inhalt</code> außerdem <code>Einheit</code>, <code>Beschriftung unten</code> und <code>Beschriftung oben</code>, die die Endwerte des Verlaufs ersetzen.
+Bei einem Raster hat <code>Inhalt</code> außerdem <code>Einheit</code>: eine Einheit hinter den Zahlen der Legende, an den Enden eines Verlaufs, an Klassengrenzen und hinter den Werten von Kategorien, etwa m oder dB(A). Ein Raster, das als Verlauf ohne Klassen oder Kategorien gezeichnet ist, hat zusätzlich <code>Beschriftung unten</code> und <code>Beschriftung oben</code>, die die Endwerte des Verlaufs ersetzen. Bei einem Raster mit Klassen oder Kategorien zeigt die Zeile <code>Inhalt</code>, wie viele es hat, zum Beispiel <code>5 Klassen</code>.
 
 Solange die Einstellungen der Legende vom Stil des Datensatzes abweichen, zeigt der Kopf des Editors <code>Auf den Stil des Datensatzes zurücksetzen</code> (ein kreisförmiger Pfeil); damit setzen Sie sie so zurück, wie sie der Stil des Datensatzes hat.
 

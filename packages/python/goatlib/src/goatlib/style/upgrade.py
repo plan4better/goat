@@ -1,7 +1,8 @@
 """Upgrading older GOAT Style documents to the current version (the specification's section 14).
 
 Version 0 is today's format (documents without `version`); its upgrade is the
-converter of section 17. Later steps (`1 -> 2`) are added here when they exist.
+converter of section 17. The integer version 1 is 1.0.0 written before three
+numbers. Steps between majors (`1 -> 2`) are added here when they exist.
 """
 
 import copy
@@ -12,11 +13,12 @@ from dataclasses import replace
 from typing import Any
 
 from goatlib.style import limits
+from goatlib.style import version as versions
 from goatlib.style.catalog import palettes
 from goatlib.style.context import DataContext
 from goatlib.style.convert_v0 import LossyNote, UpgradeResult, convert_v0
-from goatlib.style.parse import CURRENT_VERSION
 from goatlib.style.pointer import item_key, to_pointer
+from goatlib.style.version import BASE_VERSION, known_version, parse_version
 
 #: Settings whose bounds became MapLibre's after documents with values outside
 #: them were stored, by where they sit: in a `render` of a type, in a part.
@@ -42,22 +44,25 @@ def upgrade(
     `strict=True` is for a document being written: one at the current version is
     returned as it is, so the validator reports a value outside the bounds (or a
     raster render still called `terrain`) as an error. An older document is
-    converted and brought inside either way.
+    converted and brought inside either way. The integer version 1 becomes
+    "1.0.0" either way, and nothing else changes with it.
+
+    A document of a version this server does not read (another major, a newer
+    minor) is returned as it is, for the validator to report; a newer patch is
+    read as the current version.
     """
     if not isinstance(doc, dict) or "version" not in doc:
         return bring_inside(convert_v0(doc if isinstance(doc, dict) else {}, ctx))
-    version = doc.get("version")
-    if version == CURRENT_VERSION:
-        current = UpgradeResult(
-            document=doc, map_state={}, lossy=(), version_from=CURRENT_VERSION
-        )
-        return current if strict else bring_inside(rename_hillshade(current))
-    return UpgradeResult(
-        document=doc,
-        map_state={},
-        lossy=(),
-        version_from=version if isinstance(version, int) else -1,
+    version = parse_version(doc.get("version"))
+    spec = known_version(versions.SPEC_VERSION)
+    if version is None or version[0] != spec[0] or version[1] > spec[1]:
+        return UpgradeResult(document=doc, map_state={}, lossy=(), version_from=-1)
+    if isinstance(doc["version"], int):
+        doc = {**doc, "version": BASE_VERSION}
+    current = UpgradeResult(
+        document=doc, map_state={}, lossy=(), version_from=version[0]
     )
+    return current if strict else bring_inside(rename_hillshade(current))
 
 
 def rename_hillshade(result: UpgradeResult) -> UpgradeResult:

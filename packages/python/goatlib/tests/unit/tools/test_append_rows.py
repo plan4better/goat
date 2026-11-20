@@ -41,7 +41,7 @@ def _plan(input_cols: dict[str, str], **kw: object):  # type: ignore[no-untyped-
 @pytest.fixture
 def con() -> Iterator[duckdb.DuckDBPyConnection]:
     c = duckdb.connect()
-    c.execute("LOAD spatial")
+    c.execute("INSTALL spatial; LOAD spatial;")
     c.execute(
         "CREATE TABLE target (id VARCHAR, name VARCHAR, status VARCHAR, n INTEGER, "
         "nr INTEGER, geometry GEOMETRY, "

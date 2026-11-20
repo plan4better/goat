@@ -3,12 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import type { RasterValues } from "@/lib/style/raster/values";
 import type { RenderLayer } from "@/lib/style/render/mapLayers";
 import { StyleSaver, type StyleTransport } from "@/lib/style/save";
 
 import { StyledLayers, useLiveLayer } from "@/components/map/StyledLayers";
 
-const { syncMock, useMapMock } = vi.hoisted(() => ({ syncMock: vi.fn(), useMapMock: vi.fn() }));
+const { syncMock, useMapMock, valuesMock } = vi.hoisted(() => ({
+  syncMock: vi.fn(),
+  useMapMock: vi.fn(),
+  valuesMock: vi.fn(),
+}));
 vi.mock("@/lib/style/render/mapLayers", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   syncMapLayers: (...args: unknown[]) => {
@@ -17,6 +22,9 @@ vi.mock("@/lib/style/render/mapLayers", async (importOriginal) => ({
   },
 }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => useMapMock() }));
+vi.mock("@/lib/api/rasters", () => ({
+  loadRasterValues: (url: string, onLoad: () => void) => valuesMock(url, onLoad),
+}));
 // The custom basemap's layer settings are their own hook (Redux); nothing here sets any.
 vi.mock("@/hooks/map/useBasemapStacking", () => ({ useBasemapStacking: () => undefined }));
 
@@ -26,7 +34,8 @@ const fakeMap = {
   getStyle: () => ({ layers: [] }),
   isStyleLoaded: () => true,
 };
-const style = (color: string) => ({ version: 1, kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
+const style = (color: string) =>
+  ({ version: "1.0.0", kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
 const layer = (key: string, color: string): RenderLayer => ({
   key,
   style: style(color),
@@ -43,6 +52,7 @@ describe("StyledLayers", () => {
   beforeEach(() => {
     syncMock.mockReset();
     useMapMock.mockReset();
+    valuesMock.mockReset();
     useMapMock.mockReturnValue({ current: { getMap: () => fakeMap } });
   });
 
@@ -111,6 +121,45 @@ describe("StyledLayers", () => {
     loaded = true;
     act(() => listeners.get("styledata")?.());
     await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("draws a raster layer once its values arrive and reports pending until then", async () => {
+    const values: RasterValues = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 255],
+      integer: true,
+      version: "1-e1",
+    };
+    const loaded: { values?: RasterValues } = {};
+    let onLoad: (() => void) | undefined;
+    valuesMock.mockImplementation((_url: string, callback: () => void) => {
+      if (!loaded.values) onLoad = callback;
+      return loaded.values;
+    });
+    const coverage = "https://geoapi/collections/r1/coverage/tiles/WebMercatorQuad";
+    const raster: RenderLayer = {
+      key: "r",
+      style: { version: "1.0.0", kind: "raster", render: { type: "continuous" } } as unknown as LayerStyle,
+      entry: {},
+      source: {
+        type: "raster",
+        id: "src-r",
+        tiles: "https://geoapi/collections/r1/raster/tiles/{z}/{x}/{y}.webp",
+        coverage,
+      },
+    };
+    const pending = vi.fn();
+    render(<StyledLayers layers={[layer("1", "#aaaaaa"), raster]} locale="en" onValuesPending={pending} />);
+    await waitFor(() => expect(pending).toHaveBeenCalledWith(true));
+    expect(valuesMock).toHaveBeenCalledWith(`${coverage}?band=1&resampling=nearest`, expect.any(Function));
+    const drawnSource = () => ((syncMock.mock.calls.at(-1) as unknown[])[2] as RenderLayer[])[1].source;
+    expect(drawnSource()).not.toHaveProperty("values");
+
+    loaded.values = values;
+    act(() => onLoad?.());
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
+    expect(drawnSource()).toMatchObject({ type: "raster", coverage, values });
+    expect(pending.mock.calls).toEqual([[true], [false]]);
   });
 
   it("popups follow the edited style: a layer's document comes from its open store", () => {

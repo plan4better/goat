@@ -15,7 +15,7 @@ from tests.test_assets import BUCKET, _LocalReader
 
 ITEM = "baumkataster-rheinland-pfalz-198"
 V0 = {"color": [0, 170, 0], "stroke_color": [0, 170, 0], "stroke_width": 3}
-V1 = {"version": 1, "kind": "vector", "symbol": {"line": {"color": "#aa0000"}}}
+V1 = {"version": "1.0.0", "kind": "vector", "symbol": {"line": {"color": "#aa0000"}}}
 
 
 def _get(catalog_dir: Path, tmp_path: Path, document: Any, **headers: str) -> Any:
@@ -52,31 +52,42 @@ def _get(catalog_dir: Path, tmp_path: Path, document: Any, **headers: str) -> An
     return response, conditional, geometry
 
 
-def test_a_version_0_style_object_is_served_as_version_1(
+def test_a_version_0_style_object_is_served_as_goat_style(
     catalog_dir: Path, tmp_path: Path
 ) -> None:
     response, conditional, geometry = _get(catalog_dir, tmp_path, V0)
     assert response.status_code == 200
     doc = response.json()
-    assert (doc["version"], doc["kind"]) == (1, "vector")
+    assert (doc["version"], doc["kind"]) == ("1.0.0", "vector")
     part = {"point": "marker", "line": "line", "polygon": "fill"}[geometry]
     assert doc["symbol"][part]["color"] == "#00aa00"
     assert response.headers["content-type"].startswith("application/json")
     assert conditional.status_code == 304
 
 
-def test_a_version_1_style_object_is_served_as_published(
+def test_a_goat_style_object_is_served_as_published(
     catalog_dir: Path, tmp_path: Path
 ) -> None:
     response, _, _ = _get(catalog_dir, tmp_path, V1)
     assert response.json() == V1
 
 
+def test_a_style_object_with_the_integer_version_1_is_served_as_1_0_0(
+    catalog_dir: Path, tmp_path: Path
+) -> None:
+    response, _, _ = _get(catalog_dir, tmp_path, {**V1, "version": 1})
+    assert response.json() == V1
+
+
 def test_a_style_object_that_does_not_validate_is_served_as_the_default(
     catalog_dir: Path, tmp_path: Path
 ) -> None:
-    broken = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "nope"}}}
+    broken = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "nope"}},
+    }
     response, _, geometry = _get(catalog_dir, tmp_path, broken)
     doc = response.json()
     part = {"point": "marker", "line": "line", "polygon": "fill"}[geometry]
-    assert doc["version"] == 1 and doc["symbol"][part]["color"] != "nope"
+    assert doc["version"] == "1.0.0" and doc["symbol"][part]["color"] != "nope"

@@ -102,44 +102,47 @@ function registerImages(map: PreviewMap, images: ImageRequest[]): void {
   for (const image of images) known.set(image.name, image);
 }
 
-const DECORATION = (kinds: Array<"start" | "end" | "center">): string =>
-  kinds.includes("center") && kinds.length === 1
-    ? "center"
-    : kinds.includes("start") && kinds.includes("end")
-      ? "start_and_end"
-      : kinds.includes("start")
-        ? "start"
-        : kinds.includes("end")
-          ? "end"
-          : "center";
-
 /** A tile URL asking geoapi for what the compiled layer needs: polygon label anchors, line decoration points. */
 export function tileUrl(base: string, params: CompiledLayer["tileParams"]): string {
   const query: string[] = [];
   if (params.label) query.push("label=true");
-  if (params.decorations?.length) query.push(`decoration=${DECORATION(params.decorations)}`);
+  // Every kind the layers draw on, in one request; each point names its kind (spec 15).
+  if (params.decorations?.length) query.push(`decoration=${params.decorations.join(",")}`);
   if (!query.length) return base;
   return `${base}${base.includes("?") ? "&" : "?"}${query.join("&")}`;
 }
 
-/** The compiled layer with its vector tile URLs carrying the tile parameters. */
+/** A points URL asking geoapi for the fields the layers read, and no other (an empty list asks for none). */
+export function pointsUrl(base: string, fields: string[]): string {
+  const url = new URL(base);
+  url.searchParams.set("properties", fields.join(","));
+  return url.toString();
+}
+
+/** The compiled layer with its vector tile URLs carrying the tile parameters, and its points URL the fields. */
 export function withTileParams(compiled: CompiledLayer): CompiledLayer {
+  const { fields } = compiled.tileParams;
   const sources = Object.fromEntries(
     Object.entries(compiled.sources).map(([id, source]) => [
       id,
       source.type === "vector" && Array.isArray(source.tiles)
         ? { ...source, tiles: source.tiles.map((url) => tileUrl(url, compiled.tileParams)) }
-        : source,
+        : source.type === "geojson" && typeof source.data === "string" && fields
+          ? { ...source, data: pointsUrl(source.data, fields) }
+          : source,
     ])
   );
   return { ...compiled, sources };
 }
 
-const sameExcept = (a: object, b: object, key: string) => {
-  const { [key]: _a, ...restA } = a as Record<string, unknown>;
-  const { [key]: _b, ...restB } = b as Record<string, unknown>;
-  return deepEqual(restA, restB);
-};
+const without = (value: object, keys: string[]) =>
+  Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+
+const sameExcept = (a: object, b: object, ...keys: string[]) => deepEqual(without(a, keys), without(b, keys));
+
+/** The options a clustered GeoJSON source changes in place (`setClusterOptions`); the fewest points per cluster is
+ * not one of them. */
+const CLUSTER_OPTIONS = ["clusterRadius", "clusterMaxZoom"];
 
 function updateProperties(
   id: string,
@@ -194,7 +197,27 @@ export function applyCompiled(
     // New tile URLs (labels or line decorations switched on) load the source again rather than setTiles: MapLibre's
     // reload after setTiles races the reload a layer added in the same frame starts, which re-parses the cached
     // tiles, so the tiles would stay without the label points.
-    if (sameExcept(old, source, "data") && typeof existing.setData === "function" && "data" in source) {
+    if (
+      source.type === "geojson" &&
+      source.cluster === true &&
+      sameExcept(old, source, "data", ...CLUSTER_OPTIONS) &&
+      typeof existing.setData === "function" &&
+      typeof existing.setClusterOptions === "function"
+    ) {
+      // New fields load the points again; a new radius or zoom clusters the points already loaded again.
+      if (!deepEqual((old as { data?: unknown }).data, source.data))
+        (existing.setData as (data: unknown) => void)(source.data);
+      if (!sameExcept(old, source, "data"))
+        void (existing.setClusterOptions as (options: object) => Promise<void>)({
+          cluster: true,
+          clusterRadius: source.clusterRadius,
+          clusterMaxZoom: source.clusterMaxZoom,
+        });
+    } else if (
+      sameExcept(old, source, "data") &&
+      typeof existing.setData === "function" &&
+      "data" in source
+    ) {
       (existing.setData as (data: unknown) => void)(source.data);
     } else if (
       source.type === "raster" &&

@@ -8,6 +8,7 @@ import {
   buildLegend,
   classOf,
   informative,
+  legendDraws,
   rangeText,
   valuesText,
 } from "@/lib/style/legend";
@@ -18,7 +19,7 @@ const WORDS = { under: "under", to: "to", andMore: "and more" };
 
 describe("H3 legends", () => {
   const STAMP = { at: "2026-10-26T00:00:00Z", data: "ducklake:1", scope: "dataset" };
-  const h3 = (render: object) => ({ version: 1, kind: "vector", render: { type: "h3", ...render } });
+  const h3 = (render: object) => ({ version: "1.0.0", kind: "vector", render: { type: "h3", ...render } });
 
   it("classes of the resolution the zoom draws, as ranges of the cell value", () => {
     const doc = h3({
@@ -62,8 +63,142 @@ describe("H3 legends", () => {
       computed: { ...STAMP, resolutions: { "8": { min: 2, max: 40 } } },
     });
     expect(buildLegend(doc, { geometry: "point", zoom: 3 })!.sections).toEqual([
-      { kind: "ramp", id: "h3", colors: ["#000001", "#000002"], domain: [2, 40] },
+      { kind: "ramp", id: "h3", colors: ["#000001", "#000002"], domain: [2, 40], opacity: 0.85 },
     ]);
+  });
+
+  it("swatches and the ramp show the hexagons' opacity, never the layer's", () => {
+    const classes = {
+      palette: ["#000001", "#000002", "#000003"],
+      classify: { method: "quantile", count: 3 },
+      computed: { ...STAMP, resolutions: { "7": { min: 1, max: 9, breaks: [3, 6] } } },
+    };
+    const ramp = {
+      resolution: 8,
+      palette: ["#000001", "#000002"],
+      computed: { ...STAMP, resolutions: { "8": { min: 2, max: 40 } } },
+    };
+    const opacities = (doc: object): unknown[] =>
+      buildLegend(doc as never, { geometry: "point", zoom: 10 })!.sections.flatMap((s) =>
+        s.kind === "entries"
+          ? s.entries.map((e) => e.swatch.fill?.opacity)
+          : s.kind === "ramp"
+            ? [s.opacity]
+            : []
+      );
+    // The default opacity the map draws the hexagons at.
+    expect(opacities(h3(classes))).toEqual([0.85, 0.85, 0.85]);
+    expect(opacities(h3(ramp))).toEqual([0.85]);
+    // Not computed yet: one color, at the same opacity.
+    expect(opacities(h3({}))).toEqual([0.85]);
+    // Their own opacity; the layer's opacity fades the map, not the legend.
+    expect(opacities({ ...h3({ ...classes, opacity: 0.4 }), opacity: 0.5 })).toEqual([0.4, 0.4, 0.4]);
+    expect(opacities({ ...h3({ ...ramp, opacity: 0.4 }), opacity: 0.5 })).toEqual([0.4]);
+    // A ramp at full strength carries none.
+    expect(opacities(h3({ ...ramp, opacity: 1 }))).toEqual([undefined]);
+  });
+});
+
+describe("legend of the features' own opacity", () => {
+  const rampOf = (doc: object, geometry: "point" | "line" | "polygon", zoom = 12) =>
+    buildLegend(doc as never, { geometry, zoom })!.sections.find((s) => s.kind === "ramp");
+  const palette = { field: "d", palette: ["#ffffff", "#000000"], domain: [0, 100] };
+
+  it("a heatmap's ramp shows its opacity, by zoom at the zoom; the layer's opacity is left out", () => {
+    const heatmap = (render: object, layer?: number) => ({
+      version: "1.0.0",
+      kind: "vector",
+      ...(layer !== undefined ? { opacity: layer } : {}),
+      render: { type: "heatmap", palette: ["#000000", "#ffffff"], ...render },
+    });
+    expect(rampOf(heatmap({}), "point")).not.toHaveProperty("opacity");
+    expect(rampOf(heatmap({ opacity: 0.6 }, 0.5), "point")).toMatchObject({ id: "heatmap", opacity: 0.6 });
+    expect(
+      rampOf(
+        heatmap({
+          opacity: {
+            zoom: [
+              [8, 0.2],
+              [16, 1],
+            ],
+          },
+        }),
+        "point",
+        12
+      )
+    ).toMatchObject({
+      opacity: 0.6,
+    });
+    expect(rampOf(heatmap({}, 0.5), "point")).not.toHaveProperty("opacity");
+  });
+
+  it("a ramp by attribute shows its part's opacity, as the part's swatch has it", () => {
+    const polygon = (fill: object, layer?: number) => ({
+      version: "1.0.0",
+      kind: "vector",
+      ...(layer !== undefined ? { opacity: layer } : {}),
+      symbol: { fill: { color: palette, ...fill } },
+    });
+    expect(rampOf(polygon({ opacity: 0.5 }), "polygon")).toMatchObject({ id: "fill.color", opacity: 0.5 });
+    // The layer's opacity fades the map, not the legend.
+    expect(rampOf(polygon({ opacity: 0.5 }, 0.3), "polygon")).toMatchObject({ opacity: 0.5 });
+    expect(rampOf(polygon({}, 0.3), "polygon")).not.toHaveProperty("opacity");
+    // By zoom: at the legend's zoom, as a swatch reads it.
+    expect(
+      rampOf(
+        polygon({
+          opacity: {
+            zoom: [
+              [8, 0.2],
+              [16, 1],
+            ],
+          },
+        }),
+        "polygon",
+        12
+      )
+    ).toMatchObject({
+      opacity: 0.6,
+    });
+    // By attribute: no one opacity; the swatch and the ramp show the default.
+    expect(
+      rampOf(polygon({ opacity: { field: "p", range: [0.2, 1], domain: [0, 10] } }), "polygon")
+    ).not.toHaveProperty("opacity");
+    // A pattern draws at full strength whatever the fill's opacity.
+    expect(
+      rampOf(
+        {
+          version: "1.0.0",
+          kind: "vector",
+          symbol: { fill: { pattern: "hatch_45", pattern_color: palette, opacity: 0.5 } },
+        },
+        "polygon"
+      )
+    ).not.toHaveProperty("opacity");
+    // A marker's and a line's own opacity; a hollow marker is not faded by it.
+    const marker = (own: object) => ({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { color: palette, ...own } },
+    });
+    expect(rampOf(marker({ opacity: 0.4 }), "point")).toMatchObject({ id: "marker.color", opacity: 0.4 });
+    expect(rampOf(marker({ opacity: 0.4, fill: false }), "point")).not.toHaveProperty("opacity");
+    expect(
+      rampOf({ version: "1.0.0", kind: "vector", symbol: { line: { color: palette, opacity: 0.7 } } }, "line")
+    ).toMatchObject({ id: "line.color", opacity: 0.7 });
+  });
+
+  it("a raster's ramp has none: a raster's opacity is the layer's", () => {
+    const [ramp] = buildLegend(
+      {
+        version: "1.0.0",
+        kind: "raster",
+        opacity: 0.5,
+        render: { type: "continuous", palette: ["#000000", "#ffffff"], domain: [0, 1] },
+      },
+      { zoom: 10 }
+    )!.sections;
+    expect(ramp).not.toHaveProperty("opacity");
   });
 });
 
@@ -101,7 +236,7 @@ describe("legend", () => {
   it("classifications of one field with the same classes are one list, each class with all it sets", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", icon: "goat:park", color: "#000000" } },
         classify: [
@@ -151,7 +286,7 @@ describe("legend", () => {
 
   it("a layer without classifications is one entry with its base look", () => {
     const legend = buildLegend(
-      { version: 1, kind: "vector", symbol: { marker: { color: "#f28e2b", size: 8 } } },
+      { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#f28e2b", size: 8 } } },
       { geometry: "point", zoom: 12 }
     );
     expect(legend?.sections).toEqual([
@@ -174,7 +309,7 @@ describe("legend", () => {
   it("hollow markers carry fill: false and their icon takes the marker color; a class may be hollow on its own", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "pin", color: "#f28e2b", icon: "goat:park" }, outline: { color: "fill" } },
         classify: [
@@ -198,7 +333,7 @@ describe("legend", () => {
     expect(marker("b")?.icon_color).toBe("#ffffff");
     const set = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#f28e2b", fill: false, icon: "goat:park", icon_color: "#3a3541" } },
       },
@@ -211,7 +346,7 @@ describe("legend", () => {
   it("categories with other and no data, classes left out, named rules, values by zoom at the given zoom", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           line: {
@@ -269,10 +404,57 @@ describe("legend", () => {
     ]);
   });
 
+  it("a color by zoom on a marker image or a pattern is the one at the whole zoom below the legend's", () => {
+    // The map picks an image per tile, at the tile's whole zoom: at 12.5 the color at 12, a quarter of the way from
+    // 11 to 15. A circle and a fill blend at 12.5.
+    const byZoom = (a: string, b: string) => ({
+      zoom: [
+        [11, a],
+        [15, b],
+      ],
+    });
+    const at = (symbol: object, geometry: "point" | "polygon") =>
+      baseSwatch({ version: "1.0.0", kind: "vector", symbol }, { geometry, zoom: 12.5 });
+    const pin = at(
+      {
+        marker: {
+          shape: "pin",
+          icon: "goat:park",
+          color: byZoom("#000000", "#0000ff"),
+          icon_color: byZoom("#000000", "#00ff00"),
+        },
+        outline: { color: byZoom("#000000", "#ff0000"), width: 1 },
+      },
+      "point"
+    );
+    expect([pin.marker?.color, pin.marker?.icon_color, pin.outline?.color]).toEqual([
+      "#000040",
+      "#004000",
+      "#400000",
+    ]);
+    const circle = at({ marker: { shape: "circle", color: byZoom("#000000", "#0000ff") } }, "point");
+    expect(circle.marker?.color).toBe("#000060");
+    const polygon = at(
+      {
+        fill: { color: byZoom("#000000", "#0000ff"), pattern: "dots" },
+        marker: { shape: "circle", color: byZoom("#000000", "#00ff00") },
+      },
+      "polygon"
+    );
+    // The pattern in the fill color by default: the fill's color at the whole zoom below.
+    expect([polygon.fill?.color, polygon.fill?.pattern_color, polygon.marker?.color]).toEqual([
+      "#000060",
+      "#000040",
+      "#004000",
+    ]);
+    const pattern = at({ fill: { pattern: "dots", pattern_color: byZoom("#000000", "#ff0000") } }, "polygon");
+    expect(pattern.fill?.pattern_color).toBe("#400000");
+  });
+
   it("ramps for palettes by attribute and size samples for ranges", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {
@@ -301,7 +483,7 @@ describe("legend", () => {
   it("size samples follow the scale (spec 5.8)", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { size: { field: "pupils", range: [0, 24], scale: "sqrt", domain: [0, 1500] } } },
       },
@@ -315,11 +497,224 @@ describe("legend", () => {
 
   it("is null when hidden", () => {
     expect(
-      buildLegend({ version: 1, kind: "vector", legend: false }, { geometry: "point", zoom: 12 })
+      buildLegend({ version: "1.0.0", kind: "vector", legend: false }, { geometry: "point", zoom: 12 })
     ).toBeNull();
     expect(
-      buildLegend({ version: 1, kind: "vector", legend: { show: false } }, { geometry: "point", zoom: 12 })
+      buildLegend(
+        { version: "1.0.0", kind: "vector", legend: { show: false } },
+        { geometry: "point", zoom: 12 }
+      )
     ).toBeNull();
+  });
+});
+
+describe("legend of values by zoom with values by attribute in the stops (spec 4.4)", () => {
+  const STAMP = { at: "2026-01-01T00:00:00Z", data: "synthetic-v1", scope: "dataset" };
+  /** Circles by pupils on a square root, with the domain the server writes into each stop (the schools dataset's
+   * pupils, 65 to 1,391). */
+  const pupils = (range: number[]) => ({
+    field: "pupils",
+    range,
+    scale: "sqrt",
+    computed: { ...STAMP, domain: [65, 1391] },
+  });
+  const circles = (size: object) => ({
+    version: "1.0.0",
+    kind: "vector",
+    symbol: { marker: { shape: "circle", color: "#1a6b4d", size } },
+  });
+  /** The spec's example (4.4): twice as large at zoom 16 as at zoom 11. */
+  const SCHOOLS = circles({
+    zoom: [
+      [11, pupils([3, 10])],
+      [16, pupils([6, 20])],
+    ],
+    interpolate: "linear",
+  });
+  type Geometry = "point" | "line" | "polygon";
+  const sectionsOf = (doc: object, geometry: Geometry = "point", zoom = 12) =>
+    buildLegend(doc as never, { geometry, zoom })!.sections;
+  const sizesOf = (doc: object, geometry: Geometry = "point", zoom = 12) => {
+    const section = sectionsOf(doc, geometry, zoom).find((s) => s.kind === "sizes");
+    if (section?.kind !== "sizes") throw new Error("sizes expected");
+    return section;
+  };
+  const rampOf = (doc: object, geometry: Geometry, zoom: number) =>
+    sectionsOf(doc, geometry, zoom).find((s) => s.kind === "ramp");
+
+  it("the spec's example: between two stops, the sizes the map draws there, read halfway whatever the map's zoom", () => {
+    // Sizes are read at the middle of their stops (spec 7.2): zoom 13.5, halfway from 11 to 16, where each size is
+    // halfway between the two stops' sizes for the same number of pupils.
+    for (const zoom of [8, 12, 13.5, 18]) {
+      const section = sizesOf(SCHOOLS, "point", zoom);
+      expect(section).toMatchObject({ id: "marker.size", field: "pupils" });
+      expect(section.samples.map((s) => [s.value, s.swatch.marker?.size])).toEqual([
+        [65, 4.5],
+        [728, 11.3],
+        [1391, 15],
+      ]);
+      expect(section.samples[0].swatch.marker).toMatchObject({ shape: "circle", color: "#1a6b4d" });
+    }
+  });
+
+  it("on a stop: that stop's samples, as its value by attribute alone shows them", () => {
+    // Three stops: the middle of the stops is the second one.
+    const stops = circles({
+      zoom: [
+        [10, pupils([2, 6])],
+        [13, pupils([3, 10])],
+        [16, pupils([6, 20])],
+      ],
+    });
+    expect(sectionsOf(stops)).toEqual(sectionsOf(circles(pupils([3, 10]))));
+    expect(sizesOf(stops).samples.map((s) => s.swatch.marker?.size)).toEqual([3, 7.5, 10]);
+  });
+
+  it("between two stops by the stops' own curve, for a line's width too", () => {
+    const traffic = (range: number[]) => ({ field: "traffic", range, domain: [0, 100] });
+    const doc = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: {
+        line: {
+          color: "#2166ac",
+          width: {
+            zoom: [
+              [10, traffic([4, 8])],
+              [14, traffic([8, 24])],
+            ],
+            interpolate: "exponential",
+            base: 2,
+          },
+        },
+      },
+    };
+    // Read at zoom 12: (2^2 - 1) / (2^4 - 1) = 0.2 of the way from the first stop's widths to the second's.
+    const section = sizesOf(doc, "line");
+    expect(section).toMatchObject({ id: "line.width", field: "traffic" });
+    expect(section.samples.map((s) => [s.value, s.swatch.line?.width])).toEqual([
+      [0, 4.8],
+      [50, 8],
+      [100, 11.2],
+    ]);
+  });
+
+  it("a fixed size at one stop blends with the other stop's sizes", () => {
+    const doc = circles({
+      zoom: [
+        [10, 4],
+        [14, { field: "p", range: [8, 16], domain: [0, 10] }],
+      ],
+    });
+    expect(sizesOf(doc).samples.map((s) => [s.value, s.swatch.marker?.size])).toEqual([
+      [0, 6],
+      [5, 8],
+      [10, 10],
+    ]);
+  });
+
+  it("no samples where the stops around the zoom read two fields or a domain is not computed yet", () => {
+    const kinds = (doc: object) => sectionsOf(doc).map((s) => s.kind);
+    expect(
+      kinds(
+        circles({
+          zoom: [
+            [10, { field: "a", range: [4, 8], domain: [0, 10] }],
+            [14, { field: "b", range: [8, 16], domain: [0, 10] }],
+          ],
+        })
+      )
+    ).not.toContain("sizes");
+    expect(
+      kinds(
+        circles({
+          zoom: [
+            [11, { field: "pupils", range: [3, 10] }],
+            [16, { field: "pupils", range: [6, 20] }],
+          ],
+        })
+      )
+    ).not.toContain("sizes");
+  });
+
+  it("a color by attribute in zoom stops: on a stop or beyond the stops its ramp, between two the colors the map blends", () => {
+    const palette = (colors: string[]) => ({ field: "d", palette: colors, domain: [0, 100] });
+    const doc = (a: string[], b: string[]) => ({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: {
+        fill: {
+          color: {
+            zoom: [
+              [10, palette(a)],
+              [14, palette(b)],
+            ],
+          },
+        },
+      },
+    });
+    const even = doc(["#000000", "#ff0000"], ["#0000ff", "#ff0000"]);
+    // Colors follow the map's zoom (spec 7.2).
+    expect(rampOf(even, "polygon", 8)).toMatchObject({
+      id: "fill.color",
+      field: "d",
+      colors: ["#000000", "#ff0000"],
+      domain: [0, 100],
+    });
+    expect(rampOf(even, "polygon", 10)).toMatchObject({ colors: ["#000000", "#ff0000"] });
+    expect(rampOf(even, "polygon", 12)).toMatchObject({ colors: ["#000080", "#ff0000"] });
+    expect(rampOf(even, "polygon", 14)).toMatchObject({ colors: ["#0000ff", "#ff0000"] });
+    expect(rampOf(even, "polygon", 18)).toMatchObject({ colors: ["#0000ff", "#ff0000"] });
+    // Palettes of different lengths spread over as many colors as the longer one has; the ends blend as on the map.
+    const ramp = rampOf(doc(["#000000", "#ffffff"], ["#ff0000", "#00ff00", "#0000ff"]), "polygon", 12);
+    if (ramp?.kind !== "ramp") throw new Error("ramp expected");
+    expect(ramp.colors).toHaveLength(3);
+    expect([ramp.colors[0], ramp.colors[2]]).toEqual(["#800000", "#8080ff"]);
+  });
+
+  it("on a marker image or a pattern, between two whole zooms, the colors of the whole zoom below", () => {
+    // The map picks an image per tile, at the tile's whole zoom: at 12.5, the colors blended at 12 (a quarter of the
+    // way from 11 to 15); a circle blends them at 12.5.
+    const palette = (colors: string[]) => ({ field: "d", palette: colors, domain: [0, 100] });
+    const color = {
+      zoom: [
+        [11, palette(["#000000", "#ff0000"])],
+        [15, palette(["#0000ff", "#ff0000"])],
+      ],
+    };
+    const marker = (shape: string) => ({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { shape, color } },
+    });
+    expect(rampOf(marker("pin"), "point", 12.5)).toMatchObject({ colors: ["#000040", "#ff0000"] });
+    expect(rampOf(marker("circle"), "point", 12.5)).toMatchObject({ colors: ["#000060", "#ff0000"] });
+    expect(rampOf(marker("circle"), "polygon", 12.5)).toMatchObject({ colors: ["#000040", "#ff0000"] });
+    const pattern = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { pattern: "dots", pattern_color: color } },
+    };
+    expect(rampOf(pattern, "polygon", 12.5)).toMatchObject({ colors: ["#000040", "#ff0000"] });
+  });
+
+  it("a main color by attribute in zoom stops has no one color: swatches draw it neutral grey", () => {
+    const doc = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: {
+        fill: {
+          color: {
+            zoom: [
+              [10, { field: "d", palette: ["#000000", "#ff0000"], domain: [0, 100] }],
+              [14, { field: "d", palette: ["#0000ff", "#ff0000"], domain: [0, 100] }],
+            ],
+          },
+        },
+      },
+    };
+    expect(baseSwatch(doc, { geometry: "polygon", zoom: 12 }).fill?.color).toBe(LEGEND_NEUTRAL);
+    expect(baseSwatch(doc, { geometry: "polygon", zoom: 10 }).fill?.color).toBe(LEGEND_NEUTRAL);
   });
 });
 
@@ -327,7 +722,7 @@ describe("legend of a color by attribute on a scale", () => {
   const ramp = (scale?: string) =>
     buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           fill: {
@@ -349,7 +744,7 @@ describe("legend of classes picked by hand", () => {
   it("leaves out a class that has no values yet", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         classify: [
           {
@@ -397,7 +792,7 @@ describe("legend blocks by property", () => {
   };
   const points = (classify: object[]) =>
     buildLegend(
-      { version: 1, kind: "vector", symbol: { marker: { color: "#e01903", size: 8 } }, classify },
+      { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#e01903", size: 8 } }, classify },
       { geometry: "point", zoom: 12 }
     )!.sections as Array<Extract<LegendSection, { kind: "entries" }>>;
 
@@ -454,11 +849,138 @@ describe("legend blocks by property", () => {
   });
 });
 
+describe("classifications of what a swatch does not draw", () => {
+  const STAMP = { at: "2026-10-26T00:00:00Z", data: "ducklake:1", scope: "dataset" };
+  // Points colored by category and sized by classes of another field; the panel gives every class its own id.
+  const COLORS = {
+    id: "kind",
+    field: "kind",
+    method: "categories",
+    classes: [
+      { id: "c1", values: ["Kiosk"], marker: { color: "#66c2a5" } },
+      { id: "c2", values: ["Cafe"], marker: { color: "#fc8d62" } },
+    ],
+    computed: { ...STAMP, other: false, no_data: false },
+  };
+  const SIZES = {
+    id: "turnover",
+    field: "turnover",
+    method: "quantile",
+    target: "marker.size",
+    classes: [
+      { id: "c3", to: 100, marker: { size: 4 } },
+      { id: "c4", from: 100, marker: { size: 24 } },
+    ],
+    computed: { ...STAMP, domain: [5, 2000], no_data: false },
+  };
+  // A label font by the same categories (the panel's Font target): what the labels say changes, no swatch does.
+  const FONT = {
+    id: "k1",
+    field: "kind",
+    method: "categories",
+    target: "label.font.weight",
+    classes: [
+      { id: "c5", values: ["Kiosk"] },
+      { id: "c6", values: ["Cafe"], label: { font: { style: "italic", weight: "regular" } } },
+    ],
+    computed: { ...STAMP, other: false, no_data: false },
+  };
+  const LABEL_COLOR = {
+    ...FONT,
+    id: "k2",
+    target: "label.color",
+    classes: [
+      { id: "c7", values: ["Kiosk"], label: { color: "#ff0000" } },
+      { id: "c8", values: ["Cafe"], label: { color: "#0000ff" } },
+    ],
+  };
+  const doc = (classify: object[]) => ({
+    version: "1.0.0",
+    kind: "vector",
+    legend: { classes: "view" },
+    symbol: { marker: { shape: "circle", color: "#fdae61", size: 10 }, label: { text: "{name}" } },
+    classify,
+  });
+  const seen = (...ids: string[]) => ({ classes: new Set(ids), other: false, no_data: false });
+  // What the map drew in its view: every class of every classification.
+  const PRESENT = {
+    kind: seen("c1", "c2"),
+    turnover: seen("c3", "c4"),
+    k1: seen("c5", "c6"),
+    k2: seen("c7", "c8"),
+  };
+  const blocks = (classify: object[], present?: typeof PRESENT) =>
+    buildLegend(doc(classify), { geometry: "point", zoom: 12, present })!.sections.map((s) =>
+      s.kind === "entries" ? [s.id, s.properties, s.entries.map((e) => e.id)] : [s.id]
+    );
+
+  it("a label font by the classes of a field leaves that field's color block as it is", () => {
+    const expected = [
+      ["kind", ["style_editor.color"], ["c1", "c2"]],
+      ["turnover", ["style_editor.size"], ["c3", "c4"]],
+    ];
+    for (const present of [undefined, PRESENT]) {
+      expect(blocks([COLORS, SIZES, FONT], present)).toEqual(expected);
+      expect(blocks([FONT, COLORS, SIZES], present)).toEqual(expected);
+      expect(buildLegend(doc([COLORS, SIZES, FONT]), { geometry: "point", zoom: 12, present })).toEqual(
+        buildLegend(doc([COLORS, SIZES]), { geometry: "point", zoom: 12, present })
+      );
+    }
+  });
+
+  it("a label color by the classes of a field leaves the field's size block grey", () => {
+    const sizes = {
+      ...COLORS,
+      target: "marker.size",
+      classes: COLORS.classes.map((k, i) => ({ ...k, marker: { size: 6 + i * 10 } })),
+    };
+    const [block] = buildLegend(doc([sizes, LABEL_COLOR]), { geometry: "point", zoom: 12, present: PRESENT })!
+      .sections as Array<Extract<LegendSection, { kind: "entries" }>>;
+    expect(block.entries.map((e) => [e.id, e.swatch.marker?.color, e.swatch.marker?.size])).toEqual([
+      ["c1", LEGEND_NEUTRAL, 6],
+      ["c2", LEGEND_NEUTRAL, 16],
+    ]);
+  });
+
+  it("alone it has no block: the layer's base look, as without it", () => {
+    for (const label of [FONT, LABEL_COLOR])
+      expect(blocks([label], PRESENT)).toEqual([["base", undefined, ["base"]]]);
+  });
+
+  it("a class of it hidden with the eye still hides its features, on the map and in the legend", () => {
+    const hidden = { ...FONT, classes: [FONT.classes[0], { ...FONT.classes[1], visible: false }] };
+    expect(blocks([COLORS, SIZES, hidden], PRESENT)[0]).toEqual(["kind", ["style_editor.color"], ["c1"]]);
+  });
+
+  it("the legend draws the parts of a swatch and the height, nothing of a label or of where a symbol sits", () => {
+    const drawn = [
+      "marker.color",
+      "marker.size",
+      "marker.icon",
+      "outline.width",
+      "fill.pattern",
+      "line.dash",
+    ];
+    for (const target of [...drawn, "casing.color", "arrows.color", "extrude.height"])
+      expect(legendDraws({ target }), target).toBe(true);
+    // A classification without a target sets the main color.
+    expect(legendDraws({})).toBe(true);
+    const off = ["label.font.weight", "label.color", "label.size", "label.transform", "label.halo.color"];
+    for (const target of [...off, "marker.rotation", "marker.offset", "line.offset", "extrude.base"])
+      expect(legendDraws({ target }), target).toBe(false);
+  });
+
+  it("a popup header shows the class of the first classification the legend draws", () => {
+    const swatch = classOf(doc([FONT, COLORS]), { kind: "Cafe" }, { geometry: "point", zoom: 12 });
+    expect(swatch.marker?.color).toBe("#fc8d62");
+  });
+});
+
 describe("legend data ends", () => {
   const STAMP = { at: "2026-10-26T00:00:00Z", data: "ducklake:1", scope: "dataset" };
   const classified = (c: object) =>
     buildLegend(
-      { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } }, classify: [c] },
+      { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } }, classify: [c] },
       { geometry: "polygon", zoom: 12 }
     )!.sections[0];
 
@@ -541,7 +1063,7 @@ describe("rangeText", () => {
 describe("classes hidden with the eye", () => {
   const doc = (classify: object[]) =>
     buildLegend(
-      { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } }, classify },
+      { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } }, classify },
       {
         geometry: "polygon",
         zoom: 12,
@@ -609,7 +1131,7 @@ describe("classes hidden with the eye", () => {
   it("a raster whose classes are all hidden has no legend", () => {
     const raster = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "raster",
         render: { type: "categorical", band: 1, classes: [{ value: 1, color: "#ff0000", visible: false }] },
       },
@@ -631,7 +1153,7 @@ describe("valuesText", () => {
 
 describe("raster legends", () => {
   const raster = (render: object, legend?: object) =>
-    buildLegend({ version: 1, kind: "raster", render, ...(legend ? { legend } : {}) }, { zoom: 10 });
+    buildLegend({ version: "1.0.0", kind: "raster", render, ...(legend ? { legend } : {}) }, { zoom: 10 });
 
   it("a palette over a range is a ramp with its unit and end labels", () => {
     expect(
@@ -678,6 +1200,77 @@ describe("raster legends", () => {
     });
   });
 
+  it("cells outside the stops shown or hidden: the ramp runs from the first stop to the last either way", () => {
+    const stops = [
+      { value: 0, color: "#000000" },
+      { value: 9, color: "#ffffff" },
+    ];
+    const clamped = raster({ type: "continuous", stops });
+    const hidden = raster({ type: "continuous", stops, outside: "hide" });
+    expect(hidden).toEqual(clamped);
+    expect(hidden?.sections[0]).toMatchObject({ kind: "ramp", domain: [0, 9] });
+  });
+
+  it("stops at uneven values sit at their values along the ramp", () => {
+    const legend = raster({
+      type: "continuous",
+      stops: [
+        { value: 180, color: "#1a9850" },
+        { value: 260, color: "#d9ef8b" },
+        { value: 340, color: "#fdae61" },
+        { value: 440, color: "#d73027" },
+      ],
+    });
+    expect(legend?.sections[0]).toMatchObject({
+      kind: "ramp",
+      colors: ["#1a9850", "#d9ef8b", "#fdae61", "#d73027"],
+      positions: [0, 80 / 260, 160 / 260, 1],
+      domain: [180, 440],
+    });
+  });
+
+  it("nearest stops are hard steps at the midpoints between their values", () => {
+    const legend = raster({
+      type: "continuous",
+      interpolate: "nearest",
+      stops: [
+        { value: 0, color: "#000000" },
+        { value: 10, color: "#ff0000" },
+        { value: 20, color: "#0000ff" },
+      ],
+    });
+    expect(legend?.sections[0]).toMatchObject({
+      kind: "ramp",
+      colors: ["#000000", "#000000", "#ff0000", "#ff0000", "#0000ff", "#0000ff"],
+      positions: [0, 0.25, 0.25, 0.75, 0.75, 1],
+      domain: [0, 20],
+    });
+  });
+
+  it("categories with other_color list an Other entry after the classes; without it none", () => {
+    const render = {
+      type: "categorical",
+      classes: [
+        { value: 1, name: "Water", color: "#4a90c2" },
+        { value: 6, color: "#7a87c6", visible: false },
+      ],
+    };
+    expect(raster({ ...render, other_color: "#cccccc" })?.sections[0]).toMatchObject({
+      kind: "entries",
+      entries: [
+        { name: "Water", values: [1] },
+        { id: "other", extra: "other", swatch: { geometry: "polygon", fill: { color: "#cccccc" } } },
+      ],
+    });
+    const without = raster(render)?.sections[0];
+    expect(without?.kind === "entries" && without.entries.some((e) => e.extra === "other")).toBe(false);
+    // Every class hidden: the map still paints the other values, so the legend lists them.
+    expect(
+      raster({ type: "categorical", classes: [{ value: 1, visible: false }], other_color: "#cccccc" })
+        ?.sections[0]
+    ).toMatchObject({ entries: [{ id: "other", extra: "other" }] });
+  });
+
   it("manual classes and categories list their visible classes with colors", () => {
     const classes = raster({
       type: "continuous",
@@ -708,18 +1301,69 @@ describe("raster legends", () => {
     });
   });
 
+  it("raster classes and categories carry the legend unit", () => {
+    const classes = raster(
+      {
+        type: "continuous",
+        palette: "colorbrewer:BuGn",
+        domain: [40, 80],
+        classify: { method: "manual", classes: [{ to: 55 }, { from: 55, to: 65 }, { from: 65 }] },
+      },
+      { unit: "dB(A)" }
+    );
+    expect(classes?.sections[0]).toMatchObject({ kind: "entries", unit: "dB(A)" });
+    const categories = raster(
+      {
+        type: "categorical",
+        classes: [
+          { value: 55, color: "#fee8c8" },
+          { value: 65, color: "#e34a33" },
+        ],
+      },
+      { unit: "dB(A)" }
+    );
+    expect(categories?.sections[0]).toMatchObject({ kind: "entries", unit: "dB(A)" });
+    // No unit typed: the entries have none.
+    const without = raster({ type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] });
+    expect(without?.sections[0]).not.toHaveProperty("unit");
+  });
+
+  it("raster classes carry the render's domain: an open first or last class reads it", () => {
+    const classify = { method: "manual", classes: [{ to: 55 }, { from: 55, to: 65 }, { from: 65 }] };
+    const own = raster({ type: "continuous", palette: "colorbrewer:BuGn", domain: [40, 80], classify });
+    const section = own?.sections[0];
+    expect(section).toMatchObject({ kind: "entries", domain: [40, 80] });
+    if (section?.kind !== "entries") throw new Error("entries expected");
+    const opts = { locale: "en-US", words: WORDS, domain: section.domain };
+    expect(section.entries.map((e) => rangeText(e.range ?? {}, opts))).toEqual([
+      "40 to 55",
+      "55 to 65",
+      "65 to 80",
+    ]);
+    // The computed domain where the style has none; categories read no domain.
+    const computed = raster({
+      type: "continuous",
+      palette: "colorbrewer:BuGn",
+      computed: { at: "t", data: "url:x", domain: [38, 91] },
+      classify,
+    });
+    expect(computed?.sections[0]).toMatchObject({ kind: "entries", domain: [38, 91] });
+    const categories = raster({ type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] });
+    expect(categories?.sections[0]).not.toHaveProperty("domain");
+  });
+
   it("an image or shading without colors has no legend; a map service shows its legend image", () => {
     expect(raster({ type: "image" })).toBeNull();
     expect(raster({ type: "hillshade" })).toBeNull();
     expect(
       buildLegend(
-        { version: 1, kind: "raster", render: { type: "image" } },
+        { version: "1.0.0", kind: "raster", render: { type: "image" } },
         { zoom: 10, serviceLegendUrl: "https://wms/l.png" }
       )
     ).toEqual({ sections: [{ kind: "image", id: "service", url: "https://wms/l.png" }] });
     expect(
       buildLegend(
-        { version: 1, kind: "raster", legend: false },
+        { version: "1.0.0", kind: "raster", legend: false },
         { zoom: 10, serviceLegendUrl: "https://wms/l.png" }
       )
     ).toBeNull();
@@ -728,7 +1372,7 @@ describe("raster legends", () => {
 
 describe("classOf", () => {
   const STATUS = {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { line: { color: "#2166ac", width: 2 } },
     classify: [
@@ -764,7 +1408,7 @@ describe("classOf", () => {
   });
 
   it("without classifications the base look", () => {
-    const doc = { version: 1, kind: "vector", symbol: { marker: { color: "#ff0000" } } };
+    const doc = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#ff0000" } } };
     expect(classOf(doc, { any: 1 }, { geometry: "point", zoom: 10 })).toEqual(
       baseSwatch(doc, { geometry: "point", zoom: 10 })
     );
@@ -778,7 +1422,9 @@ describe("informative", () => {
 
   it("a legend that is only the base look says nothing a swatch does not", () => {
     expect(
-      informative(legendOf({ version: 1, kind: "vector", symbol: { fill: { color: "#000000" } } }, "polygon"))
+      informative(
+        legendOf({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#000000" } } }, "polygon")
+      )
     ).toBe(false);
     expect(informative(null)).toBe(false);
   });
@@ -788,7 +1434,7 @@ describe("informative", () => {
     expect(
       informative(
         legendOf(
-          { version: 1, kind: "vector", render: { type: "heatmap", palette: ["#000000", "#ffffff"] } },
+          { version: "1.0.0", kind: "vector", render: { type: "heatmap", palette: ["#000000", "#ffffff"] } },
           "point"
         )
       )
@@ -796,7 +1442,7 @@ describe("informative", () => {
     expect(
       informative(
         legendOf({
-          version: 1,
+          version: "1.0.0",
           kind: "raster",
           render: { type: "continuous", palette: ["#000000", "#ffffff"], domain: [0, 1] },
         })
@@ -807,7 +1453,7 @@ describe("informative", () => {
 
 describe("height legends", () => {
   const poly = (symbol: object, extra: object = {}) =>
-    buildLegend({ version: 1, kind: "vector", symbol, ...extra }, { geometry: "polygon", zoom: 12 })!;
+    buildLegend({ version: "1.0.0", kind: "vector", symbol, ...extra }, { geometry: "polygon", zoom: 12 })!;
   const height = (legend: ReturnType<typeof poly>) => legend.sections.find((s) => s.kind === "height");
 
   it("one line after the colour entries, per value form", () => {
@@ -859,12 +1505,31 @@ describe("height legends", () => {
     ).toMatchObject({ mode: "classes", field: "height", count: 3 });
   });
 
+  it("a height by zoom with heights by attribute in its stops (spec 4.4) reads up to the top of their ranges", () => {
+    const levels = (range: number[]) => ({ field: "levels", range, domain: [0, 10] });
+    expect(
+      height(
+        poly({
+          extrude: {
+            height: {
+              zoom: [
+                [14, 5],
+                [15, levels([0, 30])],
+                [16, levels([0, 60])],
+              ],
+            },
+          },
+        })
+      )
+    ).toEqual({ kind: "height", id: "height", mode: "zoom", max: 60 });
+  });
+
   it("flat layers have no height line; H3 columns name the cell value", () => {
     expect(height(poly({ fill: { color: "#ff0000" } }))).toBeUndefined();
     expect(height(poly({ extrude: false }))).toBeUndefined();
     const h3 = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: { type: "h3", value: { op: "sum", field: "residents" }, extrude: { tallest: 1000 } },
       },

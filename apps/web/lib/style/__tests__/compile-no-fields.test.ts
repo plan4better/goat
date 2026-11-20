@@ -30,7 +30,14 @@ function source(doc: LayerStyle, target: string): CompileInput["source"] {
       type: "raster",
       id: "s",
       tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-      dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
+      coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
+      values: {
+        encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+        range: [0, 255],
+        integer: true,
+        version: "1-e1",
+        maxzoom: 14,
+      },
     };
   if (sourceKind(doc) === "points") return { type: "points", id: "s", data: "https://geoapi.example/items" };
   return { type: "tiles", id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] };
@@ -70,7 +77,7 @@ describe("compiling without field types", () => {
   it("a label on an unknown numeric field formats numbers and leaves text alone", () => {
     const out = compileLayer({
       id: "7",
-      style: { version: 1, kind: "vector", symbol: { label: { text: "{pop} people" } } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { label: { text: "{pop} people" } } } as LayerStyle,
       geometry: "point",
       source: { type: "tiles", id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] },
     });
@@ -86,7 +93,7 @@ describe("compiling without field types", () => {
     const out = compileLayer({
       id: "7",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#cc0000" } },
         time: { field: "opened", step: "year" },

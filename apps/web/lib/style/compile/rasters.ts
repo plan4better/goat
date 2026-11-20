@@ -1,15 +1,26 @@
-// Raster files (spec 9) drawn from geoapi's raster service: the coloring travels in the tile URL as a token, so the
-// service colors the cells for every render type and screen, print and thumbnails draw the same tiles. Hillshade is
-// MapLibre's hillshade over the service's Terrarium elevation tiles.
-import type { LayerSpecification } from "maplibre-gl";
+// Raster files (spec 9) drawn from geoapi. Continuous, classified and categorical renders color the cells' values in
+// the browser: value tiles as a `raster-dem` source with their custom encoding, colored by `color-relief`, so a color
+// edit is a paint change. Hillshade shades the same values. Images, and a coloring needing more stops than
+// color-relief takes, draw image tiles that geoapi colors, with the coloring in the tile URL as a token.
+import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import { imagePaint, zoomRange } from "@/lib/style/compile/services";
 import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { rasterColorSpec } from "@/lib/style/raster/color";
+import { rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
+import {
+  type RasterValues,
+  type ValueQuery,
+  reliefColor,
+  reliefStops,
+  resamplingOf,
+  valueQuery,
+  valueTilesUrl,
+  verticalScale,
+} from "@/lib/style/raster/values";
 
 type RasterSource = Extract<CompileSource, { type: "raster" }>;
 
@@ -25,12 +36,6 @@ function withQuery(template: string, params: Record<string, string | undefined>)
   if (!query) return template;
   return `${template}${template.includes("?") ? "&" : "?"}${query}`;
 }
-
-const rgbOf = (hex: string): [number, number, number] => {
-  const h = hex.replace(/^#/, "");
-  const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.slice(0, 6);
-  return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
-};
 
 /** A hillshade's light (3D spec 7.4): the scene's light through the global state `sunAzimuth` and `sunAltitude`,
  * its own direction and altitude while those are null (an automatic light), measured from north. */
@@ -86,6 +91,27 @@ function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, u
   return paint;
 }
 
+/** The value tiles' source: the cells' codes, decoded by MapLibre with their encoding, the values raised `k` times. */
+function valueSource(
+  coverage: string,
+  query: ValueQuery,
+  values: RasterValues,
+  k: number
+): SourceSpecification {
+  const { redFactor, greenFactor, blueFactor, baseShift } = values.encoding;
+  return {
+    type: "raster-dem",
+    tiles: [valueTilesUrl(coverage, query, values)],
+    tileSize: TILE_SIZE,
+    encoding: "custom",
+    redFactor: redFactor * k,
+    greenFactor: greenFactor * k,
+    blueFactor: blueFactor * k,
+    baseShift: baseShift * k,
+    ...(values.maxzoom !== undefined ? { maxzoom: values.maxzoom } : {}),
+  };
+}
+
 /** The layers of a raster file style; its sources and colorings go into `out`. */
 export function rasterLayers(
   id: string,
@@ -95,8 +121,17 @@ export function rasterLayers(
 ): LayerSpecification[] {
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
   const spec = rasterColorSpec(render);
-  const token = spec ? rasterToken(spec) : null;
-  // A coloring too long for a URL (several hundred categories) is not sent (spec 19: raster_service).
+  const query = valueQuery(style);
+  const values = query ? source.values : undefined;
+  // A render of values draws once their description is loaded; until then nothing, and nothing is missing.
+  if (query && !values) return [];
+  // Float codes of an unknown range cover only a stand-in span, too narrow to place colors on: geoapi colors those
+  // cells. A hillshade alone still draws from the values (flat, as their span is).
+  const placeable = values !== undefined && (values.range !== null || values.integer);
+  const stops = values && placeable && spec && spec.kind !== "rgb" ? reliefStops(spec, values) : null;
+  // Images, colors over an unknown range and a coloring with more stops than color-relief takes draw image tiles.
+  const token = spec && !stops ? rasterToken(spec) : null;
+  // A coloring too long for a URL (hundreds of categories past the stop limit) is not sent (spec 19: raster_service).
   if (token && token.length > MAX_TOKEN_LENGTH) {
     out.unsupported.push("raster_service");
     return [];
@@ -110,9 +145,7 @@ export function rasterLayers(
       tileSize: TILE_SIZE,
     };
     const paint = imagePaint(style, render.type === "image" || render.type === undefined);
-    // Categories keep their cells sharp unless the style says otherwise (spec 9).
-    const resampling = style.resampling ?? (render.type === "categorical" ? "nearest" : undefined);
-    if (resampling === "nearest") paint["raster-resampling"] = "nearest";
+    if (resamplingOf(style) === "nearest") paint["raster-resampling"] = "nearest";
     layers.push({
       id: `${id}-raster`,
       type: "raster",
@@ -121,18 +154,30 @@ export function rasterLayers(
       paint,
     } as LayerSpecification);
   }
+  if (!query || !values || (!stops && render.type !== "hillshade")) return layers;
+  // The value tiles: the colors' and the shading's source, next to image tiles when those draw the colors. A hillshade
+  // raises flat terrain on the source (spec 9.6), and the colors on it move with the heights.
+  const valuesId = token ? `${source.id}-values` : source.id;
+  const k = render.type === "hillshade" ? verticalScale(values.range) : 1;
+  out.sources[valuesId] = valueSource(source.coverage, query, values, k);
+  if (stops) {
+    const paint: Record<string, unknown> = { "color-relief-color": reliefColor(stops, values, k) };
+    const opacity = toProperty(fromForm(style.opacity, "number", 1));
+    if (opacity !== 1) paint["color-relief-opacity"] = opacity;
+    if (resamplingOf(style) === "nearest") paint.resampling = "nearest";
+    layers.push({
+      id: `${id}-relief`,
+      type: "color-relief",
+      source: valuesId,
+      ...zooms,
+      paint,
+    } as LayerSpecification);
+  }
   if (render.type === "hillshade") {
-    const dem = `${source.id}-dem`;
-    out.sources[dem] = {
-      type: "raster-dem",
-      tiles: [withQuery(source.dem, { v: source.version })],
-      tileSize: TILE_SIZE,
-      encoding: "terrarium",
-    };
     layers.push({
       id: `${id}-hillshade`,
       type: "hillshade",
-      source: dem,
+      source: valuesId,
       ...zooms,
       paint: hillshadePaint(style, render),
     } as LayerSpecification);

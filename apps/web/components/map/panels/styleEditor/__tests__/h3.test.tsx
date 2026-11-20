@@ -1,11 +1,10 @@
+import { configureStore } from "@reduxjs/toolkit";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
 
 import { initView, mapReducer } from "@/lib/store/map/slice";
-
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
@@ -29,7 +28,7 @@ function setup(render: object = { type: "h3" }) {
       </PopoverProvider>
     </Provider>,
     {
-      document: { version: 1, kind: "vector", render } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", render } as LayerStyle,
       data: { geometry: "point", fields: FIELDS, fieldTypes: { pupils: "integer" } },
     }
   );
@@ -75,9 +74,20 @@ describe("H3 hexagons", () => {
     await choose("style_editor.classes", "style_editor.h3_continuous", "style_editor.method_quantile");
     expect(store.get("render.classify")).toEqual({ method: "quantile", count: 5 });
     await pick("style_editor.count", 0);
-    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 3 });
+    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 2 });
+    await pick("style_editor.count", 10);
+    expect(store.get("render.classify")).toEqual({ method: "quantile", count: 12 });
     await choose("style_editor.classes", "style_editor.method_quantile", "style_editor.h3_continuous");
     expect(store.get("render.classify")).toBeUndefined();
+  });
+
+  it("a stored count outside 2 to 12 shows as picked and stays", async () => {
+    const { store } = setup({ type: "h3", classify: { method: "quantile", count: 20 } });
+    await userEvent.click(within(rowOf("style_editor.count")).getByRole("combobox"));
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options).toHaveLength(12);
+    expect(options[11].getAttribute("aria-selected")).toBe("true");
+    expect(store.get("render.classify.count")).toBe(20);
   });
 
   it("opacity, outline width and the points' zoom write the render", async () => {
@@ -105,7 +115,9 @@ describe("H3 hexagons", () => {
     expect(within(heightRow()).getByText("style_editor.h3_height_value")).toBeDefined();
     // The outline is not drawn under columns.
     expect(screen.queryByText("style_editor.part_outline")).toBeNull();
-    fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), { target: { value: 1500 } });
+    fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), {
+      target: { value: 1500 },
+    });
     expect(store.get("render.extrude.tallest")).toBe(1500);
     await userEvent.click(within(rowOf("style_editor.h3_scale")).getAllByRole("button")[0]);
     expect(store.get("render.extrude.scale")).toBe("linear");

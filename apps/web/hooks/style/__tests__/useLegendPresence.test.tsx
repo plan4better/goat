@@ -3,16 +3,24 @@
 // count; with `all`, nothing to ask. Invented data only.
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getFeatureCount, getUniqueValues } from "@/lib/api/processes";
 import { getHistogramStats } from "@/lib/api/projects";
+import { makeStore } from "@/lib/store";
+import { setActiveRightPanel, setCurrentZoom } from "@/lib/store/map/slice";
 import type { JsonObject } from "@/lib/style/json";
 import { PRESENCE_PENDING } from "@/lib/style/legend";
 import { watchViewPresence } from "@/lib/style/render/viewPresence";
 
-import { useLayerLegend, useLegendPresence, useLegendsWaiting } from "@/hooks/style/useLegendPresence";
+import {
+  useLayerLegend,
+  useLegendPresence,
+  useLegendZoom,
+  useLegendsWaiting,
+} from "@/hooks/style/useLegendPresence";
 
 vi.mock("@/lib/api/processes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/processes")>()),
@@ -55,7 +63,7 @@ const SIZES = {
 };
 
 const style = (classify: object[], classes?: string): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   classify,
   ...(classes ? { legend: { classes } } : {}),
@@ -202,5 +210,42 @@ describe("useLegendPresence", () => {
     expect(result.current).toBe(true);
     await waitFor(() => expect(result.current).toBe(false));
     unmount();
+  });
+});
+
+describe("useLegendZoom", () => {
+  const withStore = (store: ReturnType<typeof makeStore>) =>
+    function StoreWrapper({ children }: { children: ReactNode }) {
+      return <Provider store={store}>{children}</Provider>;
+    };
+
+  it("the zoom the map is at, as the store holds it: not rounded to a whole zoom", () => {
+    const store = makeStore();
+    let renders = 0;
+    const { result } = renderHook(
+      () => {
+        renders += 1;
+        return useLegendZoom();
+      },
+      { wrapper: withStore(store) }
+    );
+    // Before the map has said its zoom.
+    expect(result.current).toBe(12);
+    // The map writes its zoom rounded to a tenth once it stops (MapViewer).
+    act(() => {
+      store.dispatch(setCurrentZoom(12.6));
+    });
+    expect(result.current).toBe(12.6);
+    act(() => {
+      store.dispatch(setCurrentZoom(12.2));
+    });
+    expect(result.current).toBe(12.2);
+    // Another change to the map's state renders no legend again.
+    const before = renders;
+    act(() => {
+      store.dispatch(setCurrentZoom(12.2));
+      store.dispatch(setActiveRightPanel(undefined));
+    });
+    expect(renders).toBe(before);
   });
 });

@@ -32,7 +32,7 @@ vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const layer = {
   id: 5,
   layer_id: "dataset-5",

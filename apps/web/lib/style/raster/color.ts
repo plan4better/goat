@@ -49,6 +49,13 @@ const CLASS_GRAY = "#9aa3ad";
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
+/** A hex color's red, green and blue (`#rgb` or `#rrggbb`). */
+export const rgbOf = (hex: string): [number, number, number] => {
+  const h = hex.replace(/^#/, "");
+  const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.slice(0, 6);
+  return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
+};
+
 /** The band a render colors: a number, or a formula's expression; null when it is neither. */
 function bandOf(render: JsonObject): Band | null {
   const band = render.band ?? 1;
@@ -122,11 +129,12 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   // Computed classes draw once the server filled their bounds; until then the color range stands in.
   const bounded = written.length > 0 && (manual || written.some((c) => num(c.from) || num(c.to)));
   if (classify && bounded) {
-    // Class colors from the classification's own palette, else the render's (goatlib compute does the same).
-    const own = classify.palette !== undefined;
-    const steps = paletteSteps((own ? classify.palette : palette) as string | string[], written.length);
-    const reverse = (own ? classify.reverse : render.reverse) === true;
-    const colors = reverse ? [...steps].reverse() : steps;
+    // A class without a color takes the color goatlib compute writes into it (`paletteSteps`, as its
+    // `sample_colors`), from the classification's own palette, else the render's.
+    const own = classify.palette !== undefined && classify.palette !== null;
+    const colors = paletteSteps((own ? classify.palette : palette) as string | string[], written.length, {
+      reverse: (own ? classify.reverse : render.reverse) === true,
+    });
     return {
       kind: "classes",
       band,

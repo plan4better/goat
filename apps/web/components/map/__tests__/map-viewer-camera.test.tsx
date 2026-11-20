@@ -3,7 +3,7 @@ import { ThemeProvider, createTheme } from "@mui/material";
 import { configureStore } from "@reduxjs/toolkit";
 import { act, render } from "@testing-library/react";
 import { Provider } from "react-redux";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { featureEditorReducer } from "@/lib/store/featureEditor/slice";
 import { mapReducer } from "@/lib/store/map/slice";
@@ -46,8 +46,9 @@ beforeEach(() => {
   recorded.scene = {};
 });
 
-const viewer = (props: Partial<React.ComponentProps<typeof MapViewer>> = {}) => {
-  const store = configureStore({ reducer: { map: mapReducer, featureEditor: featureEditorReducer } });
+const newStore = () => configureStore({ reducer: { map: mapReducer, featureEditor: featureEditorReducer } });
+
+const viewer = (props: Partial<React.ComponentProps<typeof MapViewer>> = {}, store = newStore()) => {
   return render(
     <ThemeProvider theme={createTheme()}>
       <Provider store={store}>
@@ -125,5 +126,34 @@ describe("MapViewer camera", () => {
     expect(error).toHaveBeenCalledTimes(1);
     error.mockRestore();
     debug.mockRestore();
+  });
+});
+
+// The legend and the layer list read the zoom the store holds. MapLibre draws a tile's images and switches layers and
+// clusters at the whole zoom below the map's, so the store holds the zoom rounded down to a tenth: at 12.96 the map
+// still draws zoom 12, and so does every reader of the store.
+describe("MapViewer zoom in the store", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    [12.96, 12.9],
+    [12.7, 12.7],
+    [13, 13],
+    [3.04, 3],
+  ])("after a move to %s it holds %s", (zoom, stored) => {
+    vi.useFakeTimers();
+    const store = newStore();
+    const map = {
+      getZoom: () => zoom,
+      isStyleLoaded: () => false,
+      on: () => undefined,
+      off: () => undefined,
+    };
+    const mapRef = { current: { getMap: () => map } };
+    viewer({ mode: "2d", mapRef: mapRef as never }, store);
+    const onMove = recorded.map.onMove as (e: unknown) => void;
+    act(() => onMove({}));
+    act(() => vi.advanceTimersByTime(200));
+    expect(store.getState().map.currentZoom).toBe(stored);
   });
 });

@@ -4,7 +4,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -19,11 +19,31 @@
   }
  },
  {
+  "line": 164,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7",
+     "opacity": 0.6
+    },
+    "outline": {
+     "color": "#3182bd",
+     "width": 3,
+     "position": "inside"
+    }
+   }
+  }
+ },
+ {
   "line": 201,
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -44,7 +64,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": false,
@@ -89,7 +109,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -143,7 +163,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -168,11 +188,32 @@
   }
  },
  {
+  "line": 290,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#4d4d4d",
+     "width": 2
+    },
+    "arrows": {
+     "placement": "repeat",
+     "spacing": 80,
+     "size": 14,
+     "icon": "goat:rail-light"
+    }
+   }
+  }
+ },
+ {
   "line": 304,
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -196,7 +237,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -218,7 +259,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -238,7 +279,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -257,7 +298,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -278,7 +319,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -300,7 +341,7 @@
   "target": "counters",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -322,7 +363,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -343,7 +384,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -366,7 +407,7 @@
    "dash_on_point_outline"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -387,7 +428,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -419,7 +460,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -462,7 +503,7 @@
   "target": "counters",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -492,13 +533,34 @@
   }
  },
  {
+  "line": 529,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7"
+    },
+    "label": {
+     "text": "{name}\n{population}",
+     "transform": "uppercase",
+     "letter_spacing": 0.1,
+     "line_height": 1.1,
+     "placement": "inside"
+    }
+   }
+  }
+ },
+ {
   "line": 554,
   "target": "districts",
   "expect": [
    "template_syntax"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -515,7 +577,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "geometry": "point",
    "symbol": {
@@ -540,11 +602,89 @@
   }
  },
  {
+  "line": 667,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "label": {
+     "text": "{name}",
+     "size": 11,
+     "placement": "right"
+    }
+   }
+  }
+ },
+ {
+  "line": 709,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 2
+    },
+    "label": {
+     "text": "{name}",
+     "font": {
+      "style": "italic"
+     },
+     "placement": "line",
+     "spacing": 400,
+     "padding": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 728,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac"
+    },
+    "label": {
+     "text": "{name}",
+     "font": {
+      "weight": {
+       "zoom": [
+        [
+         10,
+         "medium"
+        ],
+        [
+         14,
+         "bold"
+        ]
+       ],
+       "interpolate": "step"
+      },
+      "style": "italic"
+     }
+    }
+   }
+  }
+ },
+ {
   "line": 584,
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "min_zoom": 8,
    "symbol": {
@@ -571,7 +711,7 @@
    "zoom_not_whole"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -600,7 +740,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -651,7 +791,7 @@
    "extrude_drops_pattern"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -670,7 +810,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -718,7 +858,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -752,7 +892,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -795,7 +935,7 @@
    "zoom_needs_step"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -822,7 +962,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -851,7 +991,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -884,7 +1024,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -906,7 +1046,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -948,7 +1088,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1035,7 +1175,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -1069,7 +1209,7 @@
    "category_duplicate"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1110,7 +1250,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1138,7 +1278,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1222,7 +1362,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1261,7 +1401,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1288,7 +1428,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1353,7 +1493,7 @@
    "classes_invalid"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1394,7 +1534,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1499,7 +1639,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -1545,7 +1685,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1629,7 +1769,7 @@
    "classify_target_conflict"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1692,7 +1832,7 @@
    "classify_partial_overlap"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1741,7 +1881,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -1806,7 +1946,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1868,7 +2008,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1904,7 +2044,7 @@
    "like_pattern_unsupported"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1936,7 +2076,7 @@
    "operator_type_mismatch"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -1968,7 +2108,7 @@
    "override_not_per_feature"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -2004,7 +2144,7 @@
   "target": "counters",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "opacity": 0.9,
    "symbol": {
@@ -2071,7 +2211,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2089,7 +2229,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2141,7 +2281,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2227,7 +2367,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2249,7 +2389,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2279,7 +2419,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -2318,7 +2458,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -2375,7 +2515,7 @@
    "unknown_field"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -2401,7 +2541,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "render": {
     "type": "heatmap",
@@ -2443,7 +2583,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "render": {
     "type": "cluster",
@@ -2488,7 +2628,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "render": {
     "type": "h3",
@@ -2523,7 +2663,7 @@
   "target": "facilities",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "render": {
     "type": "h3",
@@ -2548,7 +2688,7 @@
   "target": "schools",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "render": {
     "type": "h3",
@@ -2577,7 +2717,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.8,
    "resampling": "linear",
@@ -2600,7 +2740,7 @@
   "target": "satellite",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "image",
@@ -2621,7 +2761,7 @@
   "target": "satellite",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "image",
@@ -2638,7 +2778,7 @@
   "target": "landcover",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "resampling": "nearest",
    "render": {
@@ -2651,7 +2791,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.7,
    "render": {
@@ -2674,7 +2814,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2706,7 +2846,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2725,7 +2865,7 @@
   "target": "satellite",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2743,7 +2883,7 @@
   "target": "satellite",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2771,7 +2911,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2805,7 +2945,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -2845,7 +2985,7 @@
   "target": "landcover",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.75,
    "resampling": "nearest",
@@ -2897,7 +3037,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.6,
    "render": {
@@ -2916,7 +3056,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "hillshade",
@@ -2942,7 +3082,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "hillshade",
@@ -2956,7 +3096,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "hillshade",
@@ -2970,7 +3110,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "hillshade",
@@ -2984,7 +3124,7 @@
   "target": "satellite",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "min_zoom": 10,
    "render": {
@@ -3006,7 +3146,7 @@
   "target": "elevation",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -3030,7 +3170,7 @@
   "target": "wms",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.9,
    "min_zoom": 12,
@@ -3050,7 +3190,7 @@
   "target": "tiles",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "opacity": 0.5,
    "saturation": -0.6,
@@ -3067,7 +3207,7 @@
    "render_not_for_source"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "continuous",
@@ -3080,7 +3220,7 @@
   "target": "map",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "basemap": {
     "id": "light"
    },
@@ -3145,7 +3285,7 @@
   "target": "map",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "basemap": {
     "id": "light"
    },
@@ -3196,7 +3336,7 @@
    "fog_without_terrain"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "basemap": {
     "id": "light"
    },
@@ -3218,7 +3358,7 @@
    "zoom_stops"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -3255,7 +3395,7 @@
    "operator_type_mismatch"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -3294,7 +3434,7 @@
    "render_type_mismatch"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "raster",
    "render": {
     "type": "hillshade",
@@ -3309,7 +3449,7 @@
    "dash_on_point_outline"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "marker": {
@@ -3332,7 +3472,7 @@
    "template_syntax"
   ],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -3349,7 +3489,7 @@
   "target": "routes",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "line": {
@@ -3588,7 +3728,7 @@
   "target": "districts",
   "expect": [],
   "doc": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -3776,5 +3916,253 @@
     }
    }
   ]
+ },
+ {
+  "line": 1791,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "render": {
+    "type": "cluster",
+    "look": "points",
+    "count": "badge",
+    "symbol": {
+     "marker": {
+      "color": "#283593"
+     },
+     "label": {
+      "text": "{count}",
+      "color": "#ffffff"
+     }
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "icon",
+     "icon": "goat:building",
+     "color": "#5a1846",
+     "size": 24
+    }
+   },
+   "classify": [
+    {
+     "id": "type",
+     "field": "type",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "primary"
+       ],
+       "name": "Primary",
+       "marker": {
+        "icon": "goat:school"
+       }
+      },
+      {
+       "values": [
+        "secondary"
+       ],
+       "name": "Secondary",
+       "marker": {
+        "icon": "goat:home"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 1829,
+  "target": "schools",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "render": {
+    "type": "cluster",
+    "value": {
+     "op": "sum",
+     "field": "pupils"
+    },
+    "symbol": {
+     "marker": {
+      "shape": "circle",
+      "color": "#2166ac",
+      "size": {
+       "field": "value",
+       "range": [
+        16,
+        48
+       ],
+       "scale": "sqrt",
+       "domain": [
+        0,
+        5000
+       ]
+      }
+     },
+     "label": {
+      "text": "{value}",
+      "color": "#ffffff"
+     }
+    }
+   },
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#2166ac",
+     "size": 8
+    }
+   }
+  }
+ },
+ {
+  "line": 2639,
+  "target": "schools",
+  "expect": [
+   "position_on_point_outline"
+  ],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "marker": {
+     "shape": "circle",
+     "color": "#1a6b4d",
+     "size": 8
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 2,
+     "position": "outside"
+    }
+   }
+  }
+ },
+ {
+  "line": 2757,
+  "target": "routes",
+  "expect": [
+   "placement_not_for_geometry"
+  ],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac"
+    },
+    "label": {
+     "text": "{name}",
+     "placement": "inside"
+    }
+   }
+  }
+ },
+ {
+  "line": 438,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#deebf7",
+     "opacity": 0.6
+    },
+    "outline": {
+     "color": "#ffffff",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "field": "land_use",
+     "method": "categories",
+     "classes": [
+      {
+       "values": [
+        "green"
+       ],
+       "name": "Green",
+       "fill": {
+        "color": "#c7e9c0"
+       },
+       "marker": {
+        "shape": "circle",
+        "icon": "goat:park",
+        "color": "#238b45",
+        "size": 20
+       }
+      }
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "line": 463,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#f0f0f0"
+    },
+    "outline": {
+     "color": "#bdbdbd",
+     "width": 1
+    },
+    "marker": {
+     "color": "#08519c",
+     "opacity": 0.8,
+     "size": {
+      "field": "population",
+      "domain": [
+       0,
+       30000
+      ],
+      "range": [
+       0,
+       40
+      ],
+      "scale": "sqrt",
+      "title": "Inhabitants"
+     }
+    },
+    "label": {
+     "text": "{name}",
+     "size": 11
+    }
+   }
+  }
+ },
+ {
+  "line": 483,
+  "target": "routes",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "line": {
+     "color": "#2166ac",
+     "width": 3
+    },
+    "marker": {
+     "shape": "circle",
+     "icon": "goat:bus",
+     "color": "#2166ac",
+     "size": 18
+    }
+   }
+  }
  }
 ]

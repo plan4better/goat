@@ -1,7 +1,8 @@
 // The browser's save loop for a style document (spec section 13.1). The panel edits its own copy and the map
 // redraws from it at once; about a second after the last change the whole copy goes to the server with the
 // revision it is based on. One save is in flight at a time, edits made meanwhile are re-applied on the reply, and
-// failures keep the copy and retry. The transport is the server's endpoint (core), passed in.
+// failures keep the copy and retry; an answer no retry changes (forbidden, deleted, refused) stops saving. The
+// transport is the server's endpoint (core), passed in.
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { clone, deepEqual } from "@/lib/style/json";
 import { apply, diff } from "@/lib/style/merge";
@@ -23,10 +24,11 @@ export interface StyleIssue {
   allowed?: unknown[];
 }
 
-/** A save's answer; `status` 0 means no answer at all (offline, timeout, dropped connection). */
+/** A save's answer; `status` 0 means no answer at all (offline, timeout, dropped connection). A refusal carries the
+ * issues that refused it when the server names them (a document of a newer GOAT Style version). */
 export type SaveResult =
   | { ok: true; document: LayerStyle; revision: number; issues: StyleIssue[] }
-  | { ok: false; status: number; code?: string };
+  | { ok: false; status: number; code?: string; issues?: StyleIssue[] };
 
 export interface StyleTransport {
   save(body: { base_rev: number; document: LayerStyle }, opts: { keepalive: boolean }): Promise<SaveResult>;
@@ -35,7 +37,9 @@ export interface StyleTransport {
 }
 
 export type SaveStatus = "saved" | "saving" | "retrying" | "offline" | "stopped";
-export type StopReason = "forbidden" | "deleted" | "base_too_old";
+/** Why saving stopped: no access, the layer is gone, the style changed meanwhile, or the server refused the document
+ * whole (422: a document of a newer GOAT Style version, a check that would refuse it again). */
+export type StopReason = "forbidden" | "deleted" | "base_too_old" | "refused";
 
 interface SaverOptions {
   transport: StyleTransport;
@@ -66,6 +70,7 @@ export class StyleSaver {
   private retries = 0;
   private state: SaveStatus = "saved";
   private stopped: StopReason | null = null;
+  private refusal: StyleIssue[] = [];
   private lastIssues: StyleIssue[] = [];
   private readonly listeners = new Set<() => void>();
 
@@ -98,6 +103,11 @@ export class StyleSaver {
   /** Why saving stopped, while the status is "stopped". */
   get stopReason(): StopReason | null {
     return this.state === "stopped" ? this.stopped : null;
+  }
+
+  /** The issues the server refused the document with, while saving is stopped for that. */
+  get stopIssues(): StyleIssue[] {
+    return this.state === "stopped" && this.stopped === "refused" ? this.refusal : [];
   }
 
   /** The last document the server stored: what the copy's changes are taken against. */
@@ -269,11 +279,14 @@ export class StyleSaver {
           ? "deleted"
           : result.status === 409 && result.code === "base_too_old"
             ? "base_too_old"
-            : null;
+            : result.status === 422
+              ? "refused"
+              : null;
     if (reason) {
       this.clearTimer();
       this.state = "stopped";
       this.stopped = reason;
+      this.refusal = result.issues ?? [];
       this.onStop?.(reason);
       return;
     }

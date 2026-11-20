@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { iconSettings, restoreIcon, setMarkerIcon } from "@/lib/style/editor/parts";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
-const doc = (extra: object) => ({ version: 1, kind: "vector", ...extra }) as LayerStyle;
+const doc = (extra: object) => ({ version: "1.0.0", kind: "vector", ...extra }) as LayerStyle;
 
 describe("the icon switch", () => {
   it("off and on again brings back the icon, its color and the classification that sets it", () => {

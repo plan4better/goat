@@ -9,7 +9,7 @@ describe("compileLayer", () => {
   it("names the source and defaults the position", () => {
     const out = compileLayer({
       id: "7",
-      style: { version: 1, kind: "vector" } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector" } as LayerStyle,
       geometry: "point",
       source: TILES,
     });
@@ -21,16 +21,16 @@ describe("compileLayer", () => {
   it("passes the position through and says which source a style needs", () => {
     const out = compileLayer({
       id: "7",
-      style: { version: 1, kind: "vector" } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector" } as LayerStyle,
       source: TILES,
       entry: { position: "below_labels" },
     });
     expect(out.position).toBe("below_labels");
-    expect(sourceKind({ version: 1, kind: "vector", render: { type: "cluster" } } as LayerStyle)).toBe(
+    expect(sourceKind({ version: "1.0.0", kind: "vector", render: { type: "cluster" } } as LayerStyle)).toBe(
       "points"
     );
-    expect(sourceKind({ version: 1, kind: "vector" } as LayerStyle)).toBe("tiles");
-    expect(sourceKind({ version: 1, kind: "raster", render: { type: "image" } } as LayerStyle)).toBe(
+    expect(sourceKind({ version: "1.0.0", kind: "vector" } as LayerStyle)).toBe("tiles");
+    expect(sourceKind({ version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle)).toBe(
       "raster"
     );
   });

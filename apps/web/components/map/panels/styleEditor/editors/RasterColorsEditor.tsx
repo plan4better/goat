@@ -8,6 +8,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { CLASS_COUNTS } from "@/lib/style/editor/classify";
+import { withStored } from "@/lib/style/editor/defaults";
 import { equalClasses, setRasterPalette } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -22,6 +24,7 @@ import {
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
+import { paletteLabel } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { StopsEditor } from "@/components/map/panels/styleEditor/editors/StopsEditor";
 import { PalettePicker } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
@@ -35,7 +38,6 @@ import {
   SwitchRow,
 } from "@/components/map/panels/styleEditor/rows";
 
-const COUNTS = [3, 4, 5, 6, 7, 8, 9];
 /** Methods that compute classes from the band's histogram: listed, not offered until the raster service. */
 const LATER = ["equal_interval", "quantile", "natural_breaks"];
 
@@ -277,11 +279,17 @@ export function RasterColorsEditor() {
               label={t("style_editor.method")}
               value={classify ? "manual" : "continuous"}
               options={[
-                ...["continuous", "manual"].map((v) => ({
-                  value: v,
-                  label: t(`style_editor.raster_method_${v}`),
-                  sub: t(`style_editor.raster_method_${v}_sub`),
-                })),
+                {
+                  value: "continuous",
+                  label: t("style_editor.raster_method_continuous"),
+                  sub: t("style_editor.raster_method_continuous_sub"),
+                },
+                // The vectors' name for breaks typed by hand.
+                {
+                  value: "manual",
+                  label: t("style_editor.method_manual"),
+                  sub: t("style_editor.raster_method_manual_sub"),
+                },
                 ...LATER.map((v) => ({
                   value: v,
                   label: t(`style_editor.method_${v}`),
@@ -295,7 +303,7 @@ export function RasterColorsEditor() {
               <ChoiceRow<number>
                 label={t("style_editor.classes")}
                 value={count}
-                options={COUNTS.map((n) => ({
+                options={withStored(CLASS_COUNTS, count).map((n) => ({
                   value: n,
                   label: t("style_editor.count_classes", { count: n, defaultValue: String(n) }),
                 }))}
@@ -318,11 +326,11 @@ export function RasterColorsEditor() {
             )}
             <NavRow
               label={t("style_editor.palette")}
-              value={
-                Array.isArray(render.palette)
-                  ? t("style_editor.palette_custom")
-                  : String(render.palette ?? DEFAULTS["continuous.palette"])
-              }
+              value={paletteLabel(
+                (render.palette ?? DEFAULTS["continuous.palette"]) as string | string[],
+                render.reverse === true,
+                t
+              )}
               swatch={{ background: paletteStrip(colors, stepped) ?? "transparent", wide: true }}
               onOpen={openPalette}
             />
@@ -344,28 +352,38 @@ export function RasterColorsEditor() {
                 />
               </Box>
             </Row>
-            <Row note={note ?? undefined}>
+            <Row note={note ?? t("style_editor.range_from_data_note")}>
               <Button variant="text" size="small" color="inherit" onClick={() => void fromData()}>
                 {t("style_editor.range_from_data")}
               </Button>
             </Row>
-            {!classify && (
-              <ChoiceRow<string>
-                label={t("style_editor.outside")}
-                value={render.outside === "hide" ? "hide" : "clamp"}
-                options={["clamp", "hide"].map((v) => ({
-                  value: v,
-                  label: t(`style_editor.outside_${v}`),
-                  sub: t(`style_editor.outside_${v}_sub`),
-                }))}
-                onChange={(v) => store.set("render.outside", v === "clamp" ? undefined : v)}
-              />
-            )}
+            {!classify && <OutsideRow />}
             {classify && <ClassRows domain={domain} />}
           </>
         )
       )}
+      {stops && <OutsideRow />}
     </>
+  );
+}
+
+/** What cells beyond a color range (its range, or its first and last stop) draw: the end colors, or nothing. Classes
+ * have open ends, so they have no such row. */
+function OutsideRow() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const outside = useStyleValue<unknown>("render.outside");
+  return (
+    <ChoiceRow<string>
+      label={t("style_editor.outside")}
+      value={outside === "hide" ? "hide" : "clamp"}
+      options={["clamp", "hide"].map((v) => ({
+        value: v,
+        label: t(`style_editor.outside_${v}`),
+        sub: t(`style_editor.outside_${v}_sub`),
+      }))}
+      onChange={(v) => store.set("render.outside", v === "clamp" ? undefined : v)}
+    />
   );
 }
 

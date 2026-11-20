@@ -30,7 +30,7 @@ from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
 from assistant.tools.runtime import InputInvalid, execute
 from assistant.tools.testing import ScriptedModel, TurnModel, stage_note, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
-from assistant.tools.workflow_edits import VIEWER_EDITS
+from assistant.tools.workflow_edits import GET_NOTE, VIEWER_EDITS
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
@@ -2172,12 +2172,79 @@ async def test_a_change_of_the_run_task_workflow_ends_at_its_refusal(
     assert not read.failed, read.result
     # Reading a workflow invites no change of it: only one the user asks for.
     assert read.result["note"].startswith("When the user asks to change it,")
+    assert read.result["note"] == GET_NOTE
     assert update.failed and VIEWER_EDITS in str(update.result), update.result
     assert transcript.saved == []
     # The attempt itself is the harm in production, where the save succeeds.
     grades = await grade(_task("wf-11"), transcript, backends)
     [tools] = [g for g in grades if g.check == "tools"]
     assert tools.passed is False and "workflow_update" in tools.detail, tools
+
+
+#: A card that offers to correct the run task's workflow instead of its run.
+FIX_CARD: dict[str, Any] = {
+    "questions": [
+        {
+            "question": "The band edges of 15 Minuten zu Fuß do not rise. Correct them?",
+            "header": "Band edges",
+            "options": [
+                {
+                    "label": "Correct to 5, 10, 15",
+                    "description": "Changes the step, then runs it",
+                    "recommended": True,
+                    "value": "fix",
+                },
+                {"label": "Keep them", "description": "The workflow stays as it is"},
+            ],
+        }
+    ]
+}
+
+
+async def test_a_card_that_offers_a_correction_fails_the_run_task(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 runs showed, after workflow_get named the issue that stops the
+    run, a card offering to correct it instead of the Run card, then changed
+    the workflow on that pick. The read's note says that a workflow to run
+    stays as it is with such issues too and gets its Run card, and the task
+    fails such an answer: no Run card, no run, and a change."""
+    fix = {
+        "workflow_id": RUN_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"step_sizes": [5, 10, 15]},
+            }
+        ],
+    }
+    model = TurnModel(
+        [
+            (
+                [
+                    ("project_get_workflows", {}),
+                    ("workflow_get", {"workflow_id": RUN_WORKFLOW_ID}),
+                    ("ask_user", FIX_CARD),
+                ],
+                "The band edges of this workflow do not rise, so a run would be refused.",
+            ),
+            (
+                [("workflow_update", fix)],
+                "I could not correct the band edges: the workflow stays as it is.",
+            ),
+        ]
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    _, read, card, update = transcript.tool_calls
+    assert [issue["blocking"] for issue in read.result["issues"]] == [True]
+    assert "also when its issues stop a run" in read.result["note"]
+    assert "Run card" in read.result["note"]
+    assert not card.failed and update.failed
+    grades = {g.check: g for g in await grade(_task("wf-11"), transcript, backends)}
+    assert grades["asked"].passed is False, grades["asked"]
+    assert grades["tools"].passed is False, grades["tools"]
 
 
 def _edit(max_cost: int) -> dict[str, Any]:

@@ -21,7 +21,7 @@ const classes = (n: number) =>
 
 function setup(n = 4, fill: object = { color: "#cccccc", opacity: 0.8 }, extra: object = {}) {
   const document = {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { fill, outline: { color: "#ffffff", width: 1 } },
     classify: [
@@ -166,6 +166,82 @@ describe("class scope", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_off" }));
     expect(store.get("classify.0.classes.0.outline")).toBe(false);
     expect(store.get("symbol.outline")).toEqual({ color: "#ffffff", width: 1 });
+  });
+
+  it("in scope a part the layer switches off shows off, its switch disabled, with a note", async () => {
+    const { store } = setup(4, false as unknown as object);
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openGroup("style_editor.part_fill");
+    const toggle = screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(toggle.disabled).toBe(true);
+    expect(screen.getByText("style_editor.part_off_for_layer")).toBeDefined();
+    // The class keeps its fill color, for when the layer has its fill again.
+    expect(store.get("classify.0.classes.0.fill")).toEqual({ color: "#000000" });
+  });
+
+  it("the layer's main part switched off stays locked in a class: absent would draw it for all", async () => {
+    const { store } = setup(4, false as unknown as object);
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openGroup("style_editor.part_fill");
+    expect(screen.queryByRole("button", { name: "style_editor.allow_per_class" })).toBeNull();
+  });
+
+  it("Allow per class turns a part off for the layer into absent, in one undo step", async () => {
+    const { store } = setup();
+    act(() => store.set("symbol.outline", false));
+    act(() => store.setScope({ classify: 0, key: 1 }));
+    await openGroup("style_editor.part_outline");
+    expect(screen.getByText("style_editor.part_off_for_layer_allow")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.allow_per_class" }));
+    // Still off for every feature: absent is off for a part that is not the geometry's main part.
+    expect(store.get("symbol.outline")).toBeUndefined();
+    expect(screen.queryByText("style_editor.part_off_for_layer_allow")).toBeNull();
+    expect(screen.getByText("style_editor.part_off_note")).toBeDefined();
+    const toggle = screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }) as HTMLInputElement;
+    expect(toggle.disabled).toBe(false);
+    await userEvent.click(toggle);
+    expect(store.get("classify.0.classes.1.outline")).toEqual({});
+    expect(store.get("symbol.outline")).toBeUndefined();
+    act(() => store.undo());
+    act(() => store.undo());
+    expect(store.get("symbol.outline")).toBe(false);
+  });
+
+  it("a class's own part comes back on the map once the layer allows it per class", async () => {
+    const { store } = setup();
+    act(() =>
+      store.update((doc) =>
+        setIn(setIn(doc, "symbol.outline", false), "classify.0.classes.0.outline", { width: 3 })
+      )
+    );
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openGroup("style_editor.part_outline");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.allow_per_class" }));
+    const toggle = screen.getByRole("checkbox", { name: "style_editor.turn_part_off" }) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(store.get("classify.0.classes.0.outline")).toEqual({ width: 3 });
+  });
+
+  it("the row of a part off for the layer reads Off for all; a part never turned on reads None", () => {
+    const { store } = setup();
+    act(() => store.set("symbol.outline", false));
+    expect(
+      within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
+    ).toBeDefined();
+    // In class scope too: the class cannot draw it.
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    expect(
+      within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
+    ).toBeDefined();
+    act(() => store.setScope(null));
+    act(() => store.set("symbol.outline", undefined));
+    expect(within(rowOf("style_editor.part_outline")).getByText("style_editor.none")).toBeDefined();
+    // A class that switches the part off itself reads None in its scope.
+    act(() => store.set("symbol.outline", { width: 1 }));
+    act(() => store.set("classify.0.classes.0.outline", false));
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    expect(within(rowOf("style_editor.part_outline")).getByText("style_editor.none")).toBeDefined();
   });
 
   it("the scope falls back to all features when its class disappears", () => {

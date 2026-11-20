@@ -1,8 +1,8 @@
 "use client";
 
 // A map service layer (spec 9.8): it sends finished pictures, so it draws as an image, in one of the styles the
-// service offers. The styles come from the layer's configuration (stored when the layer was added) or, for a layer
-// added before that, from the service's capabilities.
+// service offers; with no style to choose the section shows nothing. The styles come from the layer's configuration
+// (stored when the layer was added) or, for a layer added before that, from the service's capabilities.
 import { useTranslation } from "react-i18next";
 import useSWR from "swr";
 
@@ -54,24 +54,15 @@ function ServiceRows({ service }: { service: Service }) {
   const chosen = useStyleValue<unknown>("render.service_style");
   // WMS lists one style per layer: the choice is offered for a layer of one service layer (spec 9.8).
   const choice = service.kind === "wms" && service.layers === 1 && styles.length > 1;
-  const label = t("style_editor.service_style");
+  if (!choice) return null;
   return (
     <PanelSection title={t("style_editor.section_general")}>
       <ChoiceRow<string>
-        label={t("style_editor.draw_as")}
-        value="image"
-        fixed
-        options={[{ value: "image", label: t("style_editor.raster_type_image") }]}
-        onChange={() => undefined}
+        label={t("style_editor.service_style")}
+        value={typeof chosen === "string" ? chosen : styles[0].name}
+        options={styles.map((style) => ({ value: style.name, label: style.title }))}
+        onChange={(name) => store.set("render.service_style", name === styles[0].name ? undefined : name)}
       />
-      {choice && (
-        <ChoiceRow<string>
-          label={label}
-          value={typeof chosen === "string" ? chosen : styles[0].name}
-          options={styles.map((style) => ({ value: style.name, label: style.title }))}
-          onChange={(name) => store.set("render.service_style", name === styles[0].name ? undefined : name)}
-        />
-      )}
     </PanelSection>
   );
 }

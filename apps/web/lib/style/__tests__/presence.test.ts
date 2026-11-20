@@ -27,7 +27,7 @@ const SIZES = {
   computed: { ...STAMP, other: false, no_data: false },
 };
 
-const style = (...classify: object[]) => ({ version: 1, kind: "vector", classify });
+const style = (...classify: object[]) => ({ version: "1.0.0", kind: "vector", classify });
 
 const feature = (properties: Record<string, unknown>) => ({ properties });
 
@@ -107,7 +107,7 @@ describe("countPresence", () => {
   });
 
   it("a layer without classifications has nothing to count", () => {
-    const counter = countPresence({ version: 1, kind: "vector" });
+    const counter = countPresence({ version: "1.0.0", kind: "vector" });
     expect(counter.done).toBe(true);
     expect(counter.result()).toEqual({});
   });
@@ -123,6 +123,12 @@ describe("presenceRequests", () => {
 
   it("classifications left out of the legend ask for nothing", () => {
     expect(presenceRequests(style({ ...KINDS, legend: false }))).toEqual([]);
+  });
+
+  it("classifications of what the legend does not draw (a label's font) ask for nothing", () => {
+    const font = { ...KINDS, id: "font", target: "label.font.weight" };
+    expect(presenceRequests(style(font)).map(({ key }) => key)).toEqual([]);
+    expect(Object.keys(countPresence(style(KINDS, font)).result())).toEqual(["kind"]);
   });
 });
 

@@ -81,7 +81,7 @@ const tiles = (key: string): CompileSource => ({
 const polygon = (key: string, extra: Partial<RenderLayer> = {}): RenderLayer => ({
   key,
   style: {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" } },
   } as LayerStyle,
@@ -123,7 +123,7 @@ describe("syncMapLayers", () => {
     const map = orderedMap();
     const hexagons = polygon("1", {
       geometry: "point",
-      style: { version: 1, kind: "vector", render: { type: "h3", points_from_zoom: 15 } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", render: { type: "h3", points_from_zoom: 15 } } as LayerStyle,
       filter: { exclude: [5], atlas: 7 },
     });
     syncMapLayers(map, null, [hexagons], { locale: "en" });
@@ -142,7 +142,7 @@ describe("syncMapLayers", () => {
   it("one layer's en-US default never overwrites the map's locale", () => {
     const map = orderedMap();
     const labelled = polygon("1", {
-      style: { version: 1, kind: "vector", symbol: { label: { text: "{pop}" } } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { label: { text: "{pop}" } } } as LayerStyle,
     });
     const state = syncMapLayers(map, null, [labelled], { locale: "de-DE" });
     syncMapLayers(map, state, [labelled, polygon("2")], { locale: "de-DE" });
@@ -163,7 +163,7 @@ describe("syncMapLayers", () => {
     const map = orderedMap();
     const labelled = polygon("1", {
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,
@@ -171,7 +171,7 @@ describe("syncMapLayers", () => {
     const clusters: RenderLayer = {
       key: "2",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: { type: "cluster" },
         symbol: { marker: {} },
@@ -182,24 +182,30 @@ describe("syncMapLayers", () => {
     };
     const hillshade: RenderLayer = {
       key: "3",
-      style: { version: 1, kind: "raster", render: { type: "hillshade", band: 1 } } as LayerStyle,
+      style: { version: "1.0.0", kind: "raster", render: { type: "hillshade", band: 1 } } as LayerStyle,
       entry: {},
       source: {
         type: "raster",
         id: "src-3",
         tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-        dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
+        coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
+        values: {
+          encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 32769 },
+          range: [100, 400],
+          integer: true,
+          version: "1-e1",
+        },
       },
     };
     const image: RenderLayer = {
       key: "4",
-      style: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
+      style: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
       entry: {},
       source: {
         type: "raster",
         id: "src-4",
         tiles: "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp",
-        dem: "https://geo/collections/d/raster/dem/{z}/{x}/{y}.webp",
+        coverage: "https://geo/collections/d/coverage/tiles/WebMercatorQuad",
       },
     };
     syncMapLayers(map, null, [labelled, clusters, hillshade, image], { locale: "en" });
@@ -253,7 +259,7 @@ describe("syncMapLayers", () => {
     const map = orderedMap([{ id: "old-bg", type: "background" }]);
     const timed = polygon("1", {
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", icon: "goat:park" }, label: { text: "{pop}" } },
         time: { field: "year" },
@@ -301,18 +307,18 @@ describe("syncMapLayers", () => {
       { id: "base-boundary", type: "line" },
     ];
     const point = polygon("1", {
-      style: { version: 1, kind: "vector", symbol: { marker: {} } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { marker: {} } } as LayerStyle,
       geometry: "point",
     });
     const labelled = polygon("2", {
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,
     });
     const line = polygon("3", {
-      style: { version: 1, kind: "vector", symbol: { line: { color: "#3366cc" } } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { line: { color: "#3366cc" } } } as LayerStyle,
       geometry: "line",
     });
 
@@ -391,7 +397,7 @@ describe("syncMapLayers", () => {
   it("the time slider moves the global state without a recompile", () => {
     const map = orderedMap();
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: { color: "#cccccc" } },
       time: { field: "year" },

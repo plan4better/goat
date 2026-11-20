@@ -6,11 +6,11 @@
 #include "../network/network_prep.h"
 #include "../output/sql_export.h"
 #include "../pt/pt_pipeline.h"
+#include "../pt/timetable_io.h"
 
 #include <cmath>
 #include <cstdint>
 #include <duckdb.hpp>
-#include <filesystem>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -99,8 +99,7 @@ namespace routing::matrix
                     "Reverse PT is not supported by the matrix; use "
                     "compute_od_costs.");
             // Load timetable once for all origins.
-            auto tt = nigiri::timetable::read(
-                std::filesystem::path{cfg.timetable_path});
+            pt::MappedTimetable const tt{cfg.timetable_path};
 
             // PT: run the pipeline per origin, sharing the timetable.
             for (size_t oi = 0; oi < n_origins; ++oi)
@@ -110,7 +109,7 @@ namespace routing::matrix
                 input::validate(rcfg);
 
                 auto pt_result = pt::run_pt_pipeline_with_destinations(
-                    rcfg, con, cfg.destinations, &*tt);
+                    rcfg, con, cfg.destinations, tt.get());
 
                 read_dest_costs(oi, pt_result.field.costs,
                                 pt_result.extra_node_ids);

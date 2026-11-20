@@ -13,6 +13,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 import { type SourceLayer, compileSourceFor } from "@/lib/style/layerSource";
 import { type RenderLayer, mapLayerIdsOf, projectLayerOf } from "@/lib/style/render/mapLayers";
+import { STYLE_VERSION } from "@/lib/style/version";
 
 /** One layer of a map: a project layer (`MapLayer`), a dataset in a preview, a published layer. */
 export interface ViewLayer extends SourceLayer {
@@ -85,7 +86,7 @@ function markStyle(geometry: Geometry | undefined): LayerStyle {
       : geometry === "line"
         ? { line: { color: RED, width: 2, dash: "dashed" } }
         : { fill: false, outline: { color: RED, width: 2, dash: "dashed" } };
-  return { version: 1, kind: "vector", symbol } as LayerStyle;
+  return { version: STYLE_VERSION, kind: "vector", symbol } as LayerStyle;
 }
 
 function pendingLayers(layer: ViewLayer, pending: GeoJSON.FeatureCollection): RenderLayer[] {
@@ -208,7 +209,7 @@ export function projectGeometryLayerIds(map: {
     });
 }
 
-/** The topmost feature whose layer `accept`s, with that layer. */
+/** The topmost feature whose layer `accept`s, with that layer. A cluster is many features and is never one. */
 export function topFeature<T extends { id: number | string }>(
   map: object,
   features: readonly MapGeoJSONFeature[] | undefined,
@@ -216,6 +217,7 @@ export function topFeature<T extends { id: number | string }>(
   accept: (layer: T) => boolean
 ): { feature: MapGeoJSONFeature; layer: T } | undefined {
   for (const feature of features ?? []) {
+    if (clusterFeatureOf(map, [feature])) continue;
     const layer = layerOfMapLayer(map, feature.layer.id, layers);
     if (layer && accept(layer)) return { feature, layer };
   }
@@ -235,6 +237,48 @@ export function clusterFeatureOf(
       mapLayerIdsOf(map, key, { kinds: ["cluster"] }).includes(f.layer.id)
     );
   });
+}
+
+type FeatureLoader = (
+  dataset: string,
+  id: string
+) => Promise<{ properties?: Record<string, unknown> | null }>;
+
+/** The most features whose answers are kept, per loader: the pointer passes over many points. */
+const KEPT_FEATURES = 200;
+/** The answers asked for so far, per loader, by dataset, data version and feature id; a failed one is dropped. */
+const loaded = new WeakMap<FeatureLoader, Map<string, ReturnType<FeatureLoader>>>();
+
+/**
+ * A feature's properties for its popup (on click or hover) and for click to filter. A clustered layer's points carry
+ * only the fields its style reads, so its feature's own properties come from geoapi by the feature's id, asked for once
+ * while the dataset is unchanged; they fall back to what the point carries when there is no answer. Features from tiles
+ * carry every field.
+ */
+export async function featureProperties(
+  layer: ViewLayer,
+  feature: { id?: number | string; properties?: Record<string, unknown> | null },
+  load: FeatureLoader
+): Promise<Record<string, unknown>> {
+  const own = feature.properties ?? {};
+  if (!layer.style || sourceKind(layer.style.document) !== "points" || feature.id === undefined) return own;
+  const dataset = datasetOf(layer);
+  const id = String(feature.id);
+  const key = JSON.stringify([dataset, layer.dataset_updated_at ?? null, id]);
+  let answers = loaded.get(load);
+  if (!answers) loaded.set(load, (answers = new Map()));
+  let answer = answers.get(key);
+  if (!answer) {
+    answer = load(dataset, id);
+    answers.set(key, answer);
+    if (answers.size > KEPT_FEATURES) answers.delete(answers.keys().next().value!);
+  }
+  try {
+    return (await answer).properties ?? own;
+  } catch {
+    if (answers.get(key) === answer) answers.delete(key);
+    return own;
+  }
 }
 
 interface ClusterMap {

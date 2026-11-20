@@ -1,6 +1,8 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import i18next from "i18next";
 import { useState } from "react";
+import { I18nextProvider, initReactI18next } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -161,6 +163,45 @@ describe("rows", () => {
     expect(input.value).toBe("1.");
     await userEvent.type(input, "5");
     expect(onChange).toHaveBeenLastCalledWith(1.5);
+  });
+
+  it("a German NumberInput shows the decimal comma and takes 1,5 as typed (1.5 too)", async () => {
+    const onChange = vi.fn();
+    const german = i18next.createInstance();
+    void german.use(initReactI18next).init({ lng: "de", resources: {}, initImmediate: false });
+    renderPanel(
+      <I18nextProvider i18n={german}>
+        <NumberInput value={1.5} unit="px" ariaLabel="Box" onChange={onChange} />
+        <NumberInput value={2.5} unit="px" plain ariaLabel="Plain" onChange={() => undefined} />
+        <NumberInput value={0.355} pct ariaLabel="Share" onChange={() => undefined} />
+      </I18nextProvider>
+    );
+    const box = screen.getByRole("textbox", { name: "Box" }) as HTMLInputElement;
+    expect(box.value).toBe("1,5");
+    expect((screen.getByRole("textbox", { name: "Plain" }) as HTMLInputElement).value).toBe("2,5");
+    expect((screen.getByRole("textbox", { name: "Share" }) as HTMLInputElement).value).toBe("35,5");
+    await userEvent.clear(box);
+    await userEvent.type(box, "2,");
+    expect(box.value).toBe("2,");
+    await userEvent.type(box, "5");
+    expect(onChange).toHaveBeenLastCalledWith(2.5);
+    await userEvent.clear(box);
+    await userEvent.type(box, "0.75");
+    expect(onChange).toHaveBeenLastCalledWith(0.75);
+    // Leaving the box shows the number in German again.
+    fireEvent.blur(box);
+    expect(box.value).toBe("1,5");
+  });
+
+  it("an English NumberInput keeps the point and does not read a comma as one", async () => {
+    const onChange = vi.fn();
+    renderPanel(<NumberInput value={1.5} ariaLabel="Box" onChange={onChange} />);
+    const box = screen.getByRole("textbox", { name: "Box" }) as HTMLInputElement;
+    expect(box.value).toBe("1.5");
+    await userEvent.clear(box);
+    await userEvent.type(box, "2,5");
+    expect(onChange).not.toHaveBeenCalledWith(2.5);
+    expect(onChange).not.toHaveBeenCalledWith(25);
   });
 
   it("an optional NumberInput reports an emptied box and shows what applies then", async () => {
@@ -337,6 +378,37 @@ describe("rows", () => {
     expect(rowOf("plain")).toHaveStyle({ minHeight: "48px" });
     expect(rowOf("dense")).toHaveStyle({ minHeight: "36px" });
     expect(rowOf("nav")).toHaveStyle({ minHeight: "36px" });
+  });
+
+  it("a disabled field shows its value but does not open; only its swatch dims, MUI greys the text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const onOpen = vi.fn();
+    renderPanel(
+      <NavRow
+        label="Colors"
+        value="Continuous"
+        swatch={{ background: "#ff0000", wide: true }}
+        tooltip="Continuous colors"
+        disabled
+        onOpen={onOpen}
+      />
+    );
+    const button = screen.getByRole("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onOpen).not.toHaveBeenCalled();
+    // The field is not dimmed as a whole: its text takes MUI's disabled color, the swatch alone is dimmed.
+    expect(getComputedStyle(button.closest(".MuiInputBase-root") as HTMLElement).opacity).not.toBe("0.55");
+    expect(getComputedStyle(button.firstElementChild as HTMLElement).opacity).toBe("0.5");
+    // A tooltip on a disabled button listens on a wrapper (MUI warns otherwise).
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/disabled `button` child/);
+    error.mockRestore();
+  });
+
+  it("a section's add button can wait", () => {
+    const onClick = vi.fn();
+    renderPanel(<PanelSection title="Categories" add={{ label: "Add a class", onClick, disabled: true }} />);
+    expect((screen.getByRole("button", { name: "Add a class" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("rows have accessible names", () => {

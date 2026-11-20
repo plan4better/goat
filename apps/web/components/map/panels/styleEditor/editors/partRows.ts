@@ -2,6 +2,7 @@
 // part of the symbol; its rows name the part's keys. Ranges come from SLIDERS, values from DEFAULTS.
 import { keepsColors } from "@/lib/style/compile/images";
 import type { Geometry } from "@/lib/style/compile/types";
+import type { CompoundChoice } from "@/lib/style/editor/forms";
 import type { JsonObject } from "@/lib/style/json";
 import { drawsAsImage, isPin } from "@/lib/style/markerShapes";
 
@@ -39,6 +40,8 @@ export type PartRow =
       values: readonly string[];
       /** Values with a one-line sub (`style_editor.value_<key>_<value>_sub`). */
       subs?: readonly string[];
+      /** The values come from several keys of the part (the label's Font: weight and style). */
+      compound?: CompoundChoice;
     });
 
 export interface PartGroup {
@@ -63,6 +66,9 @@ export interface PartGroup {
 }
 
 const DASHES = ["solid", "dashed", "dotted", "dash_dot"] as const;
+const OUTLINE_POSITIONS = ["center", "inside", "outside"] as const;
+/** A label's letter case (`label.transform`). */
+export const LETTER_CASES = ["none", "uppercase", "lowercase"] as const;
 const SAME_AS_FILL = "style_editor.same_as_fill";
 
 const repeats = (part: JsonObject) => part.placement === undefined || part.placement === "repeat";
@@ -130,6 +136,13 @@ const OUTLINE: PartGroup = {
     { type: "number", key: "width", label: "style_editor.width" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
     { type: "choice", key: "dash", label: "style_editor.dash", values: DASHES, only: ["polygon"] },
+    {
+      type: "choice",
+      key: "position",
+      label: "style_editor.outline_position",
+      values: OUTLINE_POSITIONS,
+      only: ["polygon"],
+    },
   ],
 };
 
@@ -170,18 +183,33 @@ const CASING: PartGroup = {
   ],
 };
 
+/** Whether the arrows' icon turns with the line (spec 3.2 `turn_with_line`, on unless switched off). */
+const turns = (arrows: JsonObject) => arrows.turn_with_line !== false;
+
 const ARROWS: PartGroup = {
   id: "arrows",
   part: "arrows",
   toggle: true,
   summary: "placement",
   rows: [
+    // GOAT's arrow or any icon of the marker's picker, one for the layer (spec 3.2).
+    {
+      type: "icon",
+      key: "icon",
+      label: "style_editor.icon",
+      // In place of the color row, which an upload or an emoji does not have.
+      note: (a) => (keepsColors(a.icon) ? "style_editor.note_icon_own_colors" : undefined),
+    },
+    // The icon turns with the line or stays upright; picking an icon sets it (setArrowsIcon).
+    { type: "switch", key: "turn_with_line", label: "style_editor.turn_with_line" },
     {
       type: "choice",
       key: "direction",
       label: "style_editor.direction",
       values: ["forward", "backward", "both"],
       subs: ["forward"],
+      // An upright icon points nowhere.
+      when: turns,
     },
     { type: "number", key: "size", label: "style_editor.size" },
     {
@@ -189,6 +217,7 @@ const ARROWS: PartGroup = {
       key: "color",
       label: "style_editor.color",
       sentinel: { label: "style_editor.same_as_line", value: undefined },
+      when: (a) => !keepsColors(a.icon),
     },
     {
       type: "choice",
@@ -295,6 +324,35 @@ const ICON: PartGroup = {
   ],
 };
 
+/** The marker of polygons and lines (spec 3.3): off until switched on, at one point of each feature. Always an image,
+ * so its editor has the point marker's rows in one place: the icon with its shape, the colors, size and opacity, and
+ * what an image marker takes. It has no outline: a polygon's outline is its border. */
+const AREA_MARKER: PartGroup = {
+  id: "marker",
+  part: "marker",
+  toggle: true,
+  summary: "size",
+  swatch: "color",
+  rows: [
+    ICON.rows[0],
+    // Uploads and emoji alone keep their own colors.
+    {
+      type: "color",
+      key: "color",
+      label: "style_editor.color",
+      when: (m) => !(alone(m) && keepsColors(m.icon)),
+    },
+    ...ICON.rows.filter((row) => row.key === "icon_color"),
+    { type: "number", key: "size", label: "style_editor.size" },
+    { type: "number", key: "opacity", label: "style_editor.opacity" },
+    ...ICON.rows.filter((row) => row.key === "rotation" || row.key === "anchor"),
+    // A plain circle is an image here too: it shifts and collides as one.
+    ...ICON.rows
+      .filter((row) => row.key === "offset" || row.key === "allow_overlap")
+      .map((row) => ({ ...row, when: undefined })),
+  ],
+};
+
 /** The polygons' height (3D spec 8.4): an inline row the section draws as the Height rows. */
 const HEIGHT: PartGroup = {
   id: "height",
@@ -307,8 +365,8 @@ const HEIGHT: PartGroup = {
 
 /** The groups of the symbol section per geometry, in display order. */
 export const GROUPS: Readonly<Record<Geometry, PartGroup[]>> = {
-  polygon: [FILL, OUTLINE, HEIGHT, LABEL],
-  line: [LINE, CASING, ARROWS, LABEL],
+  polygon: [FILL, OUTLINE, HEIGHT, AREA_MARKER, LABEL],
+  line: [LINE, CASING, ARROWS, AREA_MARKER, LABEL],
   point: [SIZE, POINT_FILL, OUTLINE, ICON, LABEL],
 };
 
@@ -316,7 +374,11 @@ export const groupOf = (geometry: Geometry, id: string): PartGroup | undefined =
   GROUPS[geometry].find((group) => group.id === id);
 
 /** Choice keys whose rows live outside GROUPS (the label editor's). */
-const OTHER_CHOICES: Record<string, readonly string[]> = { "label.font.weight": ["regular", "bold"] };
+const OTHER_CHOICES: Record<string, readonly string[]> = {
+  "label.font.weight": ["regular", "bold", "medium", "light"],
+  "label.font.style": ["normal", "italic"],
+  "label.transform": LETTER_CASES,
+};
 
 /** The values a choice property takes, from its row. */
 export function choiceValues(key: string): readonly string[] | undefined {

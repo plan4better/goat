@@ -7,7 +7,7 @@ import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/sa
 
 const doc = (extra: object = {}) =>
   ({
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { fill: { color: "#cccccc", opacity: 0.5 }, outline: { width: 1 } },
     ...extra,
@@ -61,19 +61,19 @@ describe("EditorStore", () => {
 
   it("undefined deletes and prunes empty parents, but an emptied part stays on (spec 3)", () => {
     const { store } = storeOf({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: { color: "#cccccc" } },
       legend: { title: "x" },
     } as LayerStyle);
     store.set("symbol.fill.color", undefined);
     store.set("legend.title", undefined);
-    expect(store.document).toEqual({ version: 1, kind: "vector", symbol: { fill: {} } });
+    expect(store.document).toEqual({ version: "1.0.0", kind: "vector", symbol: { fill: {} } });
   });
 
   it("a raster's emptied no_data goes: only a classification's other and no_data are kept", () => {
     const { store } = storeOf({
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "continuous", domain: [0, 9], no_data: { values: [-9999] } },
     } as unknown as LayerStyle);
@@ -83,7 +83,7 @@ describe("EditorStore", () => {
 
   it("emptying a key keeps parts, other, no_data and class positions", () => {
     const { store } = storeOf({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { line: { color: "#000000" }, arrows: { color: "#ff0000" }, casing: { min_zoom: 12 } },
       classify: [

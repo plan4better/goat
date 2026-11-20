@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { JsonObject } from "@/lib/style/json";
+import { baseSwatch } from "@/lib/style/legend";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
 import {
@@ -17,9 +19,11 @@ const dispatch = vi.fn();
 const setVisibility = vi.fn().mockResolvedValue(undefined);
 let layers: object[] = [];
 
+// The map's state as the store holds it: its zoom, rounded to a tenth (MapViewer).
+let mapZoom: number | undefined = 12;
 vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppDispatch: () => dispatch,
-  useAppSelector: () => 12,
+  useAppSelector: (select: (state: unknown) => unknown) => select({ map: { currentZoom: mapZoom } }),
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/components/builder/widgets/information/useWidgetLayerTree", () => ({
@@ -34,7 +38,7 @@ const layer = (id: number, name: string, order: number, visibility: boolean, gro
   type: "feature",
   feature_layer_geometry_type: "polygon",
   entry: { type: "layer", id, visible: visibility },
-  style: { document: { version: 1, kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
+  style: { document: { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
 });
 
 const GROUP = 7;
@@ -70,6 +74,7 @@ const visibilityIn = (call: number) =>
   );
 
 beforeEach(() => {
+  mapZoom = 12;
   dispatch.mockClear();
   setVisibility.mockClear();
   layers = [
@@ -167,7 +172,7 @@ describe("LayerGroupSwitcher", () => {
     // The legend caption shows above the legend, as in the layer list.
     (layers[2] as { style: object }).style = {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#2bb381" } },
         legend: { caption: "Einwohner je Hektar" },
@@ -175,6 +180,33 @@ describe("LayerGroupSwitcher", () => {
     };
     renderSwitcher();
     expect(screen.getByText("Einwohner je Hektar")).toBeInTheDocument();
+  });
+
+  it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {
+    // A fill color by zoom: at 12.6 the map blends 30% of the way, at 13 half of the way.
+    const document = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: {
+        fill: {
+          color: {
+            zoom: [
+              [12, "#000000"],
+              [14, "#ffffff"],
+            ],
+          },
+        },
+      },
+    };
+    (layers[2] as { style: object }).style = { document };
+    const at = (zoom: number) =>
+      baseSwatch(document as unknown as JsonObject, { geometry: "polygon", zoom }).fill?.color;
+    expect(at(12.6)).not.toBe(at(13));
+    mapZoom = 12.6;
+    const { container } = renderSwitcher();
+    const fills = [...container.querySelectorAll("rect")].map((rect) => rect.getAttribute("fill"));
+    expect(fills).toContain(at(12.6));
+    expect(fills).not.toContain(at(13));
   });
 
   it("plays through the layers and wraps around", async () => {

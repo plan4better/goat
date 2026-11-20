@@ -14,7 +14,7 @@ from core.services.processes import (
     style_check,
 )
 
-DOC = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
+DOC = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 
 
 @pytest_asyncio.fixture

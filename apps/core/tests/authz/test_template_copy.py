@@ -116,7 +116,7 @@ async def _run_copy_job(
 
 
 RED_POINTS = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"marker": {"color": "#c80000"}},
 }

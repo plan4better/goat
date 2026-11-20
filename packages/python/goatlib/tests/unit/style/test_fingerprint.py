@@ -11,7 +11,7 @@ from goatlib.style.fingerprint import (
 )
 
 CLASSIFIED = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "classify": [
         {
@@ -86,17 +86,21 @@ def test_stale_when_computed_data_differs_or_computed_values_are_missing() -> No
     before = copy.deepcopy(CLASSIFIED)
     del before["classify"][0]["computed"]["no_data"]
     assert not is_stale(before, "ducklake:5")
-    plain = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#ff0000"}}}
+    plain = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#ff0000"}},
+    }
     assert not is_stale(plain, "ducklake:5")
     assert not is_stale(CLASSIFIED, None)
     by_attribute = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"line": {"width": {"field": "traffic", "range": [1, 8]}}},
     }
     assert is_stale(by_attribute, "ducklake:1")
     fixed = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "line": {"width": {"field": "traffic", "range": [1, 8], "domain": [0, 9]}}

@@ -16,8 +16,8 @@ from goatlib.tasks.generate_thumbnails import (
 
 pytestmark = pytest.mark.unit
 
-RED = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#aa0000"}}}
-BLUE = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#0000aa"}}}
+RED = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#aa0000"}}}
+BLUE = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#0000aa"}}}
 
 
 def link(id: int, order: int, **extra: Any) -> dict[str, Any]:

@@ -21,7 +21,7 @@ vi.mock("@/lib/providers/PublicProjectProvider", () => ({ useIsPublicProject: ()
 vi.mock("@/lib/transformers/map-image", () => ({ loadImage: vi.fn(async () => undefined) }));
 
 const PROJECT = "00000000-0000-0000-0000-000000000001";
-const FILL = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const style = (id: string) => ({
   id,
   name: "Default",
@@ -33,7 +33,7 @@ const style = (id: string) => ({
 });
 const body: MapResponse = {
   map: {
-    version: 1,
+    version: "1.0.0",
     layers: [
       { type: "layer", id: 5, visible: true, style: "s5" },
       {

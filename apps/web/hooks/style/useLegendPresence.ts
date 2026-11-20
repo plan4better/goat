@@ -23,6 +23,8 @@ import {
 } from "@/lib/style/presence";
 import { subscribeViewPresence, viewCounted, viewPresence } from "@/lib/style/render/viewPresence";
 
+import { useAppSelector } from "@/hooks/store/ContextHooks";
+
 /** The most values the unique values request answers at once: a field with more cannot prove a class absent. */
 const VALUES_LIMIT = 1000;
 /** The most bins the histogram request takes. */
@@ -167,6 +169,12 @@ const readWaiting = () => waiting.size > 0;
 export function useLegendsWaiting(): boolean {
   return useSyncExternalStore(subscribeWaiting, readWaiting, readWaiting);
 }
+
+/** The zoom a legend of the page's map reads its values at: the zoom the map is at, as the store holds it (MapViewer
+ * writes it rounded down to a tenth once the map stops moving, so its whole zoom is the one the map draws at), and a
+ * legend changes when the stored zoom does and never while the map moves. The map draws images at that whole zoom
+ * (`buildLegend` reads those colors there). 12 before the map has said its zoom. */
+export const useLegendZoom = (): number => useAppSelector((state) => state.map.currentZoom ?? 12);
 
 /** A layer's legend (`buildLegend`) with the classes its `legend.classes` lists; null without a style or a legend. */
 export function useLayerLegend(

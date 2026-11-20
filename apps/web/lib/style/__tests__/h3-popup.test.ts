@@ -9,7 +9,7 @@ const t = ((key: string, opts?: { field?: string }) =>
   opts?.field ? `${key}:${opts.field}` : key) as unknown as TFunction;
 
 const h3 = (render: object = {}) =>
-  ({ version: 1, kind: "vector", render: { type: "h3", ...render } }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", render: { type: "h3", ...render } }) as LayerStyle;
 
 const layerPopup = popupProperties.parse({
   trigger: "hover",

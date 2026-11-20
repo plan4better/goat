@@ -10,6 +10,9 @@ the name again when it connects and would follow a redirect the server sends
 only to it.
 """
 
+import ctypes
+import functools
+import logging
 import threading
 import time
 from collections.abc import Collection, Iterator, Sequence
@@ -17,7 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin
 
 import numpy as np
@@ -33,6 +36,9 @@ from rio_tiler.io import Reader
 from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
 from goatlib.raster.formula import Formula
+from goatlib.raster.values import ValueEncoding
+
+logger = logging.getLogger(__name__)
 
 TILE_SIZE = 256
 MAX_REDIRECTS = 3
@@ -78,24 +84,33 @@ _failures: dict[str, tuple[str, float]] = {}
 _failures_lock = threading.Lock()
 
 
-def _remember_failure(url: str, message: str) -> None:
-    with _failures_lock:
-        _failures[url] = (message, time.monotonic() + FAILURE_TTL_S)
+def failure_key(url: str | None, stored_file: Path | None) -> str:
+    """What a file's failure is remembered under: the file that is read."""
+    return str(stored_file) if stored_file is not None else str(url)
 
 
-def _recent_failure(url: str) -> str | None:
-    """The error the file gave in the last 30 seconds, if any."""
+def remember_failure(key: str, message: str) -> None:
+    """Opening the file of `key` (`failure_key`) fails with `message` for the
+    next 30 seconds."""
     with _failures_lock:
-        kept = _failures.get(url)
+        _failures[key] = (message, time.monotonic() + FAILURE_TTL_S)
+
+
+def recent_failure(key: str) -> str | None:
+    """The error the file of `key` (`failure_key`) gave in the last 30 seconds,
+    if any."""
+    with _failures_lock:
+        kept = _failures.get(key)
         if kept is None:
             return None
         if kept[1] <= time.monotonic():
-            del _failures[url]
+            del _failures[key]
             return None
         return kept[0]
 
 
-_addresses: dict[tuple[str, tuple[str, ...]], tuple[str, float]] = {}
+#: A checked address, its file's validator and when both expire.
+_addresses: dict[tuple[str, tuple[str, ...]], tuple[str, str | None, float]] = {}
 _addresses_lock = threading.Lock()
 
 
@@ -103,18 +118,94 @@ def resolve_address(url: str, private_hosts: Collection[str] = ()) -> str:
     """The address GDAL may open: `url` after its redirects, every hop checked by
     the URL guard (raises `UnsafeUrlError`), kept for ten minutes. Raises
     RasterUnavailableError when the host does not answer."""
+    return _resolved(url, private_hosts)[0]
+
+
+def remote_validator(url: str, private_hosts: Collection[str] = ()) -> str | None:
+    """The file's version as its host gives it: the final address's `ETag`, else
+    its `Last-Modified`, None without either or when the HEAD fails. From the
+    HEAD `resolve_address` sends and kept with its address for ten minutes;
+    raises as it does."""
+    return _resolved(url, private_hosts)[1]
+
+
+def _resolved(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
+    """The checked address and validator, kept for ten minutes. GDAL keeps
+    what it read of a remote file for the process, so when a check finds
+    another validator, or none that could tell, those blocks are dropped: a
+    replaced file is never read from its predecessor's."""
     key = (url, tuple(sorted(private_hosts)))
     with _addresses_lock:
         kept = _addresses.get(key)
-    if kept is not None and kept[1] > time.monotonic():
-        return kept[0]
-    address = _follow(url, private_hosts)
+    if kept is not None and kept[2] > time.monotonic():
+        return kept[0], kept[1]
+    address, validator = _follow(url, private_hosts)
     with _addresses_lock:
-        _addresses[key] = (address, time.monotonic() + ADDRESS_TTL_S)
-    return address
+        _addresses[key] = (address, validator, time.monotonic() + ADDRESS_TTL_S)
+    if kept is not None and (validator is None or kept[:2] != (address, validator)):
+        for read in {kept[0], address}:
+            forget_cached_reads(read)
+    return address, validator
 
 
-def _follow(url: str, private_hosts: Collection[str]) -> str:
+def _rasterio_libgdal() -> list[str]:
+    """Where the GDAL rasterio runs on may be: the libgdal loaded in this
+    process, else the one rasterio's wheel bundles."""
+    import rasterio
+
+    found: list[str] = []
+    try:
+        with open("/proc/self/maps") as maps:
+            found += [line.split()[-1] for line in maps if "libgdal" in line]
+    except OSError:
+        pass
+    base = Path(rasterio.__file__).parent
+    found += [str(p) for p in sorted(base.parent.glob("rasterio.libs/libgdal*"))]
+    found += [str(p) for p in sorted(base.glob(".dylibs/libgdal*"))]
+    return list(dict.fromkeys(found))
+
+
+@functools.cache
+def _gdal() -> ctypes.CDLL | None:
+    """rasterio's own GDAL, for a call rasterio does not wrap; None, said once
+    per process, when it cannot be had. Never another libgdal: its cache is
+    not the one rasterio reads through."""
+    paths = _rasterio_libgdal()
+    for path in paths:
+        try:
+            library = ctypes.CDLL(path)
+        except OSError:
+            continue
+        if hasattr(library, "VSICurlPartialClearCache"):
+            library.VSICurlPartialClearCache.argtypes = [ctypes.c_char_p]
+            library.VSICurlPartialClearCache.restype = None
+            return library
+    reason = (
+        "rasterio's libgdal has no VSICurlPartialClearCache"
+        if paths
+        else "no libgdal of rasterio's was found"
+    )
+    logger.warning(
+        "GDAL's read cache of remote files cannot be cleared (%s): a file "
+        "replaced at the same address may be read from its predecessor's blocks "
+        "until the process restarts.",
+        reason,
+    )
+    return None
+
+
+def forget_cached_reads(address: str) -> None:
+    """Drop what GDAL keeps of the remote file at `address` (its size, header
+    and blocks), so the next read asks its host again."""
+    gdal = _gdal()
+    if gdal is not None:
+        gdal.VSICurlPartialClearCache(f"/vsicurl/{address}".encode())
+
+
+def _follow(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
+    """The final address and its HEAD's `ETag`, else `Last-Modified`; no
+    validator from a HEAD that failed (a host may refuse HEAD and still send
+    one)."""
     current = url.strip()
     for _ in range(MAX_REDIRECTS + 1):
         assert_public_http_url(current, private_hosts)
@@ -126,7 +217,10 @@ def _follow(url: str, private_hosts: Collection[str]) -> str:
             ) from None
         location = response.headers.get("Location")
         if response.status_code not in (301, 302, 303, 307, 308) or not location:
-            return current
+            if not 200 <= response.status_code < 300:
+                return current, None
+            headers = response.headers
+            return current, headers.get("ETag") or headers.get("Last-Modified")
         current = urljoin(current, location)
     raise RasterUnavailableError("The file's address redirects too often.")
 
@@ -145,6 +239,9 @@ class RasterInfo:
     scales: tuple[float, ...]
     offsets: tuple[float, ...]
     names: tuple[str, ...]
+    #: The zoom whose tiles show the file's cells at their own size (rio-tiler's
+    #: estimate): deeper tiles only magnify them.
+    maxzoom: int | None = None
 
     @property
     def scaled(self) -> bool:
@@ -199,9 +296,9 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
 
 
 def encode_tile(rgba: np.ndarray) -> bytes:
-    """RGBA bytes (H x W x 4) as a lossless WebP: the exact colors (Terrarium
-    elevations stay exact) and transparency, at about a quarter of a PNG's size
-    for continuous colors, encoded as fast."""
+    """RGBA bytes (H x W x 4) as a lossless WebP: the exact colors (value tiles
+    stay exact) and transparency, at about a quarter of a PNG's size for
+    continuous colors, encoded as fast."""
     from rio_tiler.utils import render
 
     return render(
@@ -210,19 +307,6 @@ def encode_tile(rgba: np.ndarray) -> bytes:
         img_format="WEBP",
         LOSSLESS=True,
     )
-
-
-def _terrarium(elevation: np.ndarray) -> np.ndarray:
-    """Elevations as Terrarium RGB (`(R * 256 + G + B / 256) - 32768`); no data
-    is 0 m, since an elevation tile cannot be transparent."""
-    v = np.clip(np.ma.filled(elevation.astype("float64"), 0.0) + 32768, 0, 65535.996)
-    whole = np.floor(v)
-    out = np.zeros(v.shape + (4,), dtype="uint8")
-    out[..., 0] = (whole // 256).astype("uint8")
-    out[..., 1] = (whole % 256).astype("uint8")
-    out[..., 2] = np.floor((v - whole) * 256).astype("uint8")
-    out[..., 3] = 255
-    return out
 
 
 class RasterSource:
@@ -247,13 +331,13 @@ class RasterSource:
         self.private_hosts = tuple(private_hosts)
         self.stored_file = stored_file
         #: What a failure is remembered under: the file that was read.
-        self._key = str(stored_file) if stored_file is not None else str(url)
+        self._key = failure_key(url, stored_file)
         self._reader: Reader | None = None
         self._env: rasterio.Env | None = None
         self._info: RasterInfo | None = None
 
     def __enter__(self) -> "RasterSource":
-        failed = _recent_failure(self._key)
+        failed = recent_failure(self._key)
         if failed is not None:
             raise RasterUnavailableError(failed)
         if self.stored_file is not None:
@@ -262,7 +346,7 @@ class RasterSource:
             try:
                 address = resolve_address(str(self.url), self.private_hosts)
             except RasterUnavailableError as error:
-                _remember_failure(self._key, str(error))
+                remember_failure(self._key, str(error))
                 raise
         self._env = rasterio.Env(**GDAL_OPTIONS)
         self._env.__enter__()
@@ -271,7 +355,7 @@ class RasterSource:
         except (RasterioError, RioTilerError, OSError) as error:
             self._env.__exit__(None, None, None)
             message = f"The file could not be read: {error}"
-            _remember_failure(self._key, message)
+            remember_failure(self._key, message)
             raise RasterUnavailableError(message) from None
         return self
 
@@ -300,7 +384,7 @@ class RasterSource:
             raise
         except (RasterioError, RioTilerError, OSError) as error:
             message = f"The file could not be read: {error}"
-            _remember_failure(self._key, message)
+            remember_failure(self._key, message)
             raise RasterUnavailableError(message) from None
 
     def info(self) -> RasterInfo:
@@ -334,6 +418,7 @@ class RasterSource:
             scales=tuple(float(s) for s in ds.scales),
             offsets=tuple(float(o) for o in ds.offsets),
             names=tuple(d or f"Band {i}" for i, d in enumerate(ds.descriptions, 1)),
+            maxzoom=int(self.reader.maxzoom),
         )
         return self._info
 
@@ -431,9 +516,25 @@ class RasterSource:
         )
         return encode_tile(rgba)
 
-    def dem(self, z: int, x: int, y: int, band: int = 1) -> bytes | None:
-        """The band as Terrarium elevation tiles for MapLibre's hillshade."""
+    def values(
+        self,
+        z: int,
+        x: int,
+        y: int,
+        formula: Formula,
+        encoding: ValueEncoding,
+        resampling: Literal["nearest", "bilinear"] = "bilinear",
+    ) -> bytes | None:
+        """A 256 px tile of the formula's values in `encoding` (lossless WebP);
+        None outside the file. A cell where a band is no data or the formula has
+        no value is no data. Evaluated in float64, so 32 bit whole numbers stay
+        exact. `resampling` is the read's and the reprojection's: a file in
+        another CRS than the tile's is smooth too."""
         info = self.info()
+        if max(formula.bands) > info.count:
+            raise BandError(
+                f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
+            )
         if not self.reader.tile_exists(x, y, z) or self._too_coarse(z, x, y):
             return None
         with self._reading():
@@ -443,13 +544,21 @@ class RasterSource:
                     y,
                     z,
                     tilesize=TILE_SIZE,
-                    indexes=(band,),
+                    indexes=formula.bands,
                     unscale=info.scaled,
-                    resampling_method="bilinear",
+                    resampling_method=resampling,
+                    reproject_method=resampling,
                 )
             except TileOutsideBounds:
                 return None
-        return encode_tile(_terrarium(image.array[0]))
+        arrays = {i: image.array[k] for k, i in enumerate(formula.bands)}
+        invalid = np.zeros(image.array.shape[1:], dtype=bool)
+        for a in arrays.values():
+            invalid |= np.ma.getmaskarray(a)
+        values = formula.evaluate(
+            {i: np.ma.getdata(a) for i, a in arrays.items()}, dtype="float64"
+        )
+        return encode_tile(encoding.encode(np.ma.masked_array(values, invalid)))
 
     def point(
         self, lon: float, lat: float, formula: Formula | None = None

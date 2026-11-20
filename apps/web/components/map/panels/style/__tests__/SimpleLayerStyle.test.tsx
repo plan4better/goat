@@ -8,10 +8,12 @@ import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 import SimpleLayerStyle from "@/components/map/panels/style/SimpleLayerStyle";
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+}));
 
 const DOC = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   opacity: 0.8,
   symbol: { fill: { color: "#cccccc" } },

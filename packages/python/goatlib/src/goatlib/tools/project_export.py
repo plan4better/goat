@@ -26,6 +26,7 @@ import duckdb
 from pydantic import BaseModel, Field
 
 from goatlib.tools.base import SimpleToolRunner
+from goatlib.tools.core_api import CoreAddressInput, CoreSession
 from goatlib.tools.project_schemas import (
     EXTERNAL_DATA_TYPES,
     FORMAT_VERSION,
@@ -40,7 +41,7 @@ from goatlib.utils.workflow_layers import drop_layer_refs, workflow_layer_refs
 logger = logging.getLogger(__name__)
 
 
-class ProjectExportParams(ToolInputBase):
+class ProjectExportParams(ToolInputBase, CoreAddressInput):
     """Parameters for project export tool."""
 
     source_instance: str | None = Field(None, description="Source GOAT instance URL")
@@ -409,7 +410,7 @@ class ProjectExportRunner(SimpleToolRunner):
             ]
 
             # 8. UploadedAssets: icons the styles name (`asset:<id>`), and
-            # objects other properties name by their S3 key.
+            # objects other properties name by their S3 key (`_named_uploads`).
             # Icons and images are owned by whoever uploaded them: the exporter,
             # the project owner, or the owner of a layer in the project. All of
             # those are candidates; the reference scan below decides.
@@ -443,29 +444,7 @@ class ProjectExportRunner(SimpleToolRunner):
                 ],
                 default=str,
             )
-            matched_assets: list[dict[str, Any]] = []
-            for asset in asset_rows:
-                asset_id = str(asset["id"])
-                if (
-                    f"asset:{asset_id}" in combined_str
-                    or asset["s3_key"] in combined_str
-                ):
-                    matched_assets.append(
-                        {
-                            "id": asset_id,
-                            "s3_key": asset["s3_key"],
-                            "file_name": asset["file_name"],
-                            "display_name": asset["display_name"],
-                            "category": asset["category"],
-                            "mime_type": asset["mime_type"],
-                            "file_size": asset["file_size"],
-                            "asset_type": asset["asset_type"],
-                            "content_hash": asset["content_hash"],
-                            "archive_path": (
-                                f"assets/{asset_id}{Path(asset['file_name']).suffix}"
-                            ),
-                        }
-                    )
+            matched_assets = self._named_uploads(asset_rows, combined_str)
             asset_s3_keys = [a["s3_key"] for a in matched_assets]
 
             return {
@@ -482,6 +461,81 @@ class ProjectExportRunner(SimpleToolRunner):
 
         finally:
             await conn.close()
+
+    @staticmethod
+    def _named_uploads(asset_rows: Any, names: str) -> list[dict[str, Any]]:
+        """The asset index: the uploads `names` (the project's styles and
+        properties as JSON) names by id (`asset:<id>`) or by key. Icons and
+        images only, as the archive format has no documents: a named document
+        stays out with a warning."""
+        matched: list[dict[str, Any]] = []
+        for asset in asset_rows:
+            asset_id = str(asset["id"])
+            if f"asset:{asset_id}" not in names and asset["s3_key"] not in names:
+                continue
+            if asset["asset_type"] not in ("icon", "image"):
+                logger.warning(
+                    "Uploaded document %s (%s) is not exported.",
+                    asset_id,
+                    asset["file_name"],
+                )
+                continue
+            matched.append(
+                {
+                    "id": asset_id,
+                    "s3_key": asset["s3_key"],
+                    "file_name": asset["file_name"],
+                    "display_name": asset["display_name"],
+                    "category": asset["category"],
+                    "mime_type": asset["mime_type"],
+                    "file_size": asset["file_size"],
+                    "asset_type": asset["asset_type"],
+                    "content_hash": asset["content_hash"],
+                    "archive_path": (
+                        f"assets/{asset_id}{Path(asset['file_name']).suffix}"
+                    ),
+                }
+            )
+        return matched
+
+    @staticmethod
+    def _fetch_uploads(
+        params: ProjectExportParams, assets: list[dict[str, Any]], archive_dir: Path
+    ) -> None:
+        """The files of the uploads the project uses, into the archive. They are
+        core's: the job fetches each icon and image from core's public file
+        route, with no token. Without core's address, or when a download fails,
+        a file stays out with a warning; the asset index names them all."""
+        if not assets:
+            return
+        if not params.core_url:
+            for asset in assets:
+                logger.warning(
+                    "Uploaded file %s (%s) is not exported: no address of core.",
+                    asset["id"],
+                    asset["file_name"],
+                )
+            return
+        core = CoreSession(params.core_url, None)
+        try:
+            for asset in assets:
+                dest = (archive_dir / asset["archive_path"]).resolve()
+                if not dest.is_relative_to(archive_dir.resolve()):
+                    logger.warning(
+                        "Skipping unsafe asset path: %s", asset["archive_path"]
+                    )
+                    continue
+                try:
+                    core.download_upload(asset["id"], dest)
+                except Exception as e:
+                    logger.warning(
+                        "Uploaded file %s (%s) is not exported: %s",
+                        asset["id"],
+                        asset["file_name"],
+                        e,
+                    )
+        finally:
+            core.close()
 
     def _compute_sha256(self: Self, file_path: Path) -> str:
         """Compute SHA-256 hash of a file."""
@@ -621,10 +675,8 @@ class ProjectExportRunner(SimpleToolRunner):
                     thumbnail_s3_key,
                     assets_dir / "thumbnail.png",
                 )
-            for asset_entry in assets:
-                self._fetch_s3_asset(
-                    asset_entry["s3_key"], archive_dir / asset_entry["archive_path"]
-                )
+            # Uploaded icons and images through core's asset route, as the user
+            self._fetch_uploads(params, assets, archive_dir)
 
             # 5. Compute checksums for JSON files
             for json_file in archive_dir.rglob("*.json"):

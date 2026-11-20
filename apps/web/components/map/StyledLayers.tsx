@@ -2,11 +2,13 @@
 
 // The map's project layers: renders nothing, puts the layers on the map with one `syncMapLayers` per
 // animation frame. A layer whose style panel is open is drawn from its editor store through a child subscribed to
-// that store only, so an edit compiles and applies that layer and renders nothing else.
+// that store only, so an edit compiles and applies that layer and renders nothing else. A raster layer whose style
+// colors values draws once the description of its value tiles has loaded.
 import type { Map as MaplibreMap } from "maplibre-gl";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMap } from "react-map-gl/maplibre";
 
+import { loadRasterValues } from "@/lib/api/rasters";
 import type { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
@@ -20,6 +22,7 @@ import {
   restoreGlobalState,
   syncMapLayers,
 } from "@/lib/style/render/mapLayers";
+import { rasterValuesOver } from "@/lib/style/render/rasterValues";
 import { PENDING_KEY } from "@/lib/style/render/viewLayers";
 import { type PresenceMap, watchViewPresence } from "@/lib/style/render/viewPresence";
 import { lowestOverlayId } from "@/lib/utils/map/overlayLayers";
@@ -47,6 +50,9 @@ interface StyledLayersProps {
   /** Counts the classes in view for legends that list those (spec 7.2 `legend.classes: view`), kept under this name
    * (`MAP_SCOPE`, `printScope`); none where no legend reads this map. */
   presenceScope?: string;
+  /** Whether a raster layer's values are still loading, after each draw that changes it and after the first draw
+   * (print and thumbnails wait for false; a failed description is not pending). */
+  onValuesPending?: (pending: boolean) => void;
 }
 
 type StyleMap = RendererMap & {
@@ -108,12 +114,16 @@ export function StyledLayers({
   ground,
   onLayersChange,
   presenceScope,
+  onValuesPending,
 }: StyledLayersProps) {
   const { current } = useMap();
   const map = current?.getMap() as StyleMap | undefined;
-  const latest = useRef({ layers, locale, overlay, ground, onLayersChange });
-  latest.current = { layers, locale, overlay, ground, onLayersChange };
+  const latest = useRef({ layers, locale, overlay, ground, onLayersChange, onValuesPending });
+  latest.current = { layers, locale, overlay, ground, onLayersChange, onValuesPending };
   const drawnIds = useRef("");
+  const redraw = useRef<() => void>(() => undefined);
+  const [rasterValues] = useState(() => rasterValuesOver(loadRasterValues, () => redraw.current()));
+  const valuesPending = useRef<boolean | null>(null);
   const edited = useRef(new Map<string, LayerStyle>());
   const state = useRef<MapLayersState | null>(null);
   const anchors = useRef<Anchors | null>(null);
@@ -143,10 +153,11 @@ export function StyledLayers({
       ready.current = true;
       const { layers: next, locale: nextLocale, overlay: nextOverlay, ground: nextGround } = latest.current;
       anchors.current ??= basemapAnchorsOf(map);
-      const drawn = next.map((layer) => {
+      const edits = next.map((layer) => {
         const document = edited.current.get(layer.key);
         return document ? { ...layer, style: document, version: undefined } : layer;
       });
+      const { layers: drawn, pending } = rasterValues.attach(edits);
       try {
         state.current = syncMapLayers(map, state.current, drawn, {
           locale: nextLocale,
@@ -166,10 +177,15 @@ export function StyledLayers({
         drawnIds.current = ids.join("|");
         latest.current.onLayersChange?.(ids);
       }
+      if (pending !== valuesPending.current) {
+        valuesPending.current = pending;
+        latest.current.onValuesPending?.(pending);
+      }
       // A class edited, another filter or time: the classes in view may have changed without a move.
       presence.current?.refresh();
     });
-  }, [map]);
+  }, [map, rasterValues]);
+  redraw.current = draw;
 
   const onDocument = useCallback(
     (key: string, document: LayerStyle | null) => {
@@ -225,10 +241,11 @@ export function StyledLayers({
     () => () => {
       if (frame.current !== null) cancelFrame(frame.current);
       frame.current = null;
+      rasterValues.dispose();
       if (map && state.current)
         state.current = syncMapLayers(map, state.current, [], { locale: latest.current.locale });
     },
-    [map]
+    [map, rasterValues]
   );
 
   return (

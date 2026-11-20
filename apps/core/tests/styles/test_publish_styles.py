@@ -17,7 +17,7 @@ from tests.styles.conftest import StyleWorld
 API = settings.API_V2_STR
 S = settings.SCHEMA
 CLASSIFIED: dict[str, Any] = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#111111"}},
     "classify": [
@@ -138,6 +138,22 @@ async def test_stamps_alone_are_no_change(
         first,
         lambda doc: doc["classify"][0]["computed"].update(at="2026-10-27T10:00:00Z"),
     )
+    assert await unpublished(client, world) == []
+
+
+@pytest.mark.asyncio
+async def test_a_style_stored_with_the_integer_version_is_no_change(
+    client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
+) -> None:
+    """A style stored before three-number versions says `1`; publishing writes the
+    "1.0.0" it means, which is no change either."""
+    world = api_style_world
+    first, second = await styles(db_session, world)
+    for style_id in (first, second):
+        await change(db_session, style_id, lambda doc: doc.update(version=1))
+    config = await publish(client, world)
+    published = config["styles"][str(world.layer_project_id)]
+    assert {s["document"]["version"] for s in published} == {"1.0.0"}
     assert await unpublished(client, world) == []
 
 

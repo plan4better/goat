@@ -10,10 +10,10 @@ export type RasterRenderType = "hillshade" | "continuous" | "categorical" | "ima
 /** The panel's palette for new categories. */
 const CATEGORY_PALETTE = "colorbrewer:Set3";
 
-/** The renders a file allows (unknown files allow all): hillshade on one band of elevation, a color range on any band
- * without a color table, categories on whole-number cells, the image always. */
+/** The renders a file allows, none until its info answered: hillshade on one band of elevation, a color range on any
+ * band without a color table, categories on whole-number cells, the image always. */
 export function drawAsOptions(info: RasterInfo | undefined): RasterRenderType[] {
-  if (!info) return ["hillshade", "continuous", "categorical", "image"];
+  if (!info) return [];
   const out: RasterRenderType[] = [];
   if (info.bands === 1 && !info.colorTable) out.push("hillshade");
   if (!info.colorTable) out.push("continuous");

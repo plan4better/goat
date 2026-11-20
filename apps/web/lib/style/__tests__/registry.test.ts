@@ -4,7 +4,7 @@ import { StyleStoreRegistry, editedLayersOf } from "@/lib/style/editor/registry"
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { SaveResult, StyleTransport } from "@/lib/style/save";
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const KEY = { projectId: "p", layerProjectId: 5, styleId: "s1" };
 
 function transport() {

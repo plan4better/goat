@@ -72,6 +72,8 @@ export default function ThumbnailPage() {
   const [mounted, setMounted] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  // Whether the renderer still loads a raster layer's values; known after its first draw.
+  const [valuesPending, setValuesPending] = useState(true);
   const mapRef = React.useRef<MapRef>(null);
   const [loadedMap, setLoadedMap] = useState<MaplibreMap | null>(null);
 
@@ -196,8 +198,10 @@ export default function ThumbnailPage() {
     const isDataLoaded = thumbnailData !== null;
     // A 3D view waits for its scene: captured before terrain and sky are on, the thumbnail would show neither.
     const sceneReady = view.mode === "2d" || appliedScene !== null;
+    // Raster layers that color values draw once their descriptions are loaded (a failed one is not waited for).
+    const valuesReady = layersToRender.length === 0 || !valuesPending;
 
-    if (isDataLoaded && mapLoaded && sceneReady) {
+    if (isDataLoaded && mapLoaded && sceneReady && valuesReady) {
       // Give additional delay for map tiles to fully render
       const timer = setTimeout(() => {
         setIsReady(true);
@@ -206,7 +210,7 @@ export default function ThumbnailPage() {
       }, 1500); // 1.5 second delay to allow map tiles to render
       return () => clearTimeout(timer);
     }
-  }, [thumbnailData, mapLoaded, view.mode, appliedScene]);
+  }, [thumbnailData, mapLoaded, view.mode, appliedScene, layersToRender.length, valuesPending]);
 
   // Show empty placeholder during SSR/initial mount to avoid hydration mismatch
   if (!mounted) {
@@ -260,7 +264,12 @@ export default function ThumbnailPage() {
           interactive={false} // Disable interactivity for thumbnails
         >
           {mapLoaded && layersToRender.length > 0 && (
-            <StyledLayers layers={layersToRender} locale="en" ground={buildingsAnchor(appliedScene)} />
+            <StyledLayers
+              layers={layersToRender}
+              locale="en"
+              ground={buildingsAnchor(appliedScene)}
+              onValuesPending={setValuesPending}
+            />
           )}
         </Map>
       </MapProvider>

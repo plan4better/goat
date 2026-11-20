@@ -52,8 +52,10 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { fitBounds } from "@/lib/utils/map/navigate";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
+import { isRasterDataset } from "@/lib/utils/workflowDatasets";
 import { nodeFilterCql } from "@/lib/utils/workflowFilter";
 import type { DatasetCollectionItems, GetCollectionItemsQueryParams } from "@/lib/validations/layer";
+import type { ProjectLayer } from "@/lib/validations/project";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
@@ -183,10 +185,12 @@ function a11yProps(index: number) {
   };
 }
 
-// Get layer ID from node (either dataset layer ID or tool output layer ID)
-function getNodeDataInfo(
+// Get layer ID from node (either dataset layer ID or tool output layer ID). A dataset node that holds a raster layer
+// (workflows take none) has no data to show: nothing is asked of its layer.
+export function getNodeDataInfo(
   node: WorkflowNode | null,
-  tempLayerIds?: Record<string, string>
+  tempLayerIds?: Record<string, string>,
+  projectLayers?: ProjectLayer[]
 ): {
   hasData: boolean;
   layerId: string | null; // UUID of the layer (for regular layers)
@@ -201,7 +205,7 @@ function getNodeDataInfo(
   // Dataset node - use layerId directly
   if (node.type === "dataset" && node.data.type === "dataset") {
     const layerId = node.data.layerId;
-    if (!layerId) {
+    if (!layerId || isRasterDataset(node.data, projectLayers)) {
       return { hasData: false, layerId: null, tempLayerId: null, nodeFilter: null };
     }
     // Get node's workflow filter
@@ -245,6 +249,8 @@ function getNodeDataInfo(
 
 interface WorkflowDataPanelProps {
   selectedNode: WorkflowNode | null;
+  /** The project's layers: a dataset node's layer type as it is now. */
+  projectLayers?: ProjectLayer[];
   tempLayerIds?: Record<string, string>; // Map of node_id -> temp_layer_id for executed workflow
   tempLayerStyles?: Record<string, LayerStyle>; // The result's GOAT Style document by node ID
   workflowId?: string; // Current workflow ID
@@ -252,6 +258,7 @@ interface WorkflowDataPanelProps {
 
 const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
   selectedNode,
+  projectLayers,
   tempLayerIds = {},
   tempLayerStyles = {},
   workflowId: _workflowId, // Available for future use (e.g., refreshing temp data)
@@ -276,8 +283,8 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
   // Get node data info - returns layerId (UUID) or tempLayerId for fetching
   const { hasData, layerId, tempLayerId, nodeFilter } = useMemo(
-    () => getNodeDataInfo(selectedNode, tempLayerIds),
-    [selectedNode, tempLayerIds]
+    () => getNodeDataInfo(selectedNode, tempLayerIds, projectLayers),
+    [selectedNode, tempLayerIds, projectLayers]
   );
 
   // Check if we're viewing a temp layer

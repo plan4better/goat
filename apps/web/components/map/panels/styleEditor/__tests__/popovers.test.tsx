@@ -108,14 +108,24 @@ describe("popovers", () => {
   });
 
   it("Escape closes picker, then level 2, then level 1", async () => {
+    // The picker opens from level 2, the deepest open level, so all three are open.
+    function Classes() {
+      const popover = usePopover();
+      return (
+        <>
+          <p>classes content</p>
+          <button onClick={() => popover.open("picker", entry("color"))}>open color</button>
+        </>
+      );
+    }
     renderStack([
       [1, entry("fill")],
-      [2, entry("classes")],
-      ["picker", entry("color")],
+      [2, entry("classes", () => <Classes />)],
     ]);
     await userEvent.click(screen.getByText("open fill"));
     await userEvent.click(screen.getByText("open classes"));
     await userEvent.click(screen.getByText("open color"));
+    expect(screen.getByText("color content")).toBeDefined();
     act(() => void fireEvent.keyDown(document, { key: "Escape" }));
     expect(screen.queryByText("color content")).toBeNull();
     expect(screen.getByText("classes content")).toBeDefined();
@@ -296,6 +306,143 @@ describe("popovers", () => {
       expect(screen.getByTestId("clip").contains(frame)).toBe(false);
       expect((frame.parentElement as HTMLElement).style.position).toBe("fixed");
     }
+  });
+});
+
+describe("opening from a level closes what was opened from it before", () => {
+  /** A popover's content: a button per editor it opens at the next level and per picker it opens. */
+  function Content({
+    name,
+    levels = [],
+    pickers = [],
+  }: {
+    name: string;
+    levels?: PopoverEntry[];
+    pickers?: PopoverEntry[];
+  }) {
+    const popover = usePopover();
+    const next = useNextLevel();
+    return (
+      <>
+        <p>{name} content</p>
+        {levels.map((e) => (
+          <button key={e.key} onClick={() => popover.open(next, e)}>
+            open {e.key} from {name}
+          </button>
+        ))}
+        {pickers.map((e) => (
+          <button
+            key={e.key}
+            onClick={(event) => popover.open("picker", { ...e, anchorEl: event.currentTarget })}>
+            pick {e.key} from {name}
+          </button>
+        ))}
+      </>
+    );
+  }
+
+  // The label editor (level 1) opens Halo (level 2), which opens Width (level 3); each has a color picker. A picker's
+  // own content opens another picker.
+  const widthColor = entry("width-color");
+  const swatches = entry("swatches");
+  const haloColor = entry("halo-color", () => <Content name="halo-color" pickers={[swatches]} />);
+  const labelColor = entry("label-color");
+  const width = entry("width", () => <Content name="width" pickers={[widthColor]} />);
+  const halo = entry("halo", () => <Content name="halo" levels={[width]} pickers={[haloColor]} />);
+  const label = entry("label", () => <Content name="label" levels={[halo]} pickers={[labelColor]} />);
+  const ALL = [
+    "label",
+    "halo",
+    "width",
+    "label-color",
+    "halo-color",
+    "width-color",
+    "panel-color",
+    "swatches",
+  ];
+  /** The popovers open now, by key. */
+  const openNow = () => ALL.filter((key) => screen.queryByText(`${key} content`) !== null);
+
+  const renderLabel = () =>
+    renderPanel(
+      <div data-style-panel>
+        <PopoverProvider>
+          <Content name="panel" levels={[label]} pickers={[entry("panel-color")]} />
+        </PopoverProvider>
+      </div>
+    );
+  const click = (text: string) => userEvent.click(screen.getByText(text));
+
+  it("a picker from level 1 closes level 2 (the label's color while Halo is open)", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    expect(openNow()).toEqual(["label", "halo"]);
+    await click("pick label-color from label");
+    expect(openNow()).toEqual(["label", "label-color"]);
+  });
+
+  it("a level 2 opened while a picker from level 1 is open closes the picker", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("pick label-color from label");
+    await click("open halo from label");
+    expect(openNow()).toEqual(["label", "halo"]);
+  });
+
+  it("a picker from level 2 keeps level 2 and level 1 open; closing it leaves them", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    await click("pick halo-color from halo");
+    expect(openNow()).toEqual(["label", "halo", "halo-color"]);
+    act(() => void fireEvent.keyDown(document, { key: "Escape" }));
+    expect(openNow()).toEqual(["label", "halo"]);
+  });
+
+  it("with level 3 open, a picker from level 1 closes levels 2 and 3", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    await click("open width from halo");
+    await click("pick width-color from width");
+    expect(openNow()).toEqual(["label", "halo", "width", "width-color"]);
+    await click("pick label-color from label");
+    expect(openNow()).toEqual(["label", "label-color"]);
+  });
+
+  it("a picker from level 2 closes level 3", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    await click("open width from halo");
+    await click("pick halo-color from halo");
+    expect(openNow()).toEqual(["label", "halo", "halo-color"]);
+  });
+
+  it("a picker from the panel closes the levels", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    await click("pick panel-color from panel");
+    expect(openNow()).toEqual(["panel-color"]);
+  });
+
+  it("the same picker again closes it and leaves its level open", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("pick label-color from label");
+    await click("pick label-color from label");
+    expect(openNow()).toEqual(["label"]);
+  });
+
+  it("a picker opened from a picker takes its place and keeps the levels", async () => {
+    renderLabel();
+    await click("open label from panel");
+    await click("open halo from label");
+    await click("pick halo-color from halo");
+    await click("pick swatches from halo-color");
+    expect(openNow()).toEqual(["label", "halo", "swatches"]);
   });
 });
 

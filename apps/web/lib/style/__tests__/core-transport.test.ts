@@ -9,7 +9,7 @@ vi.mock("@/lib/api/fetcher", () => ({
   apiRequestAuth: (...args: unknown[]) => apiRequestAuth(...args),
 }));
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const URL_OF = `${PROJECTS_API_BASE_URL}/p1/layer/7/style/s1`;
 const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -42,6 +42,23 @@ describe("core transport", () => {
     expect(await transport().save({ base_rev: 1, document: DOC }, { keepalive: false })).toEqual({
       ok: false,
       status: 502,
+    });
+  });
+
+  it("a 422 carries its code and the issues that refused the save", async () => {
+    const issue = { level: "error", code: "newer_version", path: "/version", message: "m" };
+    apiRequestAuth.mockResolvedValue(reply(422, { detail: { code: "newer_version", issues: [issue] } }));
+    expect(await transport().save({ base_rev: 1, document: DOC }, { keepalive: false })).toEqual({
+      ok: false,
+      status: 422,
+      code: "newer_version",
+      issues: [issue],
+    });
+    // A refusal without issues (FastAPI's own validation answers a list as detail) has no code either.
+    apiRequestAuth.mockResolvedValue(reply(422, { detail: [{ loc: ["body"], msg: "x" }] }));
+    expect(await transport().save({ base_rev: 1, document: DOC }, { keepalive: false })).toEqual({
+      ok: false,
+      status: 422,
     });
   });
 

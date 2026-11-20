@@ -15,14 +15,20 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import tempfile
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
+from goatlib.style import version as versions
+from goatlib.style.context import DataContext
 from goatlib.tools.project_import import (
     ImportCleanupTracker,
     ProjectImportParams,
@@ -186,6 +192,25 @@ class TestProjectImportRunner:
             }
             (rpt_dir / "rpt-1.json").write_text(json.dumps(rpt))
 
+            # Uploads get their new ids from core, not here: references to
+            # them elsewhere (a report's image, for one) keep their ids.
+            (archive_dir / "assets").mkdir()
+            upload_id = "00000000-0000-0000-0000-0000000000a1"
+            (archive_dir / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": upload_id,
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                            }
+                        ]
+                    }
+                )
+            )
+
             id_map = runner._generate_id_mapping(archive_dir)
 
         assert "layer-1" in id_map
@@ -193,6 +218,7 @@ class TestProjectImportRunner:
         assert "group-1" in id_map
         assert "wf-1" in id_map
         assert "rpt-1" in id_map
+        assert upload_id not in id_map
         # All new IDs should be unique
         new_ids = list(id_map.values())
         assert len(new_ids) == len(set(new_ids))
@@ -542,6 +568,197 @@ class TestProjectImportRunner:
         old = ExportProjectMetadata.model_validate({"name": "P"})
         assert (old.scene, old.locale) == (None, None)
 
+    def test_an_icon_named_by_url_gets_its_uploads_id(self) -> None:
+        """A style before 1.2 names an uploaded icon by its URL: it becomes
+        `asset:<id>` with the id core gave the upload this import, else the id
+        it has on the server that exported it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp)
+            (archive / "assets").mkdir()
+            (archive / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": "old-1",
+                                "s3_key": "goat/prod/users/x/icon/0a.svg",
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                            }
+                        ]
+                    }
+                )
+            )
+            asset_for_url = ProjectImportRunner._asset_for_url(archive, {})
+            uploaded = ProjectImportRunner._asset_for_url(archive, {"old-1": "new-1"})
+        url = "https://goat.example/goat/prod/users/x/icon/0a.svg"
+        assert asset_for_url(url) == "old-1"
+        assert uploaded(url) == "new-1"
+        assert asset_for_url("https://goat.example/other.svg") is None
+
+    @staticmethod
+    def _archive_with_uploads(archive: Path) -> None:
+        (archive / "assets").mkdir()
+        entries = []
+        for asset_id, name, asset_type, has_file in (
+            ("icon-1", "pin.svg", "icon", True),
+            ("image-1", "photo.png", "image", True),
+            ("gone-1", "lost.png", "image", False),
+        ):
+            path = f"assets/{asset_id}{Path(name).suffix}"
+            if has_file:
+                (archive / path).write_bytes(b"x")
+            entries.append(
+                {
+                    "id": asset_id,
+                    "file_name": name,
+                    "mime_type": "application/octet-stream",
+                    "asset_type": asset_type,
+                    "display_name": "Pin" if asset_type == "icon" else None,
+                    "category": "Shops" if asset_type == "icon" else None,
+                    "archive_path": path,
+                }
+            )
+        (archive / "assets" / "index.json").write_text(json.dumps({"assets": entries}))
+
+    def test_upload_archive_files_through_core(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Icons and images the archive carries go to core one by one; a
+        missing file and a failed upload are left out with a warning, the
+        others still go."""
+        core = MagicMock()
+
+        def upload(path: Path, **kw: object) -> str:
+            if kw["file_name"] == "photo.png":
+                raise RuntimeError("413 too large")
+            return f"new-{kw['file_name']}"
+
+        core.upload.side_effect = upload
+        with tempfile.TemporaryDirectory() as tmp, caplog.at_level("WARNING"):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            new_ids = runner._upload_archive_files(core, archive)
+
+        assert new_ids == {"icon-1": "new-pin.svg"}
+        assert [c.kwargs["file_name"] for c in core.upload.call_args_list] == [
+            "pin.svg",
+            "photo.png",
+        ]
+        assert core.upload.call_args_list[0].kwargs["display_name"] == "Pin"
+        assert core.upload.call_args_list[0].kwargs["category"] == "Shops"
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        for left_out in ("image-1", "gone-1"):
+            assert left_out in messages
+
+    def test_an_unsafe_archive_path_is_not_uploaded(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        core = MagicMock()
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "archive"
+            (archive / "assets").mkdir(parents=True)
+            (Path(tmp) / "secret.svg").write_bytes(b"x")
+            (archive / "assets" / "index.json").write_text(
+                json.dumps(
+                    {
+                        "assets": [
+                            {
+                                "id": "a",
+                                "file_name": "pin.svg",
+                                "mime_type": "image/svg+xml",
+                                "asset_type": "icon",
+                                "archive_path": "../secret.svg",
+                            }
+                        ]
+                    }
+                )
+            )
+            assert runner._upload_archive_files(core, archive) == {}
+        core.upload.assert_not_called()
+
+    def test_uploads_first_remembers_only_the_ones_it_created(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        """Core reuses an identical file the user already has; a failed import
+        must never delete that one, so only new ids are kept for the rollback."""
+        core = MagicMock()
+        core.upload_ids.return_value = {"had-before"}
+        names = iter(["had-before", "new-1"])
+        core.upload.side_effect = lambda path, **kw: next(names)
+        params = ProjectImportParams(
+            user_id="u",
+            s3_key="k",
+            target_folder_id="f",
+            core_url="http://core:8000",
+            access_token="tok",
+        )
+        tracker = ImportCleanupTracker()
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "goatlib.tools.project_import.CoreSession", return_value=core
+            ) as session,
+        ):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            new_ids = runner._upload_archive_uploads(params, archive, tracker)
+
+        session.assert_called_once_with("http://core:8000", "tok")
+        assert new_ids == {"icon-1": "had-before", "image-1": "new-1"}
+        assert tracker.upload_ids == ["new-1"]
+        assert tracker.core is core
+
+    def test_without_cores_address_uploads_stay_out(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        params = ProjectImportParams(user_id="u", s3_key="k", target_folder_id="f")
+        tracker = ImportCleanupTracker()
+        with tempfile.TemporaryDirectory() as tmp, caplog.at_level("WARNING"):
+            archive = Path(tmp)
+            self._archive_with_uploads(archive)
+            assert runner._upload_archive_uploads(params, archive, tracker) == {}
+        assert tracker.core is None
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        assert "icon-1" in messages and "image-1" in messages
+
+    def test_a_failed_import_deletes_the_uploads_it_created(
+        self, runner: ProjectImportRunner, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Best effort, with the same token: a delete that fails is logged and
+        the rest still go."""
+        runner._recorded_layer_ids = lambda ids: set()
+        core = MagicMock()
+        core.delete_upload.side_effect = [RuntimeError("401"), None]
+        tracker = ImportCleanupTracker()
+        tracker.core = core
+        tracker.upload_ids = ["new-1", "new-2"]
+        with caplog.at_level("WARNING"):
+            runner._cleanup_on_failure(tracker)
+        assert [c.args[0] for c in core.delete_upload.call_args_list] == [
+            "new-1",
+            "new-2",
+        ]
+        assert any("new-1" in r.getMessage() for r in caplog.records)
+
+    def test_named_styles_take_the_uploads_new_ids(self) -> None:
+        """The records are written with the ids core gave the uploads."""
+        style = {
+            "version": "1.0.0",
+            "kind": "vector",
+            "symbol": {"marker": {"shape": "icon", "icon": "asset:old-1"}},
+        }
+        styles, _ = ProjectImportRunner._link_styles(
+            {"styles": [{"name": "Default", "document": style, "active": True}]},
+            DataContext(kind="vector", geometry="point"),
+            seed="s",
+            asset_ids={"old-1": "new-1"},
+            asset_for_url=lambda path: None,
+            stamp=lambda document: document,
+        )
+        assert styles[0]["document"]["symbol"]["marker"]["icon"] == "asset:new-1"
+
     def test_cleanup_on_failure(self, runner: ProjectImportRunner) -> None:
         """DuckLake tables without a layer row dropped, S3 objects deleted.
 
@@ -555,7 +772,7 @@ class TestProjectImportRunner:
         runner._track_new_table(recorded, "lake.main.t_layer2")
         runner._recorded_layer_ids = lambda ids: {recorded} & set(ids)
         tracker = ImportCleanupTracker()
-        tracker.s3_keys = ["assets/user/file1.png", "assets/user/file2.png"]
+        tracker.s3_keys = ["thumbnails/p1/thumbnail.png"]
 
         runner._cleanup_on_failure(tracker)
 
@@ -567,17 +784,25 @@ class TestProjectImportRunner:
         assert len(drop_calls) == 1
         assert "lake.main.t_layer1" in drop_calls[0]
 
-        # Verify S3 delete_object calls
-        assert runner._s3_client.delete_object.call_count == 2
-        runner._s3_client.delete_object.assert_any_call(
-            Bucket="test-bucket", Key="assets/user/file1.png"
-        )
-        runner._s3_client.delete_object.assert_any_call(
-            Bucket="test-bucket", Key="assets/user/file2.png"
+        runner._s3_client.delete_object.assert_called_once_with(
+            Bucket="test-bucket", Key="thumbnails/p1/thumbnail.png"
         )
 
-    def test_run_full_import(self, runner: ProjectImportRunner) -> None:
-        """Full import run with a real ZIP file."""
+    @pytest.mark.parametrize("with_core", [True, False])
+    def test_run_full_import(
+        self,
+        runner: ProjectImportRunner,
+        caplog: pytest.LogCaptureFixture,
+        with_core: bool,
+    ) -> None:
+        """Full import run with a real ZIP file.
+
+        Uploads are core's: the job writes no file and no `uploaded_asset` row
+        for the archive's icon itself. With core's address it uploads the icon
+        through core as the user first, while the token is fresh (before any
+        data or record is written), and writes the records with the id core
+        returns; without, the icon is left out with a warning.
+        """
         user_id = "00000000-0000-0000-0000-000000000001"
         folder_id = "00000000-0000-0000-0000-ffffffffffff"
         layer_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -642,6 +867,21 @@ class TestProjectImportRunner:
             wf_bytes = json.dumps(workflow, indent=2).encode()
             checksums["workflows/wf-1.json"] = _checksum(wf_bytes)
 
+            assets_index = {
+                "assets": [
+                    {
+                        "id": "icon-1",
+                        "s3_key": "goat/prod/users/x/icon/0a.svg",
+                        "file_name": "pin.svg",
+                        "mime_type": "image/svg+xml",
+                        "asset_type": "icon",
+                        "archive_path": "assets/icon-1.svg",
+                    }
+                ]
+            }
+            assets_bytes = json.dumps(assets_index, indent=2).encode()
+            checksums["assets/index.json"] = _checksum(assets_bytes)
+
             manifest = {
                 "format_version": "1.0",
                 "exported_at": "2025-06-01T00:00:00Z",
@@ -664,6 +904,8 @@ class TestProjectImportRunner:
                 zf.writestr(f"layers/{layer_id}/data.parquet", b"FAKE_PARQUET")
                 zf.writestr("layer_groups.json", groups_bytes)
                 zf.writestr("workflows/wf-1.json", wf_bytes)
+                zf.writestr("assets/index.json", assets_bytes)
+                zf.writestr("assets/icon-1.svg", b"<svg/>")
                 zf.writestr(
                     "manifest.json",
                     json.dumps(manifest, indent=2).encode(),
@@ -675,6 +917,8 @@ class TestProjectImportRunner:
             user_id=user_id,
             s3_key="imports/test-export.zip",
             target_folder_id=folder_id,
+            core_url="http://core:8000" if with_core else None,
+            access_token="tok" if with_core else None,
         )
 
         # Mock S3 download_file to copy our test ZIP
@@ -719,13 +963,59 @@ class TestProjectImportRunner:
 
         mock_asyncpg_conn.fetchval = AsyncMock(side_effect=tracking_fetchval)
 
-        with patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg:
+        core = MagicMock()
+        core.upload_ids.return_value = set()
+        state_at_upload: list[tuple[int, int]] = []
+
+        def upload(path: Path, **kw: object) -> str:
+            tables = [
+                c for c in mock_con.execute.call_args_list if "CREATE TABLE" in str(c)
+            ]
+            state_at_upload.append((len(execute_calls_log), len(tables)))
+            assert path.read_bytes() == b"<svg/>"
+            return "new-icon"
+
+        core.upload.side_effect = upload
+        insert = AsyncMock(wraps=runner._insert_pg_records)
+        with (
+            patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg,
+            patch(
+                "goatlib.tools.project_import.CoreSession", return_value=core
+            ) as session,
+            patch.object(runner, "_insert_pg_records", insert),
+            caplog.at_level("WARNING"),
+        ):
             mock_asyncpg.connect = AsyncMock(return_value=mock_asyncpg_conn)
             result = runner.run(params)
 
         # Verify output structure
         assert "project_id" in result
         assert result["project_name"] == "Imported Project"
+
+        # The job itself writes no upload: no row, no file.
+        assert not [q for q in execute_calls_log if "uploaded_asset" in q]
+        runner._s3_client.put_object.assert_not_called()
+        runner._s3_client.upload_file.assert_not_called()
+        runner._s3_client.upload_fileobj.assert_not_called()
+        if with_core:
+            core.upload.assert_called_once()
+            assert core.upload.call_args.kwargs == {
+                "file_name": "pin.svg",
+                "mime_type": "image/svg+xml",
+                "asset_type": "icon",
+                "display_name": None,
+                "category": None,
+            }
+            session.assert_called_once_with("http://core:8000", "tok")
+            # First: no record and no DuckLake table yet.
+            assert state_at_upload == [(0, 0)]
+            assert insert.await_args.kwargs["asset_ids"] == {"icon-1": "new-icon"}
+            core.close.assert_called_once()
+            core.delete_upload.assert_not_called()
+        else:
+            session.assert_not_called()
+            assert insert.await_args.kwargs["asset_ids"] == {}
+            assert any("icon-1" in r.getMessage() for r in caplog.records)
         assert result["layer_count"] == 1
         assert result["workflow_count"] == 1
         assert result["report_count"] == 0
@@ -1668,7 +1958,11 @@ class TestImportNamedStyles:
     def test_at_most_ten_named_styles_are_kept_with_the_active_one(self) -> None:
         from goatlib.style.context import DataContext
 
-        doc = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+        doc = {
+            "version": "1.0.0",
+            "kind": "vector",
+            "symbol": {"fill": {"color": "#00aa00"}},
+        }
         link = {
             "styles": [
                 {"name": f"s{i}", "position": i, "document": doc, "active": i == 11}
@@ -1686,3 +1980,277 @@ class TestImportNamedStyles:
         assert len(styles) == 10
         assert [s["name"] for s in styles if s["active"]] == ["s11"]
         assert [s["name"] for s in styles][:9] == [f"s{i}" for i in range(9)]
+
+
+DISTRICTS = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+#: Where an archive carries GOAT Style documents, and a name the messages give.
+STYLE_PLACES = {
+    "dataset": "Districts",
+    "named": "Green",
+    "workflow": "Buffer",
+    "report": "Print",
+}
+
+
+def _style(version: str | int) -> dict[str, Any]:
+    return {
+        "version": version,
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#00aa00"}},
+    }
+
+
+def _versioned_archive(
+    where: str, version: str | int, goat_version: str | None = None
+) -> bytes:
+    """A format 1.2 archive with one polygon layer, its data and an icon, whose
+    style at `where` says `version`; its other styles say 1.0.0."""
+    styles = {
+        place: _style(version if place == where else "1.0.0") for place in STYLE_PLACES
+    }
+    files: dict[str, bytes] = {
+        "project.json": {"name": "Shared Project"},
+        "layers/index.json": {
+            "layers": [
+                {
+                    "id": DISTRICTS,
+                    "name": "Districts",
+                    "type": "feature",
+                    "feature_layer_type": "standard",
+                    "feature_layer_geometry_type": "polygon",
+                    "style": styles["dataset"],
+                }
+            ]
+        },
+        "layer_project_links.json": {
+            "links": [
+                {
+                    "id": 7,
+                    "layer_id": DISTRICTS,
+                    "name": "Districts",
+                    "styles": [
+                        {
+                            "name": "Green",
+                            "position": 0,
+                            "document": styles["named"],
+                            "active": True,
+                        }
+                    ],
+                }
+            ]
+        },
+        "workflows/wf-1.json": {
+            "id": "wf-1",
+            "name": "Buffer",
+            "config": {
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "data": {"type": "tool", "outputStyle": styles["workflow"]},
+                    }
+                ],
+                "edges": [],
+            },
+        },
+        "reports/r-1.json": {
+            "id": "r-1",
+            "name": "Print",
+            "config": {
+                "elements": [
+                    {"config": {"locked_layer_styles": {"7": styles["report"]}}}
+                ]
+            },
+        },
+        "assets/index.json": {
+            "assets": [
+                {
+                    "id": "icon-1",
+                    "file_name": "pin.svg",
+                    "mime_type": "image/svg+xml",
+                    "asset_type": "icon",
+                    "archive_path": "assets/icon-1.svg",
+                }
+            ]
+        },
+    }
+    contents = {
+        name: json.dumps(value, indent=2).encode() for name, value in files.items()
+    }
+    contents[f"layers/{DISTRICTS}/data.parquet"] = b"FAKE_PARQUET"
+    contents["assets/icon-1.svg"] = b"<svg/>"
+    manifest = {
+        "format_version": "1.2",
+        "goat_version": goat_version,
+        "exported_at": "2026-11-19T00:00:00Z",
+        "project_name": "Shared Project",
+        "checksums": {
+            name: f"sha256:{hashlib.sha256(data).hexdigest()}"
+            for name, data in contents.items()
+            if name.endswith(".json")
+        },
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in contents.items():
+            zf.writestr(name, data)
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2).encode())
+    return buf.getvalue()
+
+
+@contextmanager
+def _import_job(runner: ProjectImportRunner, zip_bytes: bytes) -> Iterator[Any]:
+    """The import's surroundings, mocked: the archive in S3, core, DuckLake and the
+    database. `calls` holds every statement the job sent, with its arguments."""
+
+    def download(**kwargs: object) -> None:
+        Path(str(kwargs["Filename"])).write_bytes(zip_bytes)
+
+    runner._s3_client.download_file.side_effect = download
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def execute(query: str, *args: object) -> None:
+        calls.append((query, args))
+
+    async def fetchval(query: str, *args: object) -> int:
+        calls.append((query, args))
+        return 1
+
+    conn = AsyncMock()
+    conn.set_type_codec = AsyncMock()
+    txn = MagicMock()
+    txn.__aenter__ = AsyncMock(return_value=txn)
+    txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=txn)
+    conn.execute = AsyncMock(side_effect=execute)
+    conn.fetchval = AsyncMock(side_effect=fetchval)
+    core = MagicMock()
+    core.upload_ids.return_value = set()
+    core.upload.return_value = "new-icon"
+    with (
+        patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg,
+        patch("goatlib.tools.project_import.CoreSession", return_value=core),
+        patch.object(runner, "_import_ducklake_layer") as ducklake,
+        patch.object(runner, "_get_ducklake_snapshot_id", return_value=None),
+    ):
+        mock_asyncpg.connect = AsyncMock(return_value=conn)
+        yield SimpleNamespace(
+            params=ProjectImportParams(
+                user_id="00000000-0000-0000-0000-000000000001",
+                s3_key="imports/test-export.zip",
+                target_folder_id="00000000-0000-0000-0000-ffffffffffff",
+                core_url="http://core:8000",
+                access_token="tok",
+            ),
+            calls=calls,
+            core=core,
+            ducklake=ducklake,
+            connect=mock_asyncpg.connect,
+        )
+
+
+def _stored_styles(calls: list[tuple[str, tuple[object, ...]]]) -> list[Any]:
+    """The documents of the `layer_style` rows the job inserted."""
+    return [
+        json.loads(arg)
+        for query, args in calls
+        if re.search(r"INSERT INTO \w+\.layer_style\s*\(", query)
+        for arg in args
+        if isinstance(arg, str) and arg.startswith("{")
+    ]
+
+
+def _config_style_versions(calls: list[tuple[str, tuple[object, ...]]]) -> list[Any]:
+    """The versions of the styles inside the workflow and report layout configs
+    the job inserted."""
+    from goatlib.style.configs import config_styles
+
+    return [
+        style["version"]
+        for query, args in calls
+        if re.search(r"INSERT INTO \w+\.(workflow|report_layout)\b", query)
+        for arg in args
+        if isinstance(arg, dict)
+        for style in config_styles(arg)
+    ]
+
+
+class TestImportStyleVersions:
+    """An archive written by a newer GOAT (spec 14): a style of a newer minor or
+    major GOAT Style version refuses the whole import before anything is written;
+    a newer patch is imported with a warning."""
+
+    @pytest.fixture()
+    def runner(self) -> ProjectImportRunner:
+        runner = ProjectImportRunner()
+        settings = MagicMock()
+        settings.customer_schema = "customer"
+        settings.s3_bucket_name = "test-bucket"
+        settings.max_upload_dataset_file_size = 5 * 1024 * 1024 * 1024
+        runner.settings = settings
+        runner._duckdb_con = MagicMock()
+        runner._s3_client = MagicMock()
+        runner._s3_client.head_object.return_value = {"ContentLength": 1}
+        return runner
+
+    @pytest.mark.parametrize("version", ["1.9.0", "2.0.0"])
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_import_refuses_a_newer_minor_style_before_writing(
+        self, runner: ProjectImportRunner, where: str, version: str
+    ) -> None:
+        with _import_job(runner, _versioned_archive(where, version)) as job:
+            with pytest.raises(ValueError) as refused:
+                runner.run(job.params)
+        message = str(refused.value)
+        assert STYLE_PLACES[where] in message
+        assert f"GOAT Style {version}" in message
+        assert f"reads up to {versions.SPEC_VERSION}" in message
+        assert "Update GOAT" in message
+        job.core.upload.assert_not_called()
+        job.ducklake.assert_not_called()
+        job.connect.assert_not_called()
+        assert job.calls == []
+
+    def test_the_refusal_names_the_goat_that_exported_the_project(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        archive = _versioned_archive("named", "1.9.0", goat_version="3.4.0")
+        with _import_job(runner, archive) as job:
+            with pytest.raises(ValueError) as refused:
+                runner.run(job.params)
+        assert "exported from GOAT 3.4.0" in str(refused.value)
+        assert "GOAT Style 1.9.0" in str(refused.value)
+
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_import_takes_a_newer_patch_with_a_warning(
+        self,
+        runner: ProjectImportRunner,
+        where: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with (
+            _import_job(runner, _versioned_archive(where, "1.0.9")) as job,
+            caplog.at_level("WARNING"),
+        ):
+            result = runner.run(job.params)
+        [warning] = result["warnings"]
+        assert STYLE_PLACES[where] in warning and "1.0.9" in warning
+        assert any(warning in r.getMessage() for r in caplog.records)
+        job.ducklake.assert_called_once()
+        documents = _stored_styles(job.calls)
+        assert len(documents) == 2
+        assert {d["version"] for d in documents} == {"1.0.0"}
+        assert {d["symbol"]["fill"]["color"] for d in documents} == {"#00aa00"}
+        # The styles inside the workflow and report layout configs too.
+        assert _config_style_versions(job.calls) == ["1.0.0", "1.0.0"]
+
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_the_integer_version_1_imports_as_1_0_0_without_a_warning(
+        self, runner: ProjectImportRunner, where: str
+    ) -> None:
+        with _import_job(runner, _versioned_archive(where, 1)) as job:
+            result = runner.run(job.params)
+        assert result["warnings"] == []
+        documents = _stored_styles(job.calls)
+        assert len(documents) == 2
+        assert {d["version"] for d in documents} == {"1.0.0"}
+        assert {d["symbol"]["fill"]["color"] for d in documents} == {"#00aa00"}

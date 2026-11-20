@@ -92,7 +92,8 @@ More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_ho
   layer cannot make GOAT read from inside your network. List the hosts that may
   anyway (an object store holding COGs) in `RASTER_PRIVATE_HOSTS`, comma-separated.
   core asks the bundle's geoapi for a COG's bounds when a raster layer is added
-  (`GOAT_GEOAPI_URL`, `http://geoapi:8000`; change it only if geoapi runs elsewhere).
+  or its file address changes (`GOAT_GEOAPI_URL`, `http://geoapi:8000`; change it
+  only if geoapi runs elsewhere).
 
 More in the docs: [External services](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services)
 

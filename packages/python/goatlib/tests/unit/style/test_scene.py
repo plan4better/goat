@@ -8,7 +8,7 @@ from .conftest import codes
 
 
 def scene_codes(scene: dict) -> list[str]:
-    return codes(MapDocument, {"version": 1, "scene": scene})
+    return codes(MapDocument, {"version": "1.0.0", "scene": scene})
 
 
 def test_full_scene_parses() -> None:
@@ -188,12 +188,14 @@ def test_extrudes() -> None:
     from goatlib.style.scene import extrudes
 
     assert extrudes(
-        {"version": 1, "kind": "vector", "symbol": {"extrude": {"height": 10}}}
+        {"version": "1.0.0", "kind": "vector", "symbol": {"extrude": {"height": 10}}}
     )
-    assert not extrudes({"version": 1, "kind": "vector", "symbol": {"extrude": False}})
+    assert not extrudes(
+        {"version": "1.0.0", "kind": "vector", "symbol": {"extrude": False}}
+    )
     assert extrudes(
         {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "vector",
             "rules": [
                 {"when": {"op": "isNull", "args": [{"property": "a"}]}, "extrude": {}}
@@ -201,12 +203,16 @@ def test_extrudes() -> None:
         }
     )
     assert extrudes(
-        {"version": 1, "kind": "vector", "render": {"type": "h3", "extrude": {}}}
+        {"version": "1.0.0", "kind": "vector", "render": {"type": "h3", "extrude": {}}}
     )
     assert not extrudes(
-        {"version": 1, "kind": "vector", "render": {"type": "heatmap", "extrude": {}}}
+        {
+            "version": "1.0.0",
+            "kind": "vector",
+            "render": {"type": "heatmap", "extrude": {}},
+        }
     )
-    assert not extrudes({"version": 1, "kind": "raster"})
+    assert not extrudes({"version": "1.0.0", "kind": "raster"})
     assert not extrudes(None)
 
 
@@ -221,7 +227,7 @@ CTX = MapContext(
 def issues_of(scene: dict, ctx: MapContext = CTX) -> list[tuple[str, str, str]]:
     return [
         (i.code, i.level, i.path)
-        for i in validate_map({"version": 1, "scene": scene}, ctx)
+        for i in validate_map({"version": "1.0.0", "scene": scene}, ctx)
     ]
 
 

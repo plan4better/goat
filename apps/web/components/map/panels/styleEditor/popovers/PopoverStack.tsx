@@ -31,10 +31,10 @@ import {
   type OpenStack,
   OpenStackContext,
   type OpenStackStore,
-  type PopoverApi,
   PopoverContext,
   type PopoverEntry,
   type PopoverLevel,
+  type PopoverStackApi,
   placeIn,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 
@@ -394,14 +394,23 @@ export function PopoverProvider({
   }, []);
   const closePicker = useCallback(() => close("picker"), [close]);
 
-  const api = useMemo<PopoverApi>(
+  const api = useMemo<PopoverStackApi>(
     () => ({
-      open: (level, given) => {
+      open: (level, given, from) => {
         const opener = clicked.current?.closest("button, [role='button']") ?? null;
         const entry: PopoverEntry = { ...given, opener };
         setOpen((state) => {
-          if (level === "picker")
-            return state.picker?.key === entry.key ? { ...state, picker: null } : { ...state, picker: entry };
+          if (level === "picker") {
+            if (state.picker?.key === entry.key) return { ...state, picker: null };
+            // Opened from a picker, it takes that picker's place, beside the same levels.
+            if (from === "picker") return { ...state, picker: entry };
+            // The level that asked is gone (it closed in the same click): nothing opens from it.
+            if (state.levels.length < from) return state;
+            // The levels after the one it is opened from close: that level (or one after it) opened them before.
+            return { levels: state.levels.slice(0, from), picker: entry };
+          }
+          // A level closes the picker: a picker is open only beside the last level, the level this one is opened from
+          // or one after it.
           const i = level - 1;
           // The level that asked is gone (it closed in the same click): nothing opens from it.
           if (state.levels.length < i) return state;

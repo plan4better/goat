@@ -1,6 +1,5 @@
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
-import type { Theme } from "@mui/material";
-import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Typography, useTheme } from "@mui/material";
 import centroid from "@turf/centroid";
 import type { MapGeoJSONFeature, Map as MaplibreMap, PaddingOptions, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -34,9 +33,11 @@ import {
   INTERACTIVE_PARTS,
   type ViewLayer,
   clusterFeatureOf,
+  featureProperties,
   topFeature,
   zoomToCluster,
 } from "@/lib/style/render/viewLayers";
+import { getFeature } from "@/lib/api/layers";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import { applyMapLanguage } from "@/hooks/map/MapHooks";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
@@ -67,6 +68,7 @@ import { layerPopup } from "@/components/map/popover/normalizePopup";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
+  popupFieldsLayerId,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
 } from "@/components/map/popover/popupVisibility";
@@ -116,6 +118,9 @@ interface MapProps {
    * marker on top of its highlight. Off for maps that only need the
    * highlight, such as the dataset preview. */
   activeFeatureMarker?: boolean;
+  /** The layout shows the popup in its own drawer (the published map on a phone): the map marks the feature only.
+   * Otherwise the map shows the popup itself, in a window of any width. */
+  popupInDrawer?: boolean;
 }
 
 /**
@@ -134,6 +139,10 @@ const datasetOf = (layer: ViewLayer): string => String(layer.layer_id ?? layer.i
 
 /** The least time between two cell value reads while hovering a raster file, in ms. */
 const RASTER_HOVER_INTERVAL = 100;
+
+/** The map's zoom as the store holds it: rounded down to a tenth. MapLibre draws a tile's images and switches layers
+ * and clusters at the whole zoom at or below the map's, so at 12.96 every reader of the store sees zoom 12, as drawn. */
+const storedZoom = (zoom: number): number => Math.floor(zoom * 10) / 10;
 
 const MapViewer: React.FC<MapProps> = ({
   mapRef,
@@ -159,6 +168,7 @@ const MapViewer: React.FC<MapProps> = ({
   containerSx,
   isEditor,
   activeFeatureMarker = true,
+  popupInDrawer = false,
 }) => {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
@@ -255,10 +265,10 @@ const MapViewer: React.FC<MapProps> = ({
     editing,
   );
 
-  // The popup is the style's (spec 7.4) in today's popup configuration.
+  // The popup is the style's (spec 7.4) in today's popup configuration; a raster file's labels in the map's language.
   const activePopupConfig = useMemo(
-    () => popupInfo?.popup ?? layerPopup(clickedPopupLayer, popupInfo?.featureProperties),
-    [clickedPopupLayer, popupInfo?.popup, popupInfo?.featureProperties],
+    () => popupInfo?.popup ?? layerPopup(clickedPopupLayer, popupInfo?.featureProperties, { t }),
+    [clickedPopupLayer, popupInfo?.popup, popupInfo?.featureProperties, t],
   );
 
   // Same lookup pattern as `clickedPopupLayer` above, but for the live-preview
@@ -411,6 +421,9 @@ const MapViewer: React.FC<MapProps> = ({
   // still over the same feature, and to clear the popup when the cursor
   // leaves all hover-trigger features.
   const hoverPopupKeyRef = useRef<string | undefined>(undefined);
+  // The latest click: a clustered layer's feature properties arrive from geoapi after it, and only the latest click's
+  // open the popup.
+  const clickSeqRef = useRef(0);
 
   // Touch start point — used by the touch-tap fallback below. Maplibre's
   // own tap-to-click conversion is blocked by MapboxDraw's mode
@@ -459,6 +472,8 @@ const MapViewer: React.FC<MapProps> = ({
 
     const map = mapRef?.current?.getMap();
 
+    const click = ++clickSeqRef.current;
+
     // Cluster click: zoom to where the cluster breaks apart.
     const clusterFeature = map ? clusterFeatureOf(map, features) : undefined;
     if (map && clusterFeature) {
@@ -493,27 +508,28 @@ const MapViewer: React.FC<MapProps> = ({
           lngLat = [interactiveFeature.geometry.coordinates[0], interactiveFeature.geometry.coordinates[1]];
         }
 
-        const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(
-          interactiveFeature.properties
-        );
-        dispatch(
-          setPopupInfo({
-            lngLat,
-            properties: primitiveProperties,
-            jsonProperties: jsonProperties,
-            // Full unfiltered feature properties — snapshotted here so the
-            // new MapFeaturePopover doesn't read live from highlightedFeature
-            // (which mutates on unrelated UI events like changing the
-            // selected layer in the Layers panel).
-            featureProperties: interactiveFeature.properties as Record<string, unknown>,
-            triggeredBy: "click",
-            title: interactiveLayer.name ?? "",
-            // queryables expects the dataset id, not the project layer id.
-            layerId: datasetOf(interactiveLayer),
-            projectLayerId: interactiveLayer.id.toString(),
-            onClose: handlePopoverClose,
-          })
-        );
+        void featureProperties(interactiveLayer, interactiveFeature, getFeature).then((full) => {
+          if (click !== clickSeqRef.current) return;
+          const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(full);
+          dispatch(
+            setPopupInfo({
+              lngLat,
+              properties: primitiveProperties,
+              jsonProperties: jsonProperties,
+              // Full unfiltered feature properties — snapshotted here so the
+              // new MapFeaturePopover doesn't read live from highlightedFeature
+              // (which mutates on unrelated UI events like changing the
+              // selected layer in the Layers panel).
+              featureProperties: full,
+              triggeredBy: "click",
+              title: interactiveLayer.name ?? "",
+              // queryables expects the dataset id, not the project layer id.
+              layerId: datasetOf(interactiveLayer),
+              projectLayerId: interactiveLayer.id.toString(),
+              onClose: handlePopoverClose,
+            })
+          );
+        });
       } else {
         // No interactive features were found in the click stack.
         dispatch(setHighlightedFeature(undefined));
@@ -546,13 +562,16 @@ const MapViewer: React.FC<MapProps> = ({
       if (!didHighlight && cfg && layerHighlightsActiveFeature(cfg.enabled, cfg.highlight_active_feature)) {
         dispatch(setHighlightedFeature(filterHit.feature));
       }
-      dispatch(
-        setClickedFeatureForFilter({
-          layerProjectId: filterHit.layer.id as number,
-          properties: filterHit.feature.properties,
-          timestamp: Date.now(),
-        })
-      );
+      void featureProperties(filterHit.layer, filterHit.feature, getFeature).then((properties) => {
+        if (click !== clickSeqRef.current) return;
+        dispatch(
+          setClickedFeatureForFilter({
+            layerProjectId: filterHit.layer.id as number,
+            properties,
+            timestamp: Date.now(),
+          })
+        );
+      });
     }
 
     if (onClick) {
@@ -659,21 +678,25 @@ const MapViewer: React.FC<MapProps> = ({
           : [e.lngLat.lng, e.lngLat.lat];
 
       dispatch(setHighlightedFeature(hoverFeature));
-      dispatch(
-        setPopupInfo({
-          lngLat: featureLngLat,
-          title: hoverLayer.name ?? "",
-          layerId: datasetOf(hoverLayer),
-          projectLayerId: hoverLayer.id.toString(),
-          // MapFeaturePopover uses featureProperties for token
-          // substitution; `properties` carries the same payload for the
-          // readers that still take it (the fixed popup slot's fallback).
-          featureProperties: hoverFeature.properties as Record<string, unknown>,
-          properties: hoverFeature.properties as Record<string, string>,
-          triggeredBy: "hover",
-          onClose: handlePopoverClose,
-        }),
-      );
+      void featureProperties(hoverLayer, hoverFeature, getFeature).then((full) => {
+        // The pointer moved on while a clustered layer's properties were on their way.
+        if (hoverPopupKeyRef.current !== hoverKey) return;
+        dispatch(
+          setPopupInfo({
+            lngLat: featureLngLat,
+            title: hoverLayer.name ?? "",
+            layerId: datasetOf(hoverLayer),
+            projectLayerId: hoverLayer.id.toString(),
+            // MapFeaturePopover uses featureProperties for token
+            // substitution; `properties` carries the same payload for the
+            // readers that still take it (the fixed popup slot's fallback).
+            featureProperties: full,
+            properties: full as Record<string, string>,
+            triggeredBy: "hover",
+            onClose: handlePopoverClose,
+          }),
+        );
+      });
     } else if (hoverPopupKeyRef.current !== undefined) {
       // Cursor left all hover-trigger features — close the hover popup.
       // We only get here if the current popup was hover-originated
@@ -729,10 +752,10 @@ const MapViewer: React.FC<MapProps> = ({
         { pixelRatio: 2 },
       );
 
-      // set current zoom (rounded to 1 decimal place for consistency)
+      // set current zoom (to a tenth, as storedZoom keeps it)
       const map = mapRef.current.getMap();
       const zoom = map.getZoom();
-      const roundedZoom = Math.round(zoom * 10) / 10;
+      const roundedZoom = storedZoom(zoom);
       lastDispatchedZoomRef.current = roundedZoom;
       dispatch(setCurrentZoom(roundedZoom));
 
@@ -770,9 +793,9 @@ const MapViewer: React.FC<MapProps> = ({
       if (mapRef?.current) {
         const map = mapRef.current.getMap();
         const zoom = map.getZoom();
-        // Round to 1 decimal place to avoid excessive Redux updates during smooth zoom/pan
+        // To a tenth (storedZoom) to avoid excessive Redux updates during smooth zoom/pan
         // This prevents re-renders of components subscribed to currentZoom (like LayerTree)
-        const roundedZoom = Math.round(zoom * 10) / 10;
+        const roundedZoom = storedZoom(zoom);
         if (lastDispatchedZoomRef.current !== roundedZoom) {
           // Debounce the Redux dispatch — zoom visibility dimming in the layer tree
           // doesn't need real-time updates during zoom animation
@@ -791,8 +814,6 @@ const MapViewer: React.FC<MapProps> = ({
     },
     [dispatch, onMove, mapRef]
   );
-
-  const isMobile = useMediaQuery((theme: Theme) => theme.breakpoints.down("md"));
 
   // "Highlight active feature" (popup.highlight_active_feature) governs ALL active-object highlighting: with a popup
   // open but its highlight off, the feature is not marked either. Highlights without a popup (click to filter, the
@@ -1028,14 +1049,14 @@ const MapViewer: React.FC<MapProps> = ({
                   toolbar / panel positioning the same way Geocoder /
                   ToolboxCtrl / MeasureButton do. Only the in-place
                   variant lives inside <Map>, where it needs useMap to
-                  anchor to feature coordinates. On mobile the popup
-                  content lives in the bottom drawer instead, but the
-                  active-feature pulse below still marks the feature
-                  on the map. */}
-              {!isMobile && activePopupConfig.layout !== "pinned" && (
+                  anchor to feature coordinates. A layout that shows the
+                  popup in its own drawer (`popupInDrawer`, the published
+                  map on a phone) gets none here, but the active-feature
+                  pulse below still marks the feature on the map. */}
+              {!popupInDrawer && activePopupConfig.layout !== "pinned" && (
                 <MapFeaturePopover
                   key={highlightedFeature?.id ?? v4()}
-                  layerId={popupInfo.layerId ?? ""}
+                  layerId={popupFieldsLayerId(popupInfo.layerId, clickedPopupLayer)}
                   layerName={popupInfo.title}
                   popup={activePopupConfig}
                   properties={
@@ -1063,7 +1084,7 @@ const MapViewer: React.FC<MapProps> = ({
               />
             </>
           )}
-          {!isMobile &&
+          {!popupInDrawer &&
             popupPreview &&
             previewLayer &&
             previewPopupConfig &&
@@ -1093,7 +1114,7 @@ const MapViewer: React.FC<MapProps> = ({
                 />
               </>
             )}
-          {!isMobile && popupEditor && isEditor && (
+          {!popupInDrawer && popupEditor && isEditor && (
             <MapPopoverEditor
               key={popupEditor.feature?.id || popupEditor.feature?.properties?.id || v4()}
               {...popupEditor}

@@ -41,7 +41,7 @@ from tests.authz.conftest import _personal_space
 S = settings.SCHEMA
 API = settings.API_V2_STR
 PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
-STYLE = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
+STYLE = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 
 
 async def give_org_role(db_session: AsyncSession, user_id: UUID, role_id: UUID) -> None:

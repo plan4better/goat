@@ -11,7 +11,7 @@ const tiles = { type: "tiles" as const, id: "s9", tiles: ["https://t/{z}/{x}/{y}
 const h3 = (render: object) =>
   compileLayer({
     id: "9",
-    style: { version: 1, kind: "vector", render: { type: "h3", ...render } } as LayerStyle,
+    style: { version: "1.0.0", kind: "vector", render: { type: "h3", ...render } } as LayerStyle,
     geometry: "point",
     source: tiles,
   });

@@ -1,7 +1,8 @@
 "use client";
 
 // A value by zoom (spec 4.2, prototype 4.3): the stop chart, the selected stop's zoom and value, and the transition
-// between stops. A stop may hold a value by attribute (spec 4.4); it opens the attribute editor on that stop.
+// between stops. A stop may hold a value by attribute (spec 4.4); it opens the attribute editor on that stop. A
+// compound (the label's Font) edits its keys' stops as one: each stop is one of its choices.
 import { IconButton, Typography, useTheme } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,9 +11,17 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { SLIDERS } from "@/lib/style/editor/defaults";
-import { fixedValue, keyOf } from "@/lib/style/editor/forms";
+import {
+  type CompoundChoice,
+  compoundAt,
+  compoundStops,
+  fixedValue,
+  fontOfChoice,
+  keyOf,
+  writeCompoundStops,
+} from "@/lib/style/editor/forms";
 import { type Path, getIn, setIn } from "@/lib/style/editor/store";
-import { choiceLabel } from "@/lib/style/editor/summaries";
+import { choiceLabel, compoundOptions } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -24,6 +33,7 @@ import {
   useLiveMapZoom,
   useMapZoom,
   useStyleData,
+  useStyleSelector,
   useStyleValue,
   useZoomTo,
 } from "@/components/map/panels/styleEditor/context";
@@ -50,6 +60,8 @@ import {
 import { ChoiceRow, FormButton, NumberInput, Row, SliderRow } from "@/components/map/panels/styleEditor/rows";
 
 const SMOOTH_BASE = 1.6;
+/** A label font weight as a CSS font weight, for a Font stop's "Aa". */
+const CSS_WEIGHTS: Record<string, number> = { light: 300, regular: 400, medium: 500, bold: 700 };
 const TRANSITIONS = ["linear", "smooth", "steps"];
 const HEX = /^#[0-9a-f]{6}/i;
 
@@ -137,17 +149,21 @@ function StopGlyph({
     );
   if (propertyKey === "marker.icon")
     return typeof shown === "string" ? <IconStopGlyph iconRef={shown} record={markerRecordOf(path)} /> : null;
-  if (propertyKey === "label.font.weight")
+  // A Font stop is a choice of the compound: a weight, upright or italic.
+  if (propertyKey === "label.font.weight") {
+    const font = fontOfChoice(String(shown));
     return (
       <text
         fontSize={13}
         textAnchor="middle"
         dominantBaseline="middle"
-        fontWeight={shown === "bold" ? 700 : 400}
+        fontWeight={CSS_WEIGHTS[font.weight] ?? 400}
+        fontStyle={font.style === "italic" ? "italic" : undefined}
         fill={color}>
         Aa
       </text>
     );
+  }
   if (propertyKey.endsWith(".dash"))
     return (
       <line x1={-11} x2={11} stroke={color} strokeWidth={2} strokeDasharray={DASH_ARRAYS[String(shown)]} />
@@ -180,7 +196,16 @@ function StopGlyph({
   return <circle r={clampNumber(shown / 2, 1.5, 12)} fill={color} />;
 }
 
-export function ZoomEditor({ path, choices }: { path: Path; choices?: readonly string[] }) {
+export function ZoomEditor({
+  path,
+  choices,
+  compound,
+}: {
+  path: Path;
+  choices?: readonly string[];
+  /** `path` names a compound (its first key): the stops are its choices, written to all its keys. */
+  compound?: CompoundChoice;
+}) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const data = useStyleData();
@@ -190,13 +215,24 @@ export function ZoomEditor({ path, choices }: { path: Path; choices?: readonly s
   const popover = usePopover();
   const next = useNextLevel();
   const form = useStyleValue<unknown>(path);
+  // A compound's part, and every key's stops in it.
+  const record = compound ? path.slice(0, path.length - compound.keys[0].length - 1) : "";
+  useStyleSelector((doc) =>
+    compound ? JSON.stringify(compound.keys.map((k) => getIn(doc, `${record}.${k}`))) : ""
+  );
   const layerFrom = useStyleValue<number | undefined>("min_zoom");
   const layerUntil = useStyleValue<number | undefined>("max_zoom");
   const partColor = useStyleValue<unknown>(`${path.slice(0, path.lastIndexOf("."))}.color`);
-  const stops = (isObject(form) && Array.isArray(form.zoom) ? form.zoom : []) as Stops;
+  const stops = (
+    compound
+      ? compoundStops(store.document, record, compound)
+      : isObject(form) && Array.isArray(form.zoom)
+        ? form.zoom
+        : []
+  ) as Stops;
   const [selected, setSelected] = useState(() => (stops.length ? nearest(stops, mapZoom) : 0));
   // Made fixed (or by attribute) while open, by the row's mode or an undo: the editor closes.
-  const gone = !isObject(form) || stops.length < 2;
+  const gone = (!compound && !isObject(form)) || stops.length < 2;
   useCloseWhenGone(gone);
   if (gone)
     return (
@@ -213,7 +249,10 @@ export function ZoomEditor({ path, choices }: { path: Path; choices?: readonly s
   const [zoom, value] = stops[index];
   const stopPath = `${path}.zoom.${index}.1`;
   const glyphColor = typeof partColor === "string" && HEX.test(partColor) ? partColor : "#6b7280";
-  const writeStops = (nextStops: Stops) => store.set(`${path}.zoom`, nextStops);
+  const writeStops = (nextStops: Stops) =>
+    compound
+      ? store.update((doc) => writeCompoundStops(doc, compound, record, nextStops as Array<[number, string]>))
+      : store.set(`${path}.zoom`, nextStops);
 
   const add = (z: number): number => {
     const at = stops.findIndex(([s]) => s > z);
@@ -221,8 +260,9 @@ export function ZoomEditor({ path, choices }: { path: Path; choices?: readonly s
     const left = stops[Math.max(0, i - 1)][1];
     const right = stops[Math.min(stops.length - 1, i)][1];
     // A stop between attribute forms copies its neighbor; plain values follow the current curve.
-    const v =
-      isObject(left) || isObject(right)
+    const v = compound
+      ? compoundAt(store.document, record, compound, z)
+      : isObject(left) || isObject(right)
         ? clone(isObject(left) ? left : right)
         : fixedValue(store.document, path, { mapZoom: z });
     writeStops([...stops.slice(0, i), [z, v], ...stops.slice(i)]);
@@ -248,7 +288,16 @@ export function ZoomEditor({ path, choices }: { path: Path; choices?: readonly s
 
   const label = t("style_editor.value");
   let valueRow;
-  if (isObject(value) && typeof value.field === "string") {
+  if (compound)
+    valueRow = (
+      <ChoiceRow<string>
+        label={label}
+        value={String(value)}
+        options={compoundOptions(t, compound)}
+        onChange={(v) => writeStops(stops.map((stop, k) => (k === index ? [stop[0], v] : stop)))}
+      />
+    );
+  else if (isObject(value) && typeof value.field === "string") {
     const fieldLabel = data.fields.find((f) => f.name === value.field)?.label ?? value.field;
     valueRow = (
       <Row label={label}>

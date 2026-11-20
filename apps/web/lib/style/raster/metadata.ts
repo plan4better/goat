@@ -1,5 +1,6 @@
-// What the panel knows about a raster file (spec 9): its bands, no-data value, color table and band statistics, from
-// the raster service's info (geoapi `/collections/{id}/raster/info`, statistics from an overview).
+// What the panel knows about a raster file (spec 9): its bands and their names, no-data value, color table and band
+// statistics, from the raster service's info (geoapi `/collections/{id}/raster/info`, statistics from an overview).
+import type { TFunction } from "i18next";
 
 /** The raster service's info, as geoapi answers it. */
 export interface RasterInfoResponse {
@@ -47,6 +48,8 @@ export interface RasterInfo {
   tableColors?: Record<number, string>;
   /** Whole-number cells. */
   integer: boolean;
+  /** The file's description of each band, in band order; "" where it has none. */
+  names?: string[];
   stats: BandStats[];
 }
 
@@ -55,6 +58,15 @@ const hex = (rgb: number[]) =>
     .slice(0, 3)
     .map((v) => v.toString(16).padStart(2, "0"))
     .join("")}`;
+
+/** A band's own name; the service names a band without a description "Band <n>", which is none. */
+const fileName = (name: string | undefined, band: number): string =>
+  !name || name === `Band ${band}` ? "" : name;
+
+/** A band's label: the file's name for it, else "Band <n>" in the reader's language. */
+export function bandLabel(info: RasterInfo | undefined, band: number, t: TFunction): string {
+  return info?.names?.[band - 1] || t("style_editor.band_n", { n: band });
+}
 
 export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
   const table = json.color_table;
@@ -71,6 +83,7 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
         }
       : {}),
     integer: /^u?int/.test(json.dtype),
+    names: Array.from({ length: json.count }, (_, i) => fileName(json.names[i], i + 1)),
     stats: json.bands.map((b) => ({
       index: b.index,
       min: b.min,
@@ -80,6 +93,19 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
       values: b.values,
     })),
   };
+}
+
+/** A number as typed, cut to three digits when longer (a float file's lowest value as its no-data value: -3.4e+38).
+ * Not locale formatted: the no-data box reads commas as separators. */
+export function shortNumber(value: number): string {
+  const text = String(value);
+  return text.length <= 10 ? text : value.toPrecision(3).replace(/\.?0+(?=e|$)/, "");
+}
+
+/** A band's minimum and maximum, as the values' description gives them; null when unknown. */
+export function bandRange(info: RasterInfo | undefined, band: number): [number, number] | null {
+  const stats = info?.stats.find((b) => b.index === band);
+  return stats && stats.min !== null && stats.max !== null ? [stats.min, stats.max] : null;
 }
 
 export interface ValueSample {

@@ -49,7 +49,7 @@ describe("applyMapLanguage", () => {
       [
         {
           key: "5",
-          style: { version: 1, kind: "vector", symbol: { label: { text: "{name}" } } } as LayerStyle,
+          style: { version: "1.0.0", kind: "vector", symbol: { label: { text: "{name}" } } } as LayerStyle,
           geometry: "point",
           entry: {},
           source: { type: "tiles", id: "src-5", tiles: ["https://geoapi/5/{z}/{x}/{y}"] },

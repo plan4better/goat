@@ -5,6 +5,7 @@ Run twice, it writes nothing the second time."""
 import asyncio
 import dataclasses
 from collections.abc import Iterator
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 from uuid import UUID
@@ -17,6 +18,7 @@ from geoapi.services import raster_service as rs
 
 A = UUID("abc123de-f456-7890-1234-5678901234ab")
 B = UUID("0000000f-0000-0000-0000-00000000000b")
+UPDATED = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 INFO = RasterInfo(
     100,
     100,
@@ -73,7 +75,8 @@ class FakeDb:
             ]
         # The raster routes' own lookup of one layer.
         layer_id = args[0]
-        return {"url": self.url[layer_id], "updated": 1} if fetch_one else None
+        row = {"url": self.url[layer_id], "updated_at": UPDATED}
+        return row if fetch_one else None
 
 
 @pytest.fixture

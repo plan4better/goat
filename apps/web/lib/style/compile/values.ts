@@ -205,7 +205,9 @@ export function valueAt(value: Value, z: number): Expr {
     return a;
   }
   if (kind === "number") return fold(["+", ["*", a, round(1 - t)], ["*", b, round(t)]]);
-  return a;
+  // Colors by attribute: each feature's two colors blended as MapLibre blends them over the zoom.
+  if (JSON.stringify(a) === JSON.stringify(b)) return a;
+  return ["interpolate", ["linear"], round(t), 0, a, 1, b];
 }
 
 const sameCurve = (a: Curve, b: Curve) => a.length === b.length && a.every((x, i) => x === b[i]);

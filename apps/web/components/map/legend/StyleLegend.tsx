@@ -27,6 +27,8 @@ import {
 } from "@/lib/style/legend";
 import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
 
+import { rampGradient } from "./rampGradient";
+
 const str = (value: unknown, fallback: string) => (typeof value === "string" ? value : fallback);
 const num = (value: unknown, fallback: number) => (typeof value === "number" ? value : fallback);
 
@@ -117,12 +119,37 @@ interface SwatchProps {
   width?: number;
   /** In a block that sets the outline alone: no fill and a ring of at least 2 px, so the outline reads. */
   ring?: boolean;
+  /** The most a marker's side may be outside a block of sizes, in px (a marker on an area or a line). */
+  cap?: number;
+  /** Drawn inside another swatch, which is the one hidden from screen readers. */
+  nested?: boolean;
+}
+
+/** A cluster's badge (spec 8.2 `count: badge`): a dot in its fill color at the marker's upper right, with its ring. */
+function BadgeDot({ badge }: { badge: NonNullable<Swatch["badge"]> }) {
+  return (
+    <span
+      data-cluster-badge
+      style={{
+        position: "absolute",
+        top: 0,
+        right: 0,
+        boxSizing: "border-box",
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        backgroundColor: badge.color,
+        border: `1px solid ${badge.ring}`,
+      }}
+    />
+  );
 }
 
 /** A point's marker as the map draws it (lib/style/render/markerImages.ts): its shape in the fill (a hollow marker
  * without it) with the stroke and the icon on it, or the icon alone. It is 14 px high whatever the marker's size, except
  * in a block of sizes. */
-function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
+function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) {
+  const hidden = nested ? undefined : ("true" as const);
   const marker = swatch.marker ?? {};
   const icon = typeof marker.icon === "string" ? marker.icon : undefined;
   const hollow = marker.fill === false || ring === true;
@@ -135,7 +162,7 @@ function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
   // 14 px; a plain circle its own size up to that.
   const fixed = icon || !round || marker.shape === "square" || marker.shape === "icon";
   const small = fixed ? 14 : Math.min(Math.max(num(marker.size, 8), 4), 14);
-  const side = sized !== undefined ? markerSide(marker, sized) : small;
+  const side = sized !== undefined ? markerSide(marker, sized) : Math.min(small, cap ?? small);
   const box = {
     width: width ?? BOX.width,
     height: sized !== undefined ? Math.max(BOX.height, side) : BOX.height,
@@ -143,11 +170,14 @@ function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
     alignItems: "center",
     justifyContent: "center",
     flex: "none",
+    position: "relative" as const,
   };
+  const badge = swatch.badge ? <BadgeDot badge={swatch.badge} /> : null;
   if (marker.shape === "icon")
     return (
-      <span aria-hidden="true" style={{ ...box, opacity }}>
+      <span aria-hidden={hidden} style={{ ...box, opacity }}>
         <MarkerIcon icon={icon ?? "goat:marker"} tint={str(marker.color, "#2bb381")} side={side} />
+        {badge}
       </span>
     );
   if (!round) {
@@ -155,7 +185,7 @@ function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
     const spec = MARKER_SHAPES[shape];
     const iconSide = Math.round(side * spec.icon.share);
     return (
-      <span aria-hidden="true" style={{ ...box, opacity, position: "relative" }}>
+      <span aria-hidden={hidden} style={{ ...box, opacity }}>
         <svg
           data-marker-shape={shape}
           width={side}
@@ -180,11 +210,12 @@ function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
             <MarkerIcon icon={icon} tint={str(marker.icon_color, "#ffffff")} side={iconSide} />
           </span>
         )}
+        {badge}
       </span>
     );
   }
   return (
-    <span aria-hidden="true" style={{ ...box, opacity }}>
+    <span aria-hidden={hidden} style={{ ...box, opacity }}>
       <span
         data-marker-shape={marker.shape === "square" ? "square" : "circle"}
         style={{
@@ -206,12 +237,13 @@ function MarkerSwatch({ swatch, sized, width, ring }: SwatchProps) {
           />
         )}
       </span>
+      {badge}
     </span>
   );
 }
 
 /** A line with its casing under it and its dash. */
-function LineSwatch({ swatch, sized }: SwatchProps) {
+function LineSwatch({ swatch, sized, nested }: SwatchProps) {
   const line = swatch.line ?? {};
   const stroke =
     sized !== undefined
@@ -222,7 +254,7 @@ function LineSwatch({ swatch, sized }: SwatchProps) {
   const around = casing ? Math.min(stroke + 2 * Math.min(num(casing.width, 1), 2), 12) : 0;
   const { width, height } = BOX;
   return (
-    <svg width={width} height={height} aria-hidden="true" style={{ flex: "none" }}>
+    <svg width={width} height={height} aria-hidden={nested ? undefined : "true"} style={{ flex: "none" }}>
       {casing && (
         <line
           data-casing
@@ -249,16 +281,95 @@ function LineSwatch({ swatch, sized }: SwatchProps) {
   );
 }
 
-/** One swatch: a line, a marker (its icon where it draws one) or an area, 20 by 14 px. */
+/** A marker on an area or a line is at most this high in its swatch, so the area or the line shows around it. */
+const MARKER_ON_AREA = 10;
+
+/** The icon a line's arrows draw (spec 3.2 `arrows.icon`), as the map draws it: its top along the line in the
+ * drawing direction (left to right here), against it, or both ways, or upright where it does not turn with the line;
+ * in the middle, or at the ends it is placed at. */
+function ArrowIcons({ arrows }: { arrows: Record<string, unknown> }) {
+  const turns =
+    arrows.turn_with_line === false
+      ? [0]
+      : arrows.direction === "both"
+        ? [90, -90]
+        : [arrows.direction === "backward" ? -90 : 90];
+  const justify =
+    arrows.placement === "start"
+      ? "flex-start"
+      : arrows.placement === "end"
+        ? "flex-end"
+        : arrows.placement === "both_ends"
+          ? "space-between"
+          : "center";
+  const places = arrows.placement === "both_ends" ? ["start", "end"] : ["one"];
+  return (
+    <span
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: justify,
+      }}>
+      {places.map((place) => (
+        <span
+          key={place}
+          style={{ position: "relative", width: MARKER_ON_AREA, height: MARKER_ON_AREA, flex: "none" }}>
+          {turns.map((turn) => (
+            <span
+              key={turn}
+              data-arrow-icon
+              style={{ position: "absolute", inset: 0, transform: `rotate(${turn}deg)` }}>
+              <MarkerIcon
+                icon={str(arrows.icon, "")}
+                tint={str(arrows.color, "#2166ac")}
+                side={MARKER_ON_AREA}
+              />
+            </span>
+          ))}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One swatch: a line, a marker (its icon where it draws one, a cluster's badge) or an area, 20 by 14 px. A line or an
+ * area with a marker (spec 3.3) has the marker in its middle; a line's arrows of an icon the style picks show it. */
 export function SwatchIcon({ swatch, sized, width, ring }: SwatchProps) {
-  if (swatch.geometry === "line") return <LineSwatch swatch={swatch} sized={sized} />;
   if (swatch.geometry === "point")
     return <MarkerSwatch swatch={swatch} sized={sized} width={width} ring={ring} />;
-  return <AreaSwatch swatch={swatch} sized={sized} ring={ring} />;
+  const nested = swatch.marker !== undefined || swatch.arrows !== undefined;
+  const shape =
+    swatch.geometry === "line" ? (
+      <LineSwatch swatch={swatch} sized={sized} nested={nested} />
+    ) : (
+      <AreaSwatch swatch={swatch} sized={sized} ring={ring} nested={nested} />
+    );
+  if (!nested) return shape;
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        flex: "none",
+        width: BOX.width,
+        height: BOX.height,
+      }}>
+      {shape}
+      {swatch.arrows && <ArrowIcons arrows={swatch.arrows} />}
+      {swatch.marker && (
+        <span style={{ position: "absolute", inset: 0, display: "flex" }}>
+          <MarkerSwatch swatch={{ geometry: "point", marker: swatch.marker }} cap={MARKER_ON_AREA} nested />
+        </span>
+      )}
+    </span>
+  );
 }
 
 /** An area: the fill, its pattern at half size (so a few lines show in 20 px), the outline with its dash. */
-function AreaSwatch({ swatch, sized, ring }: SwatchProps) {
+function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
   const id = useId();
   const fill = swatch.fill ?? {};
   const kind =
@@ -275,7 +386,11 @@ function AreaSwatch({ swatch, sized, ring }: SwatchProps) {
   const inset = Math.max(1, edge / 2);
   const rect = { x: inset, y: inset, width: BOX.width - 2 * inset, height: BOX.height - 2 * inset, rx: 2 };
   return (
-    <svg width={BOX.width} height={BOX.height} aria-hidden="true" style={{ flex: "none" }}>
+    <svg
+      width={BOX.width}
+      height={BOX.height}
+      aria-hidden={nested ? undefined : "true"}
+      style={{ flex: "none" }}>
       {tile && (
         <defs>
           <pattern id={id} patternUnits="userSpaceOnUse" width={tile.size} height={tile.size}>
@@ -437,14 +552,18 @@ export function StyleLegend({
               format: section.format,
             })
           : entry.extra === "cluster"
-            ? t("style_editor.legend_clusters")
+            ? section.op && section.op !== "count"
+              ? `${t("style_editor.legend_clusters")} · ${t(`style_editor.h3_value_${section.op}`, { field: section.field })}`
+              : t("style_editor.legend_clusters")
             : entry.extra === "rest"
               ? t("style_editor.legend_other_features")
-              : entry.extra === "h3"
-                ? t(`style_editor.h3_value_${section.op ?? "count"}`, { field: section.field })
-                : entry.extra
-                  ? t(`style_editor.${entry.extra}`)
-                  : "");
+              : entry.extra === "points"
+                ? t("style_editor.legend_single_points")
+                : entry.extra === "h3"
+                  ? t(`style_editor.h3_value_${section.op ?? "count"}`, { field: section.field })
+                  : entry.extra
+                    ? t(`style_editor.${entry.extra}`)
+                    : "");
     return entry.height === undefined ? label : `${label} · ${number(entry.height)} m`;
   };
   /** The scale of a block of sizes; none for any other block, whose swatches all keep the fixed box. */
@@ -484,16 +603,24 @@ export function StyleLegend({
         </Typography>
       )}
       {legend.sections.map((section) => {
-        // The Height line names its field in its own text.
-        const field = "field" in section && section.kind !== "height" ? section.field : undefined;
+        // The Height line and the Clusters entry name their field in their own text.
+        const field =
+          "field" in section && section.kind !== "height" && section.id !== "cluster"
+            ? section.field
+            : undefined;
         // Two classification blocks of one field tell themselves apart by the property each sets.
         const properties = section.kind === "entries" ? section.properties : undefined;
+        // A cluster value's range says how the value is computed.
+        const op =
+          (section.kind === "ramp" || section.kind === "sizes") && section.op ? section.op : undefined;
         const heading = hideHeading
           ? undefined
           : (section.title ??
-            (properties?.length && field
-              ? `${properties.map((key) => t(key)).join(", ")} · ${field}`
-              : field));
+            (op
+              ? t(`style_editor.h3_value_${op}`, { field })
+              : properties?.length && field
+                ? `${properties.map((key) => t(key)).join(", ")} · ${field}`
+                : field));
         return (
           <Box key={section.id} sx={{ pt: 0.5 }}>
             {heading && (
@@ -534,12 +661,14 @@ export function StyleLegend({
             )}
             {section.kind === "ramp" && (
               <Box>
+                {/* At the features' own opacity, as on the map; the layer's opacity does not fade it. */}
                 <Box
                   data-legend-ramp
                   sx={{
                     height: 10,
                     borderRadius: 0.5,
-                    background: `linear-gradient(90deg, ${section.colors.join(", ")})`,
+                    background: rampGradient(section),
+                    opacity: section.opacity ?? 1,
                   }}
                 />
                 <Box sx={{ display: "flex", justifyContent: "space-between" }}>

@@ -8,7 +8,7 @@ LOCAL = ("127.0.0.1",)
 
 
 def raster(**render: object) -> dict:
-    return {"version": 1, "kind": "raster", "render": render}
+    return {"version": "1.0.0", "kind": "raster", "render": render}
 
 
 def test_the_context_describes_the_files_bands(cog_server: str) -> None:

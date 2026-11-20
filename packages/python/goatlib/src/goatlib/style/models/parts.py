@@ -151,6 +151,9 @@ PatternPxValue = value_type(
     **limits.forms("fill.pattern_spacing", "fill.pattern_width", attribute=None),
 )
 IconValue = value_type("Icon", IconRef, **limits.forms("marker.icon", attribute=None))
+ArrowIconValue = value_type(
+    "ArrowIcon", IconRef, **limits.forms("arrows.icon", attribute=None)
+)
 AnchorValue = value_type(
     "Anchor",
     Literal[
@@ -168,8 +171,50 @@ AnchorValue = value_type(
 )
 WeightValue = value_type(
     "Weight",
-    Literal["regular", "bold"],
+    Literal["light", "regular", "medium", "bold"],
     **limits.forms("label.font.weight", attribute=None),
+)
+#: A label's letters upright or slanted.
+FontStyleValue = value_type(
+    "FontStyle",
+    Literal["normal", "italic"],
+    **limits.forms("label.font.style", attribute=None),
+)
+#: A label's letters as written, in capitals or in small letters.
+TransformValue = value_type(
+    "Transform",
+    Literal["none", "uppercase", "lowercase"],
+    **limits.forms("label.transform", attribute=None),
+)
+#: Extra space between a label's letters in ems of its size: negative draws them closer.
+LetterSpacingValue = value_type(
+    "LetterSpacing",
+    Annotated[float, Field(**limits.bounds("label.letter_spacing"))],
+    **limits.forms("label.letter_spacing", attribute=None),
+)
+#: The distance between the lines of a label in ems of its size, for the whole layer.
+LineHeightValue = value_type(
+    "LineHeight",
+    Annotated[float, Field(**limits.bounds("label.line_height"))],
+    **limits.forms("label.line_height", attribute=None),
+)
+#: How far apart a label along a line repeats, in px, for the whole layer.
+LabelSpacingValue = value_type(
+    "LabelSpacing",
+    Annotated[float, Field(**limits.bounds("label.spacing"))],
+    **limits.forms("label.spacing", attribute=None),
+)
+#: The free space in px kept around each label, for the whole layer.
+LabelPaddingValue = value_type(
+    "LabelPadding",
+    Annotated[float, Field(**limits.bounds("label.padding"))],
+    **limits.forms("label.padding", attribute=None),
+)
+#: Where a polygon's outline runs: centred on the edge, or all of its width inside or outside the polygon.
+OutlinePositionValue = value_type(
+    "OutlinePosition",
+    Literal["center", "inside", "outside"],
+    **limits.forms("outline.position", attribute=None),
 )
 
 #: Heights in metres above the ground, fixed, by zoom or by attribute (raw fields
@@ -200,6 +245,7 @@ class Outline(_Part):
     width: PxValue | None = None
     opacity: UnitValue | None = None
     dash: DashValue | None = None
+    position: OutlinePositionValue | None = None
 
 
 class Line(_Part):
@@ -225,6 +271,12 @@ class Arrows(_Part):
     spacing: SpacingValue | None = None
     size: PxValue | None = None
     color: ColorValue | None = None
+    #: The icon drawn as the arrow, its top pointing the way the arrow points; one for
+    #: the whole layer. GOAT's arrow (`goat:arrow`) when absent.
+    icon: ArrowIconValue | None = None
+    #: Whether the icon turns with the line (its top along the line, the way the arrow
+    #: points) or stays upright on the screen; one for the whole layer. Turns when absent.
+    turn_with_line: bool | None = None
 
 
 #: A marker's shape (3.3): a shape the icon sits in, a pin that points at its place
@@ -267,6 +319,7 @@ class Halo(StyleModel):
 
 class Font(StyleModel):
     weight: WeightValue | None = None
+    style: FontStyleValue | None = None
 
 
 class LabelLine(StyleModel):
@@ -282,6 +335,44 @@ class Priority(StyleModel):
     top: Literal["largest", "smallest"]
 
 
+#: The sides of a marker a label can sit on, named by where the label sits.
+_SIDES = (
+    "above",
+    "below",
+    "left",
+    "right",
+    "above_left",
+    "above_right",
+    "below_left",
+    "below_right",
+)
+
+#: Where a label sits, per geometry (3.4). Beside a point it is named by the side of the marker it sits on;
+#: `auto` lets MapLibre pick a side, `center` puts it on the point. A line's label sits along the line (`line`) or
+#: at its center point, and an area's at its label point; both take the point's positions there, with `center`
+#: (lines) and `inside` (polygons) for the middle.
+LABEL_PLACEMENTS: dict[str, tuple[str, ...]] = {
+    "point": ("auto", "center", *_SIDES),
+    "line": ("line", "auto", "center", *_SIDES),
+    "polygon": ("auto", "inside", *_SIDES),
+}
+
+LabelPlacement = Literal[
+    "auto",
+    "center",
+    "above",
+    "below",
+    "left",
+    "right",
+    "above_left",
+    "above_right",
+    "below_left",
+    "below_right",
+    "line",
+    "inside",
+]
+
+
 class Label(_Part):
     text: str | None = None
     format: NumberFormat | None = None
@@ -290,9 +381,14 @@ class Label(_Part):
     color: ColorValue | None = None
     halo: Halo | None = None
     font: Font | None = None
-    placement: Literal["auto", "above", "center", "line", "inside"] | None = None
+    placement: LabelPlacement | None = None
     offset: OffsetValue | None = None
     max_width: PxValue | None = None
+    transform: TransformValue | None = None
+    letter_spacing: LetterSpacingValue | None = None
+    line_height: LineHeightValue | None = None
+    spacing: LabelSpacingValue | None = None
+    padding: LabelPaddingValue | None = None
     lines: list[LabelLine] | None = None
     priority: Priority | None = None
     allow_overlap: bool | None = None

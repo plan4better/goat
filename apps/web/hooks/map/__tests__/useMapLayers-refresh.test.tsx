@@ -15,7 +15,7 @@ vi.mock("@/lib/api/fetcher", () => ({ apiRequestAuth: fetchMock, fetcher: rowsFe
 vi.mock("@/lib/providers/PublicProjectProvider", () => ({ useIsPublicProject: () => false }));
 
 const PROJECT = "00000000-0000-0000-0000-000000000001";
-const DOC = { version: 1, kind: "vector" } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector" } as LayerStyle;
 const row = (id: number) =>
   ({ id, layer_id: `dataset-${id}`, name: `L${id}`, type: "feature", order: 0 }) as unknown as ProjectLayer;
 const style = (id: string) => ({
@@ -29,7 +29,7 @@ const style = (id: string) => ({
 });
 const mapOf = (ids: number[]): MapResponse => ({
   map: {
-    version: 1,
+    version: "1.0.0",
     layers: ids.map((id) => ({ type: "layer" as const, id, visible: true, style: `s${id}` })),
   },
   styles: Object.fromEntries(ids.map((id) => [String(id), { active: style(`s${id}`), others: [] }])),
@@ -77,7 +77,7 @@ describe("useMapLayers", () => {
   it("a stale style is asked for once, so the map draws it recomputed; a hidden one when it is shown", async () => {
     rows = [row(5), row(6)];
     mapIds = [5, 6];
-    const RECOMPUTED = { version: 1, kind: "vector", opacity: 0.5 } as LayerStyle;
+    const RECOMPUTED = { version: "1.0.0", kind: "vector", opacity: 0.5 } as LayerStyle;
     const map = mapOf([5, 6]);
     map.styles["5"].active.stale = true;
     map.styles["6"].active.stale = true;

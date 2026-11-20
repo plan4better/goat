@@ -31,7 +31,7 @@ The sample datasets:
 
 - **Two documents**: the **layer style** (how one layer looks; stored as the dataset's default and per project layer,
   as named styles) and the **map document** (basemap, view, the layer tree, per-layer map state).
-- **JSON** with `snake_case` keys and `"version": 1`. Unknown keys are an error on write and ignored on read
+- **JSON** with `snake_case` keys and `"version": "1.0.0"`. Unknown keys are an error on write and ignored on read
   (section 14).
 - **Colors** are hex: `#rrggbb` or `#rrggbbaa`. **Sizes, widths and offsets** are screen pixels. **Opacity** is 0 to 1.
 - **Zoom** levels are 0 to 24. `min_zoom` is inclusive, `max_zoom` exclusive. Zooms on classes and rules are whole
@@ -82,7 +82,7 @@ The sample datasets:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#c7e9b4", "opacity": 0.72 },
@@ -93,7 +93,7 @@ The sample datasets:
 
 | Key | What it holds |
 |---|---|
-| `version` | always 1 |
+| `version` | the version of this specification the document needs, `"1.0.0"` (section 14) |
 | `kind` | `vector` or `raster` |
 | `geometry` | optional: `point`, `line` or `polygon`, checked against the dataset (`geometry_mismatch`) |
 | `opacity` | opacity of the whole layer |
@@ -115,12 +115,12 @@ A geometry has a fixed set of parts. Each part has its own keys.
 | Part | Geometry | Keys |
 |---|---|---|
 | `fill` | polygon | `color`, `opacity`, `pattern`, `pattern_color`, `pattern_spacing`, `pattern_width` |
-| `outline` | polygon, point | `color` (or `"fill"`: the fill color on polygons, the marker color on points), `width`, `opacity`; `dash` on polygons only |
+| `outline` | polygon, point | `color` (or `"fill"`: the fill color on polygons, the marker color on points), `width`, `opacity`; `dash` and `position` on polygons only |
 | `line` | line | `color`, `width`, `opacity`, `dash`, `cap`, `join`, `offset`, `blur` |
 | `casing` | line | `color`, `width` (extra on each side), `opacity` |
-| `arrows` | line | `placement`, `direction`, `spacing`, `size`, `color` |
-| `marker` | point | `shape`, `color`, `fill`, `size`, `opacity`, `icon`, `icon_color`, `rotation`, `anchor`, `offset`, `allow_overlap` |
-| `label` | all | `text`, `format`, `formats`, `size`, `color`, `halo`, `font`, `placement`, `offset`, `max_width`, `lines`, `priority`, `allow_overlap` |
+| `arrows` | line | `placement`, `direction`, `spacing`, `size`, `color`, `icon`, `turn_with_line` |
+| `marker` | point; polygon and line, off by default (3.3) | `shape`, `color`, `fill`, `size`, `opacity`, `icon`, `icon_color`, `rotation`, `anchor`, `offset`, `allow_overlap` |
+| `label` | all | `text`, `format`, `formats`, `size`, `color`, `halo`, `font`, `transform`, `letter_spacing`, `line_height`, `placement`, `offset`, `max_width`, `spacing`, `padding`, `lines`, `priority`, `allow_overlap` |
 | `extrude` | polygon | `height`, `base`, `unit`: the polygon as a volume in 3D (3.6) |
 
 Every part also takes `min_zoom` and `max_zoom`.
@@ -132,8 +132,13 @@ Every part also takes `min_zoom` and `max_zoom`.
 - **In a class record or a rule:**
   - an absent part is unchanged;
   - `false` switches it off;
-  - an object switches it on. Its keys are merged over the part's value so far (base, then earlier overrides), and
-    keys that nothing set take their defaults from the reference.
+  - an object switches on a part the symbol leaves out, and sets the keys of a part that is on. Its keys are merged
+    over the part's value so far (base, then earlier overrides), and keys that nothing set take their defaults from
+    the reference.
+- **A part the symbol switches off (`false`) stays off in every record**: no class or rule switches it on again. Its
+  keys still cascade where another part reads them (an outline in the fill color takes the fill color each feature
+  would have, 3.1), and records keep them for when the part is switched on again. `marker.fill` (a hollow marker,
+  3.3) is a key of the marker, not a part, and a class may set it either way.
 
 ### 3.1 Fill and outline (polygons)
 
@@ -142,7 +147,7 @@ Every part also takes `min_zoom` and `max_zoom`.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#a1d99b", "opacity": 0.7 },
@@ -154,12 +159,31 @@ Every part also takes `min_zoom` and `max_zoom`.
 `dash` takes `solid`, `dashed`, `dotted`, `dash_dot`. Dash lengths scale with the width in MapLibre, so a dashed 4 px
 line has longer dashes than a dashed 1 px line.
 
+> "District borders 3 px wide, drawn inside each district so the borders of neighbors do not overlap."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#deebf7", "opacity": 0.6 },
+    "outline": { "color": "#3182bd", "width": 3, "position": "inside" }
+  }
+}
+```
+
+`position` says where the outline runs: `center` (the default: along the edge, half of its width on each side),
+`inside` (all of its width inside the polygon, holes included) or `outside` (all of it outside). The line moves by half
+its width, so it follows a width by zoom or per class. Positions switch at zoom stops and classes and rules may set
+them. Polygons only: a point outline with a `position` is `position_on_point_outline`.
+
 > "Outline only, in the color each feature's class gives it."
 
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": false,
@@ -187,7 +211,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7", "opacity": 0.6 }, "outline": { "color": "#636363", "width": 1 } },
   "classify": [
@@ -220,7 +244,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3, "opacity": 1, "cap": "round", "join": "round", "offset": 2 },
@@ -239,13 +263,37 @@ when the fill itself is switched off.
     the whole line (section 16), not per tile piece.
 
   `direction`: `forward`, `backward`, `both`. Without `color` the arrows take the line color.
+- `arrows.icon` is the icon drawn as the arrow: GOAT's arrow (`goat:arrow`) by default, or any icon a marker takes
+  (a library icon, an emoji or an upload, section 1). It is one icon for the whole layer. Its top points the way the
+  arrow points, along the line in its drawing direction (`forward`), against it (`backward`) or both ways, so an icon
+  that points up (`goat:arrow-up-solid`) shows the direction. Library icons take
+  `color`; uploads and emoji keep their own colors. `goat:arrow` is the arrows' own icon, in no library: a marker
+  cannot take it (`unknown_icon`).
+- `arrows.turn_with_line` (default `true`): the icon turns with the line as above, or, with `false`, stays upright on
+  the screen, as a tree or a bus symbol should; an upright icon points nowhere, so `direction` changes nothing then.
+  One value for the whole layer. The editor switches it off when the user picks another icon than GOAT's arrow and
+  on again for the arrow; the user can switch it either way.
+
+> "Tram routes with an upright tram symbol every 80 px along the line."
+
+<!-- check: routes -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "line": { "color": "#4d4d4d", "width": 2 },
+    "arrows": { "placement": "repeat", "spacing": 80, "size": 14, "icon": "goat:rail-light", "turn_with_line": false }
+  }
+}
+```
 
 > "Square ends, sharp corners, a soft glow, red arrows at both ends pointing both ways."
 
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 4, "cap": "square", "join": "miter", "blur": 1.5 },
@@ -259,7 +307,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 4, "cap": "butt", "join": "bevel" },
@@ -273,7 +321,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -285,7 +333,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -294,14 +342,14 @@ when the fill itself is switched off.
 }
 ```
 
-### 3.3 Marker (points)
+### 3.3 Marker
 
 > "Schools as dark green circles of 8 px with a white outline."
 
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8, "opacity": 0.9 },
@@ -315,7 +363,7 @@ when the fill itself is switched off.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#f28e2b", "size": 18, "icon": "goat:star-solid", "icon_color": "#ffffff" },
@@ -329,7 +377,7 @@ when the fill itself is switched off.
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -350,7 +398,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#1a6b4d", "size": 10, "fill": false },
@@ -364,7 +412,7 @@ when the fill itself is switched off.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "icon", "icon": "asset:7f3a91c2", "size": 24, "anchor": "bottom", "offset": [0, -2] } }
 }
@@ -389,22 +437,105 @@ when the fill itself is switched off.
 - `size` is the circle diameter or the icon height in px.
 - `rotation` is in degrees clockwise from north: the icon turns with the map.
 - `anchor`: the point of the icon that sits on the feature: `center`, `top`, `bottom`, `left`, `right`, `top_left`,
-  `top_right`, `bottom_left`, `bottom_right` (the panel offers `center` and `bottom`).
+  `top_right`, `bottom_left`, `bottom_right` (the panel offers all nine, for an icon alone and for pins).
 - `offset` is `[x, y]` in px.
 - `allow_overlap: true` draws icons even where they collide with other symbols. Circles never collide.
 - `outline` on points draws around the circle. On `shape: icon` it is a halo around library icons, which needs SDF
   icons with a buffer (16). Uploaded icons get no outline (`outline_not_drawn`, info). Point outlines cannot be
-  dashed (`dash_on_point_outline`).
+  dashed (`dash_on_point_outline`) and take no `position` (`position_on_point_outline`).
 
 <!-- check: schools -->
 <!-- expect: dash_on_point_outline -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 1, "dash": "dashed" } }
 }
 ```
+
+**Markers on polygons and lines.**
+
+> "A park icon on every green district."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": { "fill": { "color": "#deebf7", "opacity": 0.6 }, "outline": { "color": "#ffffff", "width": 1 } },
+  "classify": [
+    {
+      "field": "land_use",
+      "method": "categories",
+      "classes": [
+        {
+          "values": ["green"],
+          "name": "Green",
+          "fill": { "color": "#c7e9c0" },
+          "marker": { "shape": "circle", "icon": "goat:park", "color": "#238b45", "size": 20 }
+        }
+      ]
+    }
+  ]
+}
+```
+
+> "Each district with a circle sized by its population, the name beside it."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#f0f0f0" },
+    "outline": { "color": "#bdbdbd", "width": 1 },
+    "marker": {
+      "color": "#08519c",
+      "opacity": 0.8,
+      "size": { "field": "population", "domain": [0, 30000], "range": [0, 40], "scale": "sqrt", "title": "Inhabitants" }
+    },
+    "label": { "text": "{name}", "size": 11 }
+  }
+}
+```
+
+> "A bus icon in the middle of each route."
+
+<!-- check: routes -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "line": { "color": "#2166ac", "width": 3 },
+    "marker": { "shape": "circle", "icon": "goat:bus", "color": "#2166ac", "size": 18 }
+  }
+}
+```
+
+- `marker` is a part of polygons and lines too. It is off there until a record sets it (the main parts stay `fill`
+  and `line`), so a class or rule may switch it on for its own features: the park icon above shows on green
+  districts only.
+- One marker per feature: on a polygon at one point inside it, the point its label takes (the tile service's label
+  anchor, section 15); on a line at its middle (the tile service's center point, as for arrows at the `center`). A
+  polygon or a line cut by tile borders still gets one marker. At low zooms the tile service leaves out some anchors
+  where its tiles are too full, as for labels; those markers show from a higher zoom.
+- Every marker key works as on points: the shapes, the pins and the icon alone, `icon_color`, `fill`, `size` (by
+  zoom, by attribute, per class), `opacity`, `rotation`, `anchor`, `offset`, `allow_overlap` and the part's zooms.
+  The marker is always one image per look, a plain circle too, so it draws where it collides unless `allow_overlap`
+  is false, and labels move away from it.
+- No outline: `outline` is the polygon's border, so a marker on a polygon or a line draws without a stroke, and a
+  hollow marker (`fill: false`) shows its icon only.
+- It draws above the fill, its pattern, the outline, the line, its casing and arrows, and below the labels.
+- An area's label and a line's label at its middle take the positions of a point's label around the marker (3.4):
+  `auto` (the default on areas) beside it, under it first, then above it, left or right of it; a fixed side; or the
+  middle (`inside` on areas, `center` on lines), on the marker. A label along the line (`line`) stays along the line.
+- On raised polygons (3.6) the marker sits on the roof, as the label does.
+- Clusters, heatmaps and H3 hexagons stay drawings of points (`render_not_for_geometry`).
+- In the legend (7.2) the swatch is the area or the line with the marker in its middle; size samples and classes
+  that set the marker's size show the markers alone, as for points.
 
 ### 3.4 Label
 
@@ -413,7 +544,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -436,7 +567,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -460,7 +591,7 @@ when the fill itself is switched off.
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#283593", "size": 8 },
@@ -483,20 +614,76 @@ when the fill itself is switched off.
 - `format` applies to every number field in the template; `formats` overrides it per field. Text fields are never
   formatted. When neither is set, the field's own number format from the dataset applies.
 - `placement` depends on the geometry:
-  - points: `auto` (MapLibre tries positions around the marker), `above`, `center`;
-  - lines: `line` (along the line, repeated) or `center` (one label per line, at a point from the tile service);
-  - polygons: `inside` (one label per polygon, at a point inside it from the tile service).
+  - points: `auto` (MapLibre tries positions around the marker and takes one that is free), `center` (on the
+    point), or a fixed side of the marker, named by where the label sits: `above`, `below`, `left`, `right`,
+    `above_left`, `above_right`, `below_left`, `below_right`. A label at a fixed side keeps clear of the marker as
+    `auto` does (half the marker size plus 2 px); it is never moved to another side, and on a collision it is
+    dropped unless `allow_overlap` is on;
+  - lines: `line` (along the line, repeated), or one label per line at its middle, a point from the tile service,
+    placed there as a point's label: `auto`, `center` (on the middle) or a fixed side;
+  - polygons: one label per polygon at a point inside it from the tile service, placed there as a point's label:
+    `auto` (the default), `inside` (on that point) or a fixed side.
+
+  The middle of an area is `inside`, of a point or a line `center`: each geometry has one word for it, and the other
+  is `placement_not_for_geometry`, as is any placement of another geometry (`line` on points or polygons, `inside`
+  on points or lines). The panel shows both as In the middle.
+
+  Around the marker of an area or a line's middle (3.3) the positions work as on points: a fixed side keeps half
+  the marker size plus 2 px from the point, the middle puts the label on the marker. Without a marker a fixed side
+  keeps 2 px from the point, as on a point without a marker, while `auto` puts the label on the point, as `inside`
+  and `center` do: with nothing to clear, an area's or a line's label names the feature from its middle. On a
+  GeoJSON source a line has no center point: MapLibre puts the label at the middle of the line itself, where a fixed
+  side moves it (upright, as the marker there) but `auto` cannot, so `auto` stays on the line's middle.
 - `offset` is `[x, y]` in px. `max_width` wraps lines longer than this many px.
 - `lines` styles the lines of the template in order: `size`, `color`, `font`. Lines without an entry keep the label's
-  style. The panel edits `lines` later; the format has it now.
+  style. A line's `font` replaces the label's font for that line (a key it leaves out takes its default). The panel
+  edits them in the label's Line styles editor.
 - `priority`: `{ "field", "top": "largest" | "smallest" }` decides which label wins a collision.
-- `font.weight`: `regular` or `bold`. Fonts come from GOAT's own glyphs (section 19, pending decision).
+- `font.weight`: `light`, `regular` (the default), `medium` or `bold`; `font.style`: `normal` (upright, the default)
+  or `italic`. Every weight is drawn upright and italic, in Noto Sans (15, 16). Both switch at zoom stops; classes and
+  rules may set them, and their `font` merges over the label's. The panel edits both keys as one Font choice of eight
+  (the four weights under Upright and under Italic; an italic font is named in full, Regular italic as Italic), by
+  zoom with the same stops for both.
+- `transform`: `none` (as written, the default), `uppercase` or `lowercase`. It changes the whole text, the `k` and `M`
+  of abbreviated numbers included. Switches at zoom stops; classes and rules may set it.
+- `letter_spacing`: extra space between the letters in ems of the label size (0.1 is a tenth of the size); negative
+  draws them closer. Default 0. Blends by zoom; classes and rules may set it; no mapping by attribute.
+- `line_height`: the distance from one line of the label to the next in ems of the label size, default 1.2. One value
+  for the whole layer (MapLibre takes none per feature), fixed or by zoom.
+- `spacing`: how far apart a label along a line repeats, in px, at least 1, default 250. Only for `placement: line`.
+  One value for the whole layer, fixed or by zoom.
+- `padding`: the free space in px kept around each label, 0 or more, default 2. Labels whose boxes and this space
+  would touch collide, so a larger value keeps labels further apart and draws fewer of them. One value for the whole
+  layer, fixed or by zoom.
+- Beside a marker (`placement: auto` and the fixed sides) the lines of a label line up on the marker's side:
+  left aligned to the right of it (`right`, `above_right`, `below_right`), right aligned to the left of it; above
+  and below it they are centered.
+
+> "District names in capitals with wide letter spacing, and the population in a second line set close below."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#deebf7" },
+    "label": {
+      "text": "{name}\n{population}",
+      "transform": "uppercase",
+      "letter_spacing": 0.1,
+      "line_height": 1.1,
+      "placement": "inside"
+    }
+  }
+}
+```
 
 <!-- check: districts -->
 <!-- expect: template_syntax -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "label": { "text": "{{ name }}" } }
 }
@@ -507,7 +694,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "geometry": "point",
   "symbol": {
@@ -518,6 +705,60 @@ when the fill itself is switched off.
 }
 ```
 
+> "School names always to the right of their circles, never moved to another side."
+
+<!-- check: schools -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 },
+    "label": { "text": "{name}", "size": 11, "placement": "right" }
+  }
+}
+```
+
+> "Route names in italic along the routes, repeated every 400 px, with more room around each name."
+
+<!-- check: routes -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "line": { "color": "#2166ac", "width": 2 },
+    "label": {
+      "text": "{name}",
+      "font": { "style": "italic" },
+      "placement": "line",
+      "spacing": 400,
+      "padding": 8
+    }
+  }
+}
+```
+
+> "Route names in medium italic, bold italic from zoom 14."
+
+<!-- check: routes -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "line": { "color": "#2166ac" },
+    "label": {
+      "text": "{name}",
+      "font": {
+        "weight": { "zoom": [[10, "medium"], [14, "bold"]], "interpolate": "step" },
+        "style": "italic"
+      }
+    }
+  }
+}
+```
+
 ### 3.5 Zoom ranges
 
 > "The layer from zoom 8; fill only from zoom 12 to 18, outline always, labels from zoom 13."
@@ -525,7 +766,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "min_zoom": 8,
   "symbol": {
@@ -556,7 +797,7 @@ its features from zoom 8.
 <!-- expect: zoom_not_whole -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 } },
   "classify": [{ "field": "status", "method": "categories", "classes": [{ "values": ["planned"], "min_zoom": 12.5 }] }]
@@ -573,7 +814,7 @@ it "Height". Like every part it is off while absent and `false` switches it off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#d9d9d9", "opacity": 0.9 },
@@ -619,7 +860,7 @@ it "Height". Like every part it is off while absent and `false` switches it off.
 <!-- expect: base_above_height, extrude_drops_pattern -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#fdb462", "pattern": "hatch_45" },
@@ -644,7 +885,7 @@ property (section 5). Which forms a property allows comes from MapLibre (4.5); o
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": {
@@ -659,13 +900,18 @@ property (section 5). Which forms a property allows comes from MapLibre (4.5); o
 - `interpolate`: `linear` (default), `exponential` (with `base`, default 1.6, faster towards higher zooms), or `step`
   (the value switches at each stop). Colors interpolate too.
 - Below the first stop the first value applies, above the last stop the last value.
+- A marker drawn as one image (a shape, a pin, a circle with an icon, any marker on a polygon or a line, 3.3) and a
+  fill pattern (3.1) carry their colors in the image, and the map picks an image once per whole zoom. Their colors by
+  zoom therefore change in whole zoom steps: between two stops, the color the stops blend to at each whole zoom, kept
+  up to the next one (at zoom 12.5, the color at 12). The same holds for the stroke width of a marker image. Circles,
+  icons alone, fills and lines blend at every zoom.
 
 > "Dotted outlines when zoomed out, dashed from 13, solid from 16."
 
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -685,7 +931,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -703,7 +949,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- expect: zoom_needs_step -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "icon", "color": "#f28e2b", "icon": { "zoom": [[11, "goat:circle-solid"], [15, "goat:star-solid"]] } } }
 }
@@ -716,7 +962,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": { "field": "density", "palette": "colorbrewer:YlGnBu" }, "opacity": 0.8 },
@@ -731,7 +977,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -748,7 +994,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": { "field": "traffic", "range": [1, 8], "scale": "log" } } }
 }
@@ -775,7 +1021,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -796,6 +1042,9 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 This is the only nesting: zoom outside, attribute inside (MapLibre accepts `["zoom"]` only as the input of a top-level
 `interpolate` or `step`). The opposite nesting is `zoom_nesting`.
 
+Between two stops each feature's value is blended from the values the two stops give it, by the stops' curve: sizes
+and colors alike. A color on a marker image or a pattern does so in whole zoom steps, as a color by zoom does (4.2).
+
 ### 4.5 What each property allows
 
 Taken from MapLibre's style spec; goatlib's `style/data/maplibre_limits.json` holds the table it enforces. Fixed is
@@ -808,15 +1057,15 @@ and may be set in one place only (6.1).
 | fill `color`, `opacity`, `pattern_color`; line `color`, `width`, `opacity`, `offset`, `blur`; outline and casing `color`, `width`, `opacity` | blend | yes | per feature |
 | marker `color`, `size`, `opacity`, `icon_color`, `rotation`; arrows `size`, `color` | blend | yes | per feature |
 | label `size`, `color`, `halo.color`, `halo.width`, `max_width` | blend | yes | per feature |
-| `dash`, `join`, fill `pattern`, `pattern_spacing`, `pattern_width`, marker `anchor`, marker `icon`, label `font.weight`, label `text` | steps | no | per feature |
+| `dash`, `join`, outline `position`, fill `pattern`, `pattern_spacing`, `pattern_width`, marker `anchor`, marker `icon`, label `font.weight`, `font.style`, label `transform`, label `text` | steps | no | per feature |
 | line `cap` | steps | no | per feature from MapLibre 6, per layer before |
-| marker `offset`, label `offset` | blend | no | per feature (circles: per layer, see below) |
-| arrows `spacing` | blend | no | per layer |
+| marker `offset`, label `offset`, label `letter_spacing` | blend | no | per feature (circles: per layer, see below) |
+| arrows `spacing`, label `line_height`, `spacing`, `padding` | blend | no | per layer |
 | layer `opacity`, heatmap `intensity`, raster settings | blend | no | per layer |
 | marker `fill` | no | no | per feature |
 | extrude `height`, `base` | blend | yes | per feature |
 | extrude `unit`; fill `opacity` while `extrude` is on (3.6) | no (opacity: blend) | no | per layer |
-| marker `shape`, `allow_overlap`; arrows `placement`, `direction`; label `placement`, `lines`, `priority`, `allow_overlap`, `format`, `formats` | no | no | per layer |
+| marker `shape`, `allow_overlap`; arrows `placement`, `direction`, `icon`, `turn_with_line`; label `placement`, `lines`, `priority`, `allow_overlap`, `format`, `formats` | no | no | per layer |
 
 - MapLibre cannot move circles per feature (`circle-translate` takes no data), so a circle marker moves by the base
   `offset` only; offsets in classes and rules move icons and labels.
@@ -853,7 +1102,7 @@ classification is one legend section.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 16, "icon_color": "#ffffff" } },
   "classify": [
@@ -892,7 +1141,7 @@ classification is one legend section.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#6baed6", "width": 3 } },
   "classify": [
@@ -905,7 +1154,7 @@ classification is one legend section.
 <!-- expect: category_duplicate -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 12 } },
   "classify": [
@@ -930,7 +1179,7 @@ What the panel or the AI writes (the intent):
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.8 }, "outline": { "color": "#ffffff", "width": 1 } },
   "classify": [
@@ -944,7 +1193,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.8 }, "outline": { "color": "#ffffff", "width": 1 } },
   "classify": [
@@ -995,7 +1244,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" }, "outline": { "color": "#636363", "width": 1 } },
   "classify": [
@@ -1010,7 +1259,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1024,7 +1273,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.85 }, "outline": { "color": "fill", "width": 1 } },
   "classify": [
@@ -1051,7 +1300,7 @@ What the server stores after computing the classes:
 <!-- expect: classes_invalid -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1075,7 +1324,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "classify": [
@@ -1119,7 +1368,7 @@ What the server stores after computing the classes:
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -1150,7 +1399,7 @@ What the server stores after computing the classes:
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#999999", "size": { "field": "pupils", "range": [4, 18], "scale": "sqrt" } },
@@ -1195,7 +1444,7 @@ A later classification wins for the features it covers. The validator compares t
 <!-- expect: classify_target_conflict -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1212,7 +1461,7 @@ A later classification wins for the features it covers. The validator compares t
 <!-- expect: classify_partial_overlap -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1270,7 +1519,7 @@ thresholds next to categories, empty values).
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 } },
   "rules": [
@@ -1302,7 +1551,7 @@ thresholds next to categories, empty values).
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [
@@ -1327,7 +1576,7 @@ thresholds next to categories, empty values).
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [
@@ -1353,7 +1602,7 @@ thresholds next to categories, empty values).
 <!-- expect: like_pattern_unsupported -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [{ "when": { "op": "like", "args": [{ "property": "name" }, "Primary%school%"] }, "visible": false }]
@@ -1364,7 +1613,7 @@ thresholds next to categories, empty values).
 <!-- expect: operator_type_mismatch -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [{ "when": { "op": "=", "args": [{ "property": "pupils" }, "300"] }, "visible": false }]
@@ -1380,15 +1629,15 @@ For every feature and every part key, the value comes from, in order (the last o
    `no_data` (no value), else nothing;
 3. the rules in list order, when their condition holds.
 
-- **Merging:** an override changes only the keys it names. `false` switches a part off, and an object switches it on
-  again (section 3). `visible` and the feature zoom range follow the same "last one wins". A feature that matches no
+- **Merging:** an override changes only the keys it names. `false` switches a part off, and an object switches on a
+  part the base leaves out; a part the base switches off stays off (section 3). `visible` and the feature zoom range follow the same "last one wins". A feature that matches no
   class keeps the base.
 - **Example:** in 5.6 a planned primary school gets the green from "School type", the red outline and its width from
   "Status", and its size from the base.
 - **Per-feature keys** (4.5) may be set anywhere: base, classes, rules.
 - **Per-layer keys** hold one value for the whole MapLibre layer: marker `shape` and `allow_overlap`; arrows
-  `placement`, `direction` and `spacing`; label `placement`, `lines`, `priority`, `allow_overlap`, `format` and
-  `formats`.
+  `placement`, `direction`, `spacing`, `icon` and `turn_with_line`; label `placement`, `line_height`, `spacing`, `padding`, `lines`,
+  `priority`, `allow_overlap`, `format` and `formats`.
   - They may be set in one place only: the base, or a single class or rule.
   - The one-way rule above can set the arrows' placement because nothing else sets it.
   - Setting a per-layer key in two places is `override_not_per_feature`.
@@ -1397,7 +1646,7 @@ For every feature and every part key, the value comes from, in order (the last o
 <!-- expect: override_not_per_feature -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 }, "arrows": { "placement": "center", "size": 12 } },
   "rules": [{ "when": { "op": "=", "args": [{ "property": "oneway" }, true] }, "arrows": { "placement": "repeat", "spacing": 120 } }]
@@ -1412,7 +1661,7 @@ For every feature and every part key, the value comes from, in order (the last o
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "opacity": 0.9,
   "symbol": {
@@ -1482,24 +1731,31 @@ rasters and map services do not change.
 | rule | its `name`, a swatch of what it changes; a rule that hides its features has no entry; rules that only set zooms need `legend: false` (or show a plain entry); in a layer without classes the features no rule matches follow as "Other features" |
 | value form with `palette` | a color ramp with the domain's ends, formatted |
 | value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain, under the field's name |
+| marker on polygons and lines (3.3) | the swatch draws the area or the line with the marker in its middle; size samples and classes that set the marker's size draw the markers alone, as for points |
 | heatmap | a ramp "Low" to "High"; nothing of the points (classes, rules) while they are not drawn, and only the points from `points_from_zoom` on |
-| cluster | "Clusters" with a sample while the map clusters (below `cluster_until_zoom`), then the base and classes for single points |
+| cluster | "Clusters" with a sample while the map clusters (below `cluster_until_zoom`): the cluster symbol, or the points' base marker for `look: points`, with a badge for `count: badge`; with a `value` from a field, the entry names it ("Clusters · Sum of pupils") and a size or color by it shows its samples or ramp, in the cluster symbol's other values; then the base and classes for single points, a base swatch on its own as "Single points" |
 | H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp; one hexagon swatch while the values are not computed; the points as for a heatmap |
 | `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
 | raster `continuous` | a ramp or classes with the domain and `unit`; `min_label` and `max_label` replace the end values |
-| raster `categorical` | one entry per class |
+| raster `categorical` | one entry per class (its value with the `unit`, or its `name`), then Other in `other_color` where one is set (the legend cannot know whether any cell has another value) |
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
 - **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more".
-- **Zoom:** swatches of zoom-dependent values use the current map zoom on screen and the print zoom in print; a size or width by zoom is read at the middle of its stops, so symbols do not grow and shrink while the map zooms.
+- **Only what a swatch draws:** a classification shows in the legend when it sets what a swatch draws: the color,
+  size, opacity, width, dash, shape, icon, icon color, hollow fill or pattern of a part, the arrows' color or the
+  height. One that sets only a label's text, color or font, a marker's rotation, offset or anchor, a line's offset,
+  blur, cap or join, the outline's position, the base of raised features or the arrows' size has no section, joins no
+  section of its field and is not counted for `classes`; its classes hidden with the eye still hide their features, on
+  the map and so in the legend.
+- **Zoom:** swatches of zoom-dependent values use the current map zoom on screen and the print zoom in print; a size or width by zoom is read at the middle of its stops, so symbols do not grow and shrink while the map zooms. A color the map draws in an image (a marker image or a pattern, 4.2) is read at the whole zoom at or below that zoom, the one the map draws it at; ramps of colors by attribute in zoom stops (4.4) too.
 
 > "No legend for this layer."
 
 <!-- check: facilities -->
 ```json
-{ "version": 1, "kind": "vector", "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }, "legend": false, "popup": false }
+{ "version": "1.0.0", "kind": "vector", "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }, "legend": false, "popup": false }
 ```
 
 `"popup": false` is short for `{ "enabled": false }`.
@@ -1509,7 +1765,7 @@ rasters and map services do not change.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 8 } },
   "classify": [
@@ -1588,7 +1844,7 @@ the dataset's field settings.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 18, "icon": "goat:marker", "icon_color": "#ffffff" } },
   "popup": {
@@ -1620,7 +1876,7 @@ the dataset's field settings.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": {
@@ -1646,7 +1902,7 @@ In `html` mode:
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": { "trigger": "hover", "blocks": [{ "type": "field_list", "attributes": [{ "field": "name" }] }], "header": "none" }
@@ -1658,7 +1914,7 @@ In `html` mode:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "popup": {
@@ -1675,7 +1931,7 @@ In `html` mode:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "popup": {
@@ -1698,7 +1954,7 @@ The validator checks every field a popup names against the dataset: attributes, 
 <!-- expect: unknown_field -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": { "blocks": [{ "type": "button", "label": "Website", "url_template": "{{ website }}", "style": "link" }] }
@@ -1717,7 +1973,7 @@ The validator checks every field a popup names against the dataset: attributes, 
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "heatmap",
@@ -1742,7 +1998,9 @@ The validator checks every field a popup names against the dataset: attributes, 
 Clusters are computed **in the browser** from the layer's features, with MapLibre's GeoJSON clustering. Vector tiles
 cannot be clustered without cutting clusters at tile borders, so the browser loads the points themselves:
 
-- **What the browser loads:** id, coordinates and only the fields the style uses.
+- **What the browser loads:** id, coordinates and only the fields the style uses. A popup (on click or on hover) and
+  click to filter read the point's own fields from the features API by its id, once per point while its data is
+  unchanged.
 - **Limit:** layers up to 100,000 features (today's limit, a starting value until measured). Above it the validator
   answers `too_many_features_for_render` and the panel offers H3 or a heatmap.
 - **How the points are read** (GeoJSON from the features API as today, or a columnar format) is an implementation
@@ -1753,7 +2011,7 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "cluster",
@@ -1772,8 +2030,77 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
 
 - `radius` (px, default 50), `cluster_until_zoom` (exclusive: clusters below it, single points from it; default 14),
   `min_points` (default 2).
-- The cluster `symbol` styles the cluster points over the derived field `count`; single points use the base symbol,
-  classifications and rules. Cluster labels sit on the cluster (`placement` is fixed).
+- The cluster `symbol` styles the cluster points over the derived fields `count` and `value`; single points use the
+  base symbol, classifications and rules. Cluster labels sit on the cluster (`placement` is fixed) and have no halo
+  unless the cluster symbol sets one. Cluster numbers, on the label and on the badge, are whole numbers shortened as
+  `format.abbreviate` shortens them ("1.2 k", "3.4 M", in the viewer's language) unless the cluster label sets a
+  `format`.
+- `value` (default `{ "op": "count" }`): what `value` is, the number of points or the `sum`, `mean`, `min` or `max` of
+  a number field (`field`) over a cluster's points, computed in the browser with the clusters (the mean is the sum over
+  the points with a value). Clusters without a point with a value show no number and take a size or color's no-data
+  value. A size or color by a value from a field needs a `domain`: nothing computes the range of values the browser
+  makes (`missing_required` otherwise). The panel starts it at the field's range, for a sum up to ten times its highest
+  value. The field must exist and be a number field (`unknown_field`, `field_type_mismatch`).
+- `look` (default `circle`): `circle` draws the cluster symbol's marker, a circle sized by the count unless it says
+  otherwise; `points` draws each cluster with the points' own marker and outline (shape, icon, color, size), not sized
+  by the count. A cluster has no attribute values: a value by attribute is the middle of its range or its palette, else
+  its `no_data`. Where a categories classification sets the icon (or else the color), a cluster shows the icon and
+  color of the category most of its points have, the first class on a tie, and the base marker's where more of them
+  are in no class (Other, No data). Clusters count the first 12 classes that set an icon or a color, in list order; the
+  points of the other classes count as in no class.
+- `count` (default `center`): `center` puts the cluster symbol's label on the cluster; `badge` draws the count on a
+  small filled circle at the upper right of the cluster's marker, whatever its size: in the cluster symbol's marker
+  color, ringed in its outline (a white ring of 1.5 px where it has none, so the badge stands off a marker of its own
+  color), the number its label shows (the count unless it shows the value) in its label color (white where it sets
+  none).
+
+> "Schools with an icon by type, clustered as their icons with the count on a badge, as GOAT has drawn marker
+> clusters."
+
+<!-- check: schools -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "render": {
+    "type": "cluster",
+    "look": "points",
+    "count": "badge",
+    "symbol": { "marker": { "color": "#283593" }, "label": { "text": "{count}", "color": "#ffffff" } }
+  },
+  "symbol": { "marker": { "shape": "icon", "icon": "goat:building", "color": "#5a1846", "size": 24 } },
+  "classify": [
+    {
+      "id": "type",
+      "field": "type",
+      "method": "categories",
+      "classes": [
+        { "values": ["primary"], "name": "Primary", "marker": { "icon": "goat:school" } },
+        { "values": ["secondary"], "name": "Secondary", "marker": { "icon": "goat:home" } }
+      ]
+    }
+  ]
+}
+```
+
+> "Schools clustered in circles sized by their pupils, the number of pupils on each."
+
+<!-- check: schools -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "render": {
+    "type": "cluster",
+    "value": { "op": "sum", "field": "pupils" },
+    "symbol": {
+      "marker": { "shape": "circle", "color": "#2166ac", "size": { "field": "value", "range": [16, 48], "scale": "sqrt", "domain": [0, 5000] } },
+      "label": { "text": "{value}", "color": "#ffffff" }
+    }
+  },
+  "symbol": { "marker": { "shape": "circle", "color": "#2166ac", "size": 8 } }
+}
+```
 
 ### 8.3 H3 hexagons
 
@@ -1787,7 +2114,7 @@ and there is no feature limit.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "h3",
@@ -1808,7 +2135,7 @@ and there is no feature limit.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": { "type": "h3", "resolution": 8, "value": { "op": "mean", "field": "visitors" }, "palette": "d3:viridis" },
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }
@@ -1829,7 +2156,7 @@ and there is no feature limit.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "h3",
@@ -1858,7 +2185,7 @@ and there is no feature limit.
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.8,
   "resampling": "linear",
@@ -1869,8 +2196,8 @@ and there is no feature limit.
 
 **Top-level keys:**
 
-- `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `linear`,
-  `nearest` for categorical rasters), `render`, `legend`, `popup`;
+- `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `nearest`
+  for continuous, categorical and hillshade colors, `linear` for images and shading), `render`, `legend`, `popup`;
 - for `image` also the adjustments `brightness`, `contrast`, `saturation` (-1 to 1, default 0) and `hue` (degrees).
 
 **Render types:** `image`, `continuous`, `categorical`, `hillshade`. Every type takes:
@@ -1879,10 +2206,10 @@ and there is no feature limit.
   value from the raster metadata, so most styles leave it out.
 - `band`, except `image`.
 
-The raster tile service (geoapi) colors the cells for every render type, band formulas included, and serves colored
-tiles, so screen and print look the same; coloring in the browser (MapLibre `color-relief`) is a later optimization.
-The style does not depend on where the cells are colored. Map services (9.8) are drawn as the service sends them; their
-adjustments are MapLibre paint properties, applied in the browser on screen and in print.
+The raster service (geoapi) reads the cells and MapLibre colors them: `continuous`, `categorical` with classes and
+`hillshade` draw value tiles, so a color edit loads no tiles and a new band, formula or `resampling` does. The service
+colors `image`, colors over float cells of an unknown range, and colorings past 4096 stops whose token fits in a URL
+(else not supported). Screen and print look the same. Map services (9.8) draw as sent, adjustments as MapLibre paint.
 
 ### 9.1 Image
 
@@ -1891,7 +2218,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "image", "bands": [1, 2, 3] },
   "brightness": 0.1,
@@ -1905,14 +2232,14 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 
 <!-- check: satellite -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "image", "bands": [4, 1, 2] } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "image", "bands": [4, 1, 2] } }
 ```
 
 > "Land cover in the file's own colors."
 
 <!-- check: landcover -->
 ```json
-{ "version": 1, "kind": "raster", "resampling": "nearest", "render": { "type": "image" } }
+{ "version": "1.0.0", "kind": "raster", "resampling": "nearest", "render": { "type": "image" } }
 ```
 
 - `bands` maps three bands to red, green and blue (rasters with three or more bands). A single-band raster without a
@@ -1927,7 +2254,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.7,
   "render": { "type": "continuous", "band": 1, "palette": "goat:elevation", "domain": [200, 450], "outside": "hide" },
@@ -1940,7 +2267,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -1967,7 +2294,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "continuous", "palette": "goat:elevation" },
   "legend": { "title": "Elevation", "unit": "m", "min_label": "Low", "max_label": "High" }
@@ -1980,7 +2307,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 
 <!-- check: satellite -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "continuous", "band": 4, "palette": "d3:viridis", "domain": [10, 230] } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "continuous", "band": 4, "palette": "d3:viridis", "domain": [10, 230] } }
 ```
 
 > "Vegetation index (NDVI) in five equal classes."
@@ -1988,7 +2315,7 @@ adjustments are MapLibre paint properties, applied in the browser on screen and 
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2016,7 +2343,7 @@ sets on a class by position survives a recompute (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2036,7 +2363,7 @@ sets on a class by position survives a recompute (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2060,7 +2387,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: landcover -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.75,
   "resampling": "nearest",
@@ -2088,7 +2415,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.6,
   "render": { "type": "hillshade", "method": "multidirectional", "direction": 315, "altitude": 45, "exaggeration": 0.6, "shadow_color": "#2d3a4a", "highlight_color": "#ffffff" }
@@ -2100,7 +2427,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "hillshade",
@@ -2119,24 +2446,24 @@ break statistics as a vector field's when the style is checked (section 12).
 - `method`: `standard` (one light, `accent_color` for steep slopes), `multidirectional`, `combined`, `igor`, `basic`.
 - `direction` (degrees the light comes from, 0 to 359), `altitude` (degrees above the horizon), `exaggeration` (0 to 1).
 - With `palette` the shading lies over a color range (`domain`, `classify`, `outside` as in 9.2 and 9.4).
-- The layer `opacity` goes into the alpha of the shadow, highlight and accent colors (MapLibre's hillshade has no
-  opacity).
+- The layer `opacity` goes into the alpha of the shadow, highlight and accent colors (MapLibre's has none).
+- A low relief is raised before it is shaded (16, raster row), at any `exaggeration`, which acts on top of it.
 
 The other methods:
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "combined", "exaggeration": 0.5 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "combined", "exaggeration": 0.5 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "igor", "exaggeration": 0.7 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "igor", "exaggeration": 0.7 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "basic", "shadow_color": "#000000" } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "basic", "shadow_color": "#000000" } }
 ```
 
 ### 9.7 Popup and zooms on rasters
@@ -2146,7 +2473,7 @@ The other methods:
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "min_zoom": 10,
   "render": { "type": "image", "bands": [1, 2, 3] },
@@ -2159,7 +2486,7 @@ The other methods:
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "continuous", "palette": "goat:elevation", "domain": [181, 440] },
   "popup": { "trigger": "hover", "bands": "styled" },
@@ -2177,7 +2504,7 @@ uses) or `all`. The values come from the raster service's point query.
 <!-- check: wms -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.9,
   "min_zoom": 12,
@@ -2192,7 +2519,7 @@ uses) or `all`. The values come from the raster service's point query.
 
 <!-- check: tiles -->
 ```json
-{ "version": 1, "kind": "raster", "opacity": 0.5, "saturation": -0.6, "render": { "type": "image" }, "legend": false }
+{ "version": "1.0.0", "kind": "raster", "opacity": 0.5, "saturation": -0.6, "render": { "type": "image" }, "legend": false }
 ```
 
 > "Color the WMS layer by elevation." A service sends finished pictures, so there is no band to color.
@@ -2200,7 +2527,7 @@ uses) or `all`. The values come from the raster service's point query.
 <!-- check: wms -->
 <!-- expect: render_not_for_source -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "continuous", "palette": "goat:elevation" } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "continuous", "palette": "goat:elevation" } }
 ```
 
 - **A map service layer** has a raster style with `render.type: "image"`. `opacity`, the zooms, `resampling` and the
@@ -2229,7 +2556,7 @@ carry a project's map state.
 <!-- check: map -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "view": { "center": [11.57, 48.14], "zoom": 12, "pitch": 0, "bearing": 0 },
   "locale": "de-DE",
@@ -2294,7 +2621,7 @@ carry a project's map state.
 <!-- check: map -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "view": { "center": [11.09, 47.49], "zoom": 13, "pitch": 60, "bearing": 30, "mode": "3d", "projection": "globe" },
   "layers": [],
@@ -2372,7 +2699,7 @@ whole map.
 <!-- expect: fog_without_terrain -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "layers": [],
   "scene": {
@@ -2427,7 +2754,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `unknown_key` | error | a key the reference does not have |
 | `missing_required` | error | a required key is missing |
 | `invalid_value` | error | wrong type, value not allowed, or out of range |
-| `unknown_version`, `newer_version` | error | `version` is not an integer this server knows, or newer |
+| `unknown_version`, `newer_version`, `newer_patch` | error, `newer_patch` warning | `version` is not three numbers, needs a newer major or minor, or only a newer patch, which is read (14) |
 | `geometry_mismatch` | error | `geometry` differs from the dataset |
 | `part_not_for_geometry` | error | a part the geometry does not have (`line` on polygons) |
 | `value_form_not_allowed` | error | a value form the property does not allow (4.5): by attribute on `dash`, an icon following a number field |
@@ -2438,6 +2765,8 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `zoom_range_invalid` | error | `min_zoom` not below `max_zoom` |
 | `override_not_per_feature` | error | a per-layer key set in more than one place (6.1) |
 | `dash_on_point_outline` | error | `dash` on a point outline (circle strokes cannot be dashed) |
+| `position_on_point_outline` | error | `position` on a point outline (only polygon outlines run inside or outside their edge) |
+| `placement_not_for_geometry` | error | a label `placement` of another geometry (`line` on points or polygons, `inside` on points or lines, `center` on polygons, 3.4) |
 | `template_syntax` | error | a label placeholder that is not `{field}` (for example `{{ field }}`), or an unbalanced brace |
 | `like_pattern_unsupported` | error | a `like` pattern other than contains, starts with, ends with |
 | `unknown_field` | error, damaged | a field the dataset does not have: classifications, value forms, rules, labels, order, time, priority, popup |
@@ -2477,7 +2806,7 @@ Examples that fail:
 <!-- expect: unknown_field, part_not_for_geometry, zoom_stops -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": { "field": "inhabitants", "palette": "d3:viridis" } },
@@ -2491,7 +2820,7 @@ Examples that fail:
 <!-- expect: field_type_mismatch, operator_type_mismatch -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac" } },
   "classify": [{ "field": "status", "method": "quantile", "count": 5, "palette": "d3:viridis" }],
@@ -2502,16 +2831,36 @@ Examples that fail:
 <!-- check: satellite -->
 <!-- expect: unknown_band, render_type_mismatch -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
 ```
 
 <!-- check: schools -->
 <!-- expect: dash_on_point_outline -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 1, "dash": "dashed" } }
+}
+```
+
+<!-- check: schools -->
+<!-- expect: position_on_point_outline -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 2, "position": "outside" } }
+}
+```
+
+<!-- check: routes -->
+<!-- expect: placement_not_for_geometry -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": { "line": { "color": "#2166ac" }, "label": { "text": "{name}", "placement": "inside" } }
 }
 ```
 
@@ -2519,7 +2868,7 @@ Examples that fail:
 <!-- expect: template_syntax -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "label": { "text": "{{ name }}" } }
 }
@@ -2699,39 +3048,52 @@ included. Viewers load it with one request, and it never computes.
 
 ## 14. Versions
 
-- `version` is an integer and changes only for a breaking change. Adding an optional key keeps the version.
-- **On write:** unknown keys are an error (`unknown_key`), a newer version is refused (`newer_version`).
-- **On read:** older versions are upgraded by goatlib (one function per step, `1 -> 2`, `2 -> 3`). A client that meets
+- `version` is three numbers, `"1.0.0"`, one version for layer styles and the map document (the integer `1` of earlier
+  documents is 1.0.0). A major breaks documents and comes with an upgrade step, a minor adds optional keys or values,
+  a patch corrects how something is drawn without new keys.
+- **On write:** goatlib writes the lowest version the document needs, the highest version that added a key it uses
+  (section 21), so a document that uses nothing newer stays readable by older servers. Unknown keys are an error
+  (`unknown_key`). A newer major or minor is refused on write and on project import (`newer_version`: it names the
+  version needed and the newest this server reads, so GOAT needs an update); a newer patch only warns (`newer_patch`).
+- **On read:** older majors are upgraded by goatlib (one function per step, `1 -> 2`, `2 -> 3`). A client that meets
   unknown keys draws what it knows and does not write the document back without the server.
 - **Values outside the bounds:** a stored document may hold a value outside the bounds goatlib takes from MapLibre
   (written before goatlib took them). The upgrade brings it inside and notes it: a `direction` goes round the circle
   (360 is 0), any other value takes the nearest bound (arrows `spacing` 0 is 1, `exaggeration` 1.5 is 1).
 - **Version 0** is today's GOAT style (the documents without `version`). The converter of section 17 is the upgrade
   step `0 -> 1`, so anything that still arrives in the old shape is read like any older version: catalog style assets
-  until the harvester writes version 1, and project exports made before the release.
+  until the harvester writes GOAT Style, and project exports made before the release.
 - **`ext`:** a reserved object for namespaced keys (`"ext": { "goat:experiment": { ... } }`). It passes through
   unchanged and is never interpreted by the compiler unless a later version adopts the key.
+- **Renames:** a minor adds the new key and still reads the old one, which is deprecated from then on; the next major
+  removes the old key with an upgrade step, and the GOAT release that brings a major migrates stored documents at once.
+- **What needs a minor:** a new key, choice value, catalogue palette or library icon (each counts as a key), or a
+  wider value form or bound of an existing key; each gets its version in goatlib's `SINCE` (section 21). goatlib's
+  `used_keys` reports keys and values but not value forms or bounds yet: it learns them with the first widened one.
 
 ## 15. What the style needs from the servers
 
 | Feature | Service | Used for |
 |---|---|---|
 | vector tiles with feature ids | geoapi (exists) | every vector part; `feature-state` highlight |
-| decoration points: start, end, both ends, center of each line, with bearing | geoapi (exists) | arrows `center`, `start`, `end`, `both_ends`; line labels at the center |
-| label anchors: one point per polygon (`ST_PointOnSurface`) | geoapi (exists) | polygon labels (`inside`) |
+| decoration points: start, end, both ends, center of each line, with bearing | geoapi (exists) | arrows `center`, `start`, `end`, `both_ends`; line labels at the center; markers on lines |
+| label anchors: one point per polygon (`ST_PointOnSurface`) | geoapi (exists) | polygon labels (`inside`); markers on polygons |
 | H3 hexagon tiles with count, sum, mean per cell | geoapi (new) | `render: h3` |
 | the layer's points (id, coordinates, the fields the style uses) | features API (exists as GeoJSON) | `render: cluster` in the browser |
 | classification and domain computation | goatlib (natural breaks and head/tail breaks are new) | section 12 |
 | counts of a classification's values under a filter: unique values, a histogram over the class bounds, features without a value | processes (exist) | `legend.classes: filter` (7.2) |
-| colored raster tiles, band formulas, band statistics, point values | geoapi's raster tile service | section 9 |
+| raster value tiles and their description, colored tiles for images, band formulas, band statistics, point values | geoapi's raster service | section 9 |
 | map service pictures, service styles, legend images | the service itself; the web reads its capabilities when the layer is added (exists) | 9.8 |
 | sprites: library icons as SDF, uploads as bitmaps | web, from GOAT's icon library | markers, arrows |
 | pattern tiles, drawn on demand from the image's name | web, `lib/style/render/patternImages.ts` | fill patterns |
-| fonts | GOAT serves its own fonts (a glyph URL or MapLibre `font-faces`) for every basemap, instead of relying on each basemap's glyph server; until then see `font.weight` in section 16 | labels |
+| fonts: Noto Sans Regular, Bold and Italic from the basemap's glyph server; Light, Light Italic, Medium, Medium Italic and Bold Italic as glyph ranges from the web app (`/glyphs`), to which every map routes requests for these five stacks whatever its style's glyph URL (`apps/web/lib/utils/map/glyphs.ts`, built by `apps/web/scripts/build-glyphs.mjs`) | web (exists) | labels (`font.weight`, `font.style`) |
 
-The decoration points and label anchors must carry the fields the style needs on them (label text, the fields of
-classes and rules that filter or change arrows and labels). Today they carry only `bearing` and the row id; geoapi
-adds the requested columns.
+The decoration points and label anchors carry the fields the style needs on them (label text, the fields of classes
+and rules that filter or change arrows, markers and labels): a label anchor carries its polygon's attributes, a
+decoration point those of its line's tile, with `bearing` and `_decoration`, the kind of point (`start`, `end` or
+`center`). One request asks for several kinds (`decoration=end,center`: arrows at the end and a marker in the
+middle), and each layer drawn on them keeps its own kind. Tiles with decoration points are made from the table, not
+from stored tiles, so a line layer with a marker, arrows at points or labels at the center draws from the database.
 
 ## 16. Compiling to MapLibre
 
@@ -2740,22 +3102,26 @@ are part of the format: an output that breaks one of them draws something else t
 
 | Construct | MapLibre output |
 |---|---|
-| polygon `fill` | `fill` layer; with `pattern`, a second `fill` layer with `fill-pattern` above the color fill: one image per look, named `goat-pattern:<kind>|<spacing>|<width>|<color>` per feature and zoom stop and drawn when the map first needs it |
-| polygon `outline` | `line` layer (`fill-outline-color` is always 1 px) |
+| polygon `fill` | `fill` layer; with `pattern`, a second `fill` layer with `fill-pattern` above the color fill: one image per look, named `goat-pattern:<kind>|<spacing>|<width>|<color>` per feature, at each zoom stop and at each whole zoom between two stops of its color (4.2), and drawn when the map first needs it |
+| polygon `outline` | `line` layer (`fill-outline-color` is always 1 px); `position` `inside` is `line-offset` of half the width, `outside` of minus half the width, at every zoom stop and per class: MapLibre insets a polygon's rings by a positive offset, as vector tiles wind outer rings clockwise and holes counterclockwise in tile coordinates and MapLibre's GeoJSON tiler rewinds rings that way |
 | `line` | `line` layer; dashes as `line-dasharray` in line widths: `solid` [1, 0], `dashed` [2, 2], `dotted` [0.5, 2], `dash_dot` [3, 2, 0.5, 2] |
 | `casing` | `line` layer below the line, with the **same filter, zoom range and layout**, so MapLibre tessellates the geometry once. Width = line width + 2 x casing width at every zoom stop. A class with `casing: false` gets casing opacity 0 instead of a different filter |
-| `arrows: repeat` | `symbol` layer on the line source, `symbol-placement: line`, `symbol-spacing`; GOAT's arrow icon `goat:arrow` (pointing north) as SDF, `icon-rotate: 90` to follow the line; `icon-rotation-alignment: map`; `backward` adds 180; `both` adds a second layer |
+| `arrows: repeat` | `symbol` layer on the line source, `symbol-placement: line`, `symbol-spacing`; the `icon` (GOAT's arrow `goat:arrow` by default, pointing north), `icon-rotate: 90` to follow the line; `icon-rotation-alignment: map`; `backward` adds 180; `both` adds a second layer; no `icon-keep-upright`, which would turn arrows on lines drawn westward round |
 | `arrows`: `center`, `start`, `end`, `both_ends` | `symbol` layer on geoapi's decoration points (`default_decoration`), `icon-rotate` from `bearing` (+180 for `backward`), `icon-rotation-alignment: map` |
+| `arrows.turn_with_line: false` | `icon-rotation-alignment: viewport`, `icon-rotate: 0`, one layer whatever the `direction` |
+| `arrows.icon` | `icon-image`, `icon-size` = size / (image height / pixelRatio); GOAT's arrow and library icons are SDF and take `icon-color` (the arrows' color, else the line's); uploads and emoji are drawn as they are, without `icon-color` |
 | `marker` circle | `circle` layer, `circle-radius` = size / 2; `outline` = `circle-stroke-*`; `fill: false` = `circle-opacity` 0, the stroke stays. Circles never collide |
-| `marker` with a shape | one image per look (shape, fill, stroke, icon) in a `symbol` layer; `fill: false` leaves the shape's inside clear (the image name's fill part is empty) |
+| `marker` with a shape | one image per look (shape, fill, stroke, icon) in a `symbol` layer, its name a `step` on `["zoom"]` with a stop at each whole zoom between two stops of a color or the stroke width by zoom (4.2); `fill: false` leaves the shape's inside clear (the image name's fill part is empty) |
 | `marker` icon | `symbol` layer, `icon-size` = size / (image height / pixelRatio); library icons are SDF and take `icon-color`; uploaded icons go into a second layer (`mixed_icon_kinds`); `rotation` = `icon-rotate` with `icon-rotation-alignment: map`; `outline` = `icon-halo-*` (library icons only) |
 | icon on a circle | `circle` layer + `symbol` layer above; the icon size follows the circle size expression |
-| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset`; `offset` px / size = `text-offset` in ems, per zoom stop when the size varies |
-| `label` on polygons | `symbol` layer on geoapi's label anchors (`default_anchor`) |
-| `label` on lines | `line`: `symbol-placement: line`; `center`: the decoration center points |
-| label text | `concat` of literal text and one formatted value per placeholder; `lines` become `format` sections; `max_width` px / size = `text-max-width` in ems |
+| `marker` on polygons and lines | the marker image `symbol` layer (a plain circle too, or the icon alone) on geoapi's label anchors (`default_anchor`, the tiles asked with `label=true`) or the lines' center decoration points (`default_decoration`); on a GeoJSON source on the polygon itself (MapLibre places one symbol inside it) or on the line with `symbol-placement: line-center`; no stroke and no highlight ring (the polygon or the line highlights); on raised polygons `symbol-height-offset` = the height |
+| decoration points of several kinds | the tile URL asks for every kind the layers use (`decoration=start,end,center`); a layer drawn on some of them filters on `_decoration` |
+| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset` with `text-justify: auto`; a fixed side = `text-anchor` on the opposite side (`above` = `bottom`, `below` = `top`, `left` = `right`, `right` = `left`, `above_left` = `bottom-right`, `above_right` = `bottom-left`, `below_left` = `top-right`, `below_right` = `top-left`) with `text-offset` half the marker size plus 2 px toward that side (on both axes at a corner), and `text-justify: auto` at a side with a left or right; `offset` px / size = `text-offset` in ems, added to the clearance, per zoom stop when the size varies |
+| `label` on polygons | `symbol` layer on geoapi's label anchors (`default_anchor`), placed as on points: `auto` with a marker `text-variable-anchor-offset` around it, without one on the anchor; a side `text-anchor` and `text-offset`; `inside` on the anchor |
+| `label` on lines | `line`: `symbol-placement: line`, `spacing` = `symbol-spacing`; `auto`, `center` and the sides: the decoration center points, placed as on points (`text-variable-anchor-offset` for `auto` with a marker, `text-anchor` and `text-offset` for a side); on a GeoJSON source `symbol-placement: line-center`, a side with `text-rotation-alignment: viewport` |
+| label text | `concat` of literal text and one formatted value per placeholder; `lines` become `format` sections; `max_width` px / size = `text-max-width` in ems; `transform` = `text-transform`, `letter_spacing` = `text-letter-spacing`, `line_height` = `text-line-height` (both in ems already), `padding` = `text-padding` |
 | numbers | `number-format` with `locale` from `["global-state", "locale"]`; `decimals: 0` rounds first (MapLibre ignores a 0); `thousands_separator: false` uses `to-string` of the rounded value; `abbreviate` and `always_show_sign` are `case` expressions. The map compiles without field types, so there a placeholder is formatted as a number when its value is one (`["typeof", ["get", f]]`) and as text otherwise; with field types (the style panel), by the field's type |
-| `font.weight` | `text-font` stack (fonts: section 15); until GOAT serves its own fonts, `Noto Sans Regular` and `Noto Sans Bold`, the stacks both default glyph servers (OpenFreeMap, basemap.de) have |
+| `font.weight`, `font.style` | `text-font`, one Noto Sans stack per weight and style (fonts: section 15): `Noto Sans Light`, `Regular`, `Medium`, `Bold`, and `Noto Sans Light Italic`, `Italic`, `Medium Italic`, `Bold Italic`; a single font each, as a static glyph host serves no combined stack; both by zoom, per class and per line (a line's `font` as a `format` section's `text-font`) |
 | value by zoom | `interpolate` or `step` on `["zoom"]` at the top level; derived values (casing width, opacity products) are computed at every stop of the union of stop zooms |
 | value by attribute | `interpolate` over `["to-number", ["get", f]]` inside `case` with `has`, falling back to `no_data`; `sqrt` and `log` scales transform the input and the domain |
 | categories | `match`; labels in the field's type for strings and integers, otherwise on `["to-string", ["get", f]]`; `other` is the fallback, `no_data` a `case` with `has` |
@@ -2768,11 +3134,11 @@ are part of the format: an output that breaks one of them draws something else t
 | `time` | the filter compares the field with `["global-state", "<layer id>:time"]`; a `step` on a date field compares its text cut to the year, month or day, and without field types (the map) a `step` always does |
 | highlight | each part's paint reads `["feature-state", "active"]` (and `"hover"`): color, width, halo, opacity; sizes of icons and labels cannot change |
 | heatmap | `heatmap` layer; `heatmap-color` over `heatmap-density`, transparent at 0; `points_from_zoom` = the heatmap's `maxzoom` and the point layers' `minzoom` |
-| cluster | GeoJSON source with `cluster`, `clusterRadius`, `clusterMinPoints`, `clusterMaxZoom` = `cluster_until_zoom` - 1 (MapLibre's is inclusive); cluster layers filter on `["has", "point_count"]`; `count` = `point_count` |
+| cluster | GeoJSON source with `cluster`, `clusterRadius`, `clusterMinPoints`, `clusterMaxZoom` = `cluster_until_zoom` - 1 (MapLibre's is inclusive); cluster layers filter on `["has", "point_count"]`; `count` = `point_count`; `look: points` compiles the base marker for the clusters, with `clusterProperties` counting the points of each category and a `let`/`max`/`case` choosing the icon and color; `count: badge` is one symbol layer: a circle marker image per number of digits and the count, moved to the marker box's upper right corner by `icon-offset` (px) and `text-offset` (ems of its fixed size), per feature and zoom; a `value` from a field adds `clusterProperties` accumulating the field (`+` for the sum and the mean, a `min` or `max` reduce over `accumulated`) and counting the points with a value, the mean dividing the two |
 | H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value; with `extrude`, one `fill-extrusion` layer instead (no outline), height `base` + scaled value x `tallest`, one expression per computed resolution chosen with `match` on the tile's resolution |
 | polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity; no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
 | map document `scene` and `view` | not layers: root `projection` (`globe` as a zoom expression from `vertical-perspective` at 8 to `mercator` at 9), `terrain` (a `raster-dem` source of the deployment's Terrarium tiles), `sky` and `light` (a set light's position from `global-state`; a missing one is a `viewport` light), a terrain hillshade layer and the building layer `goat-buildings` (`buildings.opacity` is its `fill-extrusion-opacity` and that of the basemap's own 3D building layers); every hillshade's illumination reads the light from `global-state`. `maxPitch` 85 in 3D, 0 in 2D |
-| raster | `raster` source of the raster service's colored tiles and a `raster` layer (adjustments as in 9.1); hillshade: a `hillshade` layer on a terrarium DEM source, the layer opacity in the alpha of its colors |
+| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity in the alpha of its colors. A hillshade's source raises a low relief: its four factors times k, the largest power of two that keeps the band's range (the description's `range`, its minimum to maximum) within 1000, at most 16, and 1 for an unknown range; the colors' stop values on that source times k too. MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so without it the slopes of flat terrain are lost; a power of two keeps every decoded value exact, the tile addresses and the values read for popups keep the file's encoding. `image`, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
 | map service | `raster` source with the service's tile URL (WMS `GetMap` with `{bbox-epsg-3857}` and `STYLES` = `service_style`; WMTS with `Style`; XYZ as given) and a `raster` layer with `raster-opacity`, the adjustments as in 9.1 and `raster-resampling` |
 
 > "Cycle routes with a white edge, width by zoom, shifted 2 px, an arrow in the middle; planned routes dashed, faded,
@@ -2781,7 +3147,7 @@ are part of the format: an output that breaks one of them draws something else t
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": { "zoom": [[10, 2], [16, 6]] }, "cap": "round", "join": "round", "offset": 2 },
@@ -2859,7 +3225,7 @@ compiles to:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#cccccc", "opacity": 0.8 },
@@ -2945,7 +3311,7 @@ validator and rendered once.
 Every stored style (project layers, dataset defaults, published maps, workflow `outputStyle`, locked print
 styles) is converted once by a goatlib converter, the upgrade step from version 0 (section 14), and goatlib's style
 generators (`goatlib/tools/style.py`) write the new format. Catalog style assets are upgraded when read (section 14)
-until the harvester writes version 1. The converter runs as a dry
+until the harvester writes GOAT Style. The converter runs as a dry
 run on a copy of the database first; every style that does not validate is reported, not silently simplified. The old shape is
 not kept.
 
@@ -2962,10 +3328,9 @@ not kept.
 | `X_range.reversed` | `reverse` | | no |
 | `X_range.color_legends` | class `name` | | no |
 | `X_no_data` | the classification's `no_data` | | no |
-| `radius`, `radius_field`, `radius_range`, `radius_scale` | `marker.size` (fixed, by attribute or classes) | **size = 2 x radius** (diameter) | no |
+| `radius`, `radius_field`, `radius_range`, `radius_scale` | `marker.size` (fixed, or classes over the stored breaks) | **size = 2 x radius** (diameter) | no; a size by field without breaks drew one size and stays one size, reported |
 | `marker_size` (custom marker) | `marker.size` | **size = marker_size x 200 / 200 image px**, checked in the dry run | no |
 | `X_ordinal_map` (size by category) | classification with `target` = the size key | | no |
-| `X_scale: exponential` (sizes) | `scale: log` | | **yes**: approximation |
 | `marker`, `marker_field`, `marker_mapping` | `marker.icon`, classes with `marker.icon` | URLs to `goat:` or `asset:` | no |
 | `marker_anchor` (9 anchors) | `marker.anchor` (the same nine, `top-left` written `top_left`) | | no |
 | `marker_offset` | `marker.offset` | **px = offset x marker_size / 200** (MapLibre scales icon offsets by the icon size) | no |
@@ -2976,21 +3341,24 @@ not kept.
 | `decoration_allow_overlap` | dropped: arrows always overlap | | **yes** |
 | `text_label`: `field`, `size`, `color`, `outline_color`, `outline_width` | `label.text: "{field}"`, `size`, `color`, `halo` | RGB to hex | no |
 | `text_label.offset` (ems) | `label.offset` (px) | **px = ems x size** | no |
-| `text_label.anchor` (9 anchors) | `label.placement`: `auto`, `above`, `center` | | **yes** |
-| `text_label.alignment`, `font_family`, `background`, `background_color` | dropped (alignment and backgrounds later; fonts are GOAT's) | | **yes** |
+| `text_label.anchor` on points (9 anchors) | `label.placement`, by the side the label sits on: `top` to `below`, `bottom` to `above`, `left` to `right`, `right` to `left`, `top-left` to `below_right`, `top-right` to `below_left`, `bottom-left` to `above_right`, `bottom-right` to `above_left`, `center` to `center`; an absent anchor is `top` (`below`) | today's renderer puts the anchor on the point itself; GOAT Style keeps the label clear of the marker, so a converted label sits half the marker size plus 2 px further out, and an offset that cleared the marker by hand adds to that | no |
+| `text_label.anchor` on lines | `label.placement: line` with the side kept in `label.offset`: `bottom` (text above the line) moves it up, `top` (below the line, also an absent anchor) moves it down, `center` keeps it on the line | **offset y = 0.6 x size px** (half of MapLibre's default line height, 1.2 em, which today's renderer keeps), added to the converted `text_label.offset` | **yes** only for the left or right part of an anchor (a shift along the line) |
+| `text_label.anchor` on polygons | `label.placement: inside`, centered on the tile service's point inside the polygon | the anchor is dropped: a label that sat above or below that point moves by half a line at most | **yes**, not reported per style |
+| `text_label.font_family` | `label.font.weight: bold` when the first font is a Bold one (Open Sans Bold), else nothing (regular) | today's renderer never drew the choice, so these labels turn bold for the first time | no |
+| `text_label.alignment`, `background`, `background_color` | dropped (alignment and backgrounds later) | | **yes** |
 | `min_zoom`, `max_zoom` | top-level `min_zoom`, `max_zoom` | | no |
 | `visibility` | map document layer entry `visible` | | no |
 | `legend.show`, `legend.caption` | `legend.show`, `legend.caption` | | no |
 | `legend.collapsed` | map document `legend.expanded` | inverted | no |
-| `cluster` (`radius`, `min_points`, `max_zoom`, `color`, `text_color`) | `render: { "type": "cluster" }` with `cluster_until_zoom` = `max_zoom` + 1 (today's value is inclusive), cluster `symbol` colors | | no |
+| `cluster` (`radius`, `min_points`, `max_zoom`, `color`, `text_color`) | `render: { "type": "cluster" }` with `cluster_until_zoom` = `max_zoom` + 1 (today's value is inclusive), cluster `symbol` colors; on a layer with a custom marker also `look: points` and `count: badge` (the marker with the count on a badge in the cluster colors, as today) | | no |
 | `popup` | `popup`: `fieldList` to `field_list`, attribute `name` to `field`, `format_config` to `format`, the legacy `format` preset to the matching `format`, `position` and `show_layer_header` to `layout` and `header`, block ids kept | | no |
 | `interaction` (legacy popup) | the popup GOAT seeds from it today | | no |
 | raster `opacity`, `style.opacity` | top-level `opacity` (the product) | | no |
 | raster `resampling` | `resampling` | | no |
 | raster `style_type: image`, `brightness_min`, `brightness_max`, `contrast`, `saturation`, `hue` | `render.type: image` and adjustments | **brightness = brightness_min if > 0, else brightness_max - 1** | **yes** when both are set |
-| raster `color_range` (`color_map`, `interpolate`, `min_value`, `max_value`, `no_data_color`, `min_label`, `max_label`) | `render.type: continuous` with `stops`, `interpolate` (`false` to `nearest`), `legend.min_label`, `legend.max_label` | `no_data_color` dropped (no-data is transparent) | **yes** for `no_data_color` |
+| raster `color_range` (`color_map`, `interpolate`, `min_value`, `max_value`, `no_data_color`, `min_label`, `max_label`) | `render.type: continuous` with `stops`, `interpolate` (`false` to `nearest`), `outside: hide`, `legend.min_label`, `legend.max_label` | today's renderer draws the cells outside the color map (or outside `min_value` and `max_value`) transparent: `outside: hide`. `min_value` and `max_value` are not kept, the stops' ends bound the colors. `no_data_color` dropped: today's renderer draws no-data transparent whatever its color | **yes**, reported, for a `min_value` or `max_value` other than the color map's end value, and for a `no_data_color` (a stored choice only, never drawn) |
 | raster `categories` (`categories`, `default_color`) | `render.type: categorical`, `classes`, `other_color` | | no |
-| raster `hillshade` (`azimuth`, `altitude`, `z_factor`) | `render.type: hillshade` (`direction`, `altitude`, `exaggeration`) | **exaggeration = min(1, z_factor / 2)**, checked visually in the dry run; azimuth 360 is direction 0 | **yes** above 2 |
+| raster `hillshade` (`azimuth`, `altitude`, `z_factor`) | `render.type: hillshade` (`direction`, `altitude`, `exaggeration`) | **exaggeration = min(1, z_factor / 2)**, checked visually in the dry run; azimuth 360 is direction 0. Today's renderer draws a grey ramp of the elevation times `z_factor` and never reads `azimuth` or `altitude`, so a converted hillshade looks different: shaded, lit from `direction` | **yes** above 2 |
 | WMS, WMTS, XYZ layers: `opacity`, `min_zoom`, `max_zoom`, `resampling`, `legend` | a map service style (9.8) with the same keys and `render.type: image`; `service_style` left out (the first style, as drawn today); `visibility` to the map document; the service keys (`url`, `layers`, `srs`, `dpi`, `legend_urls`, `tile_size`) stay on the layer | | no |
 
 Where a key is absent, the converter writes what today's renderer draws, not the web form's defaults: the
@@ -3011,7 +3379,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 
 | Key | Type | Required | Default |
 |---|---|---|---|
-| `version` | integer | yes | |
+| `version` | three numbers, `"1.0.0"` | yes | |
 | `kind` | `vector`, `raster` | yes | |
 | `geometry` | `point`, `line`, `polygon` | no | the dataset's |
 | `opacity` | number 0 to 1 (F, Z) | no | 1 |
@@ -3040,6 +3408,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `outline.width` | px | F Z A C | 1 |
 | `outline.opacity` | 0 to 1 | F Z A C | 1 |
 | `outline.dash` | `solid`, `dashed`, `dotted`, `dash_dot` (polygons) | F Z(step) C | `solid` |
+| `outline.position` | `center`, `inside`, `outside` (polygons) | F Z(step) C | `center` |
 | `line.color` | color | F Z A C | `#2166ac` |
 | `line.width` | px | F Z A C | 2 |
 | `line.opacity` | 0 to 1 | F Z A C | 1 |
@@ -3056,6 +3425,8 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `arrows.spacing` | px | F Z (per layer) | 100 |
 | `arrows.size` | px | F Z A C | 10 |
 | `arrows.color` | color | F Z A C | the line color |
+| `arrows.icon` | icon reference, or `goat:arrow` | F (per layer) | `goat:arrow` |
+| `arrows.turn_with_line` | boolean | F (per layer) | `true` |
 | `marker.shape` | `circle`, `square`, `diamond`, `hexagon`, `shield`, `pin`, `round_pin`, `needle`, `square_pin`, `tag_pin`, `flag`, `icon` | F C (`icon` per layer) | `circle` |
 | `marker.color` | color | F Z A C | `#2bb381` |
 | `marker.fill` | boolean: `false` draws the marker hollow (3.3) | F C | true |
@@ -3073,10 +3444,16 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `label.size` | px | F Z A C | 12 |
 | `label.color` | color | F Z A C | `#3a3541` |
 | `label.halo.color`, `label.halo.width` | color, px | F Z A C | `#ffffff`, 1.5 |
-| `label.font.weight` | `regular`, `bold` | F Z(step) C | `regular` |
-| `label.placement` | points `auto`, `above`, `center`; lines `line`, `center`; polygons `inside` | F (per layer) | `auto`, `line`, `inside` |
+| `label.font.weight` | `light`, `regular`, `medium`, `bold` | F Z(step) C | `regular` |
+| `label.font.style` | `normal`, `italic` | F Z(step) C | `normal` |
+| `label.placement` | points `auto`, `center`, `above`, `below`, `left`, `right`, `above_left`, `above_right`, `below_left`, `below_right`; lines `line`, `auto`, `center` and the eight sides; polygons `auto`, `inside` and the eight sides | F (per layer) | points `auto`, lines `line`, polygons `auto` |
 | `label.offset` | `[x, y]` px | F Z C | `[0, 0]` |
 | `label.max_width` | px | F Z A C | 120 |
+| `label.transform` | `none`, `uppercase`, `lowercase` | F Z(step) C | `none` |
+| `label.letter_spacing` | ems of the label size | F Z C | 0 |
+| `label.line_height` | ems of the label size, 0 or more | F Z (per layer) | 1.2 |
+| `label.spacing` | px between repeats along a line, 1 or more (`placement: line`) | F Z (per layer) | 250 |
+| `label.padding` | px kept free around each label, 0 or more | F Z (per layer) | 2 |
 | `label.lines` | list of `{ size, color, font }` per line | F (per layer) | none |
 | `label.priority` | `{ field, top }` | F (per layer) | none |
 | `label.allow_overlap` | boolean | F (per layer) | false |
@@ -3130,14 +3507,14 @@ part overrides.
 |---|---|
 | `features` | none |
 | `heatmap` | `radius` (F Z, 26), `intensity` (F Z, 1), `opacity` (F Z, 1), `weight` (F A, 1), `palette` (`d3:magma`), `reverse`, `points_from_zoom` (none) |
-| `cluster` | `radius` (50), `cluster_until_zoom` (14), `min_points` (2), `symbol` (parts over `count`) |
+| `cluster` | `look` (`circle`, `points`; `circle`), `count` (`center`, `badge`; `center`), `value` (`{ "op": "count" }`; `sum`, `mean`, `min`, `max` with `field`), `radius` (50), `cluster_until_zoom` (14), `min_points` (2), `symbol` (parts over `count`) |
 | `h3` | `resolution` (`auto`), `value` (`{ "op": "count" }`), `palette` (`colorbrewer:OrRd`), `reverse`, `classify` (shape of 18.4 without `field`), `opacity` (0.85), `outline`, `points_from_zoom` (none), `extrude` (`tallest` F Z 1000, `base` F Z 0, `scale` `sqrt`; absent: flat), `computed` (server, per resolution) |
 
 ### 18.8 Raster
 
 | Key | Values and defaults |
 |---|---|
-| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`linear`), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` |
+| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` |
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |
@@ -3188,7 +3565,7 @@ what it cannot render yet, so the AI and the panel never offer it:
 | First release | Later (in the format, `not_supported_yet` until built) |
 |---|---|
 | vector parts, value forms, classifications, rules, order, legend, time, popup, named styles, map document | H3 (geoapi H3 tiles) |
-| heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, colored tiles and point values (raster service) |
+| heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, value tiles, colored tiles for images and point values (raster service) |
 | raster `image`, `continuous`, `categorical`, `hillshade` (9) | map service popups (`GetFeatureInfo`) |
 | 3D: polygon `extrude` (3.6), H3 columns (8.3), `view.mode` and `view.projection` (10.1), `scene` (10.2) | |
 
@@ -3202,7 +3579,8 @@ ships them).
 **Not in 1.0, on purpose:**
 
 - a highlight color and width (the active feature uses GOAT's highlight);
-- `font.italic`, label backgrounds, text alignment;
+- label backgrounds, text alignment, font families other than Noto Sans, and weights other than Light, Regular, Medium
+  and Bold;
 - dash patterns as lists, line patterns, double lines, line gradients;
 - bivariate classifications (two fields into one color);
 - the time dimension of WMS layers;
@@ -3234,3 +3612,17 @@ Common mistakes the validator answers with a fix:
 - writing `classes` with invented breaks for a computed method (the server replaces them; write the method and
   `count` only);
 - a fractional class zoom (`zoom_not_whole`, fix `round`).
+
+## 21. Changelog
+
+The version of this specification is not tied to GOAT releases. A GOAT release reads every version up to the one it
+ships; the table tells people which release first reads each version. A server that refuses a newer document cannot
+know that release: its message names the two versions and says that GOAT needs an update (14).
+
+| Spec version | GOAT release | Added |
+|---|---|---|
+| 1.0.0 | the first release with GOAT Style | everything in this document |
+
+Minor and patch versions start after the first release; until then every key belongs to 1.0.0. goatlib keeps the keys
+of 1.0.0, catalogue palettes and library icons included, in `style/data/keys-1.0.0.json` and the version of each later
+key in `SINCE` (`style/version.py`), and a test fails for a key of the schema in neither.

@@ -61,7 +61,7 @@ function PatternEditor({ base }: { base: Path }) {
 
 /** The Fill editor's Pattern row: the pattern's picture and name (or how it varies), opening the pattern editor. */
 export function PatternRow({ row, base }: { row: PartRow; base: Path }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
@@ -76,7 +76,12 @@ export function PatternRow({ row, base }: { row: PartRow; base: Path }) {
   const text =
     mode === "fixed"
       ? choiceLabel(t, "fill.pattern", typeof value === "string" ? value : "none")
-      : summarize(store.document, path, t, { fields: data.fields, mapZoom, geometry: data.geometry });
+      : summarize(store.document, path, t, {
+          fields: data.fields,
+          mapZoom,
+          geometry: data.geometry,
+          language: i18n.language,
+        });
   return (
     <NavRow
       label={label}

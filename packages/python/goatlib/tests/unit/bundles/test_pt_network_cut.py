@@ -167,7 +167,7 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
     # which every cut draws again.
     assert set(by_role) == set(imported) - {"route_directions.txt", "shape_lines"}
     con = duckdb.connect()
-    con.execute("LOAD spatial")
+    con.execute("INSTALL spatial; LOAD spatial;")
     for role, layer in imported.items():
         if role not in by_role:
             continue
@@ -291,6 +291,38 @@ def test_the_cut_is_a_feed_the_importer_reads(cut: dict, tmp_path: Path) -> None
         layer.role for layer in importer.extract_layers(str(archive), str(workdir))
     }
     assert {"stops", "routes", "trips", "stop_times", "shape_lines"} <= roles
+
+
+def _cut_modes(tables: Path, tmp_path: Path, modes: list) -> dict:
+    workdir = tmp_path / ("modes_" + "_".join(modes))
+    workdir.mkdir()
+    layers = pt_network.export_pt_network(
+        duckdb.connect(),
+        area=AREA,
+        store_dir=str(tables),
+        workdir=str(workdir),
+        modes=modes,
+    )
+    return {layer.role: layer.file_path for layer in layers}
+
+
+def test_lines_are_kept_by_mode(tables: Path, tmp_path: Path) -> None:
+    # Line 1 is a bus (route_type 3), line 3 rail (2).
+    rail = _cut_modes(tables, tmp_path, ["rail"])
+    assert _values(rail["routes"], "route_id") == {"R3"}
+    assert _values(rail["trips"], "trip_id") == {"T3"}
+    bus = _cut_modes(tables, tmp_path, ["bus", "tram"])
+    assert _values(bus["routes"], "route_id") == {"R1"}
+    # Every mode is no filter at all.
+    every = _cut_modes(tables, tmp_path, list(pt_network.MODE_ROUTE_TYPES))
+    assert _values(every["routes"], "route_id") == {"R1", "R3"}
+
+
+def test_an_area_without_lines_of_the_modes_is_refused(
+    tables: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="no service of the chosen modes"):
+        _cut_modes(tables, tmp_path, ["ferry"])
 
 
 def test_an_area_without_stops_is_refused(tables: Path, tmp_path: Path) -> None:

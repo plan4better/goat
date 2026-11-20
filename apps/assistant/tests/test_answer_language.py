@@ -1,6 +1,8 @@
 """An answer in the other language than the user's message (English or German)
 is asked for again, once (``assistant.agent.ends_with_text``), and only when
-both languages are clear (``assistant.language``)."""
+both languages are clear (``assistant.language``), or when the message shows
+no language at all and the answer is not in the interface language, which
+the note then names (``assistant.prompt.render_note``)."""
 
 import json
 from collections.abc import AsyncIterator
@@ -21,10 +23,17 @@ from assistant.budget import RunBudget
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
 from assistant.events import TextReplaced, TextStarted, to_ui_message
-from assistant.language import clear_language
+from assistant.language import (
+    GRAMMAR_WORDS,
+    MESSAGE_LANGUAGE_WORDS,
+    clear_language,
+    names_a_language,
+    shows_no_language,
+)
 from assistant.prompt import NO_ANSWER_TEXT, answer_in_language
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
+from assistant.surfaces import Locale
 from assistant.tools.toolset import TOOL_RETRIES
 from evals.tasks import LanguageCheck, load_tasks
 
@@ -78,12 +87,16 @@ class Answers:
         ]
 
 
-def _deps(message: str, answer: str = "") -> RunDeps:
+def _deps(message: str, answer: str = "", locale: Locale | None = None) -> RunDeps:
     async def emit(event: Any) -> None:
         return None
 
     return RunDeps(
-        message_id="m1", emit=emit, prompt_text=message, prompt_answer=answer
+        message_id="m1",
+        emit=emit,
+        prompt_text=message,
+        prompt_answer=answer,
+        prompt_locale=locale,
     )
 
 
@@ -182,9 +195,13 @@ async def test_an_answer_in_the_message_language_is_not_asked_for_again() -> Non
         ("Write a German description of this layer", GERMAN_ANSWER, ""),
         ("Can you translate the layer's description for me?", GERMAN_ANSWER, ""),
         ("Beschreibe diesen Layer bitte auf Englisch.", ENGLISH_ANSWER, ""),
-        # A message that shows no clear language.
-        ("15 minute workflow in Munich", GERMAN_ANSWER, ""),
+        # A message that shows no clear language, but a grammar word of the
+        # answer's: it may be in the answer's language.
         ("Show me Zählstellen für den Radverkehr", GERMAN_ANSWER, ""),
+        ("Radwege mit Beleuchtung in Leipzig", GERMAN_ANSWER, ""),
+        ("Bike paths Leipzig for 2024", ENGLISH_ANSWER, ""),
+        # Nouns with German letters may be German words.
+        ("Supermärkte Leipzig 15 Minuten", GERMAN_ANSWER, ""),
         # Answers of names, numbers, code and dataset titles.
         (ENGLISH_QUESTION, "Radwege: 16 (Schutzstreifen 9, Radfahrstreifen 7).", ""),
         (
@@ -218,29 +235,108 @@ async def test_an_answer_in_the_message_language_is_not_asked_for_again() -> Non
 async def test_a_doubtful_case_is_not_asked_for_again(
     message: str, answer: str, card: str
 ) -> None:
+    """Also with the interface language other than the answer's."""
     answers = Answers(answer, "Not asked.")
-    result = await build_agent(answers.model).run(message, deps=_deps(message, card))
+    other: Locale = "de" if answer == ENGLISH_ANSWER else "en"
+    result = await build_agent(answers.model).run(
+        message, deps=_deps(message, card, other)
+    )
     assert result.output == answer
     assert answers.retries() == []
 
 
-def test_no_eval_prompt_reads_as_the_other_language() -> None:
+@pytest.mark.parametrize(
+    ("message", "locale", "answer", "retried"),
+    [
+        ("Bus stops per district in Leipzig", "en", GERMAN_ANSWER, ENGLISH_ANSWER),
+        ("15 minute workflow in Munich", "en", GERMAN_ANSWER, ENGLISH_ANSWER),
+        ("Radwege 2024 Leipzig Innenstadt", "de", ENGLISH_ANSWER, GERMAN_ANSWER),
+    ],
+)
+async def test_a_message_without_a_language_gets_the_interface_language(
+    message: str, locale: Locale, answer: str, retried: str
+) -> None:
+    """Nouns, names and numbers show no language: the note names the
+    interface language for them, and an answer clearly in the other one is
+    asked for again, once, saying why."""
+    answers = Answers(answer, retried)
+    result = await build_agent(answers.model).run(
+        message, deps=_deps(message, locale=locale)
+    )
+    assert result.output == retried
+    other: Locale = "de" if locale == "en" else "en"
+    assert answers.retries() == [answer_in_language(locale, other, interface=True)]
+    assert "interface language" in answers.retries()[0]
+
+
+async def test_without_an_interface_language_a_message_without_one_is_not_checked() -> (
+    None
+):
+    answers = Answers(GERMAN_ANSWER, ENGLISH_ANSWER)
+    message = "Bus stops per district in Leipzig"
+    result = await build_agent(answers.model).run(message, deps=_deps(message))
+    assert result.output == GERMAN_ANSWER
+    assert answers.retries() == []
+
+
+@pytest.mark.parametrize(
+    ("message", "language"),
+    [
+        # Requests and questions that start with a verb or a question word.
+        ("Find bus stops for Leipzig", "en"),
+        ("I need bike counts for Dresden", "en"),
+        ("What about the trams?", "en"),
+        ("Which districts get the most noise?", "en"),
+        ("Finde Haltestellen zu Leipzig", "de"),
+        ("Wann wurde die Brücke gebaut?", "de"),
+        ("Wo liegt Plagwitz?", "de"),
+        ("Kannst du Radwege über 2 km zeigen?", "de"),
+    ],
+)
+def test_short_requests_show_their_language(message: str, language: Locale) -> None:
+    assert clear_language(message, MESSAGE_LANGUAGE_WORDS) == language
+    assert not shows_no_language(message)
+
+
+def test_the_grammar_words_of_the_two_languages_are_apart() -> None:
+    """A word spelled alike in both (in, also, was, will) counts for neither."""
+    assert not GRAMMAR_WORDS["en"] & GRAMMAR_WORDS["de"]
+
+
+def test_every_eval_prompt_reads_as_its_language() -> None:
     """Every prompt of the eval set whose answer is graded on its language
-    reads as that language or as none, never as the other one."""
+    reads as that language, or shows none and the task's interface language
+    is that language: the check holds the answer to what the prompt asked
+    for, and never to the other language."""
     for task in load_tasks():
+        if names_a_language(task.prompt):
+            continue
         for check in task.checks:
             if isinstance(check, LanguageCheck):
-                assert clear_language(task.prompt, 2) in (check.expected, None), task.id
+                asked = (
+                    task.locale
+                    if shows_no_language(task.prompt)
+                    else clear_language(task.prompt, MESSAGE_LANGUAGE_WORDS)
+                )
+                assert asked == check.expected, (task.id, task.prompt)
 
 
+@pytest.mark.parametrize(
+    ("message", "retry"),
+    [
+        (ENGLISH_QUESTION, answer_in_language("en", "de")),
+        # No language shown: the interface language of the request counts.
+        ("Bus stops per district in Leipzig", answer_in_language("en", "de", True)),
+    ],
+)
 async def test_the_run_manager_hands_the_message_to_the_check(
-    repo: Repository, settings: AssistantSettings
+    repo: Repository, settings: AssistantSettings, message: str, retry: str
 ) -> None:
     """The production path: RunManager gives the validation the user's
-    message, and the answer it asked for again replaces the first one: the
-    stream names the replaced text part, the stored message keeps it marked
-    and the reloaded one leaves it out, and the next turn's model history
-    holds only the answer that replaced it."""
+    message and interface language, and the answer it asked for again
+    replaces the first one: the stream names the replaced text part, the
+    stored message keeps it marked and the reloaded one leaves it out, and
+    the next turn's model history holds only the answer that replaced it."""
     answers = Answers(GERMAN_ANSWER, ENGLISH_ANSWER)
     manager = RunManager(
         repo,
@@ -252,10 +348,10 @@ async def test_the_run_manager_hands_the_message_to_the_check(
     conversation = await repo.create_conversation(USER, "catalog", None, None)
     conversation_id = UUID(str(conversation["id"]))
     run_id, message_id = await manager.start_run(
-        conversation_id, USER, ENGLISH_QUESTION, None
+        conversation_id, USER, message, None, locale="en"
     )
     await manager.wait(run_id)
-    assert answers.retries() == [answer_in_language("en", "de")]
+    assert answers.retries() == [retry]
 
     events = [event for _, event in await repo.list_events(run_id)]
     started = [event.part_id for event in events if isinstance(event, TextStarted)]
@@ -287,4 +383,4 @@ async def test_the_run_manager_hands_the_message_to_the_check(
     history = json.dumps(await repo.history(conversation_id), ensure_ascii=False)
     assert ENGLISH_ANSWER in history
     assert GERMAN_ANSWER not in history
-    assert answer_in_language("en", "de") not in history
+    assert retry not in history

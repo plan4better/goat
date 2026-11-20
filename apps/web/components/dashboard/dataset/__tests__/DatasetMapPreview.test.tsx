@@ -31,8 +31,8 @@ vi.mock("@/lib/api/map", () => ({
           position: 0,
           revision: 1,
           document: layerId.startsWith("raster")
-            ? { version: 1, kind: "raster", render: { type: "image" } }
-            : { version: 1, kind: "vector", symbol: { marker: {} } },
+            ? { version: "1.0.0", kind: "raster", render: { type: "image" } }
+            : { version: "1.0.0", kind: "vector", symbol: { marker: {} } },
           issues: [],
           stale: false,
         }
@@ -188,7 +188,11 @@ describe("MapFixedPopupSlot on a dataset layer", () => {
       name: "Bus stops",
       visible: true,
       style: {
-        document: { version: 1, kind: "vector", popup: fromPopupConfig(config, undefined) } as LayerStyle,
+        document: {
+          version: "1.0.0",
+          kind: "vector",
+          popup: fromPopupConfig(config, undefined),
+        } as LayerStyle,
       },
     };
 

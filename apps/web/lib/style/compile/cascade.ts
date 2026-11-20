@@ -1,6 +1,8 @@
 // The value of a part key for every feature (spec 6.1): the base (or the reference default), then each
 // classification in list order (the class a feature falls in, else `other`, else `no_data`), then the rules in list
-// order; the last one that sets the key wins. Visibility and the class and rule zooms go into the feature filter.
+// order; the last one that sets the key wins. Visibility and the class and rule zooms go into the feature filter. A part
+// the layer switches off (`false` in the symbol) stays off in every record; its other keys still cascade (an outline in
+// the fill color takes the fill color a feature would have).
 import { cqlToExpression } from "@/lib/style/compile/cql";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { type Expr, type Kind, type Value, combine, fromForm, isZoomed } from "@/lib/style/compile/values";
@@ -48,7 +50,7 @@ function read(record: unknown, path: string, baseOff: boolean): unknown {
     if (!isObject(current)) return undefined;
     current = current[key];
   }
-  // An object switches a part that the base switched off on again.
+  // An object switches on a part the base leaves out (a part the base switches off stays off: `cascade`).
   if (
     current === undefined &&
     baseOff &&
@@ -74,7 +76,7 @@ const wholeNumber = (value: unknown): number | undefined => {
  * the labels in the field's type; any other field, and one of unknown type (the map compiles without field types, and
  * converted styles hold a number field's values as text), compares as text, which matches both.
  */
-function categoryInput(
+export function categoryInput(
   field: string,
   fields?: Record<string, FieldType>
 ): { input: Expr; label: (value: unknown) => string | number | undefined } {
@@ -109,7 +111,9 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
   const map = ctx.map ?? constant;
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const part = path.split(".")[0];
-  const baseOff = symbol[part] === false || (symbol[part] === undefined && !MAIN_PARTS.has(part));
+  // Off for the layer: no record switches it on.
+  if (symbol[part] === false && (path.endsWith(".opacity") || OFF_IS_ZERO.has(path))) return { expr: 0 };
+  const baseOff = symbol[part] === undefined && !MAIN_PARTS.has(part);
   // A caller's fallback is already a MapLibre value; only the reference default goes through `map`.
   const def = ctx.fallback !== undefined ? ctx.fallback : map(DEFAULTS[path]);
   const raw = ctx.raw;
@@ -338,9 +342,11 @@ function records(style: JsonObject): JsonObject[] {
   ];
 }
 
-/** Whether the layer draws `part`: the geometry's main part unless the base switches it off, or any record that sets it. */
+/** Whether the layer draws `part`: never when the base switches it off; else the geometry's main part, or any record
+ * that sets it. */
 export function partUsed(style: JsonObject, part: string, geometry?: Geometry): boolean {
   const symbol = isObject(style.symbol) ? style.symbol : {};
+  if (symbol[part] === false) return false;
   if (records(style).some((r) => isObject(r[part]))) return true;
   return geometry !== undefined && MAIN_PART[geometry] === part && symbol[part] !== false;
 }

@@ -32,9 +32,29 @@ def test_the_seed_picks_the_color() -> None:
     assert len(colors) > 3
 
 
+def test_new_layers_never_get_the_pale_spectral_colors() -> None:
+    # The light yellows and greens of Spectral are hard to see on a light basemap.
+    pale = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
+    ctx = DataContext(kind="vector", geometry="polygon")
+    colors = {
+        default_style(ctx, seed=f"layer-{i}")["symbol"]["fill"]["color"].lower()
+        for i in range(400)
+    }
+    assert colors == {
+        "#9e0142",
+        "#d53e4f",
+        "#f46d43",
+        "#fdae61",
+        "#66c2a5",
+        "#3288bd",
+        "#5e4fa2",
+    }
+    assert not colors & pale
+
+
 def test_service_default_is_a_plain_image_slightly_see_through() -> None:
     assert default_style(DataContext(kind="raster", source="xyz")) == {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "opacity": 0.8,
         "render": {"type": "image"},
@@ -54,7 +74,9 @@ def _value_validates(path: str, value: object) -> bool:
     head, _, rest = path.partition(".")
     try:
         if not rest:
-            VectorStyle.model_validate({"version": 1, "kind": "vector", head: value})
+            VectorStyle.model_validate(
+                {"version": "1.0.0", "kind": "vector", head: value}
+            )
         elif head == "label" and rest.startswith(("halo.", "font.")):
             sub, key = rest.split(".")
             (Halo if sub == "halo" else Font).model_validate({key: value})
@@ -77,7 +99,7 @@ def _value_validates(path: str, value: object) -> bool:
         elif head == "raster":
             RasterStyle.model_validate(
                 {
-                    "version": 1,
+                    "version": "1.0.0",
                     "kind": "raster",
                     "render": {"type": "image"},
                     rest: value,
@@ -115,6 +137,19 @@ def test_the_schema_carries_the_defaults() -> None:
     assert REFERENCE_DEFAULTS["fill.color"] == "#2bb381"
     assert REFERENCE_DEFAULTS["cluster.cluster_until_zoom"] == 14
     assert REFERENCE_DEFAULTS["marker.fill"] is True
+
+
+def test_label_text_and_outline_position_defaults_draw_as_maplibre_does() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["label.transform"] == "none"
+    assert REFERENCE_DEFAULTS["label.letter_spacing"] == 0
+    assert REFERENCE_DEFAULTS["label.line_height"] == 1.2
+    assert REFERENCE_DEFAULTS["label.font.style"] == "normal"
+    # MapLibre's own: a line label repeats every 250 px, 2 px stay free around each label.
+    assert REFERENCE_DEFAULTS["label.spacing"] == 250
+    assert REFERENCE_DEFAULTS["label.padding"] == 2
+    assert REFERENCE_DEFAULTS["outline.position"] == "center"
 
 
 def test_raster_render_defaults_follow_the_reference() -> None:

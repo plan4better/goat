@@ -12,22 +12,27 @@ const getLayerUniqueValues = vi.fn(async () => ({
 }));
 const getLayerClassBreaks = vi.fn(async () => ({ min: 12, max: 9800, mean: 400, breaks: [9800] }));
 
+// The vector requests by the dataset they ask about ("" asks nothing).
+const asked = { queryables: [] as string[], count: [] as Array<string | undefined>, sample: [] as string[] };
 vi.mock("@/lib/api/layers", () => ({
-  useLayerQueryables: () => ({
-    queryables: {
-      properties: {
-        geometry: { type: "geometry" },
-        id: { type: "integer" },
-        count: { type: "integer" },
-        name: { type: "string" },
-        area: { type: "number" },
-        ok: { type: "boolean" },
-        day: { type: "string", format: "date" },
-        ts: { type: "string", format: "date-time" },
+  useLayerQueryables: (layerId: string) => {
+    asked.queryables.push(layerId);
+    return {
+      queryables: {
+        properties: {
+          geometry: { type: "geometry" },
+          id: { type: "integer" },
+          count: { type: "integer" },
+          name: { type: "string" },
+          area: { type: "number" },
+          ok: { type: "boolean" },
+          day: { type: "string", format: "date" },
+          ts: { type: "string", format: "date-time" },
+        },
       },
-    },
-    isLoading: false,
-  }),
+      isLoading: false,
+    };
+  },
   getLayerUniqueValues: (...args: unknown[]) => getLayerUniqueValues(...(args as [])),
   getLayerClassBreaks: (...args: unknown[]) => getLayerClassBreaks(...(args as [])),
 }));
@@ -42,14 +47,25 @@ vi.mock("@/lib/api/rasters", () => ({
 vi.mock("@/lib/api/assets", () => ({
   useAssets: () => ({ assets: [{ id: "u1", url: "https://assets.example/u1.png", file_name: "u1.png" }] }),
 }));
-vi.mock("@/lib/api/processes", () => ({ useFeatureCount: () => ({ featureCount: 375 }) }));
+vi.mock("@/lib/api/processes", () => ({
+  useFeatureCount: (layerId?: string) => {
+    asked.count.push(layerId);
+    return { featureCount: 375 };
+  },
+}));
 vi.mock("@/components/map/popover/sampleFeature", () => ({
-  useSampleFeature: () => ({ feature: { properties: { name: "Park", count: 3 } } }),
+  useSampleFeature: (layerId: string) => {
+    asked.sample.push(layerId);
+    return { feature: { properties: { name: "Park", count: 3 } } };
+  },
 }));
 
 beforeEach(() => {
   getLayerUniqueValues.mockClear();
   getLayerClassBreaks.mockClear();
+  asked.queryables = [];
+  asked.count = [];
+  asked.sample = [];
 });
 
 describe("useStyleData", () => {
@@ -126,6 +142,24 @@ describe("useStyleData", () => {
       legendUrl: "https://wms.example/legend-a.png",
     });
     expect(result.current.raster).toBeUndefined();
+  });
+
+  it("a raster layer asks for no queryables and no feature count", () => {
+    renderHook(() => useStyleData({ id: "layer-r", source: { kind: "cog", url: "https://x/dem.tif" } }));
+    renderHook(() =>
+      useStyleData({
+        id: "layer-w",
+        source: { kind: "wms", url: "https://wms.example/?bbox={bbox-epsg-3857}" },
+      })
+    );
+    expect(asked.queryables.filter(Boolean)).toEqual([]);
+    expect(asked.count.filter(Boolean)).toEqual([]);
+    expect(asked.sample.filter(Boolean)).toEqual([]);
+    // A vector layer asks for all three.
+    renderHook(() => useStyleData({ id: "layer-1" }));
+    expect(asked.queryables).toContain("layer-1");
+    expect(asked.count).toContain("layer-1");
+    expect(asked.sample).toContain("layer-1");
   });
 
   it("a vector layer has neither", () => {

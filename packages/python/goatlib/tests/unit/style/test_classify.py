@@ -133,6 +133,9 @@ def test_targets_name_real_properties() -> None:
     assert codes(Classification, {**base, "target": "fill.colr"}) == ["invalid_value"]
     assert codes(Classification, {**base, "target": "label.halo.color"}) == []
     assert codes(Classification, {**base, "target": "outline.dash"}) == []
+    # Classes may set a label's font: its weight and its style.
+    assert codes(Classification, {**base, "target": "label.font.weight"}) == []
+    assert codes(Classification, {**base, "target": "label.font.style"}) == []
 
 
 def test_category_values_are_text_numbers_or_booleans() -> None:

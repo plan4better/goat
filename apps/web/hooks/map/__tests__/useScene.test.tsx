@@ -210,7 +210,7 @@ describe("useScene", () => {
     const map = fakeMap();
     const layer = (key: string, symbol: object, geometry: RenderLayer["geometry"]): RenderLayer => ({
       key,
-      style: { version: 1, kind: "vector", symbol } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol } as LayerStyle,
       geometry,
       entry: { position: "below_labels" },
       source: { type: "tiles", id: `src-${key}`, tiles: [`https://geoapi/${key}/{z}/{x}/{y}`] },
@@ -253,7 +253,7 @@ describe("useScene", () => {
     renderHook(() => useScene(map as unknown as MaplibreMap, inputs({ scene: { terrain: false } })));
     const polygon: RenderLayer = {
       key: "7",
-      style: { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle,
       geometry: "polygon",
       entry: {},
       source: { type: "tiles", id: "src-7", tiles: ["https://geoapi/7/{z}/{x}/{y}"] },

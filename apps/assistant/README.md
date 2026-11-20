@@ -155,8 +155,9 @@ results, so it starts without asking only for a workflow this conversation creat
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
 names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
-the Run card first, also when the workflow shows issues, and never changes or replaces it unasked (build-a-workflow
-skill): an edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
+the Run card first, also when the workflow shows issues that stop a run, and never offers a correction in its place,
+changes it or replaces it unless the user asks in their own words (build-a-workflow skill, `workflow_get`'s note): an
+edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
@@ -456,11 +457,14 @@ an answer could end after its cards with a single space. Such an answer is asked
 the user has already seen. The same check asks once per run for an answer in the other language than the user's
 message, English or German (`agent.wrong_language`): the instructions and the note after a longer message say it
 already, and still some answers came in the language of the data or of the interface. More wording did not help.
-It reads both languages from grammar words (`assistant/language.py`, shared with the evals' language check), only
-prose (no code, bold names, quotes, table rows or titles in a list), and acts only when both are clear: a message under
-three words (answered in the interface language), a card's answer, a message that names a language or asks to
-translate, and an answer of names or titles are never asked again, nor is an answer when another answer step does not
-fit in the run's tokens. The answer already streamed is replaced, not added to: the check names its text parts
+It reads both languages from grammar words and the verbs a request starts with (`assistant/language.py`, shared with
+the evals' language check), only prose (no code, bold names, quotes, table rows or titles in a list), and acts only
+when both are clear. A message of three words or more with no grammar word of either language (nouns, names, numbers)
+shows none: the note names the interface language for it, as for a shorter one, and the check holds the answer to
+that language, unless a German answer follows nouns with German letters. A message under three words, a card's answer,
+a message that names a language or asks to translate, one with a few grammar words but no clear language, and an
+answer of names or titles are never asked again, nor is an answer when another answer step does not fit in the run's
+tokens. The answer already streamed is replaced, not added to: the check names its text parts
 (`events.TextReplaced`, a `data-replaced-text` part naming them by the id each text-start carries in its provider
 metadata), the dock leaves them out, live and after a reload (the stored parts keep them, marked), and the next
 answer's history holds only the answer that replaced them (`runs/turn.py`, `without_replaced`). The retry counts with

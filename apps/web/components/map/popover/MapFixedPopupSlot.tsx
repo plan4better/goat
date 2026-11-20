@@ -2,6 +2,7 @@
 
 import centroid from "@turf/centroid";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { setPopupPreview } from "@/lib/store/map/slice";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
@@ -11,7 +12,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 import { featureSwatchIcon } from "@/components/map/legend/StyleLegend";
 import { MapFeaturePopover } from "@/components/map/popover/MapFeaturePopover";
 import { layerPopup } from "@/components/map/popover/normalizePopup";
-import { findPopupLayer } from "@/components/map/popover/popupVisibility";
+import { findPopupLayer, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
 
 export interface MapFixedPopupSlotProps {
   /** The map's layers, each with its active style (the popup is the style's). */
@@ -34,6 +35,7 @@ export interface MapFixedPopupSlotProps {
  * coordinates and need `useMap`.
  */
 export function MapFixedPopupSlot({ layers }: MapFixedPopupSlotProps) {
+  const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
   const popupInfo = useAppSelector((s) => s.map.popupInfo);
   const popupPreview = useAppSelector((s) => s.map.popupPreview);
@@ -47,8 +49,8 @@ export function MapFixedPopupSlot({ layers }: MapFixedPopupSlotProps) {
   );
 
   const activePopupConfig = useMemo(
-    () => popupInfo?.popup ?? layerPopup(clickedLayer, popupInfo?.featureProperties),
-    [clickedLayer, popupInfo?.popup, popupInfo?.featureProperties],
+    () => popupInfo?.popup ?? layerPopup(clickedLayer, popupInfo?.featureProperties, { t }),
+    [clickedLayer, popupInfo?.popup, popupInfo?.featureProperties, t],
   );
 
   const previewLayer = useMemo(() => {
@@ -101,7 +103,7 @@ export function MapFixedPopupSlot({ layers }: MapFixedPopupSlotProps) {
     <>
       {showClicked && popupInfo && activePopupConfig && (
         <MapFeaturePopover
-          layerId={popupInfo.layerId ?? ""}
+          layerId={popupFieldsLayerId(popupInfo.layerId, clickedLayer)}
           layerName={popupInfo.title}
           popup={activePopupConfig}
           properties={

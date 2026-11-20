@@ -4,12 +4,15 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { ICON_HEIGHT } from "@/lib/style/compile/constants";
+import { keepsColors } from "@/lib/style/compile/images";
 import {
+  type Decoration,
   type PartContext,
   highlightColor,
   highlightWidth,
   layerOpacity,
   makeLayer,
+  onDecorations,
   put,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
@@ -62,21 +65,27 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
 function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
-  ctx.images.add("goat:arrow");
+  // One icon for the layer (spec 3.2), drawn as GOAT's arrow is: pointing north before it is turned along the line.
+  const icon = String(perLayer(style, "arrows.icon"));
+  ctx.images.add(icon);
   const placement = perLayer(style, "arrows.placement");
   const direction = perLayer(style, "arrows.direction");
+  // The icon turns with the line (its top the way the arrow points) or stays upright on the screen, where the
+  // direction has nothing to turn: one layer then. Never flipped upright on the line, which would turn arrows round.
+  const turns = perLayer(style, "arrows.turn_with_line") !== false;
   const size = combine([cascade(style, "arrows.size", c)], ([s]) => ["/", s, ICON_HEIGHT], {
     kind: "number",
   });
   // Arrows take the line's color, class by class, unless a record colors them.
   const color = isSet(style, "arrows.color") ? cascade(style, "arrows.color", c) : lineColor;
   const layout = {
-    "icon-image": "goat:arrow",
+    "icon-image": icon,
     "icon-size": toProperty(size),
-    "icon-rotation-alignment": "map",
+    "icon-rotation-alignment": turns ? "map" : "viewport",
     "icon-allow-overlap": true,
   };
-  const paint: Record<string, unknown> = { "icon-color": toProperty(color) };
+  // Uploads and emoji keep their own colors: they are no SDF images, which alone take a tint.
+  const paint: Record<string, unknown> = keepsColors(icon) ? {} : { "icon-color": toProperty(color) };
   // Arrows have no opacity key; the part's on and off (spec 3) and the layer opacity reach them here.
   put(
     paint,
@@ -84,7 +93,7 @@ function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): L
     withLayerOpacity(ctx, cascade(style, "arrows.opacity", { ...c, kind: "number", fallback: 1 })),
     ctx
   );
-  const kinds = direction === "both" ? ["forward", "backward"] : [direction];
+  const kinds = !turns ? ["upright"] : direction === "both" ? ["forward", "backward"] : [direction];
   const suffix = (i: number) => (i ? "arrows-back" : "arrows");
   if (placement === "repeat") {
     // goat:arrow points north; along a line MapLibre aligns the icon's x axis with the line.
@@ -99,29 +108,30 @@ function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): L
           "symbol-placement": "line",
           "symbol-spacing": spacing,
           ...layout,
-          "icon-rotate": k === "backward" ? 270 : 90,
+          "icon-rotate": k === "upright" ? 0 : k === "backward" ? 270 : 90,
         },
         paint
       )
     );
   }
-  const decorations =
-    placement === "both_ends" ? ["start", "end"] : [placement as "start" | "end" | "center"];
-  ctx.out.tileParams.decorations = [
-    ...new Set([...(ctx.out.tileParams.decorations ?? []), ...decorations]),
-  ] as Array<"start" | "end" | "center">;
+  const decorations: Decoration[] = placement === "both_ends" ? ["start", "end"] : [placement as Decoration];
   return kinds.map((k, i) =>
-    makeLayer(
+    onDecorations(
       ctx,
-      suffix(i),
-      "symbol",
-      "arrows",
-      {
-        ...layout,
-        "icon-rotate": k === "backward" ? ["+", ["get", "bearing"], 180] : ["get", "bearing"],
-      },
-      paint,
-      "default_decoration"
+      decorations,
+      makeLayer(
+        ctx,
+        suffix(i),
+        "symbol",
+        "arrows",
+        {
+          ...layout,
+          "icon-rotate":
+            k === "upright" ? 0 : k === "backward" ? ["+", ["get", "bearing"], 180] : ["get", "bearing"],
+        },
+        paint,
+        "default_decoration"
+      )
     )
   );
 }

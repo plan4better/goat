@@ -27,4 +27,9 @@ describe("defaultStyle", () => {
       expect(maplibreErrors(out.layers)).toEqual([]);
     }
   });
+
+  it("a default document carries the version the web writes", () => {
+    for (const geometry of ["point", "line", "polygon"] as const)
+      expect(defaultStyle(geometry).version).toBe("1.0.0");
+  });
 });

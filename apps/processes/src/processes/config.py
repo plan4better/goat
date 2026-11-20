@@ -200,6 +200,11 @@ class Settings(BaseSettings):
     # Print worker URL (for PrintReport tool to render pages)
     PRINT_BASE_URL: str = os.getenv("PRINT_BASE_URL", "http://goat-web:3000")
 
+    # Core's address as the Windmill jobs reach it: project export reads icons
+    # and images from core's public file route, project import uploads them
+    # through core with the user's token. Empty, those jobs leave them out.
+    CORE_URL: str = os.getenv("CORE_URL", "http://core:8000")
+
     # Beta tool gating: users whose email domain is allowlisted are shown beta
     # tools in the toolbox. The allowlist lives in a Windmill variable (a
     # comma-separated list of domains, e.g. "plan4better.de,example.org")

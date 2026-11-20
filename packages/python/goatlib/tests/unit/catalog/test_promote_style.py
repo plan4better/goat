@@ -22,7 +22,7 @@ V0 = {
     "color_range": {"name": "Custom", "colors": GREENS},
     "color_scale_breaks": {"breaks": [10, 20, 30, 40], "min": 0, "max": 50},
 }
-V1 = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+V1 = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
 
 
 def item(asset: Any = None, geometry: str | None = "polygon", **extra: Any) -> dict:
@@ -41,7 +41,7 @@ def reader(document: Any) -> Any:
 
 def test_a_version_0_asset_becomes_a_document_for_the_items_geometry() -> None:
     doc = catalog_default_style(item(V0), seed="L", read_object=reader(V0))
-    assert doc is not None and doc["version"] == 1 and "fill" in doc["symbol"]
+    assert doc is not None and doc["version"] == "1.0.0" and "fill" in doc["symbol"]
     [c] = doc["classify"]
     # The publisher computed the classes from this version of the data.
     assert c["computed"]["data"] == "catalog:2024-05"
@@ -68,7 +68,17 @@ def test_the_asset_route_and_promotion_upgrade_alike() -> None:
 
 
 def test_an_asset_that_does_not_validate_gets_the_default() -> None:
-    broken = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "nope"}}}
+    broken = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "nope"}},
+    }
     doc = catalog_default_style(item(broken), seed="L", read_object=reader(broken))
     assert doc is not None and doc["symbol"]["fill"]["color"] != "nope"
     assert item_style(broken, item(broken)) == doc
+
+
+def test_an_asset_of_a_newer_patch_is_stored_with_the_version_it_needs() -> None:
+    newer = {**V1, "version": "1.0.9"}
+    doc = catalog_default_style(item(newer), seed="L", read_object=reader(newer))
+    assert doc == V1

@@ -18,6 +18,7 @@ from goatlib.style.models.values import (
     ZoomLevel,
     value_type,
 )
+from goatlib.style.version import SpecVersionStr
 
 
 class NoData(StyleModel):
@@ -173,7 +174,7 @@ ADJUSTMENTS = ("brightness", "contrast", "saturation", "hue")
 
 
 class RasterStyle(StyleModel):
-    version: Literal[1]
+    version: SpecVersionStr
     kind: Literal["raster"]
     opacity: LayerOpacityValue | None = None
     min_zoom: ZoomLevel | None = None

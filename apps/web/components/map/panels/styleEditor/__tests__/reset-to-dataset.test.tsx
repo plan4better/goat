@@ -28,7 +28,7 @@ vi.mock("@/lib/api/map", async (importOriginal) => ({
 
 const RESET = "style_editor.reset_to_dataset";
 const DATASET_DOC = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#2bb381", opacity: 0.8 }, outline: false },
 } as LayerStyle;
@@ -42,7 +42,7 @@ function setup(symbol: object, extra: object = {}) {
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", symbol, ...extra } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", symbol, ...extra } as LayerStyle,
       data: {
         layerId,
         geometry: "polygon",

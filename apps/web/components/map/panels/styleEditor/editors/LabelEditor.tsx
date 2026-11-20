@@ -1,31 +1,39 @@
 "use client";
 
 // The rows of the label (prototype 4.1 Label; spec 3.4): the text as one field or a template with a preview from
-// the first feature, the number format when the text shows a number, the text's look, placement, offset, priority
-// and overlap.
+// the first feature, the number format when the text shows a number, the size and the color; then three rows that sum
+// up their popovers: Halo (color and width), Text style (font, case, spacing, line height, wrap width) and Position
+// (placement, offset, repeat distance, priority, overlap, space around).
 import { Button, Typography } from "@mui/material";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import type { NumberFormatSpec } from "@/lib/style/compile/labels";
+import { extrudes } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
+import { recordPathOf, scopedView } from "@/lib/style/editor/classify";
+import { LABEL_FONT_CHOICE } from "@/lib/style/editor/forms";
 import {
+  type LabelSummaryContext,
   fieldToken,
   fillTemplate,
   formatNumberText,
   isNumberType,
+  labelHaloSummary,
+  labelPositionSummary,
+  labelTextStyleSummary,
   templateField,
   templateFields,
 } from "@/lib/style/editor/labels";
 import type { Path } from "@/lib/style/editor/store";
-import { extrudes } from "@/lib/style/compile/polygons";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
   useEditor,
+  useMapZoom,
   useScope,
   useScoped,
   useStyleData,
@@ -39,50 +47,97 @@ import {
 } from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
 import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRows";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
-import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
+import { choiceGlyph } from "@/components/map/panels/styleEditor/editors/choiceGlyph";
+import { LETTER_CASES, type PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { FieldPicker, FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
-import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
-  ChoiceRow,
-  NavRow,
-  Row,
-  TextRow,
-} from "@/components/map/panels/styleEditor/rows";
+  anchorTopOf,
+  useIsOpen,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ChoiceRow, NavRow, Row, TextRow } from "@/components/map/panels/styleEditor/rows";
 
 const SIZE: PartRow = { type: "number", key: "size", label: "style_editor.size" };
 const COLOR: PartRow = { type: "color", key: "color", label: "style_editor.color" };
+/** Light, Regular, Medium or Bold, upright or italic: one choice over the weight and the style, also by zoom and by
+ * classes. */
 const FONT: PartRow = {
   type: "choice",
   key: "font.weight",
   label: "style_editor.font",
-  values: ["regular", "bold"],
+  values: LABEL_FONT_CHOICE.values,
+  compound: LABEL_FONT_CHOICE,
 };
-const HALO: PartRow = { type: "color", key: "halo.color", label: "style_editor.halo" };
-const HALO_WIDTH: PartRow = { type: "number", key: "halo.width", label: "style_editor.halo_width" };
+const CASE: PartRow = {
+  type: "choice",
+  key: "transform",
+  label: "style_editor.letter_case",
+  values: LETTER_CASES,
+};
+// In the Halo popover, whose title names the halo.
+const HALO_COLOR: PartRow = { type: "color", key: "halo.color", label: "style_editor.color" };
+const HALO_WIDTH: PartRow = { type: "number", key: "halo.width", label: "style_editor.width" };
 const MAX_WIDTH: PartRow = { type: "number", key: "max_width", label: "style_editor.max_width" };
+const LETTER_SPACING: PartRow = {
+  type: "number",
+  key: "letter_spacing",
+  label: "style_editor.letter_spacing",
+};
+const LINE_HEIGHT: PartRow = { type: "number", key: "line_height", label: "style_editor.line_height" };
 const OVERLAP: PartRow = {
   type: "switch",
   key: "allow_overlap",
   label: "style_editor.overlap",
   note: "style_editor.note_label_overlap",
 };
-/** Polygons take one placement (`inside`), so they get no row. */
-const PLACEMENT: Record<Geometry, PartRow | undefined> = {
+const SPACING: PartRow = {
+  type: "number",
+  key: "spacing",
+  label: "style_editor.label_spacing",
+  note: "style_editor.note_label_spacing",
+};
+const PADDING: PartRow = {
+  type: "number",
+  key: "padding",
+  label: "style_editor.label_padding",
+  note: "style_editor.note_label_padding",
+};
+/** The sides of the marker in the order of their grid glyphs, row by row, with `middle` in the middle. */
+const AROUND = (middle: string) => [
+  "above_left",
+  "above",
+  "above_right",
+  "left",
+  middle,
+  "right",
+  "below_left",
+  "below",
+  "below_right",
+];
+/** Around a point's marker; along a line or around the marker at its center; around an area's marker (spec 3.4). */
+const PLACEMENT: Record<Geometry, PartRow> = {
   point: {
     type: "choice",
     key: "placement",
     label: "style_editor.placement",
-    values: ["auto", "above", "center"],
+    values: ["auto", ...AROUND("center")],
     fallback: "auto",
   },
   line: {
     type: "choice",
     key: "placement",
     label: "style_editor.placement",
-    values: ["line", "center"],
+    values: ["line", "auto", ...AROUND("center")],
     fallback: "line",
   },
-  polygon: undefined,
+  polygon: {
+    type: "choice",
+    key: "placement",
+    label: "style_editor.placement",
+    values: ["auto", ...AROUND("inside")],
+    fallback: "auto",
+  },
 };
 
 function TextRows({ base }: { base: Path }) {
@@ -90,6 +145,7 @@ function TextRows({ base }: { base: Path }) {
   const store = useEditor();
   const data = useStyleData();
   const popover = usePopover();
+  const next = useNextLevel();
   // In class scope the text is the class's own (label.text varies per feature); the number format is the layer's.
   const scopedText = useScoped(`${base}.text`);
   const textPath = scopedText.writePath;
@@ -111,7 +167,15 @@ function TextRows({ base }: { base: Path }) {
 
   const [insertAnchor, setInsertAnchor] = useState<HTMLElement | null>(null);
 
-  const preview = fillTemplate(template, data.sample, data.fieldTypes, format ?? {}, i18n.language, formats);
+  // The preview in the case the map draws (the class's own in class scope).
+  const transform = useScoped(`${base}.transform`).value;
+  const filled = fillTemplate(template, data.sample, data.fieldTypes, format ?? {}, i18n.language, formats);
+  const preview =
+    transform === "uppercase"
+      ? filled.toLocaleUpperCase(i18n.language)
+      : transform === "lowercase"
+        ? filled.toLocaleLowerCase(i18n.language)
+        : filled;
   return (
     <>
       <Row label={label}>
@@ -201,7 +265,7 @@ function TextRows({ base }: { base: Path }) {
                 : t("style_editor.as_all_numbers")
             }
             onOpen={(anchor) =>
-              popover.open(2, {
+              popover.open(next, {
                 key: `label:format:${name}`,
                 title: t("style_editor.numbers_in", { field: fieldLabel(name) }),
                 anchorTop: anchorTopOf(anchor),
@@ -215,7 +279,7 @@ function TextRows({ base }: { base: Path }) {
           label={t("style_editor.line_styles")}
           value={t("style_editor.lines_n", { n: templateLines })}
           onOpen={(anchor) =>
-            popover.open(2, {
+            popover.open(next, {
               key: "label:lines",
               title: t("style_editor.line_styles"),
               anchorTop: anchorTopOf(anchor),
@@ -233,7 +297,7 @@ function TextRows({ base }: { base: Path }) {
               : t("style_editor.as_in_dataset")
           }
           onOpen={(anchor) =>
-            popover.open(2, {
+            popover.open(next, {
               key: "label:format",
               title: t("style_editor.number_format"),
               anchorTop: anchorTopOf(anchor),
@@ -275,39 +339,181 @@ function PriorityRow({ base }: { base: Path }) {
   );
 }
 
-/** Polygon labels of a layer with a height sit on the roofs (3D spec 7.5): said, not set. */
-function RoofPlacement() {
-  const { t } = useTranslation("common");
-  const extruded = useStyleSelector((doc) => extrudes(doc as unknown as JsonObject));
-  if (!extruded) return null;
+function HaloRows({ base }: { base: Path }) {
   return (
-    <Row label={t("style_editor.placement")}>
-      <Typography variant="body2" fontWeight="bold">
-        {t("style_editor.placement_roof")}
-      </Typography>
-    </Row>
+    <>
+      <PropertyRow row={HALO_COLOR} base={base} />
+      <PropertyRow row={HALO_WIDTH} base={base} />
+    </>
+  );
+}
+
+function TextStyleRows({ base }: { base: Path }) {
+  return (
+    <>
+      <PropertyRow row={FONT} base={base} />
+      <PropertyRow row={CASE} base={base} />
+      <PropertyRow row={LETTER_SPACING} base={base} />
+      <PropertyRow row={LINE_HEIGHT} base={base} />
+      <PropertyRow row={MAX_WIDTH} base={base} />
+    </>
+  );
+}
+
+function PositionRows({ base }: { base: Path }) {
+  const { geometry } = useStyleData();
+  const overlap = useStyleValue<unknown>(`${base}.allow_overlap`);
+  const placed = useStyleValue<unknown>(`${base}.placement`);
+  const scoped = useScope() !== null;
+  // Polygon labels of a layer with a height sit on the roofs (3D spec 7.5): said under the placement.
+  const extruded = useStyleSelector((doc) => extrudes(doc as unknown as JsonObject));
+  const placement = geometry
+    ? geometry === "polygon" && extruded
+      ? { ...PLACEMENT.polygon, note: "style_editor.note_label_roof" }
+      : PLACEMENT[geometry]
+    : undefined;
+  // Only a label along a line repeats.
+  const repeats = geometry === "line" && (placed ?? "line") === "line";
+  return (
+    <>
+      {placement && <PropertyRow row={placement} base={base} />}
+      <OffsetRows base={base} rangeKey="label.offset" />
+      {repeats && <PropertyRow row={SPACING} base={base} />}
+      {overlap !== true && !scoped && <PriorityRow base={base} />}
+      <PropertyRow row={OVERLAP} base={base} />
+      <PropertyRow row={PADDING} base={base} />
+    </>
+  );
+}
+
+/** The keys under the Halo, Text style and Position rows, relative to the label: their issues and a class's or rule's
+ * own values show on the row. */
+const HALO_KEYS = ["halo"];
+const TEXT_STYLE_KEYS = ["font", "transform", "letter_spacing", "line_height", "max_width"];
+const POSITION_KEYS = ["placement", "offset", "spacing", "priority", "allow_overlap", "padding"];
+
+/** A row that sums up the rows of its popover and opens it, as the Numbers row does. In class or rule scope it shows
+ * what the class or rule draws, with a dot when it sets one of the keys itself; a dot warns of an issue inside. */
+function SummaryRow({
+  base,
+  id,
+  label,
+  keys,
+  value,
+  swatch,
+  glyph,
+  tooltip,
+  render,
+}: {
+  base: Path;
+  id: string;
+  label: string;
+  keys: string[];
+  value: string;
+  swatch?: string;
+  glyph?: ReactNode;
+  /** The whole summary on hover, where it is long enough to be cut. */
+  tooltip?: boolean;
+  render: () => ReactNode;
+}) {
+  const popover = usePopover();
+  const next = useNextLevel();
+  const scope = useScope();
+  const key = `label:${id}`;
+  const open = useIsOpen(key);
+  const own = useStyleSelector(
+    (doc) => scope !== null && keys.some((k) => scopedView(doc, scope).overridden(`${base}.${k}`))
+  );
+  const record = scope ? `${recordPathOf(scope)}.${base.slice("symbol.".length)}` : base;
+  const issues = useIssueAt(keys.map((k) => `${record}.${k}`));
+  return (
+    <NavRow
+      label={label}
+      value={value}
+      swatch={swatch ? { background: swatch } : undefined}
+      glyph={glyph}
+      tooltip={tooltip ? value : undefined}
+      overrideDot={own}
+      warn={issues[0]?.message}
+      active={open}
+      onOpen={(anchor) => popover.open(next, { key, title: label, anchorTop: anchorTopOf(anchor), render })}
+    />
+  );
+}
+
+/** What the summaries read: the fields, the map zoom, the geometry and the panel's language. */
+function useSummaryContext(): LabelSummaryContext {
+  const { i18n } = useTranslation("common");
+  const { fields, geometry } = useStyleData();
+  const mapZoom = useMapZoom();
+  return { fields, mapZoom, geometry, language: i18n.language };
+}
+
+function HaloRow({ base }: { base: Path }) {
+  const { t } = useTranslation("common");
+  const scope = useScope();
+  const ctx = useSummaryContext();
+  const text = useStyleSelector((doc) => labelHaloSummary(doc, base, scope, t, ctx).text);
+  const swatch = useStyleSelector((doc) => labelHaloSummary(doc, base, scope, t, ctx).swatch);
+  return (
+    <SummaryRow
+      base={base}
+      id="halo"
+      label={t("style_editor.halo")}
+      keys={HALO_KEYS}
+      value={text}
+      swatch={swatch}
+      render={() => <HaloRows base={base} />}
+    />
+  );
+}
+
+function TextStyleRow({ base }: { base: Path }) {
+  const { t } = useTranslation("common");
+  const scope = useScope();
+  const ctx = useSummaryContext();
+  const text = useStyleSelector((doc) => labelTextStyleSummary(doc, base, scope, t, ctx));
+  return (
+    <SummaryRow
+      base={base}
+      id="text-style"
+      label={t("style_editor.text_style")}
+      keys={TEXT_STYLE_KEYS}
+      value={text}
+      tooltip
+      render={() => <TextStyleRows base={base} />}
+    />
+  );
+}
+
+function PositionRow({ base }: { base: Path }) {
+  const { t } = useTranslation("common");
+  const ctx = useSummaryContext();
+  const placement = useStyleSelector((doc) => labelPositionSummary(doc, base, t, ctx).placement);
+  const text = useStyleSelector((doc) => labelPositionSummary(doc, base, t, ctx).text);
+  return (
+    <SummaryRow
+      base={base}
+      id="position"
+      label={t("style_editor.label_position")}
+      keys={POSITION_KEYS}
+      value={text}
+      // The grid with the side the label sits on, as in the placement's choices; none along a line.
+      glyph={choiceGlyph("label.placement", placement, ctx.geometry)}
+      render={() => <PositionRows base={base} />}
+    />
   );
 }
 
 export function LabelEditor({ base }: { base: Path }) {
-  const { geometry } = useStyleData();
-  const overlap = useStyleValue<unknown>(`${base}.allow_overlap`);
-  const scoped = useScope() !== null;
-  const placement = geometry ? PLACEMENT[geometry] : undefined;
   return (
     <>
       <TextRows base={base} />
       <PropertyRow row={SIZE} base={base} />
       <PropertyRow row={COLOR} base={base} />
-      <PropertyRow row={FONT} base={base} />
-      <PropertyRow row={HALO} base={base} />
-      <PropertyRow row={HALO_WIDTH} base={base} />
-      <PropertyRow row={MAX_WIDTH} base={base} />
-      {placement && <PropertyRow row={placement} base={base} />}
-      {geometry === "polygon" && <RoofPlacement />}
-      <OffsetRows base={base} rangeKey="label.offset" />
-      {overlap !== true && !scoped && <PriorityRow base={base} />}
-      <PropertyRow row={OVERLAP} base={base} />
+      <HaloRow base={base} />
+      <TextStyleRow base={base} />
+      <PositionRow base={base} />
     </>
   );
 }

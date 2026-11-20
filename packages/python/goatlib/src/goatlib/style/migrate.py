@@ -20,6 +20,7 @@ from goatlib.style.defaults import default_style
 from goatlib.style.ids import assign_ids
 from goatlib.style.upgrade import upgrade
 from goatlib.style.validate import validate
+from goatlib.style.version import stamp
 
 __all__ = [
     "MigratedStyle",
@@ -92,15 +93,16 @@ def current(doc: dict[str, Any], ctx: DataContext) -> dict[str, Any]:
 
 def stored_document(doc: Any, ctx: DataContext, *, seed: str) -> dict[str, Any]:
     """A style that did not come through the style API (a template's remembered
-    style, a catalog asset, an archive) as it is stored: `current`, and replaced
-    by `default_style(ctx, seed=seed)` when it cannot be read or does not
-    validate, so nothing invalid reaches the map."""
+    style, a catalog asset, an archive) as it is stored: `current` with the
+    lowest version its keys need (`stamp`), and replaced by
+    `default_style(ctx, seed=seed)` when it cannot be read or does not validate,
+    so nothing invalid reaches the map."""
     if not isinstance(doc, dict):
         return default_style(ctx, seed=seed)
     try:
         document = current(doc, ctx)
         if not any(i.level == "error" for i in validate(document, ctx, stored=True)):
-            return document
+            return stamp(document)
         logger.warning("A stored style does not validate; using the default")
     except Exception:
         logger.exception("A stored style could not be read; using the default")
@@ -116,10 +118,11 @@ def migrate_style(
     asset_for_url: Callable[[str], str | None] | None = None,
     seed: str | None = None,
 ) -> MigratedStyle:
-    """Today's `properties` as a GOAT Style document with ids, its map state apart,
-    and its computed parts stamped with `fingerprint` (none for rasters or when
-    `fingerprint` is None). Any failure, or a conversion that stopped early,
-    gives `default_style(ctx, seed=seed)`."""
+    """Today's `properties` as a GOAT Style document with ids and the lowest
+    version its keys need, its map state apart, and its computed parts stamped
+    with `fingerprint` (none for rasters or when `fingerprint` is None). Any
+    failure, or a conversion that stopped early, gives `default_style(ctx,
+    seed=seed)`."""
     try:
         result = convert_v0(
             properties if isinstance(properties, dict) else {},
@@ -136,6 +139,6 @@ def migrate_style(
         document = assign_ids(result.document)
         if fingerprint is not None and ctx.kind != "raster":
             document = stamp_computed(document, fingerprint, at)
-        return MigratedStyle(document, dict(result.map_state), result.lossy)
+        return MigratedStyle(stamp(document), dict(result.map_state), result.lossy)
     except Exception:  # never fail the release on a style: the default stands in
         return MigratedStyle(default_style(ctx, seed=seed), {}, (), fell_back=True)

@@ -12,14 +12,26 @@ import {
   type Mode,
   classificationFor,
   colorFields,
+  compoundKeys,
+  compoundModeOf,
+  compoundStops,
   keyOf,
   modeOf,
   modesFor,
+  switchCompound,
   switchMode,
   switchScopedMode,
+  writeCompound,
+  writeCompoundStops,
 } from "@/lib/style/editor/forms";
-import { type Path, getIn } from "@/lib/style/editor/store";
-import { choiceLabel, summarize, swatchOf } from "@/lib/style/editor/summaries";
+import { type Path, getIn, setIn } from "@/lib/style/editor/store";
+import {
+  choiceLabel,
+  compoundLabel,
+  compoundOptions,
+  summarize,
+  swatchOf,
+} from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { isObject } from "@/lib/style/json";
@@ -66,8 +78,9 @@ import {
 import { ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
 
 const isNumberField = (type: string) => type === "number" || type === "integer";
+
 export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartRow; base: Path }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
@@ -80,13 +93,35 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const { value, writePath, overridden, scoped } = useScoped(path);
   const iconName = useIconLabel(row.type === "icon" ? value : undefined);
   const scope = useScope();
-  const issues = useIssueAt(writePath);
+  const compound = row.type === "choice" ? row.compound : undefined;
+  // The record the row's key sits in (the part, or a class's or rule's part).
+  const record = writePath.slice(0, writePath.length - row.key.length - 1);
+  const issues = useIssueAt(compound ? `${record}.${compound.at}` : writePath);
+  // The values of a stop by zoom (a compound's are its choices).
+  const zoomChoices = row.type === "pattern_tiles" || row.type === "choice" ? row.values : undefined;
+  // A compound row shows the values of all its keys, the layer's and the scoped record's.
+  useStyleSelector((doc) =>
+    compound
+      ? JSON.stringify(compound.keys.map((k) => [getIn(doc, `${base}.${k}`), getIn(doc, `${record}.${k}`)]))
+      : ""
+  );
   // A classification that targets this key changes its mode (its shape, not every class value).
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
   useStyleValue(path);
   const label = t(row.label);
   const own = scoped && overridden ? writePath : path;
-  const mode = modeOf(store.document, own, data.geometry);
+  // The keys of a compound the record sets itself; in scope the others are the layer's.
+  const ownKeys = compound
+    ? compound.keys.filter((k) => getIn(store.document, `${record}.${k}`) !== undefined)
+    : [];
+  const owned = compound ? scoped && ownKeys.length > 0 : overridden;
+  const mode = compound
+    ? compoundModeOf(
+        store.document,
+        compound.keys.map((k) => (scoped && ownKeys.includes(k) ? `${record}.${k}` : `${base}.${k}`)),
+        data.geometry
+      )
+    : modeOf(store.document, own, data.geometry);
   const withColors = colorFields(data.fields, data.sample);
   const modes = modesFor(key, {
     scoped,
@@ -94,7 +129,12 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     hasColorField: withColors.length > 0 || mode === "raw",
   });
   const classify = (store.get("classify") as unknown[] | undefined) ?? [];
-  const owner = mode === "classes" ? classificationFor(store.document, key, data.geometry) : undefined;
+  const owner =
+    mode === "classes"
+      ? (compound ? compoundKeys(compound) : [key])
+          .map((k) => classificationFor(store.document, k, data.geometry))
+          .find(Boolean)
+      : undefined;
   // The row is active while its value's editor is open, whether its field or the mode menu opened it.
   // The field menu of By classes, open at the mode button.
   const [classesAnchor, setClassesAnchor] = useState<HTMLElement | null>(null);
@@ -110,9 +150,17 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
    * records take fixed values and values by zoom). */
   const openEditor = (to: Mode, anchorTop: number) => {
     const view = scoped && scope ? scopedView(store.document, scope) : null;
-    if (view && !view.overridden(path)) {
+    const owns = compound
+      ? compound.keys.some((k) => getIn(store.document, `${record}.${k}`) !== undefined)
+      : view?.overridden(path);
+    if (view && !owns) {
       if (to === "attribute") return;
-      if (to === "zoom") store.set(writePath, structuredClone(getIn(view.view, path)));
+      if (to === "zoom")
+        if (compound)
+          store.update((doc) =>
+            writeCompoundStops(doc, compound, record, compoundStops(view.view, base, compound))
+          );
+        else store.set(writePath, structuredClone(getIn(view.view, path)));
     }
     const editPath = scoped ? writePath : path;
     if (to === "attribute")
@@ -127,12 +175,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
         key: `zoom:${path}`,
         title: t("style_editor.by_zoom_title", { label }),
         anchorTop,
-        render: () => (
-          <ZoomEditor
-            path={editPath}
-            choices={row.type === "choice" || row.type === "pattern_tiles" ? row.values : undefined}
-          />
-        ),
+        render: () => <ZoomEditor path={editPath} choices={zoomChoices} compound={compound} />,
       });
   };
 
@@ -152,11 +195,14 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             : withColors[0]
           : undefined;
     const ctx = { mapZoom, sample: data.sample, field, geometry: data.geometry };
-    store.update((doc) =>
-      scope
-        ? switchScopedMode(doc, scopedView(doc, scope).view, path, writePath, to, ctx)
-        : switchMode(doc, writePath, to, ctx)
-    );
+    store.update((doc) => {
+      const view = scope ? scopedView(doc, scope).view : doc;
+      // A compound keeps its choice in every mode: all its keys switch together.
+      if (compound) return switchCompound(doc, view, base, record, compound, to, { ...ctx, scoped });
+      return scope
+        ? switchScopedMode(doc, view, path, writePath, to, ctx)
+        : switchMode(doc, writePath, to, ctx);
+    });
     // The new mode's editor opens at once (unless it is already open), so its values can be set right away.
     const editorKey = to === "zoom" ? `zoom:${path}` : `attr:${path}`;
     if (
@@ -165,7 +211,15 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     )
       openEditor(to, anchorTopOf(anchor));
   };
-  const reset = scoped && overridden ? () => store.set(writePath, undefined) : undefined;
+  const reset =
+    scoped && owned
+      ? () =>
+          compound
+            ? store.update((doc) =>
+                compound.keys.reduce((d, k) => setIn(d, `${record}.${k}`, undefined), doc)
+              )
+            : store.set(writePath, undefined)
+      : undefined;
   const modeButton =
     modes.length > 1 || reset ? (
       // The dot keeps the row's column gap from the button's outline.
@@ -188,8 +242,16 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             const field = data.fields.find((f) => f.name === name);
             if (!field) return;
             const ctx = { mapZoom, sample: data.sample, geometry: data.geometry };
+            // The layer keeps the value at the map zoom: classes without one of their own draw it.
             store.update((doc) =>
-              addClassification(switchMode(doc, path, "fixed", ctx), key, field, data.geometry)
+              addClassification(
+                compound
+                  ? switchCompound(doc, doc, base, base, compound, "fixed", { ...ctx, scoped: false })
+                  : switchMode(doc, path, "fixed", ctx),
+                key,
+                field,
+                data.geometry
+              )
             );
             const count = (store.get("classify") as unknown[] | undefined)?.length ?? 0;
             if (classesAnchor) openClassification(count - 1, anchorTopOf(classesAnchor));
@@ -202,11 +264,21 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const shownDoc = scope ? scopedView(store.document, scope).view : store.document;
 
   if (mode !== "fixed") {
-    const summary = summarize(shownDoc, path, t, {
-      fields: data.fields,
-      mapZoom,
-      geometry: data.geometry,
-    });
+    const fieldLabel = (name: unknown) => data.fields.find((f) => f.name === name)?.label ?? String(name);
+    // A compound sums up its choices, whichever of its keys holds the stops or the classes.
+    const summary =
+      compound && mode === "zoom"
+        ? compoundStops(shownDoc, base, compound)
+            .map(([, choice]) => compoundLabel(t, compound, choice))
+            .join(" → ")
+        : compound && mode === "classes"
+          ? t("style_editor.by_field", { field: fieldLabel(owner?.field) })
+          : summarize(shownDoc, path, t, {
+              fields: data.fields,
+              mapZoom,
+              geometry: data.geometry,
+              language: i18n.language,
+            });
     const swatch =
       CAPABILITIES[key]?.kind === "color"
         ? { background: swatchOf(shownDoc, path, data.geometry, { scoped: !!scope }), wide: true }
@@ -284,7 +356,15 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
           />
         );
       case "icon":
-        return <IconRow label={label} path={writePath} fallback={value} mode={modeButton} note={note} />;
+        return (
+          <IconRow
+            label={label}
+            path={writePath}
+            fallback={value ?? fallback}
+            mode={modeButton}
+            note={note}
+          />
+        );
       case "switch":
         return (
           <SwitchRow
@@ -327,16 +407,24 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
         return (
           <ChoiceRow<string>
             label={label}
-            value={String(value ?? fallback)}
-            options={row.values.map((v) => ({
-              value: v,
-              label: choiceLabel(t, key, v),
-              sub: row.subs?.includes(v)
-                ? t(`style_editor.value_${key.replace(/\./g, "_")}_${v}_sub`)
-                : undefined,
-              icon: choiceGlyph(key, v),
-            }))}
-            onChange={(next) => store.set(writePath, next)}
+            value={compound ? compound.read(part) : String(value ?? fallback)}
+            options={
+              compound
+                ? compoundOptions(t, compound)
+                : row.values.map((v) => ({
+                    value: v,
+                    label: choiceLabel(t, key, v),
+                    sub: row.subs?.includes(v)
+                      ? t(`style_editor.value_${key.replace(/\./g, "_")}_${v}_sub`)
+                      : undefined,
+                    icon: choiceGlyph(key, v, data.geometry),
+                  }))
+            }
+            onChange={(next) =>
+              compound
+                ? store.update((doc) => writeCompound(doc, compound, record, next, scoped))
+                : store.set(writePath, next)
+            }
             mode={modeButton}
             note={note}
           />

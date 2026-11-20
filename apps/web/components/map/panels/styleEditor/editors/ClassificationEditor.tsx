@@ -5,12 +5,14 @@
 // intent edit saves at once and the classes show as pending until the reply. Conflicts between classifications
 // come from the server's issues; the panel draws no conclusions of its own.
 import { Alert, Box, Typography } from "@mui/material";
+import type { TFunction } from "i18next";
 import { useCallback, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUniqueValues } from "@/lib/api/processes";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
 import {
+  CLASS_COUNTS,
   MAX_CLASS_COUNT,
   classColorsByHand,
   classValuesByHand,
@@ -25,7 +27,7 @@ import {
   setClassificationField,
   setMethod,
 } from "@/lib/style/editor/classify";
-import { SLIDERS } from "@/lib/style/editor/defaults";
+import { SLIDERS, withStored } from "@/lib/style/editor/defaults";
 import { targetsOf } from "@/lib/style/editor/forms";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
 import { getIn, setIn } from "@/lib/style/editor/store";
@@ -59,8 +61,8 @@ const NUMERIC_METHODS = [
   "heads_and_tails",
   "manual",
 ];
-const CATEGORY_COUNTS = ["all", "3", "5", "8", "12"];
-const CLASS_COUNTS = ["3", "4", "5", "6", "7", "8", "9"];
+/** Top counts of a categories classification, after All values. */
+const CATEGORY_COUNTS = [3, 5, 8, 12];
 const HISTOGRAM_BINS = 28;
 /** The class list keeps at least this much height (px) when the window is short; the rest of the editor scrolls. */
 const CLASS_LIST_MIN = 160;
@@ -68,6 +70,12 @@ const CLASS_LIST_MIN = 160;
 const DEFAULT_PALETTE = { categories: "colorbrewer:Set2", numeric: "goat:green" };
 
 export const propLabelKey = (key: string) => `style_editor.prop_${key.replace(/\./g, "_")}`;
+
+/** A palette as its row names it: the catalog's name, ", reversed" when reversed; a list of colors is one's own. */
+export function paletteLabel(palette: string | string[], reversed: boolean, t: TFunction): string {
+  if (Array.isArray(palette)) return t("style_editor.palette_custom");
+  return `${PALETTES[palette]?.name ?? palette}${reversed ? `, ${t("style_editor.reversed")}` : ""}`;
+}
 
 /** The range row's value while the classes hold values typed by hand. */
 const OWN_VALUES = "own";
@@ -179,6 +187,9 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
 
   const geometry = data.geometry;
   const target = targetsOf(c, geometry)[0];
+  // A target the menu does not offer (a style written elsewhere) stays in it while set.
+  const targets = geometry ? classifyTargets(geometry) : [];
+  if (geometry && !targets.includes(target)) targets.push(target);
   const kind = CAPABILITIES[target]?.kind;
   const locale = i18n.language;
   const number = (n: number) => formatNumberText(n, {}, locale);
@@ -187,11 +198,17 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   const fieldLabel = data.fields.find((f) => f.name === field)?.label ?? field;
 
   const methods = numericField ? ["categories", ...NUMERIC_METHODS] : ["categories"];
-  const counts = categories ? CATEGORY_COUNTS : CLASS_COUNTS;
   const byHand = categories && typeof c.count !== "number";
+  const counts = [
+    ...(categories ? ["all"] : []),
+    ...withStored(
+      categories ? CATEGORY_COUNTS : CLASS_COUNTS,
+      c.count === MAX_CLASS_COUNT && categories ? undefined : c.count
+    ).map(String),
+  ];
   const count = byHand
     ? "by_hand"
-    : c.count === MAX_CLASS_COUNT
+    : c.count === MAX_CLASS_COUNT && categories
       ? "all"
       : typeof c.count === "number"
         ? String(c.count)
@@ -308,7 +325,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
           <ChoiceRow<string>
             label={t("style_editor.sets")}
             value={target}
-            options={classifyTargets(geometry).map((key) => {
+            options={targets.map((key) => {
               const owner = others.find((other, k) => k !== ci && targetsOf(other, geometry).includes(key));
               return {
                 value: key,
@@ -360,9 +377,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
           <NavRow
             label={t("style_editor.palette")}
             value={
-              Array.isArray(palette) || ownColors
-                ? t("style_editor.palette_custom")
-                : `${PALETTES[palette]?.name ?? palette}${c.reverse === true ? `, ${t("style_editor.reversed")}` : ""}`
+              ownColors ? t("style_editor.palette_custom") : paletteLabel(palette, c.reverse === true, t)
             }
             swatch={strip ? { background: strip, wide: true } : undefined}
             onOpen={(anchor) =>

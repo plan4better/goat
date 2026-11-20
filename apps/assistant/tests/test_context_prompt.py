@@ -594,6 +594,14 @@ def test_the_interface_language_is_left_out_next_to_a_full_sentence() -> None:
     assert render_note(page, None, "de", "Leipzig").startswith(
         "Interface language: German"
     )
+    # So do nouns, names and numbers without a grammar word of either
+    # language, however many (assistant.language.shows_no_language).
+    assert render_note(
+        page, None, "en", "Bus stops per district in Leipzig"
+    ).startswith("Interface language: English")
+    assert "Interface language" not in render_note(
+        page, None, "de", "Bike paths Leipzig for 2024"
+    )
 
 
 @pytest.mark.parametrize(

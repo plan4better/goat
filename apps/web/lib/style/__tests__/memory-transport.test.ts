@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { createMemoryTransport } from "@/lib/style/transports/memory";
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 
 describe("memory transport", () => {
   it("the memory transport stores the checked document and counts revisions", async () => {

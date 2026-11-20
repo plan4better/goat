@@ -2,7 +2,7 @@
 // palette or range; a value form's field or scale) is an intent edit: it is saved at once, and the classes or the
 // domain stay pending until the reply brings them (spec 12, 13.1).
 import type { Geometry } from "@/lib/style/compile/types";
-import { MAIN_COLOR, targetsOf } from "@/lib/style/editor/forms";
+import { MAIN_COLOR, compoundKeys, compoundOf, targetsOf } from "@/lib/style/editor/forms";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
 import type { EditorStore, Scope } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
@@ -25,8 +25,21 @@ const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.fil
 const classifyOf = (doc: LayerStyle | undefined): JsonObject[] =>
   list((doc as unknown as JsonObject | undefined)?.classify);
 
-/** How many classifications the style has. */
-export const classifyCount = (doc: LayerStyle): number => classifyOf(doc).length;
+/** How many classifications the style has; for a raster, how many classes its colors have: the categories
+ * (`render.classes`) or the classes of a palette (`render.classify`, spec 9.3, 9.4), hidden ones too, and the
+ * classification's `count` while no classes are written yet. */
+export function classifyCount(doc: LayerStyle): number {
+  const root = doc as unknown as JsonObject | undefined;
+  if (root?.kind !== "raster") return classifyOf(doc).length;
+  const render = isObject(root.render) ? root.render : {};
+  if (render.type === "categorical") return list(render.classes).length;
+  if (render.type !== "continuous" && render.type !== "hillshade") return 0;
+  // Own stops color a range without classes; shading without a palette has no colors.
+  if (render.type === "continuous" && Array.isArray(render.stops)) return 0;
+  if (render.type === "hillshade" && render.palette == null) return 0;
+  const classify = isObject(render.classify) ? render.classify : {};
+  return list(classify.classes).length || (typeof classify.count === "number" ? classify.count : 0);
+}
 
 /** What the server computes a classification from. */
 const intentOf = (c: JsonObject | undefined) =>
@@ -84,6 +97,8 @@ export const CATEGORY_COUNT = 8;
  * a categories classification asks for that many, so every value of a field with up to this many gets its class. */
 export const MAX_CLASS_COUNT = 100;
 export const CLASS_COUNT = 5;
+/** The class counts the panel's menus offer; a stored count outside them (spec: 1 to 100) is added (`withStored`). */
+export const CLASS_COUNTS: readonly number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 const isMain = (key: string, geometry?: Geometry) =>
   geometry ? MAIN_COLOR[geometry] === key : Object.values(MAIN_COLOR).includes(key);
@@ -137,8 +152,8 @@ export const recordPaths = (c: JsonObject): string[] => [
   ...["other", "no_data"].filter((r) => isObject(c[r])),
 ];
 
-/** `classify[ci]` setting `key` instead: the old key leaves its class records; a palette stays only on a color, a
- * range only on a number. */
+/** `classify[ci]` setting `key` instead: the old key leaves its class records (a Font's weight with its style); a
+ * palette stays only on a color, a range only on a number. */
 export function retarget(doc: LayerStyle, ci: number, key: string, geometry?: Geometry): LayerStyle {
   const c = classifyOf(doc)[ci];
   if (!c) return doc;
@@ -152,7 +167,10 @@ export function retarget(doc: LayerStyle, ci: number, key: string, geometry?: Ge
     delete next.reverse;
   }
   if (kind !== "number") delete next.range;
-  if (old !== key) for (const record of recordPaths(next)) next = dropKey(next, record, old);
+  const compound = compoundOf(old);
+  if (old !== key)
+    for (const record of recordPaths(next))
+      for (const dropped of compound ? compoundKeys(compound) : [old]) next = dropKey(next, record, dropped);
   return setIn(doc, `classify.${ci}`, next);
 }
 
@@ -415,16 +433,18 @@ const COMMON_TARGETS: Record<Geometry, string[]> = {
 };
 const PARTS: Record<Geometry, string[]> = {
   point: ["marker", "outline", "label"],
-  line: ["line", "casing", "arrows", "label"],
-  polygon: ["fill", "outline", "label"],
+  line: ["line", "casing", "arrows", "marker", "label"],
+  polygon: ["fill", "outline", "marker", "label"],
 };
-/** Per-feature keys the panel does not offer as targets: text, sizes of the text box, offsets, blur, the marker's
- * shape (a class picks its shape with its icon, in the icon picker) and its fill (a class draws hollow markers with
- * the Fill switch in its scope). */
+/** Per-feature keys the panel does not offer as targets: text, sizes and spacing of the text box, offsets, blur, the marker's
+ * shape (a class picks its shape with its icon, in the icon picker), its fill (a class draws hollow markers with
+ * the Fill switch in its scope) and the label's font style (the Font target sets it with the weight). */
 const NOT_TARGETS = new Set([
   "label.text",
   "label.max_width",
+  "label.letter_spacing",
   "label.offset",
+  "label.font.style",
   "marker.offset",
   "line.blur",
   "marker.shape",
@@ -440,8 +460,8 @@ export function classifyTargets(geometry: Geometry): string[] {
         PARTS[geometry].includes(key.split(".")[0]) &&
         !NOT_TARGETS.has(key) &&
         !common.includes(key) &&
-        // Point outlines cannot be dashed (spec 3.3).
-        !(geometry === "point" && key === "outline.dash")
+        // Point outlines cannot be dashed and run on their edge (spec 3.3).
+        !(geometry === "point" && (key === "outline.dash" || key === "outline.position"))
     )
     .map(([key]) => key);
   return [...common, ...others];
@@ -492,7 +512,8 @@ function deepMerge(base: unknown, over: JsonObject): JsonObject {
 /** The part `symbol.<part>` as the scoped class draws it, as scopedView merges it, without building the whole view. */
 export function scopedPart(doc: LayerStyle, scope: Scope | null, part: string): unknown {
   const base = getIn(doc, `symbol.${part}`);
-  if (!scope) return base;
+  // A part the layer switches off is off in every class too (spec 3).
+  if (!scope || base === false) return base;
   const own = getIn(doc, `${recordPathOf(scope)}.${part}`);
   if (own === false) return false;
   return isObject(own) ? deepMerge(base, own) : base;
@@ -510,7 +531,8 @@ export interface ScopedView {
 }
 
 /** One class seen through the symbol section: reads merge the class record over the base symbol, part by part (an
- * object is merged in, `false` switches the part off); writes go into the record. */
+ * object is merged in, `false` switches the part off, a part the base switches off stays off); writes go into the
+ * record. */
 export function scopedView(doc: LayerStyle, scope: Scope): ScopedView {
   const recordPath = recordPathOf(scope);
   const record = getIn(doc, recordPath);
@@ -520,7 +542,7 @@ export function scopedView(doc: LayerStyle, scope: Scope): ScopedView {
     for (const [part, value] of Object.entries(record)) {
       if (!PART_KEYS.has(part)) continue;
       if (value === false) merged[part] = false;
-      else if (isObject(value)) merged[part] = deepMerge(symbol[part], value);
+      else if (isObject(value) && symbol[part] !== false) merged[part] = deepMerge(symbol[part], value);
     }
   const view = setIn(doc, "symbol", merged);
   const writePath = (path: Path) =>

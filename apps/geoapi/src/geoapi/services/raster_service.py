@@ -1,4 +1,4 @@
-"""Raster files (COGs) as geoapi serves them: colored tiles, elevation tiles,
+"""Raster files (COGs) as geoapi serves them: value tiles, colored tiles,
 statistics and point values, read with goatlib.raster.
 
 The file's bounds (EPSG:4326, from its header) are what core stores as a COG
@@ -10,8 +10,11 @@ A layer's file is always the layer row's own `url` (a raster layer with
 the catalog is the exception: the catalog bucket is private, so it is read from
 the file GOAT stores for the layer, named from the layer's id
 (`stored_raster_file`); it has no `url`. Statistics are kept per
-layer version in process memory; tiles go to the Redis tile cache under a
-version made of the row's version and the coloring token.
+file version (the row's version and a remote file's validator) in process
+memory. Tiles are not kept here (no Redis): the
+browser caches them under ETags made of the row's version and what the tile
+shows (the coloring token, or a value tile's band or formula and encoding),
+a value tile of the current values version for good.
 """
 
 import hashlib
@@ -19,26 +22,54 @@ import math
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import numpy as np
 from cachetools import TTLCache
 from goatlib.raster.color import Coloring
-from goatlib.raster.formula import Formula
-from goatlib.raster.source import BandStats, PointValues, RasterInfo, RasterSource
+from goatlib.raster.formula import Formula, parse_formula
+from goatlib.raster.source import (
+    BandError,
+    BandStats,
+    PointValues,
+    RasterInfo,
+    RasterSource,
+    RasterUnavailableError,
+    recent_failure,
+    remember_failure,
+    remote_validator,
+)
+from goatlib.raster.source import (
+    failure_key as file_failure_key,
+)
 from goatlib.raster.token import Rgb
+from goatlib.raster.values import ENCODING_VERSION, ValueEncoding, value_encoding
 from goatlib.utils.layer import stored_raster_file
 
 from geoapi.config import settings
 from geoapi.services.layer_service import layer_service
-from geoapi.tile_cache import cache_tile, get_cached_tile
 
 #: How long a layer row (its address) and a file's statistics are reused.
 ROW_TTL_S = 60
 STATS_TTL_S = 3600
 _MISSING = object()
+
+#: How a value tile is read from cells that do not line up with its pixels.
+Resampling = Literal["nearest", "bilinear"]
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _microseconds(at: datetime | None) -> int:
+    """An update time to the microsecond, so two writes within one second
+    are two versions."""
+    if at is None:
+        return 0
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return (at - _EPOCH) // timedelta(microseconds=1)
 
 
 @dataclass(frozen=True)
@@ -73,12 +104,13 @@ class RasterService:
         self._ranges.clear()
         self._bounds.clear()
 
-    async def layer(self, layer_id: str) -> RasterLayer | None:
-        """The raster file layer `layer_id` (32 hex digits), or None."""
-        if layer_id in self._rows:
+    async def layer(self, layer_id: str, fresh: bool = False) -> RasterLayer | None:
+        """The raster file layer `layer_id` (32 hex digits), or None; kept for
+        a minute, read again when `fresh`."""
+        if not fresh and layer_id in self._rows:
             return self._rows[layer_id]
         row = await layer_service._execute_with_retry(
-            "SELECT url, extract(epoch FROM updated_at)::bigint AS updated, "
+            "SELECT url, updated_at, "
             "catalog_external_uid IS NOT NULL AS catalog "
             "FROM customer.layer "
             "WHERE id = $1 AND type = 'raster' AND data_type = 'cog' "
@@ -96,7 +128,7 @@ class RasterService:
                 else None
             )
             found = RasterLayer(
-                layer_id, url, f"{digest}-{row['updated'] or 0}", stored
+                layer_id, url, f"{digest}-{_microseconds(row['updated_at'])}", stored
             )
         self._rows[layer_id] = found
         return found
@@ -127,6 +159,12 @@ class RasterService:
                 self._gates.pop(key, None)
             return value
 
+    def _file(self, layer: RasterLayer) -> str:
+        """What the file's statistics are kept under: the layer and the values
+        version, so a remote file replaced at the same address is read again
+        once its validator changes."""
+        return f"{layer.id}:{self.values_version(layer)}"
+
     def statistics(
         self, layer: RasterLayer, source: RasterSource | None = None
     ) -> tuple[RasterInfo, list[BandStats]]:
@@ -139,16 +177,13 @@ class RasterService:
             with self._source(layer) as opened:
                 return opened.info(), opened.statistics()
 
-        return self._once(self._stats, f"{layer.id}:{layer.version}", read)
+        return self._once(self._stats, self._file(layer), read)
 
     def bounds(self, layer: RasterLayer) -> tuple[float, float, float, float]:
-        """The file's west, south, east and north in degrees, from its header
-        (or the info read already)."""
+        """The file's west, south, east and north in degrees, from its header,
+        once per layer version."""
 
         def read() -> tuple[float, float, float, float]:
-            stats = self._stats.get(f"{layer.id}:{layer.version}")
-            if stats is not None:
-                return stats[0].bounds
             with self._source(layer) as opened:
                 return opened.info().bounds
 
@@ -163,8 +198,22 @@ class RasterService:
                 return None
             return float(np.min(values)), float(np.max(values))
 
-        key = f"{layer.id}:{layer.version}:{formula.expression}"
+        key = f"{self._file(layer)}:{formula.expression}"
         return self._once(self._ranges, key, read)
+
+    def value_range(
+        self, layer: RasterLayer, source: RasterSource, formula: Formula
+    ) -> tuple[float, float] | None:
+        """The band's minimum and maximum from its statistics, or the formula's
+        from a sample of the file."""
+        band = _single_band(formula)
+        if band is None:
+            return self._formula_range(layer, source, formula)
+        _, stats = self.statistics(layer, source)
+        found = next((b for b in stats if b.index == band), None)
+        if found is None or found.min is None or found.max is None:
+            return None
+        return (found.min, found.max)
 
     def _band_range(
         self, layer: RasterLayer, source: RasterSource, coloring: Coloring
@@ -176,51 +225,111 @@ class RasterService:
             # Only a one-band image without a color table is stretched.
             if coloring.bands is not None or info.count >= 3 or info.color_table:
                 return None
-            band: int | None = 1
-        elif getattr(coloring, "domain", "given") is None:
-            formula = coloring.formula
-            if (
-                len(formula.bands) != 1
-                or formula.expression.strip() != f"b{formula.bands[0]}"
-            ):
-                return self._formula_range(layer, source, formula)
-            band = formula.bands[0]
-        else:
-            return None
-        _, stats = self.statistics(layer, source)
-        found = next((b for b in stats if b.index == band), None)
-        if found is None or found.min is None or found.max is None:
-            return None
-        return (found.min, found.max)
+            return self.value_range(layer, source, _FIRST_BAND)
+        if getattr(coloring, "domain", "given") is None:
+            return self.value_range(layer, source, coloring.formula)
+        return None
 
-    def cached(
-        self, layer: RasterLayer, z: int, x: int, y: int, token: str
-    ) -> bytes | None:
-        """A tile already in the Redis cache (`token` "dem" for elevation)."""
-        found = get_cached_tile(layer.id, z, x, y, self.tile_version(layer, token))
-        return found[0] if found is not None else None
+    def encoding(
+        self, layer: RasterLayer, source: RasterSource, formula: Formula
+    ) -> ValueEncoding:
+        """How the formula's value tiles hold its values. Raises BandError for
+        a band the file does not have."""
+        info = source.info()
+        if max(formula.bands) > info.count:
+            raise BandError(
+                f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
+            )
+        return value_encoding(
+            info.dtype,
+            scaled=info.scaled,
+            value_range=self.value_range(layer, source, formula),
+            formula=_single_band(formula) is None,
+        )
+
+    def value_tileset(
+        self, layer: RasterLayer, formula: Formula
+    ) -> tuple[ValueEncoding, int | None]:
+        """The formula's encoding and the file's deepest useful zoom, for the
+        value tiles' description."""
+        with self._source(layer) as source:
+            return self.encoding(layer, source, formula), source.info().maxzoom
+
+    def values_version(self, layer: RasterLayer) -> str:
+        """The version of the layer's value tiles: the row's, the remote file's
+        validator (so a file replaced at the same address gets new tiles once
+        goatlib checks the address again, every ten minutes) and the
+        encoding's. A file that failed in goatlib's last 30 seconds raises
+        RasterUnavailableError at once, and a host that does not answer is
+        remembered as failing."""
+        return self.values_state(layer)[0]
+
+    def values_state(self, layer: RasterLayer) -> tuple[str, bool]:
+        """`values_version`, and whether it follows the file: a file GOAT
+        stores changes only with its row, a remote one only as far as its host
+        gives a validator (ETag or Last-Modified)."""
+        key = self.failure_key(layer)
+        failed = recent_failure(key)
+        if failed is not None:
+            raise RasterUnavailableError(failed)
+        version = layer.version
+        follows = True
+        if layer.stored_file is None and layer.external_url:
+            try:
+                validator = remote_validator(
+                    layer.external_url, settings.raster_private_hosts
+                )
+            except RasterUnavailableError as error:
+                remember_failure(key, str(error))
+                raise
+            follows = bool(validator)
+            if validator:
+                digest = hashlib.sha1(validator.encode()).hexdigest()[:8]
+                version = f"{version}-{digest}"
+        return f"{version}-{ENCODING_VERSION}", follows
 
     def tile(
-        self, layer: RasterLayer, z: int, x: int, y: int, coloring: Coloring, token: str
+        self, layer: RasterLayer, z: int, x: int, y: int, coloring: Coloring
     ) -> bytes | None:
-        """A colored tile read from the file, and kept in the cache."""
+        """A colored tile read from the file."""
         with self._source(layer) as source:
-            tile = source.tile(
+            return source.tile(
                 z, x, y, coloring, self._band_range(layer, source, coloring)
             )
-        if tile:
-            version = self.tile_version(layer, token)
-            cache_tile(layer.id, z, x, y, tile, False, version=version)
-        return tile
 
-    def dem(self, layer: RasterLayer, z: int, x: int, y: int) -> bytes | None:
-        """An elevation tile read from the file, and kept in the cache."""
+    def values(
+        self,
+        layer: RasterLayer,
+        z: int,
+        x: int,
+        y: int,
+        formula: Formula,
+        encoding: ValueEncoding,
+        resampling: Resampling,
+    ) -> bytes | None:
+        """A value tile of the formula in `encoding` (the one its address names,
+        so the address alone fixes the tile) read from the file; None outside
+        it. Raises BandError for a band the file does not have."""
         with self._source(layer) as source:
-            tile = source.dem(z, x, y)
-        if tile:
-            version = self.tile_version(layer, "dem")
-            cache_tile(layer.id, z, x, y, tile, False, version=version)
-        return tile
+            return source.values(z, x, y, formula, encoding, resampling)
+
+    def values_tile(
+        self,
+        layer: RasterLayer,
+        z: int,
+        x: int,
+        y: int,
+        formula: Formula,
+        encoding: ValueEncoding,
+        resampling: Resampling,
+    ) -> tuple[str, bool, bytes | None]:
+        """`values`, with the values version the tile was read at and whether
+        it follows the file (`values_state`): the route lets caches keep for
+        good only a tile whose address names that version, of a file it
+        follows."""
+        version, follows = self.values_state(layer)
+        content = self.values(layer, z, x, y, formula, encoding, resampling)
+        return version, follows, content
 
     def point(
         self, layer: RasterLayer, lon: float, lat: float, formula: Formula | None
@@ -231,6 +340,21 @@ class RasterService:
     @staticmethod
     def tile_version(layer: RasterLayer, token: str) -> str:
         return f"r{layer.version}-{hashlib.sha1(token.encode()).hexdigest()[:16]}"
+
+    @staticmethod
+    def failure_key(layer: RasterLayer) -> str:
+        """What goatlib remembers the layer's file failing under."""
+        return file_failure_key(layer.external_url, layer.stored_file)
+
+
+def _single_band(formula: Formula) -> int | None:
+    """The band a formula only names (`b2`), else None."""
+    if len(formula.bands) == 1 and formula.expression.strip() == f"b{formula.bands[0]}":
+        return formula.bands[0]
+    return None
+
+
+_FIRST_BAND = parse_formula("b1")
 
 
 def valid_bounds(bounds: tuple[float, ...]) -> bool:

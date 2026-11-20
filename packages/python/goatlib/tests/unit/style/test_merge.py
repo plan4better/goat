@@ -41,13 +41,13 @@ def test_removal_wins_is_reported_as_refused() -> None:
 
 def test_change_kinds_and_paths() -> None:
     base = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "rules": [{"id": "r1", "visible": False}],
         "legend": {"show": True},
     }
     new = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "rules": [{"id": "r1", "visible": True}, {"id": "r2", "visible": False}],
     }
@@ -68,13 +68,13 @@ def test_change_kinds_and_paths() -> None:
 
 def test_errors_keep_the_current_value_on_their_paths() -> None:
     current = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"opacity": 0.5}},
         "classify": [{"id": "a", "field": "land_use", "method": "categories"}],
     }
     candidate = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"opacity": 0.9}},
         "classify": [{"id": "a", "field": "gone", "method": "categories"}],
@@ -88,7 +88,7 @@ def test_errors_keep_the_current_value_on_their_paths() -> None:
 
 def test_errors_already_in_current_do_not_block_edits_beneath_them() -> None:
     current = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {
@@ -109,9 +109,9 @@ def test_errors_already_in_current_do_not_block_edits_beneath_them() -> None:
 
 
 def test_an_added_item_with_an_error_is_taken_back_whole() -> None:
-    current = {"version": 1, "kind": "vector"}
+    current = {"version": "1.0.0", "kind": "vector"}
     candidate = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"id": "a", "field": "gone", "method": "categories"}],
     }

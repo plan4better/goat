@@ -31,7 +31,7 @@ def classified(
             c["to"] = bounds[i + 1]
         classes.append(c)
     return {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"color": "#111111"}},
         "classify": [

@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.styles.conftest import StyleWorld
 
-DOC = {"version": 1, "kind": "vector"}
+DOC = {"version": "1.0.0", "kind": "vector"}
 
 
 @pytest.mark.asyncio

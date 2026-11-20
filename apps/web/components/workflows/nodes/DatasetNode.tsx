@@ -20,7 +20,7 @@ import { useProjectLayers } from "@/lib/api/projects";
 import type { AppDispatch } from "@/lib/store";
 import { selectNodes } from "@/lib/store/workflow/selectors";
 import { addNode, removeNodes, selectNode } from "@/lib/store/workflow/slice";
-import { currentDatasetType } from "@/lib/utils/workflowDatasets";
+import { currentDatasetType, isRasterDataset } from "@/lib/utils/workflowDatasets";
 import { nodeFilterCql, nodeHasFilter } from "@/lib/utils/workflowFilter";
 import type { DatasetNodeData } from "@/lib/validations/workflow";
 
@@ -125,14 +125,11 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
   const { projectId } = useParams() as { projectId?: string };
   // The workflow check reports a step without a layer (a template's open
   // input, or an empty step) as `layer_not_chosen`; the node keeps its
-  // "Pick a layer" action for it.
-  const needsLayer = useStepIssues(id).some((issue) => issue.code === "layer_not_chosen");
+  // "Pick a layer" action for it, and for a raster layer (below).
+  const layerNotChosen = useStepIssues(id).some((issue) => issue.code === "layer_not_chosen");
 
   // Get execution status - dataset nodes are "completed" when any execution is active
   const { isExecuting: hasAnyExecution } = useWorkflowExecutionContext();
-
-  // Get layer fields for CQL generation
-  const { fields: filterFields } = useFilterFields(data.layerId || undefined);
 
   // Live-lookup the display name from the project layers SWR cache so layer renames
   // propagate without having to update every workflow node.
@@ -140,6 +137,14 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
   // - Fallback: match by dataset UUID (older nodes that pre-date projectLayerId)
   // - Final fallback: the snapshotted label (e.g. dataset-explorer nodes not in the project)
   const { layers: projectLayers } = useProjectLayers(projectId);
+
+  // A raster layer (workflows take none) is asked for no fields and no features, and is shown as a layer to replace.
+  const raster = !!data.layerId && isRasterDataset(data, projectLayers);
+  const vectorId = data.layerId && !raster ? data.layerId : "";
+  const needsLayer = layerNotChosen || raster;
+
+  // Get layer fields for CQL generation
+  const { fields: filterFields } = useFilterFields(vectorId || undefined);
   const displayName = useMemo(() => {
     if (!data.layerId) return t("no_dataset");
     const byProjectLayerId =
@@ -168,7 +173,7 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
     return params;
   }, [cqlFilter]);
 
-  const { data: collectionData } = useDatasetCollectionItems(data.layerId || "", queryParams);
+  const { data: collectionData } = useDatasetCollectionItems(vectorId, queryParams);
 
   // Format feature count with thousands separator
   const formatCount = (count: number) => {
@@ -204,10 +209,12 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
             x: node.position.x + 50,
             y: node.position.y + 50,
           },
+          // A raster layer is not copied: the duplicate is an empty step that asks for a layer.
+          ...(raster ? { data: { type: "dataset", label: t("dataset") } } : {}),
         })
       );
     },
-    [id, nodes, dispatch]
+    [id, nodes, dispatch, raster, t]
   );
 
   // Handle delete node

@@ -37,7 +37,7 @@ RUNS = [
 @pytest.fixture(scope="module")
 def con() -> Any:
     con = duckdb.connect()
-    con.execute("LOAD spatial")
+    con.execute("INSTALL spatial; LOAD spatial;")
     yield con
     con.close()
 

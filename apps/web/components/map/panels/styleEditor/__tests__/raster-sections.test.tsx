@@ -1,11 +1,16 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
+import { I18nextProvider } from "react-i18next";
 import { describe, expect, it, vi } from "vitest";
+
+import { commonI18n } from "@/i18n/__tests__/commonI18n";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
 
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
+import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 import { RasterGeneralSection } from "@/components/map/panels/styleEditor/sections/RasterGeneralSection";
 import { RasterLayerSection } from "@/components/map/panels/styleEditor/sections/RasterLayerSection";
 
@@ -29,11 +34,19 @@ const FLOAT: RasterInfo = {
   bits: [32],
   colorTable: false,
   integer: false,
+  names: [""],
   stats: [band(1, null, null)],
 };
 const FLOAT_VALUES: RasterInfo = { ...FLOAT, stats: [band(1, 10, 90)] };
-const BYTE: RasterInfo = { bands: 1, bits: [8], colorTable: false, integer: true, stats: [] };
-const RGB: RasterInfo = { bands: 4, bits: [8, 8, 8, 8], colorTable: false, integer: true, stats: [] };
+const BYTE: RasterInfo = { bands: 1, bits: [8], colorTable: false, integer: true, names: [""], stats: [] };
+const RGB: RasterInfo = {
+  bands: 4,
+  bits: [8, 8, 8, 8],
+  colorTable: false,
+  integer: true,
+  names: ["", "", "", ""],
+  stats: [],
+};
 
 /** A map whose next click lands at 11, 51. */
 function clickMap() {
@@ -54,14 +67,24 @@ function clickMap() {
   };
 }
 
-function setup(render: object, info: RasterInfo, map: unknown = null, extra: object = {}) {
+function setup(
+  render: object,
+  info: RasterInfo | undefined,
+  map: unknown = null,
+  extra: object = {},
+  wrap: (ui: ReactNode) => ReactNode = (ui) => ui
+) {
   return renderPanel(
-    <PopoverProvider>
-      <RasterGeneralSection />
-      <RasterLayerSection />
-    </PopoverProvider>,
+    <>
+      {wrap(
+        <PopoverProvider>
+          <RasterGeneralSection />
+          <RasterLayerSection />
+        </PopoverProvider>
+      )}
+    </>,
     {
-      document: { version: 1, kind: "raster", render, ...extra } as LayerStyle,
+      document: { version: "1.0.0", kind: "raster", render, ...extra } as LayerStyle,
       data: { raster: { dataset: "d1", info } },
       map,
     }
@@ -122,6 +145,17 @@ describe("raster general section", () => {
     );
     await waitFor(() => expect(store.get("render.type")).toBe("continuous"));
     expect(store.get("render.domain")).toEqual([10, 90]);
+  });
+
+  it("bands are named as the file names them, else Band n", async () => {
+    setup({ type: "continuous", domain: [0, 9] }, { ...RGB, names: ["Rot", "", "", "NIR"] });
+    const items = await menuItems("style_editor.band", "Rot");
+    expect(items.filter((item) => item !== "style_editor.band")).toEqual([
+      "Rot",
+      "style_editor.band_n",
+      "style_editor.band_n",
+      "NIR",
+    ]);
   });
 
   it("the band combination shows only for three or more bands", async () => {
@@ -195,42 +229,126 @@ describe("raster layer section", () => {
     expect((input as HTMLInputElement).value).toBe("-9999, 0");
   });
 
+  it("the no-data placeholder names the file's value", () => {
+    const german = (ui: ReactNode) => <I18nextProvider i18n={commonI18n("de")}>{ui}</I18nextProvider>;
+    const placeholder = () =>
+      screen.getByRole("textbox", { name: "Keine Daten" }).getAttribute("placeholder");
+    const { unmount } = setup(
+      { type: "continuous", domain: [0, 9] },
+      { ...FLOAT, noData: -9999 },
+      null,
+      {},
+      german
+    );
+    expect(placeholder()).toBe("aus der Datei: -9999");
+    unmount();
+    // A float file's lowest value as its no-data value, shortened.
+    const float = setup(
+      { type: "continuous", domain: [0, 9] },
+      { ...FLOAT, noData: -3.4028234663852886e38 },
+      null,
+      {},
+      german
+    );
+    expect(placeholder()).toBe("aus der Datei: -3.4e+38");
+    float.unmount();
+    setup({ type: "continuous", domain: [0, 9] }, FLOAT, null, {}, german);
+    expect(placeholder()).toBe("keiner");
+  });
+
+  it("rows wait for the file's info", async () => {
+    setup({ type: "continuous", domain: [0, 9] }, undefined, clickMap());
+    // Draw as lists no types until the file answered.
+    const drawAs = within(screen.getByText("style_editor.draw_as").parentElement as HTMLElement).getByRole(
+      "combobox"
+    ) as HTMLButtonElement;
+    expect(drawAs.disabled).toBe(true);
+    await userEvent.click(drawAs);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect((screen.getByRole("textbox", { name: "style_editor.no_data" }) as HTMLInputElement).disabled).toBe(
+      true
+    );
+    expect(
+      (screen.getByRole("button", { name: "style_editor.no_data_pick" }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
   it("No data shows only where it changes the drawing", () => {
-    const paletted: RasterInfo = { bands: 1, bits: [8], colorTable: true, integer: true, stats: [] };
+    const paletted: RasterInfo = {
+      bands: 1,
+      bits: [8],
+      colorTable: true,
+      integer: true,
+      names: [""],
+      stats: [],
+    };
     setup({ type: "categorical" }, paletted);
     expect(screen.queryByText("style_editor.no_data")).toBeNull();
   });
 
-  it("categories default to nearest resampling", () => {
-    setup({ type: "categorical" }, BYTE);
-    expect(screen.getByRole("combobox", { name: "style_editor.resampling" }).textContent).toBe(
+  it("color scales default to nearest resampling, images and shading alone to smooth", () => {
+    for (const [render, shown] of [
+      [{ type: "categorical" }, "nearest"],
+      [{ type: "continuous", palette: "goat:elevation" }, "nearest"],
+      [{ type: "hillshade", palette: "goat:elevation" }, "nearest"],
+      [{ type: "hillshade" }, "linear"],
+      [{ type: "image" }, "linear"],
+    ] as const) {
+      const { unmount } = setup(render, BYTE);
+      expect([render, screen.getByRole("combobox", { name: "style_editor.resampling" }).textContent]).toEqual(
+        [render, `style_editor.resampling_${shown}`]
+      );
+      unmount();
+    }
+  });
+
+  it("smooth cells on a color scale are kept in the style, the default is not", async () => {
+    const { store } = setup({ type: "continuous", palette: "goat:elevation" }, BYTE);
+    await choose(
+      "style_editor.resampling",
+      "style_editor.resampling_nearest",
+      "style_editor.resampling_linear"
+    );
+    expect(store.get("resampling")).toBe("linear");
+    await choose(
+      "style_editor.resampling",
+      "style_editor.resampling_linear",
       "style_editor.resampling_nearest"
     );
+    expect(store.get("resampling")).toBeUndefined();
   });
 });
 
 describe("a raster file that cannot be read", () => {
-  it("says so in the panel, and why when its address is refused", () => {
-    const { unmount } = renderPanel(
-      <PopoverProvider>
-        <RasterGeneralSection />
-      </PopoverProvider>,
-      {
-        document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
-        data: { raster: { dataset: "d1", error: "unavailable" } },
-      }
-    );
-    expect(screen.getByText("style_editor.raster_unavailable")).toBeDefined();
-    unmount();
+  const broken = (render: object, error: "unavailable" | "refused") =>
     renderPanel(
       <PopoverProvider>
         <RasterGeneralSection />
+        <RasterColorSection />
+        <RasterLayerSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
-        data: { raster: { dataset: "d1", error: "refused" } },
+        document: { version: "1.0.0", kind: "raster", render } as LayerStyle,
+        data: { raster: { dataset: "d1", error } },
       }
     );
-    expect(screen.getByText("style_editor.raster_refused")).toBeDefined();
+
+  it("shows one notice for the panel, and why when its address is refused", () => {
+    const { unmount } = broken(
+      { type: "continuous", palette: "goat:elevation", domain: [0, 9] },
+      "unavailable"
+    );
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts.map((el) => el.textContent)).toEqual(["style_editor.raster_unavailable"]);
+    // The colors wait for the file.
+    // The section's title and its row are both Colors: the row comes second.
+    const colors = within(
+      screen.getAllByText("style_editor.colors")[1].parentElement as HTMLElement
+    ).getByRole("button") as HTMLButtonElement;
+    expect(colors.disabled).toBe(true);
+    unmount();
+    // An image has no colors section: the notice is there all the same.
+    broken({ type: "image" }, "refused");
+    expect(screen.getAllByRole("alert").map((el) => el.textContent)).toEqual(["style_editor.raster_refused"]);
   });
 });

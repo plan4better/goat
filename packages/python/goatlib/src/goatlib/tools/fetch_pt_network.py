@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 import duckdb
 from pydantic import ConfigDict, Field
 
+from goatlib.analysis.schemas.catchment_area_v2 import PTMode
 from goatlib.analysis.schemas.ui import (
     SECTION_INPUT,
     SECTION_OUTPUT,
@@ -43,6 +44,11 @@ class FetchPtNetworkParams(ToolInputBase):
         ...,
         description="GeoJSON polygon the network is cut to",
         json_schema_extra=ui_field(section="input", field_order=1, hidden=True),
+    )
+    pt_modes: list[PTMode] | None = Field(
+        None,
+        description="Modes whose lines are kept, as the routing tools name them (none: all)",
+        json_schema_extra=ui_field(section="input", field_order=2, hidden=True),
     )
     folder_id: str = Field(
         ...,
@@ -77,6 +83,7 @@ class FetchPtNetworkRunner(BundleImportRunner):
         folder_id: str,
         result_bundle_name: Optional[str] = None,
         project_id: Optional[str] = None,
+        pt_modes: Optional[list[str]] = None,
     ) -> Dict[str, Any]:
         assert self.settings is not None, "init_from_env()/init() must run first"
         pool = await self.get_postgres_pool()
@@ -106,7 +113,11 @@ class FetchPtNetworkRunner(BundleImportRunner):
                 con = bound_duckdb(duckdb.connect(), workdir)
                 try:
                     layers = export_pt_network(
-                        con, area=area, store_dir=str(store), workdir=workdir
+                        con,
+                        area=area,
+                        store_dir=str(store),
+                        workdir=workdir,
+                        modes=pt_modes,
                     )
                 finally:
                     con.close()
@@ -146,5 +157,6 @@ def main(params: FetchPtNetworkParams) -> dict:
             folder_id=params.folder_id,
             result_bundle_name=params.result_bundle_name,
             project_id=params.project_id,
+            pt_modes=[m.value for m in params.pt_modes] if params.pt_modes else None,
         )
     )

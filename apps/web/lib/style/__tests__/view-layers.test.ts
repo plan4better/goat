@@ -8,6 +8,7 @@ import {
   clusterFeatureOf,
   editorIconProps,
   editorLayerIds,
+  featureProperties,
   layerOfMapLayer,
   projectGeometryLayerIds,
   renderLayersOf,
@@ -19,9 +20,9 @@ import { publicMapLayers } from "@/hooks/map/useMapLayers";
 
 vi.mock("@/lib/transformers/map-image", () => ({ loadImage: vi.fn(async () => undefined) }));
 
-const FILL = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const CLUSTER = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   render: { type: "cluster" },
   symbol: { marker: {} },
@@ -105,6 +106,7 @@ describe("renderLayersOf", () => {
     const overlay = out.find((l) => l.key === PENDING_KEY)!;
     expect(overlay.style).toEqual(FILL);
     expect(overlay.source).toEqual({ type: "points", id: `src-${PENDING_KEY}`, data: pending });
+    expect(out.find((l) => l.key === `${PENDING_KEY}-mark`)!.style.version).toBe("1.0.0");
   });
 
   it("every project layer of the edited dataset has dynamic tiles and hides the edited features", () => {
@@ -138,7 +140,7 @@ describe("renderLayersOf", () => {
     const published = publicMapLayers({
       layers: rows as never,
       map: {
-        version: 1,
+        version: "1.0.0",
         layers: [
           { type: "layer", id: 1, style: "style-1" },
           { type: "layer", id: 2 },
@@ -213,7 +215,61 @@ describe("map events through the renderer's registry", () => {
     const bubble = map.getStyle().layers.find((l) => (l as { id: string }).id.startsWith("2-cluster-")) as {
       id: string;
     };
-    expect(topFeature(map, [feature("1-fill"), feature(bubble.id)], layers, hoverOnly)?.layer.id).toBe(2);
+    expect(topFeature(map, [feature("1-fill"), feature("2-marker")], layers, hoverOnly)?.layer.id).toBe(2);
+    // A cluster is many features: it opens no popup (a click zooms in instead).
+    const cluster = feature(bubble.id, { properties: { cluster: true, cluster_id: 3, point_count: 4 } });
+    expect(topFeature(map, [cluster, feature("1-fill")], layers, () => true)?.layer.id).toBe(1);
+  });
+
+  it("a clustered layer's popup reads the feature's own properties from geoapi", async () => {
+    const { layers } = drawn();
+    const load = vi.fn(async (dataset: string, id: string) => ({
+      type: "Feature" as const,
+      id,
+      geometry: null,
+      properties: { name: `${dataset}/${id}`, kind: "a" },
+    }));
+    const single = { id: 5, properties: { kind: "a" } };
+    expect(await featureProperties(layers[1], single, load)).toEqual({ name: "dataset-2/5", kind: "a" });
+    expect(load).toHaveBeenCalledWith("dataset-2", "5");
+    // Tiles carry every field: no request.
+    load.mockClear();
+    expect(await featureProperties(layers[0], { id: 1, properties: { name: "x" } }, load)).toEqual({
+      name: "x",
+    });
+    expect(load).not.toHaveBeenCalled();
+    // Without an answer the popup shows what the point carries.
+    const failing = vi.fn(async () => {
+      throw new Error("offline");
+    });
+    expect(await featureProperties(layers[1], single, failing)).toEqual({ kind: "a" });
+  });
+
+  it("a clustered layer's feature is asked for once: hover, click and click to filter share the answer", async () => {
+    const { layers } = drawn();
+    const load = vi.fn(async (dataset: string, id: string) => ({ properties: { name: `${dataset}/${id}` } }));
+    const point = { id: 7, properties: {} };
+    const answers = await Promise.all([
+      featureProperties(layers[1], point, load),
+      featureProperties(layers[1], point, load),
+    ]);
+    expect(await featureProperties(layers[1], point, load)).toEqual({ name: "dataset-2/7" });
+    expect(answers).toEqual([{ name: "dataset-2/7" }, { name: "dataset-2/7" }]);
+    expect(load).toHaveBeenCalledTimes(1);
+    // Another feature, and the same one once its dataset has changed, are asked for again.
+    await featureProperties(layers[1], { id: 8, properties: {} }, load);
+    await featureProperties({ ...layers[1], dataset_updated_at: "2026-11-18T10:00:00Z" }, point, load);
+    expect(load).toHaveBeenCalledTimes(3);
+    // A request that failed is made again.
+    let fail = true;
+    const flaky = vi.fn(async () => {
+      if (fail) throw new Error("offline");
+      return { properties: { name: "back" } };
+    });
+    expect(await featureProperties(layers[1], point, flaky)).toEqual({});
+    fail = false;
+    expect(await featureProperties(layers[1], point, flaky)).toEqual({ name: "back" });
+    expect(flaky).toHaveBeenCalledTimes(2);
   });
 
   it("a cluster click zooms", async () => {
@@ -248,7 +304,7 @@ describe("map events through the renderer's registry", () => {
       id: "s",
       revision: 1,
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,
@@ -272,7 +328,7 @@ describe("map events through the renderer's registry", () => {
   });
 
   it("the edited layer's icon goes onto the features being drawn", () => {
-    const icon = (marker: object) => ({ version: 1, kind: "vector", symbol: { marker } }) as LayerStyle;
+    const icon = (marker: object) => ({ version: "1.0.0", kind: "vector", symbol: { marker } }) as LayerStyle;
     expect(
       editorIconProps(
         icon({ shape: "icon", icon: "goat:park", size: 24, anchor: "bottom_left", color: "#ff0000" })
@@ -298,7 +354,7 @@ describe("map events through the renderer's registry", () => {
       id: "s",
       revision: 1,
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,

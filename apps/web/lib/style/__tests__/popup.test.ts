@@ -142,7 +142,7 @@ describe("fromPopupConfig", () => {
 
 describe("popupConfigOf", () => {
   it("a style without a popup clicks open the default one; popup false and no style show none", () => {
-    const plain = { version: 1, kind: "vector" } as LayerStyle;
+    const plain = { version: "1.0.0", kind: "vector" } as LayerStyle;
     expect(popupConfigOf(plain)?.trigger).toBe("click");
     expect(popupConfigOf(plain)).toBe(popupConfigOf(plain));
     expect(popupConfigOf({ ...plain, popup: false } as LayerStyle)).toBeUndefined();

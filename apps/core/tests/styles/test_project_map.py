@@ -16,7 +16,7 @@ from tests.styles.conftest import LAKE, StyleWorld
 
 API = settings.API_V2_STR
 S = settings.SCHEMA
-FILL = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
+FILL = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 
 
 @pytest.fixture(autouse=True)
@@ -328,7 +328,7 @@ def test_the_builder_assembles_plain_rows() -> None:
         ],
     )
     assert document == {
-        "version": 1,
+        "version": "1.0.0",
         "basemap": {"id": "light"},
         "view": {"center": [11.5, 48.1], "zoom": 12},
         "locale": "de-DE",

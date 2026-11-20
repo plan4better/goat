@@ -316,7 +316,7 @@
           "properties": {
             "GOAT_GEOAPI_URL": {
               "type": "string",
-              "description": "In-cluster URL of geoapi, where core reads a COG's bounds when a raster layer is added. Unset: the in-chart geoapi service."
+              "description": "In-cluster URL of geoapi, where core reads a COG's bounds when a raster layer is added or its file address changes. Unset: the in-chart geoapi service."
             }
           }
         },

@@ -107,6 +107,25 @@ def build_tile_etag_seed(
 
 router = APIRouter(tags=["Tiles"])
 
+DECORATION_KINDS = ("start", "end", "center")
+
+
+def decoration_kinds(decoration: str | None) -> list[str] | None:
+    """The kinds of decoration points a tile request asks for, in a fixed order;
+    `start_and_end` is both ends (style spec 15)."""
+    if decoration is None:
+        return None
+    asked = decoration.split(",")
+    unknown = [k for k in asked if k not in DECORATION_KINDS and k != "start_and_end"]
+    if unknown or not asked:
+        raise HTTPException(
+            status_code=400,
+            detail='decoration takes "start", "end" and "center", comma-separated.',
+        )
+    if "start_and_end" in asked:
+        asked += ["start", "end"]
+    return [k for k in DECORATION_KINDS if k in asked]
+
 
 def check_h3_request(
     op: str,
@@ -318,9 +337,12 @@ async def get_tile(
         default=False,
         description="Merge polygon label anchor points into tile response",
     ),
-    decoration: Literal["start", "end", "start_and_end", "center"] | None = Query(
+    decoration: str | None = Query(
         default=None,
-        description="If set, emit per-line decoration placement points + bearings in a separate MVT layer.",
+        description="Line layers: emit decoration points of these kinds, comma-separated "
+        '("start", "end", "center"; "start_and_end" is both ends), in a separate MVT layer '
+        "`default_decoration`. Each point has its line's properties, a `bearing` and its "
+        "kind in `_decoration`.",
     ),
     dynamic: bool = Query(
         default=False, description="Force dynamic tile generation, bypassing PMTiles"
@@ -350,6 +372,8 @@ async def get_tile(
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Get a vector tile for the specified collection and tile coordinates."""
+    kinds = decoration_kinds(decoration)
+    decoration = ",".join(kinds) if kinds else None
     request_id = str(uuid.uuid4())[:8]
     start_time = time.monotonic()
     feature_ids = tile_feature_ids(ids, h3)

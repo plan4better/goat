@@ -71,8 +71,31 @@ class ClusterSymbol(StyleModel):
     label: LabelPart | None = None
 
 
+class ClusterValue(StyleModel):
+    """What the cluster symbol's derived field `value` is: the number of points, or
+    the sum, mean, smallest or largest value of a number field over them."""
+
+    op: Literal["count", "sum", "mean", "min", "max"]
+    field: str | None = None
+
+    @model_validator(mode="after")
+    def _field_for_aggregates(self) -> "ClusterValue":
+        if self.op != "count" and not self.field:
+            raise PydanticCustomError(
+                "missing_required", "sum, mean, min and max need a field."
+            )
+        return self
+
+
 class ClusterRender(StyleModel):
+    """Clusters: a `circle` over their count, or drawn with the points' own marker
+    (`points`); the count in the middle of the cluster or on a `badge` at its upper
+    right."""
+
     type: Literal["cluster"]
+    look: Literal["circle", "points"] | None = None
+    count: Literal["center", "badge"] | None = None
+    value: ClusterValue | None = None
     radius: Px | None = None
     cluster_until_zoom: ZoomLevel | None = None
     min_points: Annotated[int, Field(**limits.bounds("cluster.min_points"))] | None = (

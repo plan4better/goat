@@ -1,6 +1,8 @@
 import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { addProtocol, getVersion, setWorkerUrl } from "maplibre-gl";
 
+import { ownGlyphsRequest } from "@/lib/utils/map/glyphs";
+
 // Setup shared by every map. A component that renders a react-map-gl <Map>
 // spreads MAPLIBRE_MAP_OPTIONS into it, and importing this module runs the
 // setup before the first map is created.
@@ -22,7 +24,9 @@ addProtocol("cog", cogProtocol);
  * Options every map passes. `zoomLevelsToOverscale: undefined` keeps vector
  * tiles overscaled past their maxzoom, as before MapLibre 6; its default
  * slices them instead, which moves labels and changes what a click hits.
+ * `transformRequest` loads GOAT's own label fonts from the app (glyphs.ts).
  */
 export const MAPLIBRE_MAP_OPTIONS = {
   zoomLevelsToOverscale: undefined,
+  transformRequest: ownGlyphsRequest,
 } as const;

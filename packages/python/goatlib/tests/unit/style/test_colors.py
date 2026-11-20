@@ -1,3 +1,6 @@
+import json
+from typing import Any
+
 import pytest
 from goatlib.style.catalog import palette_colors
 from goatlib.style.colors import (
@@ -8,6 +11,16 @@ from goatlib.style.colors import (
     range_values,
     rgb_to_hex,
     sample_colors,
+)
+
+from .conftest import FIXTURES
+
+#: Palette samples the web's `paletteSteps` must also give (lib/style/__tests__/palettes.test.ts):
+#: class colors the server writes and the ones the browser picks before it does agree. Each row's
+#: `colors` is `sample_colors(palette, count, kind=, reverse=)`; an intended change of the sampling
+#: rewrites the `colors` of every row.
+PALETTE_SAMPLES: list[dict[str, Any]] = json.loads(
+    (FIXTURES / "palette_samples.json").read_text()
 )
 
 
@@ -78,3 +91,20 @@ def test_classification_defaults() -> None:
     assert default_range("label.max_width") == (60, 240)
     with pytest.raises(KeyError):
         default_range("fill.color")
+
+
+@pytest.mark.parametrize(
+    "row",
+    PALETTE_SAMPLES,
+    ids=lambda r: f"{r['palette']}-{r['count']}{'-reversed' if r.get('reverse') else ''}",
+)
+def test_shared_palette_samples(row: dict[str, Any]) -> None:
+    assert (
+        sample_colors(
+            row["palette"],
+            row["count"],
+            kind=row.get("kind"),
+            reverse=row.get("reverse", False),
+        )
+        == row["colors"]
+    )

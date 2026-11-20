@@ -1,6 +1,6 @@
 // Draws the fill pattern images compiled layers name (lib/style/compile/patternImage.ts) when the map first needs one:
 // one tile, lines stroked or dots filled in the pattern's color on a clear ground. One image per name and map.
-import { parsePatternImage, patternTile } from "@/lib/style/compile/patternImage";
+import { NO_PATTERN_IMAGE, parsePatternImage, patternTile } from "@/lib/style/compile/patternImage";
 
 /** Pattern tiles are drawn at this pixel ratio: sharp on high density screens, whole pixels at any tile size. */
 const PIXEL_RATIO = 2;
@@ -16,6 +16,7 @@ interface PatternMap {
 
 /** The tile of pattern image `name` as pixels; null for a name that is no pattern or without a canvas. */
 export function drawPattern(name: string): { width: number; height: number; data: Uint8Array } | null {
+  if (name === NO_PATTERN_IMAGE) return { width: 1, height: 1, data: new Uint8Array(4) };
   const spec = parsePatternImage(name);
   if (!spec) return null;
   const tile = patternTile(spec.kind, spec.spacing, spec.width);

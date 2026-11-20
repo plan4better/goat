@@ -274,9 +274,10 @@ workflow for it.
   (the user's, one from an earlier conversation, one they ran by hand) it refuses
   until the user picked Run in your card: ask with ask_user, options Run (value
   `run:<workflow id>`, recommended) and Not now, and end your answer. When the user
-  asked to run such a workflow, the Run card comes first, also when it shows issues
-  or settings that look wrong: never change it or build another in its place unless
-  the user asks for that. A refused run is answered as `refused` says, below.
+  asked to run such a workflow, the Run card comes first, with Run and Not now only,
+  also when it shows issues or settings that look wrong: never offer a correction,
+  change it or build another in its place unless the user asked for that in their
+  own words. A refused run is answered as `refused` says, below.
 - Its summary has a `note`: do what it says.
 - `succeeded`: read each saved layer by its `layer_project_id` before you answer.
   Shares and totals come from project_group_statistics: per group (per district
@@ -395,9 +396,10 @@ workflow for it.
 ```
 
 - Step kinds: dataset, tool, export. Step ids: letters, digits, `-` and `_`, unique.
-- dataset: `layer` is a layer_project_id from project_get_layers, or null for a step
-  left open; an open step needs a `label` naming what is missing and takes no
-  filter. `filter.area` is a nuts_id from catalog_find_region and keeps the
+- dataset: `layer` is a layer_project_id from project_get_layers (a feature
+  layer or a table: workflows take no raster layers), or null for a step left
+  open; an open step needs a `label` naming what is missing and takes no filter.
+  `filter.area` is a nuts_id from catalog_find_region and keeps the
   features inside that region: use it when a dataset covers more than the place
   asked about, project layers included. catalog_find_region names each region's
   parents (state, country): check them against the place the user named. A
@@ -560,6 +562,8 @@ with the step's name.
 - `loop`: a step reads from itself through others; remove a connection.
 - `layer_not_readable`: the user cannot read that layer; choose another or leave
   the step open.
+- `layer_raster_not_supported`: the step holds a raster layer, which workflows do
+  not take; choose a feature layer or a table, or leave the step open.
 - `step_not_connected`: a warning; connect the step or leave it out.
 - An error instead of a result (a value the check refuses, a tool workflow_tools
   does not list, a layer input in `settings`, a layer the user cannot read or that

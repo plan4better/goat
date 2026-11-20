@@ -58,7 +58,7 @@ const FIELDS = [
 ];
 
 let layerCount = 0;
-function setup(document: LayerStyle = { version: 1, kind: "vector" } as LayerStyle) {
+function setup(document: LayerStyle = { version: "1.0.0", kind: "vector" } as LayerStyle) {
   const redux = configureStore({ reducer: { map: mapReducer } });
   redux.dispatch(initView({ projectId: "p1", mode: "2d", projection: "mercator" }));
   const saver = new StyleSaver({ transport: echoTransport(), document, revision: 1 });
@@ -157,7 +157,7 @@ describe("HeightRow", () => {
 
   it("suggests height fields in the field menu, reads levels as storeys and says so in the summary", async () => {
     const { store } = setup();
-    await pick("By attribute");
+    await pick("Field values");
     const menu = screen.getByRole("listbox");
     const items = within(menu).getAllByRole("option");
     expect(within(menu).getByText("Suggested for height")).toBeTruthy();
@@ -173,7 +173,7 @@ describe("HeightRow", () => {
 
   it("shows the unit while the base reads a field", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 10 } },
     } as LayerStyle);
@@ -182,14 +182,107 @@ describe("HeightRow", () => {
     await userEvent.click(
       within(popover()).getByRole("button", { name: /^Base height: .*Change how the value is set\.$/ })
     );
-    await userEvent.click(within(screen.getByRole("menu")).getByText("By attribute"));
+    await userEvent.click(within(screen.getByRole("menu")).getByText("Field values"));
     await userEvent.click(within(screen.getByRole("listbox")).getByText("height"));
     expect(store.get("symbol.extrude.base")).toEqual({ field: "height" });
     expect(within(popover()).getByText("Unit")).toBeTruthy();
   });
 
+  it("raises the polygons in proportion to a field over a range of heights, in metres", async () => {
+    const { store, redux } = setup();
+    await openHeight();
+    await userEvent.click(
+      within(popover()).getByRole("button", { name: /^Height: .*Change how the value is set\.$/ })
+    );
+    const menu = screen.getByRole("menu");
+    // A field over a range, and a field's values as the heights: two modes, each with its own words.
+    expect(within(menu).getByText("By attribute")).toBeTruthy();
+    expect(within(menu).getByText("In proportion to a number field, such as density")).toBeTruthy();
+    expect(within(menu).getByText("Field values")).toBeTruthy();
+    await userEvent.click(within(menu).getByText("By attribute"));
+    expect(store.get("symbol.extrude")).toEqual({
+      height: { field: "area", range: [0, 50], scale: "linear" },
+    });
+    expect(redux.getState().map.view?.mode).toBe("3d");
+    // The attribute editor opens at once: the field, then the heights at the ends of its values, in metres.
+    const editor = screen
+      .getByText("Height by attribute", { selector: "[data-popover-frame] p" })
+      .closest("[data-popover-frame]") as HTMLElement;
+    expect(within(editor).getByRole("slider", { name: "Largest" }).getAttribute("value")).toBe("50");
+    expect(within(editor).getAllByText("m").length).toBeGreaterThan(0);
+    expect(summary()).toBe("By area");
+  });
+
+  it("By attribute from Field values keeps the field the height reads", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: { field: "height" } } },
+    } as LayerStyle);
+    await pick("By attribute");
+    expect(store.get("symbol.extrude")).toEqual({
+      height: { field: "height", range: [0, 50], scale: "linear" },
+    });
+    expect(summary()).toBe("By height");
+  });
+
+  it("in class scope a height by attribute stays the layer's: its row opens no editor", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: { field: "area", range: [0, 50], scale: "linear" } } },
+      classify: [
+        {
+          field: "use",
+          method: "categories",
+          classes: [{ values: ["park"], fill: { color: "#00ff00" } }],
+        },
+      ],
+    } as unknown as LayerStyle);
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openHeight();
+    await userEvent.click(within(popover()).getByRole("button", { name: /^By area/ }));
+    expect(screen.queryByText("Height by attribute", { selector: "[data-popover-frame] p" })).toBeNull();
+  });
+
+  it("offers the base every form of the height but None", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: 40 } },
+    } as LayerStyle);
+    await openHeight();
+    const base = () =>
+      within(popover()).getByRole("button", { name: /^Base height: .*Change how the value is set\.$/ });
+    await userEvent.click(base());
+    // Every form of the height but None, each with its words.
+    const items = within(screen.getByRole("menu")).getAllByRole("menuitem");
+    expect(items).toHaveLength(5);
+    ["Fixed", "By zoom", "By attribute", "Field values", "By classes"].forEach((name, i) =>
+      expect(within(items[i]).getByText(name)).toBeTruthy()
+    );
+    await userEvent.click(within(screen.getByRole("menu")).getByText("By zoom"));
+    expect(store.get("symbol.extrude.base")).toEqual({
+      zoom: [
+        [11, 0],
+        [17, 0],
+      ],
+    });
+    await userEvent.click(base());
+    await userEvent.click(within(screen.getByRole("menu")).getByText("By attribute"));
+    expect(store.get("symbol.extrude.base")).toEqual({ field: "area", range: [0, 10], scale: "linear" });
+    // By classes asks for the field, as the height's does.
+    await userEvent.click(base());
+    await userEvent.click(within(screen.getByRole("menu")).getByText("By classes"));
+    expect(within(screen.getByRole("listbox")).getByText("use")).toBeTruthy();
+  });
+
   it("says at which zooms the volumes stand while a height is set, as Fill and Outline do", async () => {
-    setup({ version: 1, kind: "vector", symbol: { extrude: { height: 10, min_zoom: 14 } } } as LayerStyle);
+    setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: 10, min_zoom: 14 } },
+    } as LayerStyle);
     await openHeight();
     expect(within(popover()).getByText("Visible")).toBeTruthy();
     expect(within(popover()).getAllByText(/14/).length).toBeGreaterThan(0);
@@ -203,7 +296,7 @@ describe("HeightRow", () => {
 
   it("shows a class's own height in class scope", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 10 } },
       classify: [

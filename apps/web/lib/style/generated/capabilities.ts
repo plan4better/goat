@@ -21,6 +21,12 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: null,
     perFeature: false,
   },
+  "arrows.icon": {
+    kind: "choice",
+    zoom: null,
+    attribute: null,
+    perFeature: false,
+  },
   "arrows.placement": {
     kind: "choice",
     zoom: null,
@@ -36,6 +42,12 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
   "arrows.spacing": {
     kind: "number",
     zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
+  "arrows.turn_with_line": {
+    kind: "choice",
+    zoom: null,
     attribute: null,
     perFeature: false,
   },
@@ -153,6 +165,12 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: "color",
     perFeature: true,
   },
+  "label.font.style": {
+    kind: "choice",
+    zoom: "step",
+    attribute: null,
+    perFeature: true,
+  },
   "label.font.weight": {
     kind: "choice",
     zoom: "step",
@@ -183,6 +201,18 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: "number",
     perFeature: true,
   },
+  "label.letter_spacing": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: true,
+  },
+  "label.line_height": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
   "label.lines": {
     kind: "choice",
     zoom: null,
@@ -200,6 +230,12 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     zoom: "blend",
     attribute: null,
     perFeature: true,
+  },
+  "label.padding": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
   },
   "label.placement": {
     kind: "choice",
@@ -219,9 +255,21 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     attribute: "number",
     perFeature: true,
   },
+  "label.spacing": {
+    kind: "number",
+    zoom: "blend",
+    attribute: null,
+    perFeature: false,
+  },
   "label.text": {
     kind: "choice",
     zoom: null,
+    attribute: null,
+    perFeature: true,
+  },
+  "label.transform": {
+    kind: "choice",
+    zoom: "step",
     attribute: null,
     perFeature: true,
   },
@@ -361,6 +409,12 @@ export const CAPABILITIES: Readonly<Record<string, Capability>> = {
     kind: "number",
     zoom: "blend",
     attribute: "number",
+    perFeature: true,
+  },
+  "outline.position": {
+    kind: "choice",
+    zoom: "step",
+    attribute: null,
     perFeature: true,
   },
   "outline.width": {

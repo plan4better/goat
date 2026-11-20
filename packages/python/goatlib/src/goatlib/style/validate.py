@@ -6,7 +6,12 @@ from goatlib.style.check import as_list, check_document
 from goatlib.style.context import DataContext, MapContext
 from goatlib.style.data_check import check_against_data
 from goatlib.style.issues import Issue, make_issue
-from goatlib.style.parse import check_version, parse_for_write, parse_map_document
+from goatlib.style.parse import (
+    blocking,
+    check_version,
+    parse_for_write,
+    parse_map_document,
+)
 from goatlib.style.pointer import to_pointer
 from goatlib.style.scene import buildings_on
 
@@ -20,8 +25,9 @@ def validate(doc: Any, ctx: DataContext, *, stored: bool = False) -> list[Issue]
     `stored=True` reads a style that was valid when written: data codes a later
     data change can cause get the level `damaged`.
     """
-    if check_version(doc):
-        return check_version(doc)
+    version_issues = check_version(doc)
+    if blocking(version_issues):
+        return version_issues
     style, issues = parse_for_write(doc)
     geometry = ctx.geometry if ctx.kind == "vector" else None
     issues = (
@@ -41,7 +47,7 @@ def validate_map(doc: Any, ctx: MapContext) -> list[Issue]:
     """Every issue of a map document against the project's layers, the basemap's
     positions and the deployment's scene sources."""
     _, issues = parse_map_document(doc)
-    if check_version(doc):
+    if blocking(check_version(doc)):
         return issues
     issues += check_scene(doc, ctx)
     seen: set[int] = set()

@@ -34,6 +34,18 @@ export function markerOn(doc: LayerStyle): boolean {
   return marker.icon !== undefined || (marker.shape !== undefined && marker.shape !== "circle");
 }
 
+/** `render` for clusters: points that draw an icon (theirs or a classification's) or a shape other than a plain
+ * circle cluster like the points with the count on a badge; plain circles cluster as circles by count (spec 8.2). */
+export function clusterRender(doc: LayerStyle): JsonObject {
+  const icons = (getIn(doc, "classify") as unknown[] | undefined)?.some(
+    (c) =>
+      isObject(c) &&
+      Array.isArray(c.classes) &&
+      c.classes.some((k) => isObject(k) && isObject(k.marker) && k.marker.icon !== undefined)
+  );
+  return markerOn(doc) || icons ? { type: "cluster", look: "points", count: "badge" } : { type: "cluster" };
+}
+
 /** What switching the layer's icon off takes from its marker: the icon and what only an icon uses, the shape, and the
  * classifications that set the icon. `restoreIcon` puts them back. */
 export interface IconSettings {
@@ -157,11 +169,54 @@ export function setMarkerIcon(
   return getIn(next, `${MARKER}.shape`) === "icon" ? setIn(next, `${MARKER}.shape`, undefined) : next;
 }
 
+/** The arrows with icon `ref` at `path` (spec 3.2), GOAT's arrow for undefined: the arrow turns with the line, any
+ * other icon stays upright until the user turns it (`turn_with_line`). */
+export function setArrowsIcon(doc: LayerStyle, path: string, ref: string | undefined): LayerStyle {
+  const turn = path.replace(/icon$/, "turn_with_line");
+  return ref === undefined || ref === DEFAULTS["arrows.icon"]
+    ? setIn(setIn(doc, path, undefined), turn, undefined)
+    : setIn(setIn(doc, path, ref), turn, false);
+}
+
 /** The document with the cluster symbol written out, so an edit of one key keeps the rest of the default symbol. */
 export function withClusterSymbol(doc: LayerStyle): LayerStyle {
   return isObject(getIn(doc, "render.symbol"))
     ? doc
     : setIn(doc, "render.symbol", clone(DEFAULT_CLUSTER_SYMBOL));
+}
+
+/** The starting range of a cluster value by a field (spec 8.2): the field's for its mean, smallest or largest value;
+ * for its sum, from the field's lowest value to ten times its highest. The panel's Range row changes it. */
+export function clusterValueDomain(
+  op: string,
+  profile?: { min?: number; max?: number }
+): [number, number] | undefined {
+  if (profile?.min === undefined || profile.max === undefined) return undefined;
+  return op === "sum" ? [profile.min, profile.max * 10] : [profile.min, profile.max];
+}
+
+/** The document with the clusters' value set (spec 8.2 `value`; none for the count), and the cluster symbol following
+ * it: a label of the count or the value shows the new one, a size or color by either follows it, with `domain` for a
+ * value by a field and the map's for the count. A value by a field without its `domain` yet puts the size and color
+ * on the count: by the value they would need one, and another field's range would not fit it. */
+export function withClusterValue(
+  doc: LayerStyle,
+  value: { op: string; field: string } | undefined,
+  domain?: [number, number]
+): LayerStyle {
+  let next = withClusterSymbol(setIn(doc, "render.value", value));
+  const text = getIn(next, "render.symbol.label.text");
+  if (text === "{count}" || text === "{value}")
+    next = setIn(next, "render.symbol.label.text", value ? "{value}" : "{count}");
+  const byValue = value !== undefined && domain !== undefined;
+  for (const key of ["size", "color"]) {
+    const path = `render.symbol.marker.${key}`;
+    const form = getIn(next, path);
+    if (!isObject(form) || (form.field !== "count" && form.field !== "value")) continue;
+    const { domain: _old, ...rest } = form;
+    next = setIn(next, path, byValue ? { ...rest, field: "value", domain } : { ...rest, field: "count" });
+  }
+  return next;
 }
 
 /** A cluster symbol key's value while the style leaves it out: the default cluster symbol's, else the reference's. */

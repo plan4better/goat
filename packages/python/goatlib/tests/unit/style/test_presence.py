@@ -30,7 +30,7 @@ def con() -> duckdb.DuckDBPyConnection:
 
 
 def computed(con: duckdb.DuckDBPyConnection, c: dict[str, Any]) -> dict[str, Any]:
-    doc = {"version": 1, "kind": "vector", "classify": [c]}
+    doc = {"version": "1.0.0", "kind": "vector", "classify": [c]}
     out, _ = compute_into(
         con, "legend_synthetic", doc, geometry="point", fingerprint="f"
     )
@@ -83,7 +83,7 @@ def test_an_authors_categories_are_held_against_the_data(con) -> None:
 
 def test_a_field_the_data_lacks_is_stamped_without_the_facts(con) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {"field": "missing", "method": "categories", "classes": [{"values": ["A"]}]}
@@ -105,7 +105,7 @@ def test_a_style_computed_before_the_facts_existed_lacks_them_without_being_stal
     con,
 ) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {
@@ -134,7 +134,7 @@ def test_the_facts_are_part_of_a_valid_style(con) -> None:
     from goatlib.style.context import DataContext
 
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {

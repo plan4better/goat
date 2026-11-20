@@ -4,6 +4,10 @@
 
 export const PATTERN_IMAGE = "goat-pattern:";
 
+/** The image of features without a pattern, drawn clear: MapLibre asks for an image named "null" when a feature's
+ * `fill-pattern` is empty. */
+export const NO_PATTERN_IMAGE = `${PATTERN_IMAGE}none`;
+
 export type PatternKind = "hatch_45" | "hatch_135" | "vertical" | "horizontal" | "cross" | "grid" | "dots";
 
 const KINDS = new Set<string>(["hatch_45", "hatch_135", "vertical", "horizontal", "cross", "grid", "dots"]);

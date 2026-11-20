@@ -233,8 +233,8 @@ Service port is 80, so no port suffix.
 
 {{/*
 In-cluster URL of the geoapi service, or empty when it is not deployed. Core
-asks it for a COG's bounds when a raster layer is added, and stores them as
-the layer's extent. Unset, such a layer is stored without one and the web asks
+asks it for a COG's bounds when a raster layer is added or its file address
+changes, and stores them as the layer's extent. Unset, such a layer is stored without one and the web asks
 geoapi itself.
 */}}
 {{- define "goat.geoapi.url" -}}

@@ -21,6 +21,9 @@ vi.mock("react-i18next", () => ({
           "style_editor.legend_height_storeys": "Height · {{field}} × {{storey}} m",
           "style_editor.legend_height_h3": "Height · {{value_label}}",
           "style_editor.h3_value_sum": "Sum of {{field}}",
+          "style_editor.h3_value_mean": "Mean of {{field}}",
+          "style_editor.legend_clusters": "Clusters",
+          "style_editor.legend_single_points": "Single points",
           "style_editor.legend_none_view": "None in view",
           "style_editor.legend_none_filter": "None kept by the filter",
         })[key] ?? "and more"
@@ -34,7 +37,10 @@ const legendOf = (doc: object, geometry?: "point" | "line" | "polygon") =>
 
 describe("StyleLegend", () => {
   const twoBlocks = (classify: object[]) =>
-    legendOf({ version: 1, kind: "vector", symbol: { marker: { color: "#e01903" } }, classify }, "point");
+    legendOf(
+      { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#e01903" } }, classify },
+      "point"
+    );
   const SIZE = {
     id: "size",
     field: "share",
@@ -54,7 +60,12 @@ describe("StyleLegend", () => {
   };
 
   it("a classification still being counted draws placeholder rows under its heading, no classes", () => {
-    const doc = { version: 1, kind: "vector", symbol: { marker: { color: "#e01903" } }, classify: [COLOR] };
+    const doc = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { color: "#e01903" } },
+      classify: [COLOR],
+    };
     const legend = buildLegend(doc as never, { geometry: "point", zoom: 12, present: PRESENCE_PENDING })!;
     const { container } = render(<StyleLegend legend={legend} variant="tree" />);
     expect(screen.getByText("share")).toBeDefined();
@@ -66,7 +77,7 @@ describe("StyleLegend", () => {
 
   it("a legend the counts emptied shows a note in place of a swatch", () => {
     const doc = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: "#e01903" } },
       classify: [COLOR],
@@ -105,7 +116,7 @@ describe("StyleLegend", () => {
   it("numeric categories read with their classification's unit, beside a second classification", () => {
     // The zensus shape: categories on the size, quantiles on the color, both of one field; the unit is on the first.
     const doc = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: "#e01903" } },
       classify: [
@@ -143,7 +154,7 @@ describe("StyleLegend", () => {
 
   it("categories read with the number format where one is set; the unit follows numbers, not names", () => {
     const doc = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: "#e01903" } },
       classify: [
@@ -172,7 +183,7 @@ describe("StyleLegend", () => {
   it("the caption stands under the layer's name, above the entries, as in the layer list and print", () => {
     const legend = legendOf(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#e01903" } },
         classify: [SIZE, COLOR],
@@ -218,7 +229,7 @@ describe("StyleLegend", () => {
 
     const categories = legendOf(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: { color: "#2166ac" } },
         classify: [
@@ -241,7 +252,7 @@ describe("StyleLegend", () => {
     second.unmount();
 
     const ramp = legendOf(
-      { version: 1, kind: "vector", render: { type: "heatmap", palette: ["#000000", "#ffffff"] } },
+      { version: "1.0.0", kind: "vector", render: { type: "heatmap", palette: ["#000000", "#ffffff"] } },
       "point"
     );
     const third = render(<StyleLegend legend={ramp} variant="tree" />);
@@ -249,7 +260,7 @@ describe("StyleLegend", () => {
     third.unmount();
 
     const raster = legendOf({
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "continuous", palette: ["#000000", "#ffffff"], domain: [200, 450] },
       legend: { unit: "m", caption: "Elevation model" },
@@ -261,10 +272,44 @@ describe("StyleLegend", () => {
     expect(screen.getByText("DEM")).toBeInTheDocument();
   });
 
+  it("a raster's nearest stops draw as hard steps, and its other values as an Other entry", () => {
+    const stops = legendOf({
+      version: "1.0.0",
+      kind: "raster",
+      render: {
+        type: "continuous",
+        interpolate: "nearest",
+        stops: [
+          { value: 0, color: "#000000" },
+          { value: 10, color: "#ff0000" },
+          { value: 20, color: "#0000ff" },
+        ],
+      },
+    });
+    const first = render(<StyleLegend legend={stops} variant="panel" />);
+    expect(first.container.querySelector("[data-legend-ramp]")).toHaveStyle({
+      background:
+        "linear-gradient(90deg, #000000 0%, #000000 25%, #ff0000 25%, #ff0000 75%, #0000ff 75%, #0000ff 100%)",
+    });
+    first.unmount();
+
+    const categories = legendOf({
+      version: "1.0.0",
+      kind: "raster",
+      render: {
+        type: "categorical",
+        classes: [{ value: 1, name: "Water", color: "#4a90c2" }],
+        other_color: "#cccccc",
+      },
+    });
+    render(<StyleLegend legend={categories} variant="panel" />);
+    expect(["Water", "Other"].map((text) => screen.getByText(text))).toHaveLength(2);
+  });
+
   it("a ramp on a log scale names its middle value between the ends", () => {
     const legend = legendOf(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: { field: "d", palette: "goat:green", scale: "log", domain: [1, 100] } } },
       },
@@ -272,6 +317,65 @@ describe("StyleLegend", () => {
     );
     const { container } = render(<StyleLegend legend={legend} variant="tree" />);
     expect(container.querySelector("[data-legend-middle]")?.textContent).toBe("10");
+  });
+
+  it("ramp bars and H3 swatches draw at the features' own opacity, not the layer's", () => {
+    const fill = legendOf(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        opacity: 0.3,
+        symbol: { fill: { color: { field: "d", palette: "goat:green", domain: [0, 10] }, opacity: 0.5 } },
+      },
+      "polygon"
+    );
+    const first = render(<StyleLegend legend={fill} variant="tree" />);
+    expect(first.container.querySelector("[data-legend-ramp]")).toHaveStyle({ opacity: "0.5" });
+    first.unmount();
+
+    const stamp = { at: "2026-10-26T00:00:00Z", data: "ducklake:1", scope: "dataset" };
+    const h3 = (render: object) =>
+      legendOf({ version: "1.0.0", kind: "vector", render: { type: "h3", ...render } }, "point");
+    const ramp = render(
+      <StyleLegend
+        legend={h3({
+          resolution: 8,
+          palette: ["#000001", "#000002"],
+          computed: { ...stamp, resolutions: { "8": { min: 2, max: 40 } } },
+        })}
+        variant="tree"
+      />
+    );
+    expect(ramp.container.querySelector("[data-legend-ramp]")).toHaveStyle({ opacity: "0.85" });
+    ramp.unmount();
+
+    const classes = render(
+      <StyleLegend
+        legend={h3({
+          resolution: 8,
+          palette: ["#000001", "#000002"],
+          classify: { method: "quantile", count: 2 },
+          computed: { ...stamp, resolutions: { "8": { min: 2, max: 40, breaks: [10] } } },
+        })}
+        variant="tree"
+      />
+    );
+    const rects = [...classes.container.querySelectorAll("svg rect")];
+    expect(rects).toHaveLength(2);
+    for (const rect of rects) expect(rect.getAttribute("fill-opacity")).toBe("0.85");
+    classes.unmount();
+
+    // A heatmap at full strength: the bar is not faded.
+    const heatmap = render(
+      <StyleLegend
+        legend={legendOf(
+          { version: "1.0.0", kind: "vector", render: { type: "heatmap", palette: ["#000000", "#ffffff"] } },
+          "point"
+        )}
+        variant="tree"
+      />
+    );
+    expect(heatmap.container.querySelector("[data-legend-ramp]")).toHaveStyle({ opacity: "1" });
   });
 
   it("a popup header shows the clicked feature's class", () => {
@@ -310,6 +414,62 @@ describe("StyleLegend", () => {
     expect(emoji.querySelector("img")?.getAttribute("src")).toBe("/assets/icons/emoji/1f525.webp");
     // Loaded as a CORS request, as the map loads its icons.
     expect(emoji.querySelector("img")?.getAttribute("crossorigin")).toBe("anonymous");
+  });
+
+  it("clusters with a value say what the value is", () => {
+    const legend = buildLegend(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        render: {
+          type: "cluster",
+          value: { op: "mean", field: "turnover" },
+          symbol: {
+            marker: { shape: "circle", size: { field: "value", range: [10, 30], domain: [0, 1000] } },
+          },
+        },
+      },
+      { geometry: "point", zoom: 12 }
+    )!;
+    render(<StyleLegend legend={legend} variant="tree" />);
+    expect(screen.getByText("Clusters · Mean of turnover")).toBeDefined();
+    // No heading of the field over the Clusters entry: it names it.
+    expect(screen.queryByText("turnover")).toBeNull();
+    expect(screen.getByText("Mean of turnover")).toBeDefined();
+  });
+
+  it("below the Clusters row, the base look reads as the single points", () => {
+    const legend = legendOf(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        render: { type: "cluster" },
+        symbol: { marker: { shape: "circle", color: "#283593", size: 8 } },
+      },
+      "point"
+    );
+    const { container } = render(<StyleLegend legend={legend} variant="tree" />);
+    expect(container.textContent).toBe("ClustersSingle points");
+  });
+
+  it("a cluster swatch with a badge draws a dot in the badge color at the marker's upper right", () => {
+    const { container } = render(
+      <SwatchIcon
+        swatch={{
+          geometry: "point",
+          marker: { shape: "icon", icon: "goat:shop", color: "#5a1846" },
+          badge: { color: "#2838b2", text: "#ffff00", ring: "#ffffff" },
+        }}
+      />
+    );
+    const badge = container.querySelector("[data-cluster-badge]") as HTMLElement;
+    expect(badge).not.toBeNull();
+    expect(badge.style.backgroundColor).toBe("rgb(40, 56, 178)");
+    expect(badge.style.border).toBe("1px solid rgb(255, 255, 255)");
+    expect(badge.style.top).toBe("0px");
+    expect(badge.style.right).toBe("0px");
+    const plain = render(<SwatchIcon swatch={{ geometry: "point", marker: { shape: "circle" } }} />);
+    expect(plain.container.querySelector("[data-cluster-badge]")).toBeNull();
   });
 
   it("a pin's swatch draws its outline in the marker color with the icon in its head", () => {
@@ -368,7 +528,7 @@ describe("StyleLegend", () => {
   it("a point outline in the fill color takes the marker's color", () => {
     const legend = legendOf(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#d62728" }, outline: { color: "fill", width: 1 } },
       },
@@ -395,7 +555,11 @@ describe("StyleLegend", () => {
 
   it("a layer with height ends with its Height line", () => {
     const storeys = legendOf(
-      { version: 1, kind: "vector", symbol: { extrude: { height: { field: "levels" }, unit: "storeys" } } },
+      {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { extrude: { height: { field: "levels" }, unit: "storeys" } },
+      },
       "polygon"
     );
     const { unmount } = render(<StyleLegend legend={storeys} variant="tree" />);
@@ -403,7 +567,7 @@ describe("StyleLegend", () => {
     unmount();
     const h3 = legendOf(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: { type: "h3", value: { op: "sum", field: "residents" }, extrude: { tallest: 500 } },
       },

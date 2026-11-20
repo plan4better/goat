@@ -13,9 +13,10 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import type { Geometry } from "@/lib/style/compile/types";
 import { addCategoryClass, removeClass, setManualBound } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
+import { compoundOf, fixedChoice, writeCompound } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
 import { type Path, getIn } from "@/lib/style/editor/store";
-import { HATCH, choiceLabel } from "@/lib/style/editor/summaries";
+import { HATCH, choiceLabel, compoundOptions, plainNumber } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -49,8 +50,9 @@ function rowLabelKey(target: string, geometry?: Geometry): string | undefined {
   return undefined;
 }
 
-/** A number as its box shows it (two decimals at most, a percent as 0 to 100). */
-const numberText = (value: number, pct?: boolean) => String(Number((pct ? value * 100 : value).toFixed(2)));
+/** A number as its box shows it (two decimals at most, a percent as 0 to 100), in the panel's language. */
+const numberText = (value: number, pct?: boolean, language = "en") =>
+  plainNumber(pct ? value * 100 : value, language);
 
 /** The characters a column of numbers keeps room for: the longest end of the property's range (as a slider's value
  * does), or a longer value in the column. */
@@ -144,11 +146,15 @@ function TargetValue({
   choices?: readonly string[];
   reserve: number;
 }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
   const valuePath = `${path}.${target}`;
   const value = useStyleValue<unknown>(valuePath);
+  // A compound target (the label's Font) reads every key of its part.
+  const compound = compoundOf(target);
+  const part = useStyleValue<unknown>(`${path}.${target.split(".")[0]}`);
+  const layerPart = useStyleValue<unknown>(`symbol.${target.split(".")[0]}`);
   const look = useShapeState(`${path}.marker`);
   // A record without a value draws with the layer's own (the cascade falls back to it): its box shows that value.
   const layerValue = useStyleValue<unknown>(`symbol.${target}`);
@@ -250,9 +256,27 @@ function TargetValue({
         pct={slider?.pct}
         plain
         reserve={reserve}
-        placeholder={typeof inherited === "number" ? numberText(inherited, slider?.pct) : undefined}
+        placeholder={
+          typeof inherited === "number" ? numberText(inherited, slider?.pct, i18n.language) : undefined
+        }
         ariaLabel={t("style_editor.class_value")}
         onChange={(v) => store.set(valuePath, v)}
+      />
+    );
+  }
+  // The Font: a weight, upright or italic, both keys written, so the class draws its font whatever the layer's. Without
+  // one of its own the class draws the layer's font: shown while it is one font, none while it varies by zoom.
+  if (compound) {
+    const own = isObject(part) && compound.keys.some((key) => getIn(part, key) !== undefined);
+    return (
+      <ChoiceField<string>
+        ariaLabel={title}
+        value={own ? compound.read(part) : (fixedChoice(compound, layerPart) ?? "")}
+        options={compoundOptions(t, compound)}
+        onChange={(v) =>
+          store.update((doc) => writeCompound(doc, compound, `${path}.${compound.part}`, v, true))
+        }
+        sx={{ height: 28 }}
       />
     );
   }

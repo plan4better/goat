@@ -305,6 +305,22 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
   // A 3D print waits for the scene: an idle before terrain and sky are on the map would capture it without them.
   const sceneReady = viewMode === "2d" || appliedScene !== null;
 
+  // Raster layers that color values draw once their descriptions are loaded (a failed one is not waited for; the
+  // renderer reports after its first draw). The map is ready once it was idle after that: a repaint makes sure an
+  // idle comes, also when a failed description added nothing to the map.
+  const [valuesPending, setValuesPending] = useState(true);
+  const [idleAfterValues, setIdleAfterValues] = useState(false);
+  useEffect(() => {
+    if (valuesPending || !loadedMap) return;
+    const onIdle = () => setIdleAfterValues(true);
+    loadedMap.once("idle", onIdle);
+    loadedMap.triggerRepaint();
+    return () => {
+      loadedMap.off("idle", onIdle);
+    };
+  }, [valuesPending, loadedMap]);
+  const valuesReady = renderLayers.length === 0 || idleAfterValues;
+
   // Track if we've already notified parent that map is ready
   const hasNotifiedReady = useRef(false);
   // Track if atlas viewState writeback is done (only relevant for atlas-controlled maps)
@@ -312,22 +328,22 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
 
   // For atlas-controlled maps, notify parent once atlas viewState is written back (and a 3D map once its scene is on)
   useEffect(() => {
-    if (mapLoaded && atlasViewStateReady && sceneReady && !hasNotifiedReady.current) {
+    if (mapLoaded && atlasViewStateReady && sceneReady && valuesReady && !hasNotifiedReady.current) {
       hasNotifiedReady.current = true;
       onMapLoaded?.();
     }
-  }, [mapLoaded, atlasViewStateReady, sceneReady, onMapLoaded]);
+  }, [mapLoaded, atlasViewStateReady, sceneReady, valuesReady, onMapLoaded]);
 
   // Handle map idle - called when the map has finished rendering
   // This is more reliable for print than onLoad which fires when style is loaded
   const handleMapIdle = useCallback(() => {
     // Only notify once when the map first becomes idle after loading
     // For atlas-controlled maps, the useEffect above handles notification
-    if (mapLoaded && sceneReady && !hasNotifiedReady.current && !isAtlasControlled) {
+    if (mapLoaded && sceneReady && valuesReady && !hasNotifiedReady.current && !isAtlasControlled) {
       hasNotifiedReady.current = true;
       onMapLoaded?.();
     }
-  }, [mapLoaded, sceneReady, onMapLoaded, isAtlasControlled]);
+  }, [mapLoaded, sceneReady, valuesReady, onMapLoaded, isAtlasControlled]);
 
   // Calculate inverse scale to render map at native size
   // The parent container is already scaled by zoom, so we render the map
@@ -414,6 +430,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
                 locale={locale || i18n.language}
                 ground={buildingsAnchor(appliedScene)}
                 presenceScope={printScope(element.id)}
+                onValuesPending={setValuesPending}
               />
             )}
           </Map>

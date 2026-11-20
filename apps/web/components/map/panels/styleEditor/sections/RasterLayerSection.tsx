@@ -1,7 +1,8 @@
 "use client";
 
 // Layer for raster files and map services (prototype 3.6, spec 9): opacity, resampling, the image adjustments, the
-// cell values drawn transparent, and the zooms. A map service has no cells, so no No data.
+// cell values drawn transparent, and the zooms. A map service has no cells, so no No data; No data waits for the
+// file's info, which names the file's own no-data value.
 import { IconButton, Tooltip } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,11 +12,14 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { fetchRasterPoint } from "@/lib/api/rasters";
 import { noDataApplies } from "@/lib/style/editor/raster";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { shortNumber } from "@/lib/style/raster/metadata";
+import { resamplingOf } from "@/lib/style/raster/values";
 
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 import {
   useEditor,
   useEditorMap,
+  useRasterWaiting,
   useStyleData,
   useStyleSelector,
   useStyleValue,
@@ -50,6 +54,8 @@ function NoDataRow() {
   const store = useEditor();
   const map = useEditorMap();
   const { raster } = useStyleData();
+  const info = raster?.info;
+  const waiting = useRasterWaiting();
   const noData = useStyleValue<unknown>("render.no_data");
   const band = useStyleValue<unknown>("render.band");
   const values = isObject(noData) && Array.isArray(noData.values) ? (noData.values as number[]) : [];
@@ -87,7 +93,7 @@ function NoDataRow() {
             <IconButton
               size="small"
               aria-label={t("style_editor.no_data_pick")}
-              disabled={!map}
+              disabled={!map || waiting}
               onClick={pick}>
               <Icon iconName={ICON_NAME.LOCATION_CROSSHAIRS} sx={{ fontSize: 14 }} />
             </IconButton>
@@ -96,7 +102,15 @@ function NoDataRow() {
       }>
       <TextFieldInput
         value={draft}
-        placeholder={t("style_editor.no_data_placeholder")}
+        // What applies while no value is typed: the file's own no-data value, if any.
+        placeholder={
+          !info
+            ? undefined
+            : info.noData !== undefined
+              ? t("style_editor.no_data_from_file", { value: shortNumber(info.noData) })
+              : t("style_editor.no_data_none")
+        }
+        disabled={waiting}
         clearable={false}
         inputProps={{ "aria-label": label }}
         onChange={(text) => {
@@ -146,8 +160,8 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
   const noData = useStyleSelector((doc) =>
     noDataApplies(isObject(doc.render) ? (doc.render as JsonObject) : {}, raster?.info)
   );
-  // Categories keep their cells sharp unless the style says otherwise (spec 9).
-  const fallback = type === "categorical" ? "nearest" : "linear";
+  // The render's own default: crisp cells for color scales, smooth images and shading (spec 9).
+  const fallback = useStyleSelector((doc) => resamplingOf({ render: doc.render }));
   const current = resampling === "nearest" || resampling === "linear" ? resampling : fallback;
   const label = t("style_editor.resampling");
   return (
