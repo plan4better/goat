@@ -3,9 +3,10 @@ browser to color) and their description, colored tiles, the file's bounds,
 statistics and point values. Every route reads the layer row's own file and
 answers only callers who may read the layer.
 
-Tiles are read for each request, never kept in Redis: the browser caches them.
-A tile whose caller has gone is not read, and a read past `TILE_DEADLINE_S`
-answers 504 and marks the file as failing."""
+Tiles are read for each request, never kept in Redis: the browser caches them,
+a value tile read with content for good (its address fixes its pixels). A tile
+whose caller has gone is not read, and a read past `TILE_DEADLINE_S` answers
+504 and marks the file as failing."""
 
 import asyncio
 import hashlib
@@ -53,6 +54,20 @@ from geoapi.services.raster_service import (
 router = APIRouter(prefix="/collections", tags=["Rasters"])
 
 CACHE = "public, max-age=3600"
+#: A value tile of the layer's current values version is kept for good: its
+#: address names the file's version, the encoding and its packing version, so
+#: another file or encoding is another address. One read with a sign-in is
+#: `private`; one read without is `public`, and the web sends no token with
+#: tile requests, so while `ENFORCE_READ_AUTHZ` is off every map tile is public,
+#: a private layer's included: enforce it before a shared cache serves them.
+VALUE_TILE_CACHE = "public, max-age=31536000, immutable"
+VALUE_TILE_CACHE_PRIVATE = "private, max-age=31536000, immutable"
+#: A value tile of a remote file whose host gives no validator (no ETag, no
+#: Last-Modified, or a HEAD it refuses): its version does not follow the file.
+VALUE_TILE_HOUR_PRIVATE = "private, max-age=3600"
+#: A value tile whose address names another version holds the current file,
+#: which that address does not name.
+STALE_TILE_CACHE = "no-store"
 #: The value tiles' description is asked again soon: its version follows the
 #: remote file.
 DESCRIPTION_CACHE = "public, max-age=60"
@@ -94,12 +109,12 @@ def _slot(layer_id: str) -> asyncio.Semaphore:
     return slot
 
 
-async def _layer(collection_id: str) -> RasterLayer:
+async def _layer(collection_id: str, fresh: bool = False) -> RasterLayer:
     try:
         layer_id = normalize_layer_id(collection_id)
     except HTTPException:
         raise HTTPException(status_code=400, detail="Invalid collection ID") from None
-    layer = await raster_service.layer(layer_id)
+    layer = await raster_service.layer(layer_id, fresh)
     if layer is None:
         raise HTTPException(status_code=404, detail="Not a raster file layer")
     return layer
@@ -220,13 +235,42 @@ def _encoding_of(base: float, step: float) -> ValueEncoding:
     return ValueEncoding(base=base, step=step, integer=False, range=None)
 
 
-def _tile(content: bytes | None, etag: str, if_none_match: str | None) -> Response:
+def _tile(
+    content: bytes | None, etag: str, cache: str = CACHE, empty: str = CACHE
+) -> Response:
+    """A read tile under `cache`, or 204 under `empty` for one without content."""
     if not content:
-        return Response(status_code=204, headers={"Cache-Control": CACHE})
-    headers = {"Cache-Control": CACHE, "ETag": etag}
-    if if_none_match == etag:
-        return Response(status_code=304, headers=headers)
-    return Response(content=content, media_type=TILE, headers=headers)
+        return Response(status_code=204, headers={"Cache-Control": empty})
+    return Response(
+        content=content, media_type=TILE, headers={"Cache-Control": cache, "ETag": etag}
+    )
+
+
+def _value_tile_cache(request: Request, current: bool, follows: bool) -> str:
+    """A value tile's Cache-Control. One whose address names another version
+    than the layer's holds the current file: no cache keeps it. One of a file
+    its version does not follow (a remote file whose host gives no validator)
+    is kept an hour, any other for good. A tile read with a sign-in may be of
+    a layer not everyone may read, which no shared cache may keep; one read
+    without is `public` (see `VALUE_TILE_CACHE`)."""
+    if not current:
+        return STALE_TILE_CACHE
+    signed_in = bool(request.headers.get("authorization"))
+    if follows:
+        return VALUE_TILE_CACHE_PRIVATE if signed_in else VALUE_TILE_CACHE
+    return VALUE_TILE_HOUR_PRIVATE if signed_in else CACHE
+
+
+async def _values_state(layer: RasterLayer) -> tuple[str, bool]:
+    """The layer's values version and whether it follows the file, on the
+    raster threads (a remote file's check may ask its host), without a read
+    slot."""
+    _not_failing(layer)
+    with _answers():
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            RASTER_EXECUTOR, raster_service.values_state, layer
+        )
 
 
 def _etag(*parts: object) -> str:
@@ -256,8 +300,10 @@ async def raster_bounds(
 ) -> dict[str, Any]:
     """West, south, east and north in degrees; null for a file whose bounds
     are no box on earth. core stores them as the layer's extent when it
-    creates the layer; the web asks here for a layer stored without one."""
-    layer = await _layer(collection_id)
+    creates the layer or gives it another address, and asks right after the
+    change, so the row is read afresh; the web asks here for a layer stored
+    without one."""
+    layer = await _layer(collection_id, fresh=True)
     bounds = await _read(layer, raster_service.bounds)
     if not valid_bounds(bounds):
         return {"bounds": None}
@@ -289,7 +335,7 @@ async def raster_tile(
     content = await _read_tile(request, layer, raster_service.tile, z, x, y, coloring)
     if content is _GONE:
         return _gone()
-    return _tile(content, etag, None)
+    return _tile(content, etag)
 
 
 @router.get(
@@ -395,13 +441,27 @@ async def raster_values_tile(
     version = raster_service.tile_version(layer, shown)
     etag = _etag(layer.id, version, v, base, step, z, x, y)
     if if_none_match == etag:
-        return Response(status_code=304, headers={"Cache-Control": CACHE, "ETag": etag})
-    content = await _read_tile(
-        request, layer, raster_service.values, z, x, y, values, encoding, resampling
+        # The header its 200 had.
+        current, follows = await _values_state(layer)
+        cache = _value_tile_cache(request, v == current, follows)
+        return Response(status_code=304, headers={"Cache-Control": cache, "ETag": etag})
+    read = await _read_tile(
+        request,
+        layer,
+        raster_service.values_tile,
+        z,
+        x,
+        y,
+        values,
+        encoding,
+        resampling,
     )
-    if content is _GONE:
+    if read is _GONE:
         return _gone()
-    return _tile(content, etag, None)
+    current, follows, content = read
+    if v != current:
+        return _tile(content, etag, STALE_TILE_CACHE, STALE_TILE_CACHE)
+    return _tile(content, etag, _value_tile_cache(request, True, follows))
 
 
 @router.get(

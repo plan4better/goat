@@ -20,7 +20,7 @@ from goatlib.raster.source import (
     RasterUnavailableError,
 )
 from goatlib.raster.token import encode_token
-from goatlib.raster.values import ValueEncoding, value_encoding
+from goatlib.raster.values import ENCODING_VERSION, ValueEncoding, value_encoding
 
 from geoapi.config import settings
 from geoapi.services import raster_service as rs
@@ -71,8 +71,19 @@ STATS = [
 COVERAGE = f"/collections/{LAYER}/coverage/tiles/WebMercatorQuad"
 #: The encoding the band's statistics give, which the description names.
 DESCRIBED = value_encoding("float32", scaled=False, value_range=(100.0, 400.0))
+#: The layer's values version: its row's, and the encoding's.
+CURRENT = f"v1-{ENCODING_VERSION}"
 #: A value tile's address names its encoding (code q is base + q * step).
-VALUE_TILE = f"{COVERAGE}/12/1420/2178?f=webp&band=1&base=-1.5&step=0.25&v=v1-e1"
+VALUE_TILE = f"{COVERAGE}/12/1420/2178?f=webp&band=1&base=-1.5&step=0.25&v={CURRENT}"
+#: What a value tile of the current version may be kept for: its address fixes
+#: it. Shared caches may keep it only when it was read without signing in.
+FOREVER = "public, max-age=31536000, immutable"
+FOREVER_PRIVATE = "private, max-age=31536000, immutable"
+#: A value tile of a remote file whose host gives no validator: its version
+#: does not follow the file, so it is kept for an hour.
+AN_HOUR = "public, max-age=3600"
+AN_HOUR_PRIVATE = "private, max-age=3600"
+SIGNED_IN = {"Authorization": "Bearer a-token"}
 NAMED = ValueEncoding(base=-1.5, step=0.25, integer=False, range=None)
 TOKEN_TILE = f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}"
 
@@ -136,9 +147,20 @@ def client(test_client: TestClient) -> Iterator[TestClient]:
     with (
         patch.object(rs, "RasterSource", FakeSource),
         patch.object(rs.raster_service, "layer", AsyncMock(return_value=ROW)),
+        # The layer's host gives no validator (no ETag, no Last-Modified).
         patch.object(rs, "remote_validator", return_value=None),
     ):
         yield test_client
+
+
+@pytest.fixture
+def validated(client: TestClient) -> Iterator[str]:
+    """The layer's host gives its file's ETag, so the values version follows
+    the file: the address of a value tile of that version."""
+    with patch.object(rs, "remote_validator", return_value='"a"'):
+        version = client.get(COVERAGE).json()["goat:values"]["version"]
+        assert version != CURRENT
+        yield VALUE_TILE.replace(CURRENT, version)
 
 
 def test_a_raster_layers_tile_is_colored_by_the_token(client: TestClient) -> None:
@@ -154,16 +176,15 @@ def test_a_raster_layers_tile_is_colored_by_the_token(client: TestClient) -> Non
 def test_the_same_tile_again_is_not_modified(client: TestClient) -> None:
     url = f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}"
     etag = client.get(url).headers["etag"]
-    assert client.get(url, headers={"If-None-Match": etag}).status_code == 304
+    again = client.get(url, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.headers["etag"] == etag
+    assert again.headers["cache-control"] == "public, max-age=3600"
 
 
 def test_outside_the_file_there_is_no_content(client: TestClient) -> None:
-    assert (
-        client.get(
-            f"/collections/{LAYER}/raster/tiles/3/1/1.webp?style={RAMP}"
-        ).status_code
-        == 204
-    )
+    r = client.get(f"/collections/{LAYER}/raster/tiles/3/1/1.webp?style={RAMP}")
+    assert r.status_code == 204
+    assert r.headers["cache-control"] == "public, max-age=3600"
 
 
 @pytest.mark.parametrize("token", ["", "!!!", encode_token({"v": 1, "kind": "nope"})])
@@ -382,7 +403,7 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
     # A float band: its statistics' range spread over the codes.
     assert values["encoding"] == DESCRIBED.factors()
     assert values["range"] == [100.0, 400.0] and values["integer"] is False
-    assert values["version"] == "v1-e1"
+    assert values["version"] == CURRENT
     [link] = body["links"]
     assert link == {
         "rel": "item",
@@ -391,7 +412,7 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
         "href": (
             f"http://testserver{COVERAGE}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}"
             "?f=webp&band=1&resampling=bilinear"
-            f"&base={DESCRIBED.base!r}&step={DESCRIBED.step!r}&v=v1-e1"
+            f"&base={DESCRIBED.base!r}&step={DESCRIBED.step!r}&v={CURRENT}"
         ),
     }
     assert r.headers["cache-control"] == "public, max-age=60"
@@ -401,7 +422,7 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
     assert nearest.headers["etag"] != etag
     assert nearest.json()["links"][0]["href"].endswith(
         f"?f=webp&band=1&resampling=nearest&base={DESCRIBED.base!r}"
-        f"&step={DESCRIBED.step!r}&v=v1-e1"
+        f"&step={DESCRIBED.step!r}&v={CURRENT}"
     )
 
 
@@ -409,16 +430,19 @@ def test_a_value_tile_is_webp_and_answers_304_on_its_etag(client: TestClient) ->
     r = client.get(VALUE_TILE)
     assert r.status_code == 200 and r.content == b"RIFF-values"
     assert r.headers["content-type"] == "image/webp"
-    assert r.headers["cache-control"] == "public, max-age=3600"
+    assert r.headers["cache-control"] == AN_HOUR
     # Row 1420 is y, column 2178 is x; the band's values in the address's encoding.
     assert FakeSource.values_read == [(12, 2178, 1420, "b1", NAMED, "bilinear")]
     assert FakeSource.opened == [ROW.external_url]
     etag = r.headers["etag"]
     again = client.get(VALUE_TILE, headers={"If-None-Match": etag})
     assert again.status_code == 304 and len(FakeSource.values_read) == 1
+    # The 304 carries its 200's header.
+    assert again.headers["cache-control"] == AN_HOUR
+    assert again.headers["etag"] == etag
     # Another version, resampling, formula, base or step is another tile.
     for other in (
-        VALUE_TILE.replace("v=v1-e1", "v=v2-e1"),
+        VALUE_TILE.replace(f"v={CURRENT}", f"v=v2-{ENCODING_VERSION}"),
         VALUE_TILE.replace("band=1", "band=1&resampling=nearest"),
         VALUE_TILE.replace("band=1", "formula=b1*2"),
         VALUE_TILE.replace("base=-1.5", "base=-2.5"),
@@ -445,7 +469,7 @@ def test_a_value_tile_is_encoded_as_its_address_says_and_reads_no_statistics(
 def test_a_value_tile_needs_a_valid_encoding_in_its_address(
     client: TestClient,
 ) -> None:
-    tile = f"{COVERAGE}/12/1420/2178?f=webp&band=1&v=v1-e1"
+    tile = f"{COVERAGE}/12/1420/2178?f=webp&band=1&v={CURRENT}"
     for missing in ("", "&base=0", "&step=1"):
         assert client.get(f"{tile}{missing}").status_code == 422, missing
     for bad in (
@@ -462,8 +486,114 @@ def test_a_value_tile_needs_a_valid_encoding_in_its_address(
 
 
 def test_a_value_tile_outside_the_file_is_204(client: TestClient) -> None:
-    r = client.get(f"{COVERAGE}/3/1/1?f=webp&base=0&step=1")
+    r = client.get(f"{COVERAGE}/3/1/1?f=webp&base=0&step=1&v={CURRENT}")
     assert r.status_code == 204 and r.content == b""
+    assert r.headers["cache-control"] == "public, max-age=3600"
+
+
+def test_only_a_value_tile_read_with_content_is_kept_forever(
+    client: TestClient, validated: str
+) -> None:
+    """A 200 value tile's address names everything its pixels depend on, so a
+    cache keeps it for good; every other answer keeps its own header."""
+    r = client.get(validated)
+    assert r.headers["cache-control"] == FOREVER
+    again = client.get(validated, headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304 and again.headers["cache-control"] == FOREVER
+    # The colored tiles and the description follow the file and stay short.
+    token = client.get(TOKEN_TILE)
+    assert token.status_code == 200
+    assert token.headers["cache-control"] == "public, max-age=3600"
+    described = client.get(COVERAGE)
+    assert described.status_code == 200
+    assert described.headers["cache-control"] == "public, max-age=60"
+    # Refused addresses and a band the file does not have: no cache header.
+    for url, status in (
+        (f"{COVERAGE}/12/1420/2178?f=webp&band=1&v={CURRENT}", 422),
+        (f"{COVERAGE}/12/1420/2178?f=webp&band=1&base=0&step=0", 400),
+        (VALUE_TILE.replace("band=1", "band=2"), 400),
+    ):
+        r = client.get(url)
+        assert r.status_code == status, url
+        assert "cache-control" not in r.headers, url
+    # A file that cannot be read.
+    FakeSource.fail = RasterUnavailableError("timeout")
+    with patch.dict("goatlib.raster.source._failures", clear=True):
+        r = client.get(VALUE_TILE)
+    assert r.status_code == 504 and "cache-control" not in r.headers
+
+
+def test_a_signed_in_viewers_value_tile_is_kept_by_their_browser_only(
+    client: TestClient, validated: str
+) -> None:
+    """A tile read with a sign-in may be of a layer not everyone may read: no
+    shared cache may keep it. One read without a sign-in is of a layer anyone
+    may read."""
+    r = client.get(validated, headers=SIGNED_IN)
+    assert r.status_code == 200 and r.headers["cache-control"] == FOREVER_PRIVATE
+    again = client.get(
+        validated, headers={**SIGNED_IN, "If-None-Match": r.headers["etag"]}
+    )
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == FOREVER_PRIVATE
+    anonymous = client.get(validated)
+    assert anonymous.status_code == 200
+    assert anonymous.headers["cache-control"] == FOREVER
+
+
+def test_a_value_tile_of_a_file_without_a_validator_is_kept_an_hour(
+    client: TestClient,
+) -> None:
+    """A host that gives neither ETag nor Last-Modified (or refuses HEAD): a
+    file replaced at its address keeps the version, so its tiles are kept no
+    longer than before."""
+    r = client.get(VALUE_TILE)
+    assert r.status_code == 200 and r.headers["cache-control"] == AN_HOUR
+    again = client.get(VALUE_TILE, headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304 and again.headers["cache-control"] == AN_HOUR
+    signed_in = client.get(VALUE_TILE, headers=SIGNED_IN)
+    assert signed_in.headers["cache-control"] == AN_HOUR_PRIVATE
+
+
+def test_a_stored_files_value_tile_is_kept_forever(client: TestClient) -> None:
+    """A file GOAT stores (a catalog raster) changes only with its row: its
+    version follows it without a validator."""
+    stored = dataclasses.replace(
+        ROW, external_url=None, stored_file=Path("/data/layer.tif")
+    )
+    with (
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=stored)),
+        patch.object(rs, "remote_validator") as check,
+    ):
+        r = client.get(VALUE_TILE)
+    assert r.status_code == 200 and r.headers["cache-control"] == FOREVER
+    check.assert_not_called()
+
+
+def test_a_value_tile_of_another_version_is_never_kept(client: TestClient) -> None:
+    """An address naming a version the layer does not have (any more, or yet,
+    on a pod whose row is older) is answered with the current file, which that
+    address does not name: no cache may keep it."""
+    for v in (f"v0-{ENCODING_VERSION}", "", "v1-e0"):
+        r = client.get(VALUE_TILE.replace(f"v={CURRENT}", f"v={v}"))
+        assert r.status_code == 200 and r.content == b"RIFF-values", v
+        assert r.headers["cache-control"] == "no-store", v
+    outside = client.get(f"{COVERAGE}/3/1/1?f=webp&base=0&step=1&v=v0")
+    assert outside.status_code == 204
+    assert outside.headers["cache-control"] == "no-store"
+    # Asked again, its 304 carries its 200's header too.
+    stale = VALUE_TILE.replace(f"v={CURRENT}", "v=v0")
+    etag = client.get(stale).headers["etag"]
+    again = client.get(stale, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.headers["cache-control"] == "no-store"
+    # A remote file replaced at the same address: only the version the
+    # description now names is kept.
+    with patch.object(rs, "remote_validator", return_value='"b"'):
+        version = client.get(COVERAGE).json()["goat:values"]["version"]
+        old = client.get(VALUE_TILE)
+        new = client.get(VALUE_TILE.replace(CURRENT, version))
+    assert old.headers["cache-control"] == "no-store"
+    assert new.headers["cache-control"] == FOREVER
 
 
 def test_a_formulas_value_tiles_read_the_formula(client: TestClient) -> None:
@@ -514,7 +644,8 @@ def test_the_values_version_follows_the_remote_file(client: TestClient) -> None:
         second = client.get(COVERAGE).json()["goat:values"]["version"]
     check.assert_called_with(ROW.external_url, settings.raster_private_hosts)
     assert first != second
-    assert first.startswith("v1-") and first.endswith("-e1") and len(first) == 14
+    assert first.startswith("v1-") and first.endswith(f"-{ENCODING_VERSION}")
+    assert len(first) == 14
     # A file GOAT stores has no host to ask.
     stored = dataclasses.replace(
         ROW, external_url=None, stored_file=Path("/data/layer.tif")
@@ -523,7 +654,7 @@ def test_the_values_version_follows_the_remote_file(client: TestClient) -> None:
         patch.object(rs.raster_service, "layer", AsyncMock(return_value=stored)),
         patch.object(rs, "remote_validator") as check,
     ):
-        assert client.get(COVERAGE).json()["goat:values"]["version"] == "v1-e1"
+        assert client.get(COVERAGE).json()["goat:values"]["version"] == CURRENT
     check.assert_not_called()
 
 
@@ -604,8 +735,8 @@ def test_a_failing_file_answers_at_once_without_waiting_for_a_read_slot(
 
 
 def test_a_value_tiles_version_is_short(client: TestClient) -> None:
-    assert client.get(VALUE_TILE.replace("v1-e1", "v" * 64)).status_code == 200
-    assert client.get(VALUE_TILE.replace("v1-e1", "v" * 65)).status_code == 422
+    assert client.get(VALUE_TILE.replace(CURRENT, "v" * 64)).status_code == 200
+    assert client.get(VALUE_TILE.replace(CURRENT, "v" * 65)).status_code == 422
 
 
 def test_raster_tiles_never_touch_the_redis_cache(client: TestClient) -> None:
@@ -666,7 +797,7 @@ def test_a_tile_read_past_the_deadline_is_504_and_the_file_is_remembered_failing
         patch.object(rasters, "remember_failure") as remember,
     ):
         r = client.get(VALUE_TILE)
-        assert r.status_code == 504
+        assert r.status_code == 504 and "cache-control" not in r.headers
         # The read thread cannot be stopped: wait for it before the next test.
         assert finished.wait(2)
     remember.assert_called_once()
@@ -697,6 +828,7 @@ def test_a_tile_still_waiting_for_a_reader_at_the_deadline_is_503_and_never_read
         release.set()
         pool.shutdown(wait=True)
     assert r.status_code == 503 and "busy" in r.json()["detail"]
+    assert "cache-control" not in r.headers
     remember.assert_not_called()
     # Not even read once the reader is free.
     assert FakeSource.opened == [] and FakeSource.values_read == []

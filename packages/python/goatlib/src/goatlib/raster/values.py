@@ -18,7 +18,9 @@ import numpy as np
 #: The largest code (24 bits).
 MAX_Q = 16_777_215
 #: Joins every value tile's version, so a changed encoding never serves old tiles.
-ENCODING_VERSION = "e1"
+#: Caches keep a value tile for good: bump it whenever a tile's pixels change for
+#: the same address (tests/unit/raster/test_reference_value_tiles.py pins some).
+ENCODING_VERSION = "e2"
 
 #: Whole-number types stored exactly, from their minimum.
 _EXACT = {"uint8": 0, "int8": -128, "uint16": 0, "int16": -32768}

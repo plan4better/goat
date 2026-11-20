@@ -31,7 +31,7 @@ from core.crud.crud_layer import layer as crud_layer
 from core.crud.crud_space import space as crud_space
 from core.db.models._link_model import BundleLayerLink
 from core.db.models.folder import Folder
-from core.db.models.layer import Layer, RasterDataType
+from core.db.models.layer import Layer, LayerType, RasterDataType
 from core.db.models.user import User
 from core.db.session import AsyncSession
 from core.deps.auth import auth, auth_z
@@ -56,33 +56,46 @@ router = APIRouter()
 
 
 async def _store_cog_extent(
-    session: AsyncSession, layer_id: UUID, access_token: str
+    session: AsyncSession, layer_id: UUID, access_token: str, *, replace: bool = False
 ) -> str | None:
-    """The new COG layer's extent: its file's bounds, as geoapi reads them from
-    the header (core has no raster reader). Returns the stored extent as WKT,
-    or None; a failure is logged and leaves the layer without one, which the
-    web then asks geoapi for."""
+    """A COG layer's extent: its file's bounds, as geoapi reads them from the
+    header (core has no raster reader). Returns the stored extent as WKT, or
+    None; a failure is logged and leaves the layer without one, which the web
+    then asks geoapi for. A new layer gets one only if it was created without
+    one; a layer given another file (`replace`) gets the new file's, and
+    without them loses the old file's."""
     try:
         bounds = await geoapi.raster_bounds(layer_id, access_token=access_token)
         if bounds is None:
             logger.info("Raster layer %s: its file has no bounds on earth", layer_id)
-            return None
+    except Exception as error:
+        logger.warning("Raster layer %s: no bounds from its file: %s", layer_id, error)
+        bounds = None
+    if bounds is None and not replace:
+        return None
+    layer = f"{settings.SCHEMA}.layer"
+    if bounds is None:
+        statement = text(f"UPDATE {layer} SET extent = NULL WHERE id = :id")
+        params: dict[str, Any] = {"id": layer_id}
+    else:
+        only_missing = "" if replace else " AND extent IS NULL"
+        statement = text(
+            f"UPDATE {layer} "
+            "SET extent = ST_Multi(ST_MakeEnvelope(:w, :s, :e, :n, 4326)) "
+            f"WHERE id = :id{only_missing} RETURNING ST_AsText(extent)"
+        )
         west, south, east, north = bounds
-        extent = (
-            await session.execute(
-                text(
-                    f"UPDATE {settings.SCHEMA}.layer "
-                    "SET extent = ST_Multi(ST_MakeEnvelope(:w, :s, :e, :n, 4326)) "
-                    "WHERE id = :id AND extent IS NULL "
-                    "RETURNING ST_AsText(extent)"
-                ),
-                {"id": layer_id, "w": west, "s": south, "e": east, "n": north},
-            )
-        ).scalar_one_or_none()
+        params = {"id": layer_id, "w": west, "s": south, "e": east, "n": north}
+    try:
+        result = await session.execute(statement, params)
+        extent = None if bounds is None else result.scalar_one_or_none()
         await session.commit()
         return extent
     except Exception as error:
-        logger.warning("Raster layer %s stored without an extent: %s", layer_id, error)
+        await session.rollback()
+        logger.warning(
+            "Raster layer %s: its extent was not stored: %s", layer_id, error
+        )
         return None
 
 
@@ -289,6 +302,7 @@ async def read_layers(
 async def update_layer(
     async_session: AsyncSession = Depends(get_db),
     user_id: UUID4 = Depends(get_user_id),
+    access_token: str = Depends(auth),
     layer_id: UUID4 = Path(
         ...,
         description="The ID of the layer to get",
@@ -328,11 +342,22 @@ async def update_layer(
         )
 
     with HTTPErrorHandler():
+        before = await crud_layer.get(async_session, id=layer_id)
+        old_url = before.url if before is not None else None
         result: SQLModel = await crud_layer.update(
             async_session=async_session,
             id=layer_id,
             layer_in=layer_in,
         )
+    # A COG given another file gets that file's extent, unless one was sent.
+    if (
+        getattr(result, "type", None) == LayerType.raster
+        and getattr(result, "data_type", None) == RasterDataType.cog
+        and getattr(result, "url", None) != old_url
+        and "extent" not in layer_in
+    ):
+        await _store_cog_extent(async_session, layer_id, access_token, replace=True)
+        await async_session.refresh(result)
 
     return result
 

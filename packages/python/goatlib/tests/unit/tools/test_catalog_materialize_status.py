@@ -322,6 +322,29 @@ async def test_a_ready_raster_is_a_file_layer_without_an_address(tmp_path) -> No
     assert statuses == ["ready"]
 
 
+@pytest.mark.asyncio
+async def test_every_status_moves_the_layers_update_time() -> None:
+    """geoapi names a catalog raster's value tiles by the row's update time
+    (it has no address), and caches keep them for good. The job replaces the
+    copy between `running` and `ready`, so the status writes move it."""
+    runner = CatalogMaterializeRunner()
+    runner.settings = SimpleNamespace(customer_schema="customer")
+    executed: list[str] = []
+
+    class Pool:
+        async def execute(self, sql: str, *args: object) -> None:
+            executed.append(" ".join(sql.split()))
+
+        async def close(self) -> None:
+            pass
+
+    with patch.object(runner, "get_postgres_pool", AsyncMock(return_value=Pool())):
+        for status in ("running", "ready", "failed"):
+            await runner._set_status(LAYER_ID, status)
+    assert len(executed) == 3
+    assert all("updated_at = NOW()" in sql for sql in executed)
+
+
 def test_the_catalog_gc_removes_a_rasters_copy_too(tmp_path, monkeypatch) -> None:
     """A swept raster layer must not leave its GeoTIFF behind for good."""
     from goatlib.tasks.catalog_gc import CatalogGCTask

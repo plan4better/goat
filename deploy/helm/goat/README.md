@@ -431,7 +431,7 @@ override the key names via the `existingSecretUserKey` /
 | `processes.enabled` | bool | `true` | Deploy `goat-processes`. Same `ducklake-init` init container as geoapi. |
 | `ducklakeBootstrap.enabled` | bool | `true` | Render the `ducklake-init` init container on geoapi/processes (was a hook, off by default, before 0.5.0). |
 | `ducklakeBootstrap.dataDir` / `.catalogSchema` | string | `/app/data/ducklake` / `ducklake` | DuckLake location, emitted as `DUCKLAKE_DATA_DIR` / `DUCKLAKE_CATALOG_SCHEMA` to geoapi, processes and their init containers; the catalog schema to core as well. |
-| `core.config.GOAT_GEOAPI_URL` | string | in-chart geoapi | Where core reads a COG's bounds when a raster layer is added, to store them as its extent. Set it only when geoapi runs outside this release (`geoapi.enabled: false`); unset there, such layers are stored without an extent and the web asks geoapi for the bounds. |
+| `core.config.GOAT_GEOAPI_URL` | string | in-chart geoapi | Where core reads a COG's bounds when a raster layer is added or its file address changes, to store them as its extent. Set it only when geoapi runs outside this release (`geoapi.enabled: false`); unset there, such layers are stored without an extent and the web asks geoapi for the bounds. |
 | `core.migrate.enabled` | bool | `true` | Run `alembic upgrade head` + `initial_data` as a Helm hook (post-install / pre-upgrade). |
 | `core.migrate.waitForDbSeconds` | int | `300` | How long the migrate hook waits for Postgres on fresh installs. |
 | `postgresql.cluster.enabled` | bool | `true` | Create CNPG Cluster CR. |

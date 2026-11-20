@@ -5,6 +5,7 @@ geoapi's raster routes only read: none of them writes to the layer row."""
 
 import dataclasses
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -66,7 +67,8 @@ class FakeSource:
 
 
 #: The layer row as Postgres answers it: a COG stored without an extent.
-ROW = {"url": "https://cdn.example/tci.tif", "updated": 1, "has_extent": False}
+UPDATED = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+ROW = {"url": "https://cdn.example/tci.tif", "updated_at": UPDATED, "has_extent": False}
 
 
 @pytest.fixture
@@ -106,6 +108,25 @@ def test_bounds_reads_only_the_header_once_per_layer_version(
     test_client.get(f"/collections/{LAYER}/raster/bounds")
     test_client.get(f"/collections/{LAYER}/raster/bounds")
     assert FakeSource.headers == 1
+
+
+def test_bounds_read_the_row_afresh(test_client: TestClient, db: AsyncMock) -> None:
+    """core asks for a layer's bounds right after it gave the layer another
+    file: the route reads the row again, not the copy tiles keep for a minute."""
+    other = dataclasses.replace(INFO, bounds=(5.0, 47.0, 6.0, 48.0))
+
+    def info(self: FakeSource) -> RasterInfo:
+        return other if self.url.endswith("/other.tif") else INFO
+
+    url = f"/collections/{LAYER}/raster/bounds"
+    with patch.object(FakeSource, "info", info):
+        assert test_client.get(url).json() == {"bounds": [13.53, 51.36, 15.17, 52.37]}
+        moved = {
+            "url": "https://cdn.example/other.tif",
+            "updated_at": UPDATED + timedelta(seconds=1),
+        }
+        with patch.dict(ROW, moved):
+            assert test_client.get(url).json() == {"bounds": [5.0, 47.0, 6.0, 48.0]}
 
 
 @pytest.mark.parametrize(

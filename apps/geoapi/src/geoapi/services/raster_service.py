@@ -13,7 +13,8 @@ the file GOAT stores for the layer, named from the layer's id
 file version (the row's version and a remote file's validator) in process
 memory. Tiles are not kept here (no Redis): the
 browser caches them under ETags made of the row's version and what the tile
-shows (the coloring token, or a value tile's band or formula and encoding).
+shows (the coloring token, or a value tile's band or formula and encoding),
+a value tile of the current values version for good.
 """
 
 import hashlib
@@ -21,6 +22,7 @@ import math
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -57,6 +59,17 @@ _MISSING = object()
 
 #: How a value tile is read from cells that do not line up with its pixels.
 Resampling = Literal["nearest", "bilinear"]
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _microseconds(at: datetime | None) -> int:
+    """An update time to the microsecond, so two writes within one second
+    are two versions."""
+    if at is None:
+        return 0
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return (at - _EPOCH) // timedelta(microseconds=1)
 
 
 @dataclass(frozen=True)
@@ -91,12 +104,13 @@ class RasterService:
         self._ranges.clear()
         self._bounds.clear()
 
-    async def layer(self, layer_id: str) -> RasterLayer | None:
-        """The raster file layer `layer_id` (32 hex digits), or None."""
-        if layer_id in self._rows:
+    async def layer(self, layer_id: str, fresh: bool = False) -> RasterLayer | None:
+        """The raster file layer `layer_id` (32 hex digits), or None; kept for
+        a minute, read again when `fresh`."""
+        if not fresh and layer_id in self._rows:
             return self._rows[layer_id]
         row = await layer_service._execute_with_retry(
-            "SELECT url, extract(epoch FROM updated_at)::bigint AS updated, "
+            "SELECT url, updated_at, "
             "catalog_external_uid IS NOT NULL AS catalog "
             "FROM customer.layer "
             "WHERE id = $1 AND type = 'raster' AND data_type = 'cog' "
@@ -114,7 +128,7 @@ class RasterService:
                 else None
             )
             found = RasterLayer(
-                layer_id, url, f"{digest}-{row['updated'] or 0}", stored
+                layer_id, url, f"{digest}-{_microseconds(row['updated_at'])}", stored
             )
         self._rows[layer_id] = found
         return found
@@ -248,11 +262,18 @@ class RasterService:
         encoding's. A file that failed in goatlib's last 30 seconds raises
         RasterUnavailableError at once, and a host that does not answer is
         remembered as failing."""
+        return self.values_state(layer)[0]
+
+    def values_state(self, layer: RasterLayer) -> tuple[str, bool]:
+        """`values_version`, and whether it follows the file: a file GOAT
+        stores changes only with its row, a remote one only as far as its host
+        gives a validator (ETag or Last-Modified)."""
         key = self.failure_key(layer)
         failed = recent_failure(key)
         if failed is not None:
             raise RasterUnavailableError(failed)
         version = layer.version
+        follows = True
         if layer.stored_file is None and layer.external_url:
             try:
                 validator = remote_validator(
@@ -261,10 +282,11 @@ class RasterService:
             except RasterUnavailableError as error:
                 remember_failure(key, str(error))
                 raise
+            follows = bool(validator)
             if validator:
                 digest = hashlib.sha1(validator.encode()).hexdigest()[:8]
                 version = f"{version}-{digest}"
-        return f"{version}-{ENCODING_VERSION}"
+        return f"{version}-{ENCODING_VERSION}", follows
 
     def tile(
         self, layer: RasterLayer, z: int, x: int, y: int, coloring: Coloring
@@ -290,6 +312,24 @@ class RasterService:
         it. Raises BandError for a band the file does not have."""
         with self._source(layer) as source:
             return source.values(z, x, y, formula, encoding, resampling)
+
+    def values_tile(
+        self,
+        layer: RasterLayer,
+        z: int,
+        x: int,
+        y: int,
+        formula: Formula,
+        encoding: ValueEncoding,
+        resampling: Resampling,
+    ) -> tuple[str, bool, bytes | None]:
+        """`values`, with the values version the tile was read at and whether
+        it follows the file (`values_state`): the route lets caches keep for
+        good only a tile whose address names that version, of a file it
+        follows."""
+        version, follows = self.values_state(layer)
+        content = self.values(layer, z, x, y, formula, encoding, resampling)
+        return version, follows, content
 
     def point(
         self, layer: RasterLayer, lon: float, lat: float, formula: Formula | None

@@ -462,7 +462,8 @@ services:
       ALLOW_ORGANIZATION_CREATION: ${ALLOW_ORGANIZATION_CREATION:-true}
       CLIENT_URL: ${GOAT_PUBLIC_URL}
       API_URL: ${GOAT_PUBLIC_URL}/api/v2
-      # A COG layer's bounds, which core stores as its extent when it is added.
+      # A COG layer's bounds, which core stores as its extent when it is added
+      # or its file address changes.
       GOAT_GEOAPI_URL: ${GOAT_GEOAPI_URL:-http://geoapi:8000}
       # The 3D sources the browser loads (the web's NEXT_PUBLIC_ twins below);
       # core checks a project's scene against them. Empty stays empty: no source.

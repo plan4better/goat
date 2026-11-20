@@ -5,6 +5,8 @@ import morecantile
 import numpy as np
 import pytest
 import rasterio
+import rasterio.shutil
+import rasterio.transform
 from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.formula import parse_formula
 from goatlib.raster.source import (
@@ -174,7 +176,13 @@ def test_a_value_tile_holds_the_files_values(cog_server: str) -> None:
             _png(src.values(z, x, y, parse_formula("b1"), encoding))
         )
         read = src.reader.tile(
-            x, y, z, tilesize=256, indexes=(1,), resampling_method="bilinear"
+            x,
+            y,
+            z,
+            tilesize=256,
+            indexes=(1,),
+            resampling_method="bilinear",
+            reproject_method="bilinear",
         )
         hole = encoding.decode(
             _png(src.values(*_tile_at(*corner, 14), parse_formula("b1"), encoding))
@@ -185,6 +193,21 @@ def test_a_value_tile_holds_the_files_values(cog_server: str) -> None:
     row, col = _pixel_of(*CENTER, 13)
     assert values[row, col] == pytest.approx(250, abs=2)
     assert np.isnan(hole[_pixel_of(*corner, 14)])
+
+
+def test_a_bilinear_value_tile_of_a_file_in_degrees_is_smooth(cog_dir) -> None:  # noqa: ANN001
+    """A file in degrees is reprojected for a tile, and the resampling asked
+    for is the reprojection's too: bilinear values change between the cells'
+    centers, where nearest repeats each cell over several pixels."""
+    encoding = value_encoding("float32", scaled=False, value_range=(100.0, 400.0))
+    tile = _tile_at(*CENTER, 15)
+    rows = {}
+    with RasterSource(None, stored_file=cog_dir / "elevation.tif") as src:
+        for resampling in ("nearest", "bilinear"):
+            data = src.values(*tile, parse_formula("b1"), encoding, resampling)
+            rows[resampling] = encoding.decode(_png(data))[128]
+    # The elevation grows along x only, a cell about four pixels wide here.
+    assert len(np.unique(rows["bilinear"])) > 3 * len(np.unique(rows["nearest"]))
 
 
 def test_a_value_tile_of_a_formula_holds_its_result(cog_server: str) -> None:
@@ -218,6 +241,116 @@ def test_the_remote_validator_is_the_files_last_modified(cog_server: str) -> Non
     url = f"{cog_server}/elevation.tif"
     expected = requests.head(url, timeout=3).headers["Last-Modified"]
     assert remote_validator(url, LOCAL) == expected
+
+
+@pytest.mark.parametrize("status", [200, 204, 403, 405, 500])
+def test_only_a_successful_head_gives_the_files_validator(
+    status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host that refuses HEAD (a URL signed for GET only answers 403) may
+    still send an ETag or a date, which then says nothing about the file."""
+    import goatlib.raster.source as source
+
+    class Answer:
+        status_code = status
+        headers = {"ETag": '"x"', "Last-Modified": "Mon, 02 Nov 2026 10:00:00 GMT"}
+
+    monkeypatch.setattr(source, "assert_public_http_url", lambda *args: None)
+    monkeypatch.setattr(source.requests, "head", lambda *args, **kwargs: Answer())
+    monkeypatch.setattr(source, "_addresses", {})
+    validator = remote_validator("https://cdn.example/dem.tif")
+    assert validator == ('"x"' if status in (200, 204) else None)
+
+
+def _write_constant(path: Path, value: int) -> None:
+    """An uncompressed one-band COG over BOUNDS, all `value`: the same size
+    for every value, as a file replaced by a new version of itself may be."""
+    plain = path.with_suffix(".plain.tif")
+    with rasterio.open(
+        plain,
+        "w",
+        driver="GTiff",
+        width=512,
+        height=512,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=rasterio.transform.from_bounds(*BOUNDS, 512, 512),
+    ) as dst:
+        dst.write(np.full((1, 512, 512), value, "uint8"))
+    rasterio.shutil.copy(plain, path, driver="COG", BLOCKSIZE=256, COMPRESS="NONE")
+    plain.unlink()
+
+
+@pytest.mark.parametrize("validated", [True, False])
+def test_a_replaced_remote_file_is_read_anew_once_its_address_is_checked_again(
+    cog_server: str,
+    cog_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    validated: bool,
+) -> None:
+    """GDAL keeps what it read of a remote file for the process: a file
+    replaced at the same address is read anew once the address check sees
+    another validator (or, without one, at every check), never from the old
+    file's kept blocks under the new version."""
+    import os
+    import shutil
+    import time
+
+    import goatlib.raster.source as source
+
+    if not validated:
+        follow = source._follow
+        monkeypatch.setattr(source, "_follow", lambda *args: (follow(*args)[0], None))
+    # The address is checked again at every open here, not every ten minutes.
+    monkeypatch.setattr(source, "ADDRESS_TTL_S", 0)
+    name = f"replaced-{validated}.tif"
+    _write_constant(cog_dir / name, 1)
+    url = f"{cog_server}/{name}"
+    encoding = value_encoding("uint8", scaled=False, value_range=None)
+    tile = _tile_at(*CENTER, 13)
+
+    def values() -> set[float]:
+        with RasterSource(url, LOCAL) as src:
+            data = src.values(*tile, parse_formula("b1"), encoding, "nearest")
+        return set(np.unique(encoding.decode(_png(data))).tolist())
+
+    assert values() == {1.0}
+    staged = cog_dir / f"staged-{validated}.tif"
+    _write_constant(staged, 2)
+    later = time.time() + 60
+    os.utime(staged, (later, later))
+    shutil.move(staged, cog_dir / name)
+    assert values() == {2.0}
+
+
+@pytest.mark.parametrize("found", ["nothing", "another library"])
+def test_a_read_cache_that_cannot_be_cleared_is_said_once(
+    found: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Only rasterio's own GDAL holds the cache: no other libgdal is tried, and
+    a clear that cannot happen is never silent."""
+    import ctypes.util
+    import logging
+
+    import goatlib.raster.source as source
+
+    libc = ctypes.util.find_library("c")
+    paths = [] if found == "nothing" else [libc]
+    monkeypatch.setattr(source, "_rasterio_libgdal", lambda: paths)
+    monkeypatch.setattr(
+        ctypes.util, "find_library", lambda name: pytest.fail("another libgdal")
+    )
+    source._gdal.cache_clear()
+    try:
+        with caplog.at_level(logging.WARNING, logger=source.__name__):
+            source.forget_cached_reads("https://cdn.example/a.tif")
+            source.forget_cached_reads("https://cdn.example/b.tif")
+    finally:
+        source._gdal.cache_clear()
+    [warning] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    reason = "no libgdal" if found == "nothing" else "VSICurlPartialClearCache"
+    assert reason in warning.getMessage()
 
 
 def test_a_point_answers_every_band_and_a_formulas_value(cog_server: str) -> None:

@@ -258,8 +258,9 @@ core:
     JOB_TIMEOUT_DEFAULT: "500"
     CRUD_NUM_RETRIES: "40"
     CRUD_RETRY_INTERVAL: "3"
-    # Where core reads a COG's bounds when a raster layer is added, to store
-    # them as its extent. Unset: the in-chart geoapi service (geoapi.enabled).
+    # Where core reads a COG's bounds when a raster layer is added or its file
+    # address changes, to store them as its extent. Unset: the in-chart geoapi
+    # service (geoapi.enabled).
     # GOAT_GEOAPI_URL: "http://my-geoapi"
     # The two subtrees of the shared `data` volume core reads, and only reads.
     # Defaults match the mount paths the chart sets up; change them only if you

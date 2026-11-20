@@ -10,6 +10,9 @@ the name again when it connects and would follow a redirect the server sends
 only to it.
 """
 
+import ctypes
+import functools
+import logging
 import threading
 import time
 from collections.abc import Collection, Iterator, Sequence
@@ -34,6 +37,8 @@ from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
 from goatlib.raster.formula import Formula
 from goatlib.raster.values import ValueEncoding
+
+logger = logging.getLogger(__name__)
 
 TILE_SIZE = 256
 MAX_REDIRECTS = 3
@@ -118,12 +123,17 @@ def resolve_address(url: str, private_hosts: Collection[str] = ()) -> str:
 
 def remote_validator(url: str, private_hosts: Collection[str] = ()) -> str | None:
     """The file's version as its host gives it: the final address's `ETag`, else
-    its `Last-Modified`, None without either. From the HEAD `resolve_address`
-    sends and kept with its address for ten minutes; raises as it does."""
+    its `Last-Modified`, None without either or when the HEAD fails. From the
+    HEAD `resolve_address` sends and kept with its address for ten minutes;
+    raises as it does."""
     return _resolved(url, private_hosts)[1]
 
 
 def _resolved(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
+    """The checked address and validator, kept for ten minutes. GDAL keeps
+    what it read of a remote file for the process, so when a check finds
+    another validator, or none that could tell, those blocks are dropped: a
+    replaced file is never read from its predecessor's."""
     key = (url, tuple(sorted(private_hosts)))
     with _addresses_lock:
         kept = _addresses.get(key)
@@ -132,11 +142,70 @@ def _resolved(url: str, private_hosts: Collection[str]) -> tuple[str, str | None
     address, validator = _follow(url, private_hosts)
     with _addresses_lock:
         _addresses[key] = (address, validator, time.monotonic() + ADDRESS_TTL_S)
+    if kept is not None and (validator is None or kept[:2] != (address, validator)):
+        for read in {kept[0], address}:
+            forget_cached_reads(read)
     return address, validator
 
 
+def _rasterio_libgdal() -> list[str]:
+    """Where the GDAL rasterio runs on may be: the libgdal loaded in this
+    process, else the one rasterio's wheel bundles."""
+    import rasterio
+
+    found: list[str] = []
+    try:
+        with open("/proc/self/maps") as maps:
+            found += [line.split()[-1] for line in maps if "libgdal" in line]
+    except OSError:
+        pass
+    base = Path(rasterio.__file__).parent
+    found += [str(p) for p in sorted(base.parent.glob("rasterio.libs/libgdal*"))]
+    found += [str(p) for p in sorted(base.glob(".dylibs/libgdal*"))]
+    return list(dict.fromkeys(found))
+
+
+@functools.cache
+def _gdal() -> ctypes.CDLL | None:
+    """rasterio's own GDAL, for a call rasterio does not wrap; None, said once
+    per process, when it cannot be had. Never another libgdal: its cache is
+    not the one rasterio reads through."""
+    paths = _rasterio_libgdal()
+    for path in paths:
+        try:
+            library = ctypes.CDLL(path)
+        except OSError:
+            continue
+        if hasattr(library, "VSICurlPartialClearCache"):
+            library.VSICurlPartialClearCache.argtypes = [ctypes.c_char_p]
+            library.VSICurlPartialClearCache.restype = None
+            return library
+    reason = (
+        "rasterio's libgdal has no VSICurlPartialClearCache"
+        if paths
+        else "no libgdal of rasterio's was found"
+    )
+    logger.warning(
+        "GDAL's read cache of remote files cannot be cleared (%s): a file "
+        "replaced at the same address may be read from its predecessor's blocks "
+        "until the process restarts.",
+        reason,
+    )
+    return None
+
+
+def forget_cached_reads(address: str) -> None:
+    """Drop what GDAL keeps of the remote file at `address` (its size, header
+    and blocks), so the next read asks its host again."""
+    gdal = _gdal()
+    if gdal is not None:
+        gdal.VSICurlPartialClearCache(f"/vsicurl/{address}".encode())
+
+
 def _follow(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
-    """The final address and its HEAD's `ETag`, else `Last-Modified`."""
+    """The final address and its HEAD's `ETag`, else `Last-Modified`; no
+    validator from a HEAD that failed (a host may refuse HEAD and still send
+    one)."""
     current = url.strip()
     for _ in range(MAX_REDIRECTS + 1):
         assert_public_http_url(current, private_hosts)
@@ -148,6 +217,8 @@ def _follow(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
             ) from None
         location = response.headers.get("Location")
         if response.status_code not in (301, 302, 303, 307, 308) or not location:
+            if not 200 <= response.status_code < 300:
+                return current, None
             headers = response.headers
             return current, headers.get("ETag") or headers.get("Last-Modified")
         current = urljoin(current, location)
@@ -457,7 +528,8 @@ class RasterSource:
         """A 256 px tile of the formula's values in `encoding` (lossless WebP);
         None outside the file. A cell where a band is no data or the formula has
         no value is no data. Evaluated in float64, so 32 bit whole numbers stay
-        exact."""
+        exact. `resampling` is the read's and the reprojection's: a file in
+        another CRS than the tile's is smooth too."""
         info = self.info()
         if max(formula.bands) > info.count:
             raise BandError(
@@ -475,6 +547,7 @@ class RasterSource:
                     indexes=formula.bands,
                     unscale=info.scaled,
                     resampling_method=resampling,
+                    reproject_method=resampling,
                 )
             except TileOutsideBounds:
                 return None

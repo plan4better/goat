@@ -326,7 +326,11 @@ stack, so validation runs in core too.
   far from zero gets few levels (1,000,000 to 1,000,010 gets 20), a 32 bit range
   wider than the codes is stored in steps (32 for 0 to 40,000,000), and whole
   numbers beyond 2^24 are no longer exact in the browser. `ENCODING_VERSION`
-  joins every value tile's version, so a changed encoding never serves old tiles.
+  joins every value tile's version, so a changed encoding never serves old tiles:
+  caches keep a value tile for good, so any change in a tile's pixels for the same
+  address (the packing, the read, the resampling, which is the reprojection's
+  too) bumps it, and `tests/unit/raster/test_reference_value_tiles.py` pins
+  reference tiles to catch one.
 - **An image tile's coloring travels in its URL** (`token.py`): for image renders,
   colors over float values of an unknown range (their codes cover only a stand-in
   span), and colorings with more stops than the browser takes whose coloring fits
@@ -344,8 +348,11 @@ stack, so validation runs in core too.
   answered to a HEAD request are followed hop by hop with the same check
   (`io/remote_source/url_guard.py`, shared with WFS imports), the result kept ten
   minutes. The same HEAD gives the file's ETag or Last-Modified
-  (`remote_validator`), which geoapi adds to the value tiles' version, so a file
-  replaced at the same address gets new tiles. GDAL resolves the name again and
+  (`remote_validator`; none from a HEAD that fails, as a host that refuses HEAD
+  may still send one), which geoapi adds to the value tiles' version, so a file
+  replaced at the same address gets new tiles. GDAL keeps what it read of a
+  remote file for the process, so a check that finds another validator, or none,
+  drops those blocks (`forget_cached_reads`). GDAL resolves the name again and
   follows redirects a server sends only to its reads: the residual `url_guard`
   names, so deployments also restrict the services' outgoing traffic. A file
   that does not answer fails within seconds (no retries, a stalled transfer cut
