@@ -16,7 +16,7 @@ from tests.styles.conftest import StyleWorld
 
 API = settings.API_V2_STR
 S = settings.SCHEMA
-GREEN = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+GREEN = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
 
 
 @pytest.fixture(autouse=True)

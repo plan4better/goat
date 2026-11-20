@@ -30,7 +30,7 @@ async function scene(c: LabCase): Promise<Scene> {
 
 /** Two categories of `category` and features without a value, each in its own color. */
 const CATEGORIES: JsonObject = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { marker: { shape: "circle", color: "#888888", size: 16 } },
   classify: [
@@ -136,7 +136,7 @@ describe("the lab scene", () => {
     const when = (value: string) => ({ op: "=", args: [{ property: "category" }, value] });
     const s = await scene(
       point("rules", {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#888888", size: 16 } },
         rules: [
@@ -156,7 +156,7 @@ describe("the lab scene", () => {
   it("an uploaded icon draws through the app's upload route, on the map and in the legend", async () => {
     const s = await scene(
       point("upload", {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", icon: "asset:lab-icon", size: 24 } },
       })
@@ -181,7 +181,7 @@ describe("the lab scene", () => {
   it("a legend icon that does not load is reported", async () => {
     const s = await scene(
       point("library", {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "pin", icon: "goat:park", size: 24 } },
       })

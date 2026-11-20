@@ -31,7 +31,7 @@ const style = (id: string): StyleRead => ({
   name: id,
   position: 0,
   revision: 1,
-  document: { version: 1, kind: "vector" },
+  document: { version: "1.0.0", kind: "vector" },
   issues: [],
   stale: false,
 });
@@ -39,7 +39,7 @@ const style = (id: string): StyleRead => ({
 /** The map document core builds from the same rows (map_rows.build_map_document). */
 const response = (hiddenGroup?: number): MapResponse => ({
   map: {
-    version: 1,
+    version: "1.0.0",
     layers: [
       { type: "layer", id: 1, visible: true, style: "a" },
       {

@@ -20,7 +20,7 @@ const VALUES = valuesOf("1-e1");
 
 const raster = (key: string, style: object): RenderLayer => ({
   key,
-  style: { version: 1, kind: "raster", ...style } as unknown as LayerStyle,
+  style: { version: "1.0.0", kind: "raster", ...style } as unknown as LayerStyle,
   entry: {},
   source: {
     type: "raster",
@@ -34,7 +34,11 @@ const continuous = (key: string, band: unknown = 1) =>
   raster(key, { render: { type: "continuous", band, palette: "goat:elevation" } });
 const vector: RenderLayer = {
   key: "v",
-  style: { version: 1, kind: "vector", symbol: { fill: { color: "#aaaaaa" } } } as unknown as LayerStyle,
+  style: {
+    version: "1.0.0",
+    kind: "vector",
+    symbol: { fill: { color: "#aaaaaa" } },
+  } as unknown as LayerStyle,
   geometry: "polygon",
   entry: {},
   source: { type: "tiles", id: "src-v", tiles: ["https://geoapi/v/{z}/{x}/{y}"] },

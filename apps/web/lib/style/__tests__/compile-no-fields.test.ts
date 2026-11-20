@@ -77,7 +77,7 @@ describe("compiling without field types", () => {
   it("a label on an unknown numeric field formats numbers and leaves text alone", () => {
     const out = compileLayer({
       id: "7",
-      style: { version: 1, kind: "vector", symbol: { label: { text: "{pop} people" } } } as LayerStyle,
+      style: { version: "1.0.0", kind: "vector", symbol: { label: { text: "{pop} people" } } } as LayerStyle,
       geometry: "point",
       source: { type: "tiles", id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] },
     });
@@ -93,7 +93,7 @@ describe("compiling without field types", () => {
     const out = compileLayer({
       id: "7",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#cc0000" } },
         time: { field: "opened", step: "year" },

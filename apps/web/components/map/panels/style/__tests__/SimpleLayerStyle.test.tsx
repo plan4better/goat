@@ -13,7 +13,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 const DOC = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   opacity: 0.8,
   symbol: { fill: { color: "#cccccc" } },

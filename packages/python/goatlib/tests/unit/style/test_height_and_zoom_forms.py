@@ -8,7 +8,7 @@ import pytest
 from goatlib.style.compute import needed_stats
 from goatlib.style.validate import validate
 
-V = {"version": 1, "kind": "vector"}
+V = {"version": "1.0.0", "kind": "vector"}
 
 DENSITY = {"field": "density", "range": [0, 300]}
 

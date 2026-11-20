@@ -3,7 +3,7 @@ from goatlib.style.ids import assign_ids
 
 def test_assign_ids_fills_missing_ids_uniquely() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {
@@ -29,7 +29,7 @@ def test_assign_ids_fills_missing_ids_uniquely() -> None:
 
 def test_a_taken_field_name_falls_back_to_a_counter() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [
             {"id": "type", "field": "status", "method": "categories"},
@@ -41,7 +41,7 @@ def test_a_taken_field_name_falls_back_to_a_counter() -> None:
 
 def test_raster_classes_get_ids() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {
             "type": "continuous",

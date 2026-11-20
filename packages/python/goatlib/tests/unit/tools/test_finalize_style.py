@@ -40,7 +40,7 @@ def test_finalize_converts_a_version_0_output_style_with_the_real_geometry(
     doc = runner._layer_style(
         v0, geometry_type="POINT", relation="t", data_snapshot=9, layer_id="L"
     )
-    assert doc is not None and doc["version"] == 1
+    assert doc is not None and doc["version"] == "1.0.0"
     assert "marker" in doc["symbol"]
     [c] = doc["classify"]
     assert c["computed"]["data"] == "ducklake:9" and len(c["classes"]) == 5
@@ -50,7 +50,7 @@ def test_finalize_converts_a_version_0_output_style_with_the_real_geometry(
 def test_a_current_style_is_kept_and_a_missing_one_gets_the_default(
     runner: FinalizeLayerRunner,
 ) -> None:
-    v1 = {"version": 1, "kind": "vector", "symbol": {"marker": {"size": 4}}}
+    v1 = {"version": "1.0.0", "kind": "vector", "symbol": {"marker": {"size": 4}}}
     kept = runner._layer_style(
         v1, geometry_type="POINT", relation="t", data_snapshot=None, layer_id="L"
     )
@@ -70,7 +70,11 @@ def test_a_current_style_is_kept_and_a_missing_one_gets_the_default(
 def test_an_output_style_that_does_not_validate_gets_the_default(
     runner: FinalizeLayerRunner,
 ) -> None:
-    broken = {"version": 1, "kind": "vector", "symbol": {"marker": {"color": "nope"}}}
+    broken = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"marker": {"color": "nope"}},
+    }
     doc = runner._layer_style(
         broken, geometry_type="POINT", relation="t", data_snapshot=None, layer_id="L"
     )
@@ -81,7 +85,7 @@ def test_a_style_that_cannot_be_computed_is_saved_uncomputed(
     runner: FinalizeLayerRunner,
 ) -> None:
     v1 = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"color": "#ff0000"}},
         "classify": [
@@ -128,3 +132,13 @@ def test_the_windmill_finalize_script_takes_and_passes_the_style() -> None:
         inspect.signature(finalize_layer.main).parameters
     )
     assert "style=style" in content
+
+
+def test_an_output_style_of_a_newer_patch_is_saved_with_the_version_it_needs(
+    runner: FinalizeLayerRunner,
+) -> None:
+    style = {"version": "1.0.9", "kind": "vector", "symbol": {"marker": {"size": 4}}}
+    doc = runner._layer_style(
+        style, geometry_type="POINT", relation="t", data_snapshot=None, layer_id="L"
+    )
+    assert doc == {**style, "version": "1.0.0"}

@@ -11,7 +11,7 @@ import { EMPTY_DATA } from "@/components/map/panels/styleEditor/context";
 
 import { renderWithProviders } from "./renderPanel";
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 
 function setup() {
   const saves: Array<{ document: LayerStyle; keepalive: boolean }> = [];
@@ -110,6 +110,28 @@ describe("style editor shell", () => {
     await act(() => vi.advanceTimersByTimeAsync(1000));
     await act(() => answer({ ok: false, status, code }));
     expect(screen.getByText(copy)).toBeDefined();
+  });
+
+  it("a refused save says so with the server's issue", async () => {
+    const { ui, store, saves, answer } = setup();
+    renderWithProviders(ui);
+    act(() => store.set("symbol.fill.color", "#ff0000"));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    const message = "This document needs GOAT Style 1.1.0 (a newer GOAT); this server reads up to 1.0.0.";
+    await act(() =>
+      answer({
+        ok: false,
+        status: 422,
+        code: "newer_version",
+        issues: [{ level: "error", code: "newer_version", path: "/version", message }],
+      })
+    );
+    const status = screen.getByRole("status");
+    expect(status.textContent).toContain("style_editor.stopped_refused");
+    expect(status.textContent).toContain(message);
+    act(() => store.set("symbol.fill.color", "#00ff00"));
+    await act(() => vi.advanceTimersByTimeAsync(60000));
+    expect(saves).toHaveLength(1);
   });
 
   it("base_too_old asks to apply or discard", async () => {

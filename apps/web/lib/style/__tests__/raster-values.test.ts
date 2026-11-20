@@ -138,7 +138,7 @@ function shaderValue(values: RasterValues, q: number): number {
 
 describe("value tiles", () => {
   it("asks for values of the band or formula, sharp for color scales, none for images", () => {
-    const query = (style: JsonObject) => valueQuery({ version: 1, kind: "raster", ...style });
+    const query = (style: JsonObject) => valueQuery({ version: "1.0.0", kind: "raster", ...style });
     expect(query({})).toBeNull();
     expect(query({ render: { type: "image", bands: [3, 2, 1] } })).toBeNull();
     // Categories without classes draw the file's own colors.
@@ -172,7 +172,7 @@ describe("value tiles", () => {
   });
 
   it("draws color scales crisp and images and shading alone smooth, unless the style says otherwise", () => {
-    const of = (style: JsonObject) => resamplingOf({ version: 1, kind: "raster", ...style });
+    const of = (style: JsonObject) => resamplingOf({ version: "1.0.0", kind: "raster", ...style });
     expect(of({ render: { type: "continuous" } })).toBe("nearest");
     expect(of({ render: { type: "categorical" } })).toBe("nearest");
     expect(of({ render: { type: "hillshade", palette: "goat:elevation" } })).toBe("nearest");

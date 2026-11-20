@@ -16,7 +16,7 @@ const sample: GeoJSON.FeatureCollection = {
   ],
 };
 
-const STYLE = { version: 1, kind: "vector", symbol: { marker: { color: "#66c2a5" } } };
+const STYLE = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#66c2a5" } } };
 
 describe("catalogSampleLayer", () => {
   it("draws the sample with the dataset's style, features numbered for the highlight", () => {
@@ -29,12 +29,25 @@ describe("catalogSampleLayer", () => {
     expect(catalogSampleLayer(STYLE, "point", sample, 2)?.highlight).toBe(2);
   });
 
-  it("a catalog style without version 1 falls back to the footprint", () => {
+  it("a catalog style that is not a GOAT Style document falls back to the footprint", () => {
     // Today's layer properties, which the catalog served before it upgraded styles on read.
     expect(catalogSampleLayer({ color: [102, 194, 165], filled: true }, "point", sample)).toBeUndefined();
     expect(catalogSampleLayer(undefined, "point", sample)).toBeUndefined();
     expect(catalogSampleLayer(STYLE, undefined, sample)).toBeUndefined();
     expect(catalogSampleLayer(STYLE, "raster", sample)).toBeUndefined();
     expect(catalogSampleLayer(STYLE, "point", null)).toBeUndefined();
+  });
+
+  it("a style of major 1 is drawn, the integer 1 of older styles too; another major falls back", () => {
+    const drawn = (version: unknown) =>
+      catalogSampleLayer({ ...STYLE, version }, "point", sample) !== undefined;
+    expect([drawn("1.0.0"), drawn("1.5.1"), drawn(1), drawn("2.0.0"), drawn(2), drawn("1.0")]).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 });

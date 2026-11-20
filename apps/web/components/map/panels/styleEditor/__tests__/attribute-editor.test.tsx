@@ -20,7 +20,7 @@ const FIELDS = [
 ];
 
 function setup(width: object) {
-  const doc = { version: 1, kind: "vector", symbol: { line: { width } } } as LayerStyle;
+  const doc = { version: "1.0.0", kind: "vector", symbol: { line: { width } } } as LayerStyle;
   const saves: LayerStyle[] = [];
   const resolvers: Array<(r: SaveResult) => void> = [];
   const transport: StyleTransport = {
@@ -79,7 +79,7 @@ describe("attribute editor", () => {
     expect(screen.getByText("style_editor.values_pending")).toBeDefined();
     await act(() =>
       answer({
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: { width: { field: "count", range: [1, 8], computed: { domain: [2, 40] } } } },
       } as LayerStyle)
@@ -158,7 +158,7 @@ describe("opening the attribute editor", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { line: { width: { field: "traffic", range: [1, 8] } } },
         } as LayerStyle,
@@ -180,7 +180,7 @@ describe("color by attribute", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { line: { color: { field: "traffic", palette: "goat:green", reverse: true } } },
         } as LayerStyle,
@@ -198,7 +198,7 @@ describe("color by attribute", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { line: { color: { field: "traffic", palette: "goat:green" } } },
         } as LayerStyle,

@@ -25,7 +25,7 @@ describe("time slider steps", () => {
   });
 
   it("a layer without a slider value starts at the latest step", () => {
-    const style = { version: 1, kind: "vector", time: { field: "year", step: 1 } } as LayerStyle;
+    const style = { version: "1.0.0", kind: "vector", time: { field: "year", step: 1 } } as LayerStyle;
     const layer = (time?: number) => ({
       id: 3,
       layer_id: "d3",

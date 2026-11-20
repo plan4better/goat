@@ -28,7 +28,7 @@ describe("style editor context", () => {
       </>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: { color: "#cccccc", opacity: 0.5 }, outline: { width: 1 } },
         },

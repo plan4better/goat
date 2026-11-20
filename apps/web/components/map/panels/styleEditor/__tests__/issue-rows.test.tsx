@@ -52,7 +52,7 @@ afterEach(() => {
 describe("issues on rows", () => {
   it("a part row shows a dot for an issue inside it, and its editor shows the issue with its fix", async () => {
     const { store, answer } = shell({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "icon", icon: "goat:nope", color: "#1a6b4d", size: 8 } },
     } as LayerStyle);
@@ -78,7 +78,7 @@ describe("issues on rows", () => {
   it("the label editor shows an issue of the label text", async () => {
     const message = "Fields are written {{ name }}.";
     const { store, answer } = shell({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "circle", color: "#1a6b4d", size: 8 }, label: { text: "{name" } },
     } as LayerStyle);
@@ -93,7 +93,7 @@ describe("issues on rows", () => {
   it("the label's Text style row warns of an issue of its font, and the Font row shows it", async () => {
     const message = "Bold italic labels cannot be drawn yet: pick bold or italic.";
     const { store, answer } = shell({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: { shape: "circle", color: "#1a6b4d", size: 8 },

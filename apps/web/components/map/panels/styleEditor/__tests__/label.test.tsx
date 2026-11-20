@@ -30,7 +30,7 @@ function render(
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", symbol: { label }, ...extra } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", symbol: { label }, ...extra } as LayerStyle,
       data: {
         geometry,
         fields: FIELDS,
@@ -242,7 +242,7 @@ describe("label part", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { label: { text: "{population}\n{Einwohner 2020}" } },
         } as LayerStyle,

@@ -20,7 +20,9 @@ from core.services.processes import (
     StyleCheckUnavailable,
     style_check,
 )
+from fastapi import HTTPException
 from goatlib.style.compute import facts_missing, needed_stats, same_ignoring_stamps
+from goatlib.style.configs import map_config_styles, versioned
 from goatlib.style.context import DataContext
 from goatlib.style.data_check import referenced_fields
 from goatlib.style.defaults import default_style
@@ -30,8 +32,11 @@ from goatlib.style.issues import Issue
 from goatlib.style.map_rows import MAX_STYLES
 from goatlib.style.merge import apply, diff, keep_current_where_errors
 from goatlib.style.migrate import context_for, migrate_style
+from goatlib.style.parse import blocking, check_version
+from goatlib.style.pointer import to_pointer
 from goatlib.style.upgrade import upgrade
 from goatlib.style.validate import validate
+from goatlib.style.version import stamp
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,12 +47,20 @@ SAVE_TRIES = 3
 
 
 class StyleSaveError(Exception):
-    """A style operation that stored nothing: `status` and `code` are what the route answers."""
+    """A style operation that stored nothing: `status`, `code` and the `issues` that
+    refused it are what the route answers."""
 
-    def __init__(self, status: int, code: str, message: str = "") -> None:
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str = "",
+        issues: list[Issue] | None = None,
+    ) -> None:
         super().__init__(message or code)
         self.status = status
         self.code = code
+        self.issues = issues or []
 
 
 @dataclass(frozen=True)
@@ -122,8 +135,48 @@ def _check_error(error: StyleCheckUnavailable) -> StyleSaveError:
     return StyleSaveError(503, "check_unavailable", str(error))
 
 
+def incoming_document(document: dict[str, Any], ctx: DataContext) -> dict[str, Any]:
+    """A document being written, as goatlib reads it (`upgrade(strict=True)`).
+    One of a GOAT Style version this server does not read (a newer minor or
+    major) is refused whole, before anything is written: 422 `newer_version` (or
+    `unknown_version`) with its issue."""
+    incoming: dict[str, Any] = upgrade(document, ctx, strict=True).document
+    issues = check_version(incoming)
+    if blocking(issues):
+        raise StyleSaveError(422, issues[0].code, issues=issues)
+    return incoming
+
+
 def issues_json(issues: list[Issue]) -> list[dict[str, Any]]:
     return [i.model_dump(mode="json", exclude_none=True) for i in issues]
+
+
+def checked_config_styles(config: Any) -> Any:
+    """A workflow or report layout config as it is stored: every GOAT Style
+    document it holds (an export's `outputStyle`, a layout's
+    `locked_layer_styles`) at the lowest version its keys need. One of a version
+    this server does not read refuses the save as a style save does: 422
+    `newer_version` (or `unknown_version`) with its issue, whose path points at
+    that style's version in the request (`/config/...`)."""
+
+    def one(document: Any, path: list[str]) -> Any:
+        if not versioned(document):
+            return document
+        issues = check_version(document)
+        if blocking(issues):
+            at = to_pointer(["config", *path, "version"])
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": issues[0].code,
+                    "issues": issues_json(
+                        [i.model_copy(update={"path": at}) for i in issues]
+                    ),
+                },
+            )
+        return stamp(document)
+
+    return map_config_styles(config, one)
 
 
 async def read_stored(session: AsyncSession, style_id: UUID) -> StoredStyle:
@@ -248,7 +301,7 @@ async def read_style(
     issues = [Issue.model_validate(i) for i in result.get("issues", [])]
     if not refresh:
         return stored.read(document, issues)
-    recomputed = result["document"]
+    recomputed = stamp(result["document"])
     still_stale = is_stale(recomputed, stored.fingerprint)
     if recomputed == stored.document:
         return stored.read(recomputed, issues, stale=still_stale)
@@ -345,11 +398,14 @@ async def save_style(
 ) -> StyleRead:
     """Saves a whole document (spec 13.1). A named style merges what the author
     changed since `base_rev` onto the stored document; a dataset default is replaced
-    whole. A changed path with an error keeps the stored value. Raises StyleSaveError:
-    409 `base_too_old`, 503 `check_unavailable`, 503 `save_conflict` after three lost races."""
+    whole. A changed path with an error keeps the stored value; a document of a
+    newer GOAT Style minor or major version is refused whole. The stored document
+    carries the lowest version that covers it (spec 14). Raises StyleSaveError: 422
+    `newer_version` (or `unknown_version`) with its issue, 409 `base_too_old`, 503
+    `check_unavailable`, 503 `save_conflict` after three lost races."""
     for _ in range(SAVE_TRIES):
         stored = await read_stored(session, style_id)
-        incoming = upgrade(document, stored.context(document), strict=True).document
+        incoming = incoming_document(document, stored.context(document))
         if stored.named:
             base = await _base_document(session, stored, base_rev)
             # goatlib's merge() without dropping the changes: they say which paths
@@ -391,6 +447,7 @@ async def save_style(
                     ]
         except StyleCheckUnavailable as error:
             raise _check_error(error) from error
+        checked = stamp(checked)
         if not diff(stored.document, checked) and not is_stale(
             stored.document, stored.fingerprint
         ):
@@ -487,7 +544,7 @@ async def create_style(
         ).scalar_one_or_none()
         if document is None:
             document = default_style(context, seed=str(layer_id))
-    document = upgrade(document, context).document
+    document = stamp(upgrade(document, context).document)
     row = (
         await session.execute(
             text(
@@ -647,17 +704,17 @@ async def write_default(
     access_token: str,
 ) -> StyleRead:
     """Replaces the dataset's default style whole (no base revision, no merge).
-    403 `read_only` for a catalog layer: the catalog owns its style."""
+    403 `read_only` for a catalog layer: the catalog owns its style; 422
+    `newer_version` before the dataset gets a row."""
     facts = await _layer_facts(session, layer_id)
     if facts.catalog_external_uid is not None:
         raise StyleSaveError(403, "read_only")
+    context = layer_context(facts.layer_type, facts.geometry, facts.data_type)
+    incoming_document(document, context)
     style_id = await _default_id(session, layer_id)
     if style_id is None:
         # The row starts as goatlib's default, then the save below replaces it.
-        seed = default_style(
-            layer_context(facts.layer_type, facts.geometry, facts.data_type),
-            seed=str(layer_id),
-        )
+        seed = default_style(context, seed=str(layer_id))
         await session.execute(
             text(
                 f"INSERT INTO {settings.SCHEMA}.layer_style (layer_id, name, document, updated_by) "

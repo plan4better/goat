@@ -28,7 +28,7 @@ const band = (index: number, p2: number | null, p98: number | null) => ({
 
 describe("useRasterSample", () => {
   it("reads the band's values from the raster service's statistics; a band without values is null", async () => {
-    const document = { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle;
+    const document = { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle;
     const store = new EditorStore({
       saver: new StyleSaver({
         transport: {

@@ -34,7 +34,8 @@ const fakeMap = {
   getStyle: () => ({ layers: [] }),
   isStyleLoaded: () => true,
 };
-const style = (color: string) => ({ version: 1, kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
+const style = (color: string) =>
+  ({ version: "1.0.0", kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
 const layer = (key: string, color: string): RenderLayer => ({
   key,
   style: style(color),
@@ -138,7 +139,7 @@ describe("StyledLayers", () => {
     const coverage = "https://geoapi/collections/r1/coverage/tiles/WebMercatorQuad";
     const raster: RenderLayer = {
       key: "r",
-      style: { version: 1, kind: "raster", render: { type: "continuous" } } as unknown as LayerStyle,
+      style: { version: "1.0.0", kind: "raster", render: { type: "continuous" } } as unknown as LayerStyle,
       entry: {},
       source: {
         type: "raster",

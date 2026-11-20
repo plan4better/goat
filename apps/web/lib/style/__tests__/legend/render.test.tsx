@@ -132,7 +132,7 @@ describe("the drawn legend", () => {
 
   it("a block about size draws its classes in the ratio they have, the largest at most 28 px", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "circle", color: "#3366cc", size: 8 } },
       classify: [
@@ -164,7 +164,7 @@ describe("the drawn legend", () => {
 
   it("a size by zoom is the same at every zoom, a color by zoom follows the map", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: {
@@ -222,7 +222,7 @@ describe("the drawn legend", () => {
   it("a block that sets the outline alone draws a ring, not a filled swatch", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#3366cc" }, outline: { color: "#555555", width: 1 } },
         classify: [

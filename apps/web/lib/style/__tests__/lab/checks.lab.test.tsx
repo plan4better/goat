@@ -33,7 +33,7 @@ async function scene(c: LabCase): Promise<Scene> {
 
 const labCase = (id: string, geometry: Geometry, style: JsonObject, zoom = 4): LabCase => ({
   id,
-  style: { version: 1, kind: "vector", ...style },
+  style: { version: "1.0.0", kind: "vector", ...style },
   geometry,
   zoom,
   fields: { category: "string", amount: "number" },

@@ -9,7 +9,7 @@ browser's save loop reads the code (spec 13.1).
 import hashlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import (
@@ -94,11 +94,15 @@ LAYER_WRITE = [Depends(access("layer", "write")), Depends(auth_z)]
 
 @asynccontextmanager
 async def answering() -> AsyncIterator[None]:
-    """A StyleSaveError as its status with `{"detail": {"code": ...}}`."""
+    """A StyleSaveError as its status with `{"detail": {"code": ...}}`, and the
+    issues that refused it under `issues` when there are any."""
     try:
         yield
     except StyleSaveError as error:
-        raise HTTPException(status_code=error.status, detail={"code": error.code})
+        detail: dict[str, Any] = {"code": error.code}
+        if error.issues:
+            detail["issues"] = issues_json(error.issues)
+        raise HTTPException(status_code=error.status, detail=detail)
 
 
 async def project_layer(

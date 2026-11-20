@@ -20,7 +20,7 @@ const GEOJSON: CompileInput["source"] = {
 const compile = (style: object, geometry: CompileInput["geometry"], extra: Partial<CompileInput> = {}) =>
   compileLayer({
     id: "9",
-    style: { version: 1, kind: "vector", ...style } as LayerStyle,
+    style: { version: "1.0.0", kind: "vector", ...style } as LayerStyle,
     geometry,
     source: TILES,
     ...extra,

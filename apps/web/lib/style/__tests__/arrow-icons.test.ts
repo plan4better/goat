@@ -10,7 +10,7 @@ import { maplibreErrors } from "./maplibre";
 const compile = (arrows: object, line: object = { color: "#2166ac" }) =>
   compileLayer({
     id: "9",
-    style: { version: 1, kind: "vector", symbol: { line, arrows } } as LayerStyle,
+    style: { version: "1.0.0", kind: "vector", symbol: { line, arrows } } as LayerStyle,
     geometry: "line",
     source: { type: "tiles", id: "s9", tiles: ["https://t/{z}/{x}/{y}"] },
   });

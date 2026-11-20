@@ -30,7 +30,7 @@ const WIDTH = 8;
 const SLACK = 1.5;
 
 const outlined = (position: string): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: {
     fill: { color: "#dddddd" },

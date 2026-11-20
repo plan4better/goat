@@ -144,7 +144,7 @@ def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any
     if ctx.kind == "raster":
         # Files and map services start slightly see-through, as they always did.
         return {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "opacity": 0.8,
             "render": {"type": "image"},
@@ -158,4 +158,4 @@ def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any
         symbol = {"line": {"color": color, "width": 2}}
     else:
         symbol = {"fill": {"color": color, "opacity": 0.8}, "outline": False}
-    return {"version": 1, "kind": "vector", "symbol": symbol}
+    return {"version": "1.0.0", "kind": "vector", "symbol": symbol}

@@ -12,7 +12,7 @@ import {
 const STAMP = { at: "2026-01-01T00:00:00Z", data: "synthetic:1", scope: "dataset" };
 
 const kinds = (classes: "view" | "filter" | "all" = "view") => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   classify: [
     {

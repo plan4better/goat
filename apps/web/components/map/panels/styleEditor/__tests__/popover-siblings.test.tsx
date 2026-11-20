@@ -21,7 +21,7 @@ function render() {
     </PopoverProvider>,
     {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { label: { text: "{name}", color: "#222222", halo: { color: "#000000", width: 3 } } },
       } as LayerStyle,

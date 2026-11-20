@@ -29,7 +29,7 @@ from tests.authz.test_template_api import (
 S = settings.SCHEMA
 EXPORT_NODE = "export-0640d526-f9ad-4d6d-9645-6a7a1c990162"
 STYLE = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#ff0000", "opacity": 0.6}, "outline": {"width": 2}},
 }

@@ -45,7 +45,7 @@ function setup(render: object, extra: object = {}, info: RasterInfo | null = INF
       <RasterColorSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "raster", render, ...extra } as LayerStyle,
+      document: { version: "1.0.0", kind: "raster", render, ...extra } as LayerStyle,
       data: { raster: { dataset: "d1", info: info ?? undefined } },
       map: MAP,
     }
@@ -256,7 +256,7 @@ describe("raster colors", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "raster",
           render: { type: "categorical", classes: [{ value: 1, color: "#ff0000" }] },
         } as LayerStyle,

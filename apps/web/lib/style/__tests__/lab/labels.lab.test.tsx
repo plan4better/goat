@@ -25,7 +25,7 @@ async function scene(c: LabCase): Promise<Scene> {
 
 /** A short line over a long one, in black without a halo, wide enough that neither wraps. */
 const TWO_LINES: JsonObject = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: {
     marker: { shape: "circle", color: "#ffffff", size: 8 },
@@ -163,7 +163,7 @@ describe("multi-line labels beside their marker", () => {
 
 /** Upright strokes in black on a white marker, centred on the point: the slant of the drawn text shows the font. */
 const STEMS = (font?: JsonObject): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: {
     marker: { shape: "circle", color: "#ffffff", size: 8 },

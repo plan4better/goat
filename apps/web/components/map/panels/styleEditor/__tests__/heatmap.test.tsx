@@ -25,7 +25,7 @@ function setup(
       <HeatmapSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", render } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", render } as LayerStyle,
       data: {
         geometry: "point",
         fields: FIELDS,

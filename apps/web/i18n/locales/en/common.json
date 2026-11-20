@@ -3447,6 +3447,7 @@
     "stopped_forbidden": "This layer can no longer be edited.",
     "stopped_deleted": "This layer was deleted.",
     "stopped_base_too_old": "Someone changed this style meanwhile.",
+    "stopped_refused": "This style cannot be saved.",
     "apply_my_changes": "Apply my changes",
     "discard_my_changes": "Discard my changes",
     "damaged_notice": "Part of this style no longer fits the data. The map draws the rest.",

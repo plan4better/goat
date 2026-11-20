@@ -215,7 +215,7 @@ async def test_every_place_converts(
         "SELECT name, document FROM {S}.layer_style WHERE layer_id = :id",
         id=style_world.layer_id,
     )
-    assert default.name == "Default" and default.document["version"] == 1
+    assert default.name == "Default" and default.document["version"] == "1.0.0"
     assert default.document["classify"][0]["computed"]["data"] == "ducklake:0"
     link = await one(
         db_session,
@@ -252,7 +252,7 @@ async def test_every_place_converts(
     # today's format and is converted when the result is saved (finalize).
     assert workflow.config["nodes"][0]["data"]["outputStyle"] == LINE_V0
     converted = workflow.config["nodes"][1]["data"]["outputStyle"]
-    assert converted["version"] == 1 and "fill" in converted["symbol"]
+    assert converted["version"] == "1.0.0" and "fill" in converted["symbol"]
     layout = await one(
         db_session,
         "SELECT config FROM {S}.report_layout WHERE id = :id",
@@ -261,7 +261,7 @@ async def test_every_place_converts(
     locked = layout.config["elements"][0]["config"]["locked_layer_styles"][
         str(style_world.layer_project_id)
     ]
-    assert locked["version"] == 1 and locked["kind"] == "vector"
+    assert locked["version"] == "1.0.0" and locked["kind"] == "vector"
     template = await one(
         db_session, "SELECT config FROM {S}.template WHERE id = :id", id=ids["template"]
     )
@@ -273,7 +273,7 @@ async def test_every_place_converts(
     )
     assert public.config["map"]["layers"][0]["id"] == style_world.layer_project_id
     [published] = public.config["styles"][str(style_world.layer_project_id)]
-    assert published["document"]["version"] == 1
+    assert published["document"]["version"] == "1.0.0"
 
 
 @pytest.mark.asyncio

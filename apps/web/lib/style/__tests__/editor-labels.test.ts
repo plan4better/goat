@@ -58,7 +58,12 @@ const tEn = summaryI18n.getFixedT("en");
 const tDe = summaryI18n.getFixedT("de");
 
 const withLabel = (label: object, extra: object = {}) =>
-  ({ version: 1, kind: "vector", symbol: { label: { text: "{name}", ...label } }, ...extra }) as LayerStyle;
+  ({
+    version: "1.0.0",
+    kind: "vector",
+    symbol: { label: { text: "{name}", ...label } },
+    ...extra,
+  }) as LayerStyle;
 const FIELDS = [{ name: "rank", type: "integer" as const, label: "Rank" }];
 const at = (geometry: "point" | "line" | "polygon", language = "en") => ({
   fields: FIELDS,

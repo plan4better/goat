@@ -17,7 +17,7 @@ NDVI = {"name": "NDVI", "expression": "(b4 - b1) / (b4 + b1)"}
 
 
 def raster(**render: Any) -> dict[str, Any]:
-    return {"version": 1, "kind": "raster", "render": render}
+    return {"version": "1.0.0", "kind": "raster", "render": render}
 
 
 def compute(doc: dict[str, Any], stats: dict) -> tuple[dict[str, Any], list]:

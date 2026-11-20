@@ -4,6 +4,7 @@
 import type { Geometry } from "@/lib/style/compile/types";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import { STYLE_VERSION } from "@/lib/style/version";
 
 const COLOR = DEFAULTS["fill.color"] as string;
 
@@ -14,5 +15,5 @@ export function defaultStyle(geometry: Geometry | undefined): LayerStyle {
       : geometry === "line"
         ? { line: { color: COLOR, width: 2 } }
         : { fill: { color: COLOR, opacity: 0.8 }, outline: false };
-  return { version: 1, kind: "vector", symbol } as LayerStyle;
+  return { version: STYLE_VERSION, kind: "vector", symbol } as LayerStyle;
 }

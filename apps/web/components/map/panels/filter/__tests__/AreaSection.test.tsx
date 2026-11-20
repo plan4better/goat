@@ -126,7 +126,7 @@ function setup(area: FilterArea | undefined, props: Partial<Parameters<typeof Fi
           id: "layer-1",
           name: "Districts",
           icon: layerSwatchIcon({
-            style: { document: { version: 1, kind: "vector", symbol: { fill: { color: "#123456" } } } },
+            style: { document: { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#123456" } } } },
             feature_layer_geometry_type: "polygon",
           }),
         },

@@ -10,10 +10,10 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
+from goatlib.style import version as versions
 from goatlib.style.issues import CODES, Issue, make_issue
 from goatlib.style.pointer import item_key, to_pointer
-
-CURRENT_VERSION = 1
+from goatlib.style.version import format_version, known_version, parse_version
 
 _TYPE_TO_CODE = {"extra_forbidden": "unknown_key", "missing": "missing_required"}
 _ADAPTERS: dict[Any, TypeAdapter[Any]] = {}
@@ -125,7 +125,8 @@ def _number(v: Any) -> str:
 
 
 def check_version(raw: Any) -> list[Issue]:
-    """Issues about `version`; the rest of a document is read only when there are none."""
+    """Issues about `version`. The rest of a document is read only when none is an
+    error: a newer patch (`newer_patch`) only warns."""
     if not isinstance(raw, dict):
         return [
             make_issue("invalid_value", "", "A GOAT Style document is a JSON object.")
@@ -134,38 +135,71 @@ def check_version(raw: Any) -> list[Issue]:
         return [
             make_issue("missing_required", "/version", '"version" is required here.')
         ]
-    version = raw["version"]
-    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+    version = parse_version(raw["version"])
+    if version is None:
         return [
             make_issue(
-                "unknown_version", "/version", "version is a whole number from 1."
+                "unknown_version", "/version", 'version is three numbers, like "1.0.0".'
             )
         ]
-    if version > CURRENT_VERSION:
+    if version[0] < 1:
         return [
             make_issue(
-                "newer_version",
-                "/version",
-                f"This server reads GOAT Style up to version {CURRENT_VERSION}.",
+                "unknown_version", "/version", "GOAT Style versions start at 1.0.0."
             )
         ]
-    return []
+    spec = known_version(versions.SPEC_VERSION)
+    if version <= spec:
+        return []
+    text = format_version(version)
+    if version[:2] > spec[:2]:
+        message = (
+            f"This document needs GOAT Style {text} "
+            f"({versions.RELEASES.get(text, 'a newer GOAT')}); "
+            f"this server reads up to {versions.SPEC_VERSION}."
+        )
+        return [make_issue("newer_version", "/version", message)]
+    message = (
+        f"This document is written for GOAT Style {text}; this server reads up to "
+        f"{versions.SPEC_VERSION} and may draw small differences."
+    )
+    return [make_issue("newer_patch", "/version", message)]
+
+
+def blocking(issues: list[Issue]) -> bool:
+    """Whether `check_version`'s issues stop the rest of a document from being read."""
+    return any(i.level == "error" for i in issues)
+
+
+def as_read(raw: Any) -> Any:
+    """`raw` with the integer version 1 of documents written before three
+    numbers as the "1.0.0" it means; anything else as it is. `raw` is not changed."""
+    if (
+        isinstance(raw, dict)
+        and type(raw.get("version")) is int
+        and raw["version"] == 1
+    ):
+        return {**raw, "version": versions.BASE_VERSION}
+    return raw
 
 
 def parse_for_write(raw: Any) -> tuple[Any, list[Issue]]:
-    """A layer style as it is written: strict, current version only. `raw` is not changed."""
+    """A layer style as it is written: strict, versions this server reads only.
+    `raw` is not changed."""
     from goatlib.style.models.layer import LayerStyle
 
     issues = check_version(raw)
-    if issues:
+    if blocking(issues):
         return None, issues
-    return parse(LayerStyle, raw)
+    style, more = parse(LayerStyle, as_read(raw))
+    return style, issues + more
 
 
 def parse_map_document(raw: Any) -> tuple[Any, list[Issue]]:
     from goatlib.style.models.map_document import MapDocument
 
     issues = check_version(raw)
-    if issues:
+    if blocking(issues):
         return None, issues
-    return parse(MapDocument, raw)
+    document, more = parse(MapDocument, as_read(raw))
+    return document, issues + more

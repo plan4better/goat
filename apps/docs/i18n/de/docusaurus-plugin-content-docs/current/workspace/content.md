@@ -130,6 +130,8 @@ Sie können ein Projekt importieren, das aus GOAT als `.zip`-Datei exportiert wu
   <img src={require('/img/workspace/projects/project_import_de.webp').default} alt="Ein Projekt in GOAT importieren" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+Ein Projekt aus einem neueren GOAT, dessen Stile etwas nutzen, das dieses GOAT noch nicht kennt, wird nicht importiert: Der Job bricht ab, bevor etwas angelegt wird, und seine Meldung nennt die GOAT-Style-Version, die das Projekt braucht. Aktualisieren Sie GOAT und importieren Sie das Projekt dann erneut.
+
 ### Einen Datensatz hochladen
 
 GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet** und **COG**-Dateien sowie **GTFS**-Archive (`gtfs.zip`) für [ÖPNV-Netze](../data/dataset_types.md#öpnv-netze) und **Overture**-Archive (`overture.zip`) für [Straßennetze](../data/dataset_types.md#straßennetze).

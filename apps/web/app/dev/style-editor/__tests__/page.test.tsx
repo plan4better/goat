@@ -75,7 +75,7 @@ describe("development route", () => {
     expect(screen.getByRole("heading", { name: "Districts" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "style_editor.geometry_polygon" })).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: "Document" }));
-    expect(screen.getByTestId("style-document").textContent).toContain('"version": 1');
+    expect(screen.getByTestId("style-document").textContent).toContain('"version": "1.0.0"');
   });
 
   it("a raster file gets the raster sections and an image document", async () => {
@@ -123,7 +123,11 @@ describe("development route", () => {
       return loaded.values;
     });
     const { DevStyleEditor } = await import("@/app/dev/style-editor/DevStyleEditor");
-    const doc = { version: 1, kind: "raster", render: { type: "continuous", palette: "goat:elevation" } };
+    const doc = {
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "continuous", palette: "goat:elevation" },
+    };
     renderWithProviders(<DevStyleEditor layerId="r1" initialDoc={JSON.stringify(doc)} />);
     await waitFor(() => expect(valuesMock).toHaveBeenCalled());
     expect(valuesMock.mock.calls[0][0]).toMatch(

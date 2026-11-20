@@ -8,6 +8,7 @@ from typing import Any, NamedTuple
 from uuid import UUID
 
 from goatlib.style.scene import upgrade_scene
+from goatlib.style.version import SPEC_VERSION, stamp
 
 #: Named styles per project layer (spec 10).
 MAX_STYLES = 10
@@ -75,7 +76,8 @@ def build_map_document(
     live map request, publishing and the data migration (from a published
     snapshot). Order is the list order, top first (ascending `order`, groups and
     layers sharing one order per parent); defaults stay out of the entries.
-    `scene` (the project's 3D settings) is added only when the project has one."""
+    `scene` (the project's 3D settings) is added only when the project has one.
+    `version` is the lowest GOAT Style version whose keys cover the document."""
     children: dict[int | None, list[tuple[int, int, int, dict[str, Any]]]] = {}
     group_ids = {g.id for g in groups}
     for row in layers:
@@ -109,7 +111,7 @@ def build_map_document(
             out.append(item)
         return out
 
-    document: dict[str, Any] = {"version": 1}
+    document: dict[str, Any] = {"version": SPEC_VERSION}
     if basemap:
         document["basemap"] = {"id": basemap}
     view = map_view(view_state, bounds)
@@ -120,7 +122,7 @@ def build_map_document(
     if scene is not None:
         document["scene"] = upgrade_scene(scene)[0]
     document["layers"] = tree(None, frozenset())
-    return document
+    return stamp(document, map_document=True)
 
 
 def _layer_entry(row: LayerRow) -> dict[str, Any]:

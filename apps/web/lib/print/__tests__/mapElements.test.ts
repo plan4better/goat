@@ -21,7 +21,8 @@ const initialView = {
   max_zoom: 20,
 };
 
-const doc = (color: string) => ({ version: 1, kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
+const doc = (color: string) =>
+  ({ version: "1.0.0", kind: "vector", symbol: { fill: { color } } }) as LayerStyle;
 
 const layer = (id: number, visible = true): MapLayer =>
   ({
@@ -136,6 +137,16 @@ describe("mapElementLayers", () => {
     // A snapshot taken before GOAT Style (layer properties) draws the live style.
     const old = mapElementLayers(changed, { ...config, locked_layer_styles: { 7: { color: "#777" } } });
     expect(old[0].style?.document).toEqual(RED);
+    // A frozen document of major 1 is drawn, the integer 1 of older snapshots too; another major draws the live style.
+    const frozen = (version: unknown) =>
+      mapElementLayers(changed, { ...config, locked_layer_styles: { 7: { ...doc("#777"), version } } })[0]
+        .style?.document.version;
+    expect([frozen("1.0.0"), frozen("1.2.0"), frozen(1), frozen("2.0.0")]).toEqual([
+      "1.0.0",
+      "1.2.0",
+      1,
+      RED.version,
+    ]);
     // Unlocked: the project's drawn layers with their live styles; an atlas page can hide its coverage layer.
     expect(mapElementLayers(changed, {}).map((l) => l.id)).toEqual([9]);
     expect(mapElementLayers(projectLayers, {}, { hide: 9 }).map((l) => l.id)).toEqual([7]);

@@ -21,6 +21,7 @@ import { rasterValuesOver } from "@/lib/style/render/rasterValues";
 import { useLivePreview } from "@/lib/style/render/useLivePreview";
 import { StyleSaver, bindPageLifecycle } from "@/lib/style/save";
 import { createMemoryTransport, styleCheck } from "@/lib/style/transports/memory";
+import { STYLE_VERSION } from "@/lib/style/version";
 import { wktToBBox } from "@/lib/utils/map/crs-suggestions";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
@@ -41,7 +42,9 @@ function parseDoc(text: string | undefined, kind: LayerKind): LayerStyle {
     // A broken doc parameter starts from the empty style.
   }
   return (
-    kind === "vector" ? { version: 1, kind } : { version: 1, kind: "raster", render: { type: "image" } }
+    kind === "vector"
+      ? { version: STYLE_VERSION, kind }
+      : { version: STYLE_VERSION, kind: "raster", render: { type: "image" } }
   ) as LayerStyle;
 }
 

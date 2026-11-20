@@ -95,7 +95,7 @@ async def test_a_new_style_copies_the_dataset_default_when_the_layer_has_none(
 ) -> None:
     world = api_style_world
     document = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"color": "#123456"}},
     }
@@ -284,7 +284,7 @@ async def test_a_new_style_copies_the_shown_style_and_does_not_switch_it(
         f"{API}/layer/{world.layer_id}/style",
         json={
             "document": {
-                "version": 1,
+                "version": "1.0.0",
                 "kind": "vector",
                 "symbol": {"fill": {"color": "#999999"}},
             }
@@ -356,7 +356,7 @@ async def test_a_viewer_reads_but_a_save_answers_403(
         layer_project_id=world.layer_project_id,
         name="Shared",
         document={
-            "version": 1,
+            "version": "1.0.0",
             "kind": "vector",
             "symbol": {"fill": {"color": "#111111"}},
         },
@@ -375,3 +375,46 @@ async def test_a_viewer_reads_but_a_save_answers_403(
     assert hidden.status_code == 403
     gone = await client.get(f"{API}/project/{uuid4()}/map")
     assert gone.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_save_accepts_integer_version_and_stores_semver(
+    client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
+) -> None:
+    """A browser tab opened before the three-number versions still sends
+    `"version": 1`: the save is taken and stored as "1.0.0"."""
+    world = api_style_world
+    style = await create(client, world, "Older tab")
+    document = {**with_fill(style["document"], "#222222"), "version": 1}
+    saved = await client.put(
+        f"{styles_url(world)}/{style['id']}",
+        json={"base_rev": 1, "document": document},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["document"]["version"] == "1.0.0"
+    stored = (
+        await db_session.execute(
+            text(f"SELECT document FROM {S}.layer_style WHERE id = :id"),
+            {"id": style["id"]},
+        )
+    ).scalar_one()
+    assert stored["version"] == "1.0.0"
+    assert stored["symbol"]["fill"]["color"] == "#222222"
+
+
+@pytest.mark.asyncio
+async def test_a_newer_style_answers_422_with_its_issue(
+    client: AsyncClient, api_style_world: StyleWorld
+) -> None:
+    world = api_style_world
+    style = await create(client, world, "From a newer GOAT")
+    response = await client.put(
+        f"{styles_url(world)}/{style['id']}",
+        json={"base_rev": 1, "document": {**style["document"], "version": "9.0.0"}},
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["code"] == "newer_version"
+    assert [i["code"] for i in detail["issues"]] == ["newer_version"]
+    read = await client.get(f"{styles_url(world)}/{style['id']}")
+    assert read.json()["revision"] == 1

@@ -33,7 +33,7 @@ const ACTIVE = [
 
 describe("points", () => {
   it("an empty point style draws the default marker", () => {
-    const out = compile({ version: 1, kind: "vector" });
+    const out = compile({ version: "1.0.0", kind: "vector" });
     expect(out.layers).toEqual([
       {
         id: "9-marker",
@@ -47,7 +47,7 @@ describe("points", () => {
 
   it("a circle marker with an outline, faded by the layer opacity", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       opacity: 0.5,
       symbol: {
@@ -68,7 +68,7 @@ describe("points", () => {
 
   it("an icon on a circle is one marker image: overlapping points stack as whole markers", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "circle", color: "#f28e2b", size: 20, icon: "goat:park" } },
     });
@@ -88,7 +88,7 @@ describe("points", () => {
 
   it("a square with a stroke and no icon is a marker image too", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: { shape: "square", color: "#1a6b4d", size: 12, opacity: 0.8 },
@@ -104,7 +104,11 @@ describe("points", () => {
   });
 
   it("a hexagon without an icon is a marker image; a square sets no anchor", () => {
-    const out = compile({ version: 1, kind: "vector", symbol: { marker: { shape: "hexagon", size: 16 } } });
+    const out = compile({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { shape: "hexagon", size: 16 } },
+    });
     expect(layer(out, "marker")?.layout).toMatchObject({
       "icon-image": "goat-marker:hexagon|16||#2bb381||0|#ffffff",
     });
@@ -114,7 +118,7 @@ describe("points", () => {
 
   it("a pin stands on its place with its tip, its highlight ring around the head; a set anchor wins", () => {
     const out = compile(
-      { version: 1, kind: "vector", symbol: { marker: { shape: "pin", size: 24, icon: "goat:park" } } },
+      { version: "1.0.0", kind: "vector", symbol: { marker: { shape: "pin", size: 24, icon: "goat:park" } } },
       "point",
       { highlight: true }
     );
@@ -126,7 +130,7 @@ describe("points", () => {
     expect(layer(out, "ring")?.paint).toMatchObject({ "circle-translate": [0, -15] });
     expect(valid(out)).toEqual([]);
     const centred = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "pin", size: 24, anchor: "center" } },
     });
@@ -136,7 +140,7 @@ describe("points", () => {
   it("classes draw their own shapes: each feature's image names its shape, pins stand on their tip", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { size: 24, icon: "goat:park" } },
         classify: [
@@ -174,7 +178,7 @@ describe("points", () => {
 
   it("a circle without an icon whose classes take shapes draws as images", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { size: 12 } },
       classify: [
@@ -188,7 +192,7 @@ describe("points", () => {
   it("markers by class name each feature's icon and color; emoji come from the emoji folder", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#1f78b4", size: 24, icon: "goat:park" } },
         classify: [
@@ -221,7 +225,7 @@ describe("points", () => {
   it("a stroke width by zoom steps through marker images; a size by zoom scales the largest", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {
@@ -273,7 +277,7 @@ describe("points", () => {
       ],
     };
     const marker = (shape: string) =>
-      compile({ version: 1, kind: "vector", symbol: { marker: { shape, color } } }, "point", {
+      compile({ version: "1.0.0", kind: "vector", symbol: { marker: { shape, color } } }, "point", {
         fields: { amount: "number" },
       });
     const [pin, circle] = [marker("pin"), marker("circle")];
@@ -296,7 +300,7 @@ describe("points", () => {
 
   it("markers with a shape draw where they collide unless overlap is turned off", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "circle", icon: "goat:park", allow_overlap: false } },
     });
@@ -305,7 +309,7 @@ describe("points", () => {
 
   it("the active marker gets a ring under it, by feature state", () => {
     const out = compile(
-      { version: 1, kind: "vector", symbol: { marker: { shape: "square", size: 16 } } },
+      { version: "1.0.0", kind: "vector", symbol: { marker: { shape: "square", size: 16 } } },
       "point",
       { highlight: true }
     );
@@ -321,7 +325,7 @@ describe("points", () => {
 
   it("an emoji alone keeps its colors, in the layer of icons with their own colors", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "icon", icon: "emoji:1f525", size: 24 } },
     });
@@ -332,7 +336,7 @@ describe("points", () => {
 
   it("an icon alone: tinted with the color, rotated with the map, anchored and offset", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: {
@@ -366,7 +370,7 @@ describe("points", () => {
   it("library and uploaded icons by class go into two layers with the images listed", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", icon: "goat:school", size: 24 } },
         classify: [
@@ -398,7 +402,7 @@ describe("points", () => {
   it("uploads only in classes still list the default icon the other features draw, in the library layer", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", color: "#1f78b4" } },
         classify: [
@@ -431,7 +435,7 @@ describe("points", () => {
 describe("point outlines and offsets", () => {
   it("an outline only a rule sets draws only where the rule holds", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: {} },
       rules: [{ when: { op: "=", args: [{ property: "big" }, true] }, outline: { width: 2.5 } }],
@@ -444,7 +448,7 @@ describe("point outlines and offsets", () => {
 
   it("an icon's halo shows only where its outline is on", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "icon", icon: "goat:park" } },
       rules: [{ when: { op: "=", args: [{ property: "big" }, true] }, outline: { width: 2 } }],
@@ -462,7 +466,7 @@ describe("point outlines and offsets", () => {
 
   it("an outline in the fill color takes the marker color", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: "#f28e2b" }, outline: { color: "fill", width: 2 } },
     });
@@ -472,7 +476,7 @@ describe("point outlines and offsets", () => {
 
   it("an icon halo in the fill color takes the icon color", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: { shape: "icon", icon: "goat:park", color: "#333333" },
@@ -486,7 +490,7 @@ describe("point outlines and offsets", () => {
   it("circles move by the base offset only: circle-translate cannot vary per feature", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { offset: [0, -4] } },
         classify: [
@@ -504,7 +508,7 @@ describe("point outlines and offsets", () => {
 describe("order, time and highlight", () => {
   it("orders circles and symbols by a field", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       order: { field: "visitors", top: "largest" },
       symbol: { marker: {} },
@@ -516,7 +520,7 @@ describe("order, time and highlight", () => {
     ]);
     // Icons alone collide: the top feature wins the place.
     const icons = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       order: { field: "visitors", top: "largest" },
       symbol: { marker: { shape: "icon", icon: "goat:park" } },
@@ -527,7 +531,7 @@ describe("order, time and highlight", () => {
     ]);
     // Markers with a shape overlap: the top feature draws on top.
     const markers = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       order: { field: "visitors", top: "largest" },
       symbol: { marker: { icon: "goat:park" } },
@@ -542,7 +546,7 @@ describe("order, time and highlight", () => {
   it("orders by the classes of the first classification, the first class on top", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         order: { by: "classes" },
         symbol: { fill: {} },
@@ -563,7 +567,7 @@ describe("order, time and highlight", () => {
   });
 
   it("filters by the time slider", () => {
-    const out = compile({ version: 1, kind: "vector", time: { field: "year", step: 1 } }, "point", {
+    const out = compile({ version: "1.0.0", kind: "vector", time: { field: "year", step: 1 } }, "point", {
       fields: { year: "integer" },
       entry: { time: { value: 2024 } },
     });
@@ -574,9 +578,13 @@ describe("order, time and highlight", () => {
       ["==", ["get", "year"], ["global-state", "9:time"]],
     ]);
     expect(out.state).toEqual({ "9:time": { default: 2024 } });
-    const dated = compile({ version: 1, kind: "vector", time: { field: "day", step: "month" } }, "point", {
-      fields: { day: "date" },
-    });
+    const dated = compile(
+      { version: "1.0.0", kind: "vector", time: { field: "day", step: "month" } },
+      "point",
+      {
+        fields: { day: "date" },
+      }
+    );
     expect(layer(dated, "marker")?.filter).toEqual([
       "any",
       unset,
@@ -587,7 +595,7 @@ describe("order, time and highlight", () => {
   });
 
   it("without a slider value every time shows (a thumbnail has no slider to choose one)", () => {
-    const out = compile({ version: 1, kind: "vector", time: { field: "year", step: 1 } }, "point", {
+    const out = compile({ version: "1.0.0", kind: "vector", time: { field: "year", step: 1 } }, "point", {
       fields: { year: "integer" },
     });
     expect(out.state).toEqual({ "9:time": { default: null } });
@@ -602,7 +610,7 @@ describe("order, time and highlight", () => {
   it("highlights the active feature in each part's paint, zoom staying at the top level", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           line: {
@@ -633,9 +641,13 @@ describe("order, time and highlight", () => {
   });
 
   it("a polygon without an outline gets one that shows only when highlighted", () => {
-    const out = compile({ version: 1, kind: "vector", symbol: { fill: {}, outline: false } }, "polygon", {
-      highlight: true,
-    });
+    const out = compile(
+      { version: "1.0.0", kind: "vector", symbol: { fill: {}, outline: false } },
+      "polygon",
+      {
+        highlight: true,
+      }
+    );
     expect(layer(out, "outline")?.paint).toEqual({
       "line-color": "#ffc300",
       "line-width": 3,
@@ -648,7 +660,7 @@ describe("order, time and highlight", () => {
 describe("hollow markers (marker.fill: false)", () => {
   it("a hollow circle draws its outline only: no fill opacity, the stroke stays", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: { color: "#1a6b4d", size: 10, opacity: 0.8, fill: false },
@@ -668,7 +680,7 @@ describe("hollow markers (marker.fill: false)", () => {
   it("a class draws hollow circles while the others stay filled", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { color: "#1a6b4d", opacity: 0.8 }, outline: {} },
         classify: [
@@ -685,7 +697,7 @@ describe("hollow markers (marker.fill: false)", () => {
 
   it("a hollow shape leaves its fill out of the image name and is not faded by the fill opacity", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         marker: { shape: "diamond", color: "#1a6b4d", size: 12, opacity: 0.5, fill: false },
@@ -704,7 +716,7 @@ describe("hollow markers (marker.fill: false)", () => {
     const pin = (marker: object) =>
       compile(
         {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: {
             marker: { shape: "pin", color: "#f28e2b", size: 24, icon: "goat:park", fill: false, ...marker },
@@ -727,7 +739,7 @@ describe("hollow markers (marker.fill: false)", () => {
 
   it("a filled marker's image name is as before", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "square", color: "#1a6b4d", size: 12, fill: true } },
     });
@@ -738,7 +750,7 @@ describe("hollow markers (marker.fill: false)", () => {
 
   it("the icon alone ignores the fill switch", () => {
     const style = (fill: boolean) => ({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "icon", icon: "goat:park", color: "#f28e2b", fill } },
     });

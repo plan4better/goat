@@ -27,7 +27,7 @@ const SIZES = {
   computed: { ...STAMP, other: false, no_data: false },
 };
 
-const style = (...classify: object[]) => ({ version: 1, kind: "vector", classify });
+const style = (...classify: object[]) => ({ version: "1.0.0", kind: "vector", classify });
 
 const feature = (properties: Record<string, unknown>) => ({ properties });
 
@@ -107,7 +107,7 @@ describe("countPresence", () => {
   });
 
   it("a layer without classifications has nothing to count", () => {
-    const counter = countPresence({ version: 1, kind: "vector" });
+    const counter = countPresence({ version: "1.0.0", kind: "vector" });
     expect(counter.done).toBe(true);
     expect(counter.result()).toEqual({});
   });

@@ -104,7 +104,7 @@ describe("ThumbnailPage in 3D", () => {
       type: "feature",
       feature_layer_geometry_type: "polygon",
       visible: true,
-      style: { version: 1, kind: "vector" },
+      style: { version: "1.0.0", kind: "vector" },
     };
     inject({ viewState: { ...VIEW, pitch: 0, bearing: 0 }, basemap: "light", layers: [layer] });
     render(<ThumbnailPage />);

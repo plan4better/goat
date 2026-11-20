@@ -48,7 +48,7 @@ const DATA: Partial<StyleData> = {
 };
 
 const doc = (classify: object[], symbol: object = { fill: { color: "#cccccc" } }) =>
-  ({ version: 1, kind: "vector", symbol, classify }) as unknown as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol, classify }) as unknown as LayerStyle;
 
 const QUANTILE = {
   id: "population",
@@ -120,7 +120,7 @@ describe("adding a classification", () => {
       <PopoverProvider>
         <SymbolSection />
       </PopoverProvider>,
-      { document: { version: 1, kind: "vector", symbol } as LayerStyle, data: DATA }
+      { document: { version: "1.0.0", kind: "vector", symbol } as LayerStyle, data: DATA }
     );
 
   async function byClasses(part: string, row: string, field: string) {

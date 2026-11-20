@@ -1,5 +1,7 @@
 """The map document from plain rows, and the layers it draws."""
 
+import pytest
+from goatlib.style import version as versions
 from goatlib.style.map_rows import (
     GroupRow,
     LayerRow,
@@ -86,3 +88,22 @@ def test_map_view_copies_mode_projection_and_scene() -> None:
         scene=scene,
     )
     assert document["scene"] == scene
+
+
+def test_map_document_is_stamped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The map document says the lowest GOAT Style version whose keys it uses."""
+    monkeypatch.setattr(versions, "SPEC_VERSION", "1.2.0")
+    monkeypatch.setattr(versions, "SINCE", {"MapDocument.locale": "1.2.0"})
+
+    def build(locale: str | None) -> dict:
+        return build_map_document(
+            basemap="light",
+            locale=locale,
+            view_state=None,
+            bounds=None,
+            groups=[],
+            layers=[layer(1, 0)],
+        )
+
+    assert build(None)["version"] == "1.0.0"
+    assert build("de")["version"] == "1.2.0"

@@ -12,7 +12,7 @@ const tiles = { type: "tiles" as const, id: "s", tiles: ["https://tiles.example/
 const poly = (symbol: object, extra: object = {}) =>
   compileLayer({
     id: "7",
-    style: { version: 1, kind: "vector", symbol, ...extra } as LayerStyle,
+    style: { version: "1.0.0", kind: "vector", symbol, ...extra } as LayerStyle,
     geometry: "polygon",
     source: tiles,
     highlight: true,
@@ -108,7 +108,7 @@ describe("extruded polygons", () => {
   });
 
   it("extrudes says whether any record or the H3 render raises features", () => {
-    const style = (extra: object) => ({ version: 1, kind: "vector", ...extra });
+    const style = (extra: object) => ({ version: "1.0.0", kind: "vector", ...extra });
     expect(extrudes(style({}))).toBe(false);
     expect(extrudes(style({ symbol: { extrude: false } }))).toBe(false);
     expect(extrudes(style({ symbol: { extrude: { height: 3 } } }))).toBe(true);

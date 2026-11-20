@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tests.styles.conftest import StyleWorld
 
 S = settings.SCHEMA
-GREEN = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+GREEN = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
 
 
 async def link_styles(db: AsyncSession, lp: int) -> list[Any]:

@@ -15,7 +15,7 @@ import {
 const STAMP = { at: "2026-01-01T00:00:00Z", data: "synthetic:1", scope: "dataset" };
 
 const KINDS = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { marker: { shape: "circle", color: "#9aa3ad", size: 8 } },
   classify: [
@@ -37,7 +37,7 @@ const KINDS = {
 
 // Numeric classes without ids: the legend and the counts key them by position.
 const SIZES = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc" } },
   classify: [
@@ -223,7 +223,7 @@ describe("buildLegend with the classes present", () => {
 
   it("ramps, size samples and rules do not change", () => {
     const doc = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { color: { field: "size", palette: ["#000000", "#ffffff"], domain: [0, 10] } } },
       classify: [KINDS.classify[0]],
@@ -278,10 +278,10 @@ describe("classIndexOf", () => {
 
 describe("legendClasses", () => {
   it("filter by default, else what the style says; rasters list every class", () => {
-    expect(legendClasses({ version: 1, kind: "vector" })).toBe("filter");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "view" } })).toBe("view");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "all" } })).toBe("all");
-    expect(legendClasses({ version: 1, kind: "vector", legend: { classes: "nearby" } })).toBe("filter");
-    expect(legendClasses({ version: 1, kind: "raster", legend: { classes: "view" } })).toBe("all");
+    expect(legendClasses({ version: "1.0.0", kind: "vector" })).toBe("filter");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "view" } })).toBe("view");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "all" } })).toBe("all");
+    expect(legendClasses({ version: "1.0.0", kind: "vector", legend: { classes: "nearby" } })).toBe("filter");
+    expect(legendClasses({ version: "1.0.0", kind: "raster", legend: { classes: "view" } })).toBe("all");
   });
 });

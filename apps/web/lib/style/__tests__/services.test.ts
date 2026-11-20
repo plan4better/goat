@@ -65,12 +65,12 @@ describe("map services and rasters", () => {
       tiles: "https://tiles.example/{z}/{x}/{y}.png",
     };
     expect(
-      compile({ version: 1, kind: "raster", brightness: -0.2, render: { type: "image" } }, xyz).layers[0]
-        .paint
+      compile({ version: "1.0.0", kind: "raster", brightness: -0.2, render: { type: "image" } }, xyz)
+        .layers[0].paint
     ).toEqual({ "raster-brightness-max": 0.8 });
     const zoomed = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "raster",
         opacity: {
           zoom: [
@@ -88,7 +88,11 @@ describe("map services and rasters", () => {
   });
 
   it("a raster file draws from its values even before its domain is computed", () => {
-    const style = { version: 1, kind: "raster", render: { type: "continuous", palette: "goat:elevation" } };
+    const style = {
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "continuous", palette: "goat:elevation" },
+    };
     const source = {
       type: "raster" as const,
       id: "s9",

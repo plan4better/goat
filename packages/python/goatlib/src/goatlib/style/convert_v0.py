@@ -17,6 +17,7 @@ from goatlib.style.catalog import icon_names
 from goatlib.style.colors import parse_color
 from goatlib.style.context import DataContext
 from goatlib.style.cql import as_text
+from goatlib.style.version import stamp
 
 #: What today's renderer draws when a key is absent (it reads the stored
 #: properties as they are, without the web form's defaults).
@@ -74,6 +75,8 @@ class UpgradeResult:
     document: dict[str, Any]
     map_state: dict[str, Any]
     lossy: tuple[LossyNote, ...]
+    #: The major version the document was read at: 0 for today's styles, -1 for
+    #: a document this goatlib does not read (returned as it is).
     version_from: int
 
 
@@ -139,7 +142,7 @@ class _Converter:
     # vector ---------------------------------------------------------------------------------------
     def vector(self) -> dict[str, Any]:
         p, geometry = self.props, self.ctx.geometry
-        doc: dict[str, Any] = {"version": 1, "kind": "vector"}
+        doc: dict[str, Any] = {"version": "1.0.0", "kind": "vector"}
         symbol: dict[str, Any] = {}
         classify: list[dict[str, Any]] = []
         opacity = _num(p.get("opacity"))
@@ -697,7 +700,7 @@ class _Converter:
     # raster ---------------------------------------------------------------------------------------
     def raster(self) -> dict[str, Any]:
         p = self.props
-        doc: dict[str, Any] = {"version": 1, "kind": "raster"}
+        doc: dict[str, Any] = {"version": "1.0.0", "kind": "raster"}
         style = _dict(p.get("style"))
         opacity = _num(p.get("opacity"))
         style_opacity = _num(style.get("opacity"))
@@ -1006,7 +1009,8 @@ def convert_v0(
     *,
     asset_for_url: Callable[[str], str | None] | None = None,
 ) -> "UpgradeResult":
-    """Today's `properties` of a layer or project layer as a GOAT Style 1 document.
+    """Today's `properties` of a layer or project layer as a GOAT Style 1 document,
+    with the lowest version its keys need (`stamp`).
 
     `asset_for_url` resolves an uploaded icon's object key (its URL path) to the
     uploaded asset's id, for icons stored with a URL but without an id.
@@ -1018,9 +1022,9 @@ def convert_v0(
         document = conv.raster() if ctx.kind == "raster" else conv.vector()
     except Exception as exc:  # a shape no rule foresaw: keep what is safe, report it
         conv.lose("*", f"Conversion stopped early: {type(exc).__name__}: {exc}")
-        document = {"version": 1, "kind": ctx.kind}
+        document = {"version": "1.0.0", "kind": ctx.kind}
     return UpgradeResult(
-        document=document,
+        document=stamp(document),
         map_state=conv.map_state,
         lossy=tuple(conv.lossy),
         version_from=0,

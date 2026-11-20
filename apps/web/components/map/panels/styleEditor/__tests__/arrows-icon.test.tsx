@@ -18,7 +18,7 @@ const render = (doc: object) =>
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", ...doc } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", ...doc } as LayerStyle,
       data: { geometry: "line", fields: [{ name: "status", type: "string", label: "status" }] },
     }
   );

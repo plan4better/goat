@@ -13,7 +13,7 @@ void i18n.init({ lng: "en", resources: { en: { common: en } }, defaultNS: "commo
 const t = i18n.t.bind(i18n);
 
 const doc = (symbol: object, extra: object = {}) =>
-  ({ version: 1, kind: "vector", symbol, ...extra }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol, ...extra }) as LayerStyle;
 const fields = [{ name: "visitors", type: "integer" as const, label: "Visitors per year" }];
 const ctx = { fields, mapZoom: 12, geometry: "polygon" as const, language: "en" };
 

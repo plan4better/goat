@@ -19,7 +19,7 @@ function setup(doc: object, data: object = {}) {
       <RasterPopupSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "raster", ...doc } as LayerStyle,
+      document: { version: "1.0.0", kind: "raster", ...doc } as LayerStyle,
       data: { raster: { dataset: "d1", info: INFO }, ...data },
     }
   );
@@ -145,7 +145,7 @@ describe("raster legend", () => {
         <LegendSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
+        document: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
         data: {
           service: {
             kind: "wms",
@@ -184,7 +184,7 @@ describe("raster popup", () => {
 
   it("a map service has no popup section", () => {
     renderPanel(<RasterPopupSection />, {
-      document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
+      document: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
       data: { service: { kind: "wms", url: "https://wms", layers: 1, layerNames: ["a"], styles: [] } },
     });
     expect(screen.queryByText("style_editor.popup_show_on")).toBeNull();

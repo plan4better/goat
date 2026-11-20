@@ -179,7 +179,7 @@ const PROBES: CompileInput[] = [
     geometry: "polygon",
     source: TILES,
     style: {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       opacity: 0.5,
       symbol: {
@@ -194,7 +194,7 @@ const PROBES: CompileInput[] = [
     geometry: "polygon",
     source: TILES,
     style: {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: { field: "levels" }, base: 2, unit: "storeys" } },
     },
@@ -203,30 +203,30 @@ const PROBES: CompileInput[] = [
     id: "columns",
     geometry: "point",
     source: TILES,
-    style: { version: 1, kind: "vector", render: { type: "h3", extrude: { tallest: 500, base: 10 } } },
+    style: { version: "1.0.0", kind: "vector", render: { type: "h3", extrude: { tallest: 500, base: 10 } } },
   },
   {
     id: "icon",
     geometry: "point",
     source: TILES,
-    style: { version: 1, kind: "vector", symbol: { marker: { shape: "icon" }, outline: { width: 1 } } },
+    style: { version: "1.0.0", kind: "vector", symbol: { marker: { shape: "icon" }, outline: { width: 1 } } },
   },
   {
     id: "circle",
     geometry: "point",
     source: TILES,
-    style: { version: 1, kind: "vector", symbol: { marker: { shape: "circle", offset: [2, 2] } } },
+    style: { version: "1.0.0", kind: "vector", symbol: { marker: { shape: "circle", offset: [2, 2] } } },
   },
   {
     id: "heatmap",
     geometry: "point",
     source: TILES,
-    style: { version: 1, kind: "vector", render: { type: "heatmap", intensity: 2, opacity: 0.5 } },
+    style: { version: "1.0.0", kind: "vector", render: { type: "heatmap", intensity: 2, opacity: 0.5 } },
   },
   {
     id: "image",
     source: { type: "service", id: "s", service: "xyz", tiles: "https://tiles.example/{z}/{x}/{y}.png" },
-    style: { version: 1, kind: "raster", brightness: -0.2, hue: 30 },
+    style: { version: "1.0.0", kind: "raster", brightness: -0.2, hue: 30 },
   },
 ];
 

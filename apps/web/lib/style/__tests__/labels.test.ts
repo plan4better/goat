@@ -68,7 +68,7 @@ describe("labels", () => {
   it("point labels around the marker, with priority and overlap", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: { size: 8 },
@@ -107,7 +107,7 @@ describe("labels", () => {
       label(
         compile(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             symbol: {
               marker: { size: 8 },
@@ -146,7 +146,7 @@ describe("labels", () => {
   it("fixed placements without a marker keep 2 px from the point and pass MapLibre's validation", () => {
     for (const placement of ["below", "left", "above_right", "below_left"]) {
       const out = compile(
-        { version: 1, kind: "vector", symbol: { marker: false, label: { text: "{name}", placement } } },
+        { version: "1.0.0", kind: "vector", symbol: { marker: false, label: { text: "{name}", placement } } },
         "point"
       );
       expect(Math.max(...(label(out).layout["text-offset"] as number[]).map(Math.abs))).toBeCloseTo(2 / 12);
@@ -157,7 +157,10 @@ describe("labels", () => {
   it("only labels placed around the marker line up on its side", () => {
     const placed = (placement: string, geometry: CompileInput["geometry"]) =>
       label(
-        compile({ version: 1, kind: "vector", symbol: { label: { text: "{name}", placement } } }, geometry)
+        compile(
+          { version: "1.0.0", kind: "vector", symbol: { label: { text: "{name}", placement } } },
+          geometry
+        )
       ).layout["text-justify"];
     expect(placed("auto", "point")).toBe("auto");
     expect(placed("above", "point")).toBeUndefined();
@@ -170,7 +173,12 @@ describe("labels", () => {
     const layout = (l: object, extra: object = {}) =>
       label(
         compile(
-          { version: 1, kind: "vector", symbol: { fill: {}, label: { text: "{name}", ...l } }, ...extra },
+          {
+            version: "1.0.0",
+            kind: "vector",
+            symbol: { fill: {}, label: { text: "{name}", ...l } },
+            ...extra,
+          },
           "polygon",
           {
             fields: { name: "string", t: "string" },
@@ -232,7 +240,7 @@ describe("labels", () => {
       valid(
         compile(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             symbol: {
               fill: {},
@@ -252,7 +260,12 @@ describe("labels", () => {
     const font = (l: object, extra: object = {}) =>
       label(
         compile(
-          { version: 1, kind: "vector", symbol: { fill: {}, label: { text: "{name}", ...l } }, ...extra },
+          {
+            version: "1.0.0",
+            kind: "vector",
+            symbol: { fill: {}, label: { text: "{name}", ...l } },
+            ...extra,
+          },
           "polygon",
           { fields: { name: "string", t: "string" } }
         )
@@ -332,7 +345,7 @@ describe("labels", () => {
     ]);
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: {}, label: { text: "{name}", font: { style: "italic" } } },
         classify: [
@@ -354,7 +367,7 @@ describe("labels", () => {
       label(
         compile(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             symbol: {
               ...(geometry === "line" ? { line: {} } : { fill: {} }),
@@ -384,7 +397,7 @@ describe("labels", () => {
     expect(layout({ spacing: 400 }, undefined, "polygon")["symbol-spacing"]).toBeUndefined();
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           line: {},
@@ -407,12 +420,16 @@ describe("labels", () => {
 
   it("labels along lines or at their centers", () => {
     const along = compile(
-      { version: 1, kind: "vector", symbol: { line: {}, label: { text: "{name}", max_width: 240 } } },
+      { version: "1.0.0", kind: "vector", symbol: { line: {}, label: { text: "{name}", max_width: 240 } } },
       "line"
     );
     expect(label(along).layout).toMatchObject({ "symbol-placement": "line", "text-max-width": 20 });
     const center = compile(
-      { version: 1, kind: "vector", symbol: { line: {}, label: { text: "{name}", placement: "center" } } },
+      {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { line: {}, label: { text: "{name}", placement: "center" } },
+      },
       "line"
     );
     expect(label(center)["source-layer"]).toBe("default_decoration");
@@ -422,7 +439,7 @@ describe("labels", () => {
   it("lines of a label get their own size, color and weight", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {},
@@ -453,7 +470,7 @@ describe("labels", () => {
       label(
         compile(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             symbol: { marker: {}, label: { text: "{name}\n{kind}", ...(font ? { font } : {}), lines } },
           },
@@ -484,7 +501,7 @@ describe("labels", () => {
   it("classes can change the text; layer opacity fades it", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         opacity: 0.5,
         symbol: { marker: {}, label: { text: "{name}" } },
@@ -510,7 +527,7 @@ describe("label offsets", () => {
   it("an offset by zoom compiles per stop, in ems of the label size", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           line: {},
@@ -541,7 +558,7 @@ describe("label offsets", () => {
   it("an offset a class sets moves only that class's labels", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: {}, label: { text: "{name}" } },
         classify: [
@@ -564,7 +581,7 @@ describe("label offsets", () => {
   it("labels around markers that grow by zoom keep their distance at every stop (spec 16)", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {

@@ -56,7 +56,7 @@ vi.mock("@/lib/api/map", async (original) => ({
   useProjectMap: () => ({ setLayerState: async () => undefined, mutate: async () => undefined }),
 }));
 
-const DOC = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const layer = {
   id: 5,
   layer_id: "dataset-5",

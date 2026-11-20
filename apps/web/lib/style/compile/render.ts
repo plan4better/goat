@@ -26,6 +26,7 @@ import { DEFAULTS, H3_AUTO_FROM_ZOOM } from "@/lib/style/generated/defaults";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
 import { isPin } from "@/lib/style/markerShapes";
 import { paletteColors, paletteSteps } from "@/lib/style/palettes";
+import { STYLE_VERSION } from "@/lib/style/version";
 
 /** The cluster count's domain when a value form over `count` gives none: counts exist only in the browser. */
 export const CLUSTER_COUNT_MAX = 1000;
@@ -414,7 +415,7 @@ function mapNumbers(value: Value, fn: (n: number) => Expr): Value | null {
  */
 function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification {
   const marker = clusters.style;
-  const symbol: JsonObject = { version: 1, kind: "vector", symbol: own };
+  const symbol: JsonObject = { version: STYLE_VERSION, kind: "vector", symbol: own };
   const label = isObject(own.label) ? own.label : {};
   const textSize = typeof label.size === "number" ? label.size : (DEFAULTS["label.size"] as number);
   const scale = textSize / (DEFAULTS["label.size"] as number);
@@ -517,7 +518,7 @@ export function clusterLayers(ctx: PartContext, render: JsonObject): LayerSpecif
   if (!badge && label !== undefined) symbol.label = label;
   const categories = points ? markerCategories(ctx.style, ctx.fields) : null;
   const base = isObject(ctx.style.symbol) && isObject(ctx.style.symbol.marker) ? ctx.style.symbol.marker : {};
-  const style: JsonObject = { version: 1, kind: "vector", symbol: onCluster(symbol) };
+  const style: JsonObject = { version: STYLE_VERSION, kind: "vector", symbol: onCluster(symbol) };
   const clusters: PartContext = {
     ...ctx,
     id: `${ctx.id}-cluster`,

@@ -53,7 +53,7 @@ describe("renders in class scope", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: { color: "#cccccc", opacity: 0.8 }, outline: { color: "#ffffff", width: 1 } },
           classify: [{ id: "density", field: "density", method: "quantile", count: 4, classes }],
@@ -86,7 +86,7 @@ describe("renders in rule scope", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { line: { color: "#cccccc", width: 2 } },
           rules,
@@ -114,7 +114,11 @@ describe("renders of raster categories", () => {
         <RasterColorSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "raster", render: { type: "categorical", classes } } as LayerStyle,
+        document: {
+          version: "1.0.0",
+          kind: "raster",
+          render: { type: "categorical", classes },
+        } as LayerStyle,
         data: {
           raster: {
             dataset: "d1",

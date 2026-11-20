@@ -114,7 +114,7 @@ const dem: ViewLayer = {
   style: {
     id: "s1",
     document: {
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "continuous", domain: [32, 119], palette: "colorbrewer:OrRd", reverse: true },
       opacity: 0.8,
@@ -196,7 +196,7 @@ describe("MapViewer raster popup", () => {
       style: {
         id: "s2",
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "raster",
           render: {
             type: "continuous",

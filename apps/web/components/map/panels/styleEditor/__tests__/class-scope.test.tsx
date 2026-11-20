@@ -21,7 +21,7 @@ const classes = (n: number) =>
 
 function setup(n = 4, fill: object = { color: "#cccccc", opacity: 0.8 }, extra: object = {}) {
   const document = {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { fill, outline: { color: "#ffffff", width: 1 } },
     classify: [

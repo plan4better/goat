@@ -1,10 +1,10 @@
 // A catalog dataset's preview sample, drawn with its own style through the same compiler as every map (spec 16), so
-// the preview matches the layer the dataset becomes once added. Only a GOAT Style document is drawn; anything else
-// (or no geometry type) leaves the caller's plain footprint rendering.
+// the preview matches the layer the dataset becomes once added. Only a GOAT Style document of major 1 is drawn;
+// anything else (another major, or no geometry type) leaves the caller's plain footprint rendering.
 import type { Geometry } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import { isObject } from "@/lib/style/json";
 import type { RenderLayer } from "@/lib/style/render/mapLayers";
+import { isDrawableStyle } from "@/lib/style/version";
 
 /** The style asset as served: a GOAT Style document (the catalog upgrades older styles on read). */
 export type CatalogStyle = Record<string, unknown>;
@@ -21,7 +21,7 @@ export function catalogSampleLayer(
   sample: GeoJSON.FeatureCollection | null,
   highlight?: number
 ): RenderLayer | undefined {
-  if (!sample || !isObject(style) || style.version !== 1 || !geometryType || !GEOMETRIES.has(geometryType)) {
+  if (!sample || !isDrawableStyle(style) || !geometryType || !GEOMETRIES.has(geometryType)) {
     return undefined;
   }
   const data: GeoJSON.FeatureCollection = {

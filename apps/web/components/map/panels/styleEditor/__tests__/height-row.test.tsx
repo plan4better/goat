@@ -58,7 +58,7 @@ const FIELDS = [
 ];
 
 let layerCount = 0;
-function setup(document: LayerStyle = { version: 1, kind: "vector" } as LayerStyle) {
+function setup(document: LayerStyle = { version: "1.0.0", kind: "vector" } as LayerStyle) {
   const redux = configureStore({ reducer: { map: mapReducer } });
   redux.dispatch(initView({ projectId: "p1", mode: "2d", projection: "mercator" }));
   const saver = new StyleSaver({ transport: echoTransport(), document, revision: 1 });
@@ -173,7 +173,7 @@ describe("HeightRow", () => {
 
   it("shows the unit while the base reads a field", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 10 } },
     } as LayerStyle);
@@ -215,7 +215,7 @@ describe("HeightRow", () => {
 
   it("By attribute from Field values keeps the field the height reads", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: { field: "height" } } },
     } as LayerStyle);
@@ -228,7 +228,7 @@ describe("HeightRow", () => {
 
   it("in class scope a height by attribute stays the layer's: its row opens no editor", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: { field: "area", range: [0, 50], scale: "linear" } } },
       classify: [
@@ -247,7 +247,7 @@ describe("HeightRow", () => {
 
   it("offers the base every form of the height but None", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 40 } },
     } as LayerStyle);
@@ -278,7 +278,11 @@ describe("HeightRow", () => {
   });
 
   it("says at which zooms the volumes stand while a height is set, as Fill and Outline do", async () => {
-    setup({ version: 1, kind: "vector", symbol: { extrude: { height: 10, min_zoom: 14 } } } as LayerStyle);
+    setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: 10, min_zoom: 14 } },
+    } as LayerStyle);
     await openHeight();
     expect(within(popover()).getByText("Visible")).toBeTruthy();
     expect(within(popover()).getAllByText(/14/).length).toBeGreaterThan(0);
@@ -292,7 +296,7 @@ describe("HeightRow", () => {
 
   it("shows a class's own height in class scope", async () => {
     const { store } = setup({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 10 } },
       classify: [

@@ -34,7 +34,7 @@ function setup(popup?: unknown) {
     </PopoverProvider>,
     {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: {} },
         ...(popup === undefined ? {} : { popup }),

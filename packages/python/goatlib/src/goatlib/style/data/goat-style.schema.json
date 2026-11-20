@@ -4587,9 +4587,9 @@
    "additionalProperties": false,
    "properties": {
     "version": {
-     "const": 1,
+     "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
      "title": "Version",
-     "type": "integer"
+     "type": "string"
     },
     "basemap": {
      "anyOf": [
@@ -5823,9 +5823,9 @@
    "additionalProperties": false,
    "properties": {
     "version": {
-     "const": 1,
+     "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
      "title": "Version",
-     "type": "integer"
+     "type": "string"
     },
     "kind": {
      "const": "raster",
@@ -6988,9 +6988,9 @@
    "additionalProperties": false,
    "properties": {
     "version": {
-     "const": 1,
+     "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$",
      "title": "Version",
-     "type": "integer"
+     "type": "string"
     },
     "kind": {
      "const": "vector",

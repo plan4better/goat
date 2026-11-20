@@ -2,7 +2,7 @@
  {
   "name": "disjoint keys",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -16,7 +16,7 @@
    }
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -30,7 +30,7 @@
    }
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -44,7 +44,7 @@
    }
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -62,7 +62,7 @@
  {
   "name": "same key, last write wins",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -76,7 +76,7 @@
    }
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -90,7 +90,7 @@
    }
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -104,7 +104,7 @@
    }
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -122,7 +122,7 @@
  {
   "name": "added class and recolored class",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -160,7 +160,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -205,7 +205,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -243,7 +243,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -292,7 +292,7 @@
  {
   "name": "removal wins",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -329,7 +329,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -366,7 +366,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -396,7 +396,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -432,7 +432,7 @@
  {
   "name": "move",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -493,7 +493,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -554,7 +554,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -630,7 +630,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -710,7 +710,7 @@
  {
   "name": "non-id list is one value",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -735,7 +735,7 @@
    }
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -760,7 +760,7 @@
    }
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -785,7 +785,7 @@
    }
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -814,7 +814,7 @@
  {
   "name": "server values ignored",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -858,7 +858,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -902,7 +902,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -946,7 +946,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -994,7 +994,7 @@
  {
   "name": "retry changes nothing",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1031,7 +1031,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1068,7 +1068,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1105,7 +1105,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1146,7 +1146,7 @@
  {
   "name": "a removed list stays removed",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1176,7 +1176,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1206,7 +1206,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1220,7 +1220,7 @@
    }
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1240,7 +1240,7 @@
  {
   "name": "an added item without an id gets one and merges item by item",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1277,7 +1277,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1320,7 +1320,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1350,7 +1350,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1391,7 +1391,7 @@
  {
   "name": "a retried add keeps the current item",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1421,7 +1421,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1458,7 +1458,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1495,7 +1495,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1536,7 +1536,7 @@
  {
   "name": "an item placed after a removed item keeps its place",
   "base": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1597,7 +1597,7 @@
    ]
   },
   "incoming": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1673,7 +1673,7 @@
    ]
   },
   "current": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {
@@ -1719,7 +1719,7 @@
    ]
   },
   "expected": {
-   "version": 1,
+   "version": "1.0.0",
    "kind": "vector",
    "symbol": {
     "fill": {

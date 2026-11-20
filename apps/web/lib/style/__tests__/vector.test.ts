@@ -50,7 +50,7 @@ describe("polygons and lines", () => {
   it("fill, hatching, an outline in the fill color and the layer opacity", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         opacity: 0.5,
         symbol: {
@@ -80,7 +80,7 @@ describe("polygons and lines", () => {
   it("hatching only for some classes draws no pattern for the others", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" } },
         classify: [
@@ -112,7 +112,7 @@ describe("polygons and lines", () => {
   it("spacing and line width switch at zoom stops and per class, the color follows the fill", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           fill: {
@@ -154,7 +154,7 @@ describe("polygons and lines", () => {
   it("arrows repeating in both directions", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: { color: "#2166ac" }, arrows: { placement: "repeat", direction: "both" } },
       },
@@ -178,7 +178,7 @@ describe("polygons and lines", () => {
   it("decoration arrows at both ends, backwards", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: {}, arrows: { placement: "both_ends", direction: "backward" } },
       },
@@ -195,7 +195,7 @@ describe("polygons and lines", () => {
   it("layer and part zooms, line defaults and the casing following the line", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         min_zoom: 8,
         symbol: { line: { width: 3, max_zoom: 16 }, casing: { color: "#000000" } },
@@ -235,7 +235,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
 
   it("arrows a class switches off leave that class's features", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { line: {}, arrows: { size: 12 } },
       classify: [{ field: "t", method: "categories", classes: [{ values: ["a"], arrows: false }] }],
@@ -247,7 +247,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
 
   it("arrows fade with the layer opacity, having none of their own (spec 4.6)", () => {
     const out = compile(
-      { version: 1, kind: "vector", opacity: 0.5, symbol: { line: {}, arrows: { size: 12 } } },
+      { version: "1.0.0", kind: "vector", opacity: 0.5, symbol: { line: {}, arrows: { size: 12 } } },
       "line"
     );
     expect(part(out, "arrows").paint["icon-opacity"]).toBe(0.5);
@@ -255,7 +255,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
 
   it("a casing only a class sets draws only for that class", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { line: { width: 3 } },
       classify: [
@@ -269,7 +269,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
 
   it("a polygon outline only a rule sets draws only where the rule holds", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: {} },
       rules: [
@@ -287,7 +287,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
   it("an outline inside or outside its polygon moves by half its width (spec 3.1)", () => {
     const outline = (o: object, extra: object = {}) =>
       part(
-        compile({ version: 1, kind: "vector", symbol: { fill: {}, outline: o }, ...extra }, "polygon", {
+        compile({ version: "1.0.0", kind: "vector", symbol: { fill: {}, outline: o }, ...extra }, "polygon", {
           fields: { t: "string" },
         }),
         "outline"
@@ -343,7 +343,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
       0,
     ]);
     const out = compile(
-      { version: 1, kind: "vector", symbol: { fill: {}, outline: { position: "inside" } } },
+      { version: "1.0.0", kind: "vector", symbol: { fill: {}, outline: { position: "inside" } } },
       "polygon"
     );
     expect(valid(out)).toEqual([]);
@@ -352,7 +352,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
   it("an outline whose position changes by zoom moves by half the width it is drawn at, at every zoom", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           fill: {},
@@ -385,7 +385,7 @@ describe("parts switched on by classes and rules (spec 3)", () => {
 
   it("a part zoom range inside a class narrows that part for the class's features (spec 3.5)", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: {}, label: { text: "{name}" } },
       classify: [{ field: "t", method: "categories", classes: [{ values: ["a"], label: { min_zoom: 15 } }] }],
@@ -406,7 +406,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
   it("a fill switched off draws no fill though its classes set the fill color", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: false, outline: { color: "fill", width: 2 } },
         classify: [{ ...byKind({ fill: { color: "#111111" } })[0], target: "fill.color" }],
@@ -423,7 +423,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
   it("a pattern or a height a class sets draws nothing while the layer has its part off", () => {
     const hatched = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: false },
         classify: byKind({ fill: { pattern: "hatch" } }),
@@ -434,7 +434,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
     expect(ids(hatched)).toEqual([]);
     const raised = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: {}, extrude: false },
         classify: byKind({ extrude: { height: 30 } }),
@@ -450,7 +450,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
     const rule = (record: object) => [{ when: { op: "=", args: [{ property: "kind" }, "a"] }, ...record }];
     const polygon = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: {}, outline: false, label: false },
         classify: byKind({ outline: { color: "#ff0000" } }),
@@ -462,7 +462,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
     expect(ids(polygon)).toEqual(["9-fill"]);
     const line = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { line: false, casing: false, arrows: false },
         classify: byKind({ line: { color: "#ff0000" }, casing: { width: 2 }, arrows: { size: 12 } }),
@@ -473,7 +473,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
     expect(ids(line)).toEqual([]);
     const point = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: false },
         rules: rule({ marker: { color: "#ff0000" } }),
@@ -487,7 +487,7 @@ describe("parts the layer switches off stay off (spec 3)", () => {
   it("an object in a record still sets the keys of a part the layer shows, and false still switches it off", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" } },
         classify: [
@@ -526,7 +526,7 @@ describe("patterns and the fill color (spec 3.1)", () => {
 
   it("a hatch without a tint: the fill at opacity 0, the pattern still drawn", () => {
     const out = compile(
-      { version: 1, kind: "vector", symbol: { fill: { opacity: 0, pattern: "hatch_45" } } },
+      { version: "1.0.0", kind: "vector", symbol: { fill: { opacity: 0, pattern: "hatch_45" } } },
       "polygon"
     );
     expect(part(out, "fill").paint["fill-opacity"]).toBe(0);
@@ -535,7 +535,7 @@ describe("patterns and the fill color (spec 3.1)", () => {
 
   it("a class switching the fill off takes its pattern with it", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: { pattern: "dots" } },
       classify: [{ field: "t", method: "categories", classes: [{ values: ["a"], fill: false }] }],
@@ -547,7 +547,7 @@ describe("patterns and the fill color (spec 3.1)", () => {
 
   it("an outline in the fill color follows a fill color that varies by zoom", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         fill: {
@@ -577,7 +577,7 @@ describe("patterns and the fill color (spec 3.1)", () => {
   it("a pattern in a fill color by attribute in zoom stops (spec 4.4) has the fill's color at each whole zoom", () => {
     const palette = (colors: string[]) => ({ field: "amount", palette: colors, domain: [0, 100] });
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         fill: {

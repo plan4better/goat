@@ -24,7 +24,7 @@ const service = (extra: object = {}) => ({
 });
 const setup = (data: object) =>
   renderPanel(<ServiceSection />, {
-    document: { version: 1, kind: "raster", render: { type: "image" } } as LayerStyle,
+    document: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
     data: { service: service(data) },
   });
 
@@ -77,7 +77,7 @@ describe("service section", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "raster",
           render: { type: "image", service_style: "grey" },
         } as LayerStyle,

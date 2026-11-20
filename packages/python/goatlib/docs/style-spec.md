@@ -31,7 +31,7 @@ The sample datasets:
 
 - **Two documents**: the **layer style** (how one layer looks; stored as the dataset's default and per project layer,
   as named styles) and the **map document** (basemap, view, the layer tree, per-layer map state).
-- **JSON** with `snake_case` keys and `"version": 1`. Unknown keys are an error on write and ignored on read
+- **JSON** with `snake_case` keys and `"version": "1.0.0"`. Unknown keys are an error on write and ignored on read
   (section 14).
 - **Colors** are hex: `#rrggbb` or `#rrggbbaa`. **Sizes, widths and offsets** are screen pixels. **Opacity** is 0 to 1.
 - **Zoom** levels are 0 to 24. `min_zoom` is inclusive, `max_zoom` exclusive. Zooms on classes and rules are whole
@@ -82,7 +82,7 @@ The sample datasets:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#c7e9b4", "opacity": 0.72 },
@@ -93,7 +93,7 @@ The sample datasets:
 
 | Key | What it holds |
 |---|---|
-| `version` | always 1 |
+| `version` | the version of this specification the document needs, `"1.0.0"` (section 14) |
 | `kind` | `vector` or `raster` |
 | `geometry` | optional: `point`, `line` or `polygon`, checked against the dataset (`geometry_mismatch`) |
 | `opacity` | opacity of the whole layer |
@@ -147,7 +147,7 @@ Every part also takes `min_zoom` and `max_zoom`.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#a1d99b", "opacity": 0.7 },
@@ -164,7 +164,7 @@ line has longer dashes than a dashed 1 px line.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7", "opacity": 0.6 },
@@ -183,7 +183,7 @@ them. Polygons only: a point outline with a `position` is `position_on_point_out
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": false,
@@ -211,7 +211,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7", "opacity": 0.6 }, "outline": { "color": "#636363", "width": 1 } },
   "classify": [
@@ -244,7 +244,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3, "opacity": 1, "cap": "round", "join": "round", "offset": 2 },
@@ -279,7 +279,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#4d4d4d", "width": 2 },
@@ -293,7 +293,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 4, "cap": "square", "join": "miter", "blur": 1.5 },
@@ -307,7 +307,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 4, "cap": "butt", "join": "bevel" },
@@ -321,7 +321,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -333,7 +333,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -349,7 +349,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8, "opacity": 0.9 },
@@ -363,7 +363,7 @@ when the fill itself is switched off.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#f28e2b", "size": 18, "icon": "goat:star-solid", "icon_color": "#ffffff" },
@@ -377,7 +377,7 @@ when the fill itself is switched off.
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -398,7 +398,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#1a6b4d", "size": 10, "fill": false },
@@ -412,7 +412,7 @@ when the fill itself is switched off.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "icon", "icon": "asset:7f3a91c2", "size": 24, "anchor": "bottom", "offset": [0, -2] } }
 }
@@ -448,7 +448,7 @@ when the fill itself is switched off.
 <!-- expect: dash_on_point_outline -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 1, "dash": "dashed" } }
 }
@@ -461,7 +461,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7", "opacity": 0.6 }, "outline": { "color": "#ffffff", "width": 1 } },
   "classify": [
@@ -486,7 +486,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#f0f0f0" },
@@ -506,7 +506,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -544,7 +544,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -567,7 +567,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -591,7 +591,7 @@ when the fill itself is switched off.
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#283593", "size": 8 },
@@ -664,7 +664,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -683,7 +683,7 @@ when the fill itself is switched off.
 <!-- expect: template_syntax -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "label": { "text": "{{ name }}" } }
 }
@@ -694,7 +694,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "geometry": "point",
   "symbol": {
@@ -710,7 +710,7 @@ when the fill itself is switched off.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 },
@@ -724,7 +724,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 2 },
@@ -744,7 +744,7 @@ when the fill itself is switched off.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac" },
@@ -766,7 +766,7 @@ when the fill itself is switched off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "min_zoom": 8,
   "symbol": {
@@ -797,7 +797,7 @@ its features from zoom 8.
 <!-- expect: zoom_not_whole -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 } },
   "classify": [{ "field": "status", "method": "categories", "classes": [{ "values": ["planned"], "min_zoom": 12.5 }] }]
@@ -814,7 +814,7 @@ it "Height". Like every part it is off while absent and `false` switches it off.
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#d9d9d9", "opacity": 0.9 },
@@ -860,7 +860,7 @@ it "Height". Like every part it is off while absent and `false` switches it off.
 <!-- expect: base_above_height, extrude_drops_pattern -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#fdb462", "pattern": "hatch_45" },
@@ -885,7 +885,7 @@ property (section 5). Which forms a property allows comes from MapLibre (4.5); o
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": {
@@ -911,7 +911,7 @@ property (section 5). Which forms a property allows comes from MapLibre (4.5); o
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#deebf7" },
@@ -931,7 +931,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -949,7 +949,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- expect: zoom_needs_step -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "icon", "color": "#f28e2b", "icon": { "zoom": [[11, "goat:circle-solid"], [15, "goat:star-solid"]] } } }
 }
@@ -962,7 +962,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": { "field": "density", "palette": "colorbrewer:YlGnBu" }, "opacity": 0.8 },
@@ -977,7 +977,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -994,7 +994,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": { "field": "traffic", "range": [1, 8], "scale": "log" } } }
 }
@@ -1021,7 +1021,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": {
@@ -1102,7 +1102,7 @@ classification is one legend section.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 16, "icon_color": "#ffffff" } },
   "classify": [
@@ -1141,7 +1141,7 @@ classification is one legend section.
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#6baed6", "width": 3 } },
   "classify": [
@@ -1154,7 +1154,7 @@ classification is one legend section.
 <!-- expect: category_duplicate -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 12 } },
   "classify": [
@@ -1179,7 +1179,7 @@ What the panel or the AI writes (the intent):
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.8 }, "outline": { "color": "#ffffff", "width": 1 } },
   "classify": [
@@ -1193,7 +1193,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.8 }, "outline": { "color": "#ffffff", "width": 1 } },
   "classify": [
@@ -1244,7 +1244,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" }, "outline": { "color": "#636363", "width": 1 } },
   "classify": [
@@ -1259,7 +1259,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1273,7 +1273,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc", "opacity": 0.85 }, "outline": { "color": "fill", "width": 1 } },
   "classify": [
@@ -1300,7 +1300,7 @@ What the server stores after computing the classes:
 <!-- expect: classes_invalid -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1324,7 +1324,7 @@ What the server stores after computing the classes:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "classify": [
@@ -1368,7 +1368,7 @@ What the server stores after computing the classes:
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": 3 },
@@ -1399,7 +1399,7 @@ What the server stores after computing the classes:
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "marker": { "shape": "circle", "color": "#999999", "size": { "field": "pupils", "range": [4, 18], "scale": "sqrt" } },
@@ -1444,7 +1444,7 @@ A later classification wins for the features it covers. The validator compares t
 <!-- expect: classify_target_conflict -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1461,7 +1461,7 @@ A later classification wins for the features it covers. The validator compares t
 <!-- expect: classify_partial_overlap -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#cccccc" } },
   "classify": [
@@ -1519,7 +1519,7 @@ thresholds next to categories, empty values).
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 } },
   "rules": [
@@ -1551,7 +1551,7 @@ thresholds next to categories, empty values).
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [
@@ -1576,7 +1576,7 @@ thresholds next to categories, empty values).
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [
@@ -1602,7 +1602,7 @@ thresholds next to categories, empty values).
 <!-- expect: like_pattern_unsupported -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [{ "when": { "op": "like", "args": [{ "property": "name" }, "Primary%school%"] }, "visible": false }]
@@ -1613,7 +1613,7 @@ thresholds next to categories, empty values).
 <!-- expect: operator_type_mismatch -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 } },
   "rules": [{ "when": { "op": "=", "args": [{ "property": "pupils" }, "300"] }, "visible": false }]
@@ -1646,7 +1646,7 @@ For every feature and every part key, the value comes from, in order (the last o
 <!-- expect: override_not_per_feature -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac", "width": 3 }, "arrows": { "placement": "center", "size": 12 } },
   "rules": [{ "when": { "op": "=", "args": [{ "property": "oneway" }, true] }, "arrows": { "placement": "repeat", "spacing": 120 } }]
@@ -1661,7 +1661,7 @@ For every feature and every part key, the value comes from, in order (the last o
 <!-- check: counters -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "opacity": 0.9,
   "symbol": {
@@ -1755,7 +1755,7 @@ rasters and map services do not change.
 
 <!-- check: facilities -->
 ```json
-{ "version": 1, "kind": "vector", "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }, "legend": false, "popup": false }
+{ "version": "1.0.0", "kind": "vector", "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }, "legend": false, "popup": false }
 ```
 
 `"popup": false` is short for `{ "enabled": false }`.
@@ -1765,7 +1765,7 @@ rasters and map services do not change.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#9aa3ad", "size": 8 } },
   "classify": [
@@ -1844,7 +1844,7 @@ the dataset's field settings.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 18, "icon": "goat:marker", "icon_color": "#ffffff" } },
   "popup": {
@@ -1876,7 +1876,7 @@ the dataset's field settings.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": {
@@ -1902,7 +1902,7 @@ In `html` mode:
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": { "trigger": "hover", "blocks": [{ "type": "field_list", "attributes": [{ "field": "name" }] }], "header": "none" }
@@ -1914,7 +1914,7 @@ In `html` mode:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "popup": {
@@ -1931,7 +1931,7 @@ In `html` mode:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "outline": { "color": "#3182bd", "width": 1 } },
   "popup": {
@@ -1954,7 +1954,7 @@ The validator checks every field a popup names against the dataset: attributes, 
 <!-- expect: unknown_field -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 10 } },
   "popup": { "blocks": [{ "type": "button", "label": "Website", "url_template": "{{ website }}", "style": "link" }] }
@@ -1973,7 +1973,7 @@ The validator checks every field a popup names against the dataset: attributes, 
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "heatmap",
@@ -2011,7 +2011,7 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "cluster",
@@ -2060,7 +2060,7 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "cluster",
@@ -2088,7 +2088,7 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "cluster",
@@ -2114,7 +2114,7 @@ and there is no feature limit.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "h3",
@@ -2135,7 +2135,7 @@ and there is no feature limit.
 <!-- check: facilities -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": { "type": "h3", "resolution": 8, "value": { "op": "mean", "field": "visitors" }, "palette": "d3:viridis" },
   "symbol": { "marker": { "shape": "circle", "color": "#f28e2b", "size": 8 } }
@@ -2156,7 +2156,7 @@ and there is no feature limit.
 <!-- check: schools -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "render": {
     "type": "h3",
@@ -2185,7 +2185,7 @@ and there is no feature limit.
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.8,
   "resampling": "linear",
@@ -2218,7 +2218,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "image", "bands": [1, 2, 3] },
   "brightness": 0.1,
@@ -2232,14 +2232,14 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 
 <!-- check: satellite -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "image", "bands": [4, 1, 2] } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "image", "bands": [4, 1, 2] } }
 ```
 
 > "Land cover in the file's own colors."
 
 <!-- check: landcover -->
 ```json
-{ "version": 1, "kind": "raster", "resampling": "nearest", "render": { "type": "image" } }
+{ "version": "1.0.0", "kind": "raster", "resampling": "nearest", "render": { "type": "image" } }
 ```
 
 - `bands` maps three bands to red, green and blue (rasters with three or more bands). A single-band raster without a
@@ -2254,7 +2254,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.7,
   "render": { "type": "continuous", "band": 1, "palette": "goat:elevation", "domain": [200, 450], "outside": "hide" },
@@ -2267,7 +2267,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2294,7 +2294,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "continuous", "palette": "goat:elevation" },
   "legend": { "title": "Elevation", "unit": "m", "min_label": "Low", "max_label": "High" }
@@ -2307,7 +2307,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 
 <!-- check: satellite -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "continuous", "band": 4, "palette": "d3:viridis", "domain": [10, 230] } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "continuous", "band": 4, "palette": "d3:viridis", "domain": [10, 230] } }
 ```
 
 > "Vegetation index (NDVI) in five equal classes."
@@ -2315,7 +2315,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2343,7 +2343,7 @@ sets on a class by position survives a recompute (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2363,7 +2363,7 @@ sets on a class by position survives a recompute (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "continuous",
@@ -2387,7 +2387,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: landcover -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.75,
   "resampling": "nearest",
@@ -2415,7 +2415,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.6,
   "render": { "type": "hillshade", "method": "multidirectional", "direction": 315, "altitude": 45, "exaggeration": 0.6, "shadow_color": "#2d3a4a", "highlight_color": "#ffffff" }
@@ -2427,7 +2427,7 @@ break statistics as a vector field's when the style is checked (section 12).
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": {
     "type": "hillshade",
@@ -2453,17 +2453,17 @@ The other methods:
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "combined", "exaggeration": 0.5 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "combined", "exaggeration": 0.5 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "igor", "exaggeration": 0.7 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "igor", "exaggeration": 0.7 } }
 ```
 
 <!-- check: elevation -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "method": "basic", "shadow_color": "#000000" } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "method": "basic", "shadow_color": "#000000" } }
 ```
 
 ### 9.7 Popup and zooms on rasters
@@ -2473,7 +2473,7 @@ The other methods:
 <!-- check: satellite -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "min_zoom": 10,
   "render": { "type": "image", "bands": [1, 2, 3] },
@@ -2486,7 +2486,7 @@ The other methods:
 <!-- check: elevation -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "render": { "type": "continuous", "palette": "goat:elevation", "domain": [181, 440] },
   "popup": { "trigger": "hover", "bands": "styled" },
@@ -2504,7 +2504,7 @@ uses) or `all`. The values come from the raster service's point query.
 <!-- check: wms -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "raster",
   "opacity": 0.9,
   "min_zoom": 12,
@@ -2519,7 +2519,7 @@ uses) or `all`. The values come from the raster service's point query.
 
 <!-- check: tiles -->
 ```json
-{ "version": 1, "kind": "raster", "opacity": 0.5, "saturation": -0.6, "render": { "type": "image" }, "legend": false }
+{ "version": "1.0.0", "kind": "raster", "opacity": 0.5, "saturation": -0.6, "render": { "type": "image" }, "legend": false }
 ```
 
 > "Color the WMS layer by elevation." A service sends finished pictures, so there is no band to color.
@@ -2527,7 +2527,7 @@ uses) or `all`. The values come from the raster service's point query.
 <!-- check: wms -->
 <!-- expect: render_not_for_source -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "continuous", "palette": "goat:elevation" } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "continuous", "palette": "goat:elevation" } }
 ```
 
 - **A map service layer** has a raster style with `render.type: "image"`. `opacity`, the zooms, `resampling` and the
@@ -2556,7 +2556,7 @@ carry a project's map state.
 <!-- check: map -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "view": { "center": [11.57, 48.14], "zoom": 12, "pitch": 0, "bearing": 0 },
   "locale": "de-DE",
@@ -2621,7 +2621,7 @@ carry a project's map state.
 <!-- check: map -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "view": { "center": [11.09, 47.49], "zoom": 13, "pitch": 60, "bearing": 30, "mode": "3d", "projection": "globe" },
   "layers": [],
@@ -2699,7 +2699,7 @@ whole map.
 <!-- expect: fog_without_terrain -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "basemap": { "id": "light" },
   "layers": [],
   "scene": {
@@ -2754,7 +2754,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `unknown_key` | error | a key the reference does not have |
 | `missing_required` | error | a required key is missing |
 | `invalid_value` | error | wrong type, value not allowed, or out of range |
-| `unknown_version`, `newer_version` | error | `version` is not an integer this server knows, or newer |
+| `unknown_version`, `newer_version`, `newer_patch` | error, `newer_patch` warning | `version` is not three numbers, needs a newer major or minor, or only a newer patch, which is read (14) |
 | `geometry_mismatch` | error | `geometry` differs from the dataset |
 | `part_not_for_geometry` | error | a part the geometry does not have (`line` on polygons) |
 | `value_form_not_allowed` | error | a value form the property does not allow (4.5): by attribute on `dash`, an icon following a number field |
@@ -2806,7 +2806,7 @@ Examples that fail:
 <!-- expect: unknown_field, part_not_for_geometry, zoom_stops -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": { "field": "inhabitants", "palette": "d3:viridis" } },
@@ -2820,7 +2820,7 @@ Examples that fail:
 <!-- expect: field_type_mismatch, operator_type_mismatch -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac" } },
   "classify": [{ "field": "status", "method": "quantile", "count": 5, "palette": "d3:viridis" }],
@@ -2831,14 +2831,14 @@ Examples that fail:
 <!-- check: satellite -->
 <!-- expect: unknown_band, render_type_mismatch -->
 ```json
-{ "version": 1, "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
+{ "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
 ```
 
 <!-- check: schools -->
 <!-- expect: dash_on_point_outline -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 1, "dash": "dashed" } }
 }
@@ -2848,7 +2848,7 @@ Examples that fail:
 <!-- expect: position_on_point_outline -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "marker": { "shape": "circle", "color": "#1a6b4d", "size": 8 }, "outline": { "color": "#ffffff", "width": 2, "position": "outside" } }
 }
@@ -2858,7 +2858,7 @@ Examples that fail:
 <!-- expect: placement_not_for_geometry -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "line": { "color": "#2166ac" }, "label": { "text": "{name}", "placement": "inside" } }
 }
@@ -2868,7 +2868,7 @@ Examples that fail:
 <!-- expect: template_syntax -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": { "fill": { "color": "#deebf7" }, "label": { "text": "{{ name }}" } }
 }
@@ -3048,18 +3048,28 @@ included. Viewers load it with one request, and it never computes.
 
 ## 14. Versions
 
-- `version` is an integer and changes only for a breaking change. Adding an optional key keeps the version.
-- **On write:** unknown keys are an error (`unknown_key`), a newer version is refused (`newer_version`).
-- **On read:** older versions are upgraded by goatlib (one function per step, `1 -> 2`, `2 -> 3`). A client that meets
+- `version` is three numbers, `"1.0.0"`, one version for layer styles and the map document (the integer `1` of earlier
+  documents is 1.0.0). A major breaks documents and comes with an upgrade step, a minor adds optional keys or values,
+  a patch corrects how something is drawn without new keys.
+- **On write:** goatlib writes the lowest version the document needs, the highest version that added a key it uses
+  (section 21), so a document that uses nothing newer stays readable by older servers. Unknown keys are an error
+  (`unknown_key`). A newer major or minor is refused on write and on project import (`newer_version`: it names the
+  version needed and the newest this server reads, so GOAT needs an update); a newer patch only warns (`newer_patch`).
+- **On read:** older majors are upgraded by goatlib (one function per step, `1 -> 2`, `2 -> 3`). A client that meets
   unknown keys draws what it knows and does not write the document back without the server.
 - **Values outside the bounds:** a stored document may hold a value outside the bounds goatlib takes from MapLibre
   (written before goatlib took them). The upgrade brings it inside and notes it: a `direction` goes round the circle
   (360 is 0), any other value takes the nearest bound (arrows `spacing` 0 is 1, `exaggeration` 1.5 is 1).
 - **Version 0** is today's GOAT style (the documents without `version`). The converter of section 17 is the upgrade
   step `0 -> 1`, so anything that still arrives in the old shape is read like any older version: catalog style assets
-  until the harvester writes version 1, and project exports made before the release.
+  until the harvester writes GOAT Style, and project exports made before the release.
 - **`ext`:** a reserved object for namespaced keys (`"ext": { "goat:experiment": { ... } }`). It passes through
   unchanged and is never interpreted by the compiler unless a later version adopts the key.
+- **Renames:** a minor adds the new key and still reads the old one, which is deprecated from then on; the next major
+  removes the old key with an upgrade step, and the GOAT release that brings a major migrates stored documents at once.
+- **What needs a minor:** a new key, choice value, catalogue palette or library icon (each counts as a key), or a
+  wider value form or bound of an existing key; each gets its version in goatlib's `SINCE` (section 21). goatlib's
+  `used_keys` reports keys and values but not value forms or bounds yet: it learns them with the first widened one.
 
 ## 15. What the style needs from the servers
 
@@ -3137,7 +3147,7 @@ are part of the format: an output that breaks one of them draws something else t
 <!-- check: routes -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "line": { "color": "#2166ac", "width": { "zoom": [[10, 2], [16, 6]] }, "cap": "round", "join": "round", "offset": 2 },
@@ -3215,7 +3225,7 @@ compiles to:
 <!-- check: districts -->
 ```json
 {
-  "version": 1,
+  "version": "1.0.0",
   "kind": "vector",
   "symbol": {
     "fill": { "color": "#cccccc", "opacity": 0.8 },
@@ -3301,7 +3311,7 @@ validator and rendered once.
 Every stored style (project layers, dataset defaults, published maps, workflow `outputStyle`, locked print
 styles) is converted once by a goatlib converter, the upgrade step from version 0 (section 14), and goatlib's style
 generators (`goatlib/tools/style.py`) write the new format. Catalog style assets are upgraded when read (section 14)
-until the harvester writes version 1. The converter runs as a dry
+until the harvester writes GOAT Style. The converter runs as a dry
 run on a copy of the database first; every style that does not validate is reported, not silently simplified. The old shape is
 not kept.
 
@@ -3369,7 +3379,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 
 | Key | Type | Required | Default |
 |---|---|---|---|
-| `version` | integer | yes | |
+| `version` | three numbers, `"1.0.0"` | yes | |
 | `kind` | `vector`, `raster` | yes | |
 | `geometry` | `point`, `line`, `polygon` | no | the dataset's |
 | `opacity` | number 0 to 1 (F, Z) | no | 1 |
@@ -3602,3 +3612,17 @@ Common mistakes the validator answers with a fix:
 - writing `classes` with invented breaks for a computed method (the server replaces them; write the method and
   `count` only);
 - a fractional class zoom (`zoom_not_whole`, fix `round`).
+
+## 21. Changelog
+
+The version of this specification is not tied to GOAT releases. A GOAT release reads every version up to the one it
+ships; the table tells people which release first reads each version. A server that refuses a newer document cannot
+know that release: its message names the two versions and says that GOAT needs an update (14).
+
+| Spec version | GOAT release | Added |
+|---|---|---|
+| 1.0.0 | the first release with GOAT Style | everything in this document |
+
+Minor and patch versions start after the first release; until then every key belongs to 1.0.0. goatlib keeps the keys
+of 1.0.0, catalogue palettes and library icons included, in `style/data/keys-1.0.0.json` and the version of each later
+key in `SINCE` (`style/version.py`), and a test fails for a key of the schema in neither.

@@ -130,6 +130,8 @@ You can import a project that was exported from GOAT as a `.zip` file.
   <img src={require('/img/workspace/projects/project_import.webp').default} alt="Import a project in GOAT" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+A project exported from a newer GOAT whose styles use something this GOAT does not know yet is not imported: the job fails before anything is created, and its message names the GOAT Style version the project needs. Update GOAT, then import the project again.
+
 ### Uploading a dataset
 
 GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet**, and **COG** files, as well as **GTFS** (`gtfs.zip`) archives for [Public Transport Networks](../data/dataset_types.md#public-transport-networks) and **Overture** (`overture.zip`) archives for [Street Networks](../data/dataset_types.md#street-networks).

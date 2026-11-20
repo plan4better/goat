@@ -29,7 +29,7 @@ const MARKER_SIZE = 16;
 
 /** A red circle without outline and a black label without halo at the named side of it. */
 const placed = (placement: string, text = "Abc"): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: {
     marker: { shape: "circle", color: "#ff0000", size: MARKER_SIZE },
@@ -188,7 +188,7 @@ const around = (geometry: "polygon" | "line", placement: string): LabCase => ({
   zoom: 4,
   fields: {},
   style: {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: {
       ...(geometry === "polygon"

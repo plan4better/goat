@@ -23,7 +23,7 @@ const render = (doc: object, data: Partial<StyleData> = {}) =>
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", ...doc } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", ...doc } as LayerStyle,
       data: { geometry: "point", featureCount: 5000, ...data },
     }
   );
@@ -232,7 +232,7 @@ describe("point parts", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { marker: { icon: "goat:park" } },
           classify: [
@@ -263,7 +263,11 @@ describe("point parts", () => {
         <IconRow label="Icon" path="symbol.marker.icon" />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "vector", symbol: { marker: { icon: "goat:bar" } } } as LayerStyle,
+        document: {
+          version: "1.0.0",
+          kind: "vector",
+          symbol: { marker: { icon: "goat:bar" } },
+        } as LayerStyle,
         data: { geometry: "point" },
       }
     );
@@ -284,7 +288,11 @@ describe("point parts", () => {
         <IconRow label="Icon" path="symbol.marker.icon" />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "vector", symbol: { marker: { icon: "emoji:1f525" } } } as LayerStyle,
+        document: {
+          version: "1.0.0",
+          kind: "vector",
+          symbol: { marker: { icon: "emoji:1f525" } },
+        } as LayerStyle,
         data: { geometry: "point" },
       }
     );

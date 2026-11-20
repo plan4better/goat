@@ -63,7 +63,7 @@ const SIZES = {
 };
 
 const style = (classify: object[], classes?: string): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   classify,
   ...(classes ? { legend: { classes } } : {}),

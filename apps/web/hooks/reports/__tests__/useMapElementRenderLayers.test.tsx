@@ -16,7 +16,7 @@ vi.mock("@/lib/api/layers", () => ({
 }));
 
 const TIMED = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc" } },
   time: { field: "year", step: 1 },

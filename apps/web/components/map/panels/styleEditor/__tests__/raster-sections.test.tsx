@@ -84,7 +84,7 @@ function setup(
       )}
     </>,
     {
-      document: { version: 1, kind: "raster", render, ...extra } as LayerStyle,
+      document: { version: "1.0.0", kind: "raster", render, ...extra } as LayerStyle,
       data: { raster: { dataset: "d1", info } },
       map,
     }
@@ -328,7 +328,7 @@ describe("a raster file that cannot be read", () => {
         <RasterLayerSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "raster", render } as LayerStyle,
+        document: { version: "1.0.0", kind: "raster", render } as LayerStyle,
         data: { raster: { dataset: "d1", error } },
       }
     );

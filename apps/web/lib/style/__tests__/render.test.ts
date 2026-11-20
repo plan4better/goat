@@ -44,7 +44,7 @@ describe("heatmaps", () => {
   });
 
   it("without points_from_zoom only the heatmap draws", () => {
-    const out = compile({ version: 1, kind: "vector", render: { type: "heatmap" } });
+    const out = compile({ version: "1.0.0", kind: "vector", render: { type: "heatmap" } });
     expect(out.layers.map((l) => l.id)).toEqual(["9-heatmap"]);
     expect(byId(out, "heatmap")?.paint["heatmap-radius"]).toBe(26);
   });
@@ -77,7 +77,7 @@ describe("clusters", () => {
   it("puts the count on the cluster, without a halo unless the cluster symbol sets one", () => {
     const cluster = (symbol?: object) =>
       byId(
-        compile({ version: 1, kind: "vector", render: { type: "cluster", symbol } }, points),
+        compile({ version: "1.0.0", kind: "vector", render: { type: "cluster", symbol } }, points),
         "cluster-label"
       );
     const label = cluster();
@@ -98,7 +98,7 @@ describe("clusters", () => {
   it("lists the fields the drawing reads, for the points request", () => {
     const out = compile(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: {
           type: "cluster",
@@ -126,14 +126,14 @@ describe("clusters", () => {
   });
 
   it("asks for no fields when the drawing reads none", () => {
-    const out = compile({ version: 1, kind: "vector", render: { type: "cluster" } }, points);
+    const out = compile({ version: "1.0.0", kind: "vector", render: { type: "cluster" } }, points);
     expect(out.tileParams.fields).toEqual([]);
   });
 });
 
 describe("clusters drawn like the points (spec 8.2 look and count)", () => {
   const iconsByKind = {
-    version: 1,
+    version: "1.0.0",
     kind: "vector",
     symbol: { marker: { shape: "icon", icon: "goat:shop", color: "#5a1846", size: 20 } },
     classify: [
@@ -239,7 +239,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
     const colorsOnly = clustered(
       { look: "points" },
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#5a1846", size: 12 } },
         classify: [
@@ -263,7 +263,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
 
   it("counts the first 12 categories that set an icon or a color; the points of the others count as Other", () => {
     const many = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "circle", color: "#5a1846", size: 12 } },
       classify: [
@@ -345,7 +345,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
     const out = clustered(
       { look: "points", count: "badge" },
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "pin", color: "#5a1846", size: 30 } },
       }
@@ -358,7 +358,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
     const out = clustered(
       { look: "points", count: "badge" },
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#5a1846", size: 8 } },
       }
@@ -375,7 +375,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
         count: "badge",
         symbol: { marker: { shape: "circle", size: { field: "count", range: [16, 40], scale: "sqrt" } } },
       },
-      { version: 1, kind: "vector" }
+      { version: "1.0.0", kind: "vector" }
     );
     expect(out.layers.map((l) => l.id)).toEqual(["9-marker", "9-cluster-marker", "9-cluster-badge"]);
     expect(offsets(out, { point_count: 2 })).toEqual({ icon: [10, -10], text: [10, -10] });
@@ -401,7 +401,7 @@ describe("clusters drawn like the points (spec 8.2 look and count)", () => {
     const out = clustered(
       { look: "points", count: "badge" },
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {
@@ -455,7 +455,7 @@ describe("cluster values (spec 8.2 value)", () => {
     compileLayer({
       id: "9",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: { type: "cluster", ...render, ...(symbol ? { symbol } : {}) },
       } as LayerStyle,
@@ -586,7 +586,8 @@ describe("cluster values (spec 8.2 value)", () => {
 describe("H3", () => {
   const VALUE = ["to-number", ["get", "value"], 0];
   const STAMP = { at: "2026-10-26T00:00:00Z", data: "ducklake:1", scope: "dataset" };
-  const h3 = (render: object) => compile({ version: 1, kind: "vector", render: { type: "h3", ...render } });
+  const h3 = (render: object) =>
+    compile({ version: "1.0.0", kind: "vector", render: { type: "h3", ...render } });
 
   it("compiles the spec 8.3 example: hexagon tiles from geoapi, the schools from zoom 15", () => {
     const out = compile(example(1736));
@@ -676,7 +677,7 @@ describe("H3", () => {
     const out = compileLayer({
       id: "9",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         opacity: 0.5,
         render: { type: "h3", outline: { width: 0 }, opacity: 0.8 },
@@ -692,7 +693,7 @@ describe("H3", () => {
 describe("heatmap weights over a single value", () => {
   it("a weight domain with d0 = d1 weighs every feature with the value the same", () => {
     const out = compile({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       render: { type: "heatmap", weight: { field: "v", domain: [5, 5] } },
     });

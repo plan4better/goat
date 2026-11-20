@@ -132,7 +132,7 @@ def test_unknown_and_text_fields_are_left_to_the_checks(duck) -> None:
 
 def test_compute_into_writes_the_classes_and_stamps_them(duck) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "classify": [{"field": "pop", "method": "equal_interval", "count": 2}],
     }
@@ -151,7 +151,7 @@ def test_compute_into_writes_the_classes_and_stamps_them(duck) -> None:
 
 def test_compute_into_reads_nothing_for_a_style_without_computed_values() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"color": "#ff0000", "size": 8}},
     }

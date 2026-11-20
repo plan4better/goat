@@ -668,7 +668,7 @@ async def test_an_entry_with_its_own_style_keeps_it_when_its_layer_gets_points(
     first.assert_succeeded()
     layer_id = first.step("save")["layer_id"]
     own = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"color": "#010203", "opacity": 0.4}},
     }

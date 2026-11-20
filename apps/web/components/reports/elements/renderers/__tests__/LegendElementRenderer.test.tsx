@@ -25,7 +25,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 const CLASSES = goldenPairs()[1].doc as LayerStyle;
-const PLAIN = { version: 1, kind: "vector", symbol: { fill: { color: "#00ff00" } } } as LayerStyle;
+const PLAIN = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#00ff00" } } } as LayerStyle;
 
 const layer = (id: number, name: string, document: LayerStyle, visible = true) =>
   ({

@@ -1,7 +1,8 @@
 "use client";
 
-// The save status (spec 13.1), in words and without dialogs; when saving stopped, why, and for a style someone else
-// changed meanwhile the choice to apply or discard this page's changes.
+// The save status (spec 13.1), in words and without dialogs; when saving stopped, why (with the server's issues when
+// it refused the document), and for a style someone else changed meanwhile the choice to apply or discard this page's
+// changes.
 import { Box, Button, Typography } from "@mui/material";
 import { useCallback, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,13 +34,14 @@ export function StatusLine({ saver, problemsOnly = false }: { saver: StyleSaver;
   if (problemsOnly && status !== "stopped") return null;
   const text =
     status === "stopped" ? t(`style_editor.stopped_${reason}`) : t(`style_editor.status_${status}`);
+  const refusal = saver.stopIssues.map((issue) => issue.message).join(" ");
   return (
     // Beside the style's name the status is announced already: this line only spells out why saving stopped.
     <Box
       role={problemsOnly ? undefined : "status"}
       sx={{ px: 3, py: 1, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
       <Typography variant="caption" color={status === "stopped" ? "error" : "text.secondary"}>
-        {text}
+        {refusal ? `${text} ${refusal}` : text}
       </Typography>
       {reason === "base_too_old" && (
         <Box sx={{ display: "flex", gap: 2 }}>

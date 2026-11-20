@@ -1,11 +1,10 @@
+import { configureStore } from "@reduxjs/toolkit";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { describe, expect, it, vi } from "vitest";
 
 import { initView, mapReducer } from "@/lib/store/map/slice";
-
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
@@ -29,7 +28,7 @@ function setup(render: object = { type: "h3" }) {
       </PopoverProvider>
     </Provider>,
     {
-      document: { version: 1, kind: "vector", render } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", render } as LayerStyle,
       data: { geometry: "point", fields: FIELDS, fieldTypes: { pupils: "integer" } },
     }
   );
@@ -116,7 +115,9 @@ describe("H3 hexagons", () => {
     expect(within(heightRow()).getByText("style_editor.h3_height_value")).toBeDefined();
     // The outline is not drawn under columns.
     expect(screen.queryByText("style_editor.part_outline")).toBeNull();
-    fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), { target: { value: 1500 } });
+    fireEvent.change(within(rowOf("style_editor.h3_tallest")).getByRole("slider"), {
+      target: { value: 1500 },
+    });
     expect(store.get("render.extrude.tallest")).toBe(1500);
     await userEvent.click(within(rowOf("style_editor.h3_scale")).getAllByRole("button")[0]);
     expect(store.get("render.extrude.scale")).toBe("linear");

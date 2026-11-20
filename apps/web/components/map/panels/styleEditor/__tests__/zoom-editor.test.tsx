@@ -22,7 +22,7 @@ function setup(form: object, key = "line.width", choices?: string[], map?: unkno
       <ZoomEditor path={`symbol.${key}`} choices={choices} />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", symbol: { [part]: { [prop]: form } } } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", symbol: { [part]: { [prop]: form } } } as LayerStyle,
       data: { geometry: "line", fields: FIELDS },
       mapZoom: 12,
       map,
@@ -268,7 +268,7 @@ describe("stop labels and hidden zooms", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           min_zoom: 1,
           max_zoom: 22,
@@ -347,7 +347,7 @@ describe("opening the zoom editor", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: {
             line: {
@@ -381,7 +381,7 @@ describe("values by attribute that grow with the zoom (spec 4.4)", () => {
         <SymbolSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "vector", symbol: { marker: { size } } } as LayerStyle,
+        document: { version: "1.0.0", kind: "vector", symbol: { marker: { size } } } as LayerStyle,
         data: { geometry: "point", fields: [{ name: "pupils", type: "number", label: "pupils" }] },
         mapZoom: 12,
       }

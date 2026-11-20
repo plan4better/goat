@@ -25,7 +25,7 @@ SVG = b'<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"></svg>'
 
 def icon_style(asset_id: str) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"marker": {"shape": "icon", "icon": f"asset:{asset_id}"}},
     }
@@ -127,7 +127,7 @@ async def test_a_1_2_round_trip_keeps_every_named_style_the_active_one_and_map_s
     link_id = await db_service.add_to_project(
         layer_id=layer_id, project_id=project_id, name="Pins"
     )
-    density = {"version": 1, "kind": "vector", "symbol": {"marker": {"size": 4}}}
+    density = {"version": "1.0.0", "kind": "vector", "symbol": {"marker": {"size": 4}}}
     group_id = await postgres_pool.fetchval(
         f"""INSERT INTO {S}.layer_project_group (name, project_id, visible, expanded)
             VALUES ('G', $1, false, false) RETURNING id""",
@@ -295,7 +295,7 @@ async def test_imported_classes_are_stamped_with_the_imported_tables_snapshot(
     old_layer = str(uuid.uuid4())
     stamp = {"at": "2026-01-01T00:00:00Z", "data": "ducklake:7", "scope": "dataset"}
     classified = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": {"color": "#00aa00"}},
         "classify": [

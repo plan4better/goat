@@ -13,6 +13,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 import { type SourceLayer, compileSourceFor } from "@/lib/style/layerSource";
 import { type RenderLayer, mapLayerIdsOf, projectLayerOf } from "@/lib/style/render/mapLayers";
+import { STYLE_VERSION } from "@/lib/style/version";
 
 /** One layer of a map: a project layer (`MapLayer`), a dataset in a preview, a published layer. */
 export interface ViewLayer extends SourceLayer {
@@ -85,7 +86,7 @@ function markStyle(geometry: Geometry | undefined): LayerStyle {
       : geometry === "line"
         ? { line: { color: RED, width: 2, dash: "dashed" } }
         : { fill: false, outline: { color: RED, width: 2, dash: "dashed" } };
-  return { version: 1, kind: "vector", symbol } as LayerStyle;
+  return { version: STYLE_VERSION, kind: "vector", symbol } as LayerStyle;
 }
 
 function pendingLayers(layer: ViewLayer, pending: GeoJSON.FeatureCollection): RenderLayer[] {

@@ -182,7 +182,7 @@ def test_service_layers_get_an_image_style(contexts: dict) -> None:
         contexts["wms"],
     )
     assert r.document == {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "opacity": 0.7,
         "min_zoom": 10,
@@ -335,7 +335,7 @@ def test_converter_never_raises_on_junk(junk: dict, contexts: dict) -> None:
 
 def test_upgrade_reads_version_0_and_keeps_version_1(contexts: dict) -> None:
     assert upgrade({"color": [1, 2, 3]}, contexts["districts"]).version_from == 0
-    v1 = {"version": 1, "kind": "vector"}
+    v1 = {"version": "1.0.0", "kind": "vector"}
     r = upgrade(v1, contexts["districts"])
     assert (r.document, r.version_from, r.lossy, r.map_state) == (v1, 1, (), {})
 
@@ -766,7 +766,7 @@ def test_unfilled_points_become_hollow_markers(contexts: dict) -> None:
 
 def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) -> None:
     terrain = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 360, "exaggeration": 1.5},
     }
@@ -781,7 +781,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
     assert errors(r.document, contexts["elevation"]) == []
 
     heatmap = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "render": {
             "type": "heatmap",
@@ -796,7 +796,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
     assert errors(r.document, contexts["schools"]) == []
 
     arrows = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"line": {"offset": -4}, "arrows": {"spacing": 0}},
     }
@@ -808,7 +808,7 @@ def test_upgrade_brings_stored_values_inside_maplibres_bounds(contexts: dict) ->
 
 def test_upgrade_brings_arrows_in_rules_and_classes_inside(contexts: dict) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "rules": [{"id": "r1", "arrows": {"spacing": 0}}],
         "classify": [{"id": "k", "classes": [{"id": "c1", "arrows": {"spacing": -5}}]}],
@@ -824,7 +824,7 @@ def test_upgrade_brings_arrows_in_rules_and_classes_inside(contexts: dict) -> No
 
 def test_upgrade_keeps_a_document_inside_the_bounds_as_it_is(contexts: dict) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 359, "exaggeration": 1},
     }
@@ -838,7 +838,7 @@ def test_a_strict_upgrade_leaves_a_current_document_for_the_validator(
     """A document written now is not brought inside: its values outside the
     bounds are errors with their place, the value and the bound."""
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "hillshade", "direction": 360},
     }
@@ -851,7 +851,7 @@ def test_a_strict_upgrade_leaves_a_current_document_for_the_validator(
     assert issues[0].message == "360 is more than 359, the most this takes."
 
     arrows = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"line": {"offset": -4}, "arrows": {"spacing": 0}},
     }
@@ -899,7 +899,7 @@ def test_todays_hillshade_and_arrows_convert_inside_maplibres_bounds(
 
 def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
     stored = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "terrain", "direction": 315},
     }
@@ -909,7 +909,7 @@ def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
     assert [n.key for n in result.lossy] == ["/render/type"]
     assert errors(result.document, contexts["elevation"]) == []
     outside = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "terrain", "direction": 360},
     }
@@ -919,7 +919,7 @@ def test_stored_terrain_reads_as_hillshade(contexts: dict) -> None:
 
 
 def test_terrain_is_refused_on_write(contexts: dict) -> None:
-    doc = {"version": 1, "kind": "raster", "render": {"type": "terrain"}}
+    doc = {"version": "1.0.0", "kind": "raster", "render": {"type": "terrain"}}
     assert [i.code for i in parse_for_write(doc)[1]] == ["invalid_value"]
     assert upgrade(doc, contexts["elevation"], strict=True).document is doc
     doc["render"]["type"] = "hillshade"

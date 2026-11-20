@@ -27,8 +27,8 @@ vi.mock("@/lib/style/transports/core", () => ({
 }));
 vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
 
-const FILL = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
-const NIGHT = { version: 1, kind: "vector", symbol: { fill: { color: "#111111" } } } as LayerStyle;
+const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const NIGHT = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#111111" } } } as LayerStyle;
 const read = (id: string, name: string, document: LayerStyle): StyleRead => ({
   id,
   name,

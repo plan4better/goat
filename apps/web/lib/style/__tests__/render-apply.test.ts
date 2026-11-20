@@ -81,7 +81,7 @@ describe("applyCompiled", () => {
 
   it("a GeoJSON object source updates with setData, not a re-add", () => {
     const map = fakeMap();
-    const style = { version: 1, kind: "vector", symbol: { marker: { color: "#cc0000" } } };
+    const style = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#cc0000" } } };
     const point = (x: number) => ({
       type: "FeatureCollection" as const,
       features: [
@@ -106,7 +106,7 @@ describe("applyCompiled", () => {
     const ITEMS = "https://geoapi/collections/9/items?limit=100000&f=json";
     const clusters = (render: object, symbol: object = { marker: {} }) =>
       compiled(
-        { version: 1, kind: "vector", render: { type: "cluster", ...render }, symbol },
+        { version: "1.0.0", kind: "vector", render: { type: "cluster", ...render }, symbol },
         { geometry: "point", source: { type: "points", id: "src-9", data: ITEMS } }
       );
     const dataOf = (out: ReturnType<typeof compiled>) => (out.sources["src-9"] as { data: string }).data;
@@ -144,7 +144,7 @@ describe("applyCompiled", () => {
       const doc = (render: object) =>
         compiled(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             render: { type: "cluster", ...render },
             symbol: { marker: {} },
@@ -178,37 +178,37 @@ describe("applyCompiled", () => {
 
   it("a paint change calls only setPaintProperty", () => {
     const map = fakeMap();
-    const first = compiled({ version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } });
+    const first = compiled({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } });
     applyCompiled(map, null, first);
     map.calls.length = 0;
     applyCompiled(
       map,
       first,
-      compiled({ version: 1, kind: "vector", symbol: { fill: { color: "#ff0000" } } })
+      compiled({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#ff0000" } } })
     );
     expect(map.calls).toEqual(["setPaintProperty 9-fill fill-color"]);
   });
 
   it("unchanged output calls nothing", () => {
     const map = fakeMap();
-    const first = compiled({ version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } });
+    const first = compiled({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } });
     applyCompiled(map, null, first);
     map.calls.length = 0;
     applyCompiled(
       map,
       first,
-      compiled({ version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } })
+      compiled({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } })
     );
     expect(map.calls).toEqual([]);
   });
 
   it("turning labels on loads the source again with label=true, its layers with it", () => {
     const map = fakeMap();
-    const first = compiled({ version: 1, kind: "vector", symbol: { fill: {} } });
+    const first = compiled({ version: "1.0.0", kind: "vector", symbol: { fill: {} } });
     applyCompiled(map, null, first);
     map.calls.length = 0;
     const labelled = compiled({
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: {}, label: { text: "{name}" } },
     });
@@ -226,14 +226,14 @@ describe("applyCompiled", () => {
 
   it("a new part adds its layer before beforeId", () => {
     const map = fakeMap();
-    const first = compiled({ version: 1, kind: "vector", symbol: { fill: {} } });
+    const first = compiled({ version: "1.0.0", kind: "vector", symbol: { fill: {} } });
     applyCompiled(map, null, first, { beforeId: "basemap-labels" });
     expect(map.calls).toContain("addLayer 9-fill before basemap-labels");
     map.calls.length = 0;
     applyCompiled(
       map,
       first,
-      compiled({ version: 1, kind: "vector", symbol: { fill: {}, outline: { width: 2 } } }),
+      compiled({ version: "1.0.0", kind: "vector", symbol: { fill: {}, outline: { width: 2 } } }),
       {
         beforeId: "basemap-labels",
       }
@@ -246,7 +246,7 @@ describe("applyCompiled", () => {
     const circle = withTileParams(
       compileLayer(
         input(
-          { version: 1, kind: "vector", symbol: { marker: {}, label: { text: "{name}" } } },
+          { version: "1.0.0", kind: "vector", symbol: { marker: {}, label: { text: "{name}" } } },
           { geometry: "point" }
         )
       )
@@ -257,7 +257,7 @@ describe("applyCompiled", () => {
       compileLayer(
         input(
           {
-            version: 1,
+            version: "1.0.0",
             kind: "vector",
             symbol: { marker: { shape: "icon", icon: "goat:park" }, label: { text: "{name}" } },
           },
@@ -272,7 +272,11 @@ describe("applyCompiled", () => {
 
   it("uploads resolve to their URL through the resolver", async () => {
     const map = fakeMap();
-    const style = { version: 1, kind: "vector", symbol: { marker: { shape: "icon", icon: "asset:u1" } } };
+    const style = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { shape: "icon", icon: "asset:u1" } },
+    };
     const out = withTileParams(
       compileLayer(
         input(style, {
@@ -300,7 +304,7 @@ describe("useLivePreview", () => {
 
   it("three changes in one frame apply once", () => {
     const map = fakeMap();
-    const doc = (color: string) => input({ version: 1, kind: "vector", symbol: { fill: { color } } });
+    const doc = (color: string) => input({ version: "1.0.0", kind: "vector", symbol: { fill: { color } } });
     const { rerender } = renderHook(({ value }) => useLivePreview(map as unknown as MaplibreMap, value), {
       initialProps: { value: doc("#111111") },
     });
@@ -337,7 +341,7 @@ describe("raster tiles on the map", () => {
     compileLayer({
       id,
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "raster",
         opacity,
         render: { type: "image", bands: BANDS[bands] },
@@ -349,7 +353,7 @@ describe("raster tiles on the map", () => {
     compileLayer({
       id: "9",
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "raster",
         render: { type: "continuous", palette, domain: [0, 9] },
       } as LayerStyle,

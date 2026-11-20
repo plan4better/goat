@@ -16,7 +16,7 @@ from tests.styles.conftest import StyleWorld
 
 API = settings.API_V2_STR
 S = settings.SCHEMA
-GREEN = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+GREEN = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
 
 
 async def active_of(db: AsyncSession, lp: int) -> Any:
@@ -67,7 +67,11 @@ async def test_a_duplicate_add_copies_the_link_already_there(
     style_id = (await client.get(f"{API}/project/{world.project_id}/map")).json()[
         "styles"
     ][str(world.layer_project_id)]["active"]["id"]
-    red = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#aa0000"}}}
+    red = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#aa0000"}},
+    }
     saved = await client.put(
         f"{styles}/{style_id}", json={"base_rev": 1, "document": red}
     )
@@ -104,7 +108,7 @@ async def test_a_raster_created_through_the_api_gets_a_map_service_default(
     default = await default_of(db_session, UUID(response.json()["id"]))
     assert default is not None
     assert default.document == {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "opacity": 0.8,
         "render": {"type": "image"},

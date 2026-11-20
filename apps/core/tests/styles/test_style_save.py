@@ -11,13 +11,14 @@ from core.db.session import session_manager
 from core.services import style as style_service
 from core.services.processes import StyleCheckUnavailable
 from core.services.style import StyleSaveError, save_style
+from goatlib.style import version as versions
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.styles.conftest import StyleWorld
 
-BASE = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
+BASE = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {"color": "#111111"}}}
 CLASSIFIED = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#111111"}},
     "classify": [
@@ -297,7 +298,7 @@ async def test_a_refused_change_with_recomputed_values_writes_nothing(
 
 
 MANUAL = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#111111"}},
     "classify": [
@@ -409,3 +410,85 @@ async def test_a_check_processes_refuses_answers_check_failed_and_stores_nothing
         await save(db_session, style_id, 1, with_fill(CLASSIFIED, "#222222"))
     assert (error.value.status, error.value.code) == (422, "check_failed")
     assert (await stored(db_session, style_id))[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_saved_version_is_the_lowest_needed(
+    db_session: AsyncSession,
+    style_world: StyleWorld,
+    fake: FakeCheck,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stored document says the lowest GOAT Style version whose keys cover it
+    (spec 14): a key a later version added raises it, without one it stays 1.0.0."""
+    monkeypatch.setattr(versions, "SPEC_VERSION", "1.2.0")
+    monkeypatch.setattr(versions, "SINCE", {"VectorStyle.opacity": "1.2.0"})
+    style_id = await named_style(db_session, style_world)
+    plain = await save(db_session, style_id, 1, with_fill(BASE, "#222222"))
+    assert plain.document["version"] == "1.0.0"
+    assert (await stored(db_session, style_id))[1]["version"] == "1.0.0"
+    faded = await save(
+        db_session, style_id, 2, {**with_fill(BASE, "#222222"), "opacity": 0.5}
+    )
+    assert faded.document["version"] == "1.2.0"
+    assert (await stored(db_session, style_id))[1]["version"] == "1.2.0"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["1.9.0", "9.0.0"])
+async def test_newer_minor_style_is_refused_on_save(
+    db_session: AsyncSession, style_world: StyleWorld, fake: FakeCheck, version: str
+) -> None:
+    """A document of a newer minor or major version is refused whole (422) before
+    any check or merge: this server cannot tell what its newer keys mean."""
+    style_id = await named_style(db_session, style_world)
+    newer = {**with_fill(BASE, "#222222"), "version": version}
+    with pytest.raises(StyleSaveError) as refused:
+        await save(db_session, style_id, 1, newer)
+    assert (refused.value.status, refused.value.code) == (422, "newer_version")
+    [issue] = refused.value.issues
+    assert issue.code == "newer_version"
+    assert version in issue.message and versions.SPEC_VERSION in issue.message
+    assert await stored(db_session, style_id) == (1, BASE)
+    assert fake.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_a_newer_patch_is_saved_with_the_lowest_version_and_a_warning(
+    db_session: AsyncSession, style_world: StyleWorld, fake: FakeCheck
+) -> None:
+    """A newer patch only corrects drawing rules: it is saved, stamped with the
+    version its keys need, and the reply warns."""
+    style_id = await named_style(db_session, style_world)
+    result = await save(
+        db_session, style_id, 1, {**with_fill(BASE, "#222222"), "version": "1.0.9"}
+    )
+    assert (result.revision, result.document["version"]) == (2, "1.0.0")
+    assert (await stored(db_session, style_id))[1]["version"] == "1.0.0"
+    assert [(i["code"], i["level"]) for i in result.issues] == [
+        ("newer_patch", "warning")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_newer_dataset_default_is_refused_before_its_row_is_created(
+    db_session: AsyncSession, style_world: StyleWorld, fake: FakeCheck
+) -> None:
+    """A dataset without a default style gets none from a refused write."""
+    with pytest.raises(StyleSaveError) as refused:
+        await style_service.write_default(
+            db_session,
+            layer_id=style_world.layer_id,
+            document={**BASE, "version": "1.9.0"},
+            actor_id=None,
+            access_token="t",
+        )
+    assert (refused.value.status, refused.value.code) == (422, "newer_version")
+    rows = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(LayerStyle)
+            .where(LayerStyle.layer_id == style_world.layer_id)
+        )
+    ).scalar_one()
+    assert rows == 0

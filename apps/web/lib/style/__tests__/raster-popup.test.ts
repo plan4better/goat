@@ -25,7 +25,7 @@ const cog = (id: number, document: object, visible = true) => ({
 });
 
 const ELEVATION = {
-  version: 1,
+  version: "1.0.0",
   kind: "raster",
   render: { type: "continuous", band: 2, palette: "goat:elevation", domain: [181, 440] },
   legend: { unit: "m" },
@@ -56,7 +56,7 @@ describe("raster popups", () => {
 
     // Every band, while hovering; an image's styled bands are its three.
     const satellite = cog(3, {
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "image" },
       popup: { trigger: "hover", bands: "all" },
@@ -67,7 +67,7 @@ describe("raster popups", () => {
       band_2: 250.5,
       band_3: 30,
     });
-    const image = cog(4, { version: 1, kind: "raster", render: { type: "image", bands: [3, 1, 2] } });
+    const image = cog(4, { version: "1.0.0", kind: "raster", render: { type: "image", bands: [3, 1, 2] } });
     expect(await rasterValuesAt(image, { lng: 7.1, lat: 50.7 })).toEqual({
       band_3: 30,
       band_1: 10,
@@ -84,7 +84,7 @@ describe("raster popups", () => {
   it("the raster popup reads the point route and shows a formula's value under its name", async () => {
     vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [100, 200, 300, 500], styled: 0.666 });
     const ndvi = cog(8, {
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: {
         type: "continuous",
@@ -104,7 +104,7 @@ describe("raster popups", () => {
 
   it("services show no popup", () => {
     const wms = {
-      ...cog(5, { version: 1, kind: "raster", render: { type: "image" }, popup: { trigger: "click" } }),
+      ...cog(5, { version: "1.0.0", kind: "raster", render: { type: "image" }, popup: { trigger: "click" } }),
       data_type: "wms",
     };
     expect(rasterPopupLayer([wms], "click")).toBeUndefined();
@@ -132,7 +132,7 @@ describe("raster popups", () => {
       bands: [],
     });
     const photo = cog(9, {
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "image" },
       popup: { bands: "all" },
@@ -146,7 +146,7 @@ describe("raster popups", () => {
     expect(labels(photo, { band_1: 200, band_2: 30 })).toEqual(["Rot", de("style_editor.band_n", { n: 2 })]);
     // A band formula without a name: the translated "Value".
     const formula = cog(10, {
-      version: 1,
+      version: "1.0.0",
       kind: "raster",
       render: { type: "continuous", band: { expression: "b1 / 2" }, palette: "goat:green", domain: [0, 1] },
     });

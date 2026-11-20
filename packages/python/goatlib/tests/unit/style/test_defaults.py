@@ -54,7 +54,7 @@ def test_new_layers_never_get_the_pale_spectral_colors() -> None:
 
 def test_service_default_is_a_plain_image_slightly_see_through() -> None:
     assert default_style(DataContext(kind="raster", source="xyz")) == {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "opacity": 0.8,
         "render": {"type": "image"},
@@ -74,7 +74,9 @@ def _value_validates(path: str, value: object) -> bool:
     head, _, rest = path.partition(".")
     try:
         if not rest:
-            VectorStyle.model_validate({"version": 1, "kind": "vector", head: value})
+            VectorStyle.model_validate(
+                {"version": "1.0.0", "kind": "vector", head: value}
+            )
         elif head == "label" and rest.startswith(("halo.", "font.")):
             sub, key = rest.split(".")
             (Halo if sub == "halo" else Font).model_validate({key: value})
@@ -97,7 +99,7 @@ def _value_validates(path: str, value: object) -> bool:
         elif head == "raster":
             RasterStyle.model_validate(
                 {
-                    "version": 1,
+                    "version": "1.0.0",
                     "kind": "raster",
                     "render": {"type": "image"},
                     rest: value,

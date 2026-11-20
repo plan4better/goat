@@ -19,7 +19,7 @@ vi.mock("@/lib/style/compile/points", async (importOriginal) => {
 describe("a legend's cost", () => {
   it("reads which colors the map draws in images once per legend, not once per entry", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "pin", color: "#888888", size: 16 } },
       classify: [

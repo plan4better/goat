@@ -5,7 +5,7 @@ import { deepEqual } from "@/lib/style/json";
 import { type SaveResult, StyleSaver, type StyleTransport, bindPageLifecycle } from "@/lib/style/save";
 
 const DOC = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc", opacity: 1 }, outline: { width: 1 } },
 } as LayerStyle;
@@ -77,7 +77,7 @@ describe("StyleSaver", () => {
     s.edit({
       symbol: { outline: { width: 1 }, fill: { opacity: 1, color: "#cccccc" } },
       kind: "vector",
-      version: 1,
+      version: "1.0.0",
     } as LayerStyle);
     await vi.advanceTimersByTimeAsync(1000);
     s.edit({ ...DOC, render: undefined } as LayerStyle);
@@ -213,6 +213,7 @@ describe("StyleSaver", () => {
     [403, undefined, "forbidden"],
     [404, undefined, "deleted"],
     [409, "base_too_old", "base_too_old"],
+    [422, "check_failed", "refused"],
   ] as const)("stops on %s and says why", async (status, code, reason) => {
     const t = fakeTransport();
     const onStop = vi.fn();
@@ -225,6 +226,31 @@ describe("StyleSaver", () => {
     s.edit(withFill({ color: "#222222" }));
     await vi.advanceTimersByTimeAsync(60000);
     expect(t.saves).toHaveLength(1);
+  });
+
+  it("a 422 refusal stops saving with the server's issues and makes no second request", async () => {
+    const t = fakeTransport();
+    const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });
+    s.edit(withFill({ color: "#111111" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    const issue = {
+      level: "error",
+      code: "newer_version",
+      path: "/version",
+      message: "This document needs GOAT Style 1.1.0 (a newer GOAT); this server reads up to 1.0.0.",
+    } as const;
+    await t.answer({ ok: false, status: 422, code: "newer_version", issues: [issue] });
+    expect(s.status).toBe("stopped");
+    expect(s.stopReason).toBe("refused");
+    expect(s.stopIssues).toEqual([issue]);
+    // The copy stays; neither an edit, a retry, saving at once nor leaving the page sends it again.
+    s.edit(withFill({ color: "#222222" }));
+    s.retryNow();
+    s.saveNow();
+    s.flush();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(t.saves).toHaveLength(1);
+    expect(s.document).toEqual(withFill({ color: "#222222" }));
   });
 
   it("applies the changes to the current style after base_too_old, or discards them", async () => {

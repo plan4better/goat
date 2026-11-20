@@ -1,6 +1,6 @@
 {
   "classes": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "geometry": "point",
     "render": {
@@ -53,7 +53,7 @@
     }
   },
   "ramp": {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "geometry": "point",
     "render": {

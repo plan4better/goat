@@ -59,7 +59,7 @@ POP_STEP = 10
 STYLES = {
     # Classes of the count, computed by the server.
     "classes": {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "geometry": "point",
         "render": {
@@ -71,7 +71,7 @@ STYLES = {
     },
     # The palette over the range of the mean of a field.
     "ramp": {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "geometry": "point",
         "render": {"type": "h3", "value": {"op": "mean", "field": "pop"}},

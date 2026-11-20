@@ -38,7 +38,7 @@ const layer = (id: number, name: string, order: number, visibility: boolean, gro
   type: "feature",
   feature_layer_geometry_type: "polygon",
   entry: { type: "layer", id, visible: visibility },
-  style: { document: { version: 1, kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
+  style: { document: { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
 });
 
 const GROUP = 7;
@@ -172,7 +172,7 @@ describe("LayerGroupSwitcher", () => {
     // The legend caption shows above the legend, as in the layer list.
     (layers[2] as { style: object }).style = {
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#2bb381" } },
         legend: { caption: "Einwohner je Hektar" },
@@ -185,7 +185,7 @@ describe("LayerGroupSwitcher", () => {
   it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {
     // A fill color by zoom: at 12.6 the map blends 30% of the way, at 13 half of the way.
     const document = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: {
         fill: {

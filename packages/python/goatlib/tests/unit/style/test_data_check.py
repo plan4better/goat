@@ -4,7 +4,7 @@ from dataclasses import replace
 from goatlib.style.context import MapContext
 from goatlib.style.validate import validate, validate_map
 
-V = {"version": 1, "kind": "vector"}
+V = {"version": "1.0.0", "kind": "vector"}
 
 
 def codes(doc: dict, ctx: object) -> set[str]:
@@ -102,7 +102,7 @@ def test_catalogues(contexts: dict) -> None:
 def test_services(contexts: dict) -> None:
     assert "render_not_for_source" in codes(
         {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "render": {"type": "image", "bands": [1, 2, 3]},
         },
@@ -110,7 +110,7 @@ def test_services(contexts: dict) -> None:
     )
     assert "render_not_for_source" in codes(
         {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "render": {"type": "image", "service_style": "grey"},
         },
@@ -118,7 +118,7 @@ def test_services(contexts: dict) -> None:
     )
     assert "invalid_value" in codes(
         {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "render": {"type": "image", "service_style": "sepia"},
         },
@@ -143,7 +143,7 @@ def test_huge_documents_finish_quickly(contexts: dict) -> None:
 def test_map_document_codes() -> None:
     ctx = MapContext(layers={1: frozenset({"s1"}), 2: frozenset({"s1"})})
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "layers": [
             {"type": "layer", "id": 1, "style": "s9"},
             {
@@ -189,7 +189,7 @@ def test_boolean_categories_compare_as_text(contexts: dict) -> None:
 def test_a_band_formula_domain_is_not_compared_with_band_1(contexts: dict) -> None:
     band = {"name": "NDVI", "expression": "(b4 - b1) / (b4 + b1)"}
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {
             "type": "continuous",
@@ -212,7 +212,7 @@ def test_liquid_reads_unicode_and_hyphenated_field_names() -> None:
 
 def test_rasters_get_document_checks(contexts: dict) -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "min_zoom": 10,
         "max_zoom": 5,
@@ -234,7 +234,11 @@ WRONG_CONTAINERS = [
     },
     {**V, "classify": [{"field": "land_use", "method": "categories", "classes": 3}]},
     {**V, "symbol": {"label": {"text": 5, "priority": 3}}},
-    {"version": 1, "kind": "raster", "render": {"type": "categorical", "classes": 4}},
+    {
+        "version": "1.0.0",
+        "kind": "raster",
+        "render": {"type": "categorical", "classes": 4},
+    },
 ]
 
 
@@ -346,7 +350,7 @@ def test_referenced_fields_are_the_fields_the_checks_read() -> None:
     from goatlib.style.data_check import referenced_fields
 
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {
             "marker": {
@@ -381,7 +385,7 @@ def test_referenced_fields_are_the_fields_the_checks_read() -> None:
     }
 
 
-R = {"version": 1, "kind": "raster"}
+R = {"version": "1.0.0", "kind": "raster"}
 NONE: frozenset[str] = frozenset()
 
 

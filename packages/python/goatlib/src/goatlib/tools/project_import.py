@@ -19,7 +19,7 @@ import re
 import tempfile
 import uuid
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,10 +32,18 @@ from pydantic import BaseModel, Field
 from goatlib.io.bbox_columns import is_bbox_struct
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
 from goatlib.style.compute import stamp_computed
+from goatlib.style.configs import config_styles, stamp_config_styles, versioned
 from goatlib.style.context import DataContext
 from goatlib.style.fingerprint import fingerprint
 from goatlib.style.map_rows import MAX_STYLES
 from goatlib.style.migrate import context_for, migrate_style, stored_document
+from goatlib.style.parse import check_version
+from goatlib.style.version import (
+    RELEASES,
+    SPEC_VERSION,
+    format_version,
+    parse_version,
+)
 from goatlib.tools.base import SimpleToolRunner, drops_unrecorded_tables
 from goatlib.tools.core_api import CoreAddressInput, CoreSession, CoreTokenInput
 from goatlib.tools.project_schemas import (
@@ -116,6 +124,8 @@ class ProjectImportOutput(BaseModel):
     workflow_count: int = 0
     report_count: int = 0
     wm_labels: list[str] = Field(default_factory=list)
+    #: What was imported although it did not match this server exactly.
+    warnings: list[str] = Field(default_factory=list)
 
 
 @dataclass
@@ -164,6 +174,78 @@ class ProjectImportRunner(SimpleToolRunner):
                 f"Incompatible format version: expected {FORMAT_VERSION}, got {manifest.format_version}"
             )
         return manifest
+
+    def _archive_styles(self: Self, archive_dir: Path) -> Iterator[tuple[str, Any]]:
+        """Every GOAT Style document of the archive, with where it is: the
+        datasets' default styles, the project layers' named styles, the
+        workflows' output styles and the report layouts' locked styles. A style
+        without `version` is today's format, converted on import: left out."""
+        layer_index = ExportLayerIndex(layers=[])
+        index_path = archive_dir / "layers" / "index.json"
+        if index_path.exists():
+            with open(index_path) as f:
+                layer_index = ExportLayerIndex.model_validate(json.load(f))
+        found: list[tuple[str, Any]] = [
+            (f'The default style of layer "{layer.name}"', layer.style)
+            for layer in layer_index.layers
+        ]
+        for link in self._load_layer_project_links(archive_dir, layer_index):
+            name = link.get("name") or link.get("layer_id")
+            found += [
+                (f'The style "{style["name"]}" of layer "{name}"', style["document"])
+                for style in link.get("styles") or []
+            ]
+        for folder, kind in (("workflows", "workflow"), ("reports", "report layout")):
+            for path in sorted((archive_dir / folder).glob("*.json")):
+                with open(path) as f:
+                    entry = json.load(f)
+                found += [
+                    (f'A style in the {kind} "{entry.get("name")}"', document)
+                    for document in config_styles(entry.get("config"))
+                ]
+        for where, document in found:
+            if versioned(document):
+                yield where, document
+
+    def _check_style_versions(
+        self: Self, archive_dir: Path, manifest: ExportManifest
+    ) -> list[str]:
+        """The GOAT Style versions of the archive's styles, read before anything
+        is written (spec 14). A newer minor or major version refuses the import:
+        this server cannot tell what its newer keys mean, and would swap the
+        style for the default one. A newer patch only corrects drawing rules: it
+        is imported, and the returned warning says so."""
+        warnings: list[str] = []
+        for where, document in self._archive_styles(archive_dir):
+            codes = {issue.code for issue in check_version(document)}
+            parsed = parse_version(document["version"])
+            if parsed is None or not codes & {"newer_version", "newer_patch"}:
+                continue
+            version = format_version(parsed)
+            if "newer_patch" in codes:
+                warnings.append(
+                    f"{where} uses GOAT Style {version}, a later patch than this "
+                    f"server's {SPEC_VERSION}: it was imported and may draw "
+                    "slightly differently here."
+                )
+                continue
+            if manifest.goat_version:
+                newer = (
+                    f"was exported from GOAT {manifest.goat_version}, which "
+                    f"writes GOAT Style {version}"
+                )
+            else:
+                newer = (
+                    f"needs GOAT Style {version} "
+                    f"({RELEASES.get(version, 'a newer GOAT')})"
+                )
+            raise ValueError(
+                f"{where} {newer}; this server reads up to {SPEC_VERSION}. "
+                "Update GOAT to import this project."
+            )
+        for warning in warnings:
+            logger.warning(warning)
+        return warnings
 
     def _generate_id_mapping(self: Self, archive_dir: Path) -> dict[str, str]:
         """Generate old->new UUID mapping for layers, groups, workflows, reports."""
@@ -1120,8 +1202,10 @@ class ProjectImportRunner(SimpleToolRunner):
                 # 5. Insert workflows
                 for wf in workflows:
                     new_wf_id = id_map.get(wf.id, str(uuid4()))
-                    remapped_config = self._remap_workflow_config(
-                        wf.config, id_map, layer_project_id_map
+                    remapped_config = stamp_config_styles(
+                        self._remap_workflow_config(
+                            wf.config, id_map, layer_project_id_map
+                        )
                     )
                     await conn.execute(
                         f"""
@@ -1142,7 +1226,9 @@ class ProjectImportRunner(SimpleToolRunner):
                 # 6. Insert reports
                 for rpt in reports:
                     new_rpt_id = id_map.get(rpt.id, str(uuid4()))
-                    remapped_config = self._remap_report_config(rpt.config, id_map)
+                    remapped_config = stamp_config_styles(
+                        self._remap_report_config(rpt.config, id_map)
+                    )
                     await conn.execute(
                         f"""
                         INSERT INTO {schema}.report_layout
@@ -1278,6 +1364,10 @@ class ProjectImportRunner(SimpleToolRunner):
                 )
                 self._verify_checksums(manifest_for_verify, archive_dir)
 
+                # 4a. Styles of a GOAT Style version this server cannot read
+                # refuse the import here, before anything is written.
+                warnings = self._check_style_versions(archive_dir, manifest)
+
                 # 4b. Uploaded icons and images through core as the user, first,
                 # while the access token is fresh; the records take their ids.
                 asset_ids = self._upload_archive_uploads(params, archive_dir, tracker)
@@ -1379,6 +1469,7 @@ class ProjectImportRunner(SimpleToolRunner):
                     workflow_count=manifest.workflow_count,
                     report_count=manifest.report_count,
                     wm_labels=wm_labels,
+                    warnings=warnings,
                 )
                 logger.info(
                     "Import complete: project_id=%s, name=%s",

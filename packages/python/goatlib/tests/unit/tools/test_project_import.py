@@ -15,14 +15,19 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import tempfile
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from goatlib.models.project import DEFAULT_INITIAL_VIEW_STATE
+from goatlib.style import version as versions
 from goatlib.style.context import DataContext
 from goatlib.tools.project_import import (
     ImportCleanupTracker,
@@ -740,7 +745,7 @@ class TestProjectImportRunner:
     def test_named_styles_take_the_uploads_new_ids(self) -> None:
         """The records are written with the ids core gave the uploads."""
         style = {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "vector",
             "symbol": {"marker": {"shape": "icon", "icon": "asset:old-1"}},
         }
@@ -1953,7 +1958,11 @@ class TestImportNamedStyles:
     def test_at_most_ten_named_styles_are_kept_with_the_active_one(self) -> None:
         from goatlib.style.context import DataContext
 
-        doc = {"version": 1, "kind": "vector", "symbol": {"fill": {"color": "#00aa00"}}}
+        doc = {
+            "version": "1.0.0",
+            "kind": "vector",
+            "symbol": {"fill": {"color": "#00aa00"}},
+        }
         link = {
             "styles": [
                 {"name": f"s{i}", "position": i, "document": doc, "active": i == 11}
@@ -1971,3 +1980,277 @@ class TestImportNamedStyles:
         assert len(styles) == 10
         assert [s["name"] for s in styles if s["active"]] == ["s11"]
         assert [s["name"] for s in styles][:9] == [f"s{i}" for i in range(9)]
+
+
+DISTRICTS = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+#: Where an archive carries GOAT Style documents, and a name the messages give.
+STYLE_PLACES = {
+    "dataset": "Districts",
+    "named": "Green",
+    "workflow": "Buffer",
+    "report": "Print",
+}
+
+
+def _style(version: str | int) -> dict[str, Any]:
+    return {
+        "version": version,
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#00aa00"}},
+    }
+
+
+def _versioned_archive(
+    where: str, version: str | int, goat_version: str | None = None
+) -> bytes:
+    """A format 1.2 archive with one polygon layer, its data and an icon, whose
+    style at `where` says `version`; its other styles say 1.0.0."""
+    styles = {
+        place: _style(version if place == where else "1.0.0") for place in STYLE_PLACES
+    }
+    files: dict[str, bytes] = {
+        "project.json": {"name": "Shared Project"},
+        "layers/index.json": {
+            "layers": [
+                {
+                    "id": DISTRICTS,
+                    "name": "Districts",
+                    "type": "feature",
+                    "feature_layer_type": "standard",
+                    "feature_layer_geometry_type": "polygon",
+                    "style": styles["dataset"],
+                }
+            ]
+        },
+        "layer_project_links.json": {
+            "links": [
+                {
+                    "id": 7,
+                    "layer_id": DISTRICTS,
+                    "name": "Districts",
+                    "styles": [
+                        {
+                            "name": "Green",
+                            "position": 0,
+                            "document": styles["named"],
+                            "active": True,
+                        }
+                    ],
+                }
+            ]
+        },
+        "workflows/wf-1.json": {
+            "id": "wf-1",
+            "name": "Buffer",
+            "config": {
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "data": {"type": "tool", "outputStyle": styles["workflow"]},
+                    }
+                ],
+                "edges": [],
+            },
+        },
+        "reports/r-1.json": {
+            "id": "r-1",
+            "name": "Print",
+            "config": {
+                "elements": [
+                    {"config": {"locked_layer_styles": {"7": styles["report"]}}}
+                ]
+            },
+        },
+        "assets/index.json": {
+            "assets": [
+                {
+                    "id": "icon-1",
+                    "file_name": "pin.svg",
+                    "mime_type": "image/svg+xml",
+                    "asset_type": "icon",
+                    "archive_path": "assets/icon-1.svg",
+                }
+            ]
+        },
+    }
+    contents = {
+        name: json.dumps(value, indent=2).encode() for name, value in files.items()
+    }
+    contents[f"layers/{DISTRICTS}/data.parquet"] = b"FAKE_PARQUET"
+    contents["assets/icon-1.svg"] = b"<svg/>"
+    manifest = {
+        "format_version": "1.2",
+        "goat_version": goat_version,
+        "exported_at": "2026-11-19T00:00:00Z",
+        "project_name": "Shared Project",
+        "checksums": {
+            name: f"sha256:{hashlib.sha256(data).hexdigest()}"
+            for name, data in contents.items()
+            if name.endswith(".json")
+        },
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, data in contents.items():
+            zf.writestr(name, data)
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2).encode())
+    return buf.getvalue()
+
+
+@contextmanager
+def _import_job(runner: ProjectImportRunner, zip_bytes: bytes) -> Iterator[Any]:
+    """The import's surroundings, mocked: the archive in S3, core, DuckLake and the
+    database. `calls` holds every statement the job sent, with its arguments."""
+
+    def download(**kwargs: object) -> None:
+        Path(str(kwargs["Filename"])).write_bytes(zip_bytes)
+
+    runner._s3_client.download_file.side_effect = download
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def execute(query: str, *args: object) -> None:
+        calls.append((query, args))
+
+    async def fetchval(query: str, *args: object) -> int:
+        calls.append((query, args))
+        return 1
+
+    conn = AsyncMock()
+    conn.set_type_codec = AsyncMock()
+    txn = MagicMock()
+    txn.__aenter__ = AsyncMock(return_value=txn)
+    txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=txn)
+    conn.execute = AsyncMock(side_effect=execute)
+    conn.fetchval = AsyncMock(side_effect=fetchval)
+    core = MagicMock()
+    core.upload_ids.return_value = set()
+    core.upload.return_value = "new-icon"
+    with (
+        patch("goatlib.tools.project_import.asyncpg") as mock_asyncpg,
+        patch("goatlib.tools.project_import.CoreSession", return_value=core),
+        patch.object(runner, "_import_ducklake_layer") as ducklake,
+        patch.object(runner, "_get_ducklake_snapshot_id", return_value=None),
+    ):
+        mock_asyncpg.connect = AsyncMock(return_value=conn)
+        yield SimpleNamespace(
+            params=ProjectImportParams(
+                user_id="00000000-0000-0000-0000-000000000001",
+                s3_key="imports/test-export.zip",
+                target_folder_id="00000000-0000-0000-0000-ffffffffffff",
+                core_url="http://core:8000",
+                access_token="tok",
+            ),
+            calls=calls,
+            core=core,
+            ducklake=ducklake,
+            connect=mock_asyncpg.connect,
+        )
+
+
+def _stored_styles(calls: list[tuple[str, tuple[object, ...]]]) -> list[Any]:
+    """The documents of the `layer_style` rows the job inserted."""
+    return [
+        json.loads(arg)
+        for query, args in calls
+        if re.search(r"INSERT INTO \w+\.layer_style\s*\(", query)
+        for arg in args
+        if isinstance(arg, str) and arg.startswith("{")
+    ]
+
+
+def _config_style_versions(calls: list[tuple[str, tuple[object, ...]]]) -> list[Any]:
+    """The versions of the styles inside the workflow and report layout configs
+    the job inserted."""
+    from goatlib.style.configs import config_styles
+
+    return [
+        style["version"]
+        for query, args in calls
+        if re.search(r"INSERT INTO \w+\.(workflow|report_layout)\b", query)
+        for arg in args
+        if isinstance(arg, dict)
+        for style in config_styles(arg)
+    ]
+
+
+class TestImportStyleVersions:
+    """An archive written by a newer GOAT (spec 14): a style of a newer minor or
+    major GOAT Style version refuses the whole import before anything is written;
+    a newer patch is imported with a warning."""
+
+    @pytest.fixture()
+    def runner(self) -> ProjectImportRunner:
+        runner = ProjectImportRunner()
+        settings = MagicMock()
+        settings.customer_schema = "customer"
+        settings.s3_bucket_name = "test-bucket"
+        settings.max_upload_dataset_file_size = 5 * 1024 * 1024 * 1024
+        runner.settings = settings
+        runner._duckdb_con = MagicMock()
+        runner._s3_client = MagicMock()
+        runner._s3_client.head_object.return_value = {"ContentLength": 1}
+        return runner
+
+    @pytest.mark.parametrize("version", ["1.9.0", "2.0.0"])
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_import_refuses_a_newer_minor_style_before_writing(
+        self, runner: ProjectImportRunner, where: str, version: str
+    ) -> None:
+        with _import_job(runner, _versioned_archive(where, version)) as job:
+            with pytest.raises(ValueError) as refused:
+                runner.run(job.params)
+        message = str(refused.value)
+        assert STYLE_PLACES[where] in message
+        assert f"GOAT Style {version}" in message
+        assert f"reads up to {versions.SPEC_VERSION}" in message
+        assert "Update GOAT" in message
+        job.core.upload.assert_not_called()
+        job.ducklake.assert_not_called()
+        job.connect.assert_not_called()
+        assert job.calls == []
+
+    def test_the_refusal_names_the_goat_that_exported_the_project(
+        self, runner: ProjectImportRunner
+    ) -> None:
+        archive = _versioned_archive("named", "1.9.0", goat_version="3.4.0")
+        with _import_job(runner, archive) as job:
+            with pytest.raises(ValueError) as refused:
+                runner.run(job.params)
+        assert "exported from GOAT 3.4.0" in str(refused.value)
+        assert "GOAT Style 1.9.0" in str(refused.value)
+
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_import_takes_a_newer_patch_with_a_warning(
+        self,
+        runner: ProjectImportRunner,
+        where: str,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with (
+            _import_job(runner, _versioned_archive(where, "1.0.9")) as job,
+            caplog.at_level("WARNING"),
+        ):
+            result = runner.run(job.params)
+        [warning] = result["warnings"]
+        assert STYLE_PLACES[where] in warning and "1.0.9" in warning
+        assert any(warning in r.getMessage() for r in caplog.records)
+        job.ducklake.assert_called_once()
+        documents = _stored_styles(job.calls)
+        assert len(documents) == 2
+        assert {d["version"] for d in documents} == {"1.0.0"}
+        assert {d["symbol"]["fill"]["color"] for d in documents} == {"#00aa00"}
+        # The styles inside the workflow and report layout configs too.
+        assert _config_style_versions(job.calls) == ["1.0.0", "1.0.0"]
+
+    @pytest.mark.parametrize("where", list(STYLE_PLACES))
+    def test_the_integer_version_1_imports_as_1_0_0_without_a_warning(
+        self, runner: ProjectImportRunner, where: str
+    ) -> None:
+        with _import_job(runner, _versioned_archive(where, 1)) as job:
+            result = runner.run(job.params)
+        assert result["warnings"] == []
+        documents = _stored_styles(job.calls)
+        assert len(documents) == 2
+        assert {d["version"] for d in documents} == {"1.0.0"}
+        assert {d["symbol"]["fill"]["color"] for d in documents} == {"#00aa00"}

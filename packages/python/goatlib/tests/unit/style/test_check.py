@@ -2,7 +2,7 @@ import pytest
 
 from .conftest import check, load_examples
 
-POINT = {"version": 1, "kind": "vector"}
+POINT = {"version": "1.0.0", "kind": "vector"}
 
 
 def test_label_with_liquid_placeholder_is_template_syntax_with_a_fix() -> None:
@@ -424,7 +424,7 @@ def test_classes_and_rules_may_draw_hollow_markers() -> None:
     assert check(doc, "point") == []
 
 
-POLY = {"version": 1, "kind": "vector", "geometry": "polygon"}
+POLY = {"version": "1.0.0", "kind": "vector", "geometry": "polygon"}
 
 
 def test_extrude_value_forms() -> None:
@@ -572,7 +572,7 @@ def test_classes_do_not_switch_on_a_part_the_layer_has_off() -> None:
     """Spec 3: a part the layer switches off stays off in every record, so a fill
     switched off with its color by class still draws nothing."""
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "symbol": {"fill": False},
         "classify": [

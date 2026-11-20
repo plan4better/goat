@@ -44,7 +44,7 @@ export function renderPanel(
     map?: unknown;
   } = {}
 ): RenderResult & { store: EditorStore } {
-  const document = opts.document ?? ({ version: 1, kind: "vector" } as LayerStyle);
+  const document = opts.document ?? ({ version: "1.0.0", kind: "vector" } as LayerStyle);
   const saver = new StyleSaver({ transport: opts.transport ?? echoTransport(), document, revision: 1 });
   const store = new EditorStore({ saver });
   const data: StyleData = { ...EMPTY_DATA, ...opts.data };

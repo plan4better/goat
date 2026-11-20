@@ -17,7 +17,7 @@ import { echoTransport, openGroup, renderPanel, renderWithProviders } from "./re
 const FIELDS = [{ name: "traffic", type: "number" as const, label: "traffic" }];
 
 const lineDoc = (width: unknown) =>
-  ({ version: 1, kind: "vector", symbol: { line: { width } } }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol: { line: { width } } }) as LayerStyle;
 
 const BY_ZOOM = {
   zoom: [
@@ -168,7 +168,7 @@ describe("a picker whose control goes away closes", () => {
         <SymbolSection />
       </PopoverProvider>,
       {
-        document: { version: 1, kind: "vector", symbol: { marker } } as LayerStyle,
+        document: { version: "1.0.0", kind: "vector", symbol: { marker } } as LayerStyle,
         data: { geometry: "point" },
       }
     );

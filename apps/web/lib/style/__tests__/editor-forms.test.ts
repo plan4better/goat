@@ -12,7 +12,7 @@ import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 const doc = (symbol: object, extra: object = {}) =>
-  ({ version: 1, kind: "vector", symbol, ...extra }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol, ...extra }) as LayerStyle;
 
 describe("value modes", () => {
   it("names the property of a path", () => {

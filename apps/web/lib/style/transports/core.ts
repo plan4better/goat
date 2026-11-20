@@ -12,13 +12,17 @@ interface StyleReply {
   stale?: boolean;
 }
 
-/** The error code core answers with (`{"detail": {"code": ...}}`), when the body has one. */
-async function codeOf(response: Response): Promise<string | undefined> {
+/** The error code core answers with (`{"detail": {"code": ..., "issues": [...]}}`) and the issues that refused the
+ * save, when the body has them. */
+async function detailOf(response: Response): Promise<{ code?: string; issues?: StyleIssue[] }> {
   try {
-    const body = await response.json();
-    return typeof body?.detail?.code === "string" ? body.detail.code : undefined;
+    const detail = (await response.json())?.detail;
+    if (typeof detail?.code !== "string") return {};
+    return Array.isArray(detail.issues)
+      ? { code: detail.code, issues: detail.issues }
+      : { code: detail.code };
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -42,8 +46,7 @@ export function createCoreTransport(opts: {
         return { ok: false, status: 0 };
       }
       if (!response.ok) {
-        const code = await codeOf(response);
-        return code ? { ok: false, status: response.status, code } : { ok: false, status: response.status };
+        return { ok: false, status: response.status, ...(await detailOf(response)) };
       }
       const stored = (await response.json()) as StyleReply;
       return { ok: true, document: stored.document, revision: stored.revision, issues: stored.issues ?? [] };

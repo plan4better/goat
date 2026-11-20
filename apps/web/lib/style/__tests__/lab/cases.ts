@@ -21,7 +21,7 @@ export interface LabCaseOf extends LabCase {
 
 const FIELDS: Record<string, FieldType> = { category: "string", amount: "number" };
 
-const style = (doc: JsonObject): JsonObject => ({ version: 1, kind: "vector", ...doc });
+const style = (doc: JsonObject): JsonObject => ({ version: "1.0.0", kind: "vector", ...doc });
 
 const extra = (
   id: string,

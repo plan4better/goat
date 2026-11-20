@@ -8,6 +8,7 @@ SPEC_CODES = {  # GOAT Style spec, section 11, code table (code: default level)
     "invalid_value": "error",
     "unknown_version": "error",
     "newer_version": "error",
+    "newer_patch": "warning",
     "geometry_mismatch": "error",
     "part_not_for_geometry": "error",
     "value_form_not_allowed": "error",

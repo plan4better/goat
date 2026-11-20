@@ -13,7 +13,7 @@ const dash = (v: unknown) => ["literal", DASHES[v as string] ?? DASHES.solid];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const doc = (extra: object): any => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol: { fill: { color: "#cccccc" } },
   ...extra,
@@ -428,7 +428,7 @@ describe("cqlToExpression", () => {
 describe("heights", () => {
   it("a class that switches extrude off has height 0", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 20 } },
       classify: [{ field: "use", method: "categories", classes: [{ values: ["green"], extrude: false }] }],
@@ -443,7 +443,7 @@ describe("heights", () => {
 
   it("the raw hook reaches raw fields in classes and rules", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { extrude: { height: 5 } },
       rules: [

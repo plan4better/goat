@@ -23,7 +23,7 @@ S = settings.SCHEMA
 URL = "https://cdn.example/dem.tif"
 FINGERPRINT = "url:" + hashlib.sha256(URL.encode()).hexdigest()[:16]
 RAMP = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "raster",
     "render": {"type": "continuous", "palette": "goat:elevation"},
 }
@@ -122,7 +122,7 @@ async def test_the_map_marks_a_raster_style_computed_from_another_file_stale(
 async def test_saving_a_raster_style_that_needs_the_band_asks_processes(
     db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    image = {"version": 1, "kind": "raster", "render": {"type": "image"}}
+    image = {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}}
     style_id, _ = await raster_style(db_session, style_world, image)
     check = Compute()
     monkeypatch.setattr(style_service, "style_check", check)
@@ -144,7 +144,7 @@ async def test_a_save_or_check_with_a_direction_outside_maplibres_bounds_is_an_e
 ) -> None:
     """A document being written is not brought inside the bounds: the value is an
     error the author (the AI too) sees, and the save keeps the stored value."""
-    hillshade = {"version": 1, "kind": "raster", "render": {"type": "hillshade"}}
+    hillshade = {"version": "1.0.0", "kind": "raster", "render": {"type": "hillshade"}}
     style_id, _ = await raster_style(
         db_session,
         style_world,

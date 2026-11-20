@@ -7,7 +7,7 @@ import { type LegendSection, baseSwatch, buildLegend } from "@/lib/style/legend"
 
 import { SwatchIcon } from "@/components/map/legend/StyleLegend";
 
-const doc = (style: object) => ({ version: 1, kind: "vector", ...style });
+const doc = (style: object) => ({ version: "1.0.0", kind: "vector", ...style });
 const lineSwatch = (symbol: object) => baseSwatch(doc({ symbol }), { geometry: "line", zoom: 12 });
 const entries = (section: LegendSection | undefined) => (section?.kind === "entries" ? section.entries : []);
 

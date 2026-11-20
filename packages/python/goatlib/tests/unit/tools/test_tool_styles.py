@@ -83,7 +83,7 @@ class TestBuilders:
     def test_every_builder_writes_a_valid_document(
         self, doc: dict[str, Any], geometry: str
     ) -> None:
-        assert doc["version"] == 1
+        assert doc["version"] == "1.0.0"
         assert errors(doc, geometry) == []
 
     def test_categories_keep_the_value_types_and_take_palette_colors_in_order(
@@ -177,6 +177,40 @@ class TestComputedStyle:
         assert all("color" in k["fill"] for k in c["classes"])
         assert c["computed"]["data"] == "ducklake:7"
         assert errors(doc, "polygon") == []
+
+    def test_the_computed_style_carries_the_version_its_keys_need(
+        self,
+        con: duckdb.DuckDBPyConnection,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Computing writes keys (the classes): the stored version follows them,
+        and a newer patch comes down to what the keys need."""
+        from goatlib.style import version
+
+        relation = f"read_parquet('{cells(con, tmp_path)}')"
+        intent = tool_style.classified(
+            "total_accessibility", tool_style.EMRLD, "polygon"
+        )
+        runner = _Runner(con)
+        newer = runner.computed_style(
+            {**intent, "version": "1.0.9"},
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:7",
+            seed="x",
+        )
+        assert newer["version"] == "1.0.0"
+        monkeypatch.setattr(version, "SPEC_VERSION", "1.2.0")
+        monkeypatch.setattr(version, "SINCE", {"Classification.classes": "1.2.0"})
+        doc = runner.computed_style(
+            intent,
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:7",
+            seed="x",
+        )
+        assert doc["classify"][0]["classes"] and doc["version"] == "1.2.0"
 
     def test_without_a_tool_style_the_default_for_the_geometry_is_used(
         self, con: duckdb.DuckDBPyConnection, tmp_path: Path

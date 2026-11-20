@@ -20,8 +20,11 @@ def test_parse_for_write_never_changes_the_document(spec_examples: list) -> None
 
 
 def test_versions() -> None:
-    assert codes_of(parse_for_write({"version": 2, "kind": "vector"})) == [
+    assert codes_of(parse_for_write({"version": "2.0.0", "kind": "vector"})) == [
         "newer_version"
+    ]
+    assert codes_of(parse_for_write({"version": 2, "kind": "vector"})) == [
+        "unknown_version"
     ]
     assert codes_of(parse_for_write({"version": "1", "kind": "vector"})) == [
         "unknown_version"
@@ -30,14 +33,14 @@ def test_versions() -> None:
 
 
 def test_kind_is_vector_or_raster() -> None:
-    assert codes_of(parse_for_write({"version": 1, "kind": "tiles"})) == [
+    assert codes_of(parse_for_write({"version": "1.0.0", "kind": "tiles"})) == [
         "invalid_value"
     ]
 
 
 def test_service_style_belongs_to_image_render() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "image", "service_style": "grey"},
     }
@@ -47,13 +50,13 @@ def test_service_style_belongs_to_image_render() -> None:
 def test_raster_palette_and_stops_are_exclusive_and_stops_ascend() -> None:
     stops = [{"value": 10, "color": "#000000"}, {"value": 5, "color": "#ffffff"}]
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "continuous", "stops": stops},
     }
     assert codes_of(parse_for_write(doc)) == ["stops_order"]
     both = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {
             "type": "continuous",
@@ -65,13 +68,19 @@ def test_raster_palette_and_stops_are_exclusive_and_stops_ascend() -> None:
 
 
 def test_h3_resolution_is_auto_or_5_to_10() -> None:
-    doc = {"version": 1, "kind": "vector", "render": {"type": "h3", "resolution": 11}}
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "render": {"type": "h3", "resolution": 11},
+    }
     assert codes_of(parse_for_write(doc)) == ["invalid_value"]
 
 
 def test_unknown_render_type() -> None:
     assert codes_of(
-        parse_for_write({"version": 1, "kind": "vector", "render": {"type": "dots"}})
+        parse_for_write(
+            {"version": "1.0.0", "kind": "vector", "render": {"type": "dots"}}
+        )
     ) == ["invalid_value"]
 
 
@@ -91,17 +100,17 @@ def test_spec_examples_have_valid_structure(ex: dict) -> None:
 def test_list_sizes_are_capped() -> None:
     c = {"field": "a", "method": "categories"}
     assert "invalid_value" in codes_of(
-        parse_for_write({"version": 1, "kind": "vector", "classify": [c] * 51})
+        parse_for_write({"version": "1.0.0", "kind": "vector", "classify": [c] * 51})
     )
     rule = {"when": {"op": "isNull", "args": [{"property": "a"}]}, "visible": False}
     assert "invalid_value" in codes_of(
-        parse_for_write({"version": 1, "kind": "vector", "rules": [rule] * 201})
+        parse_for_write({"version": "1.0.0", "kind": "vector", "rules": [rule] * 201})
     )
     assert (
         codes_of(
             parse_for_write(
                 {
-                    "version": 1,
+                    "version": "1.0.0",
                     "kind": "vector",
                     "classify": [c] * 50,
                     "rules": [rule] * 200,
@@ -121,7 +130,7 @@ def test_list_sizes_are_capped() -> None:
     ],
 )
 def test_heatmap_radius_and_weight_take_maplibres_minimums(render: dict) -> None:
-    doc = {"version": 1, "kind": "vector", "render": render}
+    doc = {"version": "1.0.0", "kind": "vector", "render": render}
     assert codes_of(parse_for_write(doc)) == ["invalid_value"]
 
 
@@ -135,13 +144,13 @@ def test_heatmap_radius_and_weight_take_maplibres_minimums(render: dict) -> None
 def test_hillshade_direction_and_exaggeration_take_maplibres_maximums(
     render: dict,
 ) -> None:
-    doc = {"version": 1, "kind": "raster", "render": render}
+    doc = {"version": "1.0.0", "kind": "raster", "render": render}
     assert codes_of(parse_for_write(doc)) == ["invalid_value"]
 
 
 @pytest.mark.parametrize("classes", ["all", "filter", "view"])
 def test_legend_classes_shown_takes_all_filter_or_view(classes: str) -> None:
-    doc = {"version": 1, "kind": "vector", "legend": {"classes": classes}}
+    doc = {"version": "1.0.0", "kind": "vector", "legend": {"classes": classes}}
     assert codes_of(parse_for_write(doc)) == []
 
 
@@ -151,12 +160,12 @@ def _issues_at(doc: dict, path: str) -> list[str]:
 
 @pytest.mark.parametrize("classes", ["visible", "", "View", True, ["filter"]])
 def test_legend_classes_shown_refuses_other_values(classes: object) -> None:
-    doc = {"version": 1, "kind": "vector", "legend": {"classes": classes}}
+    doc = {"version": "1.0.0", "kind": "vector", "legend": {"classes": classes}}
     assert _issues_at(doc, "/legend/classes") == ["invalid_value"]
 
 
 def test_legend_classes_shown_is_for_vector_layers() -> None:
-    doc = {"version": 1, "kind": "raster", "legend": {"classes": "view"}}
+    doc = {"version": "1.0.0", "kind": "raster", "legend": {"classes": "view"}}
     assert _issues_at(doc, "/legend/classes") == ["unknown_key"]
 
 
@@ -176,7 +185,7 @@ def test_legend_classes_shown_defaults_to_filter() -> None:
     ],
 )
 def test_clusters_are_drawn_as_circles_or_like_the_points(render: dict) -> None:
-    doc = {"version": 1, "kind": "vector", "render": render}
+    doc = {"version": "1.0.0", "kind": "vector", "render": render}
     assert codes_of(parse_for_write(doc)) == []
 
 
@@ -185,13 +194,17 @@ def test_clusters_are_drawn_as_circles_or_like_the_points(render: dict) -> None:
     [("look", "icons"), ("look", ""), ("count", "corner"), ("count", True)],
 )
 def test_cluster_look_and_count_refuse_other_values(key: str, value: object) -> None:
-    doc = {"version": 1, "kind": "vector", "render": {"type": "cluster", key: value}}
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "render": {"type": "cluster", key: value},
+    }
     assert _issues_at(doc, f"/render/{key}") == ["invalid_value"]
 
 
 def test_cluster_look_and_count_belong_to_clusters() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "render": {"type": "heatmap", "look": "points"},
     }
@@ -209,7 +222,7 @@ def test_clusters_default_to_a_circle_with_the_count_in_the_middle() -> None:
 def test_a_cluster_value_is_the_count_or_an_aggregate_of_a_field(op: str) -> None:
     value = {"op": op} if op == "count" else {"op": op, "field": "pupils"}
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "vector",
         "render": {"type": "cluster", "value": value},
     }
@@ -219,7 +232,7 @@ def test_a_cluster_value_is_the_count_or_an_aggregate_of_a_field(op: str) -> Non
 def test_a_cluster_aggregate_needs_a_field_and_a_known_op() -> None:
     def at(value: dict) -> list[str]:
         doc = {
-            "version": 1,
+            "version": "1.0.0",
             "kind": "vector",
             "render": {"type": "cluster", "value": value},
         }

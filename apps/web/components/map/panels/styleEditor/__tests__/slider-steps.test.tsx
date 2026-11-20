@@ -16,7 +16,7 @@ import { renderPanel } from "./renderPanel";
 const whole = (n: number) => Number.isInteger(Number(n.toFixed(6)));
 
 const raster = (style: object) => ({
-  document: { version: 1, kind: "raster", render: { type: "hillshade" }, ...style } as LayerStyle,
+  document: { version: "1.0.0", kind: "raster", render: { type: "hillshade" }, ...style } as LayerStyle,
   data: {
     raster: { dataset: "d1", info: { bands: 1, bits: [32], colorTable: false, integer: false, stats: [] } },
   },

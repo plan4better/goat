@@ -22,6 +22,7 @@ from core.schemas.report_layout import (
 from core.schemas.report_layout import (
     request_examples as report_layout_request_examples,
 )
+from core.services.style import checked_config_styles
 
 router = APIRouter()
 
@@ -113,6 +114,7 @@ async def create_report_layout(
     """Create a new report layout for a project."""
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
+    layout_in.config = checked_config_styles(layout_in.config)
 
     layout = await crud_report_layout.create_for_project(
         async_session, project_id=project_id, obj_in=layout_in, user_id=user_id
@@ -155,6 +157,8 @@ async def update_report_layout(
     """
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
+    if layout_in.config is not None:
+        layout_in.config = checked_config_styles(layout_in.config)
 
     layout = await crud_report_layout.update_for_project(
         async_session,

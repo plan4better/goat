@@ -278,7 +278,7 @@ describe("legend invariants", () => {
     // Below the Clusters row, the base look reads as the single points; without clusters it takes the layer's name.
     expect((base as Extract<LegendSection, { kind: "entries" }>).entries[0].extra).toBe("points");
     const plain = buildLegend(
-      { version: 1, kind: "vector", symbol: { marker: { color: "#283593" } } },
+      { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#283593" } } },
       { geometry: "point", zoom: 12 }
     )!.sections;
     expect((plain[0] as Extract<LegendSection, { kind: "entries" }>).entries[0].extra).toBeUndefined();
@@ -286,7 +286,7 @@ describe("legend invariants", () => {
 
   it("a cluster value's size samples have the cluster symbol's color and outline, as on the map", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       render: {
         type: "cluster",
@@ -316,7 +316,7 @@ describe("legend invariants", () => {
   it("the cluster sample follows the cluster size set in the panel", () => {
     const sample = (size: unknown) => {
       const style = {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render: { type: "cluster", symbol: { marker: { shape: "circle", size } } },
       };
@@ -329,7 +329,7 @@ describe("legend invariants", () => {
 
   it("a part the layer switches off shows in no swatch, though classes set it; an outline in the fill color takes the class's", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { fill: false, outline: { color: "fill", width: 2 } },
       classify: [
@@ -361,7 +361,7 @@ describe("legend invariants", () => {
   it("clusters drawn like the points show the points' marker, with a badge where the count is on one", () => {
     const sample = (render: object) => {
       const style = {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "icon", icon: "goat:shop", color: "#5a1846", size: 20 } },
         render: {
@@ -389,7 +389,7 @@ describe("legend invariants", () => {
 
   it("a cluster badge takes the cluster symbol's outline as its ring", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       render: {
         type: "cluster",
@@ -404,7 +404,7 @@ describe("legend invariants", () => {
 
   it("clusters with a value name it, and a size or color by the value shows its range", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       render: {
         type: "cluster",
@@ -439,7 +439,7 @@ describe("legend invariants", () => {
 
   it("a cluster badge without a cluster symbol has the map's default colors", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       symbol: { marker: { shape: "pin" } },
       render: { type: "cluster", look: "points", count: "badge" },
@@ -463,7 +463,7 @@ describe("legend invariants", () => {
 
   it("clusters without a symbol of their own show the color the map gives them", () => {
     const style = {
-      version: 1,
+      version: "1.0.0",
       kind: "vector",
       render: { type: "cluster" },
       symbol: { marker: { shape: "circle", color: "#d7191c", size: 8 } },
@@ -487,7 +487,7 @@ describe("legend invariants", () => {
   const density = (render: object, zoom: number) =>
     buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         render,
         symbol: { marker: { shape: "circle", color: "#3366cc", size: 8 } },
@@ -529,7 +529,7 @@ describe("legend invariants", () => {
   const point = (extra: object, zoom = 12) =>
     buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: { shape: "circle", color: "#3366cc", size: 10 },
@@ -638,7 +638,7 @@ describe("legend invariants", () => {
     entriesOf(
       buildLegend(
         {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { marker: { shape: "circle", color: "#3366cc", size: 10 } },
           classify: [
@@ -684,7 +684,7 @@ describe("legend invariants", () => {
   it("a field with No data in one block has it in every block of that field", () => {
     const legend = buildLegend(
       {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#3366cc", size: 10 } },
         classify: [

@@ -11,7 +11,7 @@ const ZOOMS = [0, 3.5, 9.95, 12, 12.96, 14, 16.4, 22];
 
 describe("legends free of the zoom", () => {
   it("a value by zoom anywhere, clusters, heatmaps and hexagons read the zoom", () => {
-    const vector = (extra: JsonObject): JsonObject => ({ version: 1, kind: "vector", ...extra });
+    const vector = (extra: JsonObject): JsonObject => ({ version: "1.0.0", kind: "vector", ...extra });
     expect(legendDependsOnZoom(vector({ symbol: { marker: { color: "#ff0000" } } }))).toBe(false);
     expect(
       legendDependsOnZoom(

@@ -8,7 +8,7 @@ from goatlib.style.validate import validate
 
 from .conftest import codes
 
-V = {"version": 1, "kind": "vector"}
+V = {"version": "1.0.0", "kind": "vector"}
 
 
 def _codes(doc: dict[str, Any], ctx: Any) -> set[str]:

@@ -142,6 +142,14 @@ READMEs means section N of that file.
   rules about the document as a whole (`check.py`), and rules against the data
   (`data_check.py`), which read a `DataContext` built by whoever can see the data.
   `validate.py` runs all three.
+- **Versions are three numbers** (`style/version.py`, spec 14 and 21), one for
+  layer styles and the map document. A written document gets the lowest
+  version its keys need (`stamp`, which every writer calls: core's saves,
+  `stored_document`, the map document): the keys of 1.0.0 (catalogue palettes and
+  library icons count as keys) are listed in `style/data/keys-1.0.0.json`,
+  later ones in `SINCE`, and a test fails for a schema key in neither, so a
+  document that uses nothing newer stays readable by older servers. A newer major or minor is refused (`newer_version`), a
+  newer patch only warns, and the integer 1 of earlier documents reads as 1.0.0.
 - **Styles before GOAT Style are version 0.** `convert_v0.py` turns them into
   documents and returns map state (`visibility`, `legend.collapsed`) and what it
   could not keep separately; it never raises, because the server never validated
@@ -382,7 +390,12 @@ documents goatlib built or upgraded:
   project layer's named styles with the active one, the map state of layers and
   groups, and the uploaded icons the styles name (`asset:<id>`, remapped to the
   imported assets); archives before 1.2 carry `properties`, which the import
-  converts.
+  converts. The import reads the version of every style in the archive first
+  (`tools/project_import.py`): a newer GOAT Style minor or major refuses the
+  whole import before anything is written, since `stored_document` would swap
+  such a style for the default one; a newer patch is imported with the version
+  its keys need, the styles inside workflow and report layout configs too, and
+  the job result lists it under `warnings`.
 ## GTFS bundles are stored typed
 
 A GTFS bundle keeps one member layer per file of the feed, every column as

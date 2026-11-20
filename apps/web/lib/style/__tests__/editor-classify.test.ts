@@ -33,7 +33,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
 
 const doc = (extra: object = {}) =>
-  ({ version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } }, ...extra }) as LayerStyle;
+  ({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } }, ...extra }) as LayerStyle;
 const classified = () => doc({ classify: [{ id: "c1", field: "density", method: "quantile", count: 5 }] });
 
 function setup(document: LayerStyle) {
@@ -533,7 +533,7 @@ describe("scoped view", () => {
 });
 
 describe("classifyCount", () => {
-  const raster = (render: object) => ({ version: 1, kind: "raster", render }) as unknown as LayerStyle;
+  const raster = (render: object) => ({ version: "1.0.0", kind: "raster", render }) as unknown as LayerStyle;
   const classes = [{ to: 10 }, { from: 10, to: 20, visible: false }, { from: 20 }];
 
   it("counts a vector style's classifications", () => {

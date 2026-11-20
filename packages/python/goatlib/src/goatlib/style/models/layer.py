@@ -13,6 +13,7 @@ from goatlib.style.models.raster import LayerOpacityValue, RasterStyle
 from goatlib.style.models.render import VectorRender
 from goatlib.style.models.rules import Rule
 from goatlib.style.models.values import ZoomLevel
+from goatlib.style.version import SpecVersionStr
 
 
 class Legend(StyleModel):
@@ -67,7 +68,7 @@ class Time(StyleModel):
 
 
 class VectorStyle(StyleModel):
-    version: Literal[1]
+    version: SpecVersionStr
     kind: Literal["vector"]
     geometry: Literal["point", "line", "polygon"] | None = None
     opacity: LayerOpacityValue | None = None

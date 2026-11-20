@@ -16,7 +16,7 @@ const render = (doc: object) =>
       <SymbolSection />
     </PopoverProvider>,
     {
-      document: { version: 1, kind: "vector", ...doc } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", ...doc } as LayerStyle,
       data: { geometry: "point", featureCount: 10 },
     }
   );
@@ -115,7 +115,7 @@ describe("icon symbols", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { marker: { icon: "goat:park" } },
           classify: [ICON_CLASSES],

@@ -1,15 +1,15 @@
 // The thumbnail page's layers from the payload goatlib injects (`window.__THUMBNAIL_DATA__`): the map's layers top
-// first, each with its active style document (`style`). A layer without one (a payload from before GOAT Style)
-// draws nothing.
+// first, each with its active style document (`style`). A layer without one (a payload from before GOAT Style) or
+// with a document of another GOAT Style major draws nothing.
 import { type ViewMode, cameraFor, viewModeOf } from "@/lib/scene/view";
 import type { LayerStyle, Scene } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
+import { isDrawableStyle } from "@/lib/style/version";
 
 export function thumbnailLayers(payload: unknown[] | undefined): ViewLayer[] {
   return (payload ?? []).filter(isObject).map((layer) => {
-    const style =
-      isObject(layer.style) && layer.style.version === 1 ? (layer.style as unknown as LayerStyle) : null;
+    const style = isDrawableStyle(layer.style) ? (layer.style as unknown as LayerStyle) : null;
     return {
       ...(layer as unknown as ViewLayer),
       visible: layer.visible !== false,

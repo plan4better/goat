@@ -30,7 +30,7 @@ from .conftest import (
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 S = TEST_CUSTOMER_SCHEMA
-RED = {"version": 1, "kind": "vector", "symbol": {"marker": {"color": "#aa0000"}}}
+RED = {"version": "1.0.0", "kind": "vector", "symbol": {"marker": {"color": "#aa0000"}}}
 
 
 async def default_of(pool: asyncpg.Pool, layer_id: str) -> list[Any]:
@@ -256,6 +256,6 @@ async def test_promotion_writes_a_default_row_from_a_version_0_and_a_version_1_a
             )
         [(default_name, docs[name])] = await default_of(postgres_pool, out["layer_id"])
         assert default_name == "Default"
-    assert docs["v0"]["version"] == 1
+    assert docs["v0"]["version"] == "1.0.0"
     assert docs["v0"]["symbol"]["marker"]["color"] == "#00aa00"
     assert docs["v1"] == RED

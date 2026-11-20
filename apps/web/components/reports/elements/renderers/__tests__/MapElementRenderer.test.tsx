@@ -137,7 +137,7 @@ describe("MapElementRenderer in 3D", () => {
   });
 
   it("a print with raster layers is ready once their values are in and the map is idle after that", () => {
-    recorded.renderLayers = [{ key: "1", style: { version: 1, kind: "raster" }, entry: {} }];
+    recorded.renderLayers = [{ key: "1", style: { version: "1.0.0", kind: "raster" }, entry: {} }];
     const ready = vi.fn();
     renderMap({ element: element({ ...TILTED, pitch: 0 }), onMapLoaded: ready });
     const fire = (name: "onLoad" | "onIdle") => act(() => (recorded.map[name] as () => void)());
@@ -159,7 +159,7 @@ describe("MapElementRenderer in 3D", () => {
   });
 
   it("an atlas page waits for the raster layers' values too", () => {
-    recorded.renderLayers = [{ key: "1", style: { version: 1, kind: "raster" }, entry: {} }];
+    recorded.renderLayers = [{ key: "1", style: { version: "1.0.0", kind: "raster" }, entry: {} }];
     const ready = vi.fn();
     const page = {
       index: 0,

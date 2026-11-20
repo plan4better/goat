@@ -35,8 +35,8 @@ vi.mock("@/lib/api/map", async (importOriginal) => ({
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("react-toastify", () => ({ toast }));
 
-const POLYGON = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
-const POINT = { version: 1, kind: "vector", symbol: { marker: { color: "#ff0000" } } } as LayerStyle;
+const POLYGON = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const POINT = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#ff0000" } } } as LayerStyle;
 
 const layerWith = (others: string[], position = 0) =>
   ({
@@ -250,6 +250,17 @@ describe("named styles", () => {
     expect(button(/^Copy/).textContent).toContain("style_editor.dataset_default");
     act(() => editor.set("symbol.fill.color", "#00ff00"));
     expect(button(/^Default/).textContent).not.toContain("style_editor.dataset_default");
+  });
+
+  // A reference read before the server stamped "1.0.0" (a cached answer or an older tab during a rollout) still
+  // holds the integer 1; core reads stored documents as 1.0.0.
+  it("a dataset style still read with the integer version 1 is the default of the same style at 1.0.0", async () => {
+    ds.dataset = { ...POLYGON, version: 1 } as unknown as LayerStyle;
+    ds.others = { o0: POLYGON };
+    setup(layerWith(["Copy"]));
+    await openStyles();
+    expect(button(/^Default/).textContent).toContain("style_editor.dataset_default");
+    expect(button(/^Copy/).textContent).toContain("style_editor.dataset_default");
   });
 
   it("the active style's menu puts the whole style back as the dataset's, as one undo step", async () => {

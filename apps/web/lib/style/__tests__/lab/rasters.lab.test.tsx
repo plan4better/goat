@@ -67,7 +67,7 @@ const FLAT_SOURCE = {
 
 const raster = (id: string, style: JsonObject, source: CompileInput["source"] = SOURCE): LabCase => ({
   id,
-  style: { version: 1, kind: "raster", ...style },
+  style: { version: "1.0.0", kind: "raster", ...style },
   // A raster has no geometry of its own: the scene asks for one.
   geometry: "polygon",
   // Tiles where a cone of the fixture's height has slopes the hillshade shades fully, and a cell is many pixels wide.

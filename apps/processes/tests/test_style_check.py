@@ -22,7 +22,7 @@ from processes.services.analytics_service import AnalyticsService
 LAYER = "3cdd1ea4-db25-414c-88ec-399ac841300c"
 TABLE = "t_3cdd1ea4db25414c88ec399ac841300c"
 QUANTILE_DOC = {
-    "version": 1,
+    "version": "1.0.0",
     "kind": "vector",
     "symbol": {"fill": {"color": "#cccccc"}},
     "classify": [
@@ -137,7 +137,11 @@ def test_a_raster_document_is_validated_only() -> None:
     with patch.object(service, "_get_table_name") as table:
         result = service.style_check(
             collection=LAYER,
-            document={"version": 1, "kind": "raster", "render": {"type": "image"}},
+            document={
+                "version": "1.0.0",
+                "kind": "raster",
+                "render": {"type": "image"},
+            },
             geometry=None,
             compute=True,
             stored=False,
@@ -182,7 +186,7 @@ def test_a_malformed_document_comes_back_as_issues(catalog_layer) -> None:
 def test_the_deployment_supports_rasters_and_h3(catalog_layer) -> None:
     h3 = check(
         catalog_layer,
-        {"version": 1, "kind": "vector", "render": {"type": "h3"}},
+        {"version": "1.0.0", "kind": "vector", "render": {"type": "h3"}},
         geometry="point",
     )
     assert "not_supported_yet" not in {i["code"] for i in h3["issues"]}
@@ -190,7 +194,7 @@ def test_the_deployment_supports_rasters_and_h3(catalog_layer) -> None:
     result = service.style_check(
         collection=LAYER,
         document={
-            "version": 1,
+            "version": "1.0.0",
             "kind": "raster",
             "render": {"type": "continuous", "band": NDVI, "palette": "goat:elevation"},
         },
@@ -281,7 +285,7 @@ def raster_check(
 
 def test_the_check_of_a_raster_file_computes_its_domain_and_classes() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {
             "type": "continuous",
@@ -301,7 +305,7 @@ def test_the_check_of_a_raster_file_computes_its_domain_and_classes() -> None:
 
 def test_a_rasters_unknown_band_is_still_unknown_band() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "continuous", "band": 3, "domain": [0, 1]},
     }
@@ -310,7 +314,7 @@ def test_a_rasters_unknown_band_is_still_unknown_band() -> None:
 
 def test_an_unreachable_raster_file_answers_503_so_core_keeps_the_style_stale() -> None:
     doc = {
-        "version": 1,
+        "version": "1.0.0",
         "kind": "raster",
         "render": {"type": "continuous", "palette": "goat:elevation"},
     }
@@ -325,7 +329,7 @@ def test_a_raster_file_is_read_from_the_layer_row_never_from_the_request() -> No
             "style-check",
             {
                 "collection": LAYER,
-                "document": {"version": 1, "kind": "raster"},
+                "document": {"version": "1.0.0", "kind": "raster"},
                 "raster_url": "http://10.0.0.1/x.tif",
             },
         )
@@ -350,7 +354,7 @@ def test_the_route_hands_the_layer_rows_raster_address_to_the_check() -> None:
     with patch("processes.routers.processes.analytics_service.style_check", fake_check):
         _execute_analytics_sync(
             "style-check",
-            {"collection": LAYER, "document": {"version": 1, "kind": "raster"}},
+            {"collection": LAYER, "document": {"version": "1.0.0", "kind": "raster"}},
             None,
             raster_file=raster,
         )
@@ -416,7 +420,11 @@ def test_the_check_opens_a_catalog_rasters_copy_as_a_file(tmp_path) -> None:
     with patch("processes.services.analytics_service.RasterSource", source):
         AnalyticsService().style_check(
             collection=LAYER,
-            document={"version": 1, "kind": "raster", "render": {"type": "image"}},
+            document={
+                "version": "1.0.0",
+                "kind": "raster",
+                "render": {"type": "image"},
+            },
             geometry=None,
             compute=True,
             stored=False,

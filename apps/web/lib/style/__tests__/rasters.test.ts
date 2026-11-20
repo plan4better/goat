@@ -47,7 +47,7 @@ const VALUES: RasterValues = {
 };
 const LOADED = { ...SOURCE, values: VALUES };
 const compile = (style: object, source: CompileInput["source"] = LOADED) =>
-  compileLayer({ id: "9", style: { version: 1, kind: "raster", ...style } as LayerStyle, source });
+  compileLayer({ id: "9", style: { version: "1.0.0", kind: "raster", ...style } as LayerStyle, source });
 const valid = (out: ReturnType<typeof compileLayer>) =>
   expect(maplibreErrors(out.layers, out.sources)).toEqual([]);
 

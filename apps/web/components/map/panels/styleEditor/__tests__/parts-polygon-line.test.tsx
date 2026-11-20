@@ -15,7 +15,7 @@ const render = (symbol: object, geometry: Geometry) =>
     <PopoverProvider>
       <SymbolSection />
     </PopoverProvider>,
-    { document: { version: 1, kind: "vector", symbol } as LayerStyle, data: { geometry } }
+    { document: { version: "1.0.0", kind: "vector", symbol } as LayerStyle, data: { geometry } }
   );
 
 describe("polygon and line parts", () => {

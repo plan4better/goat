@@ -20,7 +20,7 @@ vi.mock("@/lib/providers/PublicProjectProvider", () => ({ useIsPublicProject: ()
 
 const PROJECT = "00000000-0000-0000-0000-000000000001";
 const body: MapResponse = {
-  map: { version: 1, layers: [{ type: "layer", id: 5, visible: true, style: "s1" }] },
+  map: { version: "1.0.0", layers: [{ type: "layer", id: 5, visible: true, style: "s1" }] },
   styles: {
     "5": {
       active: {
@@ -28,7 +28,7 @@ const body: MapResponse = {
         name: "Default",
         position: 0,
         revision: 1,
-        document: { version: 1, kind: "vector" },
+        document: { version: "1.0.0", kind: "vector" },
         issues: [],
         stale: false,
       },
@@ -117,7 +117,7 @@ describe("the map request", () => {
   });
 
   it("a stored reply replaces the active style in the map cache", () => {
-    const document = { version: 1, kind: "vector", opacity: 0.5 } as const;
+    const document = { version: "1.0.0", kind: "vector", opacity: 0.5 } as const;
     const next = withStyleReply(body, 5, "s1", { document, revision: 2, issues: [] });
     expect(next.styles["5"].active).toMatchObject({ document, revision: 2, stale: false });
     expect(withStyleReply(body, 5, "other", { document, revision: 2, issues: [] })).toBe(body);
@@ -133,7 +133,7 @@ describe("dataset default styles", () => {
       name: "Default",
       position: 0,
       revision: 1,
-      document: { version: 1, kind: "vector" },
+      document: { version: "1.0.0", kind: "vector" },
       issues: [],
       stale: false,
     });

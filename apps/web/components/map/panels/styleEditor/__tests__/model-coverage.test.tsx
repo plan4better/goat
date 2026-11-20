@@ -33,7 +33,7 @@ const symbol = (doc: object, geometry: "line" | "point") =>
     <PopoverProvider>
       <SymbolSection />
     </PopoverProvider>,
-    { document: { version: 1, kind: "vector", ...doc } as LayerStyle, data: data(geometry) }
+    { document: { version: "1.0.0", kind: "vector", ...doc } as LayerStyle, data: data(geometry) }
   );
 
 /** The last row with this label: the open popover's, after the section's. */
@@ -96,7 +96,7 @@ describe("rows for every key of the model", () => {
         </PopoverProvider>
       </Provider>,
       {
-        document: { version: 1, kind: "vector", render: { type: "h3", extrude: {} } } as LayerStyle,
+        document: { version: "1.0.0", kind: "vector", render: { type: "h3", extrude: {} } } as LayerStyle,
         data: data("point"),
       }
     );
@@ -114,7 +114,7 @@ describe("rows for every key of the model", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { line: { width: { field: "traffic", range: [1, 8] } } },
         } as LayerStyle,
@@ -136,7 +136,7 @@ describe("rows for every key of the model", () => {
       </PopoverProvider>,
       {
         document: {
-          version: 1,
+          version: "1.0.0",
           kind: "vector",
           symbol: { fill: {} },
           classify: [

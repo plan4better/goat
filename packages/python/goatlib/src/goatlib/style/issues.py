@@ -20,6 +20,7 @@ CODES: dict[str, Level] = {
     "invalid_value": "error",
     "unknown_version": "error",
     "newer_version": "error",
+    "newer_patch": "warning",
     "geometry_mismatch": "error",
     "part_not_for_geometry": "error",
     "value_form_not_allowed": "error",

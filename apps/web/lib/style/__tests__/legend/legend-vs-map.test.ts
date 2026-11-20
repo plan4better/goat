@@ -82,7 +82,7 @@ const IMAGE_CASES: LegendCase[] = (() => {
   });
   const one = (id: string, geometry: Geometry, symbol: JsonObject): LegendCase => ({
     id,
-    style: { version: 1, kind: "vector", symbol },
+    style: { version: "1.0.0", kind: "vector", symbol },
     geometry,
     zoom: 12,
     fields: { amount: "number" },
@@ -406,7 +406,7 @@ describe("the legend against the map", () => {
       zoom: 12,
       fields: { kind: "string" },
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#888888", size: 10 } },
         rules: [
@@ -475,7 +475,7 @@ describe("the legend's counts against the map", () => {
       zoom: 12,
       fields: { category: "string", amount: "number" },
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { marker: { shape: "circle", color: "#fdae61", size: 10 }, label: { text: "{category}" } },
         classify: [
@@ -644,7 +644,7 @@ describe("the density legends against the map", () => {
       zoom: 10,
       fields: { amount: "number" },
       style: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: {
           marker: {

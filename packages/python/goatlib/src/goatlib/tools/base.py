@@ -79,6 +79,7 @@ from goatlib.style.context import DataContext
 from goatlib.style.data import compute_into
 from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import fingerprint
+from goatlib.style.version import stamp
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
@@ -1267,7 +1268,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
     ) -> dict[str, Any]:
         """`document`, or the default style for the geometry (its color picked by
         `seed`), with the values the server computes filled from `relation`; as
-        it is when they cannot be computed."""
+        it is when they cannot be computed. Either way with the lowest GOAT Style
+        version its keys need (`stamp`)."""
         if document is None:
             document = default_style(
                 DataContext(kind="vector", geometry=geometry), seed=seed
@@ -1282,8 +1284,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             )
         except Exception:  # never fail a run on its style: the map load computes it
             logger.warning("Computing the result's style failed", exc_info=True)
-            return document
-        return computed
+            return stamp(document)
+        return stamp(computed)
 
     def _export_temp_layer_to_parquet(
         self: Self,

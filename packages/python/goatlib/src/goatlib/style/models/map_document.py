@@ -7,6 +7,7 @@ from pydantic import Discriminator, Field, Tag
 from goatlib.style import limits
 from goatlib.style.models.base import LAX, StyleModel
 from goatlib.style.models.scene import Scene
+from goatlib.style.version import SpecVersionStr
 
 
 class Basemap(StyleModel):
@@ -72,7 +73,7 @@ MapGroup.model_rebuild()
 
 
 class MapDocument(StyleModel):
-    version: Literal[1]
+    version: SpecVersionStr
     basemap: Basemap | None = None
     view: View | None = None
     locale: str | None = None

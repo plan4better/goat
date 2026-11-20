@@ -3447,6 +3447,7 @@
     "stopped_forbidden": "Dieser Layer kann nicht mehr bearbeitet werden.",
     "stopped_deleted": "Dieser Layer wurde gelöscht.",
     "stopped_base_too_old": "Jemand hat diesen Stil inzwischen geändert.",
+    "stopped_refused": "Dieser Stil kann nicht gespeichert werden.",
     "apply_my_changes": "Meine Änderungen übernehmen",
     "discard_my_changes": "Meine Änderungen verwerfen",
     "damaged_notice": "Ein Teil dieses Stils passt nicht mehr zu den Daten. Die Karte zeigt den Rest.",

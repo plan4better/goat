@@ -46,7 +46,7 @@ const FILL = "#dddddd";
 const MARKER = "#d7301f";
 
 const style = (symbol: JsonObject, extra: JsonObject = {}): JsonObject => ({
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   symbol,
   ...extra,

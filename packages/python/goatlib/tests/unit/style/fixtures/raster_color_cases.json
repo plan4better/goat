@@ -3,7 +3,7 @@
     "id": "ramp-two-colors",
     "about": "A ramp of a color list over its domain, values beyond take the end colors; the layer opacity stays in the browser.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "opacity": 0.6,
       "render": { "type": "continuous", "band": 1, "palette": ["#000000", "#ffffff"], "domain": [0, 255] }
@@ -23,7 +23,7 @@
     "id": "ramp-palette-reversed-hide",
     "about": "A catalog palette reversed, values outside the domain transparent.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -48,7 +48,7 @@
     "id": "ramp-computed-domain",
     "about": "A catalog palette over the domain the server computed from the band.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -69,7 +69,7 @@
     "id": "stops-even",
     "about": "Own colors at evenly spaced values, blended in between.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -98,7 +98,7 @@
     "id": "stops-uneven",
     "about": "Own colors at unevenly spaced values (the spec's color map example).",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -125,7 +125,7 @@
     "id": "stops-nearest",
     "about": "Each cell takes the color of the closest stop (the lower one on a midpoint), values outside transparent.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -156,7 +156,7 @@
     "id": "classes-manual",
     "about": "Manual classes [from, to): an own color, a hidden class, colors from the palette, an open last class.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -191,7 +191,7 @@
     "id": "classes-palette",
     "about": "Classes with their bounds filled and their colors not yet written: the web takes them from a catalog palette.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -219,7 +219,7 @@
     "id": "classes-palette-reversed",
     "about": "The same classes with the palette reversed: the class colors run the other way.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -245,7 +245,7 @@
     "id": "classes-formula",
     "about": "Classes of a band formula's value: the cells' bands go into the formula.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "continuous",
@@ -273,7 +273,7 @@
     "id": "categories",
     "about": "The spec's land cover categories: a hidden class, a class without a color, other values in grey, a no-data value of the style; opacity and sharp cells stay in the browser.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "opacity": 0.75,
       "resampling": "nearest",
@@ -313,7 +313,7 @@
     "id": "categories-band-two",
     "about": "Categories of band 2, the first band holding other categories; values without a class and no other color are transparent.",
     "style": {
-      "version": 1,
+      "version": "1.0.0",
       "kind": "raster",
       "render": {
         "type": "categorical",
@@ -336,7 +336,7 @@
   {
     "id": "image-bands",
     "about": "An 8-bit image with bands 3, 1 and 2 as red, green and blue; an image has no legend.",
-    "style": { "version": 1, "kind": "raster", "render": { "type": "image", "bands": [3, 1, 2] } },
+    "style": { "version": "1.0.0", "kind": "raster", "render": { "type": "image", "bands": [3, 1, 2] } },
     "token": "eyJiYW5kcyI6WzMsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9",
     "file": { "dtype": "uint8", "no_data": null },
     "legend": false,

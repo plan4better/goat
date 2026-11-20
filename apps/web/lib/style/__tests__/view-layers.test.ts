@@ -20,9 +20,9 @@ import { publicMapLayers } from "@/hooks/map/useMapLayers";
 
 vi.mock("@/lib/transformers/map-image", () => ({ loadImage: vi.fn(async () => undefined) }));
 
-const FILL = { version: 1, kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const CLUSTER = {
-  version: 1,
+  version: "1.0.0",
   kind: "vector",
   render: { type: "cluster" },
   symbol: { marker: {} },
@@ -106,6 +106,7 @@ describe("renderLayersOf", () => {
     const overlay = out.find((l) => l.key === PENDING_KEY)!;
     expect(overlay.style).toEqual(FILL);
     expect(overlay.source).toEqual({ type: "points", id: `src-${PENDING_KEY}`, data: pending });
+    expect(out.find((l) => l.key === `${PENDING_KEY}-mark`)!.style.version).toBe("1.0.0");
   });
 
   it("every project layer of the edited dataset has dynamic tiles and hides the edited features", () => {
@@ -139,7 +140,7 @@ describe("renderLayersOf", () => {
     const published = publicMapLayers({
       layers: rows as never,
       map: {
-        version: 1,
+        version: "1.0.0",
         layers: [
           { type: "layer", id: 1, style: "style-1" },
           { type: "layer", id: 2 },
@@ -303,7 +304,7 @@ describe("map events through the renderer's registry", () => {
       id: "s",
       revision: 1,
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,
@@ -327,7 +328,7 @@ describe("map events through the renderer's registry", () => {
   });
 
   it("the edited layer's icon goes onto the features being drawn", () => {
-    const icon = (marker: object) => ({ version: 1, kind: "vector", symbol: { marker } }) as LayerStyle;
+    const icon = (marker: object) => ({ version: "1.0.0", kind: "vector", symbol: { marker } }) as LayerStyle;
     expect(
       editorIconProps(
         icon({ shape: "icon", icon: "goat:park", size: 24, anchor: "bottom_left", color: "#ff0000" })
@@ -353,7 +354,7 @@ describe("map events through the renderer's registry", () => {
       id: "s",
       revision: 1,
       document: {
-        version: 1,
+        version: "1.0.0",
         kind: "vector",
         symbol: { fill: { color: "#cccccc" }, outline: { color: "#000000" }, label: { text: "{name}" } },
       } as LayerStyle,

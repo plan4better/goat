@@ -16,7 +16,7 @@ export interface GoatStyleDocuments {
  * via the `definition` "VectorStyle".
  */
 export interface VectorStyle {
-  version: 1;
+  version: string;
   kind: "vector";
   geometry?: ("point" | "line" | "polygon") | null;
   opacity?: (number | ZoomLayerOpacity) | null;
@@ -1126,7 +1126,7 @@ export interface H3Cells {
  * via the `definition` "RasterStyle".
  */
 export interface RasterStyle {
-  version: 1;
+  version: string;
   kind: "raster";
   opacity?: (number | ZoomLayerOpacity) | null;
   min_zoom?: number | null;
@@ -1265,7 +1265,7 @@ export interface RasterPopup {
  * via the `definition` "MapDocument".
  */
 export interface MapDocument {
-  version: 1;
+  version: string;
   basemap?: Basemap | null;
   view?: View | null;
   locale?: string | null;
