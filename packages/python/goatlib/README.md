@@ -719,6 +719,15 @@ while the token is fresh (core keeps it, records it and reuses an identical file
 records with the ids core returns. Nothing refreshes the token: a file core refuses stays out with a warning and the
 import goes on. A failed import deletes the uploads it created, with the same token, as far as it can.
 
+## A remote file's address in a project archive
+
+A raster layer added from a file's address can carry an access key in it (a signed link's query string, a user and
+password before the host). Whoever may read a project may export it, so `project_export` writes such an address
+whole only for an exporter core's `layer_write_allowed` lets edit the layer, asked in its layer query; anyone else's
+archive holds it without query string, fragment and credentials. The rule is `utils/layer_address.py`, which core's
+layer reads use too. Map services keep their address, since the browser loads their tiles from it. A layer imported
+from such an archive needs its full address set again before its file can be read.
+
 ## Files another pod just wrote
 
 The data volume is shared over NFS, and each node remembers for a while that a file name did not exist. A

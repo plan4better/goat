@@ -422,6 +422,8 @@ class TestProjectExportRunner:
             "user_id": user_id,
             "folder_id": uuid.UUID("00000000-0000-0000-0000-ffffffffffff"),
             "field_config": field_config,
+            "is_catalog": False,
+            "can_edit": None,
         }
 
         queries: list[str] = []
@@ -835,3 +837,162 @@ def test_an_upload_lands_inside_the_archive_only(tmp_path: Path) -> None:
     with patch("goatlib.tools.project_export.CoreSession", return_value=core):
         ProjectExportRunner._fetch_uploads(params, assets, archive)
     core.download_upload.assert_not_called()
+
+
+class TestRemoteFileAddress:
+    """A raster layer added from a file's address may carry an access key in
+    that address. The archive holds it whole only for an exporter who may edit
+    the layer (core's `layer_write_allowed`, asked in the layer query); anyone
+    else gets it without query string, fragment and credentials. A map
+    service keeps its address: the browser loads its tiles from it."""
+
+    project_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    owner_id = uuid.UUID("00000000-0000-0000-0000-000000000011")
+    exporter_id = uuid.UUID("00000000-0000-0000-0000-000000000022")
+    cog_id = uuid.UUID("00000000-0000-0000-0000-0000000000c0")
+    wms_id = uuid.UUID("00000000-0000-0000-0000-0000000000c1")
+    FILE = "https://example.org/a/b.tif?sig=secret#x"
+    WMS = "https://maps.example.org/wms?SERVICE=WMS&LAYERS=a&key=service-key"
+
+    @pytest.fixture()
+    def runner(self) -> ProjectExportRunner:
+        runner = ProjectExportRunner()
+        settings = MagicMock()
+        settings.customer_schema = "customer"
+        settings.s3_bucket_name = "test-bucket"
+        runner.settings = settings
+        runner._duckdb_con = MagicMock()
+        runner._s3_client = MagicMock()
+        return runner
+
+    def _layer(
+        self, layer_id: uuid.UUID, data_type: str, url: str, *, can_edit: bool | None
+    ) -> dict[str, Any]:
+        return {
+            "id": layer_id,
+            "name": data_type,
+            "description": None,
+            "type": "raster",
+            "url": url,
+            "data_type": data_type,
+            "feature_layer_type": None,
+            "feature_layer_geometry_type": None,
+            "tool_type": None,
+            "job_id": None,
+            "style": None,
+            "other_properties": {},
+            "size": None,
+            "thumbnail_url": None,
+            "tags": None,
+            "public_read": False,
+            "user_id": self.owner_id,
+            "folder_id": None,
+            "field_config": None,
+            "is_catalog": False,
+            # The query asks the write rule for remote files only.
+            "can_edit": can_edit,
+        }
+
+    def _connection(self, can_edit: bool, layer_queries: list[Any]) -> AsyncMock:
+        rows = [
+            self._layer(self.cog_id, "cog", self.FILE, can_edit=can_edit),
+            self._layer(self.wms_id, "wms", self.WMS, can_edit=None),
+        ]
+
+        async def fake_fetchrow(query: str, *args: object) -> dict[str, Any] | None:
+            if "FROM customer.project" in query:
+                return _project_row(self.project_id, self.owner_id)
+            return None
+
+        async def fake_fetch(query: str, *args: object) -> list[dict[str, Any]]:
+            if "FROM customer.layer_project lp\n" in query:
+                return [
+                    {
+                        "id": index,
+                        "layer_id": row["id"],
+                        "project_id": self.project_id,
+                        "layer_project_group_id": None,
+                        "order": index,
+                        "name": row["name"],
+                        "other_properties": {},
+                        "query": None,
+                        "charts": None,
+                        "styles": [],
+                        "visible": True,
+                        "position": "top",
+                        "time_value": None,
+                        "legend_expanded": True,
+                    }
+                    for index, row in enumerate(rows)
+                ]
+            if "FROM customer.layer l\n" in query:
+                layer_queries.append((query, args))
+                return rows
+            return []
+
+        conn = AsyncMock()
+        conn.fetchrow = AsyncMock(side_effect=fake_fetchrow)
+        conn.fetch = AsyncMock(side_effect=fake_fetch)
+        conn.set_type_codec = AsyncMock()
+        conn.close = AsyncMock()
+        return conn
+
+    async def _urls(self, runner: ProjectExportRunner, can_edit: bool) -> dict:
+        layer_queries: list[Any] = []
+        conn = self._connection(can_edit, layer_queries)
+        with patch("goatlib.tools.project_export.asyncpg") as mock_asyncpg:
+            mock_asyncpg.connect = AsyncMock(return_value=conn)
+            metadata = await runner._gather_metadata(
+                str(self.project_id), str(self.exporter_id)
+            )
+        # The rule is asked of the exporter, in the one layer query.
+        [(query, args)] = layer_queries
+        assert "customer.layer_write_allowed(l.id, $2)" in query
+        assert args[1] == self.exporter_id
+        return {layer["id"]: layer["url"] for layer in metadata["layers"]}
+
+    @pytest.mark.asyncio
+    async def test_a_reader_gets_the_files_address_without_its_query(
+        self, runner: ProjectExportRunner
+    ) -> None:
+        urls = await self._urls(runner, can_edit=False)
+        assert urls[str(self.cog_id)] == "https://example.org/a/b.tif"
+        assert urls[str(self.wms_id)] == self.WMS
+
+    @pytest.mark.asyncio
+    async def test_an_editor_gets_the_address_whole(
+        self, runner: ProjectExportRunner
+    ) -> None:
+        urls = await self._urls(runner, can_edit=True)
+        assert urls[str(self.cog_id)] == self.FILE
+        assert urls[str(self.wms_id)] == self.WMS
+
+    def test_no_secret_anywhere_in_a_readers_archive(
+        self, runner: ProjectExportRunner
+    ) -> None:
+        import io
+
+        uploaded: dict[str, bytes] = {}
+        runner._s3_client.put_object.side_effect = lambda **kw: uploaded.update(
+            zip=kw["Body"].read()
+        )
+        public = runner.settings.get_s3_public_client.return_value
+        public.generate_presigned_url.return_value = "https://s3.example.com/p"
+        conn = self._connection(False, [])
+        with patch("goatlib.tools.project_export.asyncpg") as mock_asyncpg:
+            mock_asyncpg.connect = AsyncMock(return_value=conn)
+            runner.run(
+                ProjectExportParams(
+                    user_id=str(self.exporter_id), project_id=str(self.project_id)
+                )
+            )
+
+        with zipfile.ZipFile(io.BytesIO(uploaded["zip"])) as zf:
+            contents = {name: zf.read(name) for name in zf.namelist()}
+        index = json.loads(contents["layers/index.json"])
+        assert {layer["url"] for layer in index["layers"]} == {
+            "https://example.org/a/b.tif",
+            self.WMS,
+        }
+        for name, data in contents.items():
+            assert b"secret" not in data, name

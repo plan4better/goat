@@ -36,6 +36,7 @@ from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.layer import (
     quoted_relation,
 )
+from goatlib.utils.layer_address import address_shown
 from goatlib.utils.workflow_layers import drop_layer_refs, workflow_layer_refs
 
 logger = logging.getLogger(__name__)
@@ -277,7 +278,11 @@ class ProjectExportRunner(SimpleToolRunner):
                 *workflow_only_ids,
             ]
 
-            # Fetch layers in batch
+            # Fetch layers in batch. A remote raster file's address may carry
+            # an access key: the archive holds it whole only for an exporter
+            # who may edit that layer (core's write rule, asked for remote
+            # files only); anyone else gets it without query string, fragment
+            # and credentials (`address_shown`).
             layers_by_id: dict[str, dict[str, Any]] = {}
             layer_rows: list[Any] = []
             if layer_ids:
@@ -289,12 +294,17 @@ class ProjectExportRunner(SimpleToolRunner):
                            l.other_properties, l.size,
                            l.thumbnail_url, l.tags, l.public_read,
                            l.user_id, l.folder_id, l.field_config,
+                           l.catalog_external_uid IS NOT NULL AS is_catalog,
+                           CASE WHEN l.data_type::text = 'cog'
+                                THEN {schema}.layer_write_allowed(l.id, $2)
+                           END AS can_edit,
                            (SELECT d.document FROM {schema}.layer_style d
                             WHERE d.layer_id = l.id) AS style
                     FROM {schema}.layer l
                     WHERE l.id = ANY($1)
                     """,
                     layer_ids,
+                    user_uuid,
                 )
                 for row in layer_rows:
                     lid = str(row["id"])
@@ -303,7 +313,12 @@ class ProjectExportRunner(SimpleToolRunner):
                         "name": row["name"],
                         "description": row["description"],
                         "type": row["type"],
-                        "url": row["url"],
+                        "url": address_shown(
+                            row["url"],
+                            data_type=row["data_type"],
+                            catalog=bool(row["is_catalog"]),
+                            can_edit=bool(row["can_edit"]),
+                        ),
                         "data_type": row["data_type"],
                         "feature_layer_type": row["feature_layer_type"],
                         "feature_layer_geometry_type": row[

@@ -20,6 +20,7 @@ from core.core.content import (
     grant_conditions,
     granted_ids,
 )
+from core.core.layer_address import addresses_for
 from core.crud.base import CRUDBase
 from core.db.models._link_model import (
     BundleLayerLink,
@@ -269,6 +270,15 @@ class CRUDLayer(CRUDBase):
             organization_id=effective_org_id,
             grants_by_resource=grants_by_resource,
         )
+        # A team's or organization's listing shows layers its members may
+        # only view: a remote raster file's address comes without its query
+        # string to whoever cannot edit the layer.
+        addresses = await addresses_for(
+            async_session, user_id, [row[0] for row in layers.items]
+        )
+        for item in layers_arr:
+            if item["id"] in addresses:
+                item["url"] = addresses[item["id"]]
         layers.items = layers_arr
         return layers
 

@@ -47,6 +47,8 @@ Two layers, both in SQL:
 1. **Route level.** `auth_z` calls the `authorization()` SQL function, which looks the request up in the seeded `customer.resource` table and applies the organization's quotas. **A new route needs a seeded pattern in `RESOURCES_PERMISSIONS` (`src/core/db/seed_roles.py`), or it answers 401 when auth is on.**
 2. **Resource level.** `effective_role()` / `can()` (`src/core/core/authz.py`, `src/core/db/sql/functions/authz/effective_role.sql`) decide access to a layer, project, folder, bundle or template. Access can come from the space, a direct grant in `resource_grant`, an ancestor folder, a bundle, a shared project, a template that ships the layer or public read; the highest role wins. Grants stop at editor: only the resource itself makes someone its owner. A grant only reaches users, teams and the organization of the granter's own organization: every route that writes one calls `crud_share.assert_grantees_in_organization` before the row is written.
 
+A raster layer added from a file's address can carry an access key in that address's query string (a signed link), and no browser needs it, since geoapi reads the file by the layer id: whoever cannot edit the layer (`layer_write_allowed`), and every read of the public snapshot, gets the address without its query string, fragment and credentials; editors get it whole (`src/core/core/layer_address.py`, with goatlib's rule, which the project export applies too). Map services keep theirs for everyone, because the browser loads their tiles from it.
+
 With `AUTH=False` both layers let everything through and every request runs as the built-in default user (`DEFAULT_USER_*` settings), who is seeded only in that mode.
 
 ## Gotchas

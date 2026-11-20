@@ -26,6 +26,7 @@ from core.core.config import settings
 from core.core.content import (
     read_content_by_id,
 )
+from core.core.layer_address import addresses_for
 from core.crud.crud_folder import folder as crud_folder
 from core.crud.crud_layer import layer as crud_layer
 from core.crud.crud_space import space as crud_space
@@ -201,16 +202,19 @@ async def read_layer_write_access(
 )
 async def read_layer(
     async_session: AsyncSession = Depends(get_db),
+    user_id: UUID4 = Depends(get_user_id),
     layer_id: UUID4 = Path(
         ...,
         description="The ID of the layer to get",
         examples=["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
     ),
 ) -> ILayerRead:
-    """Retrieve a layer by its ID."""
+    """Retrieve a layer by its ID. A remote raster file's address comes
+    without its query string to a caller who cannot edit the layer."""
     layer = await read_content_by_id(
         async_session=async_session, id=layer_id, model=Layer, crud_content=crud_layer
     )
+    addresses = await addresses_for(async_session, user_id, [layer])
 
     # The owner, as the listing endpoint reports it. A catalog layer has no
     # user_id, so it keeps `owned_by` None.
@@ -230,7 +234,13 @@ async def read_layer(
         else None
     )
 
-    return ILayerRead.model_validate({**layer.model_dump(), "owned_by": owned_by})
+    return ILayerRead.model_validate(
+        {
+            **layer.model_dump(),
+            **({"url": addresses[layer.id]} if layer.id in addresses else {}),
+            "owned_by": owned_by,
+        }
+    )
 
 
 @router.post(

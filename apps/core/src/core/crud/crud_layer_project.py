@@ -10,6 +10,7 @@ from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import settings
+from core.core.layer_address import addresses_for
 from core.db.models._link_model import LayerProjectGroup, LayerProjectLink
 from core.db.models.layer import Layer
 from core.db.models.project import Project
@@ -309,6 +310,8 @@ class CRUDLayerProject(CRUDBase):
         async_session: AsyncSession,
         layers_project: List[Tuple[Layer, LayerProjectLink]],
         locked_by_layer_id: dict[UUID, bool] | None = None,
+        *,
+        user_id: UUID | None = None,
     ) -> List[
         IFeatureStandardProjectRead
         | IFeatureToolProjectRead
@@ -321,8 +324,16 @@ class CRUDLayerProject(CRUDBase):
         ``locked_by_layer_id`` marks the rows the caller has no access to of his
         own; such a row is rebuilt from ``LOCKED_ROW_KEYS`` alone, so it carries
         only what the layer tree needs to show that something is there.
+
+        A remote raster file's address comes without its query string to a
+        ``user_id`` who cannot edit its dataset, and to a read without a user
+        (the public snapshot); whoever can edit it gets it whole
+        (`core.core.layer_address`).
         """
         layer_projects_schemas = []
+        addresses = await addresses_for(
+            async_session, user_id, [row[0] for row in layers_project]
+        )
 
         # Loop through layer and layer projects
         for layer_project_tuple in layers_project:
@@ -361,6 +372,8 @@ class CRUDLayerProject(CRUDBase):
                     if key in layer.other_properties:
                         merged[key] = layer.other_properties[key]
                 layer_dict["other_properties"] = merged
+            if layer.id in addresses:
+                layer_dict["url"] = addresses[layer.id]
             if locked_by_layer_id and locked_by_layer_id.get(layer.id):
                 # A locked row is rebuilt from LOCKED_ROW_KEYS only, so a field
                 # added to the layer or the link later cannot leak through it.
@@ -414,7 +427,8 @@ class CRUDLayerProject(CRUDBase):
         ``only_shareable`` leaves non-shareable links out altogether. The public
         snapshot uses it: publishing is the widest audience there is, and whoever
         added such a layer could not share it with one person, let alone
-        everyone.
+        everyone. Without ``user_id`` (the public snapshot) every remote raster
+        file's address comes without its query string.
         """
         # Get project to retrieve layer_order
         project = await CRUDBase(Project).get(async_session, id=project_id)
@@ -444,6 +458,7 @@ class CRUDLayerProject(CRUDBase):
                 query=query,
             ),
             locked_by_layer_id=locked,
+            user_id=user_id,
         )
 
         # Sort layers by layer_order array (first in array = first in result = on top)
@@ -535,6 +550,7 @@ class CRUDLayerProject(CRUDBase):
                 query=query,
             ),
             locked_by_layer_id=locked,
+            user_id=user_id,
         )
         return layer_projects
 

@@ -5,6 +5,7 @@ from typing import Any, List, Literal, Optional
 from uuid import UUID
 
 from goatlib.style import limits
+from goatlib.utils.layer_address import address_shown
 from pydantic import (
     UUID4,
     BaseModel,
@@ -517,6 +518,34 @@ class ProjectPublicConfig(BaseModel):
         description="Every named style of every published layer, by project layer id; "
         "computed values included, a published map never computes (spec 13.2)",
     )
+
+    @field_validator("layers", mode="before")
+    @classmethod
+    def file_addresses_without_query(cls, layers: Any) -> Any:
+        """The public snapshot is read without signing in, so nobody reading it
+        can edit a layer: a remote raster file's address comes without its
+        query string. Publishing stores it that way, and a snapshot stored with
+        the address whole is shortened here on every read."""
+        if not isinstance(layers, list):
+            return layers
+        shown = []
+        for layer in layers:
+            if isinstance(layer, dict):
+                # A stored row is a read model, which has no
+                # `catalog_external_uid`; a catalog layer is known by the
+                # `catalog_item` its `other_properties` keep, as the web reads
+                # it. Catalog rasters store no address anyway.
+                other = layer.get("other_properties") or {}
+                url = address_shown(
+                    layer.get("url"),
+                    data_type=layer.get("data_type"),
+                    catalog="catalog_item" in other,
+                    can_edit=False,
+                )
+                if url != layer.get("url"):
+                    layer = {**layer, "url": url}
+            shown.append(layer)
+        return shown
 
 
 class PublicAnalytics(BaseModel):
