@@ -1,4 +1,4 @@
-"""Reference value tiles: what a few fixed value tiles hold, pinned.
+"""Reference value tiles, and colored tiles: what a few fixed tiles hold, pinned.
 
 geoapi lets every cache keep a value tile read with content for good
 (`Cache-Control: immutable`): its address names the layer's file version, the
@@ -6,6 +6,11 @@ band or formula, the resampling, the encoding's base and step, and
 `ENCODING_VERSION`. Pixels that change for the same address would therefore mix
 old and new tiles in caches for good. These tests read fixed tiles from small
 files and pin their pixels, so such a change fails here first.
+
+A colored tile whose address names the layer's values version is kept for good
+too: its address names the coloring, but its pixels also depend on `colorize`
+and, for a coloring without a domain, on the band's range from the file's
+statistics (geoapi's `_band_range`). Those are pinned here as well.
 
 What is pinned is the decoded pixels (a hash of the RGBA array, and a few
 decoded values to read a failure by), not the WebP bytes: lossless WebP keeps
@@ -25,6 +30,7 @@ import pytest
 import rasterio
 from goatlib.raster.formula import parse_formula
 from goatlib.raster.source import RasterSource
+from goatlib.raster.token import decode_token, encode_token
 from goatlib.raster.values import ENCODING_VERSION, ValueEncoding
 from rasterio.shutil import copy as rio_copy
 from rasterio.transform import from_bounds
@@ -89,7 +95,7 @@ CASES = {
 #: Per `ENCODING_VERSION`: each case's pixel hash and decoded summary
 #: (no-data pixels, minimum, maximum, and the values at three pixels).
 PINNED: dict[str, dict[str, dict[str, object]]] = {
-    "e2": {
+    "e3": {
         "uint8 nearest": {
             "sha256": "8a94260abc539b7a88e7c9ea7eba92ce05cd25b2acede7028d9fde3707769a7c",
             "no_data": 2346,
@@ -239,6 +245,11 @@ def files(tmp_path_factory: pytest.TempPathFactory) -> Path:
     # Hundredths of a degree from -5: what a temperature file stores.
     raw = (x * 37 + y * 11).astype("int16")
     _write(root / "scaled.tif", raw[None], nodata=-1, scale=(0.01, -5.0))
+    # An aerial image: three 8 bit bands, a black border as no data.
+    photo = np.stack(
+        [(x * 3 + y) % 256, (y * 5 + 40) % 256, ((x + y) * 2 + 90) % 256]
+    ).astype("uint8")
+    _write(root / "photo.tif", photo, nodata=0, crs="EPSG:3857")
     return root
 
 
@@ -288,3 +299,104 @@ def test_a_reference_value_tile_holds_its_pinned_pixels(files: Path, name: str) 
     got = _summary(case, pixels)
     pinned = PINNED.get(ENCODING_VERSION, {}).get(name)
     assert got == pinned, f"{BUMP}\n{name}: {got!r}"
+
+
+BUMP_COLORED = (
+    "Colored tiles of the current values version are cached forever by their URL. "
+    "A colored tile now holds other pixels for the same address (a change in "
+    "colorize, in the read, or in the statistics a coloring without a domain "
+    "spreads over): bump ENCODING_VERSION in goatlib/raster/values.py and pin "
+    "these tiles again under the new version."
+)
+
+
+@dataclass(frozen=True)
+class ColoredCase:
+    file: str
+    coloring: dict[str, object]
+    tile: tuple[int, int, int]
+
+
+#: A ramp over the surface's heights, as a color range style sends it.
+_RAMP = {
+    "kind": "ramp",
+    "band": 1,
+    "colors": ["#2b83ba", "#ffffbf", "#d7191c"],
+    "outside": "clamp",
+}
+COLORED = {
+    "rgb image": ColoredCase(
+        "photo.tif", {"kind": "rgb", "bands": None, "noData": [0]}, INSIDE
+    ),
+    "ramp with a domain": ColoredCase(
+        "surface.tif", {**_RAMP, "domain": [150, 350], "noData": []}, INSIDE
+    ),
+    "ramp without a domain": ColoredCase(
+        "surface.tif", {**_RAMP, "domain": None, "noData": []}, INSIDE
+    ),
+}
+
+#: Per `ENCODING_VERSION`: each colored case's pixel hash, transparent pixels,
+#: the RGBA of three pixels and the band range a missing domain took.
+PINNED_COLORED: dict[str, dict[str, dict[str, object]]] = {
+    "e3": {
+        "rgb image": {
+            "sha256": "06f55fd148f3b7fda98d181fefeca871c6b66b83636c32614b852bdc01aef1df",
+            "transparent": 1051,
+            "at": [[128, 142, 66, 255], [27, 5, 184, 255], [102, 119, 162, 255]],
+            "band_range": None,
+        },
+        "ramp with a domain": {
+            "sha256": "0411491ededb717e6f278dccc1dfa977d6d5dcdbfbd1e726433725e78cef06df",
+            "transparent": 0,
+            "at": [[43, 131, 186, 255], [143, 189, 188, 255], [43, 131, 186, 255]],
+            "band_range": None,
+        },
+        "ramp without a domain": {
+            "sha256": "44bc623580f440a3e5b8c4a8401a7c6108edefec270e784ef9568751396b0b56",
+            "transparent": 0,
+            "at": [[128, 181, 188, 255], [208, 227, 190, 255], [114, 173, 188, 255]],
+            "band_range": [50.00048828125, 427.76190185546875],
+        },
+    },
+}
+
+
+def _colored_summary(
+    pixels: np.ndarray, band_range: tuple[float, float] | None
+) -> dict[str, object]:
+    return {
+        "sha256": hashlib.sha256(pixels.tobytes()).hexdigest(),
+        "transparent": int((pixels[..., 3] == 0).sum()),
+        "at": [pixels[r, c].tolist() for r, c in ((0, 0), (128, 128), (255, 31))],
+        "band_range": list(band_range) if band_range else None,
+    }
+
+
+def test_the_colored_pins_are_for_this_encoding_version() -> None:
+    assert ENCODING_VERSION in PINNED_COLORED, (
+        f"Pin the reference colored tiles for ENCODING_VERSION {ENCODING_VERSION!r}: "
+        "the failures of the test below print each tile's new pin."
+    )
+
+
+@pytest.mark.parametrize("name", list(COLORED))
+def test_a_reference_colored_tile_holds_its_pinned_pixels(
+    files: Path, name: str
+) -> None:
+    """As geoapi colors a tile: a coloring without a domain spreads over the
+    band's minimum and maximum from the file's statistics."""
+    case = COLORED[name]
+    coloring = decode_token(encode_token({"v": 1, **case.coloring}))
+    with RasterSource(None, stored_file=files / case.file) as src:
+        band_range = None
+        if case.coloring.get("domain", "given") is None:
+            stats = src.statistics()[0]
+            band_range = (stats.min, stats.max)
+        data = src.tile(*case.tile, coloring, band_range)
+    assert data is not None, name
+    pixels = _pixels(data)
+    assert pixels.shape == (256, 256, 4)
+    got = _colored_summary(pixels, band_range)
+    pinned = PINNED_COLORED.get(ENCODING_VERSION, {}).get(name)
+    assert got == pinned, f"{BUMP_COLORED}\n{name}: {got!r}"

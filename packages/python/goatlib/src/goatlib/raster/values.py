@@ -17,10 +17,17 @@ import numpy as np
 
 #: The largest code (24 bits).
 MAX_Q = 16_777_215
-#: Joins every value tile's version, so a changed encoding never serves old tiles.
-#: Caches keep a value tile for good: bump it whenever a tile's pixels change for
-#: the same address (tests/unit/raster/test_reference_value_tiles.py pins some).
-ENCODING_VERSION = "e2"
+#: Joins every value tile's and colored tile's version, so a changed encoding
+#: never serves old tiles. Caches keep both for good: bump it whenever a tile's
+#: pixels change for the same address (tests/unit/raster/test_reference_value_tiles.py
+#: pins some of each). A colored tile's pixels also depend on what its address
+#: does not name: `colorize`, and for a coloring without a domain (or a one-band
+#: image) the band's or formula's range from the file's statistics or sample
+#: (geoapi's `_band_range`); a change in either needs a bump. Bump it too when
+#: the address gains a parameter an older geoapi ignores (`tilesize`):
+#: such a pod finds another version in `v` than its own and answers `no-store`,
+#: so the tile it reads without the parameter is never kept under the address.
+ENCODING_VERSION = "e3"
 
 #: Whole-number types stored exactly, from their minimum.
 _EXACT = {"uint8": 0, "int8": -128, "uint16": 0, "int16": -32768}

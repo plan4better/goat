@@ -1,21 +1,23 @@
 """Raster file routes (style spec 9): value tiles (the cells' values for the
-browser to color) and their description, colored tiles, the file's bounds,
-statistics and point values. Every route reads the layer row's own file and
-answers only callers who may read the layer.
+browser to color) and colored tiles, each with their description, the file's
+bounds, statistics and point values. Every route reads the layer row's own
+file and answers only callers who may read the layer.
 
 Tiles are read for each request, never kept in Redis: the browser caches them,
-a value tile read with content for good (its address fixes its pixels). A tile
-whose caller has gone is not read, and a read past `TILE_DEADLINE_S` answers
-504 and marks the file as failing."""
+a tile read with content for good when its address names the layer's values
+version (its address then fixes its pixels). A tile whose caller has gone is
+not read, and a read past `TILE_DEADLINE_S` answers 504 and marks the file as
+failing."""
 
 import asyncio
 import hashlib
 import math
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from typing import Annotated, Any, Literal
+from enum import IntEnum
+from typing import Annotated, Any, Concatenate, Literal, ParamSpec
 from urllib.parse import quote, urlencode
 
 from cachetools import LRUCache
@@ -33,6 +35,7 @@ from fastapi.responses import JSONResponse
 from goatlib.io.remote_source.url_guard import UnsafeUrlError
 from goatlib.raster.formula import Formula, FormulaError, parse_formula
 from goatlib.raster.source import (
+    TILE_SIZE,
     BandError,
     RasterUnavailableError,
     recent_failure,
@@ -54,24 +57,23 @@ from geoapi.services.raster_service import (
 router = APIRouter(prefix="/collections", tags=["Rasters"])
 
 CACHE = "public, max-age=3600"
-#: A value tile of the layer's current values version is kept for good: its
-#: address names the file's version, the encoding and its packing version, so
-#: another file or encoding is another address. One read with a sign-in is
-#: `private`; one read without is `public`, and the web sends no token with
-#: tile requests, so while `ENFORCE_READ_AUTHZ` is off every map tile is public,
-#: a private layer's included: enforce it before a shared cache serves them.
-VALUE_TILE_CACHE = "public, max-age=31536000, immutable"
-VALUE_TILE_CACHE_PRIVATE = "private, max-age=31536000, immutable"
-#: A value tile of a remote file whose host gives no validator (no ETag, no
+#: A tile of the layer's current values version is kept for good: its address
+#: names the file's version, the encoding's packing version and what it shows
+#: (a value tile's band or formula and encoding, a colored tile's coloring), so
+#: another file or style is another address.
+FOREVER = "max-age=31536000, immutable"
+#: A tile of a remote file whose host gives no validator (no ETag, no
 #: Last-Modified, or a HEAD it refuses): its version does not follow the file.
-VALUE_TILE_HOUR_PRIVATE = "private, max-age=3600"
-#: A value tile whose address names another version holds the current file,
-#: which that address does not name.
+AN_HOUR = "max-age=3600"
+#: A tile whose address names another version, or none, holds the current
+#: file, which that address does not name.
 STALE_TILE_CACHE = "no-store"
-#: The value tiles' description is asked again soon: its version follows the
+#: The tiles' descriptions are asked again soon: their version follows the
 #: remote file.
-DESCRIPTION_CACHE = "public, max-age=60"
+DESCRIPTION_AGE = "max-age=60"
 TILE = "image/webp"
+#: The arguments a tile read takes after the layer.
+P = ParamSpec("P")
 
 #: File reads run on threads of their own, so a slow file never holds the
 #: threads every other route shares.
@@ -101,6 +103,25 @@ ResamplingQuery = Annotated[
 ]
 
 
+class TileSize(IntEnum):
+    """The tile sizes there are (goatlib's `TileSize`): an enum, as a query
+    string reads as one and not as a literal number."""
+
+    SMALL = 256
+    LARGE = 512
+
+
+TileSizeQuery = Annotated[
+    TileSize,
+    Query(
+        description=(
+            "The tiles' width in pixels: 512 draws each tile's area at twice "
+            "the resolution (the web asks for these)"
+        )
+    ),
+]
+
+
 def _slot(layer_id: str) -> asyncio.Semaphore:
     key = (id(asyncio.get_running_loop()), layer_id)
     slot = _slots.get(key)
@@ -122,7 +143,9 @@ async def _layer(collection_id: str, fresh: bool = False) -> RasterLayer:
 
 @contextmanager
 def _answers() -> Iterator[None]:
-    """A read's failures as HTTP answers."""
+    """A read's failures as HTTP answers. goatlib's messages say what failed
+    without the file's address (the URL guard's messages name the host only),
+    so they are the answer's detail as they are."""
     try:
         yield
     except BandError as error:
@@ -151,7 +174,9 @@ def _not_failing(layer: RasterLayer) -> None:
         raise HTTPException(status_code=504, detail=failed)
 
 
-async def _read_tile(request: Request, layer: RasterLayer, fn: Any, *args: Any) -> Any:
+async def _read_tile(
+    request: Request, layer: RasterLayer, fn: Any, *args: Any, **kwargs: Any
+) -> Any:
     """`_read` for a tile: `_GONE` without a read when the caller has gone
     (MapLibre drops tiles that left the view), before and once it has the
     layer's slot. Past `TILE_DEADLINE_S` (counted from when the slot is taken
@@ -172,7 +197,7 @@ async def _read_tile(request: Request, layer: RasterLayer, fn: Any, *args: Any) 
 
     def run() -> Any:
         started.append(time.monotonic())
-        return fn(layer, *args)
+        return fn(layer, *args, **kwargs)
 
     read = None
     try:
@@ -246,19 +271,29 @@ def _tile(
     )
 
 
-def _value_tile_cache(request: Request, current: bool, follows: bool) -> str:
-    """A value tile's Cache-Control. One whose address names another version
-    than the layer's holds the current file: no cache keeps it. One of a file
-    its version does not follow (a remote file whose host gives no validator)
-    is kept an hour, any other for good. A tile read with a sign-in may be of
-    a layer not everyone may read, which no shared cache may keep; one read
-    without is `public` (see `VALUE_TILE_CACHE`)."""
+def _audience(request: Request) -> str:
+    """Who may keep an answer: one read with a sign-in may be of a layer not
+    everyone may read, which no shared cache may keep (`private`); one read
+    without is `public`. The web sends no token with tile requests, so while
+    `ENFORCE_READ_AUTHZ` is off every map tile is public, a private layer's
+    included: enforce it before a shared cache serves them."""
+    return "private" if request.headers.get("authorization") else "public"
+
+
+def _tile_cache(request: Request, current: bool, follows: bool) -> str:
+    """A tile's Cache-Control. One whose address names another version than
+    the layer's holds the current file: no cache keeps it. One of a file its
+    version does not follow (a remote file whose host gives no validator) is
+    kept an hour, any other for good; by the browser only when read with a
+    sign-in (`_audience`)."""
     if not current:
         return STALE_TILE_CACHE
-    signed_in = bool(request.headers.get("authorization"))
-    if follows:
-        return VALUE_TILE_CACHE_PRIVATE if signed_in else VALUE_TILE_CACHE
-    return VALUE_TILE_HOUR_PRIVATE if signed_in else CACHE
+    return f"{_audience(request)}, {FOREVER if follows else AN_HOUR}"
+
+
+def _description_cache(request: Request) -> str:
+    """A description's Cache-Control: a minute, as `_audience` allows."""
+    return f"{_audience(request)}, {DESCRIPTION_AGE}"
 
 
 async def _values_state(layer: RasterLayer) -> tuple[str, bool]:
@@ -273,8 +308,68 @@ async def _values_state(layer: RasterLayer) -> tuple[str, bool]:
         )
 
 
+async def _versioned_tile(
+    request: Request,
+    layer: RasterLayer,
+    v: str,
+    etag: str,
+    if_none_match: str | None,
+    read: Callable[Concatenate[RasterLayer, P], bytes | None],
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> Response:
+    """A tile whose address names the values version `v`, read by
+    `read(layer, *args, **kwargs)`, under `_tile_cache`: 304 on its ETag with
+    the header its 200 had, 204 for a caller that has gone or a tile without
+    content."""
+    if if_none_match == etag:
+        current, follows = await _values_state(layer)
+        cache = _tile_cache(request, v == current, follows)
+        return Response(status_code=304, headers={"Cache-Control": cache, "ETag": etag})
+    answer = await _read_tile(
+        request, layer, raster_service.at_version, read, *args, **kwargs
+    )
+    if answer is _GONE:
+        return _gone()
+    current, follows, content = answer
+    if v != current:
+        return _tile(content, etag, STALE_TILE_CACHE, STALE_TILE_CACHE)
+    return _tile(content, etag, _tile_cache(request, True, follows))
+
+
+def _tileset(
+    title: str,
+    data_type: str,
+    maxzoom: int | None,
+    bounds: tuple[float, float, float, float],
+    href: str,
+) -> dict[str, Any]:
+    """OGC tileset metadata of a file's tiles in WebMercatorQuad, as a map
+    reads it: `maxzoom`, the native zoom for the tile size asked for (a map
+    magnifies its tiles past it), and `bounds`, the file's west, south, east
+    and north in degrees as in TileJSON (null when they are no box on earth),
+    so a map asks only for the tiles that touch them."""
+    return {
+        "title": title,
+        "tileMatrixSetURI": (
+            "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad"
+        ),
+        "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
+        "dataType": data_type,
+        "maxzoom": maxzoom,
+        "bounds": list(bounds) if valid_bounds(bounds) else None,
+        "links": [{"rel": "item", "type": TILE, "templated": True, "href": href}],
+    }
+
+
 def _etag(*parts: object) -> str:
     return '"' + hashlib.sha1(":".join(map(str, parts)).encode()).hexdigest() + '"'
+
+
+def _sized(tilesize: int) -> tuple[int, ...]:
+    """What a tile's ETag adds for its size: nothing for the default, so a
+    256 px tile keeps the ETag it had before tiles had sizes."""
+    return () if tilesize == TILE_SIZE else (tilesize,)
 
 
 @router.get(
@@ -322,20 +417,78 @@ async def raster_tile(
     x: Annotated[int, Path(ge=0)],
     y: Annotated[int, Path(ge=0)],
     style: Annotated[str, Query(description="The coloring, base64url JSON")] = "",
+    v: Annotated[
+        str, Query(max_length=64, description="The description's version")
+    ] = "",
+    tilesize: TileSizeQuery = TileSize.SMALL,
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
+    """Cached as value tiles are: for good when `v` names the layer's values
+    version (the colored tiles' description gives it)."""
     try:
         coloring = decode_token(style)
     except TokenError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
     layer = await _layer(collection_id)
-    etag = _etag(layer.id, raster_service.tile_version(layer, style), z, x, y)
+    version = raster_service.tile_version(layer, style)
+    size = int(tilesize)
+    etag = _etag(layer.id, version, z, x, y, *_sized(size))
+    return await _versioned_tile(
+        request,
+        layer,
+        v,
+        etag,
+        if_none_match,
+        raster_service.tile,
+        z,
+        x,
+        y,
+        coloring,
+        size,
+    )
+
+
+@router.get(
+    "/{collectionId}/raster/tiles",
+    summary="Where a raster file's colored tiles are: its bounds, native zoom and version",
+    dependencies=[Depends(require_layer_read)],
+)
+async def raster_tileset(
+    request: Request,
+    collection_id: Annotated[str, Path(alias="collectionId")],
+    tilesize: TileSizeQuery = TileSize.SMALL,
+    if_none_match: str | None = Header(default=None, alias="if-none-match"),
+) -> Response:
+    """OGC tileset metadata of the colored tiles (`_tileset`), read from the
+    file's header: no band, no encoding, no statistics. `goat:version` is the
+    layer's values version, which the tile link names (`v`) and the coloring
+    token joins (`style`): such a tile is cached as value tiles are."""
+    size = int(tilesize)
+    layer = await _layer(collection_id)
+    version = await _read(layer, raster_service.values_version)
+    # The default size leaves the link as other clients know it.
+    shown: dict[str, int] = {"tilesize": size} if size != TILE_SIZE else {}
+    etag = _etag(layer.id, version, urlencode(shown))
+    headers = {"Cache-Control": _description_cache(request), "ETag": etag}
     if if_none_match == etag:
-        return Response(status_code=304, headers={"Cache-Control": CACHE, "ETag": etag})
-    content = await _read_tile(request, layer, raster_service.tile, z, x, y, coloring)
-    if content is _GONE:
-        return _gone()
-    return _tile(content, etag)
+        return Response(status_code=304, headers=headers)
+    maxzoom, bounds = await _read(layer, raster_service.image_tileset, size)
+    query = urlencode({**shown, "v": version}, quote_via=quote)
+    base_url = str(request.base_url).rstrip("/")
+    tiles = f"{base_url}/collections/{layer.id}/raster/tiles"
+    return JSONResponse(
+        {
+            **_tileset(
+                f"{layer.id} image",
+                "map",
+                maxzoom,
+                bounds,
+                f"{tiles}/{{tileMatrix}}/{{tileCol}}/{{tileRow}}.webp?{query}",
+            ),
+            "goat:version": version,
+        },
+        headers=headers,
+    )
 
 
 @router.get(
@@ -349,27 +502,34 @@ async def raster_values_tileset(
     band: BandQuery = None,
     formula: FormulaQuery = None,
     resampling: ResamplingQuery = "bilinear",
+    tilesize: TileSizeQuery = TileSize.SMALL,
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
-    """OGC tileset metadata with `goat:values`: the factors of a MapLibre
-    `raster-dem` source with the custom encoding that turn a tile's codes into
-    values (code 0 is no data), the values' range as a missing domain uses it,
-    whether they are whole numbers, and the version. The tile link carries the
-    encoding's base and step (shortest round-trip decimals), so a tile's
-    address alone fixes its pixels."""
+    """OGC tileset metadata (`_tileset`) with `goat:values`: the factors of a
+    MapLibre `raster-dem` source with the custom encoding that turn a tile's
+    codes into values (code 0 is no data), the values' range as a missing
+    domain uses it, whether they are whole numbers, and the version. The tile
+    link carries the encoding's base and step (shortest round-trip decimals),
+    so a tile's address alone fixes its pixels, and the tile size asked for,
+    which the native zoom (`maxzoom`) is for."""
     values = _values_of(band, formula)
+    size = int(tilesize)
     layer = await _layer(collection_id)
     version = await _read(layer, raster_service.values_version)
     shown: dict[str, str | int] = {
         "f": "webp",
         **({"formula": formula} if formula is not None else {"band": band or 1}),
         "resampling": resampling,
+        # The default size leaves the link as other clients know it.
+        **({"tilesize": size} if size != TILE_SIZE else {}),
     }
     etag = _etag(layer.id, version, urlencode(shown))
-    headers = {"Cache-Control": DESCRIPTION_CACHE, "ETag": etag}
+    headers = {"Cache-Control": _description_cache(request), "ETag": etag}
     if if_none_match == etag:
         return Response(status_code=304, headers=headers)
-    encoding, maxzoom = await _read(layer, raster_service.value_tileset, values)
+    encoding, maxzoom, bounds = await _read(
+        layer, raster_service.value_tileset, values, size
+    )
     query = urlencode(
         {
             **shown,
@@ -383,21 +543,13 @@ async def raster_values_tileset(
     tiles = f"{base_url}/collections/{layer.id}/coverage/tiles/WebMercatorQuad"
     return JSONResponse(
         {
-            "title": f"{layer.id} values",
-            "tileMatrixSetURI": (
-                "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad"
+            **_tileset(
+                f"{layer.id} values",
+                "coverage",
+                maxzoom,
+                bounds,
+                f"{tiles}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}?{query}",
             ),
-            "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
-            "dataType": "coverage",
-            "maxzoom": maxzoom,
-            "links": [
-                {
-                    "rel": "item",
-                    "type": TILE,
-                    "templated": True,
-                    "href": f"{tiles}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}?{query}",
-                }
-            ],
             "goat:values": {
                 "encoding": encoding.factors(),
                 "range": list(encoding.range) if encoding.range else None,
@@ -429,6 +581,7 @@ async def raster_values_tile(
     v: Annotated[
         str, Query(max_length=64, description="The description's version")
     ] = "",
+    tilesize: TileSizeQuery = TileSize.SMALL,
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Each pixel's code `q = R * 65536 + G * 256 + B` is the value
@@ -436,32 +589,26 @@ async def raster_values_tile(
     link names them); code 0 is no data, alpha is always 255."""
     values = _values_of(band, formula)
     encoding = _encoding_of(base, step)
+    size = int(tilesize)
     layer = await _layer(collection_id)
     shown = f"values:{values.expression}:{resampling}:{f}:{ENCODING_VERSION}"
     version = raster_service.tile_version(layer, shown)
-    etag = _etag(layer.id, version, v, base, step, z, x, y)
-    if if_none_match == etag:
-        # The header its 200 had.
-        current, follows = await _values_state(layer)
-        cache = _value_tile_cache(request, v == current, follows)
-        return Response(status_code=304, headers={"Cache-Control": cache, "ETag": etag})
-    read = await _read_tile(
+    etag = _etag(layer.id, version, v, base, step, z, x, y, *_sized(size))
+    return await _versioned_tile(
         request,
         layer,
-        raster_service.values_tile,
+        v,
+        etag,
+        if_none_match,
+        raster_service.values,
         z,
         x,
         y,
         values,
         encoding,
         resampling,
+        size,
     )
-    if read is _GONE:
-        return _gone()
-    current, follows, content = read
-    if v != current:
-        return _tile(content, etag, STALE_TILE_CACHE, STALE_TILE_CACHE)
-    return _tile(content, etag, _value_tile_cache(request, True, follows))
 
 
 @router.get(

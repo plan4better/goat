@@ -151,6 +151,24 @@ describe("loadRasterValues", () => {
     expect(loadRasterValues(url, onLoad)).toMatchObject({ version: "1-e1" });
   });
 
+  it("loads the colored tiles' description the same way, which the value tiles' readers never find", async () => {
+    const tileset = `https://geoapi/collections/r${++n}/raster/tiles`;
+    requestMock.mockResolvedValueOnce(
+      answer({ maxzoom: 16, bounds: [11.39, 47.25, 11.41, 47.27], "goat:version": "1-0a1b2c3d-e3" })
+    );
+    const onLoad = vi.fn();
+    expect(loadRasterValues(`${tileset}?tilesize=512&v=7`, onLoad)).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(loadRasterValues(`${tileset}?tilesize=512&v=7`, onLoad)).toEqual({
+      version: "1-0a1b2c3d-e3",
+      maxzoom: 16,
+      bounds: [11.39, 47.25, 11.41, 47.27],
+    });
+    expect(loadedRasterValues(`${tileset}?tilesize=512`)).toBeUndefined();
+    expect(requestMock).toHaveBeenCalledTimes(1);
+  });
+
   it("a refused request, an unreachable service or an answer that is no description is a failure", async () => {
     const urls = [address(), address(), address()];
     requestMock

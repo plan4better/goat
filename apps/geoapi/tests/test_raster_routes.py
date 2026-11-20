@@ -51,6 +51,7 @@ INFO = RasterInfo(
     (0.0,),
     ("Band 1",),
     maxzoom=17,
+    minzoom=10,
 )
 STATS = [
     BandStats(
@@ -85,19 +86,36 @@ AN_HOUR = "public, max-age=3600"
 AN_HOUR_PRIVATE = "private, max-age=3600"
 SIGNED_IN = {"Authorization": "Bearer a-token"}
 NAMED = ValueEncoding(base=-1.5, step=0.25, integer=False, range=None)
-TOKEN_TILE = f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}"
+#: A colored tile's address names its coloring and, as a value tile's, the
+#: layer's values version.
+TOKEN_TILE = (
+    f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}&v={CURRENT}"
+)
+#: The colored tiles' description.
+IMAGE_TILESET = f"/collections/{LAYER}/raster/tiles"
+#: A tile of each kind at the layer's current values version, and what it holds.
+TILES = {"values": VALUE_TILE, "image": TOKEN_TILE}
+CONTENT = {"values": b"RIFF-values", "image": b"\x89PNG-tile"}
+#: A tile of each kind outside the file: no content.
+EMPTY = {
+    "values": f"{COVERAGE}/3/1/1?f=webp&base=0&step=1&v={CURRENT}",
+    "image": f"/collections/{LAYER}/raster/tiles/3/1/1.webp?style={RAMP}&v={CURRENT}",
+}
 
 
 class FakeSource:
     opened: list[str] = []
     tiles: list[tuple[Any, ...]] = []
     values_read: list[tuple[Any, ...]] = []
+    #: The tile size of each tile read, colored or values.
+    sizes: list[int] = []
     fail: Exception | None = None
 
     def __init__(
         self, url: str, private_hosts: Any = (), *, stored_file: Any = None
     ) -> None:
-        self.url = url
+        #: What is read: the address, or the file GOAT stores for the layer.
+        self.url = url if url is not None else stored_file
 
     def __enter__(self) -> "FakeSource":
         if FakeSource.fail is not None:
@@ -115,19 +133,34 @@ class FakeSource:
         return STATS
 
     def tile(
-        self, z: int, x: int, y: int, coloring: Any, band_range: Any = None
+        self,
+        z: int,
+        x: int,
+        y: int,
+        coloring: Any,
+        band_range: Any = None,
+        tilesize: int = 256,
     ) -> bytes | None:
         FakeSource.tiles.append((z, x, y, coloring.kind, band_range))
+        FakeSource.sizes.append(tilesize)
         return None if z < 5 else b"\x89PNG-tile"
 
     def values(
-        self, z: int, x: int, y: int, formula: Any, encoding: Any, resampling: str
+        self,
+        z: int,
+        x: int,
+        y: int,
+        formula: Any,
+        encoding: Any,
+        resampling: str,
+        tilesize: int = 256,
     ) -> bytes | None:
         if max(formula.bands) > INFO.count:
             raise BandError("The raster has 1 band.")
         FakeSource.values_read.append(
             (z, x, y, formula.expression, encoding, resampling)
         )
+        FakeSource.sizes.append(tilesize)
         return None if z < 5 else b"RIFF-values"
 
     def point(self, lon: float, lat: float, formula: Any = None) -> PointValues:
@@ -142,7 +175,7 @@ class FakeSource:
 @pytest.fixture
 def client(test_client: TestClient) -> Iterator[TestClient]:
     FakeSource.opened, FakeSource.tiles, FakeSource.fail = [], [], None
-    FakeSource.values_read = []
+    FakeSource.values_read, FakeSource.sizes = [], []
     rs.raster_service.clear()
     with (
         patch.object(rs, "RasterSource", FakeSource),
@@ -156,34 +189,37 @@ def client(test_client: TestClient) -> Iterator[TestClient]:
 @pytest.fixture
 def validated(client: TestClient) -> Iterator[str]:
     """The layer's host gives its file's ETag, so the values version follows
-    the file: the address of a value tile of that version."""
+    the file: that version, as the descriptions name it."""
     with patch.object(rs, "remote_validator", return_value='"a"'):
         version = client.get(COVERAGE).json()["goat:values"]["version"]
         assert version != CURRENT
-        yield VALUE_TILE.replace(CURRENT, version)
+        assert client.get(IMAGE_TILESET).json()["goat:version"] == version
+        yield version
 
 
 def test_a_raster_layers_tile_is_colored_by_the_token(client: TestClient) -> None:
-    r = client.get(f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}")
+    r = client.get(TOKEN_TILE)
     assert r.status_code == 200 and r.content == b"\x89PNG-tile"
     assert r.headers["content-type"] == "image/webp"
-    assert r.headers["cache-control"] == "public, max-age=3600" and r.headers["etag"]
+    # The layer's host gives no validator: kept an hour.
+    assert r.headers["cache-control"] == AN_HOUR and r.headers["etag"]
     # The layer row's address, never anything from the request; no domain: the band's range.
     assert FakeSource.opened == [ROW.external_url]
     assert FakeSource.tiles == [(12, 2178, 1420, "ramp", (100.0, 400.0))]
 
 
 def test_the_same_tile_again_is_not_modified(client: TestClient) -> None:
-    url = f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={RAMP}"
-    etag = client.get(url).headers["etag"]
-    again = client.get(url, headers={"If-None-Match": etag})
+    etag = client.get(TOKEN_TILE).headers["etag"]
+    again = client.get(TOKEN_TILE, headers={"If-None-Match": etag})
     assert again.status_code == 304 and again.headers["etag"] == etag
-    assert again.headers["cache-control"] == "public, max-age=3600"
+    assert again.headers["cache-control"] == AN_HOUR
+    assert len(FakeSource.tiles) == 1
 
 
-def test_outside_the_file_there_is_no_content(client: TestClient) -> None:
-    r = client.get(f"/collections/{LAYER}/raster/tiles/3/1/1.webp?style={RAMP}")
-    assert r.status_code == 204
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_outside_the_file_there_is_no_content(client: TestClient, kind: str) -> None:
+    r = client.get(EMPTY[kind])
+    assert r.status_code == 204 and r.content == b""
     assert r.headers["cache-control"] == "public, max-age=3600"
 
 
@@ -223,6 +259,7 @@ def test_read_authorization_applies(client: TestClient) -> None:
     ):
         for path in (
             "raster/info",
+            "raster/tiles",
             f"raster/tiles/12/1/1.webp?style={RAMP}",
             "raster/point?lon=11.55&lat=48.15",
             "coverage/tiles/WebMercatorQuad",
@@ -272,7 +309,13 @@ async def test_one_slow_file_takes_at_most_a_few_readers(
 
     class SlowSource(FakeSource):
         def tile(
-            self, z: int, x: int, y: int, coloring: Any, band_range: Any = None
+            self,
+            z: int,
+            x: int,
+            y: int,
+            coloring: Any,
+            band_range: Any = None,
+            tilesize: int = 256,
         ) -> bytes:
             with lock:
                 running["now"] += 1
@@ -389,6 +432,7 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
         "crs",
         "dataType",
         "maxzoom",
+        "bounds",
         "links",
         "goat:values",
     }
@@ -399,6 +443,8 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
     )
     assert body["crs"] == "http://www.opengis.net/def/crs/EPSG/0/3857"
     assert body["dataType"] == "coverage" and body["maxzoom"] == INFO.maxzoom
+    # West, south, east and north in degrees, as TileJSON gives them.
+    assert body["bounds"] == list(INFO.bounds)
     values = body["goat:values"]
     # A float band: its statistics' range spread over the codes.
     assert values["encoding"] == DESCRIBED.factors()
@@ -424,6 +470,217 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
         f"?f=webp&band=1&resampling=nearest&base={DESCRIBED.base!r}"
         f"&step={DESCRIBED.step!r}&v={CURRENT}"
     )
+
+
+def test_the_value_tileset_of_512_px_tiles_is_one_zoom_higher_up(
+    client: TestClient,
+) -> None:
+    """A 512 px tile shows a file's cells at their own size one zoom higher up
+    than a 256 px one: its description's native zoom is one less, and its link
+    asks for 512 px tiles."""
+    small = client.get(COVERAGE)
+    large = client.get(f"{COVERAGE}?tilesize=512")
+    assert large.status_code == 200, large.text
+    body = large.json()
+    assert body["maxzoom"] == small.json()["maxzoom"] - 1 == INFO.maxzoom - 1
+    assert body["bounds"] == small.json()["bounds"]
+    assert body["goat:values"] == small.json()["goat:values"]
+    assert body["links"][0]["href"] == (
+        f"http://testserver{COVERAGE}/{{tileMatrix}}/{{tileRow}}/{{tileCol}}"
+        "?f=webp&band=1&resampling=bilinear&tilesize=512"
+        f"&base={DESCRIBED.base!r}&step={DESCRIBED.step!r}&v={CURRENT}"
+    )
+    assert large.headers["etag"] != small.headers["etag"]
+    # The default is 256 px, as before.
+    assert client.get(f"{COVERAGE}?tilesize=256").json() == small.json()
+
+
+def test_the_value_tileset_of_512_px_tiles_never_goes_below_the_minzoom(
+    client: TestClient,
+) -> None:
+    shallow = dataclasses.replace(INFO, maxzoom=INFO.minzoom)
+    with patch.object(FakeSource, "info", return_value=shallow):
+        body = client.get(f"{COVERAGE}?tilesize=512").json()
+    assert body["maxzoom"] == INFO.minzoom
+
+
+def test_a_files_bounds_that_are_no_box_on_earth_are_null_in_the_value_tileset(
+    client: TestClient,
+) -> None:
+    across = dataclasses.replace(INFO, bounds=(170.0, -10.0, -170.0, 10.0))
+    with patch.object(FakeSource, "info", return_value=across):
+        assert client.get(COVERAGE).json()["bounds"] is None
+
+
+def test_the_image_tileset_describes_the_files_edges_and_native_zoom(
+    client: TestClient,
+) -> None:
+    """What a map needs for the colored tiles: the file's bounds, the zoom past
+    which a tile only magnifies its cells, and the values version their
+    addresses name. Read from the file's header: no statistics."""
+    with (
+        patch.object(FakeSource, "statistics") as statistics,
+        patch.object(FakeSource, "sample") as sample,
+    ):
+        r = client.get(f"{IMAGE_TILESET}?tilesize=512")
+        small = client.get(IMAGE_TILESET)
+    assert r.status_code == 200, r.text
+    statistics.assert_not_called()
+    sample.assert_not_called()
+    body = r.json()
+    assert body == {
+        "title": f"{LAYER} image",
+        "tileMatrixSetURI": (
+            "http://www.opengis.net/def/tilematrixset/OGC/1.0/WebMercatorQuad"
+        ),
+        "crs": "http://www.opengis.net/def/crs/EPSG/0/3857",
+        "dataType": "map",
+        "maxzoom": INFO.maxzoom - 1,
+        "bounds": list(INFO.bounds),
+        "links": [
+            {
+                "rel": "item",
+                "type": "image/webp",
+                "templated": True,
+                "href": (
+                    f"http://testserver/collections/{LAYER}/raster/tiles/"
+                    "{tileMatrix}/{tileCol}/{tileRow}.webp"
+                    f"?tilesize=512&v={CURRENT}"
+                ),
+            }
+        ],
+        "goat:version": CURRENT,
+    }
+    # The value tiles' facts for the same tile size.
+    values = client.get(f"{COVERAGE}?tilesize=512").json()
+    assert body["maxzoom"] == values["maxzoom"]
+    assert body["bounds"] == values["bounds"]
+    assert body["goat:version"] == values["goat:values"]["version"]
+    # 256 px tiles by default, one zoom deeper.
+    assert small.json()["maxzoom"] == INFO.maxzoom
+    assert small.json()["links"][0]["href"].endswith(f".webp?v={CURRENT}")
+    assert r.headers["cache-control"] == "public, max-age=60"
+    etag = r.headers["etag"]
+    assert etag != small.headers["etag"]
+    again = client.get(f"{IMAGE_TILESET}?tilesize=512", headers={"If-None-Match": etag})
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == "public, max-age=60"
+
+
+def test_the_image_tileset_follows_the_remote_file(client: TestClient) -> None:
+    host = {"validator": '"a"'}
+    with patch.object(
+        rs, "remote_validator", side_effect=lambda *args: host["validator"]
+    ):
+        first = client.get(IMAGE_TILESET)
+        host["validator"] = '"b"'
+        second = client.get(
+            IMAGE_TILESET, headers={"If-None-Match": first.headers["etag"]}
+        )
+    assert second.status_code == 200
+    assert first.json()["goat:version"] != second.json()["goat:version"]
+
+
+def test_the_image_tileset_of_a_stored_file(client: TestClient) -> None:
+    """A catalog raster's file is the one GOAT stores: its header gives the
+    extent, its row the version, and no host is asked for a validator."""
+    stored = dataclasses.replace(
+        ROW, external_url=None, stored_file=Path("/data/layer.tif")
+    )
+    with (
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=stored)),
+        patch.object(rs, "remote_validator") as check,
+        patch.object(FakeSource, "statistics") as statistics,
+    ):
+        r = client.get(f"{IMAGE_TILESET}?tilesize=512")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["goat:version"] == CURRENT
+    assert body["maxzoom"] == INFO.maxzoom - 1
+    assert body["bounds"] == list(INFO.bounds)
+    assert body["links"][0]["href"].endswith(f".webp?tilesize=512&v={CURRENT}")
+    assert FakeSource.opened == [Path("/data/layer.tif")]
+    check.assert_not_called()
+    statistics.assert_not_called()
+
+
+@pytest.mark.parametrize("description", [COVERAGE, IMAGE_TILESET])
+def test_a_description_read_with_a_sign_in_is_kept_by_the_browser_only(
+    client: TestClient, description: str
+) -> None:
+    """As the tiles: one read with a sign-in may be of a layer not everyone may
+    read, which no shared cache may keep."""
+    anonymous = client.get(description)
+    assert anonymous.headers["cache-control"] == "public, max-age=60"
+    signed_in = client.get(description, headers=SIGNED_IN)
+    assert signed_in.status_code == 200
+    assert signed_in.headers["cache-control"] == "private, max-age=60"
+    again = client.get(
+        description, headers={**SIGNED_IN, "If-None-Match": signed_in.headers["etag"]}
+    )
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == "private, max-age=60"
+    unchanged = client.get(
+        description, headers={"If-None-Match": anonymous.headers["etag"]}
+    )
+    assert unchanged.status_code == 304
+    assert unchanged.headers["cache-control"] == "public, max-age=60"
+
+
+def test_a_files_bounds_that_are_no_box_on_earth_are_null_in_the_image_tileset(
+    client: TestClient,
+) -> None:
+    across = dataclasses.replace(INFO, bounds=(170.0, -10.0, -170.0, 10.0))
+    with patch.object(FakeSource, "info", return_value=across):
+        assert client.get(IMAGE_TILESET).json()["bounds"] is None
+
+
+@pytest.mark.parametrize("route", ["image", "values"])
+def test_tiles_are_256_px_unless_512_are_asked_for(
+    client: TestClient, route: str
+) -> None:
+    from geoapi.routers import rasters
+
+    tile = TOKEN_TILE if route == "image" else VALUE_TILE
+    small = client.get(tile)
+    large = client.get(f"{tile}&tilesize=512")
+    assert small.status_code == large.status_code == 200, large.text
+    assert FakeSource.sizes == [256, 512]
+    assert large.headers["cache-control"] == small.headers["cache-control"]
+    # Another tile size is another tile.
+    assert large.headers["etag"] != small.headers["etag"]
+    again = client.get(
+        f"{tile}&tilesize=512", headers={"If-None-Match": large.headers["etag"]}
+    )
+    assert again.status_code == 304 and FakeSource.sizes == [256, 512]
+    # A 256 px tile keeps the ETag it had before tiles had sizes.
+    if route == "image":
+        version = rs.raster_service.tile_version(ROW, RAMP)
+        unsized = rasters._etag(LAYER, version, 12, 2178, 1420)
+    else:
+        shown = f"values:b1:bilinear:webp:{ENCODING_VERSION}"
+        version = rs.raster_service.tile_version(ROW, shown)
+        unsized = rasters._etag(LAYER, version, CURRENT, -1.5, 0.25, 12, 2178, 1420)
+    assert small.headers["etag"] == unsized
+    assert client.get(f"{tile}&tilesize=256").headers["etag"] == unsized
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"{route}{sep}tilesize={size}"
+        for route, sep in (
+            (TOKEN_TILE, "&"),
+            (VALUE_TILE, "&"),
+            (COVERAGE, "?"),
+            (IMAGE_TILESET, "?"),
+        )
+        for size in ("300", "1024", "big")
+    ],
+)
+def test_only_256_and_512_px_tiles_are_served(client: TestClient, url: str) -> None:
+    assert client.get(url).status_code == 422
+    assert FakeSource.opened == []
 
 
 def test_a_value_tile_is_webp_and_answers_304_on_its_etag(client: TestClient) -> None:
@@ -485,28 +742,35 @@ def test_a_value_tile_needs_a_valid_encoding_in_its_address(
     assert FakeSource.opened == []
 
 
-def test_a_value_tile_outside_the_file_is_204(client: TestClient) -> None:
-    r = client.get(f"{COVERAGE}/3/1/1?f=webp&base=0&step=1&v={CURRENT}")
-    assert r.status_code == 204 and r.content == b""
-    assert r.headers["cache-control"] == "public, max-age=3600"
-
-
-def test_only_a_value_tile_read_with_content_is_kept_forever(
-    client: TestClient, validated: str
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_only_a_tile_read_with_content_is_kept_forever(
+    client: TestClient, validated: str, kind: str
 ) -> None:
-    """A 200 value tile's address names everything its pixels depend on, so a
-    cache keeps it for good; every other answer keeps its own header."""
-    r = client.get(validated)
+    """A 200 tile's address names everything its pixels depend on (a value
+    tile's band or formula and encoding, a colored tile's coloring, and the
+    values version), so a cache keeps it for good; every other answer keeps
+    its own header."""
+    tile = TILES[kind].replace(CURRENT, validated)
+    r = client.get(tile)
+    assert r.status_code == 200 and r.content == CONTENT[kind]
     assert r.headers["cache-control"] == FOREVER
-    again = client.get(validated, headers={"If-None-Match": r.headers["etag"]})
+    again = client.get(tile, headers={"If-None-Match": r.headers["etag"]})
     assert again.status_code == 304 and again.headers["cache-control"] == FOREVER
-    # The colored tiles and the description follow the file and stay short.
-    token = client.get(TOKEN_TILE)
-    assert token.status_code == 200
-    assert token.headers["cache-control"] == "public, max-age=3600"
-    described = client.get(COVERAGE)
-    assert described.status_code == 200
-    assert described.headers["cache-control"] == "public, max-age=60"
+    # Outside the file: no content, kept an hour.
+    empty = client.get(EMPTY[kind].replace(CURRENT, validated))
+    assert empty.status_code == 204 and empty.headers["cache-control"] == AN_HOUR
+    # The descriptions follow the file and stay short.
+    for described in (client.get(COVERAGE), client.get(IMAGE_TILESET)):
+        assert described.status_code == 200
+        assert described.headers["cache-control"] == "public, max-age=60"
+    # A file that cannot be read.
+    FakeSource.fail = RasterUnavailableError("timeout")
+    with patch.dict("goatlib.raster.source._failures", clear=True):
+        r = client.get(tile)
+    assert r.status_code == 504 and "cache-control" not in r.headers
+
+
+def test_a_refused_value_tile_has_no_cache_header(client: TestClient) -> None:
     # Refused addresses and a band the file does not have: no cache header.
     for url, status in (
         (f"{COVERAGE}/12/1420/2178?f=webp&band=1&v={CURRENT}", 422),
@@ -516,46 +780,44 @@ def test_only_a_value_tile_read_with_content_is_kept_forever(
         r = client.get(url)
         assert r.status_code == status, url
         assert "cache-control" not in r.headers, url
-    # A file that cannot be read.
-    FakeSource.fail = RasterUnavailableError("timeout")
-    with patch.dict("goatlib.raster.source._failures", clear=True):
-        r = client.get(VALUE_TILE)
-    assert r.status_code == 504 and "cache-control" not in r.headers
 
 
-def test_a_signed_in_viewers_value_tile_is_kept_by_their_browser_only(
-    client: TestClient, validated: str
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_signed_in_viewers_tile_is_kept_by_their_browser_only(
+    client: TestClient, validated: str, kind: str
 ) -> None:
     """A tile read with a sign-in may be of a layer not everyone may read: no
     shared cache may keep it. One read without a sign-in is of a layer anyone
     may read."""
-    r = client.get(validated, headers=SIGNED_IN)
+    tile = TILES[kind].replace(CURRENT, validated)
+    r = client.get(tile, headers=SIGNED_IN)
     assert r.status_code == 200 and r.headers["cache-control"] == FOREVER_PRIVATE
-    again = client.get(
-        validated, headers={**SIGNED_IN, "If-None-Match": r.headers["etag"]}
-    )
+    again = client.get(tile, headers={**SIGNED_IN, "If-None-Match": r.headers["etag"]})
     assert again.status_code == 304
     assert again.headers["cache-control"] == FOREVER_PRIVATE
-    anonymous = client.get(validated)
+    anonymous = client.get(tile)
     assert anonymous.status_code == 200
     assert anonymous.headers["cache-control"] == FOREVER
 
 
-def test_a_value_tile_of_a_file_without_a_validator_is_kept_an_hour(
-    client: TestClient,
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_tile_of_a_file_without_a_validator_is_kept_an_hour(
+    client: TestClient, kind: str
 ) -> None:
     """A host that gives neither ETag nor Last-Modified (or refuses HEAD): a
     file replaced at its address keeps the version, so its tiles are kept no
     longer than before."""
-    r = client.get(VALUE_TILE)
+    tile = TILES[kind]
+    r = client.get(tile)
     assert r.status_code == 200 and r.headers["cache-control"] == AN_HOUR
-    again = client.get(VALUE_TILE, headers={"If-None-Match": r.headers["etag"]})
+    again = client.get(tile, headers={"If-None-Match": r.headers["etag"]})
     assert again.status_code == 304 and again.headers["cache-control"] == AN_HOUR
-    signed_in = client.get(VALUE_TILE, headers=SIGNED_IN)
+    signed_in = client.get(tile, headers=SIGNED_IN)
     assert signed_in.headers["cache-control"] == AN_HOUR_PRIVATE
 
 
-def test_a_stored_files_value_tile_is_kept_forever(client: TestClient) -> None:
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_stored_files_tile_is_kept_forever(client: TestClient, kind: str) -> None:
     """A file GOAT stores (a catalog raster) changes only with its row: its
     version follows it without a validator."""
     stored = dataclasses.replace(
@@ -565,33 +827,40 @@ def test_a_stored_files_value_tile_is_kept_forever(client: TestClient) -> None:
         patch.object(rs.raster_service, "layer", AsyncMock(return_value=stored)),
         patch.object(rs, "remote_validator") as check,
     ):
-        r = client.get(VALUE_TILE)
+        r = client.get(TILES[kind])
     assert r.status_code == 200 and r.headers["cache-control"] == FOREVER
     check.assert_not_called()
 
 
-def test_a_value_tile_of_another_version_is_never_kept(client: TestClient) -> None:
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_tile_of_another_version_is_never_kept(client: TestClient, kind: str) -> None:
     """An address naming a version the layer does not have (any more, or yet,
-    on a pod whose row is older) is answered with the current file, which that
-    address does not name: no cache may keep it."""
+    on a pod whose row is older), or none, is answered with the current file,
+    which that address does not name: no cache may keep it."""
+    tile = TILES[kind]
     for v in (f"v0-{ENCODING_VERSION}", "", "v1-e0"):
-        r = client.get(VALUE_TILE.replace(f"v={CURRENT}", f"v={v}"))
-        assert r.status_code == 200 and r.content == b"RIFF-values", v
+        r = client.get(tile.replace(f"v={CURRENT}", f"v={v}"))
+        assert r.status_code == 200 and r.content == CONTENT[kind], v
         assert r.headers["cache-control"] == "no-store", v
-    outside = client.get(f"{COVERAGE}/3/1/1?f=webp&base=0&step=1&v=v0")
+    # An address without a version, as before addresses named one.
+    unversioned = client.get(tile.replace(f"&v={CURRENT}", ""))
+    assert unversioned.status_code == 200
+    assert unversioned.headers["cache-control"] == "no-store"
+    outside = client.get(EMPTY[kind].replace(f"v={CURRENT}", "v=v0"))
     assert outside.status_code == 204
     assert outside.headers["cache-control"] == "no-store"
     # Asked again, its 304 carries its 200's header too.
-    stale = VALUE_TILE.replace(f"v={CURRENT}", "v=v0")
+    stale = tile.replace(f"v={CURRENT}", "v=v0")
     etag = client.get(stale).headers["etag"]
     again = client.get(stale, headers={"If-None-Match": etag})
     assert again.status_code == 304 and again.headers["cache-control"] == "no-store"
     # A remote file replaced at the same address: only the version the
-    # description now names is kept.
+    # descriptions now name is kept.
     with patch.object(rs, "remote_validator", return_value='"b"'):
         version = client.get(COVERAGE).json()["goat:values"]["version"]
-        old = client.get(VALUE_TILE)
-        new = client.get(VALUE_TILE.replace(CURRENT, version))
+        assert client.get(IMAGE_TILESET).json()["goat:version"] == version
+        old = client.get(tile)
+        new = client.get(tile.replace(CURRENT, version))
     assert old.headers["cache-control"] == "no-store"
     assert new.headers["cache-control"] == FOREVER
 
@@ -721,6 +990,7 @@ def test_a_failing_file_answers_at_once_without_waiting_for_a_read_slot(
             client.get(url)
             for url in (
                 COVERAGE,
+                IMAGE_TILESET,
                 VALUE_TILE,
                 TOKEN_TILE,
                 f"/collections/{LAYER}/raster/info",
@@ -786,7 +1056,7 @@ def test_a_tile_read_past_the_deadline_is_504_and_the_file_is_remembered_failing
 
     finished = threading.Event()
 
-    def slow_values(self: FakeSource, *args: Any) -> bytes:
+    def slow_values(self: FakeSource, *args: Any, **kwargs: Any) -> bytes:
         time.sleep(0.5)
         finished.set()
         return b"RIFF-values"
@@ -850,7 +1120,7 @@ def test_a_read_that_got_its_reader_late_is_503_and_the_file_is_not_blamed(
     pool.submit(release.wait, 5)
     started, finished = threading.Event(), threading.Event()
 
-    def slow_values(self: FakeSource, *args: Any) -> bytes:
+    def slow_values(self: FakeSource, *args: Any, **kwargs: Any) -> bytes:
         started.set()
         time.sleep(0.6)
         finished.set()
@@ -929,7 +1199,7 @@ def test_a_hanging_read_whose_thread_started_a_moment_late_is_still_blamed(
 
     finished = threading.Event()
 
-    def hanging_values(self: FakeSource, *args: Any) -> bytes:
+    def hanging_values(self: FakeSource, *args: Any, **kwargs: Any) -> bytes:
         time.sleep(0.6)
         finished.set()
         return b"RIFF-values"
@@ -948,3 +1218,81 @@ def test_a_hanging_read_whose_thread_started_a_moment_late_is_still_blamed(
         executor.pool.shutdown(wait=True)
     assert r.status_code == 504
     remember.assert_called_once()
+
+
+#: A remote file whose address carries an access key in its query.
+SIGNED_URL = "https://example.org/a/b.tif?sig=secret"
+SIGNED_ROW = rs.RasterLayer(id=LAYER, external_url=SIGNED_URL, version="v1")
+#: Every raster route that reads the file.
+READING_ROUTES = [
+    COVERAGE,
+    IMAGE_TILESET,
+    VALUE_TILE,
+    TOKEN_TILE,
+    f"/collections/{LAYER}/raster/info",
+    f"/collections/{LAYER}/raster/bounds",
+    f"/collections/{LAYER}/raster/point?lon=11.55&lat=48.15",
+]
+
+
+def _unreachable(*args: Any, **kwargs: Any) -> Any:
+    import requests
+
+    raise requests.ConnectionError(
+        "HTTPSConnectionPool(host='example.org', port=443): Max retries exceeded "
+        "with url: /a/b.tif?sig=secret (Caused by NameResolutionError)"
+    )
+
+
+def _not_a_raster(*args: Any, **kwargs: Any) -> Any:
+    from rasterio.errors import RasterioIOError
+
+    raise RasterioIOError(
+        "'/vsicurl/https://example.org/a/b.tif?sig=secret' not recognized as "
+        "being in a supported file format."
+    )
+
+
+@pytest.mark.parametrize("route", READING_ROUTES)
+@pytest.mark.parametrize(
+    ("failure", "said"),
+    [
+        ("unreachable", "The file's host could not be reached."),
+        ("not_a_raster", "The file could not be read as a raster."),
+    ],
+)
+def test_a_failing_files_answer_never_carries_its_address(
+    test_client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+    route: str,
+    failure: str,
+    said: str,
+) -> None:
+    """goatlib's real reader behind the routes: the 504 says what failed, the
+    first time and while the failure is remembered; the address, its query
+    included, reaches the log only."""
+    ok = Mock(status_code=200, headers={})
+    head = {
+        "unreachable": Mock(side_effect=_unreachable),
+        "not_a_raster": Mock(return_value=ok),
+    }
+    reader = Mock(side_effect=_not_a_raster)
+    rs.raster_service.clear()
+    with (
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=SIGNED_ROW)),
+        patch("goatlib.raster.source.assert_public_http_url"),
+        patch("goatlib.raster.source.requests.head", head[failure]),
+        patch("goatlib.raster.source.Reader", reader),
+        patch.dict("goatlib.raster.source._failures", clear=True),
+        patch.dict("goatlib.raster.source._addresses", clear=True),
+        caplog.at_level("WARNING", logger="goatlib.raster.source"),
+    ):
+        answers = [test_client.get(route), test_client.get(route)]
+    for r in answers:
+        assert r.status_code == 504, (r.url, r.text)
+        assert r.json()["detail"] == said
+        for part in ("sig", "secret", "example.org/a/b.tif"):
+            assert part not in r.text, (r.url, part)
+    # The log names the file and the error, without the key.
+    assert "example.org/a/b.tif" in caplog.text
+    assert "sig" not in caplog.text and "secret" not in caplog.text

@@ -1,3 +1,4 @@
+import dataclasses
 import io
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from goatlib.raster.source import (
     RasterSource,
     RasterUnavailableError,
     failure_key,
+    native_zoom,
     recent_failure,
     remember_failure,
     remote_validator,
@@ -231,8 +233,93 @@ def test_outside_the_file_there_is_no_value_tile(cog_server: str) -> None:
 
 def test_info_names_the_files_native_zoom(cog_server: str) -> None:
     with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
-        maxzoom = src.info().maxzoom
-    assert isinstance(maxzoom, int) and maxzoom >= 0
+        info = src.info()
+    assert isinstance(info.maxzoom, int) and info.maxzoom >= 0
+    assert isinstance(info.minzoom, int) and 0 <= info.minzoom <= info.maxzoom
+
+
+def _children(tile: tuple[int, int, int], read) -> np.ndarray:  # noqa: ANN001
+    """The four 256 px tiles one zoom deeper than `tile` (z, x, y), read by
+    `read` and put side by side: the area of `tile` at 512 px."""
+    z, x, y = tile
+    rows = [
+        np.concatenate([read((z + 1, 2 * x + dx, 2 * y + dy)) for dx in (0, 1)], axis=1)
+        for dy in (0, 1)
+    ]
+    return np.concatenate(rows, axis=0)
+
+
+@pytest.mark.parametrize("zoom", [12, 14])
+def test_a_512_px_value_tile_holds_the_values_of_the_256_px_tiles_it_covers(
+    cog_server: str, zoom: int
+) -> None:
+    """A 512 px tile is the same tile at twice the resolution. For this file
+    in degrees, read nearest, its pixels are exactly those of the four 256 px
+    tiles one zoom deeper; a file in another CRS may differ at cell edges,
+    where the two reprojection grids round differently."""
+    encoding = value_encoding("float32", scaled=False, value_range=(100.0, 400.0))
+    b1 = parse_formula("b1")
+    # A tile at the file's no-data corner at 14: no data and values in one tile.
+    corner = (BOUNDS[0] + 0.002, BOUNDS[3] - 0.002)
+    tile = _tile_at(*(CENTER if zoom == 12 else corner), zoom)
+    with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
+        large = src.values(*tile, b1, encoding, "nearest", tilesize=512)
+        # A child outside the file has no tile: its pixels are no data.
+        empty = encoding.encode(np.ma.masked_all((256, 256)))
+        small = _children(
+            tile,
+            lambda t: _png(data)
+            if (data := src.values(*t, b1, encoding, "nearest"))
+            else empty,
+        )
+    pixels = _png(large)
+    assert pixels.shape == (512, 512, 4)
+    assert np.array_equal(pixels, small)
+    decoded = encoding.decode(pixels)
+    assert np.isfinite(decoded).any()
+    assert zoom == 12 or np.isnan(decoded).any()
+
+
+def test_a_512_px_colored_tile_holds_the_colors_of_the_256_px_tiles_it_covers(
+    cog_server: str,
+) -> None:
+    tile = _tile_at(*CENTER, 12)
+    with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
+        large = _png(src.tile(*tile, ramp(), tilesize=512))
+        small = _children(tile, lambda t: _png(src.tile(*t, ramp())))
+    assert large.shape == (512, 512, 4)
+    assert np.array_equal(large, small)
+
+
+def test_a_512_px_tile_reads_an_overview_a_256_px_tile_of_its_zoom_would_refuse(
+    cog_server: str,
+) -> None:
+    """A 512 px tile decimates the file half as much as a 256 px tile of the
+    same zoom: it is drawn whenever the 256 px tiles of the next zoom are."""
+    url = f"{cog_server}/no_overviews.tif"
+    seven = decode_token(
+        encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
+    )
+    with RasterSource(url, LOCAL) as src:
+        zoom = next(
+            z
+            for z in range(8, 18)
+            if src.tile(*_tile_at(*CENTER, z), seven) is not None
+        )
+        assert src.tile(*_tile_at(*CENTER, zoom - 1), seven) is None
+        assert src.tile(*_tile_at(*CENTER, zoom - 1), seven, tilesize=512) is not None
+
+
+def test_info_gives_the_native_zoom_of_each_tile_size(cog_server: str) -> None:
+    with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:
+        info = src.info()
+    assert native_zoom(info, 256) == info.maxzoom
+    # A 512 px tile shows the cells at their own size one zoom higher up.
+    assert native_zoom(info, 512) == info.maxzoom - 1
+    # Never below the zoom the file's smallest overview fills a tile at.
+    at_min = dataclasses.replace(info, maxzoom=info.minzoom)
+    assert native_zoom(at_min, 512) == info.minzoom
+    assert native_zoom(dataclasses.replace(info, maxzoom=None), 512) is None
 
 
 def test_the_remote_validator_is_the_files_last_modified(cog_server: str) -> None:
@@ -491,3 +578,355 @@ def test_a_remembered_failure_is_recent_for_a_while(
     monkeypatch.setattr(source, "FAILURE_TTL_S", 0)
     remember_failure(key, "Again.")
     assert recent_failure(key) is None
+
+
+#: The query a signed link carries: no failure answer and no log line may
+#: hold it.
+SIGNED = "?sig=secret"
+
+
+def assert_logged_without_the_key(log: str, address: str, error: str) -> None:
+    """The log names the file by its address without query and credentials,
+    and the error; nothing of the key."""
+    assert address.split("?", 1)[0].split("://", 1)[1] in log
+    assert error in log
+    assert "sig" not in log and "secret" not in log
+
+
+@pytest.mark.parametrize(
+    ("address", "said", "error"),
+    [
+        (
+            "http://127.0.0.1:9/a/b.tif",
+            "The file's host could not be reached.",
+            "Connection refused",
+        ),
+        (
+            "{server}/notatiff.tif",
+            "The file could not be read as a raster.",
+            "not recognized as being in a supported file format",
+        ),
+        (
+            "{server}/missing.tif",
+            "The file's host answered with HTTP 404.",
+            "HTTP response code: 404",
+        ),
+        # GDAL reports a host that stops sending as a file it cannot recognize.
+        (
+            "{server}/stall/elevation.tif",
+            "The file could not be read as a raster.",
+            "not recognized as being in a supported file format",
+        ),
+    ],
+)
+def test_a_failure_says_what_went_wrong_without_the_files_address(
+    cog_server: str,
+    caplog: pytest.LogCaptureFixture,
+    address: str,
+    said: str,
+    error: str,
+) -> None:
+    """The message is what geoapi answers with, now and for the next 30
+    seconds; the error's own text goes to the log only, and the log names the
+    file without its query."""
+    from unittest.mock import patch
+
+    import goatlib.raster.source as source
+
+    url = address.format(server=cog_server) + SIGNED
+    path = url.split("://", 1)[1].split("?", 1)[0].split("/", 1)[1]
+    with (
+        patch.dict(source._failures, clear=True),
+        caplog.at_level("WARNING", logger="goatlib.raster.source"),
+    ):
+        with pytest.raises(RasterUnavailableError) as first:
+            with RasterSource(url, LOCAL) as src:
+                src.info()
+        with pytest.raises(RasterUnavailableError) as again:
+            with RasterSource(url, LOCAL) as src:
+                src.info()
+        remembered = recent_failure(failure_key(url, None))
+    for message in (str(first.value), str(again.value), remembered):
+        assert message == said
+        assert "sig" not in message and "secret" not in message
+        assert path not in message
+    assert_logged_without_the_key(caplog.text, url, error)
+
+
+def test_a_host_that_does_not_answer_the_check_in_time_says_so(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import goatlib.raster.source as source
+    import requests
+
+    url = "https://example.org/a/b.tif" + SIGNED
+
+    def head(address: str, **kwargs: object) -> object:
+        raise requests.ConnectTimeout(
+            "HTTPSConnectionPool(host='example.org', port=443): Max retries "
+            f"exceeded with url: /a/b.tif{SIGNED}"
+        )
+
+    monkeypatch.setattr(source, "assert_public_http_url", lambda *args: None)
+    monkeypatch.setattr(source.requests, "head", head)
+    with caplog.at_level("WARNING", logger="goatlib.raster.source"):
+        with pytest.raises(RasterUnavailableError) as failed:
+            resolve_address(url)
+    assert str(failed.value) == "The file's host did not answer in time."
+    assert_logged_without_the_key(caplog.text, url, "Max retries exceeded")
+
+
+def test_a_log_line_names_the_file_without_its_query_or_credentials() -> None:
+    from goatlib.raster.source import logged
+
+    url = "https://user:pw@example.org:8443/a/b.tif" + SIGNED + "#x"
+    error = OSError(f"'/vsicurl/{url}' not recognized as being in a supported format")
+    address, text = logged(url, error)
+    assert address == "https://example.org:8443/a/b.tif"
+    # The quote that closed the quoted address goes with the query.
+    assert text == (
+        "'/vsicurl/https://example.org:8443/a/b.tif not recognized as being in "
+        "a supported format"
+    )
+    # A stored file's path is logged as it is.
+    assert logged("/data/catalog/layers/x.tif", error)[0] == (
+        "/data/catalog/layers/x.tif"
+    )
+
+
+def _photo_tile() -> np.ndarray:
+    """A 512 px RGBA tile as `colorize` makes them: noisy colors, and
+    transparent cells with black RGB."""
+    rng = np.random.default_rng(16)
+    rgba = rng.integers(0, 256, (512, 512, 4), dtype="uint8")
+    rgba[..., 3] = np.where(rgba[..., 3] < 32, 0, 255)
+    rgba[rgba[..., 3] == 0, :3] = 0
+    return rgba
+
+
+def _value_tile() -> np.ndarray:
+    """A 512 px value tile: codes in RGB, alpha 255 everywhere."""
+    values = np.ma.masked_less(
+        np.random.default_rng(17).normal(500, 120, (512, 512)), 200
+    )
+    return value_encoding("float32", scaled=False, value_range=(0, 1000)).encode(values)
+
+
+@pytest.mark.parametrize("make", [_photo_tile, _value_tile])
+def test_a_tile_is_encoded_with_less_effort_and_decodes_to_its_exact_pixels(
+    make: object,
+) -> None:
+    """Lossless WebP at GDAL's QUALITY 50: for a lossless image QUALITY is
+    libwebp's effort, which takes less time than the default 75 for about the
+    same size, and the pixels stay exact."""
+    from unittest.mock import patch
+
+    from goatlib.raster.source import encode_tile
+    from rio_tiler.utils import render
+
+    rgba = make()  # type: ignore[operator]
+    with patch("rio_tiler.utils.render", wraps=render) as encoder:
+        data = encode_tile(rgba)
+    options = encoder.call_args.kwargs
+    assert options["img_format"] == "WEBP" and options["LOSSLESS"] is True
+    assert options["QUALITY"] == 50
+    assert np.array_equal(_png(data), rgba)
+
+
+def test_a_file_on_a_plain_web_address_opens_without_an_s3_session(
+    cog_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With AWS credentials in the environment, rasterio builds a boto3
+    session for every `Env`: a tile's open would build one for a file no S3
+    signature reaches. GDAL reads an http(s) address unsigned, a bucket's
+    included, so only a path it reads through S3 (`s3://`, `/vsis3/`) gets
+    one."""
+    from unittest.mock import patch
+
+    from goatlib.raster.source import gdal_env
+    from rasterio.session import AWSSession, DummySession
+
+    # Without boto3 (the `raster` extra alone) rasterio builds no session at all.
+    pytest.importorskip("boto3")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "a-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "a-secret")
+    image = decode_token(encode_token({"v": 1, "kind": "rgb", "noData": []}))
+    with patch("rasterio.session.boto3.Session") as boto3_session:
+        boto3_session.side_effect = AssertionError("a boto3 session was built")
+        with RasterSource(f"{cog_server}/photo_3857.tif", LOCAL) as src:
+            assert src.info().count == 3
+            assert src.tile(*_tile_at(*CENTER, 14), image, tilesize=512)
+        for plain in (
+            "/data/catalog/layers/x.tif",
+            "https://bucket.s3.eu-central-1.amazonaws.com/a.tif",
+        ):
+            assert isinstance(gdal_env(plain).session, DummySession), plain
+        boto3_session.assert_not_called()
+        boto3_session.side_effect = None
+        buckets = [
+            gdal_env(path) for path in ("s3://bucket/a.tif", "/vsis3/bucket/a.tif")
+        ]
+    assert all(isinstance(bucket.session, AWSSession) for bucket in buckets)
+    assert boto3_session.call_count == 2
+
+
+def _no_key(log: str) -> None:
+    """No part of the query (`sig=` rather than `sig`: rasterio's lines read
+    "GDAL signalled an error")."""
+    assert "sig=" not in log and "secret" not in log
+
+
+def test_rasterios_own_log_names_the_file_without_its_key(
+    cog_server: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """rasterio logs GDAL's error, address and query included, at INFO, the
+    level geoapi and processes log at."""
+    from unittest.mock import patch
+
+    import goatlib.raster.source as source
+
+    url = f"{cog_server}/notatiff.tif{SIGNED}"
+    with patch.dict(source._failures, clear=True), caplog.at_level("INFO"):
+        with pytest.raises(RasterUnavailableError):
+            with RasterSource(url, LOCAL) as src:
+                src.info()
+    assert any(r.name.startswith("rasterio") for r in caplog.records)
+    assert "/notatiff.tif" in caplog.text
+    _no_key(caplog.text)
+
+
+def test_urllib3s_log_of_the_address_check_has_no_key(
+    cog_server: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    from unittest.mock import patch
+
+    import goatlib.raster.source as source
+
+    with patch.dict(source._addresses, clear=True), caplog.at_level("DEBUG"):
+        resolve_address(f"{cog_server}/rgb.tif{SIGNED}", LOCAL)
+    assert any(
+        r.name.startswith("urllib3") and "/rgb.tif" in r.getMessage()
+        for r in caplog.records
+    )
+    _no_key(caplog.text)
+
+
+def test_a_query_holding_quotes_is_cut_whole(caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    from goatlib.raster.source import logged
+
+    quoted = "https://example.org/a/b.tif?sig=it's\"secret#x'"
+    error = OSError(
+        f"'/vsicurl/{quoted}' not recognized as being in a supported format"
+    )
+    address, text = logged(quoted, error)
+    assert address == "https://example.org/a/b.tif"
+    assert text.startswith("'/vsicurl/https://example.org/a/b.tif")
+    assert text.endswith(" not recognized as being in a supported format")
+    _no_key(text)
+    with caplog.at_level("INFO"):
+        logging.getLogger("rasterio._env").info(
+            "GDAL signalled an error: err_no=4, msg=%r", str(error)
+        )
+    assert "example.org/a/b.tif" in caplog.text
+    _no_key(caplog.text)
+
+
+def test_a_logged_exception_names_the_file_without_its_key(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    import goatlib.raster.source  # noqa: F401  (sets up the filter)
+
+    with caplog.at_level("INFO"):
+        try:
+            raise OSError("'/vsicurl/https://example.org/a/b.tif?sig=secret' not found")
+        except OSError:
+            logging.getLogger("rasterio._env").exception("Read failed")
+    assert "example.org/a/b.tif" in caplog.text
+    _no_key(caplog.text)
+
+
+def test_a_failing_header_read_before_a_tile_is_unavailable(
+    cog_server: str, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checks before a tile read (does the tile touch the file, is it too
+    coarse) read the file's header too: their failure is the neutral answer."""
+    from unittest.mock import patch
+
+    import goatlib.raster.source as source
+    from rasterio.errors import RasterioIOError
+    from rio_tiler.io import Reader
+
+    def failing(*args: object, **kwargs: object) -> bool:
+        raise RasterioIOError(
+            f"'/vsicurl/{cog_server}/rgb.tif{SIGNED}' could not be read"
+        )
+
+    monkeypatch.setattr(Reader, "tile_exists", failing)
+    url = f"{cog_server}/rgb.tif?header"
+    seven = decode_token(
+        encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
+    )
+    with (
+        patch.dict(source._failures, clear=True),
+        caplog.at_level("WARNING", logger="goatlib.raster.source"),
+    ):
+        with RasterSource(url, LOCAL) as src:
+            with pytest.raises(RasterUnavailableError) as failed:
+                src.tile(*_tile_at(*CENTER, 14), seven)
+    assert str(failed.value) == "The file could not be read as a raster."
+    assert "/rgb.tif" in caplog.text
+    _no_key(caplog.text)
+
+
+@pytest.mark.parametrize("scheme", ["http", "HTTP"])
+def test_a_buckets_https_address_opens_without_looking_for_credentials(
+    cog_dir: Path,
+    cog_server: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    scheme: str,
+) -> None:
+    """rasterio's own open takes an address naming amazonaws.com for S3 and
+    builds an AWS session for it, and without credentials in the environment
+    (as geoapi runs) botocore looks for them, the cloud's metadata service
+    last, about two seconds every time. GDAL reads the address over https
+    unsigned all the same, so it opens by its `/vsicurl/` name: no lookup,
+    whatever the case of its scheme."""
+    import shutil
+    from unittest.mock import patch
+
+    pytest.importorskip("boto3")
+    bucket = cog_dir / "bucket.s3.eu-central-1.amazonaws.com"
+    bucket.mkdir(exist_ok=True)
+    shutil.copy(cog_dir / "dem_utm.tif", bucket / "dem.tif")
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    server = scheme + cog_server.removeprefix("http")
+    url = f"{server}/bucket.s3.eu-central-1.amazonaws.com/dem.tif"
+    lookup = AssertionError("botocore looked for credentials")
+    with patch("botocore.session.Session.get_credentials", side_effect=lookup) as found:
+        with RasterSource(url, LOCAL) as src:
+            assert src.info().count == 1
+            assert src.tile(*_tile_at(*CENTER, 13), ramp(), tilesize=512)
+    found.assert_not_called()
+
+
+@pytest.mark.parametrize("suffix", ["#part", "?sig=1#part"])
+def test_an_address_with_a_fragment_opens_as_the_file(
+    cog_server: str, suffix: str
+) -> None:
+    """A fragment is no part of what a host is asked for: GDAL opens the file
+    without it, its query (a signed link's key) kept."""
+    from goatlib.raster.source import _gdal_path
+
+    with RasterSource(f"{cog_server}/rgb.tif{suffix}", LOCAL) as src:
+        assert src.info().count == 3
+    assert _gdal_path("HTTPS://bucket.example/a.tif?X-Amz-Signature=s1#part") == (
+        "/vsicurl/https://bucket.example/a.tif?X-Amz-Signature=s1"
+    )
+    assert _gdal_path("/data/catalog/layers/x.tif") == "/data/catalog/layers/x.tif"

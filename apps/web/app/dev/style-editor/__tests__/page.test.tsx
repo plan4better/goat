@@ -131,7 +131,7 @@ describe("development route", () => {
     renderWithProviders(<DevStyleEditor layerId="r1" initialDoc={JSON.stringify(doc)} />);
     await waitFor(() => expect(valuesMock).toHaveBeenCalled());
     expect(valuesMock.mock.calls[0][0]).toMatch(
-      /\/collections\/r1\/coverage\/tiles\/WebMercatorQuad\?band=1&resampling=nearest$/
+      /\/collections\/r1\/coverage\/tiles\/WebMercatorQuad\?band=1&resampling=nearest&tilesize=512$/
     );
     expect(preview.input?.source).not.toHaveProperty("values");
     loaded.values = values;

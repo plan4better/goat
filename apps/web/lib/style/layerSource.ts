@@ -4,6 +4,7 @@
 import { GEOAPI_BASE_URL } from "@/lib/constants";
 import type { CompileSource } from "@/lib/style/compile/types";
 import type { ServiceStyle } from "@/lib/utils/externalService";
+import { storedBounds } from "@/lib/utils/map/extentBounds";
 
 /** What a layer row (a project layer, a dataset, a published layer) says about its data. */
 export interface SourceLayer {
@@ -15,6 +16,8 @@ export interface SourceLayer {
   data_type?: string | null;
   url?: string | null;
   other_properties?: unknown;
+  /** The stored extent (WKT): core stores a COG layer's from its file's header. */
+  extent?: string | null;
 }
 
 /** Where a raster or service layer's pictures come from (the layer's own configuration, spec 9.8). */
@@ -119,12 +122,17 @@ export function compileSourceFor(layer: SourceLayer, opts: SourceOptions): Compi
     if (!base) return null;
     const dataset = String(layer.layer_id ?? layer.id);
     const version = versionParam(opts.version);
+    // The file's bounds, which the layer already holds: an image whose colored tiles' description (`tileset`) cannot
+    // be had still asks for tiles only where the file is.
+    const bounds = storedBounds(layer);
     return {
       type: "raster",
       id,
       tiles: `${base}/collections/${dataset}/raster/tiles/{z}/{x}/{y}.webp`,
+      tileset: `${base}/collections/${dataset}/raster/tiles`,
       coverage: coverageUrl(dataset, base),
       ...(version ? { version } : {}),
+      ...(bounds ? { bounds } : {}),
     };
   }
   if (raster)

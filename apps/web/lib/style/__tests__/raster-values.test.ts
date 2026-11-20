@@ -14,10 +14,12 @@ import {
   type RasterValues,
   type ReliefStop,
   linear,
+  rasterTilesetOf,
   rasterValuesOf,
   reliefColor,
   reliefStops,
   resamplingOf,
+  tilesetUrl,
   valueQuery,
   valueTilesUrl,
   valuesUrl,
@@ -183,18 +185,59 @@ describe("value tiles", () => {
     expect(of({ resampling: "nearest", render: { type: "image" } })).toBe("nearest");
   });
 
-  it("names the tileset description and the tiles of a band or formula", () => {
+  it("names the tileset description and the tiles of a band or formula, 512 px wide", () => {
     const coverage = "https://geo/collections/d1/coverage/tiles/WebMercatorQuad";
+    // The version last: the style panel finds what the map loaded under the URL without it.
     expect(valuesUrl(coverage, { band: 2, resampling: "nearest" }, "7")).toBe(
-      `${coverage}?band=2&resampling=nearest&v=7`
+      `${coverage}?band=2&resampling=nearest&tilesize=512&v=7`
     );
     expect(valuesUrl(coverage, { formula: "b1 + b2", resampling: "bilinear" })).toBe(
-      `${coverage}?formula=b1%20%2B%20b2&resampling=bilinear`
+      `${coverage}?formula=b1%20%2B%20b2&resampling=bilinear&tilesize=512`
     );
     const values = encoded(99.5, 2 ** -12, [100, 400]);
     expect(valueTilesUrl(coverage, { band: 1, resampling: "bilinear" }, values)).toBe(
-      `${coverage}/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=99.5&step=0.000244140625&v=1-e1`
+      `${coverage}/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=99.5&step=0.000244140625&v=1-e1`
     );
+  });
+
+  it("names the colored tiles' description for 512 px tiles, the version last", () => {
+    const tileset = "https://geo/collections/d1/raster/tiles";
+    expect(tilesetUrl(tileset, "7")).toBe(`${tileset}?tilesize=512&v=7`);
+    expect(tilesetUrl(tileset)).toBe(`${tileset}?tilesize=512`);
+  });
+
+  it("reads the colored tiles' description: the file's bounds and native zoom, and the version; a malformed one is none", () => {
+    const description = {
+      title: "d1 image",
+      dataType: "map",
+      maxzoom: 16,
+      bounds: [11.39, 47.25, 11.41, 47.27],
+      links: [{ rel: "item", type: "image/webp", templated: true, href: "https://geo/x" }],
+      "goat:version": "abc-12345678-e3",
+    };
+    expect(rasterTilesetOf(description)).toEqual({
+      version: "abc-12345678-e3",
+      maxzoom: 16,
+      bounds: [11.39, 47.25, 11.41, 47.27],
+    });
+    // Bounds that are no box on earth, or none, and an unknown native zoom: the source has neither.
+    for (const [maxzoom, bounds] of [
+      [null, null],
+      [undefined, [13.8, 52.3, 13.0, 52.7]],
+      ["16", [-200, 0, 10, 10]],
+    ]) {
+      const tileset = rasterTilesetOf({ ...description, maxzoom, bounds });
+      expect(tileset).toEqual({ version: "abc-12345678-e3" });
+    }
+    for (const broken of [
+      null,
+      "text",
+      { ...description, "goat:version": undefined },
+      { ...description, "goat:version": "" },
+    ])
+      expect(rasterTilesetOf(broken)).toBeNull();
+    // The value tiles' description is not the colored tiles'.
+    expect(rasterTilesetOf({ maxzoom: 14, "goat:values": { version: "abc-e3" } })).toBeNull();
   });
 
   it("the tile URL carries base and step from the encoding: the URL alone names its tile", () => {
@@ -206,7 +249,15 @@ describe("value tiles", () => {
         "0/0/0"
       )
     );
-    expect([...url.searchParams.keys()]).toEqual(["f", "formula", "resampling", "base", "step", "v"]);
+    expect([...url.searchParams.keys()]).toEqual([
+      "f",
+      "formula",
+      "resampling",
+      "tilesize",
+      "base",
+      "step",
+      "v",
+    ]);
     expect(Number(url.searchParams.get("base"))).toBe(-values.encoding.baseShift);
     expect(Number(url.searchParams.get("step"))).toBe(values.encoding.blueFactor);
     expect(url.searchParams.get("formula")).toBe("b2 - b1");
@@ -217,6 +268,7 @@ describe("value tiles", () => {
       title: "d1 values",
       dataType: "coverage",
       maxzoom: 14,
+      bounds: [13.0, 52.3, 13.8, 52.7],
       links: [{ rel: "item", type: "image/webp", templated: true, href: "https://geo/x" }],
       "goat:values": {
         encoding: { redFactor: 16, greenFactor: 0.0625, blueFactor: 0.000244140625, baseShift: -95.5 },
@@ -231,12 +283,27 @@ describe("value tiles", () => {
       integer: false,
       version: "abc-e1",
       maxzoom: 14,
+      bounds: [13.0, 52.3, 13.8, 52.7],
     });
     // An unknown native zoom: the source has none.
     for (const maxzoom of [null, undefined]) {
       const values = rasterValuesOf({ ...description, maxzoom });
       expect(values).not.toBeNull();
       expect(values).not.toHaveProperty("maxzoom");
+    }
+    // Bounds that are no box on earth, or none: the map asks for every tile in view.
+    for (const bounds of [
+      null,
+      undefined,
+      [13, 52],
+      [13.8, 52.3, 13.0, 52.7],
+      [13, 52.7, 13.8, 52.3],
+      [13, 52, "x", 53],
+      [-200, 0, 10, 10],
+    ]) {
+      const values = rasterValuesOf({ ...description, bounds });
+      expect(values).not.toBeNull();
+      expect(values).not.toHaveProperty("bounds");
     }
     const goat = description["goat:values"];
     expect(rasterValuesOf({ ...description, "goat:values": { ...goat, range: null } })?.range).toBeNull();

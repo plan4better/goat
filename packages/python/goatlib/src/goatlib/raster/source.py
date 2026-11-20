@@ -13,6 +13,8 @@ only to it.
 import ctypes
 import functools
 import logging
+import math
+import re
 import threading
 import time
 from collections.abc import Collection, Iterator, Sequence
@@ -20,14 +22,15 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Literal
-from urllib.parse import urljoin
+from typing import Any, Final, Literal
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import numpy as np
 import rasterio
 import requests
 from morecantile import Tile
 from rasterio.errors import RasterioError
+from rasterio.session import DummySession
 from rasterio.warp import transform_bounds
 from rasterio.windows import Window
 from rio_tiler.errors import RioTilerError, TileOutsideBounds
@@ -37,10 +40,15 @@ from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
 from goatlib.raster.formula import Formula
 from goatlib.raster.values import ValueEncoding
+from goatlib.utils.layer_address import address_shown
 
 logger = logging.getLogger(__name__)
 
-TILE_SIZE = 256
+#: A tile's width and height in pixels unless another is asked for.
+TILE_SIZE: Final = 256
+#: The tile sizes there are: the web asks for 512 px tiles, a quarter as many
+#: requests for the same view.
+TileSize = Literal[256, 512]
 MAX_REDIRECTS = 3
 #: Statistics and samples read an overview at most this wide.
 SAMPLE_SIZE = 1024
@@ -67,13 +75,19 @@ GDAL_OPTIONS = {
     "GDAL_HTTP_LOW_SPEED_LIMIT": "1",
     "GDAL_HTTP_MAX_RETRY": "0",
 }
+#: libwebp's effort for a lossless tile (GDAL's QUALITY, default 75): the same
+#: pixels, about the same size, in less time.
+WEBP_EFFORT = 50
 #: How long a file that could not be read answers at once with the same error,
 #: so a slow or broken host does not hold a thread for every tile.
 FAILURE_TTL_S = 30
 
 
 class RasterUnavailableError(RuntimeError):
-    """The file could not be read: unreachable, too slow, or not a raster."""
+    """The file could not be read: unreachable, too slow, or not a raster. Its
+    message is what whoever asked is told: what failed, in plain words, never
+    the file's address (a signed link's query is an access key); the error
+    goes to the log, without the address's query and credentials (`logged`)."""
 
 
 class BandError(ValueError):
@@ -87,6 +101,83 @@ _failures_lock = threading.Lock()
 def failure_key(url: str | None, stored_file: Path | None) -> str:
     """What a file's failure is remembered under: the file that is read."""
     return str(stored_file) if stored_file is not None else str(url)
+
+
+#: A query, a fragment or a `user:password@` in an error's text: the parts of
+#: the file's address that can be an access key. A query runs to the next
+#: whitespace, quotes included, so a quote inside it cannot end it early (the
+#: quote that closes a quoted address goes with it).
+_KEY_IN_TEXT = re.compile(r"[?#]\S*|(?<=//)[^/\s@]+@")
+
+
+class _WithoutKey(logging.Filter):
+    """Rewrites a log record without the queries, fragments and credentials of
+    the addresses it quotes; never drops one."""
+
+    cleans_keys = True
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            return True
+        cleaned = _KEY_IN_TEXT.sub("", message)
+        if cleaned != message:
+            record.msg, record.args = cleaned, ()
+        # An attached exception is formatted from `exc_text` when it is set.
+        if record.exc_info and not record.exc_text:
+            trace = logging.Formatter().formatException(record.exc_info)
+            record.exc_text = _KEY_IN_TEXT.sub("", trace)
+        return True
+
+
+#: The libraries that log the addresses this reader opens: rasterio quotes
+#: GDAL's errors with the file's whole address at INFO, urllib3 the address
+#: check's request at DEBUG.
+_QUOTING_LIBRARIES = ("rasterio", "rio_tiler", "urllib3")
+
+
+def _clean_library_logs() -> None:
+    """Puts `_WithoutKey` on every logger of `_QUOTING_LIBRARIES` there is. A
+    filter acts on its own logger's records only, not on its children's, so
+    each one gets it; importing this module has created all of those the
+    reader logs on. A logger created later (a rasterio module the reader never
+    imports) is not covered."""
+    names = {
+        name
+        # A copy: another thread may create a logger meanwhile.
+        for name in list(logging.Logger.manager.loggerDict)
+        if name.split(".")[0] in _QUOTING_LIBRARIES
+    }
+    for name in sorted(names | set(_QUOTING_LIBRARIES)):
+        library = logging.getLogger(name)
+        if not any(getattr(f, "cleans_keys", False) for f in library.filters):
+            library.addFilter(_WithoutKey())
+
+
+_clean_library_logs()
+
+
+def logged(address: str, error: Exception) -> tuple[str, str]:
+    """The file's address and the error as a log line gives them: the address
+    as someone who cannot edit the layer gets it (scheme, host and path), and
+    the error's text without the query, fragment and credentials of the
+    addresses it quotes."""
+    shown = address_shown(address, data_type="cog", catalog=False, can_edit=False)
+    return shown or address, _KEY_IN_TEXT.sub("", str(error))
+
+
+def read_failure(error: Exception) -> str:
+    """What a failed read of a file tells whoever asked: the host's HTTP status,
+    a timeout, or that the file could not be read as a raster. GDAL's own text
+    names the file's address, so it is never part of the message."""
+    text = str(error)
+    status = re.search(r"HTTP response code: (\d{3})", text)
+    if status:
+        return f"The file's host answered with HTTP {status.group(1)}."
+    if re.search(r"timed out|too slow", text, re.IGNORECASE):
+        return "The file's host did not answer in time."
+    return "The file could not be read as a raster."
 
 
 def remember_failure(key: str, message: str) -> None:
@@ -199,7 +290,7 @@ def forget_cached_reads(address: str) -> None:
     and blocks), so the next read asks its host again."""
     gdal = _gdal()
     if gdal is not None:
-        gdal.VSICurlPartialClearCache(f"/vsicurl/{address}".encode())
+        gdal.VSICurlPartialClearCache(_gdal_path(address).encode())
 
 
 def _follow(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
@@ -212,8 +303,14 @@ def _follow(url: str, private_hosts: Collection[str]) -> tuple[str, str | None]:
         try:
             response = requests.head(current, allow_redirects=False, timeout=(3, 3))
         except requests.RequestException as error:
+            logger.warning(
+                "The raster file at %s could not be reached: %s",
+                *logged(current, error),
+            )
             raise RasterUnavailableError(
-                f"The file could not be reached: {error}"
+                "The file's host did not answer in time."
+                if isinstance(error, requests.Timeout)
+                else "The file's host could not be reached."
             ) from None
         location = response.headers.get("Location")
         if response.status_code not in (301, 302, 303, 307, 308) or not location:
@@ -239,13 +336,26 @@ class RasterInfo:
     scales: tuple[float, ...]
     offsets: tuple[float, ...]
     names: tuple[str, ...]
-    #: The zoom whose tiles show the file's cells at their own size (rio-tiler's
-    #: estimate): deeper tiles only magnify them.
+    #: The zoom whose 256 px tiles show the file's cells at their own size
+    #: (rio-tiler's estimate): deeper tiles only magnify them.
     maxzoom: int | None = None
+    #: The zoom whose 256 px tile the file's smallest possible overview fills
+    #: (rio-tiler's estimate).
+    minzoom: int | None = None
 
     @property
     def scaled(self) -> bool:
         return any(s != 1 for s in self.scales) or any(o != 0 for o in self.offsets)
+
+
+def native_zoom(info: RasterInfo, tilesize: TileSize = TILE_SIZE) -> int | None:
+    """The zoom whose tiles of `tilesize` show the file's cells at their own
+    size: a 512 px tile shows them one zoom higher up than a 256 px one, never
+    below the file's minzoom."""
+    if info.maxzoom is None:
+        return None
+    zoom = info.maxzoom - int(math.log2(tilesize // TILE_SIZE))
+    return zoom if info.minzoom is None else max(zoom, info.minzoom)
 
 
 @dataclass(frozen=True)
@@ -295,10 +405,43 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
     )
 
 
+def _needs_s3_session(address: str) -> bool:
+    """Whether the file at `address` is read with rasterio's AWS session: only
+    a path GDAL reads through S3 (`s3://`, `/vsis3/`). GDAL reads an http(s)
+    address unsigned (`/vsicurl/`), a bucket's (amazonaws.com) included, where
+    rasterio would still build the session."""
+    return address.startswith(("s3://", "/vsis3/"))
+
+
+def _gdal_path(address: str) -> str:
+    """The name GDAL opens `address` by: an http(s) address (its scheme in any
+    case) as `/vsicurl/` with its query and without its fragment, which is
+    what rasterio passes for one anyway. Named so, rasterio's open does not
+    take a bucket's address (amazonaws.com) for S3 and build an AWS session for
+    it: without credentials in the environment botocore would look for them,
+    the cloud's metadata service last, about two seconds per open."""
+    parts = urlsplit(address)
+    if parts.scheme not in ("http", "https"):
+        return address
+    return f"/vsicurl/{urlunsplit(parts._replace(fragment=''))}"
+
+
+def gdal_env(address: str) -> rasterio.Env:
+    """GDAL's settings for reading the file at `address`. With AWS credentials
+    in the environment, rasterio builds a boto3 session for every `Env`; only
+    an S3 address is read with one (`_needs_s3_session`), any other file opens
+    without."""
+    if not _needs_s3_session(address):
+        return rasterio.Env(session=DummySession(), **GDAL_OPTIONS)
+    return rasterio.Env(**GDAL_OPTIONS)
+
+
 def encode_tile(rgba: np.ndarray) -> bytes:
     """RGBA bytes (H x W x 4) as a lossless WebP: the exact colors (value tiles
     stay exact) and transparency, at about a quarter of a PNG's size for
-    continuous colors, encoded as fast."""
+    continuous colors. For a lossless image GDAL's QUALITY is libwebp's effort,
+    not a loss: `WEBP_EFFORT` packs about as small as the default 75 in less
+    time, the pixels the same."""
     from rio_tiler.utils import render
 
     return render(
@@ -306,6 +449,7 @@ def encode_tile(rgba: np.ndarray) -> bytes:
         mask=rgba[..., 3],
         img_format="WEBP",
         LOSSLESS=True,
+        QUALITY=WEBP_EFFORT,
     )
 
 
@@ -348,15 +492,13 @@ class RasterSource:
             except RasterUnavailableError as error:
                 remember_failure(self._key, str(error))
                 raise
-        self._env = rasterio.Env(**GDAL_OPTIONS)
+        self._env = gdal_env(address)
         self._env.__enter__()
         try:
-            self._reader = Reader(address)
+            self._reader = Reader(_gdal_path(address))
         except (RasterioError, RioTilerError, OSError) as error:
             self._env.__exit__(None, None, None)
-            message = f"The file could not be read: {error}"
-            remember_failure(self._key, message)
-            raise RasterUnavailableError(message) from None
+            raise self._failed(error) from None
         return self
 
     def __exit__(
@@ -383,9 +525,17 @@ class RasterSource:
         except TileOutsideBounds:
             raise
         except (RasterioError, RioTilerError, OSError) as error:
-            message = f"The file could not be read: {error}"
-            remember_failure(self._key, message)
-            raise RasterUnavailableError(message) from None
+            raise self._failed(error) from None
+
+    def _failed(self, error: Exception) -> RasterUnavailableError:
+        """The failure to raise for a read that failed with `error`, remembered
+        for the next 30 seconds; the error itself is logged (`logged`)."""
+        logger.warning(
+            "The raster file %s could not be read: %s", *logged(self._key, error)
+        )
+        message = read_failure(error)
+        remember_failure(self._key, message)
+        return RasterUnavailableError(message)
 
     def info(self) -> RasterInfo:
         if self._info is not None:
@@ -419,6 +569,7 @@ class RasterSource:
             offsets=tuple(float(o) for o in ds.offsets),
             names=tuple(d or f"Band {i}" for i, d in enumerate(ds.descriptions, 1)),
             maxzoom=int(self.reader.maxzoom),
+            minzoom=int(self.reader.minzoom),
         )
         return self._info
 
@@ -426,14 +577,14 @@ class RasterSource:
         """The decimation factor of the file's coarsest overview (1 without)."""
         return float(max(self.reader.dataset.overviews(1) or [1]))
 
-    def _too_coarse(self, z: int, x: int, y: int) -> bool:
+    def _too_coarse(self, z: int, x: int, y: int, tilesize: int) -> bool:
         """Whether the tile would read far more of the file than it shows."""
         ds = self.reader.dataset
         b = self.reader.tms.xy_bounds(Tile(x, y, z))
         west, south, east, north = transform_bounds(
             self.reader.tms.rasterio_crs, ds.crs, b.left, b.bottom, b.right, b.top
         )
-        factor = min((east - west) / ds.res[0], (north - south) / ds.res[1]) / TILE_SIZE
+        factor = min((east - west) / ds.res[0], (north - south) / ds.res[1]) / tilesize
         return factor > self._coarsest() * MAX_EXTRA_DECIMATION
 
     def _overview(self, indexes: Sequence[int] | None) -> Any:
@@ -482,24 +633,29 @@ class RasterSource:
         y: int,
         coloring: Coloring,
         band_range: tuple[float, float] | None = None,
+        tilesize: TileSize = TILE_SIZE,
     ) -> bytes | None:
-        """A 256 px tile colored by `coloring` (lossless WebP); None outside the file."""
+        """A tile `tilesize` px wide colored by `coloring` (lossless WebP); None
+        outside the file. A 512 px tile is the tile z/x/y, the same area at
+        twice the resolution."""
         info = self.info()
         indexes = bands_needed(coloring, info.count)
         if max(indexes) > info.count:
             raise BandError(
                 f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
             )
-        if not self.reader.tile_exists(x, y, z) or self._too_coarse(z, x, y):
-            return None
         rgb = getattr(coloring, "kind", None) == "rgb"
         with self._reading():
+            if not self.reader.tile_exists(x, y, z) or self._too_coarse(
+                z, x, y, tilesize
+            ):
+                return None
             try:
                 image = self.reader.tile(
                     x,
                     y,
                     z,
-                    tilesize=TILE_SIZE,
+                    tilesize=tilesize,
                     indexes=indexes,
                     unscale=info.scaled and not rgb,
                 )
@@ -524,26 +680,30 @@ class RasterSource:
         formula: Formula,
         encoding: ValueEncoding,
         resampling: Literal["nearest", "bilinear"] = "bilinear",
+        tilesize: TileSize = TILE_SIZE,
     ) -> bytes | None:
-        """A 256 px tile of the formula's values in `encoding` (lossless WebP);
-        None outside the file. A cell where a band is no data or the formula has
-        no value is no data. Evaluated in float64, so 32 bit whole numbers stay
-        exact. `resampling` is the read's and the reprojection's: a file in
-        another CRS than the tile's is smooth too."""
+        """A tile `tilesize` px wide of the formula's values in `encoding`
+        (lossless WebP), as `tile` draws it; None outside the file. A cell
+        where a band is no data or the formula has no value is no data.
+        Evaluated in float64, so 32 bit whole numbers stay exact. `resampling`
+        is the read's and the reprojection's: a file in another CRS than the
+        tile's is smooth too."""
         info = self.info()
         if max(formula.bands) > info.count:
             raise BandError(
                 f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
             )
-        if not self.reader.tile_exists(x, y, z) or self._too_coarse(z, x, y):
-            return None
         with self._reading():
+            if not self.reader.tile_exists(x, y, z) or self._too_coarse(
+                z, x, y, tilesize
+            ):
+                return None
             try:
                 image = self.reader.tile(
                     x,
                     y,
                     z,
-                    tilesize=TILE_SIZE,
+                    tilesize=tilesize,
                     indexes=formula.bands,
                     unscale=info.scaled,
                     resampling_method=resampling,

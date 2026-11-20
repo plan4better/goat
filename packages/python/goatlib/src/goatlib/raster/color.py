@@ -152,10 +152,11 @@ def _scale(bits: Sequence[int], band: int) -> float:
 
 
 def _rgba(rgb: np.ndarray, hidden: np.ndarray) -> np.ndarray:
-    out = np.zeros(hidden.shape + (4,), dtype="uint8")
-    out[..., :3] = _to_byte(rgb)
-    out[..., 3] = np.where(hidden, 0, 255)
-    out[hidden, :3] = 0
+    """Colors (floats, or bytes as they are) and alpha; a hidden cell is all 0."""
+    out = np.empty(hidden.shape + (4,), dtype="uint8")
+    out[..., :3] = rgb if rgb.dtype == np.uint8 else _to_byte(rgb)
+    out[..., 3] = 255
+    out[hidden] = 0
     return out
 
 
@@ -227,9 +228,19 @@ def _image(
         grey = np.clip((v - lo) / ((hi - lo) or 1.0), 0, 1) * 255
         return _rgba(np.stack([grey] * 3, axis=-1), bad)
     r, g, b = picked
-    data = [np.ma.getdata(bands[i]).astype("float64") for i in picked]
+    data = [np.ma.getdata(bands[i]) for i in picked]
     bad = invalid[r] | invalid[g] | invalid[b]
-    # The style's no data hides a pixel only when all three bands hold it: a black border, not every pure red.
-    bad |= np.logical_and.reduce([_style_no_data(d, c.no_data) for d in data])
-    rgb = np.stack([d * _scale(bits, i) for d, i in zip(data, picked)], axis=-1)
+    if c.no_data:
+        # The style's no data hides a pixel only when all three bands hold it: a black border, not every pure red.
+        bad |= np.logical_and.reduce(
+            [_style_no_data(d.astype("float64"), c.no_data) for d in data]
+        )
+    if all(
+        d.dtype == np.uint8 and _scale(bits, i) == 1.0 for d, i in zip(data, picked)
+    ):
+        # 8 bit bands are the colors already: no float copy of the tile.
+        return _rgba(np.stack(data, axis=-1), bad)
+    rgb = np.stack(
+        [d.astype("float64") * _scale(bits, i) for d, i in zip(data, picked)], axis=-1
+    )
     return _rgba(rgb, bad)

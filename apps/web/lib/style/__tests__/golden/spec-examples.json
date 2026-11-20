@@ -8002,9 +8002,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -8454,9 +8454,9 @@
    "s": {
     "type": "raster",
     "tiles": [
-     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9&tilesize=512"
     ],
-    "tileSize": 256
+    "tileSize": 512
    }
   },
   "layers": [
@@ -8813,9 +8813,9 @@
    "s": {
     "type": "raster",
     "tiles": [
-     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzQsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzQsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9&tilesize=512"
     ],
-    "tileSize": 256
+    "tileSize": 512
    }
   },
   "layers": [
@@ -8838,9 +8838,9 @@
    "s": {
     "type": "raster",
     "tiles": [
-     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6bnVsbCwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6bnVsbCwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9&tilesize=512"
     ],
-    "tileSize": 256
+    "tileSize": 512
    }
   },
   "layers": [
@@ -8865,9 +8865,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -8940,9 +8940,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -8996,9 +8996,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9062,9 +9062,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=4&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=4&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9132,9 +9132,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&formula=(b4%20-%20b1)%20%2F%20(b4%20%2B%20b1)&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&formula=(b4%20-%20b1)%20%2F%20(b4%20%2B%20b1)&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9182,9 +9182,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9254,9 +9254,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9318,9 +9318,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -9381,9 +9381,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -9440,9 +9440,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -9541,9 +9541,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -9594,9 +9594,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -9647,9 +9647,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,
@@ -9700,9 +9700,9 @@
    "s": {
     "type": "raster",
     "tiles": [
-     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+     "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp?style=eyJiYW5kcyI6WzEsMiwzXSwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9&tilesize=512"
     ],
-    "tileSize": 256
+    "tileSize": 512
    }
   },
   "layers": [
@@ -9726,9 +9726,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 65536,
     "greenFactor": 256,
@@ -10103,9 +10103,9 @@
    "s": {
     "type": "raster-dem",
     "tiles": [
-     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=7&resampling=bilinear&base=-1&step=1&v=1-e1"
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=7&resampling=bilinear&tilesize=512&base=-1&step=1&v=1-e1"
     ],
-    "tileSize": 256,
+    "tileSize": 512,
     "encoding": "custom",
     "redFactor": 131072,
     "greenFactor": 512,

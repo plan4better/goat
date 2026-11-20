@@ -255,3 +255,41 @@ def test_a_token_with_more_than_256_stops_is_refused() -> None:
         coloring(
             kind="stops", band=1, stops=stops, interpolate="nearest", outside="clamp"
         )
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"kind": "rgb", "bands": None},
+        {"kind": "rgb", "bands": [3, 1, 2], "noData": [0]},
+        {"kind": "rgb", "bands": None, "noData": [7.0, 300]},
+    ],
+)
+def test_an_8_bit_image_is_painted_from_its_bytes_as_before(spec: dict) -> None:
+    """Three 8 bit bands are the colors already: no float copy of a 512 px
+    tile (about 20 ms each), and the same pixels as the float path, which a
+    16 bit file of the same values at 8 bits still takes."""
+    import tracemalloc
+
+    rng = np.random.default_rng(5)
+    shape = (512, 512)
+    data = [rng.integers(0, 12, shape, dtype="uint8") * 23 for _ in range(3)]
+    masked = rng.random(shape) < 0.05
+    bands = {
+        i: np.ma.masked_array(d, mask=masked if i == 2 else np.ma.nomask)
+        for i, d in enumerate(data, 1)
+    }
+    wide = {i: b.astype("uint16") for i, b in bands.items()}
+    c = coloring(**spec)
+    out = colorize(c, bands, bits=(8, 8, 8))
+    assert out.dtype == np.uint8 and out.shape == (*shape, 4)
+    assert np.array_equal(out, colorize(c, wide, bits=(8, 8, 8)))
+    assert (out[masked, 3] == 0).all() and (out[masked, :3] == 0).all()
+    if spec.get("noData"):
+        return
+    tracemalloc.start()
+    colorize(c, bands, bits=(8, 8, 8))
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    # The RGBA tile (1 MiB) and a few masks; the float path took over 20 MiB.
+    assert peak < 4 * 1024 * 1024

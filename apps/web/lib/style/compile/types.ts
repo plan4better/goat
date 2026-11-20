@@ -2,7 +2,7 @@
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
-import type { RasterValues } from "@/lib/style/raster/values";
+import type { RasterTileset, RasterValues } from "@/lib/style/raster/values";
 
 /** A field's type as the data describes it (goatlib `FieldType`). */
 export type FieldType = "string" | "number" | "integer" | "boolean" | "date" | "datetime";
@@ -24,15 +24,23 @@ export type CompileSource =
       /** How many service layers the URL draws (WMS `LAYERS`). */
       layers?: number;
     }
-  /** A raster file served by geoapi: its image tile template (`{z}/{x}/{y}`), its coverage tileset (value tiles), its
-   * version (`v=` of the image tiles) and, once loaded, the description of the value tiles the style reads. */
+  /** A raster file served by geoapi: its image tile template (`{z}/{x}/{y}`), the colored tiles' description, its
+   * coverage tileset (value tiles), its version (`v=` of the image tiles), the file's bounds where the layer knows them
+   * and, once loaded, the description of the value tiles the style reads or of the colored tiles an image draws. */
   | {
       type: "raster";
       id: string;
       tiles: string;
+      /** The colored tiles' description (`tiles` without z/x/y): an image render draws once it has answered. */
+      tileset?: string;
       coverage: string;
       version?: string;
+      /** West, south, east and north in degrees: the map asks only for the tiles that touch them. */
+      bounds?: [number, number, number, number];
       values?: RasterValues;
+      /** The colored tiles' description once answered: the file's bounds, native zoom and version, or null when there
+       * is none (the image draws with the layer's own bounds). */
+      image?: RasterTileset | null;
     };
 
 export interface CompileInput {

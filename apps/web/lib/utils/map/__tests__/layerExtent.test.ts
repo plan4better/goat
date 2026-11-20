@@ -4,12 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getExtent } from "@/lib/api/processes";
 import { fetchRasterBounds } from "@/lib/api/rasters";
+import { boundsOfExtent, storedBounds } from "@/lib/utils/map/extentBounds";
 import {
-  boundsOfExtent,
   canZoomTo,
   clearLayerBoundsCache,
   resolveLayerBounds,
-  storedBounds,
   wmsCapabilitiesUrl,
   wmtsCapabilitiesUrl,
 } from "@/lib/utils/map/layerExtent";

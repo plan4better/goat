@@ -13,6 +13,7 @@ import pytest
 rasterio = pytest.importorskip("rasterio")
 from rasterio.shutil import copy as rio_copy  # noqa: E402
 from rasterio.transform import from_bounds  # noqa: E402
+from rasterio.warp import transform_bounds  # noqa: E402
 
 #: A small area near Munich, in degrees.
 BOUNDS = (11.50, 48.10, 11.60, 48.20)
@@ -77,16 +78,18 @@ def _write_cog(
     nodata: float | None = None,
     colormap=None,
     overviews: str = "AUTO",
+    crs: str = "EPSG:4326",
 ) -> None:
     tmp = path.with_suffix(".plain.tif")
+    bounds = transform_bounds("EPSG:4326", crs, *BOUNDS)
     profile = {
         "driver": "GTiff",
         "width": data.shape[2],
         "height": data.shape[1],
         "count": data.shape[0],
         "dtype": str(data.dtype),
-        "crs": "EPSG:4326",
-        "transform": from_bounds(*BOUNDS, data.shape[2], data.shape[1]),
+        "crs": crs,
+        "transform": from_bounds(*bounds, data.shape[2], data.shape[1]),
         "nodata": nodata,
     }
     with rasterio.open(tmp, "w", **profile) as dst:
@@ -108,6 +111,11 @@ def cog_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     _write_cog(root / "elevation.tif", elevation[None], nodata=-9999)
     rgb = np.stack([np.full((SIZE, SIZE), v, "uint8") for v in (200, 100, 50)])
     _write_cog(root / "rgb.tif", rgb)
+    # A photo in the tiles' own CRS, as most aerial images are served.
+    photo = np.random.default_rng(3).integers(0, 256, (3, SIZE, SIZE), dtype="uint8")
+    _write_cog(root / "photo_3857.tif", photo, crs="EPSG:3857")
+    # Heights in metres in UTM, as a terrain model often comes.
+    _write_cog(root / "dem_utm.tif", elevation[None], nodata=-9999, crs="EPSG:32632")
     codes = (1 + (x // (SIZE // 4)) + (y // (SIZE // 2)) * 0).astype("uint8")
     table = {
         1: (255, 0, 0, 255),

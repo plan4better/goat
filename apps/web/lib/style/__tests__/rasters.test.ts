@@ -6,6 +6,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { type RasterColorSpec, rasterColorSpec } from "@/lib/style/raster/color";
 import { rasterToken } from "@/lib/style/raster/token";
 import {
+  type RasterTileset,
   type RasterValues,
   type ReliefStop,
   reliefColor,
@@ -46,6 +47,8 @@ const VALUES: RasterValues = {
   maxzoom: 12,
 };
 const LOADED = { ...SOURCE, values: VALUES };
+/** The file's west, south, east and north in degrees. */
+const BOUNDS: [number, number, number, number] = [13.08, 52.33, 13.77, 52.68];
 const compile = (style: object, source: CompileInput["source"] = LOADED) =>
   compileLayer({ id: "9", style: { version: "1.0.0", kind: "raster", ...style } as LayerStyle, source });
 const valid = (out: ReturnType<typeof compileLayer>) =>
@@ -73,9 +76,10 @@ describe("raster files drawn as images by the raster service", () => {
   it("an image is drawn from the service's tiles, with the image adjustments", () => {
     const out = compile({ opacity: 0.8, brightness: 0.1, saturation: 0.2, render: { type: "image" } });
     const tiles = (out.sources.s as { tiles: string[] }).tiles;
-    expect(out.sources.s).toMatchObject({ type: "raster", tileSize: 256 });
+    // 512 px tiles: a quarter of the requests of 256 px ones for the same view.
+    expect(out.sources.s).toEqual({ type: "raster", tiles, tileSize: 512 });
     expect(tiles[0]).toMatch(
-      /^https:\/\/geo\/collections\/d1\/raster\/tiles\/\{z\}\/\{x\}\/\{y\}\.webp\?style=[\w-]+&v=7$/
+      /^https:\/\/geo\/collections\/d1\/raster\/tiles\/\{z\}\/\{x\}\/\{y\}\.webp\?style=[\w-]+&v=7&tilesize=512$/
     );
     expect(coloringOf(out)).toEqual({ v: 1, kind: "rgb", bands: null, noData: [] });
     expect(out.layers).toEqual([
@@ -111,8 +115,55 @@ describe("raster files drawn as images by the raster service", () => {
     expect((a.sources.s as { tiles: string[] }).tiles).toEqual((b.sources.s as { tiles: string[] }).tiles);
   });
 
-  it("an image never waits for values", () => {
+  it("an image never waits for values, nor for a description its source does not name", () => {
     expect(compile({ render: { type: "image" } }, SOURCE).layers.map((l) => l.id)).toEqual(["9-raster"]);
+  });
+
+  it("an image whose source names its colored tiles' description draws once that has answered", () => {
+    const named = { ...SOURCE, tileset: `${ROOT}/tiles`, bounds: BOUNDS };
+    // Not answered yet: no source, no tile asked for, nothing unsupported.
+    const waiting = compile({ render: { type: "image" } }, named);
+    expect(waiting.sources).toEqual({});
+    expect(waiting.layers).toEqual([]);
+    expect(waiting.unsupported).toEqual([]);
+    // None (it failed): drawn as before, with the layer's own extent and no native zoom.
+    const failed = compile({ render: { type: "image" } }, { ...named, image: null });
+    expect(failed.sources.s).toMatchObject({ type: "raster", bounds: BOUNDS });
+    expect(failed.sources.s).not.toHaveProperty("maxzoom");
+    expect(failed.layers.map((l) => l.id)).toEqual(["9-raster"]);
+    // A value render over image tiles waits for its values, not for this description.
+    const unknown: RasterValues = { ...VALUES, range: null };
+    const colors = compile(
+      { render: { type: "continuous", palette: "goat:elevation", domain: [200, 450] } },
+      { ...named, values: unknown }
+    );
+    expect(colors.sources.s).toMatchObject({ type: "raster", maxzoom: 12 });
+  });
+
+  it("an image asks only for the tiles that touch the file's bounds, when its source knows them", () => {
+    const out = compile({ render: { type: "image" } }, { ...SOURCE, bounds: BOUNDS });
+    expect(out.sources.s).toMatchObject({ type: "raster", tileSize: 512, bounds: BOUNDS });
+    valid(out);
+  });
+
+  it("an image stops at the file's native zoom and takes its edges and version from the colored tiles' description", () => {
+    const image: RasterTileset = { version: "7-0a1b2c3d-e3", maxzoom: 16, bounds: BOUNDS };
+    const style = { resampling: "nearest", render: { type: "image" } };
+    const out = compile(style, { ...SOURCE, bounds: [0, 0, 1, 1], image });
+    const tiles = (out.sources.s as { tiles: string[] }).tiles;
+    // Past zoom 16 MapLibre magnifies the deepest tiles with the layer's resampling; the version lets caches keep them.
+    expect(out.sources.s).toEqual({ type: "raster", tiles, tileSize: 512, maxzoom: 16, bounds: BOUNDS });
+    expect(tiles[0]).toMatch(/\.webp\?style=[\w-]+&v=7-0a1b2c3d-e3&tilesize=512$/);
+    expect(out.layers[0].paint).toEqual({ "raster-resampling": "nearest" });
+    valid(out);
+    // A description without bounds (none on earth) is a statement: the stored extent does not stand in.
+    const across = compile(style, { ...SOURCE, bounds: BOUNDS, image: { version: "7-e3", maxzoom: 16 } });
+    expect(across.sources.s).not.toHaveProperty("bounds");
+    expect(across.sources.s).toMatchObject({ maxzoom: 16 });
+    // Until it is loaded the image draws as before: the stored extent, no native zoom, the source's version.
+    const before = compile(style, { ...SOURCE, bounds: BOUNDS });
+    expect(before.sources.s).not.toHaveProperty("maxzoom");
+    expect((before.sources.s as { tiles: string[] }).tiles[0]).toContain("&v=7&");
   });
 });
 
@@ -124,14 +175,14 @@ describe("raster files colored in the browser over value tiles", () => {
       s: {
         type: "raster-dem",
         tiles: [valueTilesUrl(COVERAGE, { band: 1, resampling: "nearest" }, VALUES)],
-        tileSize: 256,
+        tileSize: 512,
         encoding: "custom",
         ...VALUES.encoding,
         maxzoom: 12,
       },
     });
     expect((out.sources.s as { tiles: string[] }).tiles[0]).toBe(
-      `${COVERAGE}/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&base=${150 - STEP}&step=${STEP}&v=7-e1`
+      `${COVERAGE}/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=${150 - STEP}&step=${STEP}&v=7-e1`
     );
     const stops = reliefStops(valueRender(render), VALUES) as ReliefStop[];
     expect(out.layers).toEqual([
@@ -144,6 +195,38 @@ describe("raster files colored in the browser over value tiles", () => {
     ]);
     expect(out.unsupported).toEqual([]);
     valid(out);
+  });
+
+  it("value tiles ask only for the tiles that touch the file's bounds, from their description", () => {
+    const render = { type: "continuous", band: 1, palette: "goat:elevation", domain: [200, 450] };
+    const out = compile({ render }, { ...SOURCE, values: { ...VALUES, bounds: BOUNDS } });
+    expect(out.sources.s).toMatchObject({ type: "raster-dem", tileSize: 512, bounds: BOUNDS });
+    valid(out);
+    // Without known bounds the source is drawn as before: no bounds at all.
+    expect(compile({ render }).sources.s).not.toHaveProperty("bounds");
+    // The description's bounds, read from the file's header, win over those the layer holds.
+    const both = compile(
+      { render },
+      { ...SOURCE, bounds: [0, 0, 1, 1], values: { ...VALUES, bounds: BOUNDS } }
+    );
+    expect(both.sources.s).toMatchObject({ bounds: BOUNDS });
+    // A description without bounds (none on earth, across the antimeridian) is a statement: the stored extent does not
+    // stand in for it.
+    expect(compile({ render }, { ...LOADED, bounds: BOUNDS }).sources.s).not.toHaveProperty("bounds");
+    // A hillshade over image tiles: both sources take the description's bounds.
+    stopLimit.reached = true;
+    try {
+      const shaded = compile(
+        { render: { ...render, type: "hillshade" } },
+        { ...SOURCE, values: { ...VALUES, bounds: BOUNDS } }
+      );
+      expect(shaded.sources.s).toMatchObject({ type: "raster", tileSize: 512, bounds: BOUNDS });
+      expect(shaded.sources["s-values"]).toMatchObject({ type: "raster-dem", tileSize: 512, bounds: BOUNDS });
+      expect((shaded.sources.s as { tiles: string[] }).tiles[0]).toMatch(/&tilesize=512$/);
+      valid(shaded);
+    } finally {
+      stopLimit.reached = false;
+    }
   });
 
   it("stops, classes, categories and formulas draw color-relief, and a ramp without a domain spreads over the range", () => {
@@ -454,11 +537,15 @@ describe("raster files colored in the browser over value tiles", () => {
     try {
       const out = compile({ opacity: 0.5, render });
       expect(out.unsupported).toEqual([]);
+      // The value tiles' description stands for the colored tiles': native zoom and version.
       expect(out.sources).toEqual({
         s: {
           type: "raster",
-          tiles: [`${ROOT}/tiles/{z}/{x}/{y}.webp?style=${rasterToken(valueRender(render))}&v=7`],
-          tileSize: 256,
+          tiles: [
+            `${ROOT}/tiles/{z}/{x}/{y}.webp?style=${rasterToken(valueRender(render))}&v=7-e1&tilesize=512`,
+          ],
+          tileSize: 512,
+          maxzoom: 12,
         },
       });
       expect(out.layers).toEqual([

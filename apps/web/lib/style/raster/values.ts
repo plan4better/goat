@@ -7,21 +7,33 @@ import { type RasterColorSpec, rasterColorSpec, rgbOf } from "@/lib/style/raster
 
 /** The largest code (24 bits). */
 export const MAX_Q = 16_777_215;
+/** The width of the raster service's tiles the map asks for, value tiles and image tiles: 512 px tiles need a quarter of
+ * the requests of 256 px ones (geoapi's default) for the same view. */
+export const TILE_SIZE = 512;
 /** The most stops a color-relief layer is given (WebGL 2 guarantees textures 2048 wide, common graphics cards 8192 or
  * more); a coloring that needs more draws from image tiles. */
 export const MAX_RELIEF_STOPS = 4096;
 
-/** A tileset description of value tiles (its `goat:values` and native zoom). */
-export interface RasterValues {
+/** What a tileset description of a raster file's tiles tells a map's source: the colored tiles' description holds
+ * only this, the value tiles' their values too. */
+export interface RasterTileset {
+  /** The layer's values version: changes with the file and the encoding, never with the style. Tile URLs that name it
+   * are kept by caches for good. */
+  version: string;
+  /** The native zoom of `TILE_SIZE` tiles: past it the map magnifies the deepest tiles. */
+  maxzoom?: number;
+  /** The file's west, south, east and north in degrees: the map asks only for the tiles that touch them. */
+  bounds?: [number, number, number, number];
+}
+
+/** A tileset description of value tiles (its `goat:values`, native zoom and bounds). */
+export interface RasterValues extends RasterTileset {
   /** The `raster-dem` source's custom encoding: `base = -baseShift`, `step = blueFactor`. */
   encoding: { redFactor: number; greenFactor: number; blueFactor: number; baseShift: number };
   /** The band's (or formula's) minimum and maximum: a ramp without a domain spreads over it. */
   range: [number, number] | null;
   /** Whether the codes hold whole numbers exactly. */
   integer: boolean;
-  /** Changes with the file and the encoding, never with the style. */
-  version: string;
-  maxzoom?: number;
 }
 
 /** What value tiles hold: a band or a formula's result, read nearest or bilinear. */
@@ -73,11 +85,22 @@ const queryString = (params: Array<[string, string | number | undefined]>) =>
 const readParams = (query: ValueQuery): Array<[string, string | number]> => [
   query.formula !== undefined ? ["formula", query.formula] : ["band", query.band ?? 1],
   ["resampling", query.resampling],
+  ["tilesize", TILE_SIZE],
 ];
 
-/** The URL of the tileset description of a raster's value tiles (`coverage`: its coverage tileset). */
+/** The URL of the tileset description of a raster's value tiles (`coverage`: its coverage tileset), for tiles of
+ * `TILE_SIZE`; the version last, so `loadedRasterValues` finds a description under the URL without it. */
 export function valuesUrl(coverage: string, query: ValueQuery, version?: string): string {
   return `${coverage}?${queryString([...readParams(query), ["v", version]])}`;
+}
+
+/** The URL of the description of a raster's colored tiles (`tileset`: its colored tiles' address without z/x/y), for
+ * tiles of `TILE_SIZE`; the version last, as `valuesUrl`. */
+export function tilesetUrl(tileset: string, version?: string): string {
+  return `${tileset}?${queryString([
+    ["tilesize", TILE_SIZE],
+    ["v", version],
+  ])}`;
 }
 
 /** The value tiles' URL template. It names the encoding too, so the URL alone determines its tile. */
@@ -90,6 +113,31 @@ export function valueTilesUrl(coverage: string, query: ValueQuery, values: Raste
     ["v", values.version],
   ]);
   return `${coverage}/{z}/{y}/{x}?${params}`;
+}
+
+/** West, south, east and north in degrees, west below east and south below north; undefined for anything else. */
+function boundsOf(value: unknown): RasterValues["bounds"] {
+  if (!Array.isArray(value) || value.length !== 4 || !value.every(num)) return undefined;
+  const [west, south, east, north] = value as number[];
+  const inside = west >= -180 && east <= 180 && south >= -90 && north <= 90;
+  return inside && west < east && south < north ? [west, south, east, north] : undefined;
+}
+
+/** A description's native zoom and bounds, where it gives usable ones. */
+function extentOf(json: JsonObject): Pick<RasterTileset, "maxzoom" | "bounds"> {
+  const bounds = boundsOf(json.bounds);
+  return {
+    ...(num(json.maxzoom) ? { maxzoom: json.maxzoom } : {}),
+    ...(bounds ? { bounds } : {}),
+  };
+}
+
+/** The colored tiles' description (`goat:version`, native zoom and bounds); null when it is not one. */
+export function rasterTilesetOf(json: unknown): RasterTileset | null {
+  if (!isObject(json)) return null;
+  const version = json["goat:version"];
+  if (typeof version !== "string" || !version) return null;
+  return { version, ...extentOf(json) };
 }
 
 /** The values of a tileset description; null when it is not one. */
@@ -109,7 +157,7 @@ export function rasterValuesOf(json: unknown): RasterValues | null {
     range: range as [number, number] | null,
     integer: values.integer,
     version: values.version,
-    ...(num(json.maxzoom) ? { maxzoom: json.maxzoom } : {}),
+    ...extentOf(json),
   };
 }
 

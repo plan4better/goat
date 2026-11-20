@@ -14,7 +14,7 @@ file version (the row's version and a remote file's validator) in process
 memory. Tiles are not kept here (no Redis): the
 browser caches them under ETags made of the row's version and what the tile
 shows (the coloring token, or a value tile's band or formula and encoding),
-a value tile of the current values version for good.
+a tile whose address names the current values version for good.
 """
 
 import hashlib
@@ -24,7 +24,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Concatenate, Literal, ParamSpec
 from uuid import UUID
 
 import numpy as np
@@ -32,12 +32,15 @@ from cachetools import TTLCache
 from goatlib.raster.color import Coloring
 from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.source import (
+    TILE_SIZE,
     BandError,
     BandStats,
     PointValues,
     RasterInfo,
     RasterSource,
     RasterUnavailableError,
+    TileSize,
+    native_zoom,
     recent_failure,
     remember_failure,
     remote_validator,
@@ -59,6 +62,8 @@ _MISSING = object()
 
 #: How a value tile is read from cells that do not line up with its pixels.
 Resampling = Literal["nearest", "bilinear"]
+#: The arguments a tile read takes after the layer.
+P = ParamSpec("P")
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
@@ -248,12 +253,21 @@ class RasterService:
         )
 
     def value_tileset(
-        self, layer: RasterLayer, formula: Formula
-    ) -> tuple[ValueEncoding, int | None]:
-        """The formula's encoding and the file's deepest useful zoom, for the
+        self, layer: RasterLayer, formula: Formula, tilesize: TileSize = TILE_SIZE
+    ) -> tuple[ValueEncoding, int | None, tuple[float, float, float, float]]:
+        """The formula's encoding and the file's extent (`_extent`), for the
         value tiles' description."""
         with self._source(layer) as source:
-            return self.encoding(layer, source, formula), source.info().maxzoom
+            encoding = self.encoding(layer, source, formula)
+            return (encoding, *_extent(source.info(), tilesize))
+
+    def image_tileset(
+        self, layer: RasterLayer, tilesize: TileSize = TILE_SIZE
+    ) -> tuple[int | None, tuple[float, float, float, float]]:
+        """The file's extent (`_extent`), for the colored tiles' description:
+        from the file's header, no statistics."""
+        with self._source(layer) as source:
+            return _extent(source.info(), tilesize)
 
     def values_version(self, layer: RasterLayer) -> str:
         """The version of the layer's value tiles: the row's, the remote file's
@@ -289,13 +303,18 @@ class RasterService:
         return f"{version}-{ENCODING_VERSION}", follows
 
     def tile(
-        self, layer: RasterLayer, z: int, x: int, y: int, coloring: Coloring
+        self,
+        layer: RasterLayer,
+        z: int,
+        x: int,
+        y: int,
+        coloring: Coloring,
+        tilesize: TileSize = TILE_SIZE,
     ) -> bytes | None:
-        """A colored tile read from the file."""
+        """A colored tile `tilesize` px wide read from the file."""
         with self._source(layer) as source:
-            return source.tile(
-                z, x, y, coloring, self._band_range(layer, source, coloring)
-            )
+            band_range = self._band_range(layer, source, coloring)
+            return source.tile(z, x, y, coloring, band_range, tilesize=tilesize)
 
     def values(
         self,
@@ -306,30 +325,30 @@ class RasterService:
         formula: Formula,
         encoding: ValueEncoding,
         resampling: Resampling,
+        tilesize: TileSize = TILE_SIZE,
     ) -> bytes | None:
-        """A value tile of the formula in `encoding` (the one its address names,
-        so the address alone fixes the tile) read from the file; None outside
-        it. Raises BandError for a band the file does not have."""
+        """A value tile `tilesize` px wide of the formula in `encoding` (the
+        one its address names, so the address alone fixes the tile) read from
+        the file; None outside it. Raises BandError for a band the file does
+        not have."""
         with self._source(layer) as source:
-            return source.values(z, x, y, formula, encoding, resampling)
+            return source.values(
+                z, x, y, formula, encoding, resampling, tilesize=tilesize
+            )
 
-    def values_tile(
+    def at_version(
         self,
         layer: RasterLayer,
-        z: int,
-        x: int,
-        y: int,
-        formula: Formula,
-        encoding: ValueEncoding,
-        resampling: Resampling,
+        read: Callable[Concatenate[RasterLayer, P], bytes | None],
+        *args: P.args,
+        **kwargs: P.kwargs,
     ) -> tuple[str, bool, bytes | None]:
-        """`values`, with the values version the tile was read at and whether
-        it follows the file (`values_state`): the route lets caches keep for
-        good only a tile whose address names that version, of a file it
-        follows."""
+        """A tile read by `read(layer, *args, **kwargs)` (`tile` or `values`),
+        with the values version it was read at and whether that follows the
+        file (`values_state`): the routes let caches keep for good only a tile
+        whose address names that version, of a file it follows."""
         version, follows = self.values_state(layer)
-        content = self.values(layer, z, x, y, formula, encoding, resampling)
-        return version, follows, content
+        return version, follows, read(layer, *args, **kwargs)
 
     def point(
         self, layer: RasterLayer, lon: float, lat: float, formula: Formula | None
@@ -345,6 +364,14 @@ class RasterService:
     def failure_key(layer: RasterLayer) -> str:
         """What goatlib remembers the layer's file failing under."""
         return file_failure_key(layer.external_url, layer.stored_file)
+
+
+def _extent(
+    info: RasterInfo, tilesize: TileSize
+) -> tuple[int | None, tuple[float, float, float, float]]:
+    """The file's deepest useful zoom for tiles of `tilesize` and its bounds in
+    degrees: what a map needs to ask only for the tiles that show the file."""
+    return native_zoom(info, tilesize), info.bounds
 
 
 def _single_band(formula: Formula) -> int | None:

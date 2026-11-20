@@ -334,11 +334,16 @@ stack, so validation runs in core too.
   far from zero gets few levels (1,000,000 to 1,000,010 gets 20), a 32 bit range
   wider than the codes is stored in steps (32 for 0 to 40,000,000), and whole
   numbers beyond 2^24 are no longer exact in the browser. `ENCODING_VERSION`
-  joins every value tile's version, so a changed encoding never serves old tiles:
-  caches keep a value tile for good, so any change in a tile's pixels for the same
-  address (the packing, the read, the resampling, which is the reprojection's
-  too) bumps it, and `tests/unit/raster/test_reference_value_tiles.py` pins
-  reference tiles to catch one.
+  joins every value tile's and colored tile's version, so a changed encoding
+  never serves old tiles: caches keep both for good, so any change in a tile's
+  pixels for the same address (the packing, the read, the resampling, which is
+  the reprojection's too, `colorize`, and the statistics or sample whose range
+  a coloring without a domain spreads over, which a colored tile's address does
+  not name) bumps it, and `tests/unit/raster/test_reference_value_tiles.py` pins
+  reference value and colored tiles to catch one. Tiles are lossless WebP at
+  libwebp's effort 50 (`WEBP_EFFORT`, GDAL's
+  `QUALITY` for a lossless image): the same pixels as the default 75 at about the
+  same size, in less time; the bytes may differ, which needs no bump.
 - **An image tile's coloring travels in its URL** (`token.py`): for image renders,
   colors over float values of an unknown range (their codes cover only a stand-in
   span), and colorings with more stops than the browser takes whose coloring fits
@@ -368,6 +373,26 @@ stack, so validation runs in core too.
   failing in the same memory when a tile read runs past its deadline
   (`remember_failure`). A read that would decimate the coarsest overview more
   than 8x is skipped, so a COG without overviews is never downloaded whole.
+  Only a path GDAL reads through S3 (`s3://`, `/vsis3/`) opens with rasterio's
+  AWS session (`gdal_env`): with AWS credentials in the environment that session
+  builds a boto3 session for every open, and GDAL reads an http(s) address
+  unsigned, a bucket's included, so the session would do nothing there. goatlib
+  opens an http(s) address by its `/vsicurl/` name (`_gdal_path`), as rasterio
+  would pass it, because rasterio's own open takes an amazonaws.com address for
+  S3 and builds a session for it: without AWS credentials in the environment, as
+  geoapi runs, botocore then looks for them, the cloud's metadata service last,
+  about two seconds for every open. rasterio's reprojection helper still builds
+  a session of its own for a file in another projection when credentials are in
+  the environment (dev stacks): a few ms and a "Found credentials" line.
+- **A file's address is an access key in answers and logs** (`source.py`): a
+  signed link carries one in its query. A failure answers in plain words
+  (`read_failure`), and goatlib's own log names the file and the error without
+  query, fragment or `user:password@` (`logged`). rasterio logs GDAL's errors
+  with the whole address at INFO and urllib3 the HEAD's request line at DEBUG,
+  so importing the reader puts a filter that removes those parts on every
+  rasterio, rio-tiler and urllib3 logger there is (`_clean_library_logs`); a
+  filter acts only on its own logger, so a rasterio logger created after the
+  import (a module the reader never imports) is not covered.
 
 ## Styles of the layers goatlib creates
 

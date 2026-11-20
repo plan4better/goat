@@ -1,15 +1,10 @@
 // The area a layer covers, for zoom to layer and every map that opens on a layer: its stored extent where that
 // says something, else what the data, the file or the service tells.
-import bbox from "@turf/bbox";
-
 import { getExtent } from "@/lib/api/processes";
 import { fetchRasterBounds } from "@/lib/api/rasters";
 import { isCatalogLayer } from "@/lib/utils/catalog-layer";
 import { parseCapabilities, selectionBounds } from "@/lib/utils/externalService";
-import { wktToGeoJSON } from "@/lib/utils/map/wkt";
-
-/** West, south, east, north in degrees. */
-export type Bounds = [number, number, number, number];
+import { type Bounds, asBounds, boundsOfExtent, storedBounds } from "@/lib/utils/map/extentBounds";
 
 /** What the helpers read of a layer: a project layer, a dataset or a layer tree node all have it. */
 export interface ExtentLayer {
@@ -20,38 +15,6 @@ export interface ExtentLayer {
   extent?: string | null;
   other_properties?: Record<string, unknown> | null;
   query?: { cql?: Record<string, unknown> | null } | null;
-}
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-const asBounds = (box: unknown): Bounds | undefined => {
-  if (!Array.isArray(box) || box.length < 4) return undefined;
-  const [w, s, e, n] = box.slice(0, 4).map(Number);
-  if (![w, s, e, n].every(Number.isFinite) || s > n) return undefined;
-  return [clamp(w, -180, 180), clamp(s, -90, 90), clamp(e, -180, 180), clamp(n, -90, 90)];
-};
-
-/** The bounds of a WKT (or EWKT) extent; undefined for none or one that does not parse. */
-export function boundsOfExtent(extent: unknown): Bounds | undefined {
-  if (typeof extent !== "string" || !extent.trim()) return undefined;
-  try {
-    const geometry = wktToGeoJSON(extent.trim().replace(/^SRID=\d+;/i, ""));
-    if (!geometry) return undefined;
-    const box = asBounds(bbox(geometry as never));
-    // A bounded box west of east; an empty geometry measures as infinities, which `asBounds` refuses.
-    return box && box[0] <= box[2] ? box : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** The whole world: what a layer without an extent reads as, once a schema has put in its default. */
-export const isWholeWorld = ([w, s, e, n]: Bounds) => e - w >= 359 && n - s >= 170;
-
-/** A layer's stored extent, where it says something: none, or the world box, says nothing. */
-export function storedBounds(layer: Pick<ExtentLayer, "extent">): Bounds | undefined {
-  const box = boundsOfExtent(layer.extent);
-  return box && !isWholeWorld(box) ? box : undefined;
 }
 
 /** OGC request parameters GOAT writes itself; a server's own (MapServer's `map=`) are kept. */

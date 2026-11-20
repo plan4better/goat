@@ -201,3 +201,45 @@ def test_a_value_tile_holds_each_samples_value(
         elif not abs(value - sample["value"]) <= encoding.step:
             wrong.append(f"{cells}: {value}, expected {sample['value']}")
     assert wrong == []
+
+
+@pytest.mark.parametrize("raster_file", VALUE_CASES[:1], indirect=True)
+def test_512_px_tiles_hold_the_same_samples_at_twice_the_width(
+    raster_file: tuple[TestClient, dict[str, Any]],
+) -> None:
+    """The web asks for 512 px tiles: the same area at twice the resolution,
+    whose description names the file's bounds."""
+    client, case = raster_file
+    coverage = f"/collections/{LAYER}/coverage/tiles/WebMercatorQuad"
+    # Nearest: each pixel holds its cell's own value.
+    small = client.get(f"{coverage}?band=1&resampling=nearest").json()
+    large = client.get(f"{coverage}?band=1&resampling=nearest&tilesize=512").json()
+    # A file of one 256 px tile: a 512 px tile shows its cells at their own
+    # size one zoom higher up, but the native zoom stays at its minzoom.
+    assert large["maxzoom"] == small["maxzoom"] == TILE.z
+    b = TMS.bounds(TILE)
+    assert large["bounds"] == pytest.approx([b.left, b.bottom, b.right, b.top])
+    assert large["bounds"] == small["bounds"]
+    href = large["links"][0]["href"].removeprefix("http://testserver")
+    for name, value in (
+        ("tileMatrix", TILE.z),
+        ("tileRow", TILE.y),
+        ("tileCol", TILE.x),
+    ):
+        href = href.replace(f"{{{name}}}", str(value))
+    assert "tilesize=512" in href
+    values = client.get(href)
+    image = client.get(
+        f"/collections/{LAYER}/raster/tiles/{TILE.z}/{TILE.x}/{TILE.y}.webp"
+        f"?style={case['token']}&tilesize=512"
+    )
+    small_values = client.get(href.replace("&tilesize=512", ""))
+    small_image = client.get(image.url.path + f"?style={case['token']}")
+    for r in (values, image, small_values, small_image):
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "image/webp"
+    # Each pixel of the 256 px tile is a block of two by two pixels of the 512.
+    for large_tile, small_tile in ((values, small_values), (image, small_image)):
+        pixels = _pixels(large_tile.content)
+        assert pixels.shape == (512, 512, 4)
+        assert np.array_equal(pixels[::2, ::2], _pixels(small_tile.content))

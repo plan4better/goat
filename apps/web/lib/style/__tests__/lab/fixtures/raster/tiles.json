@@ -150,5 +150,9 @@
       "integer": true,
       "codes": [32779, 32789, 32799, 0]
     }
+  },
+  "large": {
+    "size": 512,
+    "values": ["categories"]
   }
 }

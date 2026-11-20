@@ -1,39 +1,52 @@
 // The values a raster layer colors in the browser (spec 9): its source gets the description of the value tiles its
-// style reads (band or formula, resampling), which the compiler needs for the tile URL and the stops. The renderer
-// loads each description once; a description that changes while a band or formula is edited is asked for after a
-// quiet moment, and the layer keeps its last drawing until it has loaded.
+// style reads (band or formula, resampling), which the compiler needs for the tile URL and the stops. An image render's
+// source gets the colored tiles' description instead: the file's bounds, native zoom and version. The renderer loads
+// each description once; a description that changes while a band or formula is edited is asked for after a quiet
+// moment, and the layer keeps its last drawing until it has loaded.
 import type { JsonObject } from "@/lib/style/json";
-import { type RasterValues, valueQuery, valuesUrl } from "@/lib/style/raster/values";
+import {
+  type RasterTileset,
+  type RasterValues,
+  tilesetUrl,
+  valueQuery,
+  valuesUrl,
+} from "@/lib/style/raster/values";
 import { RASTER_QUIET_MS } from "@/lib/style/render/apply";
 import type { RenderLayer } from "@/lib/style/render/mapLayers";
 
-/** A description by its URL: undefined while it loads, null when there is none. */
-export type ValuesAnswer = RasterValues | null | undefined;
+/** A description by its URL (the value tiles' or the colored tiles'): undefined while it loads, null when there is
+ * none. */
+export type ValuesAnswer = RasterValues | RasterTileset | null | undefined;
 
-/** The URL of the description a layer's style reads; null for other layers and a source that has its values. */
-function valuesUrlOf(layer: RenderLayer): string | null {
+/** The description a layer's style reads: its value tiles', else (an image) its colored tiles'; null for other layers
+ * and a source that has its description (or the answer that there is none) or names none. */
+function descriptionOf(layer: RenderLayer): { url: string; values: boolean } | null {
   const source = layer.source;
-  if (source.type !== "raster" || source.values) return null;
+  if (source.type !== "raster" || source.values || source.image !== undefined) return null;
   const style = layer.style as unknown as JsonObject;
   if (style.kind !== "raster") return null;
   const query = valueQuery(style);
-  return query ? valuesUrl(source.coverage, query, source.version) : null;
+  if (query) return { url: valuesUrl(source.coverage, query, source.version), values: true };
+  return source.tileset ? { url: tilesetUrl(source.tileset, source.version), values: false } : null;
 }
 
-/** The layers with the values their raster styles read; pending while a visible layer's description loads (a hidden
- * one does not hold print and thumbnails). A failed one draws nothing and is not pending. Other layers are returned as
- * they are. */
+/** The layers with the descriptions their raster styles read; pending while a visible layer's description loads (a
+ * hidden one does not hold print and thumbnails). Both draw once their description has loaded (`rasterLayers`). A
+ * value render whose description failed draws nothing, an image draws as before (its source gets `image: null`);
+ * neither is pending then. Other layers are returned as they are. */
 export function withRasterValues(
   layers: RenderLayer[],
   load: (url: string, layer: RenderLayer) => ValuesAnswer
 ): { layers: RenderLayer[]; pending: boolean } {
   let pending = false;
   const out = layers.map((layer) => {
-    const url = valuesUrlOf(layer);
-    if (url === null || layer.source.type !== "raster") return layer;
-    const values = load(url, layer);
-    if (values === undefined && layer.entry.visible !== false) pending = true;
-    return values ? { ...layer, source: { ...layer.source, values } } : layer;
+    const described = descriptionOf(layer);
+    if (described === null || layer.source.type !== "raster") return layer;
+    const answer = load(described.url, layer);
+    if (answer === undefined && layer.entry.visible !== false) pending = true;
+    if (!described.values)
+      return answer === undefined ? layer : { ...layer, source: { ...layer.source, image: answer } };
+    return answer && "encoding" in answer ? { ...layer, source: { ...layer.source, values: answer } } : layer;
   });
   return { layers: out, pending };
 }

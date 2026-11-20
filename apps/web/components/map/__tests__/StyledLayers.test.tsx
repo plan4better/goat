@@ -1,9 +1,10 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { compileLayer } from "@/lib/style/compile";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import type { RasterValues } from "@/lib/style/raster/values";
+import type { RasterTileset, RasterValues } from "@/lib/style/raster/values";
 import type { RenderLayer } from "@/lib/style/render/mapLayers";
 import { StyleSaver, type StyleTransport } from "@/lib/style/save";
 
@@ -151,7 +152,10 @@ describe("StyledLayers", () => {
     const pending = vi.fn();
     render(<StyledLayers layers={[layer("1", "#aaaaaa"), raster]} locale="en" onValuesPending={pending} />);
     await waitFor(() => expect(pending).toHaveBeenCalledWith(true));
-    expect(valuesMock).toHaveBeenCalledWith(`${coverage}?band=1&resampling=nearest`, expect.any(Function));
+    expect(valuesMock).toHaveBeenCalledWith(
+      `${coverage}?band=1&resampling=nearest&tilesize=512`,
+      expect.any(Function)
+    );
     const drawnSource = () => ((syncMock.mock.calls.at(-1) as unknown[])[2] as RenderLayer[])[1].source;
     expect(drawnSource()).not.toHaveProperty("values");
 
@@ -160,6 +164,49 @@ describe("StyledLayers", () => {
     await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
     expect(drawnSource()).toMatchObject({ type: "raster", coverage, values });
     expect(pending.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it("draws an image raster layer once its colored tiles' description arrives, pending until then", async () => {
+    const image: RasterTileset = {
+      version: "1-0a1b2c3d-e3",
+      maxzoom: 16,
+      bounds: [11.39, 47.25, 11.41, 47.27],
+    };
+    const loaded: { image?: RasterTileset } = {};
+    let onLoad: (() => void) | undefined;
+    valuesMock.mockImplementation((_url: string, callback: () => void) => {
+      if (!loaded.image) onLoad = callback;
+      return loaded.image;
+    });
+    const tileset = "https://geoapi/collections/r1/raster/tiles";
+    const raster: RenderLayer = {
+      key: "r",
+      style: { version: "1.0.0", kind: "raster", render: { type: "image" } } as unknown as LayerStyle,
+      entry: {},
+      source: {
+        type: "raster",
+        id: "src-r",
+        tiles: `${tileset}/{z}/{x}/{y}.webp`,
+        tileset,
+        coverage: "https://geoapi/collections/r1/coverage/tiles/WebMercatorQuad",
+        bounds: [11, 47, 12, 48],
+      },
+    };
+    const pending = vi.fn();
+    render(<StyledLayers layers={[raster]} locale="en" onValuesPending={pending} />);
+    await waitFor(() => expect(pending).toHaveBeenCalledWith(true));
+    expect(valuesMock).toHaveBeenCalledWith(`${tileset}?tilesize=512`, expect.any(Function));
+    const drawn = () => ((syncMock.mock.calls.at(-1) as unknown[])[2] as RenderLayer[])[0];
+    const drawnSource = () => drawn().source;
+    // While the description loads the layer compiles to nothing: no tile is asked for.
+    const compiled = () => compileLayer({ id: "r", style: drawn().style, source: drawnSource() });
+    expect(compiled().sources).toEqual({});
+
+    loaded.image = image;
+    act(() => onLoad?.());
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
+    expect(drawnSource()).toMatchObject({ type: "raster", tileset, image });
+    expect(compiled().sources["src-r"]).toMatchObject({ maxzoom: 16, bounds: image.bounds });
   });
 
   it("popups follow the edited style: a layer's document comes from its open store", () => {

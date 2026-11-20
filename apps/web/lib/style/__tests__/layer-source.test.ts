@@ -59,6 +59,8 @@ describe("compileSourceFor", () => {
       type: "raster",
       id: "src-3",
       tiles: `${GEOAPI}/collections/r1/raster/tiles/{z}/{x}/{y}.webp`,
+      // The colored tiles' description: the file's bounds, native zoom and version.
+      tileset: `${GEOAPI}/collections/r1/raster/tiles`,
       coverage: `${GEOAPI}/collections/r1/coverage/tiles/WebMercatorQuad`,
     });
     const changed = new Date(Date.now() - 60_000).toISOString();
@@ -83,6 +85,21 @@ describe("compileSourceFor", () => {
       });
     }
     expect(sourceOf(feature)).toBeUndefined();
+  });
+
+  it("a COG's source carries its stored extent as the bounds MapLibre asks tiles within", () => {
+    const cog = { id: 3, layer_id: "r1", type: "raster", data_type: "cog", url: "https://files/a.tif" };
+    // core stores a COG layer's extent from its file's header (geoapi's /raster/bounds).
+    const extent = "MULTIPOLYGON(((13.08 52.33,13.77 52.33,13.77 52.68,13.08 52.68,13.08 52.33)))";
+    expect(compileSourceFor({ ...cog, extent }, { kind: "raster", geoapiUrl: GEOAPI })).toMatchObject({
+      type: "raster",
+      bounds: [13.08, 52.33, 13.77, 52.68],
+    });
+    // None, one that does not parse, or the whole world (a schema's default) says nothing: no bounds.
+    for (const unknown of [null, "", "not wkt", "POLYGON((-180 -90,180 -90,180 90,-180 90,-180 -90))"])
+      expect(
+        compileSourceFor({ ...cog, extent: unknown }, { kind: "raster", geoapiUrl: GEOAPI })
+      ).not.toHaveProperty("bounds");
   });
 
   it("a raster from the catalog is drawn by geoapi without an address", () => {

@@ -13,6 +13,7 @@ import { rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
 import {
   type RasterValues,
+  TILE_SIZE,
   type ValueQuery,
   reliefColor,
   reliefStops,
@@ -23,9 +24,7 @@ import {
 } from "@/lib/style/raster/values";
 
 type RasterSource = Extract<CompileSource, { type: "raster" }>;
-
-/** The service's tiles are 256 px. */
-const TILE_SIZE = 256;
+type Bounds = RasterSource["bounds"];
 
 /** A URL template with query parameters added. */
 function withQuery(template: string, params: Record<string, string | undefined>): string {
@@ -96,7 +95,8 @@ function valueSource(
   coverage: string,
   query: ValueQuery,
   values: RasterValues,
-  k: number
+  k: number,
+  bounds: Bounds
 ): SourceSpecification {
   const { redFactor, greenFactor, blueFactor, baseShift } = values.encoding;
   return {
@@ -109,6 +109,7 @@ function valueSource(
     blueFactor: blueFactor * k,
     baseShift: baseShift * k,
     ...(values.maxzoom !== undefined ? { maxzoom: values.maxzoom } : {}),
+    ...(bounds ? { bounds } : {}),
   };
 }
 
@@ -123,8 +124,9 @@ export function rasterLayers(
   const spec = rasterColorSpec(render);
   const query = valueQuery(style);
   const values = query ? source.values : undefined;
-  // A render of values draws once their description is loaded; until then nothing, and nothing is missing.
-  if (query && !values) return [];
+  // A render of values draws once their description is loaded, an image whose source names the colored tiles'
+  // description once that has answered (null: there is none); until then nothing, and nothing is missing.
+  if (query ? !values : source.tileset !== undefined && source.image === undefined) return [];
   // Float codes of an unknown range cover only a stand-in span, too narrow to place colors on: geoapi colors those
   // cells. A hillshade alone still draws from the values (flat, as their span is).
   const placeable = values !== undefined && (values.range !== null || values.integer);
@@ -137,12 +139,26 @@ export function rasterLayers(
     return [];
   }
   const zooms = zoomRange(style);
+  // What a loaded description says, the value tiles' or else the colored tiles': the file's bounds as read from its
+  // header (none when they are no box on earth), its native zoom, and the version that lets caches keep the tiles.
+  // Without one, the bounds the layer holds.
+  const described = values ?? source.image ?? undefined;
+  const bounds = described ? described.bounds : source.bounds;
   const layers: LayerSpecification[] = [];
   if (token) {
     out.sources[source.id] = {
       type: "raster",
-      tiles: [withQuery(source.tiles, { style: token, v: source.version })],
+      tiles: [
+        withQuery(source.tiles, {
+          style: token,
+          v: described?.version ?? source.version,
+          tilesize: String(TILE_SIZE),
+        }),
+      ],
       tileSize: TILE_SIZE,
+      // Past the file's native zoom MapLibre magnifies the deepest tiles with the layer's resampling.
+      ...(described?.maxzoom !== undefined ? { maxzoom: described.maxzoom } : {}),
+      ...(bounds ? { bounds } : {}),
     };
     const paint = imagePaint(style, render.type === "image" || render.type === undefined);
     if (resamplingOf(style) === "nearest") paint["raster-resampling"] = "nearest";
@@ -159,7 +175,7 @@ export function rasterLayers(
   // raises flat terrain on the source (spec 9.6), and the colors on it move with the heights.
   const valuesId = token ? `${source.id}-values` : source.id;
   const k = render.type === "hillshade" ? verticalScale(values.range) : 1;
-  out.sources[valuesId] = valueSource(source.coverage, query, values, k);
+  out.sources[valuesId] = valueSource(source.coverage, query, values, k, bounds);
   if (stops) {
     const paint: Record<string, unknown> = { "color-relief-color": reliefColor(stops, values, k) };
     const opacity = toProperty(fromForm(style.opacity, "number", 1));

@@ -13,6 +13,10 @@ checks need to know about them to tiles.json.
   around), read nearest. tiles.json holds each one's encoding, the band's (or
   formula's) range, whether it is stored exactly, and each sample's code at its
   block's center.
+- cone-512.webp, values-512-<id>.webp: the cone's and a few cases' value tiles
+  read at 512 px, as the web asks for them (`LARGE`): the same area at twice
+  the resolution, each sample's block twice as wide. tiles.json `large` names
+  the size and the cases; their encodings and codes are the 256 px tiles'.
 - cells.webp: a few pixels, one per cell of known color, encoded as the
   service encodes its tiles. MapLibre stretches a tile's picture over the tile,
   so each pixel is drawn as a cell many pixels wide: the browser's resampling
@@ -28,7 +32,7 @@ import json
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 import morecantile
 import numpy as np
@@ -44,7 +48,7 @@ CASES = (
     HERE.parents[7]
     / "packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json"
 )
-SIZE = 256
+SIZE: Final = 256
 #: The tile every file covers: the one whose top left corner is [0, 0].
 TILE = morecantile.Tile(x=4096, y=4096, z=13)
 TMS = morecantile.tms.get("WebMercatorQuad")
@@ -56,6 +60,10 @@ RADIUS = 96
 HEIGHT = 1500
 #: A case's samples sit in blocks of this many pixels, eight to a row.
 BLOCK = 32
+#: The tile size the web asks for, and the cases whose value tiles are made at it
+#: too.
+LARGE: Final = 512
+LARGE_CASES = ("categories",)
 #: The cells' colors, row by row from the top.
 CELLS = [
     ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3"],
@@ -103,9 +111,11 @@ def case_bands(case: dict[str, Any]) -> tuple[np.ndarray, float | None]:
     return data, no_data
 
 
-def block_center(k: int) -> tuple[int, int]:
-    """The row and column of sample `k`'s block's center."""
-    return (k // 8) * BLOCK + BLOCK // 2, (k % 8) * BLOCK + BLOCK // 2
+def block_center(k: int, tilesize: int = SIZE) -> tuple[int, int]:
+    """The row and column of sample `k`'s block's center in a tile `tilesize`
+    px wide."""
+    block = BLOCK * tilesize // SIZE
+    return (k // 8) * block + block // 2, (k % 8) * block + block // 2
 
 
 def encoding_of(source: RasterSource, formula: Formula) -> ValueEncoding:
@@ -132,13 +142,22 @@ def encoding_of(source: RasterSource, formula: Formula) -> ValueEncoding:
 
 
 def value_tile(
-    path: Path, formula: Formula, resampling: Literal["nearest", "bilinear"]
+    path: Path,
+    formula: Formula,
+    resampling: Literal["nearest", "bilinear"],
+    tilesize: Literal[256, 512] = SIZE,
 ) -> tuple[bytes, ValueEncoding]:
-    """The file's value tile at TILE and its encoding."""
+    """The file's value tile at TILE, `tilesize` px wide, and its encoding."""
     with RasterSource(None, stored_file=path) as source:
         encoding = encoding_of(source, formula)
         tile = source.values(
-            TILE.z, TILE.x, TILE.y, formula, encoding, resampling=resampling
+            TILE.z,
+            TILE.x,
+            TILE.y,
+            formula,
+            encoding,
+            resampling=resampling,
+            tilesize=tilesize,
         )
     if tile is None:
         raise RuntimeError(f"{path.name} gave no tile.")
@@ -154,17 +173,24 @@ def codes(tile: bytes) -> np.ndarray:
     return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
 
 
-def cone_tile(tmp: Path) -> tuple[bytes, ValueEncoding]:
+def cone_tile(
+    tmp: Path, tilesize: Literal[256, 512] = SIZE
+) -> tuple[bytes, ValueEncoding]:
     path = tmp / "cone.tif"
     write_file(path, cone()[np.newaxis], None)
-    return value_tile(path, parse_formula("b1"), "bilinear")
+    return value_tile(path, parse_formula("b1"), "bilinear", tilesize)
 
 
-def case_tiles(tmp: Path) -> dict[str, tuple[bytes, dict[str, Any]]]:
-    """Each value case's tile and what tiles.json holds about it, by case id."""
+def case_tiles(
+    tmp: Path, tilesize: Literal[256, 512] = SIZE, ids: tuple[str, ...] | None = None
+) -> dict[str, tuple[bytes, dict[str, Any]]]:
+    """Each value case's tile (`tilesize` px wide; the cases `ids`, else all) and
+    what tiles.json holds about it, by case id."""
     out = {}
     for case in json.loads(CASES.read_text()):
         if decode_token(case["token"]).kind == "rgb":
+            continue
+        if ids is not None and case["id"] not in ids:
             continue
         path = tmp / f"{case['id']}.tif"
         write_file(path, *case_bands(case))
@@ -173,7 +199,7 @@ def case_tiles(tmp: Path) -> dict[str, tuple[bytes, dict[str, Any]]]:
         formula = parse_formula(
             band["expression"] if isinstance(band, dict) else f"b{band}"
         )
-        tile, encoding = value_tile(path, formula, "nearest")
+        tile, encoding = value_tile(path, formula, "nearest", tilesize)
         q = codes(tile)
         out[case["id"]] = (
             tile,
@@ -181,7 +207,10 @@ def case_tiles(tmp: Path) -> dict[str, tuple[bytes, dict[str, Any]]]:
                 "encoding": encoding.factors(),
                 "range": list(encoding.range) if encoding.range else None,
                 "integer": encoding.integer,
-                "codes": [int(q[block_center(k)]) for k in range(len(case["samples"]))],
+                "codes": [
+                    int(q[block_center(k, tilesize)])
+                    for k in range(len(case["samples"]))
+                ],
             },
         )
     return out
@@ -200,9 +229,21 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         cone_bytes, cone_encoding = cone_tile(Path(tmp))
         cases = case_tiles(Path(tmp))
+        large_cone, large_cone_encoding = cone_tile(Path(tmp), LARGE)
+        large_cases = case_tiles(Path(tmp), LARGE, LARGE_CASES)
+    # A 512 px tile holds the same values in the same encoding: the lab reads the
+    # 256 px tiles' facts for it.
+    if large_cone_encoding != cone_encoding:
+        raise RuntimeError("The 512 px cone has another encoding.")
+    for case_id, (_, about) in large_cases.items():
+        if about != cases[case_id][1]:
+            raise RuntimeError(f"The 512 px tile of {case_id} holds other codes.")
     (HERE / "cone.webp").write_bytes(cone_bytes)
+    (HERE / f"cone-{LARGE}.webp").write_bytes(large_cone)
     for case_id, (tile, _) in cases.items():
         (HERE / f"values-{case_id}.webp").write_bytes(tile)
+    for case_id, (tile, _) in large_cases.items():
+        (HERE / f"values-{LARGE}-{case_id}.webp").write_bytes(tile)
     (HERE / "cells.webp").write_bytes(cells_tile())
     facts = {
         "cone": {
@@ -214,6 +255,7 @@ def main() -> None:
         },
         "cells": CELLS,
         "values": {case_id: about for case_id, (_, about) in cases.items()},
+        "large": {"size": LARGE, "values": list(LARGE_CASES)},
     }
     (HERE / "tiles.json").write_text(json.dumps(facts, indent=2) + "\n")
 

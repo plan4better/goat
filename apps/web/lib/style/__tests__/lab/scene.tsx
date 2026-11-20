@@ -60,6 +60,9 @@ export interface LabCase {
   /** The data the style is compiled over in place of the scene's made-up features (a raster's tiles): the scene then
    * places no features. */
   source?: CompileInput["source"];
+  /** The width of the source's tiles where they are not the width the compiler asks for (the lab's raster fixtures):
+   * the compiled sources draw them at this width. */
+  tileSize?: number;
 }
 
 /** A feature made up for a legend entry, drawn at `pixel` with the GeoJSON id `featureId`. */
@@ -477,6 +480,14 @@ export async function renderScene(c: LabCase, opts: { groups?: LabGroup[] } = {}
         source,
       };
       scene.compiled = compileLayer(scene.input);
+      const { tileSize } = c;
+      if (tileSize)
+        scene.compiled.sources = Object.fromEntries(
+          Object.entries(scene.compiled.sources).map(([id, s]) => [
+            id,
+            "tileSize" in s ? { ...s, tileSize } : s,
+          ])
+        );
       applyCompiled(map, null, scene.compiled);
     } catch (error) {
       errors.push(`scene: ${message(error)}`);

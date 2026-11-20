@@ -2,8 +2,9 @@
 // once per address; a changed description is asked for after a quiet moment, the layer keeping its last drawing.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { compileLayer } from "@/lib/style/compile";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import type { RasterValues } from "@/lib/style/raster/values";
+import type { RasterTileset, RasterValues } from "@/lib/style/raster/values";
 import { RASTER_QUIET_MS } from "@/lib/style/render/apply";
 import type { RenderLayer } from "@/lib/style/render/mapLayers";
 import { rasterValuesOver, withRasterValues } from "@/lib/style/render/rasterValues";
@@ -43,8 +44,27 @@ const vector: RenderLayer = {
   entry: {},
   source: { type: "tiles", id: "src-v", tiles: ["https://geoapi/v/{z}/{x}/{y}"] },
 };
-const url = (query: string) => `${COVERAGE}?${query}&v=v1`;
+/** A description's URL: what it reads, for 512 px tiles, at the source's version. */
+const url = (query: string) => `${COVERAGE}?${query}&tilesize=512&v=v1`;
 const valuesIn = (layer: RenderLayer) => (layer.source.type === "raster" ? layer.source.values : undefined);
+
+/** The colored tiles' description, its URL, and a raster layer whose source names it. */
+const TILESET = "https://geoapi/collections/r1/raster/tiles";
+const TILESET_URL = `${TILESET}?tilesize=512&v=v1`;
+const IMAGE: RasterTileset = { version: "v1-0a1b2c3d-e3", maxzoom: 16, bounds: [11.39, 47.25, 11.41, 47.27] };
+/** The extent the layer holds, wider than the file. */
+const STORED: [number, number, number, number] = [11, 47, 12, 48];
+const described = (layer: RenderLayer): RenderLayer =>
+  layer.source.type === "raster"
+    ? { ...layer, source: { ...layer.source, tileset: TILESET, bounds: STORED } }
+    : layer;
+const image = (key: string, render: object = { type: "image" }) => described(raster(key, { render }));
+const imageIn = (layer: RenderLayer) => (layer.source.type === "raster" ? layer.source.image : undefined);
+/** The image tiles' source a layer compiles to; undefined when it draws nothing (no tile is asked for). */
+const imageSourceOf = (layer: RenderLayer) =>
+  compileLayer({ id: layer.key, style: layer.style, source: layer.source }).sources[layer.source.id] as
+    | { tiles: string[]; maxzoom?: number; bounds?: number[] }
+    | undefined;
 
 describe("withRasterValues", () => {
   it("attaches each raster layer's values for its band and resampling", () => {
@@ -109,6 +129,54 @@ describe("withRasterValues", () => {
     out.layers.forEach((layer, i) => expect(layer).toBe(layers[i]));
     // A source that comes with its values (the style lab's fixtures) is not asked for.
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+describe("withRasterValues for images", () => {
+  it("attaches an image render's colored tiles' description, and a value render's values only", () => {
+    const asked: string[] = [];
+    const layers = [image("i"), image("c", { type: "categorical" }), described(continuous("v"))];
+    const { layers: out, pending } = withRasterValues(layers, (address) => {
+      asked.push(address);
+      return address.startsWith(TILESET) ? IMAGE : VALUES;
+    });
+    expect(asked).toEqual([TILESET_URL, TILESET_URL, url("band=1&resampling=nearest")]);
+    expect(pending).toBe(false);
+    expect(out.map(imageIn)).toEqual([IMAGE, IMAGE, undefined]);
+    expect(out.map(valuesIn)).toEqual([undefined, undefined, VALUES]);
+    expect(out[0].style).toBe(layers[0].style);
+  });
+
+  it("an image asks for no tile until its description has answered; a failed one draws as before", () => {
+    const layer = image("i");
+    const loading = withRasterValues([layer], () => undefined);
+    expect(loading.pending).toBe(true);
+    expect(imageSourceOf(loading.layers[0])).toBeUndefined();
+    const hidden = { ...layer, entry: { visible: false } };
+    expect(withRasterValues([hidden], () => undefined).pending).toBe(false);
+    // Failed: the layer's own extent, no native zoom, the source's version.
+    const failed = withRasterValues([layer], () => null);
+    expect(failed.pending).toBe(false);
+    expect(imageIn(failed.layers[0])).toBeNull();
+    const before = imageSourceOf(failed.layers[0]);
+    expect(before).toMatchObject({ bounds: STORED });
+    expect(before).not.toHaveProperty("maxzoom");
+    expect(before?.tiles[0]).toContain("&v=v1&");
+    // Answered: the file's native zoom, bounds and version.
+    const loaded = imageSourceOf(withRasterValues([layer], () => IMAGE).layers[0]);
+    expect(loaded).toMatchObject({ maxzoom: 16, bounds: IMAGE.bounds });
+    expect(loaded?.tiles[0]).toContain(`&v=${IMAGE.version}&`);
+  });
+
+  it("asks nothing for a source with its description, or without its address, which draws at once", () => {
+    const load = vi.fn(() => IMAGE);
+    const given = { ...image("g"), source: { ...image("g").source, image: IMAGE } } as RenderLayer;
+    const failed = { ...image("f"), source: { ...image("f").source, image: null } } as RenderLayer;
+    const plain = raster("n", { render: { type: "image" } });
+    const out = withRasterValues([given, failed, plain], load);
+    expect(load).not.toHaveBeenCalled();
+    expect(out.pending).toBe(false);
+    expect(imageSourceOf(out.layers[2])).toBeDefined();
   });
 });
 
@@ -187,6 +255,32 @@ describe("rasterValuesOver", () => {
     expect(back.pending).toBe(false);
     expect(valuesIn(back.layers[0])).toEqual(VALUES);
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it("an image waits for its description; switched to values it keeps its drawing until those have loaded", () => {
+    const { known, load, redraw, values } = setup();
+    const first = image("1");
+    const drawing = values.attach([first]);
+    expect(asked(load)).toEqual([TILESET_URL]);
+    expect(drawing.pending).toBe(true);
+    expect(imageSourceOf(drawing.layers[0])).toBeUndefined();
+
+    known.set(TILESET_URL, IMAGE as never);
+    const drawn = values.attach([first]).layers[0];
+    expect(imageIn(drawn)).toEqual(IMAGE);
+
+    // A continuous render after a quiet moment: the image stays meanwhile.
+    const switched = described(continuous("1"));
+    const waiting = values.attach([switched]);
+    expect(waiting.pending).toBe(true);
+    expect(waiting.layers[0].style).toBe(first.style);
+    expect(imageIn(waiting.layers[0])).toEqual(IMAGE);
+    vi.advanceTimersByTime(RASTER_QUIET_MS);
+    expect(redraw).toHaveBeenCalledTimes(1);
+    known.set(url("band=1&resampling=nearest"), VALUES);
+    const loaded = values.attach([switched]).layers[0];
+    expect(loaded.style).toBe(switched.style);
+    expect(valuesIn(loaded)).toEqual(VALUES);
   });
 
   it("forgets a layer that left: no redraw for it, and a new one asks at once", () => {

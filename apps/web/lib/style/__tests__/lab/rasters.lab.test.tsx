@@ -1,7 +1,8 @@
 // Rasters as the browser draws them: the raster service's value tiles colored by MapLibre's color-relief and shaded by
 // its hillshade, and an image tile's opacity and resampling. The lab answers every tile address with one stored
 // fixture tile, made from synthetic data by fixtures/raster/make_tiles.py, so every tile on the map is the same: the
-// tile whose top left corner is at the map's center [0, 0] is the one read.
+// tile whose top left corner is at the map's center [0, 0] is the one read. Most fixtures are 256 px tiles, drawn at
+// their own width so a whole tile fits the lab's map; a few are 512 px tiles drawn at the compiler's own tile size.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CompileInput } from "@/lib/style/compile/types";
@@ -65,6 +66,9 @@ const FLAT_SOURCE = {
   }),
 } satisfies CompileInput["source"];
 
+/** The width of the lab's raster fixture tiles (make_tiles.py SIZE). */
+const FIXTURE_TILE_SIZE = 256;
+
 const raster = (id: string, style: JsonObject, source: CompileInput["source"] = SOURCE): LabCase => ({
   id,
   style: { version: "1.0.0", kind: "raster", ...style },
@@ -74,6 +78,7 @@ const raster = (id: string, style: JsonObject, source: CompileInput["source"] = 
   zoom: 12,
   fields: {},
   source,
+  tileSize: FIXTURE_TILE_SIZE,
 });
 
 async function scene(c: LabCase): Promise<Scene> {
@@ -122,22 +127,22 @@ const tileSize = (s: Scene, id: string): number => {
   return source.tileSize;
 };
 
-describe("hillshade", () => {
-  // The fixture's value tile holds one cone on flat ground; the light comes from the style's direction (degrees
-  // clockwise from north), so the flank toward it faces the light and the one across the top faces away. The light
-  // comes from far from both GOAT's default direction and MapLibre's, so a light that is not the style's shows. The
-  // cases set the colors: the default highlight is white, which does not show on the white ground.
-  const shaded = (method: string): JsonObject => ({
-    render: {
-      type: "hillshade",
-      method,
-      direction: 135,
-      altitude: 60,
-      shadow_color: "#1d3fbf",
-      highlight_color: "#e0560d",
-    },
-  });
+// The fixture's value tile holds one cone on flat ground; the light comes from the style's direction (degrees clockwise
+// from north), so the flank toward it faces the light and the one across the top faces away. The light comes from far
+// from both GOAT's default direction and MapLibre's, so a light that is not the style's shows. The cases set the colors:
+// the default highlight is white, which does not show on the white ground.
+const shaded = (method: string): JsonObject => ({
+  render: {
+    type: "hillshade",
+    method,
+    direction: 135,
+    altitude: 60,
+    shadow_color: "#1d3fbf",
+    highlight_color: "#e0560d",
+  },
+});
 
+describe("hillshade", () => {
   const cases = [
     ["standard", SOURCE],
     ["basic", SOURCE],
@@ -347,6 +352,85 @@ describe("raster image", () => {
     // The ends keep the cells' own colors.
     expect(near(pixels[0], a)).toBe(true);
     expect(near(pixels[pixels.length - 1], b)).toBe(true);
+  });
+});
+
+describe("512 px tiles, as the compiler asks for them", () => {
+  // make_tiles.py reads the same files at 512 px for a few cases (tiles.json `large`): the same area at twice the
+  // resolution. A 512 px tile does not fit the map's quarter right of and below its center, but every tile is the same
+  // fixture, so a point of the tile read is also drawn on the tile left of it or above it.
+  const LARGE = tiles.large;
+
+  /** A point of the tile read, in pixels of its picture, where the map draws it: on that tile, or on the tile left of it
+   * or above it where it falls past the map's right or bottom edge. */
+  const onMap = (s: Scene, [px, py]: [number, number]): [number, number] => {
+    const [x, y] = origin(s);
+    const size = tileSize(s, SOURCE.id);
+    const scale = size / LARGE.size;
+    const { clientWidth, clientHeight } = s.map.getContainer();
+    const place = (start: number, p: number, extent: number) => {
+      const at = start + p * scale;
+      const shown = at < extent ? at : at - size;
+      if (shown < 0 || shown >= extent) throw new Error(`${p} px of the tile is not on the map`);
+      return shown;
+    };
+    return [place(x, px, clientWidth), place(y, py, clientHeight)];
+  };
+
+  it.each(VALUE_CASES.filter((c) => LARGE.values.includes(c.id)))(
+    "$id: each sample block of a 512 px value tile is drawn in its color",
+    async (c) => {
+      const { codes: _codes, ...about } = VALUE_TILES[c.id];
+      const s = await scene({
+        ...raster(`${c.id}-512`, c.style),
+        // Drawn at the compiler's own tile size.
+        tileSize: undefined,
+        source: {
+          ...SOURCE,
+          tiles: `${location.origin}/lab-raster/none/{z}/{x}/{y}.webp`,
+          coverage: `${location.origin}/lab-raster/values-${LARGE.size}-${c.id}`,
+          values: described(about),
+        },
+      });
+      expect(tileSize(s, SOURCE.id)).toBe(LARGE.size);
+      const block = (BLOCK * LARGE.size) / VALUE_TILE_SIZE;
+      const opacity = typeof c.style.opacity === "number" ? c.style.opacity : 1;
+      const wrong = c.samples.flatMap((sample, k) => {
+        const middle = onMap(s, [
+          ((k % BLOCKS_PER_ROW) + 0.5) * block,
+          (Math.floor(k / BLOCKS_PER_ROW) + 0.5) * block,
+        ]);
+        const drawn = pixel(s, middle);
+        const want = sample.color === null ? WHITE : onGround(sample.color, opacity);
+        return near(drawn, want) ? [] : [`value ${sample.value}: drawn ${drawn}, want ${want}`];
+      });
+      expect(wrong).toEqual([]);
+    }
+  );
+
+  it("hillshade of a 512 px cone: the highlight color on the flank toward the light, the shadow color on the other", async () => {
+    const s = await scene({
+      ...raster("hillshade-512", shaded("standard")),
+      tileSize: undefined,
+      source: { ...SOURCE, coverage: `${location.origin}/lab-raster/cone-${LARGE.size}` },
+    });
+    expect(tileSize(s, SOURCE.id)).toBe(LARGE.size);
+    expect(blank(s)).toBe(false);
+    const render = s.style.render as JsonObject;
+    const direction = (render.direction as number) * (Math.PI / 180);
+    // The cone at 512 px: its top and radius twice those of the 256 px picture.
+    const grow = LARGE.size / tiles.cone.size;
+    const [cx, cy] = tiles.cone.center.map((v) => v * grow);
+    const reach = tiles.cone.radius * grow * FLANK;
+    const toward: [number, number] = [Math.sin(direction), -Math.cos(direction)];
+    const lit = pixel(s, onMap(s, [cx + reach * toward[0], cy + reach * toward[1]]));
+    const dark = pixel(s, onMap(s, [cx - reach * toward[0], cy - reach * toward[1]]));
+    const highlight = onGround(render.highlight_color as string);
+    const shadow = onGround(render.shadow_color as string);
+    expect({ lit, ...tint(lit, highlight) }).toMatchObject(tinted);
+    expect({ dark, ...tint(dark, shadow) }).toMatchObject(tinted);
+    expect(tint(lit, highlight).cosine).toBeGreaterThan(tint(lit, shadow).cosine);
+    expect(tint(dark, shadow).cosine).toBeGreaterThan(tint(dark, highlight).cosine);
   });
 });
 
