@@ -1201,6 +1201,23 @@ async def test_a_binding_must_be_a_readable_project_layer(
     assert [r.method for r in core.requests] == ["GET", "GET"]
 
 
+async def test_a_binding_must_not_be_a_raster_layer() -> None:
+    dem = {
+        "id": 37,
+        "layer_id": "e2000000-0000-0000-0000-000000000037",
+        "name": "DEM",
+        "type": "raster",
+    }
+    core = _core(**{f"GET /api/v2/project/{PROJECT}/layer": [*LAYERS, dem]})
+    with pytest.raises(InputInvalid, match="'DEM' is a raster layer"):
+        await execute(
+            CREATE_FROM_TEMPLATE,
+            _env(core),
+            {"template_id": TEMPLATE, "bindings": {"node:dataset-1": 37}},
+        )
+    assert [r.method for r in core.requests] == ["GET", "GET"]
+
+
 @pytest.mark.parametrize(
     ("route", "status"),
     [

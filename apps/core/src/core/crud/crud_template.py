@@ -438,6 +438,39 @@ class CRUDTemplate:
                     },
                 )
 
+    async def _refuse_raster_bindings(
+        self,
+        db: AsyncSession,
+        inputs: list[dict[str, Any]],
+        bindings: dict[str, UUID],
+        user_id: UUID,
+    ) -> None:
+        """A workflow's dataset inputs take vector data and tables, not rasters:
+        binding a raster layer the caller may read to one of the template's
+        `inputs` is refused with 422 ``template_input_raster`` naming the input
+        and the layer, before anything is written. A key that is no input is
+        ignored, as the use ignores it; a layer the caller cannot read is left
+        to resolve as unresolved, so its type is never told."""
+        keys = {i.get("key") for i in inputs}
+        for key, layer_id in bindings.items():
+            if key not in keys:
+                continue
+            layer = await db.get(Layer, layer_id)
+            if (
+                layer is not None
+                and layer.deleted_at is None
+                and str(getattr(layer.type, "value", layer.type)) == "raster"
+                and await authz.can(db, "layer", layer_id, user_id, "read")
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail={
+                        "code": "template_input_raster",
+                        "key": key,
+                        "layer_id": str(layer_id),
+                    },
+                )
+
     @staticmethod
     def _apply_project_choices(
         detected: list[TemplateInput], chosen: list[TemplateInput]
@@ -1966,9 +1999,18 @@ class CRUDTemplate:
             )
 
         # Workflow / layout payload: an existing project (write required),
-        # or a brand-new one created in `target_folder_id`.
+        # or a brand-new one created in `target_folder_id` (write on it). The
+        # rights come first, then the bindings, then anything is written.
         if req.project_id is not None:
             await authz.require(db, "project", req.project_id, user_id, "write")
+        else:
+            assert req.target_folder_id is not None
+            await authz.require(db, "folder", req.target_folder_id, user_id, "write")
+        if row.payload_kind == "workflow":
+            await self._refuse_raster_bindings(
+                db, row.inputs or [], req.bindings, user_id
+            )
+        if req.project_id is not None:
             target_project_id = req.project_id
         else:
             assert req.target_folder_id is not None
@@ -2061,6 +2103,7 @@ class CRUDTemplate:
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Only a workflow template can be previewed",
             )
+        await self._refuse_raster_bindings(db, row.inputs or [], req.bindings, user_id)
         inputs = [TemplateInput(**i) for i in (row.inputs or [])]
         bindings, _, _ = await self._resolve_workflow_inputs(
             db,

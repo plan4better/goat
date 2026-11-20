@@ -1532,6 +1532,11 @@ async def _from_template(env: ToolEnv, args: FromTemplateInput) -> WorkflowCreat
                 f"There is no layer {layer_project_id} in the project; call "
                 "project_get_layers."
             )
+        if layer.type == "raster":
+            raise InputInvalid(
+                f"{layer.name!r} is a raster layer; workflows take feature layers "
+                "and tables. Bind another layer."
+            )
         bindings[key] = layer.layer_id
     use = f"/api/v2/template/{args.template_id}/use"
     body: dict[str, Any] = {"project_id": str(project_id), "bindings": bindings}

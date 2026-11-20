@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   datasetRows,
+  droppedDatasetNode,
   fieldRefsOf,
+  isRasterDataset,
+  isRasterLayer,
   missingFieldRefs,
   replaceDatasetLayers,
   sameShapeLayers,
   sourceDatasetFor,
+  takesLayer,
   withCurrentDatasetTypes,
 } from "@/lib/utils/workflowDatasets";
 import type { ProjectLayer } from "@/lib/validations/project";
@@ -365,6 +369,104 @@ describe("sameShapeLayers", () => {
     const layers = [layer(1, "L1", "Points A"), layer(3, "L3", "Polys", "polygon")];
     const node = dataset("d1", "L9", 9, { layerType: "layer" });
     expect(sameShapeLayers(layers, node.data as never).map((l) => l.id)).toEqual([1]);
+  });
+
+  it("offers no raster layer; a raster step is offered every feature layer and table to replace it", () => {
+    const layers = [
+      layer(1, "L1", "Points A"),
+      layer(3, "L3", "Polys", "polygon"),
+      layer(5, "L5", "Table", "point", {
+        type: "table",
+        feature_layer_geometry_type: undefined,
+      } as Partial<ProjectLayer>),
+      layer(6, "L6", "DEM", "point", {
+        type: "raster",
+        feature_layer_geometry_type: undefined,
+      } as Partial<ProjectLayer>),
+      layer(7, "L7", "WMS", "point", {
+        type: "raster",
+        feature_layer_geometry_type: undefined,
+      } as Partial<ProjectLayer>),
+    ];
+    const points = dataset("d1", "L9", 9);
+    expect(sameShapeLayers(layers, points.data as never).map((l) => l.id)).toEqual([1]);
+    const raster = dataset("d2", "L8", 8, { layerType: "raster", geometryType: undefined });
+    expect(sameShapeLayers(layers, raster.data as never).map((l) => l.id)).toEqual([1, 3, 5]);
+  });
+});
+
+describe("workflows take no raster layers", () => {
+  it("takes feature layers and tables, not a raster file or a map service", () => {
+    expect(takesLayer({ type: "feature" })).toBe(true);
+    expect(takesLayer({ type: "table" })).toBe(true);
+    expect(takesLayer({ type: "raster" })).toBe(false);
+  });
+
+  it("knows a raster step by its stored type, or by its layer's type once the project's layers are known", () => {
+    const stored = dataset("d1", "L6", 6, { layerType: "raster", geometryType: undefined });
+    expect(isRasterDataset(stored.data as never)).toBe(true);
+    const untyped = dataset("d2", "L6", 6, { layerType: undefined, geometryType: undefined });
+    expect(isRasterDataset(untyped.data as never)).toBe(false);
+    const dem = layer(6, "L6", "DEM", "point", {
+      type: "raster",
+      feature_layer_geometry_type: undefined,
+    } as Partial<ProjectLayer>);
+    expect(isRasterDataset(untyped.data as never, [dem])).toBe(true);
+    expect(isRasterDataset(dataset("d3", "L1", 1).data as never, [layer(1, "L1", "Points A")])).toBe(false);
+  });
+
+  it("knows a dataset of the project as raster by its id", () => {
+    const layers = [
+      layer(1, "L1", "Points A"),
+      layer(6, "L6", "DEM", "point", {
+        type: "raster",
+        feature_layer_geometry_type: undefined,
+      } as Partial<ProjectLayer>),
+    ];
+    expect(isRasterLayer("L6", layers)).toBe(true);
+    expect(isRasterLayer("L1", layers)).toBe(false);
+    // A dataset outside the project (My datasets) carries no type here.
+    expect(isRasterLayer("L9", layers)).toBe(false);
+    expect(isRasterLayer(undefined, layers)).toBe(false);
+  });
+
+  it("a layer dropped on the canvas becomes a dataset step with its filter; a raster layer becomes none", () => {
+    const cql = { op: "=", args: [{ property: "kind" }, "bus"] };
+    const node = droppedDatasetNode(
+      {
+        projectLayerId: 1,
+        layerId: "L1",
+        layerName: "Points A",
+        geometryType: "point",
+        layerType: "feature",
+        layerCql: cql,
+      },
+      { x: 10, y: 20 },
+      "dataset-1"
+    );
+    expect(node).toMatchObject({
+      id: "dataset-1",
+      type: "dataset",
+      position: { x: 10, y: 20 },
+      data: {
+        type: "dataset",
+        label: "Points A",
+        projectLayerId: 1,
+        layerId: "L1",
+        layerName: "Points A",
+        geometryType: "point",
+        layerType: "feature",
+        filterInitialized: true,
+      },
+    });
+    expect(node?.data).toHaveProperty("filter");
+    expect(
+      droppedDatasetNode(
+        { projectLayerId: 6, layerId: "L6", layerName: "DEM", layerType: "raster" },
+        { x: 0, y: 0 },
+        "dataset-2"
+      )
+    ).toBeNull();
   });
 });
 

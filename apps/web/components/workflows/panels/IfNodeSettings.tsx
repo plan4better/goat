@@ -37,7 +37,9 @@ import {
   selectVariables,
 } from "@/lib/store/workflow/selectors";
 import { updateNode } from "@/lib/store/workflow/slice";
+import { isRasterDataset } from "@/lib/utils/workflowDatasets";
 import {
+  type DatasetNodeData,
   type FilterExpression as ExpressionType,
   FilterType,
   type IfNodeData,
@@ -657,6 +659,8 @@ export default function IfNodeSettings({
       if (!sourceNode) return undefined;
       const d = sourceNode.data as Record<string, unknown> | undefined;
       if (d?.type === "dataset" && typeof d.layerId === "string") {
+        // A raster layer (workflows take none) offers no fields.
+        if (isRasterDataset(d as DatasetNodeData, projectLayers)) return undefined;
         const uuid = resolveDatasetLayerUuid(d.layerId, projectLayers);
         if (uuid) return { kind: "dataset", layerId: uuid };
         return undefined;
@@ -714,6 +718,7 @@ export default function IfNodeSettings({
       const targetData = targetNode.data as Record<string, unknown>;
 
       if (targetData?.type === "dataset" && targetData.layerId) {
+        if (isRasterDataset(targetData as DatasetNodeData, projectLayers)) return {};
         const layerIdValue = targetData.layerId as string;
         const layerUuid = resolveDatasetLayerUuid(layerIdValue, projectLayers);
         if (!layerUuid) return {};

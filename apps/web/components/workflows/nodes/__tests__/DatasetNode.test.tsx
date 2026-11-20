@@ -14,15 +14,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import { workflowReducer } from "@/lib/store/workflow/slice";
+import { addNode, workflowReducer } from "@/lib/store/workflow/slice";
 import type { DatasetNodeData } from "@/lib/validations/workflow";
 
 import { makeIssue } from "@/components/workflows/issues/__tests__/issueFixtures";
 import DatasetNode from "@/components/workflows/nodes/DatasetNode";
 
-const { issuesByNode, projectLayers } = vi.hoisted(() => ({
+const { issuesByNode, projectLayers, asked } = vi.hoisted(() => ({
   issuesByNode: new Map<string, unknown[]>(),
   projectLayers: { current: [] as unknown[] },
+  // The datasets the node asks geoapi about ("" asks nothing): its fields and its features.
+  asked: { queryables: [] as string[], items: [] as string[] },
 }));
 
 vi.mock("react-i18next", () => ({
@@ -40,8 +42,14 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 vi.mock("@/lib/api/layers", () => ({
-  useDatasetCollectionItems: () => ({ data: undefined }),
-  useLayerQueryables: () => ({ queryables: undefined, isLoading: false }),
+  useDatasetCollectionItems: (layerId: string) => {
+    asked.items.push(layerId);
+    return { data: undefined };
+  },
+  useLayerQueryables: (layerId: string) => {
+    asked.queryables.push(layerId);
+    return { queryables: undefined, isLoading: false };
+  },
 }));
 
 vi.mock("@/lib/api/projects", () => ({
@@ -176,5 +184,62 @@ describe("DatasetNode icon", () => {
   it("keeps the stored type for a layer the project's list does not carry", async () => {
     renderNode(storedTable, makeStore());
     await expect(screen.getByTestId("node-icon")).toHaveAttribute("data-icon", ICON_NAME.TABLE);
+  });
+});
+
+describe("DatasetNode of a raster layer", () => {
+  const layerId = "22222222-2222-4222-8222-222222222222";
+
+  beforeEach(() => {
+    issuesByNode.clear();
+    projectLayers.current = [];
+    asked.queryables = [];
+    asked.items = [];
+  });
+
+  it("asks for no fields and no features: workflows take no raster layers", () => {
+    renderNode({ ...baseData, label: "DEM", projectLayerId: 6, layerId, layerType: "raster" }, makeStore());
+    expect(screen.getByText("DEM")).toBeInTheDocument();
+    expect(asked.queryables.filter(Boolean)).toEqual([]);
+    expect(asked.items.filter(Boolean)).toEqual([]);
+  });
+
+  it("knows a step stored without a type by its layer's type", () => {
+    projectLayers.current = [{ id: 6, layer_id: layerId, name: "DEM", type: "raster" }];
+    renderNode({ ...baseData, label: "DEM", projectLayerId: 6, layerId }, makeStore());
+    expect(asked.queryables.filter(Boolean)).toEqual([]);
+    expect(asked.items.filter(Boolean)).toEqual([]);
+  });
+
+  it("shows the step as one that needs another layer, with Pick a layer", async () => {
+    const store = makeStore();
+    renderNode({ ...baseData, label: "DEM", projectLayerId: 6, layerId, layerType: "raster" }, store);
+    await userEvent.setup().click(screen.getByRole("button", { name: "pick_a_layer" }));
+    expect(store.getState().workflow.selectedNodeId).toBe("dataset-1");
+  });
+
+  it("a duplicate of a raster step is an empty step that asks for a layer", async () => {
+    const store = makeStore();
+    const step = {
+      ...baseData,
+      label: "DEM",
+      projectLayerId: 6,
+      layerId,
+      layerType: "raster",
+    } as DatasetNodeData;
+    store.dispatch(addNode({ id: "dataset-1", type: "dataset", position: { x: 0, y: 0 }, data: step }));
+    renderNode(step, store);
+    await userEvent.setup().click(screen.getByRole("button", { name: "duplicate" }));
+    const copy = store.getState().workflow.nodes.find((node) => node.id !== "dataset-1");
+    expect(copy?.data).toEqual({ type: "dataset", label: "dataset" });
+  });
+
+  it("a feature layer's step asks for both", () => {
+    renderNode(
+      { ...baseData, label: "Stops", projectLayerId: 5, layerId, layerType: "feature" },
+      makeStore()
+    );
+    expect(asked.queryables).toContain(layerId);
+    expect(asked.items).toContain(layerId);
   });
 });

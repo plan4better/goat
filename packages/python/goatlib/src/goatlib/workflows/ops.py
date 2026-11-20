@@ -490,7 +490,8 @@ _BOOLEANS = frozenset(
 _CHOICES = {
     "destination": ("new", "existing"),
     "mode": ("simple", "custom"),
-    "layerType": ("feature", "table", "raster"),
+    # Workflows take no raster layers.
+    "layerType": ("feature", "table"),
 }
 _OBJECTS = frozenset({"filter", "condition", "outputStyle"})
 #: A dataset step's reference to its layer, which the editor's layer picker
