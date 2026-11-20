@@ -14,6 +14,12 @@ export const CATALOG_SAMPLE_KEY = "catalog-sample";
 
 const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
+/** The style without its zoom range: a preview opens framed on the whole dataset, often below the layer's min_zoom. */
+function previewStyle(style: Record<string, unknown>): LayerStyle {
+  const { min_zoom: _min, max_zoom: _max, ...rest } = style;
+  return rest as unknown as LayerStyle;
+}
+
 /** A raster layer drawn by the catalog's raster tiles, colored by its style as a project draws it. */
 export function catalogRasterLayer(
   style: unknown,
@@ -22,7 +28,7 @@ export function catalogRasterLayer(
   if (!source || !isObject(style) || style.version !== 1 || style.kind !== "raster") return undefined;
   return {
     key: CATALOG_SAMPLE_KEY,
-    style: style as unknown as LayerStyle,
+    style: previewStyle(style),
     entry: { visible: true },
     source: { type: "raster", id: `src-${CATALOG_SAMPLE_KEY}-raster`, ...source },
   };
@@ -40,7 +46,7 @@ export function catalogTilesLayer(
   }
   return {
     key: CATALOG_SAMPLE_KEY,
-    style: style as unknown as LayerStyle,
+    style: previewStyle(style),
     geometry: geometryType as Geometry,
     entry: { visible: true },
     source: { type: "tiles", id: `src-${CATALOG_SAMPLE_KEY}-tiles`, tiles: [tilesUrl] },
@@ -64,7 +70,7 @@ export function catalogSampleLayer(
   };
   return {
     key: CATALOG_SAMPLE_KEY,
-    style: style as unknown as LayerStyle,
+    style: previewStyle(style),
     geometry: geometryType as Geometry,
     entry: { visible: true },
     source: { type: "points", id: `src-${CATALOG_SAMPLE_KEY}`, data },

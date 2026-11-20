@@ -233,6 +233,15 @@ def _is_unservable_link(href: object) -> bool:
 _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 
 
+#: The shape of the documents this API builds from the mirror. Part of every
+#: ETag (see ``CatalogStore._content_digest``): raise it whenever a change here
+#: serves different documents from the same mirror files, or browsers keep the
+#: old answer through 304s.
+#: 2: items announce their `tiles` and a raster's `raster` tiles, and a facet's
+#: repeated values all filter (before, only the last one did).
+DOCUMENT_VERSION = 2
+
+
 #: Assets this API serves itself, and the ``/assets`` kind each is served as.
 #:
 #: The harvester publishes these hrefs relative to the static JSON tree
@@ -246,13 +255,7 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: The GeoParquet is deliberately not here. It keeps being dropped, which is how
 #: "the harmonised data is not downloadable" stays true by construction rather
 #: than by a permission that could be relaxed.
-#: The shape of the documents this API builds from the mirror. Part of every
-#: ETag (see ``CatalogStore._content_digest``): raise it whenever a change here
-#: serves different documents from the same mirror files, or browsers keep the
-#: old answer through 304s.
-#: 2: items announce their `tiles` and a raster's `raster` tiles.
-DOCUMENT_VERSION = 2
-
+#:
 #: `tiles` is served one tile at a time (`/assets/{id}/tiles/{z}/{x}/{y}`); the
 #: href names the tile set and a client appends the tile address.
 _SERVED_ASSETS = {"thumbnail": "thumbnail", "style": "style", "tiles": "tiles"}
