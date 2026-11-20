@@ -30,7 +30,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 **New data**
 
-- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
+- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Create layer**: a new empty layer you draw into
 - **Fetch / Connect data**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, features from OpenStreetMap or Overture Maps for an area, or GOAT's street network or public transport network for an area as a bundle
 

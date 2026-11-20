@@ -47,12 +47,14 @@ export function IconRow({
   path,
   fallback,
   mode,
+  note,
 }: {
   label: string;
   path: Path;
   /** The icon shown while the path is unset (in class scope: the base's). */
   fallback?: unknown;
   mode?: ReactNode;
+  note?: ReactNode;
 }) {
   const { t } = useTranslation("common");
   const popover = usePopover();
@@ -68,6 +70,7 @@ export function IconRow({
     <GroupRow
       label={label}
       mode={mode}
+      note={note}
       value={isEmoji ? null : name}
       ariaLabel={isEmoji ? `${label}: ${name}` : undefined}
       // As the panel's Icon row draws it.

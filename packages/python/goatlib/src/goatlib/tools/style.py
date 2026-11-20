@@ -149,6 +149,13 @@ def bundle_role_style(
         str(getattr(bundle_type, "value", bundle_type)),
         str(getattr(role, "value", role)),
     )
+    if key[0] == "xplan":
+        # Imported here: the bundles package imports this module.
+        from goatlib.bundles.importers.xplan.styles import xplan_role_style
+
+        doc = xplan_role_style(key[1], geometry, seed=seed)
+        if doc is not None:
+            return doc
     symbol = BUNDLE_ROLE_SYMBOLS.get(key)
     if symbol is None:
         return default_style(DataContext(kind="vector", geometry=geometry), seed=seed)

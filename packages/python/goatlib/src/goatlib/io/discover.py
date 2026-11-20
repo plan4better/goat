@@ -135,6 +135,30 @@ def _discover_gpkg_layers(gpkg: Path) -> list[str]:
         return [str(gpkg)]
 
 
+def _discover_gml_layers(gml: Path) -> list[str]:
+    """The GML's feature classes as virtual paths 'file::class'.
+
+    `ST_Read_Meta` takes no open options, so it writes GDAL's `.gfs` schema
+    cache beside the file; one it created is removed again.
+    """
+    gfs = gml.with_suffix(".gfs")
+    existed = gfs.exists()
+    try:
+        with duckdb.connect(database=":memory:") as con:
+            con.execute("INSTALL spatial; LOAD spatial;")
+            result = con.execute("SELECT * FROM ST_Read_Meta(?)", [str(gml)]).fetchone()
+    except Exception as e:
+        logger.warning("Failed to introspect GML classes for %s: %s", gml, e)
+        return [str(gml)]
+    finally:
+        if not existed:
+            gfs.unlink(missing_ok=True)
+    layers = result[3] if result and len(result) >= 4 else None
+    if not isinstance(layers, list) or not layers:
+        return [str(gml)]
+    return [f"{gml}::{layer['name']}" for layer in layers]
+
+
 def _discover_from_dir(directory: Path) -> Iterator[Path]:
     """
     Discover convertible files in a directory recursively.
@@ -157,6 +181,8 @@ def _discover_from_dir(directory: Path) -> Iterator[Path]:
 
             if ext == FileFormat.GPKG.value:
                 yield from (Path(v) for v in _discover_gpkg_layers(path))
+            elif ext == FileFormat.GML.value:
+                yield from (Path(v) for v in _discover_gml_layers(path))
             elif ext == FileFormat.ZIP.value:
                 yield from _discover_from_zip(path)
             elif ext in ALL_EXTS:
@@ -279,6 +305,12 @@ def _discover_from_zip(
                     yield Path(layer)
                 continue
 
+            if ext == FileFormat.GML.value:
+                for layer in _discover_gml_layers(item_path):
+                    found = True
+                    yield Path(layer)
+                continue
+
             # A shapefile needs no grouping now: its sidecars kept the directory they
             # were archived in, which is where GDAL looks for them.
             if ext == FileFormat.SHP.value:
@@ -360,5 +392,7 @@ def _discover_local_inputs(path: Path) -> list[str]:
         return [str(p) for p in _discover_from_zip(path)]
     elif ext == FileFormat.GPKG.value:
         return _discover_gpkg_layers(path)
+    elif ext == FileFormat.GML.value:
+        return _discover_gml_layers(path)
     else:
         return [str(path)]

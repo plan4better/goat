@@ -9,13 +9,6 @@ import type { Marker } from "@/lib/validations/layer";
 
 import { useStyleData } from "@/components/map/panels/styleEditor/context";
 
-/** The CSS background that shows an icon reference, or undefined when it does not resolve. */
-export function iconBackground(ref: unknown): string | undefined {
-  if (typeof ref !== "string") return undefined;
-  const image = defaultResolveIcon(ref);
-  return image ? `url("${image.url}") center / contain no-repeat` : undefined;
-}
-
 /** A library icon's shape: its viewBox and path data. */
 export interface LibrarySymbol {
   viewBox: string;

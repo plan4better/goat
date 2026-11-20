@@ -68,8 +68,8 @@ function shownValue(value: unknown): unknown {
 
 const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-/** An icon stop: a library symbol in the text color, emoji and uploads as their images; in the marker's shape where
- * it has one (the icon in the icon color, in the shape's head). */
+/** An icon stop: a library symbol in the text color, emoji and uploads as their images (CORS requests, like the map's
+ * icons); in the marker's shape where it has one (the icon in the icon color, in the shape's head). */
 function IconStopGlyph({ iconRef, record }: { iconRef: string; record: Path }) {
   const theme = useTheme();
   const symbols = useSymbols();
@@ -84,7 +84,7 @@ function IconStopGlyph({ iconRef, record }: { iconRef: string; record: Path }) {
         ))}
       </svg>
     ) : url ? (
-      <image href={url} x={x} y={y} width={side} height={side} />
+      <image href={url} crossOrigin="anonymous" x={x} y={y} width={side} height={side} />
     ) : null;
   if (look.shape === "icon") return icon(-9, -9, 18, theme.palette.text.primary);
   const spec = MARKER_SHAPES[look.shape];

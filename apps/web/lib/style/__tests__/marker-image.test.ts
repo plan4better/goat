@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseMarkerImage } from "@/lib/style/compile/markerImage";
 import { drawMarker, markerLayout } from "@/lib/style/render/markerImages";
 
-/** A 2D context that records what is painted: each fill and stroke with its color and compositing. */
+/** A 2D context that records what is painted: each fill and stroke with its color and compositing, each image with
+ * its source. */
 function recordingCanvas() {
-  const painted: Array<{ op: "fill" | "stroke"; color: string; composite: string }> = [];
+  const painted: Array<{ op: "fill" | "stroke" | "image"; color: string; composite: string }> = [];
   const context = {
     globalCompositeOperation: "source-over",
     fillStyle: "",
@@ -25,6 +26,9 @@ function recordingCanvas() {
     },
     stroke() {
       painted.push({ op: "stroke", color: this.strokeStyle, composite: this.globalCompositeOperation });
+    },
+    drawImage(img: { src: string }) {
+      painted.push({ op: "image", color: img.src, composite: this.globalCompositeOperation });
     },
     getImageData: (_x: number, _y: number, w: number, h: number) => ({
       data: new Uint8ClampedArray(w * h * 4),
@@ -139,5 +143,46 @@ describe("marker images", () => {
     const bare = recordingCanvas();
     await drawMarker("goat-marker:square|20|||||#ffffff");
     expect(bare).toEqual([]);
+  });
+
+  it("an icon that fails to load is loaded again on the next draw", async () => {
+    // An image that fails its first load and loads after; every load as a CORS request.
+    const loads: Array<{ src: string; crossOrigin: string | null }> = [];
+    vi.stubGlobal(
+      "Image",
+      class {
+        crossOrigin: string | null = null;
+        naturalWidth = 10;
+        naturalHeight = 10;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        private url = "";
+        get src() {
+          return this.url;
+        }
+        set src(value: string) {
+          this.url = value;
+          loads.push({ src: value, crossOrigin: this.crossOrigin });
+          const fail = loads.length === 1;
+          queueMicrotask(() => (fail ? this.onerror?.() : this.onload?.()));
+        }
+      }
+    );
+    const url = "https://core.example/api/v2/asset/retry/file";
+    const lookup = () => ({ url, sdf: false });
+    const name = "goat-marker:circle|20|asset:retry|#2bb381||0|#ffffff";
+
+    const first = recordingCanvas();
+    await drawMarker(name, lookup);
+    expect(first.filter((p) => p.op === "image")).toEqual([]);
+    vi.restoreAllMocks();
+
+    const second = recordingCanvas();
+    await drawMarker(name, lookup);
+    expect(second.filter((p) => p.op === "image").map((p) => p.color)).toEqual([url]);
+    expect(loads).toEqual([
+      { src: url, crossOrigin: "anonymous" },
+      { src: url, crossOrigin: "anonymous" },
+    ]);
   });
 });

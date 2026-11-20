@@ -15,12 +15,14 @@ from goatlib.bundles.importers.base import (
 )
 from goatlib.bundles.importers.pt_network import GtfsImporter
 from goatlib.bundles.importers.street_network import OvertureImporter
+from goatlib.bundles.importers.xplan.importer import XPlanImporter
 
 __all__ = [
     "BundleImporter",
     "ExtractedLayer",
     "GtfsImporter",
     "OvertureImporter",
+    "XPlanImporter",
     "ValidationResult",
     "get_importer",
     "infer_bundle_type",

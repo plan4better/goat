@@ -479,8 +479,8 @@ async def import_bundle(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"'{filename}' is not a recognised bundle upload "
-                    "(expected a *gtfs*.zip, or a zip containing Overture "
-                    "segments and connectors GeoParquet)"
+                    "(expected a *gtfs*.zip, a zip containing Overture "
+                    "segments and connectors GeoParquet, or an XPlanGML .gml)"
                 ),
             )
         # Refused here, not by the job: past this size the import cannot be

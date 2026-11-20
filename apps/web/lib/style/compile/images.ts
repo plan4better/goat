@@ -10,6 +10,10 @@ const LIBRARY = new Set(ICON_NAMES);
 const UPLOAD_ID = /^[A-Za-z0-9-]+$/;
 const EMOJI_CODE = /^[0-9a-f]+(-[0-9a-f]+)*$/;
 
+/** Uploads and emoji keep their own colors: no tint, no halo. */
+export const keepsColors = (ref: unknown): boolean =>
+  typeof ref === "string" && (ref.startsWith("asset:") || ref.startsWith("emoji:"));
+
 /**
  * GOAT's own images: library icons (`goat:<name>`) and emoji (`emoji:<code>`) from the asset host, the arrow from the app
  * itself, and uploads (`asset:<id>`) through core's public route by id, so every viewer of a map draws them.

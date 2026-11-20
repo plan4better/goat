@@ -99,10 +99,10 @@ Der Abschnitt <code>Punkte</code> hat die Zeilen <code>Größe</code>, <code>Fü
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Legen Sie im Editor <code>Symbol</code> die <code>Symbolfarbe</code> (<code>Farbe</code> bei <code>Nur Symbol</code>), <code>Drehung</code>, <code>Versatz x</code> und <code>Versatz y</code> fest. Bei <code>Nur Symbol</code> oder einem Pin legt <code>Ankerpunkt</code> fest, welcher Punkt des Symbols auf dem Ort liegt: <code>Mitte</code>, <code>Unten</code> (die Spitze, wie bei Pins) oder eine andere Seite oder Ecke. Ist <code>Überlappen</code> an, werden die Marker auch dort gezeichnet, wo sie andere Symbole überlappen.</div>
+  <div class="content">Legen Sie im Editor <code>Symbol</code> die <code>Symbolfarbe</code> (<code>Farbe</code> bei <code>Nur Symbol</code>), <code>Drehung</code>, <code>Versatz x</code> und <code>Versatz y</code> fest. Bei <code>Nur Symbol</code> oder einem Pin legt <code>Ankerpunkt</code> fest, welcher Punkt des Symbols auf dem Ort liegt: <code>Mitte</code>, <code>Unten</code> (die Spitze, wie bei Pins) oder eine andere Seite oder Ecke. Ist <code>Überlappen</code> an, werden die Marker auch dort gezeichnet, wo sie andere Symbole überlappen. Hochgeladene Symbole und Emoji behalten ihre eigenen Farben; für sie gibt es keine Farbe einzustellen.</div>
 </div>
 
-Für ein eigenes Symbol öffnen Sie den Tab <code>Eigene</code>, ziehen ein Bild auf das Upload-Feld oder klicken darauf, um eins auszuwählen (quadratisch, mit transparentem Hintergrund, bis 4 MB), geben unter <code>Name</code> einen Namen ein und klicken auf <code>Hochladen</code>. Ihre Symbole stehen unter <code>Deine Symbole</code>; mit <code>Verwalten</code> benennen Sie sie um oder löschen sie.
+Für ein eigenes Symbol öffnen Sie den Tab <code>Eigene</code> und ziehen ein Bild darauf oder klicken auf das Upload-Feld, um eins auszuwählen (SVG, PNG, JPEG, WebP, BMP oder ICO, quadratisch, mit transparentem Hintergrund, bis 4 MB). Es wird sofort hochgeladen, nach der Datei benannt und als Symbol des Layers gesetzt. Ihre Symbole stehen unter <code>Deine Symbole</code>, wo Sie mit <code>Hochladen</code> ein weiteres hinzufügen; mit <code>Verwalten</code> benennen Sie sie um oder löschen sie. Layer, die ein gelöschtes Symbol verwenden, zeigen kein Symbol mehr; deshalb fragt GOAT vor dem Löschen nach.
 
 :::tip
 Um jeder Kategorie ein eigenes Symbol zu geben, legen Sie das Symbol <code>Nach Klassen</code> eines Feldes fest. Siehe [Attributbasiertes Styling](./attribute_based_styling.md).

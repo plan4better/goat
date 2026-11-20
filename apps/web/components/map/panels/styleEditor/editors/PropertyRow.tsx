@@ -85,7 +85,6 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
   useStyleValue(path);
   const label = t(row.label);
-  const note = row.note ? t(row.note) : undefined;
   const own = scoped && overridden ? writePath : path;
   const mode = modeOf(store.document, own, data.geometry);
   const withColors = colorFields(data.fields, data.sample);
@@ -261,10 +260,11 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
 
   function fixedControl() {
     const own = getIn(shownDoc, base);
+    const part = isObject(own) ? own : {};
     const fallback =
-      typeof row.fallback === "function"
-        ? row.fallback(isObject(own) ? own : {})
-        : (row.fallback ?? DEFAULTS[key]);
+      typeof row.fallback === "function" ? row.fallback(part) : (row.fallback ?? DEFAULTS[key]);
+    const noteKey = typeof row.note === "function" ? row.note(part) : row.note;
+    const note = noteKey ? t(noteKey) : undefined;
     switch (row.type) {
       case "color":
         return (
@@ -284,7 +284,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
           />
         );
       case "icon":
-        return <IconRow label={label} path={writePath} fallback={value} mode={modeButton} />;
+        return <IconRow label={label} path={writePath} fallback={value} mode={modeButton} note={note} />;
       case "switch":
         return (
           <SwitchRow

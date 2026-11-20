@@ -385,6 +385,40 @@ every trip without a usable one, a line through its stops
 Explorer's snapshot gives those trips the same line as their shape. Like any
 derived member it is never written back to the feed.
 
+## XPlan bundles are decoded at import
+
+An XPlanGML file states codes and links, not meanings: `besondereArtDerBaulNutzung
+= 1500`, `refTextInhalt = #GML_...`. The meanings are in the standard's code
+lists. The XPlan importer (`bundles/importers/xplan/`) writes them into the
+data, a `<field>Wert` column per code field, the linked clause text in
+`refTextInhaltWert` and the plan's details on every object, because the AI
+assistant, filters and exports read columns and never the map style. Decoding
+only in the style, as the QGIS XPlan-Reader does, would leave all of them with
+numbers.
+
+- What GOAT knows about the format is the XPlan schema
+  (`bundles/importers/xplan/schema.py`), the counterpart of the GTFS importer's
+  `gtfs_schema.py`: per version, which fields of a class hold codes, from which
+  code list, and what each code means. A format needs as much schema as its
+  files leave out: Overture's GeoParquet names its values in words, GTFS is
+  untyped text, XPlan states only codes. At about 1,700 codes per version it
+  is generated (`generate_schema.py`, into `versions/`) from the XLeitstelle's
+  own publication, not fetched at import: the worker may have no internet and
+  the decoding must not depend on a website. xPlanBox ships the same lists, but
+  under the AGPL. A code the version's list does not hold stays without a name.
+- One member layer per XPlan class, as every XPlan tool cuts a plan. The plan
+  is a bundle because its layers only make sense together, not because a tool
+  needs a particular member, so the `xplan` type declares no roles: a plan holds
+  whichever of the standard's classes it uses, and each member's role is its
+  class name, which is what its style is looked up by.
+- The file is read with pyogrio, not DuckDB's `ST_Read`: plans draw arcs, which
+  GDAL reads as curve geometries DuckDB rejects, so `io/curves.py`
+  straightens them (plain `.gml` uploads go through it too). Links are read only with `GML_ATTRIBUTES_TO_OGR_FIELDS`,
+  and for some WFS downloads only when the root declares the xlink namespace
+  (`with_root_xlink`).
+- A `.gml` is XPlan by its content (the namespace declared on the root), not
+  its name; the web app reads the same 64 KB to route the upload.
+
 ## GOAT's public transport network is cut like an upload
 
 GOAT's default public transport network is one GTFS feed combining several
@@ -719,9 +753,9 @@ directory:
 
 One builder, `PMTilesGenerator` in `io/pmtiles.py`, makes the PMTiles of every layer: tool results, imports and copies, catalog materialization, `sync_pmtiles` and `rebuild_edited_pmtiles`, and the workflow previews in `tools/temp_writer.py`. It writes the layer from a DuckDB query (`tile_query`), ordered by feature id, to a GeoParquet file in the build's temporary directory, then runs manby on that file with a recipe per geometry type (`manby_flags` holds them). A polygon layer gets its label points in a second file, `_anchor.pmtiles`, built from the same input.
 
-- **The marker**: the tileset's description records `MANBY_MARKER` next to the DuckLake snapshot id. geoapi filters a stored tile only when it finds the marker, so tiles from before manby (whose point tiles merged nearby points at every zoom) keep the DuckDB path until they are rebuilt. `is_pmtiles_in_sync` wants the marker of the current recipe as well as the snapshot, so a plain `sync_pmtiles` run after the deploy rebuilds those tiles; stopped and started again, it goes on with the layers still stale, where `force` would rebuild every layer. Bumping `recipe` after a change to `manby_flags` rolls the new recipe out the same way. A polygon layer's anchor file has to be in sync too, and is published before the main file, so a main file in sync always has its anchors.
+- **The marker**: the tileset's description records `MANBY_MARKER` and the version of its recipe next to the DuckLake snapshot id. geoapi filters a stored tile only when it finds the marker, so tiles from before manby (whose point tiles merged nearby points at every zoom) keep the DuckDB path until they are rebuilt. `is_pmtiles_in_sync` wants the marker, the current version of the file's recipe and the snapshot, so a plain `sync_pmtiles` run after the deploy rebuilds those tiles; stopped and started again, it goes on with the layers still stale, where `force` would rebuild every layer. Each kind of tiles (points, lines, polygons, label anchors) has its own version in `MANBY_RECIPES`, and the file says which kind it holds (its anchor layer, else the geometry of its tile statistics), so bumping one after a change to its recipe in `manby_flags` rebuilds only the tiles of that kind, catalog layers' included. A polygon layer's anchor file has to be in sync too, and is published before the main file, so a main file in sync always has its anchors.
 - **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others.
-- **Recipes per geometry type** (`manby_flags`): points and label points end each branch of the pyramid where its tile holds everything below (variable depth). Lines and polygons do not: such a tile holds its features whole at full detail, which made the zoomed out tiles of large polygons and of sparse networks the heaviest of a layer. They are stored at every zoom down to the one manby guesses from the spacing of the vertices, at most `max_zoom` (`--largest-maximum-zoom-guess`, so one build), with full precision at the deepest zoom for the tiles geoapi overzooms from it.
+- **Recipes per geometry type** (`manby_flags`): points and label points end each branch of the pyramid where its tile holds everything below (variable depth). Lines and polygons do not: such a tile holds its features whole at full detail, which made the zoomed out tiles of large polygons and of sparse networks the heaviest of a layer. They are stored at every zoom down to the one manby guesses from the spacing of the vertices, at most `max_zoom` (`--largest-maximum-zoom-guess`, so one build), with full precision at the deepest zoom for the tiles geoapi overzooms from it. A point tile holds far fewer features than the others (`POINT_TILE_FEATURE_LIMIT`): MapLibre numbers the pictures of one symbol layer in a tile with a 16-bit counter, so a denser tile of points drawn as icons or shaped markers is not drawn at all. manby drops the densest points where a tile is over the limit and adds zooms where they are needed.
 - **manby is the only builder**: a build manby fails returns None and never fails the tool. geoapi serves a layer without PMTiles from DuckDB, and `sync_pmtiles` builds the missing files when it runs. When only a polygon layer's label build fails, its main tiles are published without anchors (older anchors are removed, or they would leave the layer stale on every sync): the layer is drawn from its tiles, and its label requests go to DuckDB. The one retry is for points whose spacing `-zg` cannot guess a max zoom from (`MANBY_EXIT_NO_ZOOM_GUESS`): they are built to the configured max zoom.
 - **DuckDB first, then manby**: streamed straight from the query, manby and the DuckDB connection sorting the layer had to fit in the worker at the same time, and manby slowed to a crawl under the small memory budget that left it. With the file in between, DuckDB has finished before manby starts, so manby gets half the container (`MANBY_MEMORY_SHARE` in `utils/container_memory.py` says why not more). Streaming also crashed the process on a second build unless pyarrow was imported first (`tests/unit/io/test_manby_repeat_calls.py`); with a file, manby's feeder thread does not run.
 - **Threads follow the container**: manby starts one thread per core of the machine. On a big node that is dozens of threads in a two-CPU worker, each costing memory, so the builder passes `TIPPECANOE_MAX_THREADS`, which manby reads, from the container's CPU quota (`utils/container_cpu.py`) to manby's process. Without a CPU limit, and the Helm chart and compose set none for the tools workers, that is the CPUs the process may run on: the node's.

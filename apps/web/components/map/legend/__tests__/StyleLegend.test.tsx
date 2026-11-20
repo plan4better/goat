@@ -308,6 +308,8 @@ describe("StyleLegend", () => {
     );
     expect(emoji.querySelector("[data-marker-shape]")).toBeNull();
     expect(emoji.querySelector("img")?.getAttribute("src")).toBe("/assets/icons/emoji/1f525.webp");
+    // Loaded as a CORS request, as the map loads its icons.
+    expect(emoji.querySelector("img")?.getAttribute("crossorigin")).toBe("anonymous");
   });
 
   it("a pin's swatch draws its outline in the marker color with the icon in its head", () => {

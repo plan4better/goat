@@ -32,6 +32,7 @@ full = [
   "duckdb>=1.5.4",
   "gdal>=3.6.0,<3.7.0",
   "geopandas>=1.0.0",
+  "pyogrio>=0.10.0",
   "pandas>=2.0.0,<3.0.0",
   "httpx>=0.27.0",
   "numba>=0.60.0",

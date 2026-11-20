@@ -191,6 +191,21 @@ describe("zoom editor", () => {
     expect(chart().querySelector("path > title")?.textContent).toBe("16.4");
   });
 
+  it("an icon stop's image loads as a CORS request, as the map loads it", () => {
+    const { container } = setup(
+      {
+        zoom: [
+          [8, "emoji:1f525"],
+          [14, "asset:11111111-1111-4111-8111-111111111111"],
+        ],
+      },
+      "marker.icon"
+    );
+    const images = [...container.querySelectorAll("image")];
+    expect(images.length).toBeGreaterThan(0);
+    for (const image of images) expect(image.getAttribute("crossorigin")).toBe("anonymous");
+  });
+
   it("a stop shows it can be dragged: the cursor turns to a sideways arrow over it", () => {
     const stops: Stops = [
       [10, 2],
