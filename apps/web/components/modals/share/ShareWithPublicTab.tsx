@@ -36,6 +36,7 @@ import {
 } from "@/lib/api/organizationAnalytics";
 import { publishProject, unpublishProject, useProjectLayers, usePublicProject } from "@/lib/api/projects";
 import { useOrganization } from "@/lib/api/users";
+import { copyText } from "@/lib/utils/clipboard";
 import type { Project } from "@/lib/validations/project";
 
 export interface ShareWithPublicTabProps {
@@ -74,7 +75,11 @@ const CopyPill = ({ value, label }: { value: string; label: string }) => {
 
   const copy = async () => {
     if (copied) return;
-    await navigator.clipboard.writeText(value);
+    // As CopyButton: a copy that could not be made says so.
+    if (!(await copyText(value))) {
+      toast.error(t("settings_card_copy_failed"));
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

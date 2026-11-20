@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "react-toastify";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Project } from "@/lib/validations/project";
@@ -52,6 +53,7 @@ vi.mock("@/lib/api/map", () => ({
 }));
 
 const project = { id: "p1", name: "Demo" } as Project;
+const realClipboard = navigator.clipboard;
 
 describe("the publish tab", () => {
   beforeEach(() => {
@@ -78,5 +80,17 @@ describe("the publish tab", () => {
   it("no note when the published map is current", () => {
     render(<ShareWithPublicTab project={project} />);
     expect(screen.queryByText("unpublished_changes")).toBeNull();
+  });
+
+  it("says so when the link could not be copied, as the other copy buttons do", async () => {
+    // No Clipboard API (plain http) and, in jsdom, no `execCommand` either: no way to copy.
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    render(<ShareWithPublicTab project={project} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "copy_link" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("settings_card_copy_failed"));
+    expect(screen.queryByText("copied")).toBeNull();
+    Object.defineProperty(navigator, "clipboard", { value: realClipboard, configurable: true });
   });
 });

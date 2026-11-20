@@ -23,6 +23,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Measurement } from "@/lib/store/map/slice";
+import { copyText } from "@/lib/utils/clipboard";
 import type { UnitPreference, UnitSystem } from "@/lib/utils/measurementUnits";
 
 import { usePreferredUnitSystem } from "@/hooks/settings/usePreferredUnitSystem";
@@ -180,9 +181,7 @@ export function MeasurementResults({
   const handleValueClick = useCallback(
     (event: ReactMouseEvent<HTMLElement>, value: string, detailKey: string) => {
       event.stopPropagation();
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(value).catch(() => undefined);
-      }
+      void copyText(value);
       highlightDetail(detailKey);
     },
     [highlightDetail]
