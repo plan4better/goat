@@ -137,7 +137,7 @@ describe("catalogRasterSource", () => {
     const raster = { ...item({ "goat:layerType": "raster" }), assets: { raster: { href: "https://cat.example/assets/r/raster" } } };
     expect(catalogRasterSource(raster)).toEqual({
       tiles: "https://cat.example/assets/r/raster/{z}/{x}/{y}.webp",
-      dem: "https://cat.example/assets/r/raster/dem/{z}/{x}/{y}.webp",
+      coverage: "https://cat.example/assets/r/raster/coverage/tiles/WebMercatorQuad",
     });
     expect(catalogRasterSource(item({ "goat:layerType": "raster" }))).toBeNull();
   });

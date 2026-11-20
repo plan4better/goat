@@ -75,14 +75,14 @@ export const catalogTilesUrl = (item: CatalogItem): string | null => {
 };
 
 /**
- * The tile addresses of a raster layer's drawn tiles, as the catalog announces
+ * A raster layer's image tiles and value tiles (`coverage`), as the catalog announces
  * them (`assets.raster`, `/assets/{id}/raster`); `null` for anything else.
  */
-export const catalogRasterSource = (item: CatalogItem): { tiles: string; dem: string } | null => {
+export const catalogRasterSource = (item: CatalogItem): { tiles: string; coverage: string } | null => {
   const href = (item.assets as Record<string, { href?: string } | null> | undefined)?.raster?.href;
   if (!href || !/^https?:\/\//i.test(href)) return null;
   const root = href.replace(/\/$/, "");
-  return { tiles: `${root}/{z}/{x}/{y}.webp`, dem: `${root}/dem/{z}/{x}/{y}.webp` };
+  return { tiles: `${root}/{z}/{x}/{y}.webp`, coverage: `${root}/coverage/tiles/WebMercatorQuad` };
 };
 
 /**
