@@ -67,6 +67,23 @@ NO_SERVICE_OF_MODES = (
     "The GOAT public transport network has no service of the chosen modes in this area."
 )
 
+#: A line is long-distance, and left out of a cut that asks for local lines,
+#: by how its trips travel rather than its mode: when their median stop spacing
+#: exceeds LONG_DISTANCE_SPACING_KM, or their median span exceeds
+#: LONG_DISTANCE_SPAN_KM while they stop less often than every
+#: LONG_DISTANCE_SPAN_SPACING_KM. A trip's span is the diagonal of the box
+#: around its stops, its spacing that span over its hops. Set from Europe's
+#: network: local and regional service stops every 0.3 to 7 km, high-speed,
+#: InterCity, night trains, coaches and international ferries every 15 to 60 km.
+#: Fast regional trains (Swiss InterRegio) and coaches that stop often in town
+#: stay; longer fjord express boats go.
+LONG_DISTANCE_SPACING_KM = 20.0
+LONG_DISTANCE_SPAN_KM = 150.0
+LONG_DISTANCE_SPAN_SPACING_KM = 12.0
+ONLY_LONG_DISTANCE = (
+    "The GOAT public transport network has only long-distance lines in this area."
+)
+
 
 def _modes_filter(modes: Optional[Sequence[str]]) -> Optional[str]:
     """The route types of ``modes`` as a condition on ``rt``; None to keep every
@@ -145,11 +162,43 @@ def _kept(column: str, keep: str) -> str:
     )
 
 
+def _drop_long_distance(con: Any, src: Dict[str, str]) -> None:
+    """Remove the long-distance lines from keep_routes (see
+    LONG_DISTANCE_SPACING_KM), judged on all of their trips."""
+    con.execute(f"""
+        DELETE FROM keep_routes WHERE id IN (
+            SELECT route_id FROM (
+                SELECT route_id,
+                       median(span_km) AS span_km,
+                       median(span_km / greatest(n - 1, 1)) AS spacing_km
+                FROM (
+                    SELECT t.route_id, st.trip_id, count(*) AS n,
+                           111.2 * sqrt(
+                               power(max(s.stop_lat) - min(s.stop_lat), 2)
+                               + power((max(s.stop_lon) - min(s.stop_lon))
+                                       * cos(radians(avg(s.stop_lat))), 2)
+                           ) AS span_km
+                    FROM {src["stop_times"]} st
+                    JOIN {src["trips"]} t USING (trip_id)
+                    JOIN {src["stops"]} s USING (stop_id)
+                    WHERE t.route_id IN (SELECT id FROM keep_routes)
+                    GROUP BY 1, 2
+                ) GROUP BY 1
+            )
+            WHERE spacing_km > {LONG_DISTANCE_SPACING_KM}
+               OR (span_km > {LONG_DISTANCE_SPAN_KM}
+                   AND spacing_km > {LONG_DISTANCE_SPAN_SPACING_KM}))
+    """)
+
+
 def _select_lines(
-    con: Any, src: Dict[str, str], modes: Optional[Sequence[str]] = None
+    con: Any,
+    src: Dict[str, str],
+    modes: Optional[Sequence[str]] = None,
+    exclude_long_distance: bool = False,
 ) -> int:
     """keep_routes: the lines serving a stop in the area or its station, of
-    ``modes`` where given."""
+    ``modes`` where given, without the long-distance ones if asked."""
     by_mode = _modes_filter(modes)
     stops = src["stops"]
     con.execute(f"""
@@ -185,6 +234,13 @@ def _select_lines(
             if by_mode is not None
             else "The GOAT public transport network has no service in this area."
         )
+    if exclude_long_distance:
+        _drop_long_distance(con, src)
+        (local,) = con.execute("SELECT count(*) FROM keep_routes").fetchone()
+        if not local:
+            raise ValueError(ONLY_LONG_DISTANCE)
+        logger.info("left out %d long-distance line(s)", lines - local)
+        lines = local
     return int(lines)
 
 
@@ -315,9 +371,11 @@ def export_pt_network(
     store_dir: str,
     workdir: str,
     modes: Optional[Sequence[str]] = None,
+    exclude_long_distance: bool = False,
 ) -> List[ExtractedLayer]:
     """Cut the network in ``store_dir`` to ``area``, its lines of ``modes``
-    (none: all); return the bundle's layers, written to ``workdir``."""
+    (none: all), without long-distance lines if ``exclude_long_distance``;
+    return the bundle's layers, written to ``workdir``."""
     con.execute("INSTALL spatial; LOAD spatial;")
     if area_cells(con, area) > MAX_CELLS:
         raise ValueError(TOO_LARGE)
@@ -328,7 +386,7 @@ def export_pt_network(
     if missing:
         raise ValueError(f"The network's tables lack {', '.join(sorted(missing))}.")
 
-    lines = _select_lines(con, src, modes)
+    lines = _select_lines(con, src, modes, exclude_long_distance)
     _close(con, src)
     (trips,) = con.execute("SELECT count(*) FROM keep_trips").fetchone()
     if trips > MAX_TRIPS:

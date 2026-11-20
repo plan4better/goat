@@ -1,6 +1,7 @@
 "use client";
 
 import ErrorOutlineOutlined from "@mui/icons-material/ErrorOutlineOutlined";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import {
   Box,
   Button,
@@ -15,6 +16,7 @@ import {
   Popper,
   Skeleton,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -1681,6 +1683,20 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
           {flow.source === "pt_network" && (
             <SettingsSection label={t("fetch_features_section_modes")} icon={ICON_NAME.BUS}>
               <PtModes flow={flow} />
+              {/* Laid out as the tools lay out a boolean input: label left, switch right. */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Typography variant="body2">{t("fetch_features_exclude_long_distance")}</Typography>
+                  <Tooltip title={t("fetch_features_exclude_long_distance_tip")} placement="top" arrow>
+                    <HelpOutlineIcon sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }} />
+                  </Tooltip>
+                </Stack>
+                <Switch
+                  size="small"
+                  checked={flow.excludeLongDistance}
+                  onChange={(event) => flow.setExcludeLongDistance(event.target.checked)}
+                />
+              </Stack>
             </SettingsSection>
           )}
           {isNetwork ? null : (

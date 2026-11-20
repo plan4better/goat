@@ -325,6 +325,89 @@ def test_an_area_without_lines_of_the_modes_is_refused(
         _cut_modes(tables, tmp_path, ["ferry"])
 
 
+# A town line in the area, stopping about every 500 m as local service does.
+TOWN_LINE = {
+    "stops.txt": (
+        "L1,Town one,48.12,11.100,0,,\n"
+        "L2,Town two,48.12,11.107,0,,\n"
+        "L3,Town three,48.12,11.114,0,,\n"
+        "L4,Town four,48.12,11.121,0,,\n"
+    ),
+    "routes.txt": "R5,A,5,3\n",
+    "trips.txt": "R5,WK,T5,\n",
+    "stop_times.txt": (
+        "T5,08:00:00,08:00:00,L1,1\nT5,08:02:00,08:02:00,L2,2\n"
+        "T5,08:04:00,08:04:00,L3,3\nT5,08:06:00,08:06:00,L4,4\n"
+    ),
+}
+
+
+@pytest.fixture
+def tables_with_town_line(tmp_path: Path) -> Path:
+    feed = {**FEED, **{name: FEED[name] + rows for name, rows in TOWN_LINE.items()}}
+    out = tmp_path / "gtfs_tables_town"
+    store.build_store(
+        str(_zip(tmp_path / "town_gtfs.zip", feed)),
+        str(out),
+        lineage="GOAT's combined feed",
+        license="CC-BY-4.0",
+    )
+    return out
+
+
+def _cut_lines(tables: Path, tmp_path: Path, name: str, **options) -> dict:
+    workdir = tmp_path / name
+    workdir.mkdir()
+    layers = pt_network.export_pt_network(
+        duckdb.connect(),
+        store_dir=str(tables),
+        workdir=str(workdir),
+        **{"area": AREA, **options},
+    )
+    return {layer.role: layer.file_path for layer in layers}
+
+
+def test_long_distance_lines_are_left_out_on_request(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    every = _cut_lines(tables_with_town_line, tmp_path, "every")
+    local = _cut_lines(
+        tables_with_town_line, tmp_path, "local", exclude_long_distance=True
+    )
+    assert {"R1", "R3", "R5"} <= _values(every["routes"], "route_id")
+    # The ICE stops twice, 250 km apart; line 1 runs 70 km in two hops and
+    # 13 km in one: long-distance by how they travel, whatever their type. The
+    # town line stops every 500 m.
+    assert _values(local["routes"], "route_id") == {"R5"}
+    assert _values(local["trips"], "trip_id") == {"T5"}
+
+
+def test_an_area_with_only_long_distance_lines_is_refused(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    # Around platform five, which only the ICE serves.
+    around_p5 = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [11.185, 48.095],
+                [11.195, 48.095],
+                [11.195, 48.105],
+                [11.185, 48.105],
+                [11.185, 48.095],
+            ]
+        ],
+    }
+    with pytest.raises(ValueError, match="only long-distance lines"):
+        _cut_lines(
+            tables_with_town_line,
+            tmp_path,
+            "only_long",
+            area=around_p5,
+            exclude_long_distance=True,
+        )
+
+
 def test_an_area_without_stops_is_refused(tables: Path, tmp_path: Path) -> None:
     empty = {
         "type": "Polygon",
