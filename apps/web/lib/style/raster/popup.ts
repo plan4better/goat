@@ -1,11 +1,14 @@
 // A raster file's popup (spec 9.7): the cell values under the pointer, on click (the default) or while hovering, of
 // the band the style draws (an image's three; a band formula's value under its name) or of every band, from the
 // raster service's point query. Map services show none (their feature info comes later, spec 9.8).
+import type { TFunction } from "i18next";
+
 import { fetchRasterPoint } from "@/lib/api/rasters";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type SourceLayer, sourceOf } from "@/lib/style/layerSource";
 import { rasterColorSpec } from "@/lib/style/raster/color";
+import { type RasterInfo, bandLabel } from "@/lib/style/raster/metadata";
 import { rasterToken } from "@/lib/style/raster/token";
 import { type PopupProperties, popupProperties } from "@/lib/validations/layer";
 
@@ -31,11 +34,11 @@ function styledBands(render: unknown): number[] | "formula" {
   return typeof r.band === "number" ? [r.band] : "formula";
 }
 
-/** The style's band formula name. */
-function formulaName(layer: PopupRaster): string {
+/** The style's band formula name, if it has one. */
+function formulaName(layer: PopupRaster): string | undefined {
   const render = (layer.style?.document as { render?: unknown } | undefined)?.render;
   const band = isObject(render) ? render.band : undefined;
-  return isObject(band) && typeof band.name === "string" && band.name ? band.name : "Value";
+  return isObject(band) && typeof band.name === "string" && band.name ? band.name : undefined;
 }
 
 /** A COG layer's popup rule; undefined for vector data, map services and a popup turned off. */
@@ -88,19 +91,28 @@ export async function rasterValuesAt(
   return Object.keys(out).length ? out : null;
 }
 
-/** The popup configuration showing `values` (`band_<n>` keys); one styled band carries the legend's unit. */
+/** The popup configuration showing `values` (`band_<n>` keys); one styled band carries the legend's unit. A band is
+ * labeled with the file's name for it (`info`), a formula with its name; else "Band <n>" and "Value", translated
+ * with `t`. */
 export function rasterPopupConfig(
   layer: PopupRaster,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
+  opts: { t?: TFunction; info?: RasterInfo } = {}
 ): PopupProperties | undefined {
   const rule = rasterPopupOf(layer);
   if (!rule) return undefined;
+  const { t, info } = opts;
   const legend = (layer.style?.document as { legend?: unknown } | undefined)?.legend;
   const unit = isObject(legend) && typeof legend.unit === "string" && legend.unit ? legend.unit : undefined;
   const keys = Object.keys(values).filter((key) => /^band_\d+$/.test(key) || key === "formula");
+  const label = (key: string) => {
+    if (key === "formula") return formulaName(layer) ?? (t ? t("style_editor.value") : "Value");
+    const band = Number(key.slice(5));
+    return t ? bandLabel(info, band, t) : info?.names?.[band - 1] || `Band ${band}`;
+  };
   const attributes = keys.map((key) => ({
     name: key,
-    label: key === "formula" ? formulaName(layer) : `Band ${key.slice(5)}`,
+    label: label(key),
     type: "number" as const,
     ...(unit && keys.length === 1 && rule.bands !== "all" ? { suffix: ` ${unit}` } : {}),
   }));

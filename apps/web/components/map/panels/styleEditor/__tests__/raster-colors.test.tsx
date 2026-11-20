@@ -22,16 +22,23 @@ const MAP = {
 const stats = (p2: number | null, p98: number | null) => [
   { index: 1, min: p2, max: p98, p2, p98, values: null },
 ];
-const INFO: RasterInfo = { bands: 1, bits: [32], colorTable: false, integer: false, stats: stats(3.2, 97.5) };
+const INFO: RasterInfo = {
+  bands: 1,
+  bits: [32],
+  colorTable: false,
+  integer: false,
+  names: [""],
+  stats: stats(3.2, 97.5),
+};
 
-function setup(render: object, extra: object = {}, info: RasterInfo = INFO) {
+function setup(render: object, extra: object = {}, info: RasterInfo | null = INFO) {
   return renderPanel(
     <PopoverProvider>
       <RasterColorSection />
     </PopoverProvider>,
     {
       document: { version: 1, kind: "raster", render, ...extra } as LayerStyle,
-      data: { raster: { dataset: "d1", info } },
+      data: { raster: { dataset: "d1", info: info ?? undefined } },
       map: MAP,
     }
   );
@@ -47,7 +54,7 @@ describe("raster colors", () => {
     await choose(
       "style_editor.method",
       "style_editor.raster_method_continuous",
-      "style_editor.raster_method_manual"
+      "style_editor.method_manual"
     );
     await choose("style_editor.classes", "5", "4");
     expect(store.get("render.classify")).toEqual({
@@ -89,7 +96,7 @@ describe("raster colors", () => {
       },
     });
     await openColors();
-    await userEvent.click(screen.getByText("goat:elevation"));
+    await userEvent.click(screen.getByText("Elevation"));
     await userEvent.click(screen.getByRole("button", { name: "Blues" }));
     expect(store.get("render.palette")).toBe("colorbrewer:Blues");
     expect(store.get("render.classify")).toEqual({ method: "manual", classes: [{ to: 50 }, { from: 50 }] });
@@ -100,6 +107,8 @@ describe("raster colors", () => {
   it("From the data writes the band's 2nd to 98th percentile; a band without values says so", async () => {
     const { store, unmount } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 1] });
     await openColors();
+    // The button says which values it takes.
+    expect(screen.getByText("style_editor.range_from_data_note")).toBeDefined();
     await userEvent.click(screen.getByRole("button", { name: "style_editor.range_from_data" }));
     expect(store.get("render.domain")).toEqual([3, 98]);
     unmount();
@@ -266,5 +275,63 @@ describe("raster colors", () => {
       "style_editor.other_values_transparent"
     );
     expect(store.get("render.other_color")).toBeUndefined();
+  });
+
+  it("the palette row names the palette, reversed in words", async () => {
+    setup({ type: "continuous", palette: "colorbrewer:Spectral", reverse: true, domain: [0, 100] });
+    await openColors();
+    expect(within(rowOf("style_editor.palette")).getByRole("button").textContent).toBe(
+      "Spectral, style_editor.reversed"
+    );
+    expect(screen.queryByText(/colorbrewer:/)).toBeNull();
+  });
+
+  it("the colours section is called Colors; hillshade and categories keep their names", () => {
+    const { unmount } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 100] });
+    expect(screen.getByRole("heading").textContent).toBe("style_editor.colors");
+    unmount();
+    const hillshade = setup({ type: "hillshade" });
+    expect(screen.getByRole("heading").textContent).toBe("style_editor.raster_type_hillshade");
+    hillshade.unmount();
+    setup({ type: "categorical", classes: [{ value: 1, color: "#ff0000" }] });
+    expect(screen.getByRole("heading").textContent).toBe("style_editor.raster_type_categorical");
+  });
+
+  it("stops and manual classes have distinct names", async () => {
+    setup({
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      classify: { method: "manual", classes: [{ to: 50 }, { from: 50 }] },
+    });
+    expect(within(rowOf("style_editor.colors")).getByRole("button").textContent).toBe(
+      "style_editor.raster_manual_n"
+    );
+    await openColors();
+    // Manual classes carry the vectors' name for manual breaks; own colors at values are a kind of colors.
+    expect(within(rowOf("style_editor.method")).getByRole("combobox").textContent).toBe(
+      "style_editor.method_manual"
+    );
+    await userEvent.click(within(rowOf("style_editor.colors_kind")).getByRole("combobox"));
+    const kinds = within(screen.getByRole("listbox"))
+      .getAllByRole("option")
+      .map((el) => el.textContent ?? "");
+    expect(kinds.join("|")).toContain("style_editor.colors_stops");
+    expect(kinds.join("|")).not.toContain("style_editor.palette_custom");
+  });
+
+  it("a new category waits for the file's info", () => {
+    setup({ type: "categorical", classes: [{ value: 1, color: "#ff0000" }] }, {}, null);
+    expect(
+      (screen.getByRole("button", { name: "style_editor.add_category" }) as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it("rows wait for the file's info", () => {
+    // The raster service has not answered yet.
+    setup({ type: "continuous", palette: "goat:elevation", domain: [0, 100] }, {}, null);
+    expect((within(rowOf("style_editor.colors")).getByRole("button") as HTMLButtonElement).disabled).toBe(
+      true
+    );
   });
 });

@@ -47,7 +47,7 @@ import PropertiesPanel from "@/components/map/panels/properties/Properties";
 import SimpleLayerStyle from "@/components/map/panels/style/SimpleLayerStyle";
 import { PopupContent } from "@/components/map/popover/MapFeaturePopover";
 import { layerPopup } from "@/components/map/popover/normalizePopup";
-import { findPopupLayer } from "@/components/map/popover/popupVisibility";
+import { findPopupLayer, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
 
 // --- Constants ---
 // Height of the puller strip above the drawer paper. In the default dashboard
@@ -223,8 +223,10 @@ const MobileProjectLayout = ({
     [layerInfo?.layerId, layerInfo?.projectLayerId, projectLayers],
   );
   const activePopupConfig = useMemo(
-    () => layerInfo?.popup ?? layerPopup(clickedPopupLayer as ViewLayer | undefined, layerInfo?.featureProperties),
-    [clickedPopupLayer, layerInfo?.popup, layerInfo?.featureProperties]
+    () =>
+      layerInfo?.popup ??
+      layerPopup(clickedPopupLayer as ViewLayer | undefined, layerInfo?.featureProperties, { t }),
+    [clickedPopupLayer, layerInfo?.popup, layerInfo?.featureProperties, t]
   );
   // Layer-style icon for the popup header (same look as the Layers panel
   // and the desktop popup).
@@ -704,7 +706,7 @@ const MobileProjectLayout = ({
                 // Force re-mount when the clicked feature changes so the
                 // block list refreshes against the new feature properties.
                 key={highlightedFeature?.id ?? layerInfo.title ?? v4()}
-                layerId={layerInfo.layerId ?? ""}
+                layerId={popupFieldsLayerId(layerInfo.layerId, clickedPopupLayer)}
                 popup={activePopupConfig}
                 properties={
                   (layerInfo.featureProperties ??

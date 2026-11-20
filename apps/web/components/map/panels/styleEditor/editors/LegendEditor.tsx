@@ -13,6 +13,7 @@ import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type LegendClasses, classificationProperty, legendClasses } from "@/lib/style/legend";
+import { rasterColorSpec } from "@/lib/style/raster/color";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 
 import { useLayerLegend } from "@/hooks/style/useLegendPresence";
@@ -64,6 +65,13 @@ export function LegendEditor() {
   const next = useNextLevel();
   const caption = useStyleValue<unknown>("legend.caption");
   const kind = useStyleValue<unknown>("kind");
+  const render = useStyleValue<unknown>("render");
+  // A raster's end labels replace the end values of a ramp; classes and categories have none.
+  const rasterSpec = kind === "raster" ? rasterColorSpec(isObject(render) ? render : {}) : null;
+  const rasterLabels =
+    rasterSpec?.kind === "ramp" || rasterSpec?.kind === "stops"
+      ? (["unit", "min_label", "max_label"] as const)
+      : (["unit"] as const);
   const legendText = (key: string) => {
     const value = store.get(`legend.${key}`);
     return typeof value === "string" ? value : "";
@@ -103,7 +111,7 @@ export function LegendEditor() {
         />
       )}
       {kind === "raster" &&
-        (["unit", "min_label", "max_label"] as const).map((key) => (
+        rasterLabels.map((key) => (
           <TextRow
             key={key}
             label={t(`style_editor.legend_${key}`)}

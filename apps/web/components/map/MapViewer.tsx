@@ -1,6 +1,5 @@
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
-import type { Theme } from "@mui/material";
-import { Box, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Box, Typography, useTheme } from "@mui/material";
 import centroid from "@turf/centroid";
 import type { MapGeoJSONFeature, Map as MaplibreMap, PaddingOptions, StyleSpecification } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -69,6 +68,7 @@ import { layerPopup } from "@/components/map/popover/normalizePopup";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
+  popupFieldsLayerId,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
 } from "@/components/map/popover/popupVisibility";
@@ -118,6 +118,9 @@ interface MapProps {
    * marker on top of its highlight. Off for maps that only need the
    * highlight, such as the dataset preview. */
   activeFeatureMarker?: boolean;
+  /** The layout shows the popup in its own drawer (the published map on a phone): the map marks the feature only.
+   * Otherwise the map shows the popup itself, in a window of any width. */
+  popupInDrawer?: boolean;
 }
 
 /**
@@ -165,6 +168,7 @@ const MapViewer: React.FC<MapProps> = ({
   containerSx,
   isEditor,
   activeFeatureMarker = true,
+  popupInDrawer = false,
 }) => {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
@@ -261,10 +265,10 @@ const MapViewer: React.FC<MapProps> = ({
     editing,
   );
 
-  // The popup is the style's (spec 7.4) in today's popup configuration.
+  // The popup is the style's (spec 7.4) in today's popup configuration; a raster file's labels in the map's language.
   const activePopupConfig = useMemo(
-    () => popupInfo?.popup ?? layerPopup(clickedPopupLayer, popupInfo?.featureProperties),
-    [clickedPopupLayer, popupInfo?.popup, popupInfo?.featureProperties],
+    () => popupInfo?.popup ?? layerPopup(clickedPopupLayer, popupInfo?.featureProperties, { t }),
+    [clickedPopupLayer, popupInfo?.popup, popupInfo?.featureProperties, t],
   );
 
   // Same lookup pattern as `clickedPopupLayer` above, but for the live-preview
@@ -811,8 +815,6 @@ const MapViewer: React.FC<MapProps> = ({
     [dispatch, onMove, mapRef]
   );
 
-  const isMobile = useMediaQuery((theme: Theme) => theme.breakpoints.down("md"));
-
   // "Highlight active feature" (popup.highlight_active_feature) governs ALL active-object highlighting: with a popup
   // open but its highlight off, the feature is not marked either. Highlights without a popup (click to filter, the
   // data table, the geocoder) are unaffected.
@@ -1047,14 +1049,14 @@ const MapViewer: React.FC<MapProps> = ({
                   toolbar / panel positioning the same way Geocoder /
                   ToolboxCtrl / MeasureButton do. Only the in-place
                   variant lives inside <Map>, where it needs useMap to
-                  anchor to feature coordinates. On mobile the popup
-                  content lives in the bottom drawer instead, but the
-                  active-feature pulse below still marks the feature
-                  on the map. */}
-              {!isMobile && activePopupConfig.layout !== "pinned" && (
+                  anchor to feature coordinates. A layout that shows the
+                  popup in its own drawer (`popupInDrawer`, the published
+                  map on a phone) gets none here, but the active-feature
+                  pulse below still marks the feature on the map. */}
+              {!popupInDrawer && activePopupConfig.layout !== "pinned" && (
                 <MapFeaturePopover
                   key={highlightedFeature?.id ?? v4()}
-                  layerId={popupInfo.layerId ?? ""}
+                  layerId={popupFieldsLayerId(popupInfo.layerId, clickedPopupLayer)}
                   layerName={popupInfo.title}
                   popup={activePopupConfig}
                   properties={
@@ -1082,7 +1084,7 @@ const MapViewer: React.FC<MapProps> = ({
               />
             </>
           )}
-          {!isMobile &&
+          {!popupInDrawer &&
             popupPreview &&
             previewLayer &&
             previewPopupConfig &&
@@ -1112,7 +1114,7 @@ const MapViewer: React.FC<MapProps> = ({
                 />
               </>
             )}
-          {!isMobile && popupEditor && isEditor && (
+          {!popupInDrawer && popupEditor && isEditor && (
             <MapPopoverEditor
               key={popupEditor.feature?.id || popupEditor.feature?.properties?.id || v4()}
               {...popupEditor}

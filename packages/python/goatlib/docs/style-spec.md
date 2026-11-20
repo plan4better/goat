@@ -1738,7 +1738,7 @@ rasters and map services do not change.
 | `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
 | raster `continuous` | a ramp or classes with the domain and `unit`; `min_label` and `max_label` replace the end values |
-| raster `categorical` | one entry per class, then Other in `other_color` where one is set (the legend cannot know whether any cell has another value) |
+| raster `categorical` | one entry per class (its value with the `unit`, or its `name`), then Other in `other_color` where one is set (the legend cannot know whether any cell has another value) |
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 

@@ -42,6 +42,19 @@ export function findPopupLayer<T extends PopupLayerLike>(
 }
 
 /**
+ * The dataset whose fields (queryables) format an open popup's values: the
+ * popup's `layerId`, or none for a raster layer, whose popup shows a file's
+ * cell values and whose data has no fields to ask for. A layer not found
+ * keeps the popup's dataset.
+ */
+export function popupFieldsLayerId(
+  layerId: string | undefined,
+  layer: { type?: string | null } | undefined,
+): string | undefined {
+  return layer?.type === "raster" ? undefined : layerId;
+}
+
+/**
  * True when an open popup should be dismissed because its owning layer is no
  * longer drawn on the map — either hidden (visibility toggled off) or removed
  * from the project.

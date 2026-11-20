@@ -1294,6 +1294,57 @@ describe("raster legends", () => {
     });
   });
 
+  it("raster classes and categories carry the legend unit", () => {
+    const classes = raster(
+      {
+        type: "continuous",
+        palette: "colorbrewer:BuGn",
+        domain: [40, 80],
+        classify: { method: "manual", classes: [{ to: 55 }, { from: 55, to: 65 }, { from: 65 }] },
+      },
+      { unit: "dB(A)" }
+    );
+    expect(classes?.sections[0]).toMatchObject({ kind: "entries", unit: "dB(A)" });
+    const categories = raster(
+      {
+        type: "categorical",
+        classes: [
+          { value: 55, color: "#fee8c8" },
+          { value: 65, color: "#e34a33" },
+        ],
+      },
+      { unit: "dB(A)" }
+    );
+    expect(categories?.sections[0]).toMatchObject({ kind: "entries", unit: "dB(A)" });
+    // No unit typed: the entries have none.
+    const without = raster({ type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] });
+    expect(without?.sections[0]).not.toHaveProperty("unit");
+  });
+
+  it("raster classes carry the render's domain: an open first or last class reads it", () => {
+    const classify = { method: "manual", classes: [{ to: 55 }, { from: 55, to: 65 }, { from: 65 }] };
+    const own = raster({ type: "continuous", palette: "colorbrewer:BuGn", domain: [40, 80], classify });
+    const section = own?.sections[0];
+    expect(section).toMatchObject({ kind: "entries", domain: [40, 80] });
+    if (section?.kind !== "entries") throw new Error("entries expected");
+    const opts = { locale: "en-US", words: WORDS, domain: section.domain };
+    expect(section.entries.map((e) => rangeText(e.range ?? {}, opts))).toEqual([
+      "40 to 55",
+      "55 to 65",
+      "65 to 80",
+    ]);
+    // The computed domain where the style has none; categories read no domain.
+    const computed = raster({
+      type: "continuous",
+      palette: "colorbrewer:BuGn",
+      computed: { at: "t", data: "url:x", domain: [38, 91] },
+      classify,
+    });
+    expect(computed?.sections[0]).toMatchObject({ kind: "entries", domain: [38, 91] });
+    const categories = raster({ type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] });
+    expect(categories?.sections[0]).not.toHaveProperty("domain");
+  });
+
   it("an image or shading without colors has no legend; a map service shows its legend image", () => {
     expect(raster({ type: "image" })).toBeNull();
     expect(raster({ type: "hillshade" })).toBeNull();

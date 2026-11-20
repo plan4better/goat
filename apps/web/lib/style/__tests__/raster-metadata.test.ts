@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { type RasterInfoResponse, rasterInfoOf, sampleOf, seedDomain } from "@/lib/style/raster/metadata";
+import { commonT } from "@/i18n/__tests__/commonI18n";
+
+import {
+  type RasterInfoResponse,
+  bandLabel,
+  rasterInfoOf,
+  sampleOf,
+  seedDomain,
+  shortNumber,
+} from "@/lib/style/raster/metadata";
 
 const band = (index: number, extra: object = {}) => ({
   index,
@@ -64,5 +73,28 @@ describe("raster facts from the raster service", () => {
     expect(sampleOf(codes, 1)?.values).toEqual([1, 2, 5]);
     const empty = rasterInfoOf({ ...INFO, bands: [band(1, { min: null, max: null, p2: null, p98: null })] });
     expect(sampleOf(empty, 1)).toBeNull();
+  });
+
+  it("rasterInfoOf keeps the band names; a band without a description has none", () => {
+    // The service names a band without a description "Band <n>": that is no name of the file's own.
+    const info = rasterInfoOf({ ...INFO, count: 3, names: ["Rot", "Band 2", ""], bands: [band(1)] });
+    expect(info.names).toEqual(["Rot", "", ""]);
+    expect(rasterInfoOf({ ...INFO, names: ["Band 1"] }).names).toEqual([""]);
+  });
+
+  it("a band's label is the file's name for it, else the translated Band n", () => {
+    const info = rasterInfoOf({ ...INFO, count: 2, names: ["Rot", ""] });
+    const de = commonT("de");
+    expect(bandLabel(info, 1, de)).toBe("Rot");
+    expect(bandLabel(info, 2, de)).toBe(de("style_editor.band_n", { n: 2 }));
+    expect(bandLabel(undefined, 3, commonT("en"))).toBe("Band 3");
+  });
+
+  it("a no-data value is shown as typed, a long one cut to three digits", () => {
+    expect(shortNumber(-9999)).toBe("-9999");
+    expect(shortNumber(-3.4028234663852886e38)).toBe("-3.4e+38");
+    expect(shortNumber(0.000123456789)).toBe("0.000123");
+    expect(shortNumber(1234567.25)).toBe("1234567.25");
+    expect(shortNumber(12345678.25)).toBe("1.23e+7");
   });
 });

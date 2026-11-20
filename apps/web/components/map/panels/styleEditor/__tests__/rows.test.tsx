@@ -380,6 +380,37 @@ describe("rows", () => {
     expect(rowOf("nav")).toHaveStyle({ minHeight: "36px" });
   });
 
+  it("a disabled field shows its value but does not open; only its swatch dims, MUI greys the text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const onOpen = vi.fn();
+    renderPanel(
+      <NavRow
+        label="Colors"
+        value="Continuous"
+        swatch={{ background: "#ff0000", wide: true }}
+        tooltip="Continuous colors"
+        disabled
+        onOpen={onOpen}
+      />
+    );
+    const button = screen.getByRole("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onOpen).not.toHaveBeenCalled();
+    // The field is not dimmed as a whole: its text takes MUI's disabled color, the swatch alone is dimmed.
+    expect(getComputedStyle(button.closest(".MuiInputBase-root") as HTMLElement).opacity).not.toBe("0.55");
+    expect(getComputedStyle(button.firstElementChild as HTMLElement).opacity).toBe("0.5");
+    // A tooltip on a disabled button listens on a wrapper (MUI warns otherwise).
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/disabled `button` child/);
+    error.mockRestore();
+  });
+
+  it("a section's add button can wait", () => {
+    const onClick = vi.fn();
+    renderPanel(<PanelSection title="Categories" add={{ label: "Add a class", onClick, disabled: true }} />);
+    expect((screen.getByRole("button", { name: "Add a class" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("rows have accessible names", () => {
     renderPanel(
       <PanelSection title="Polygons" add={{ label: "style_editor.add_rule", onClick: vi.fn() }}>

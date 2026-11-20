@@ -55,7 +55,7 @@ In <code>Contents</code>, each classification has these settings:
 - <code>Numbers</code> (number fields): how the class bounds read, with <code>Decimals</code>, <code>Thousands</code>, <code>Abbreviate</code>, <code>Sign</code>, <code>Prefix</code> and <code>Suffix</code>. <code>As in the dataset</code> keeps the dataset's own format.
 - <code>Order</code> (with several classifications): the place of the classification. It is also the order in which they apply: where two set the same property, the later one wins.
 
-For a raster with a color range, <code>Contents</code> also has <code>Unit</code>, <code>Lowest label</code> and <code>Highest label</code>, which replace the end values of the ramp.
+For a raster, <code>Contents</code> also has <code>Unit</code>: a unit after the numbers in the legend, at the ends of a ramp, in class bounds and after category values, such as m or dB(A). A raster drawn as a ramp without classes or categories also has <code>Lowest label</code> and <code>Highest label</code>, which replace the end values of the ramp. For a raster with classes or categories, the <code>Contents</code> row shows how many it has, for example <code>5 classes</code>.
 
 While the legend settings differ from the dataset's style, the header of the editor shows <code>Reset to the dataset's style</code> (a circular arrow), which puts them back as the dataset's style has them.
 

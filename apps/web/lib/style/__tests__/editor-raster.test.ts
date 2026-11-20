@@ -13,7 +13,8 @@ describe("raster render choices", () => {
     expect(drawAsOptions(byte)).toEqual(["hillshade", "continuous", "categorical", "image"]);
     expect(drawAsOptions(rgb)).toEqual(["continuous", "categorical", "image"]);
     expect(drawAsOptions(landcover)).toEqual(["categorical", "image"]);
-    expect(drawAsOptions(undefined)).toEqual(["hillshade", "continuous", "categorical", "image"]);
+    // Nothing until the file's info answered: the list does not change under the pointer.
+    expect(drawAsOptions(undefined)).toEqual([]);
   });
 
   it("starts each render from what is known, defaults left out", () => {

@@ -11,6 +11,7 @@ import {
   classColorsByHand,
   classValuesByHand,
   classesPending,
+  classifyCount,
   classifyTargets,
   clearClassValues,
   isIntentEdit,
@@ -528,5 +529,58 @@ describe("scoped view", () => {
     expect(scopedView(d, { classify: 0, key: "other" }).writePath("symbol.fill.color")).toBe(
       "classify.0.other.fill.color"
     );
+  });
+});
+
+describe("classifyCount", () => {
+  const raster = (render: object) => ({ version: 1, kind: "raster", render }) as unknown as LayerStyle;
+  const classes = [{ to: 10 }, { from: 10, to: 20, visible: false }, { from: 20 }];
+
+  it("counts a vector style's classifications", () => {
+    expect(classifyCount(classified())).toBe(1);
+    expect(classifyCount(doc())).toBe(0);
+  });
+
+  it("counts a raster's classes and categories, hidden ones too", () => {
+    expect(
+      classifyCount(
+        raster({ type: "continuous", palette: "goat:elevation", classify: { method: "manual", classes } })
+      )
+    ).toBe(3);
+    expect(
+      classifyCount(
+        raster({
+          type: "categorical",
+          classes: [{ value: 1 }, { value: 2, visible: false }],
+        })
+      )
+    ).toBe(2);
+    expect(
+      classifyCount(
+        raster({ type: "hillshade", palette: "goat:elevation", classify: { method: "manual", classes } })
+      )
+    ).toBe(3);
+  });
+
+  it("a classification whose classes are still computed counts its count", () => {
+    expect(
+      classifyCount(
+        raster({
+          type: "continuous",
+          palette: "goat:elevation",
+          classify: { method: "equal_interval", count: 5 },
+        })
+      )
+    ).toBe(5);
+  });
+
+  it("own stops, shading without colors and an image have no classes", () => {
+    const stops = [
+      { value: 0, color: "#000000" },
+      { value: 9, color: "#ffffff" },
+    ];
+    expect(classifyCount(raster({ type: "continuous", stops, classify: { classes } }))).toBe(0);
+    expect(classifyCount(raster({ type: "hillshade", classify: { method: "manual", classes } }))).toBe(0);
+    expect(classifyCount(raster({ type: "image", classes: [{ value: 1 }] }))).toBe(0);
   });
 });

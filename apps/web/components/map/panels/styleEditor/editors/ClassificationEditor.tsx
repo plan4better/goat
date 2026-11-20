@@ -5,6 +5,7 @@
 // intent edit saves at once and the classes show as pending until the reply. Conflicts between classifications
 // come from the server's issues; the panel draws no conclusions of its own.
 import { Alert, Box, Typography } from "@mui/material";
+import type { TFunction } from "i18next";
 import { useCallback, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -69,6 +70,12 @@ const CLASS_LIST_MIN = 160;
 const DEFAULT_PALETTE = { categories: "colorbrewer:Set2", numeric: "goat:green" };
 
 export const propLabelKey = (key: string) => `style_editor.prop_${key.replace(/\./g, "_")}`;
+
+/** A palette as its row names it: the catalog's name, ", reversed" when reversed; a list of colors is one's own. */
+export function paletteLabel(palette: string | string[], reversed: boolean, t: TFunction): string {
+  if (Array.isArray(palette)) return t("style_editor.palette_custom");
+  return `${PALETTES[palette]?.name ?? palette}${reversed ? `, ${t("style_editor.reversed")}` : ""}`;
+}
 
 /** The range row's value while the classes hold values typed by hand. */
 const OWN_VALUES = "own";
@@ -370,9 +377,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
           <NavRow
             label={t("style_editor.palette")}
             value={
-              Array.isArray(palette) || ownColors
-                ? t("style_editor.palette_custom")
-                : `${PALETTES[palette]?.name ?? palette}${c.reverse === true ? `, ${t("style_editor.reversed")}` : ""}`
+              ownColors ? t("style_editor.palette_custom") : paletteLabel(palette, c.reverse === true, t)
             }
             swatch={strip ? { background: strip, wide: true } : undefined}
             onOpen={(anchor) =>

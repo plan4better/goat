@@ -55,7 +55,7 @@ Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 - <code>Zahlen</code> (bei Zahlenfeldern): wie die Klassengrenzen erscheinen, mit <code>Dezimalstellen</code>, <code>Tausender</code>, <code>Abkürzen</code>, <code>Vorzeichen</code>, <code>Präfix</code> und <code>Suffix</code>. <code>Wie im Datensatz</code> behält das Format des Datensatzes.
 - <code>Reihenfolge</code> (bei mehreren Klassifizierungen): der Platz der Klassifizierung. Er ist auch die Reihenfolge, in der sie gelten: Wo zwei dieselbe Eigenschaft setzen, gewinnt die spätere.
 
-Bei einem Raster mit Farbverlauf hat <code>Inhalt</code> außerdem <code>Einheit</code>, <code>Beschriftung unten</code> und <code>Beschriftung oben</code>, die die Endwerte des Verlaufs ersetzen.
+Bei einem Raster hat <code>Inhalt</code> außerdem <code>Einheit</code>: eine Einheit hinter den Zahlen der Legende, an den Enden eines Verlaufs, an Klassengrenzen und hinter den Werten von Kategorien, etwa m oder dB(A). Ein Raster, das als Verlauf ohne Klassen oder Kategorien gezeichnet ist, hat zusätzlich <code>Beschriftung unten</code> und <code>Beschriftung oben</code>, die die Endwerte des Verlaufs ersetzen. Bei einem Raster mit Klassen oder Kategorien zeigt die Zeile <code>Inhalt</code>, wie viele es hat, zum Beispiel <code>5 Klassen</code>.
 
 Solange die Einstellungen der Legende vom Stil des Datensatzes abweichen, zeigt der Kopf des Editors <code>Auf den Stil des Datensatzes zurücksetzen</code> (ein kreisförmiger Pfeil); damit setzen Sie sie so zurück, wie sie der Stil des Datensatzes hat.
 

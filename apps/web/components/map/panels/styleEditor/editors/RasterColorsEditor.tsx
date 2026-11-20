@@ -24,6 +24,7 @@ import {
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
+import { paletteLabel } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { StopsEditor } from "@/components/map/panels/styleEditor/editors/StopsEditor";
 import { PalettePicker } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
@@ -278,11 +279,17 @@ export function RasterColorsEditor() {
               label={t("style_editor.method")}
               value={classify ? "manual" : "continuous"}
               options={[
-                ...["continuous", "manual"].map((v) => ({
-                  value: v,
-                  label: t(`style_editor.raster_method_${v}`),
-                  sub: t(`style_editor.raster_method_${v}_sub`),
-                })),
+                {
+                  value: "continuous",
+                  label: t("style_editor.raster_method_continuous"),
+                  sub: t("style_editor.raster_method_continuous_sub"),
+                },
+                // The vectors' name for breaks typed by hand.
+                {
+                  value: "manual",
+                  label: t("style_editor.method_manual"),
+                  sub: t("style_editor.raster_method_manual_sub"),
+                },
                 ...LATER.map((v) => ({
                   value: v,
                   label: t(`style_editor.method_${v}`),
@@ -319,11 +326,11 @@ export function RasterColorsEditor() {
             )}
             <NavRow
               label={t("style_editor.palette")}
-              value={
-                Array.isArray(render.palette)
-                  ? t("style_editor.palette_custom")
-                  : String(render.palette ?? DEFAULTS["continuous.palette"])
-              }
+              value={paletteLabel(
+                (render.palette ?? DEFAULTS["continuous.palette"]) as string | string[],
+                render.reverse === true,
+                t
+              )}
               swatch={{ background: paletteStrip(colors, stepped) ?? "transparent", wide: true }}
               onOpen={openPalette}
             />
@@ -345,7 +352,7 @@ export function RasterColorsEditor() {
                 />
               </Box>
             </Row>
-            <Row note={note ?? undefined}>
+            <Row note={note ?? t("style_editor.range_from_data_note")}>
               <Button variant="text" size="small" color="inherit" onClick={() => void fromData()}>
                 {t("style_editor.range_from_data")}
               </Button>

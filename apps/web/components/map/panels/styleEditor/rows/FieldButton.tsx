@@ -40,6 +40,7 @@ const ButtonSlot = forwardRef(function ButtonSlot(
     "aria-describedby": describedBy,
     ...rest
   } = props;
+  const disabled = (rest as { disabled?: boolean }).disabled;
   // An unset description leaves the button to the tooltip's.
   const button = (
     <button
@@ -49,12 +50,16 @@ const ButtonSlot = forwardRef(function ButtonSlot(
       type="button"
     />
   );
-  return tooltip ? (
+  if (!tooltip) return button;
+  // A disabled button fires no events: the tooltip listens on a wrapper the size of the button.
+  return (
     <Tooltip title={tooltip} describeChild>
-      {button}
+      {disabled ? (
+        <span style={{ display: "flex", flex: 1, minWidth: 0, height: "100%" }}>{button}</span>
+      ) : (
+        button
+      )}
     </Tooltip>
-  ) : (
-    button
   );
 });
 
@@ -72,6 +77,8 @@ export interface FieldButtonProps {
   popup?: "listbox" | "menu";
   start?: ReactNode;
   end?: ReactNode;
+  /** Shown, but not to be opened: what it opens waits for something (a file's info). */
+  disabled?: boolean;
   sx?: SxProps<Theme>;
 }
 
@@ -86,12 +93,14 @@ export function FieldButton({
   popup,
   start,
   end,
+  disabled,
   sx,
 }: FieldButtonProps) {
   return (
     <OutlinedInput
       size="small"
       value=""
+      disabled={disabled}
       inputComponent={ButtonSlot}
       inputRef={buttonRef}
       inputProps={{
@@ -120,6 +129,11 @@ export function FieldButton({
         {
           flex: 1,
           cursor: "pointer",
+          // Disabled, MUI greys the text and the outline; the swatch, glyphs and trailing icon dim with it.
+          "&.Mui-disabled": {
+            "&, & .MuiInputBase-input": { cursor: "default" },
+            "& .MuiInputBase-input > :not(.MuiTypography-root), & > .MuiSvgIcon-root": { opacity: 0.5 },
+          },
           pl: start ? 1 : 0,
           // A trailing icon keeps the text's inset from the right border, with a gap before it for the truncated text.
           pr: end ? FIELD_INSET : 0,

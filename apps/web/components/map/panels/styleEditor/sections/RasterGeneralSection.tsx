@@ -2,18 +2,21 @@
 
 // General for raster files (prototype 3.1, 3.2; spec 9): how the cells are drawn, which band, and which bands make
 // the picture. Switching to a color range starts from the band's values (the raster service's statistics) or the
-// file's type; a file the service cannot read says so here.
+// file's type, so the choice waits for the file's info; a file the service cannot read says so once, at the top.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type RasterRenderType, defaultRender, drawAsOptions, equalClasses } from "@/lib/style/editor/raster";
 import { setIn } from "@/lib/style/editor/store";
 import { isObject } from "@/lib/style/json";
-import { seedDomain } from "@/lib/style/raster/metadata";
+import { bandLabel, seedDomain } from "@/lib/style/raster/metadata";
+import type { StyleIssue } from "@/lib/style/save";
 
+import { IssueNotice } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
   useEditor,
   useRasterSample,
+  useRasterWaiting,
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
@@ -33,6 +36,7 @@ export function RasterGeneralSection() {
   const store = useEditor();
   const { raster } = useStyleData();
   const sample = useRasterSample();
+  const waiting = useRasterWaiting();
   // Each key on its own: `render` also holds the classes, which this section does not show.
   const typeValue = useStyleValue<unknown>("render.type");
   const bandValue = useStyleValue<unknown>("render.band");
@@ -89,6 +93,16 @@ export function RasterGeneralSection() {
   };
 
   const label = t("style_editor.draw_as");
+  const failure: StyleIssue | null = raster?.error
+    ? {
+        level: raster.error === "refused" ? "error" : "warning",
+        code: `raster_${raster.error}`,
+        path: "render",
+        message: t(
+          raster.error === "refused" ? "style_editor.raster_refused" : "style_editor.raster_unavailable"
+        ),
+      }
+    : null;
   const bandCount = info?.bands ?? 1;
   const bands = Array.isArray(bandsValue) ? bandsValue : TRUE_COLOR;
   // Custom stays picked while its bands equal true or false color: the default stays out of the document.
@@ -100,22 +114,18 @@ export function RasterGeneralSection() {
         : "false";
   const bandOptions = Array.from({ length: bandCount }, (_, i) => ({
     value: i + 1,
-    label: t("style_editor.band_n", { n: i + 1 }),
+    label: bandLabel(info, i + 1, t),
   }));
   return (
-    <PanelSection title={t("style_editor.section_general")}>
+    <PanelSection
+      title={t("style_editor.section_general")}
+      scopeNote={failure && <IssueNotice issue={failure} />}>
       <ChoiceRow<RasterRenderType>
         label={label}
         value={type}
-        fixed={options.length === 1}
-        note={
-          note ??
-          (raster?.error === "refused"
-            ? t("style_editor.raster_refused")
-            : raster?.error
-              ? t("style_editor.raster_unavailable")
-              : undefined)
-        }
+        fixed={!waiting && options.length === 1}
+        disabled={waiting}
+        note={note ?? undefined}
         options={options.map((v) => ({
           value: v,
           label: t(`style_editor.raster_type_${v}`),

@@ -67,6 +67,8 @@ export interface ValueButtonProps {
   ariaLabel?: string;
   /** The whole value on hover and on keyboard focus, where a long summary is cut with an ellipsis. */
   tooltip?: string;
+  /** Shown, but its editor does not open: it waits for something (a file's info). */
+  disabled?: boolean;
   onOpen: (anchor: HTMLElement) => void;
 }
 
@@ -80,6 +82,7 @@ export function ValueButton({
   warn,
   ariaLabel,
   tooltip,
+  disabled,
   onOpen,
   buttonRef,
   expanded,
@@ -98,6 +101,7 @@ export function ValueButton({
       buttonRef={buttonRef}
       expanded={expanded}
       active={active}
+      disabled={disabled}
       end={<FieldTrailingIcon kind="chevron" />}>
       {swatch && <SwatchBox swatch={swatch} />}
       {glyph}

@@ -7,8 +7,9 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 export interface PanelSectionProps {
   title: ReactNode;
-  /** The section's add button; it is handed itself, so what it opens is placed beside it. */
-  add?: { label: string; onClick: (anchor: HTMLElement) => void };
+  /** The section's add button; it is handed itself, so what it opens is placed beside it. `disabled` while what it
+   * adds waits for something (a file's info). */
+  add?: { label: string; onClick: (anchor: HTMLElement) => void; disabled?: boolean };
   scope?: ReactNode;
   scopeNote?: ReactNode;
   empty?: ReactNode;
@@ -50,6 +51,7 @@ export const PanelSection = memo(function PanelSection({
           <IconButton
             size="small"
             aria-label={add.label}
+            disabled={add.disabled}
             onClick={(event) => add.onClick(event.currentTarget)}>
             <Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: 12 }} />
           </IconButton>

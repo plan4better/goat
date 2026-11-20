@@ -25,8 +25,21 @@ const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.fil
 const classifyOf = (doc: LayerStyle | undefined): JsonObject[] =>
   list((doc as unknown as JsonObject | undefined)?.classify);
 
-/** How many classifications the style has. */
-export const classifyCount = (doc: LayerStyle): number => classifyOf(doc).length;
+/** How many classifications the style has; for a raster, how many classes its colors have: the categories
+ * (`render.classes`) or the classes of a palette (`render.classify`, spec 9.3, 9.4), hidden ones too, and the
+ * classification's `count` while no classes are written yet. */
+export function classifyCount(doc: LayerStyle): number {
+  const root = doc as unknown as JsonObject | undefined;
+  if (root?.kind !== "raster") return classifyOf(doc).length;
+  const render = isObject(root.render) ? root.render : {};
+  if (render.type === "categorical") return list(render.classes).length;
+  if (render.type !== "continuous" && render.type !== "hillshade") return 0;
+  // Own stops color a range without classes; shading without a palette has no colors.
+  if (render.type === "continuous" && Array.isArray(render.stops)) return 0;
+  if (render.type === "hillshade" && render.palette == null) return 0;
+  const classify = isObject(render.classify) ? render.classify : {};
+  return list(classify.classes).length || (typeof classify.count === "number" ? classify.count : 0);
+}
 
 /** What the server computes a classification from. */
 const intentOf = (c: JsonObject | undefined) =>

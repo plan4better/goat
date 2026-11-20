@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { commonT } from "@/i18n/__tests__/commonI18n";
+
 import { fetchRasterPoint } from "@/lib/api/rasters";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import { rasterPopupLayer, rasterValuesAt } from "@/lib/style/raster/popup";
+import { rasterInfoOf } from "@/lib/style/raster/metadata";
+import { rasterPopupConfig, rasterPopupLayer, rasterValuesAt } from "@/lib/style/raster/popup";
 
 import { layerPopup } from "@/components/map/popover/normalizePopup";
 
@@ -110,5 +113,44 @@ describe("raster popups", () => {
     const disabled = cog(7, { ...ELEVATION, popup: { enabled: false } });
     expect(rasterPopupLayer([off, disabled], "click")).toBeUndefined();
     expect(layerPopup(off, { band_2: 1 })).toBeUndefined();
+  });
+
+  it("popup labels use the band's name or the translated Band n", () => {
+    const de = commonT("de");
+    const info = rasterInfoOf({
+      width: 1,
+      height: 1,
+      bounds: [0, 0, 1, 1],
+      count: 2,
+      dtype: "uint8",
+      nodata: null,
+      bits: [8, 8],
+      color_table: null,
+      names: ["Rot", ""],
+      scales: [1, 1],
+      offsets: [0, 0],
+      bands: [],
+    });
+    const photo = cog(9, {
+      version: 1,
+      kind: "raster",
+      render: { type: "image" },
+      popup: { bands: "all" },
+    });
+    const labels = (layer: ReturnType<typeof cog>, values: Record<string, number>) =>
+      (
+        rasterPopupConfig(layer, values, { t: de, info })?.blocks[0] as {
+          attributes: Array<{ label: string }>;
+        }
+      ).attributes.map((a) => a.label);
+    expect(labels(photo, { band_1: 200, band_2: 30 })).toEqual(["Rot", de("style_editor.band_n", { n: 2 })]);
+    // A band formula without a name: the translated "Value".
+    const formula = cog(10, {
+      version: 1,
+      kind: "raster",
+      render: { type: "continuous", band: { expression: "b1 / 2" }, palette: "goat:green", domain: [0, 1] },
+    });
+    expect(labels(formula, { formula: 0.5 })).toEqual([de("style_editor.value")]);
+    expect(de("style_editor.value")).not.toBe("Value");
   });
 });

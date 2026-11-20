@@ -32,12 +32,14 @@ export function normalizePopup(popup: PopupProperties): PopupProperties {
 }
 
 /** A map layer's popup: its style's (spec 7.4) in today's configuration, normalized; undefined when it shows none. A
- * raster file's popup lists the cell values it was opened with (`values`, spec 9.7). */
+ * raster file's popup lists the cell values it was opened with (`values`, spec 9.7), labeled as `raster` says. */
 export function layerPopup(
   layer: (PopupRaster & { style?: { document: LayerStyle } | null }) | null | undefined,
-  values?: Record<string, unknown>
+  values?: Record<string, unknown>,
+  raster?: Parameters<typeof rasterPopupConfig>[2]
 ): PopupProperties | undefined {
-  if (layer?.style?.document.kind === "raster") return values ? rasterPopupConfig(layer, values) : undefined;
+  if (layer?.style?.document.kind === "raster")
+    return values ? rasterPopupConfig(layer, values, raster) : undefined;
   const config = popupConfigOf(layer?.style?.document);
   return config ? normalizePopup(config) : undefined;
 }

@@ -36,6 +36,8 @@ export interface ChoiceRowProps<T = string> {
   fixed?: boolean;
   mode?: ReactNode;
   note?: ReactNode;
+  /** The choice waits for something (a file's info): shown, but its menu does not open. */
+  disabled?: boolean;
 }
 
 export interface ChoiceFieldProps<T = string> {
@@ -44,6 +46,7 @@ export interface ChoiceFieldProps<T = string> {
   onChange: (value: T) => void;
   /** The field's name where no label is beside it. */
   ariaLabel?: string;
+  disabled?: boolean;
   sx?: SxProps<Theme>;
 }
 
@@ -52,7 +55,7 @@ const fullName = <T,>(option: ChoiceOption<T> | undefined): string =>
   (option?.group ? option.short : undefined) ?? option?.label ?? "";
 
 /** The choice's field alone, for a row of several fields (a rule's condition). */
-export function ChoiceField<T>({ value, options, onChange, ariaLabel, sx }: ChoiceFieldProps<T>) {
+export function ChoiceField<T>({ value, options, onChange, ariaLabel, disabled, sx }: ChoiceFieldProps<T>) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const current = options.find((option) => Object.is(option.value, value));
   const items = options.flatMap((option, i) => [
@@ -76,6 +79,7 @@ export function ChoiceField<T>({ value, options, onChange, ariaLabel, sx }: Choi
         expanded={anchor !== null}
         active={anchor !== null}
         ariaLabel={ariaLabel}
+        disabled={disabled}
         sx={sx}
         onClick={(el) => setAnchor(anchor ? null : el)}
         end={<FieldTrailingIcon kind="caret" />}>
@@ -103,7 +107,16 @@ export function ChoiceField<T>({ value, options, onChange, ariaLabel, sx }: Choi
   );
 }
 
-function ChoiceRowInner<T>({ label, value, options, onChange, fixed, mode, note }: ChoiceRowProps<T>) {
+function ChoiceRowInner<T>({
+  label,
+  value,
+  options,
+  onChange,
+  fixed,
+  mode,
+  note,
+  disabled,
+}: ChoiceRowProps<T>) {
   return (
     <Row label={label} actions={mode} note={note}>
       {fixed ? (
@@ -116,6 +129,7 @@ function ChoiceRowInner<T>({ label, value, options, onChange, fixed, mode, note 
           options={options}
           onChange={onChange}
           ariaLabel={typeof label === "string" ? label : undefined}
+          disabled={disabled}
         />
       )}
     </Row>

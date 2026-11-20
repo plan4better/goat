@@ -290,6 +290,8 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                   onMoveEnd={handleMoveEnd}
                   onLoad={handleMapLoaded}
                   isEditor={false}
+                  // The phone layout shows the popup in its bottom drawer.
+                  popupInDrawer={isMobile}
                 />
               </Box>
             </MeasureProvider>

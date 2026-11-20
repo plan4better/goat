@@ -1,7 +1,8 @@
 "use client";
 
 // The colors of a raster file (prototype 3.3 to 3.5; spec 9.2 to 9.6): a color range opens its colors editor;
-// hillshade shows its light and colors; categories list their classes.
+// hillshade shows its light and colors; categories list their classes. The colors start from the file's values, so
+// they wait for its info.
 import { useTranslation } from "react-i18next";
 
 import { SLIDERS } from "@/lib/style/editor/defaults";
@@ -9,7 +10,7 @@ import { setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
-import { useEditor, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import { useEditor, useRasterWaiting, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import {
   CategoriesEditor,
   useCategoryAdder,
@@ -36,6 +37,7 @@ function ColorsRow() {
   const render: JsonObject = isObject(value) ? value : {};
   const popover = usePopover();
   const next = useNextLevel();
+  const waiting = useRasterWaiting();
   const hillshade = render.type === "hillshade";
   const colored = !hillshade || render.palette !== undefined;
   const { colors, stepped } = renderColors(render);
@@ -52,6 +54,7 @@ function ColorsRow() {
     <NavRow
       label={label}
       value={text}
+      disabled={waiting}
       swatch={
         colored ? { background: paletteStrip(colors, stepped) ?? "transparent", wide: true } : undefined
       }
@@ -140,14 +143,16 @@ export function RasterColorSection() {
   // The type only: the rows read what they show, so a class edit does not render the section.
   const typeValue = useStyleValue<unknown>("render.type");
   const addCategory = useCategoryAdder();
+  const waiting = useRasterWaiting();
   const type = typeof typeValue === "string" ? typeValue : "image";
   if (type === "image") return null;
   return (
     <PanelSection
-      title={t(`style_editor.raster_type_${type}`)}
+      // A color scale's section holds its colors; hillshade and categories hold more.
+      title={t(type === "continuous" ? "style_editor.colors" : `style_editor.raster_type_${type}`)}
       add={
         type === "categorical"
-          ? { label: t("style_editor.add_category"), onClick: () => addCategory(120) }
+          ? { label: t("style_editor.add_category"), onClick: () => addCategory(120), disabled: waiting }
           : undefined
       }>
       {type === "categorical" ? (

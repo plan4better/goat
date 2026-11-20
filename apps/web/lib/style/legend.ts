@@ -561,13 +561,15 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
   const legend = isObject(style.legend) ? style.legend : {};
   const text = (v: unknown) => (typeof v === "string" && v ? v : undefined);
   const ends: [string | undefined, string | undefined] = [text(legend.min_label), text(legend.max_label)];
+  // The unit follows the ramp's end values and the numbers of classes and categories, as a classification's does.
+  const unit = text(legend.unit);
   const ramp = (colors: string[], domain: [number, number], positions?: number[]): LegendSection => ({
     kind: "ramp",
     id: "raster",
     colors,
     ...(positions ? { positions } : {}),
     domain,
-    ...(text(legend.unit) ? { unit: text(legend.unit) } : {}),
+    ...(unit ? { unit } : {}),
     ...(ends.some(Boolean) ? { labels: ends } : {}),
   });
   const fill = (color: string): Swatch => ({ geometry: "polygon", fill: { color } });
@@ -613,7 +615,13 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
             },
           ]
     );
-    return entries.length ? [{ kind: "entries", id: "raster", entries }] : [];
+    // The render's domain (the style's, else the computed one) closes an open first or last class, as the data's
+    // minimum and maximum do a classification's.
+    const span = domainOf(render);
+    const domain = span && span.every(Number.isFinite) && span[0] <= span[1] ? span : undefined;
+    return entries.length
+      ? [{ kind: "entries", id: "raster", entries, ...(domain ? { domain } : {}), ...(unit ? { unit } : {}) }]
+      : [];
   }
   if (spec.kind === "categories") {
     const written = list(render.classes);
@@ -631,7 +639,7 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
     );
     // Values no class names take the other color, as the vector legend's Other entry shows them.
     if (spec.other !== null) entries.push({ id: "other", extra: "other", swatch: fill(spec.other) });
-    return entries.length ? [{ kind: "entries", id: "raster", entries }] : [];
+    return entries.length ? [{ kind: "entries", id: "raster", entries, ...(unit ? { unit } : {}) }] : [];
   }
   return [];
 }
