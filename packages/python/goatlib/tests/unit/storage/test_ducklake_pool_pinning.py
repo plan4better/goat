@@ -11,7 +11,14 @@ import time
 from typing import Any, Generator
 
 import pytest
-from goatlib.storage.ducklake import DuckLakePool
+from goatlib.storage.ducklake import DuckLakePool, is_connection_error
+
+# What DuckDB answers on every connection of a database after an internal
+# error in one of its queries.
+INVALIDATED = (
+    "FATAL Error: Failed: database has been invalidated because of a previous "
+    "fatal error. The database must be restarted prior to being used again."
+)
 
 
 class FakeCursor:
@@ -26,6 +33,8 @@ class FakeCursor:
         if self.closed or self.base.closed:
             # Matches CONNECTION_ERROR_PATTERNS, like a real dead libpq link
             raise RuntimeError("connection error: cursor or base closed")
+        if self.base.invalidated:
+            raise RuntimeError(INVALIDATED)
         return self
 
     def fetchall(self) -> list[tuple[int]]:
@@ -39,6 +48,9 @@ class FakeBase:
     def __init__(self, snapshot: int | None) -> None:
         self.snapshot = snapshot
         self.closed = False
+        # A DuckDB database invalidated by an internal error: cursors can
+        # still be drawn, every query fails.
+        self.invalidated = False
         self.cursors: list[FakeCursor] = []
 
     def cursor(self) -> FakeCursor:
@@ -455,6 +467,47 @@ def test_connection_error_triggers_pinned_reconnect(
     assert reconnects["n"] >= 1
     entries = pool_entries(pool)
     assert all(not e[0].base.closed for e in entries)
+
+
+def test_an_invalidated_database_is_a_connection_error() -> None:
+    assert is_connection_error(RuntimeError(INVALIDATED))
+
+
+@pytest.mark.parametrize("just_rebuilt", [False, True])
+def test_an_invalidated_base_is_rebuilt(pool: DuckLakePool, just_rebuilt: bool) -> None:
+    """After an internal error DuckDB invalidates the database, and every cursor
+    of the shared base fails: the next query rebuilds the base and answers,
+    also when the base was built moments ago (within the dedup window that
+    coalesces reconnect storms)."""
+    from goatlib.storage.snapshot_pin import SnapshotPin
+
+    pool._pin = SnapshotPin(pool._fetch_latest_snapshot_id, pool._apply_snapshot)
+    pool._pin._current = 10
+    if just_rebuilt:
+        pool._apply_snapshot(10, allow_same=True)
+    poisoned = bases(pool)[-1]
+    poisoned.invalidated = True
+    assert pool.execute_with_retry("SELECT 1", fetch_all=False) == (1,)
+    entries = pool_entries(pool)
+    assert len(entries) == 2
+    assert all(e[0].base is not poisoned for e in entries)
+    # Later queries answer too.
+    assert pool.execute_with_retry("SELECT 1", fetch_all=False) == (1,)
+
+
+def test_reconnect_within_the_window_keeps_a_base_that_answers(
+    pool: DuckLakePool,
+) -> None:
+    """Reconnect storms still coalesce onto one rebuild while the new base answers."""
+    from goatlib.storage.snapshot_pin import SnapshotPin
+
+    pool._pin = SnapshotPin(pool._fetch_latest_snapshot_id, pool._apply_snapshot)
+    pool._pin._current = 10
+    pool.reconnect()
+    n_bases = len(bases(pool))
+    pool.reconnect()
+    pool.reconnect()
+    assert len(bases(pool)) == n_bases
 
 
 def test_transient_data_error_retries_without_rebuild(

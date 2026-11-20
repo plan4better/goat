@@ -2182,6 +2182,10 @@ class TileService:
         full source geometry (read pre-tile-clipping, so endpoints are real
         endpoints rather than tile-boundary intersections).
 
+        A multipart line counts as one line: its parts joined where they meet
+        end to end (`ST_LineMerge`, which may turn a part to follow the
+        others), else its longest part.
+
         Args:
             table: Fully qualified table name
             geom_col: Geometry column name
@@ -2197,54 +2201,54 @@ class TileService:
         tile_xmin_3857, tile_ymin_3857, tile_xmax_3857, tile_ymax_3857 = bbox_3857
         tile_xmin, tile_ymin, tile_xmax, tile_ymax = bbox_4326
 
-        if decoration == "start":
-            placement_cte = f"""
-                SELECT
-                    ST_StartPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_StartPoint("{geom_col}"), ST_PointN("{geom_col}", 2))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "end":
-            placement_cte = f"""
-                SELECT
-                    ST_EndPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_PointN("{geom_col}", CAST(ST_NumPoints("{geom_col}") - 1 AS INTEGER)), ST_EndPoint("{geom_col}"))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "start_and_end":
-            placement_cte = f"""
-                SELECT
-                    ST_StartPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_StartPoint("{geom_col}"), ST_PointN("{geom_col}", 2))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-                UNION ALL
-                SELECT
-                    ST_EndPoint("{geom_col}") AS geom,
-                    DEGREES(ST_Azimuth(ST_PointN("{geom_col}", CAST(ST_NumPoints("{geom_col}") - 1 AS INTEGER)), ST_EndPoint("{geom_col}"))) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        elif decoration == "center":
-            placement_cte = f"""
-                SELECT
-                    ST_LineInterpolatePoint("{geom_col}", 0.5) AS geom,
-                    DEGREES(ST_Azimuth(
-                        ST_LineInterpolatePoint("{geom_col}", 0.49),
-                        ST_LineInterpolatePoint("{geom_col}", 0.51)
-                    )) AS bearing,
-                    rowid
-                FROM candidates
-                WHERE ST_NumPoints("{geom_col}") >= 2
-            """
-        else:
+        g = _qi(geom_col)
+        # One LINESTRING per feature: ST_StartPoint and ST_EndPoint answer NULL
+        # for any other type, and ST_LineInterpolatePoint refuses it.
+        parts = f"list_transform(ST_Dump(ST_LineMerge({g})), lambda d: d.geom)"
+        line_of_feature = (
+            f"CASE WHEN ST_GeometryType({g}) = 'LINESTRING' THEN {g} "
+            f"ELSE list_reduce({parts}, "
+            "lambda a, b: CASE WHEN ST_Length(b) > ST_Length(a) THEN b ELSE a END, "
+            "ST_GeomFromText('LINESTRING EMPTY')) END"
+        )
+        line = "__deco_line"
+        last = f"ST_PointN({line}, CAST(ST_NumPoints({line}) - 1 AS INTEGER))"
+        placements = {
+            "start": (
+                f"ST_StartPoint({line})",
+                f"ST_Azimuth(ST_StartPoint({line}), ST_PointN({line}, 2))",
+            ),
+            "end": (
+                f"ST_EndPoint({line})",
+                f"ST_Azimuth({last}, ST_EndPoint({line}))",
+            ),
+            "center": (
+                f"ST_LineInterpolatePoint({line}, 0.5)",
+                f"ST_Azimuth(ST_LineInterpolatePoint({line}, 0.49), "
+                f"ST_LineInterpolatePoint({line}, 0.51))",
+            ),
+        }
+        kinds = {
+            "start": ["start"],
+            "end": ["end"],
+            "start_and_end": ["start", "end"],
+            "center": ["center"],
+        }.get(decoration)
+        if not kinds:
             return None
+        # ST_AsMVTGeom must never see a NULL geometry: with other rows beside
+        # it, ST_AsMVT fails with an internal error that invalidates the
+        # DuckDB instance.
+        placement_cte = "\n                UNION ALL\n".join(
+            f"""
+                SELECT
+                    {placements[k][0]} AS geom,
+                    DEGREES({placements[k][1]}) AS bearing,
+                    rowid
+                FROM lines
+                WHERE {placements[k][0]} IS NOT NULL"""
+            for k in kinds
+        )
 
         placement_query = f"""
             WITH bounds AS (
@@ -2253,9 +2257,13 @@ class TileService:
                     ST_MakeEnvelope({tile_xmin}, {tile_ymin}, {tile_xmax}, {tile_ymax}) AS bbox4326
             ),
             candidates AS (
-                SELECT "{geom_col}", rowid
+                SELECT {line_of_feature} AS {line}, rowid
                 FROM {table}, bounds
-                WHERE ST_Intersects("{geom_col}", bounds.bbox4326){extra_where_sql}
+                WHERE ST_Intersects({g}, bounds.bbox4326){extra_where_sql}
+            ),
+            lines AS (
+                SELECT * FROM candidates
+                WHERE ST_GeometryType({line}) = 'LINESTRING' AND ST_NumPoints({line}) >= 2
             ),
             placement_pts AS (
                 {placement_cte}
