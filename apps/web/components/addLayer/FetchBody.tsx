@@ -37,7 +37,13 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { type MirrorValue, getMirrorColumns, getMirrorSample, getMirrorValues } from "@/lib/api/processes";
+import {
+  type MirrorValue,
+  getMirrorColumns,
+  getMirrorSample,
+  getMirrorValues,
+  usePtNetworkCoverageMask,
+} from "@/lib/api/processes";
 
 import type { SelectorItem } from "@/types/map/common";
 
@@ -65,6 +71,7 @@ import {
   SpatialPickerMap,
   useSpatialPicker,
 } from "@/components/dashboard/catalog/CatalogSpatialPicker";
+import MaskLayer from "@/components/map/MaskLayer";
 import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 import Selector from "@/components/map/panels/common/Selector";
 import { FieldLabel, SettingsColumn, SettingsSection } from "@/components/map/panels/common/SettingsColumn";
@@ -233,6 +240,8 @@ const AreaSettings = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: Spat
 /** The area on a map that fills its side: the map view is the area, other ways pick it on the map. */
 const AreaMap = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPicker }) => {
   const theme = useTheme();
+  // Where the public transport network is: a cut outside it holds no lines.
+  const { mask } = usePtNetworkCoverageMask(flow.source === "pt_network");
   // The area follows the one size state, as the estimate and the button do: grey until the first
   // answer, then green, or orange while the area holds more than a fetch takes.
   const shapeColor =
@@ -281,6 +290,7 @@ const AreaMap = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPi
       onMoveEnd={measure}
       onLoad={measure}
       frameEdits
+      layers={mask && <MaskLayer mask={mask} id="fetch-pt-network-coverage" />}
       sx={{ flex: 1, minHeight: 280 }}
       overlay={
         <>

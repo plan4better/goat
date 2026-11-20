@@ -821,3 +821,21 @@ export function useFeatureCount(layerId: string | undefined, filter?: string) {
     mutate,
   };
 }
+
+/**
+ * The default public transport network's coverage, as a GeoJSON mask: one polygon over the world
+ * with the areas the network serves cut out of it. Shown where the network is cut to an area.
+ *
+ * Fetched once: it changes only with a new network version. A network without one (the endpoint
+ * answers null), or a failed request, leaves `mask` undefined, and nothing is drawn.
+ */
+export function usePtNetworkCoverageMask(enabled: boolean) {
+  const { data, isLoading } = useSWR<GeoJSON.GeoJSON | null>(
+    enabled ? [`${PROCESSES_BASE_URL}/pt-network/coverage-mask`] : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateIfStale: false, shouldRetryOnError: false }
+  );
+  // Only GeoJSON is drawn: anything else the file holds is left out, not handed to the map.
+  const mask = data && typeof data === "object" && "type" in data ? data : undefined;
+  return { mask, isLoading };
+}

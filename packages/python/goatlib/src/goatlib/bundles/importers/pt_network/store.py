@@ -62,6 +62,21 @@ def tables_dir(pt_network_base_path: str) -> Path:
     return Path(pt_network_base_path).parent / TABLES_DIRNAME
 
 
+#: The network's coverage as a mask: one polygon over the world with the areas
+#: the network serves cut out of it, at the root of its base data version, next
+#: to ``pt_network/``. Written by the network build; a version may lack one.
+COVERAGE_MASK_FILENAME = "pt_geofence_mask.geojson"
+
+
+def coverage_mask_path(pt_network_base_path: str) -> Path:
+    """Where the network's coverage mask lies: at the root of the version that
+    holds the timetable (``pt_network_base_path``). The timetable path is
+    resolved first, as an installed version is reached through a link
+    (``pt_network -> .base/public_transport/<version>/pt_network``, see
+    ``tasks/sync_base_data``)."""
+    return Path(pt_network_base_path).resolve().parent.parent / COVERAGE_MASK_FILENAME
+
+
 def _sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:

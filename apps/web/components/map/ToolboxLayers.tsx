@@ -25,7 +25,7 @@ const ToolboxLayers = () => {
   return (
     <>
       {/* MASK LAYER  (Shows where tool computation is available*/}
-      {maskLayerUrl && <MaskLayer maskLayerUrl={maskLayerUrl} id="mask-layer" />}
+      {maskLayerUrl && <MaskLayer mask={maskLayerUrl} id="mask-layer" />}
       {startingPoints &&
         startingPoints.map((marker) => (
           <Marker key={v4()} longitude={marker[0]} latitude={marker[1]} anchor="bottom">

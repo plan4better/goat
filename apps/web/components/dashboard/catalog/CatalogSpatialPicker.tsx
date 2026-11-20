@@ -373,6 +373,7 @@ export const SpatialPickerMap = ({
   onLoad,
   geometry,
   overlay,
+  layers,
   shapeColor = SHAPE_COLOR,
   frameEdits = false,
   sx,
@@ -388,6 +389,8 @@ export const SpatialPickerMap = ({
   geometry?: GeoJSON.Geometry | null;
   /** Drawn over the map box. */
   overlay?: ReactNode;
+  /** Map layers drawn under the picked area, such as where a source has data. */
+  layers?: ReactNode;
   /** The drawn area's colour. */
   shapeColor?: string;
   /** Frame the map on a newly placed point, or on a polygon once it has three corners. */
@@ -482,6 +485,7 @@ export const SpatialPickerMap = ({
         mapStyle={basemapStyle}
         // Ours replaces it, at the end of the map's children.
         attributionControl={false}>
+        {layers}
         <Source id="spatial-draft" type="geojson" data={features}>
           <MapLayer
             id="spatial-draft-fill"

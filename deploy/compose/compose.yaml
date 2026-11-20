@@ -94,7 +94,7 @@ x-env-worker: &env-worker
   GTFS_DATA_PATH: /app/data/gtfs
   STREET_NETWORK_EDGES_BASE_PATH: /app/data/street_network/edges
   STREET_NETWORK_NODES_BASE_PATH: /app/data/street_network/nodes
-  PT_NETWORK_BASE_PATH: /app/data/pt_network/gtfs.bin
+  PT_NETWORK_BASE_PATH: &pt-network-base-path /app/data/pt_network/gtfs.bin
   CATALOG_LAYERS_DIR: /app/data/catalog/layers
   CATALOG_TILES_DIR: /app/data/catalog/tiles
   SCHEMA: customer
@@ -585,6 +585,9 @@ services:
       # this budget each; with the mirror lists' fixed 256 MB they fit the
       # memory limit below.
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
+      # The workers' public transport network, so the dialog that cuts it shows
+      # its coverage mask, which lies next to it (GET /pt-network/coverage-mask).
+      PT_NETWORK_BASE_PATH: *pt-network-base-path
     volumes:
       - goat-data:/app/data
     networks: [goat]
