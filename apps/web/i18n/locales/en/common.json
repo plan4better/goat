@@ -4009,6 +4009,7 @@
     "hillshade_colors": "Hillshade colors",
     "hillshade_colors_on": "Colors under the shading",
     "hillshade_colors_off": "None, shading only",
+    "hillshade_raised": "Flat terrain: heights exaggerated {{k}} times for the shading.",
     "hillshade_method": "Method",
     "hillshade_method_standard": "Standard",
     "hillshade_method_standard_sub": "One light, with an accent color for steep slopes",

@@ -19,6 +19,7 @@ import {
   resamplingOf,
   valueQuery,
   valueTilesUrl,
+  verticalScale,
 } from "@/lib/style/raster/values";
 
 type RasterSource = Extract<CompileSource, { type: "raster" }>;
@@ -90,14 +91,23 @@ function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, u
   return paint;
 }
 
-/** The value tiles' source: the cells' codes, decoded by MapLibre with their encoding. */
-function valueSource(coverage: string, query: ValueQuery, values: RasterValues): SourceSpecification {
+/** The value tiles' source: the cells' codes, decoded by MapLibre with their encoding, the values raised `k` times. */
+function valueSource(
+  coverage: string,
+  query: ValueQuery,
+  values: RasterValues,
+  k: number
+): SourceSpecification {
+  const { redFactor, greenFactor, blueFactor, baseShift } = values.encoding;
   return {
     type: "raster-dem",
     tiles: [valueTilesUrl(coverage, query, values)],
     tileSize: TILE_SIZE,
     encoding: "custom",
-    ...values.encoding,
+    redFactor: redFactor * k,
+    greenFactor: greenFactor * k,
+    blueFactor: blueFactor * k,
+    baseShift: baseShift * k,
     ...(values.maxzoom !== undefined ? { maxzoom: values.maxzoom } : {}),
   };
 }
@@ -145,11 +155,13 @@ export function rasterLayers(
     } as LayerSpecification);
   }
   if (!query || !values || (!stops && render.type !== "hillshade")) return layers;
-  // The value tiles: the colors' and the shading's source, next to image tiles when those draw the colors.
+  // The value tiles: the colors' and the shading's source, next to image tiles when those draw the colors. A hillshade
+  // raises flat terrain on the source (spec 9.6), and the colors on it move with the heights.
   const valuesId = token ? `${source.id}-values` : source.id;
-  out.sources[valuesId] = valueSource(source.coverage, query, values);
+  const k = render.type === "hillshade" ? verticalScale(values.range) : 1;
+  out.sources[valuesId] = valueSource(source.coverage, query, values, k);
   if (stops) {
-    const paint: Record<string, unknown> = { "color-relief-color": reliefColor(stops, values) };
+    const paint: Record<string, unknown> = { "color-relief-color": reliefColor(stops, values, k) };
     const opacity = toProperty(fromForm(style.opacity, "number", 1));
     if (opacity !== 1) paint["color-relief-opacity"] = opacity;
     if (resamplingOf(style) === "nearest") paint.resampling = "nearest";

@@ -5,12 +5,22 @@
 // they wait for its info.
 import { useTranslation } from "react-i18next";
 
+import { useLoadedRasterValues } from "@/lib/api/rasters";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { coverageUrl } from "@/lib/style/layerSource";
+import { bandRange } from "@/lib/style/raster/metadata";
+import { valueQuery, valuesUrl, verticalScale } from "@/lib/style/raster/values";
 
-import { useEditor, useRasterWaiting, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useRasterWaiting,
+  useStyleData,
+  useStyleSelector,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import {
   CategoriesEditor,
   useCategoryAdder,
@@ -74,6 +84,21 @@ function ColorsRow() {
 function HillshadeRows() {
   const { t } = useTranslation("common");
   const store = useEditor();
+  const { raster } = useStyleData();
+  const band = useStyleValue<unknown>("render.band");
+  // Flat terrain is raised before it is shaded, by the range the map's values description gives (spec 9.6): the
+  // description the map loaded, else the band's statistics (a band formula has none).
+  const address = useStyleSelector((doc) => {
+    const query = raster ? valueQuery(doc as unknown as JsonObject) : null;
+    return raster && query ? valuesUrl(coverageUrl(raster.dataset), query) : undefined;
+  });
+  const described = useLoadedRasterValues(address);
+  const raised = verticalScale(
+    described?.range ??
+      (typeof band === "object" && band !== null
+        ? null
+        : bandRange(raster?.info, typeof band === "number" ? band : 1))
+  );
   const read = {
     method: useStyleValue<unknown>("render.method"),
     direction: useStyleValue<unknown>("render.direction"),
@@ -115,6 +140,7 @@ function HillshadeRows() {
         label={t("style_editor.hillshade_strength")}
         {...SLIDERS["hillshade.exaggeration"]}
         value={value<number>("exaggeration")}
+        note={raised > 1 ? t("style_editor.hillshade_raised", { k: raised }) : undefined}
         onChange={setNumber("exaggeration")}
       />
       <ColorRow

@@ -303,14 +303,30 @@ export function reliefStops(
   return stops.map(([q, color]) => [q, css(color)]);
 }
 
-/** The `color-relief-color` of stops: each code's value as the source decodes it. */
-export function reliefColor(stops: ReliefStop[], values: RasterValues): unknown[] {
+/** The `color-relief-color` of stops: each code's value as the source decodes it, raised `k` times with the source
+ * (`verticalScale`). */
+export function reliefColor(stops: ReliefStop[], values: RasterValues, k = 1): unknown[] {
   const base = -values.encoding.baseShift;
   const step = values.encoding.blueFactor;
   return [
     "interpolate",
     ["linear"],
     ["elevation"],
-    ...stops.flatMap(([q, color]) => [base + q * step, color]),
+    ...stops.flatMap(([q, color]) => [(base + q * step) * k, color]),
   ];
+}
+
+/** The relief a hillshade's source raises a band's relief to at most, and the most it raises it. */
+const RAISED_RELIEF = 1000;
+const MAX_RAISE = 16;
+
+/** How many times a hillshade's source raises the heights of a band of `range` (minimum and maximum) before MapLibre
+ * shades them (spec 9.6): MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so the slopes of
+ * flat terrain are lost unless the heights are raised first. The largest power of two that keeps the relief within
+ * `RAISED_RELIEF`, at most `MAX_RAISE`; 1 for an unknown range. A power of two, so the raised codes decode exactly
+ * (float32 products by a power of two are exact) and the colors on the same source stay on their codes. */
+export function verticalScale(range: [number, number] | null): number {
+  const relief = range ? range[1] - range[0] : 0;
+  if (!(relief > 0) || !Number.isFinite(relief)) return 1;
+  return Math.min(MAX_RAISE, Math.max(1, 2 ** Math.floor(Math.log2(RAISED_RELIEF / relief))));
 }

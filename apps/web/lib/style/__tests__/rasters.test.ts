@@ -11,6 +11,7 @@ import {
   reliefColor,
   reliefStops,
   valueTilesUrl,
+  verticalScale,
 } from "@/lib/style/raster/values";
 
 import { maplibreErrors } from "./maplibre";
@@ -387,6 +388,53 @@ describe("raster files colored in the browser over value tiles", () => {
     ]);
     expect(paint).toHaveProperty("hillshade-accent-color");
     valid(out);
+  });
+
+  it("a hillshade raises a low relief by the largest power of two that keeps it within 1000, at most 16", () => {
+    // The relief is the band's minimum to maximum, as the values' description gives it.
+    const cases: Array<[[number, number] | null, number]> = [
+      [null, 1],
+      [[0, 0], 1],
+      [[0, 3000], 1],
+      [[0, 1000], 1],
+      [[0, 999], 1],
+      [[0, 500], 2],
+      // A DEM of Berlin and its surroundings (Copernicus, 30 m): raised 4 times.
+      [[-38.9, 189.1], 4],
+      [[0, 125], 8],
+      [[0, 50], 16],
+      [[0, 0.5], 16],
+    ];
+    for (const [range, k] of cases) expect([range, verticalScale(range)]).toEqual([range, k]);
+  });
+
+  it("a hillshade raises flat terrain on its source alone: colors and tile addresses keep the file's values", () => {
+    // 181 to 440 m: low relief, raised for the shading.
+    const k = verticalScale(VALUES.range);
+    expect(k).toBeGreaterThan(1);
+    const scaled = Object.fromEntries(Object.entries(VALUES.encoding).map(([key, v]) => [key, v * k]));
+    const render = { type: "hillshade", palette: "goat:elevation", domain: [181, 440] };
+    const out = compile({ render });
+    expect(out.sources.s).toMatchObject({ type: "raster-dem", encoding: "custom", ...scaled });
+    // The tiles are asked for with the file's own encoding.
+    expect(queryOf(out).get("base")).toBe(String(-VALUES.encoding.baseShift));
+    expect(queryOf(out).get("step")).toBe(String(VALUES.encoding.blueFactor));
+    // The colors sit on the raised values: each stop k times the value of its code.
+    const stops = reliefStops(valueRender(render), VALUES) as ReliefStop[];
+    expect(paintOf(out, "9-relief")["color-relief-color"]).toEqual(reliefColor(stops, VALUES, k));
+    expect(reliefColor(stops, VALUES, k).slice(3)).toEqual(
+      reliefColor(stops, VALUES)
+        .slice(3)
+        .map((v) => (typeof v === "number" ? v * k : v))
+    );
+    valid(out);
+    // A color scale alone, and a hillshade of a file of unknown range, keep the file's heights.
+    expect(
+      compile({ render: { type: "continuous", palette: "goat:elevation", domain: [181, 440] } }).sources.s
+    ).toMatchObject(VALUES.encoding);
+    expect(
+      compile({ render: { type: "hillshade" } }, { ...SOURCE, values: { ...VALUES, range: null } }).sources.s
+    ).toMatchObject(VALUES.encoding);
   });
 
   it("zooms go on every layer", () => {

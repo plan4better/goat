@@ -102,6 +102,12 @@ export function shortNumber(value: number): string {
   return text.length <= 10 ? text : value.toPrecision(3).replace(/\.?0+(?=e|$)/, "");
 }
 
+/** A band's minimum and maximum, as the values' description gives them; null when unknown. */
+export function bandRange(info: RasterInfo | undefined, band: number): [number, number] | null {
+  const stats = info?.stats.find((b) => b.index === band);
+  return stats && stats.min !== null && stats.max !== null ? [stats.min, stats.max] : null;
+}
+
 export interface ValueSample {
   min: number;
   max: number;

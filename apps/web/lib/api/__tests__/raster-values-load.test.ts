@@ -3,7 +3,14 @@
 // answer arrives.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { VALUES_RETRY_MS, VALUES_TIMEOUT_MS, VALUES_TTL_MS, loadRasterValues } from "@/lib/api/rasters";
+import {
+  VALUES_RETRY_MS,
+  VALUES_TIMEOUT_MS,
+  VALUES_TTL_MS,
+  loadRasterValues,
+  loadedRasterValues,
+  subscribeRasterValues,
+} from "@/lib/api/rasters";
 
 const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 vi.mock("@/lib/api/fetcher", () => ({ apiRequestAuth: requestMock, fetcher: vi.fn() }));
@@ -36,6 +43,24 @@ afterEach(() => {
 });
 
 describe("loadRasterValues", () => {
+  it("a loaded description is read by its address whatever its version, without asking; readers hear it arrive", async () => {
+    requestMock.mockResolvedValue(answer(description("1-e1")));
+    const url = `https://geoapi/collections/r${++n}/coverage/tiles/WebMercatorQuad?formula=b1&resampling=bilinear`;
+    const heard = vi.fn();
+    const stop = subscribeRasterValues(heard);
+    expect(loadedRasterValues(url)).toBeUndefined();
+    loadRasterValues(`${url}&v=7`, vi.fn());
+    // Another formula that starts the same is another address.
+    loadRasterValues(url.replace("formula=b1", "formula=b10"), vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalled();
+    expect(loadedRasterValues(url)).toMatchObject({ range: [0, 255] });
+    expect(loadedRasterValues(url.replace("formula=b1", "formula=b2"))).toBeUndefined();
+    // Reading asks nothing.
+    expect(requestMock).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
   it("asks once per address and calls back when the answer arrives", async () => {
     requestMock.mockResolvedValue(answer(description("1-e1")));
     const url = address();

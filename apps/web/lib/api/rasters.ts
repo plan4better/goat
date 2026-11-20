@@ -1,6 +1,6 @@
 // geoapi's raster service: a raster file's info with its band statistics, the cell values at a point, and the
 // descriptions of its value tiles.
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
@@ -86,6 +86,33 @@ interface ValuesEntry {
 
 /** The descriptions of value tiles, by address, for every map of the page. */
 const valuesCache = new Map<string, ValuesEntry>();
+/** Who hears when a description arrives (the style panel, which reads what the map loaded). */
+const valuesListeners = new Set<() => void>();
+
+/** Calls `listener` whenever a description arrives; returns the call that stops it. */
+export function subscribeRasterValues(listener: () => void): () => void {
+  valuesListeners.add(listener);
+  return () => {
+    valuesListeners.delete(listener);
+  };
+}
+
+/** The description already loaded for `url` (`valuesUrl` without a version), whatever version the map asked for;
+ * asks nothing. */
+export function loadedRasterValues(url: string): RasterValues | undefined {
+  for (const [key, entry] of valuesCache)
+    if ((key === url || key.startsWith(`${url}&v=`)) && entry.values) return entry.values;
+  return undefined;
+}
+
+/** `loadedRasterValues` for a component, read again when a description arrives. */
+export function useLoadedRasterValues(url: string | undefined): RasterValues | undefined {
+  return useSyncExternalStore(
+    subscribeRasterValues,
+    () => (url ? loadedRasterValues(url) : undefined),
+    () => undefined
+  );
+}
 
 /** A description, or null and whether the failure may pass (a server error, no answer in time). */
 async function requestValues(url: string): Promise<{ values: RasterValues | null; passing: boolean }> {
@@ -115,6 +142,7 @@ function askValues(url: string, entry: ValuesEntry): void {
     const waiting = [...entry.waiting];
     entry.waiting.clear();
     for (const onLoad of waiting) onLoad();
+    for (const listener of [...valuesListeners]) listener();
   });
 }
 

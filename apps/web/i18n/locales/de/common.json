@@ -4009,6 +4009,7 @@
     "hillshade_colors": "Farben der Schummerung",
     "hillshade_colors_on": "Farben unter der Schattierung",
     "hillshade_colors_off": "Keine, nur Schattierung",
+    "hillshade_raised": "Flaches Gelände: für die Schummerung {{k}}-fach überhöht.",
     "hillshade_method": "Methode",
     "hillshade_method_standard": "Standard",
     "hillshade_method_standard_sub": "Ein Licht, mit Akzentfarbe für steile Hänge",

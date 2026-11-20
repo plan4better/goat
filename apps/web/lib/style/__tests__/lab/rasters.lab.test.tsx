@@ -51,7 +51,21 @@ const SOURCE = {
   values: described({ encoding: tiles.cone.encoding, range: null, integer: false }),
 } satisfies CompileInput["source"];
 
-const raster = (id: string, style: JsonObject): LabCase => ({
+/** The cone on flat land: the same tiles decoded 32 times lower (a power of two, so exactly), 47 m high on a radius of
+ * about 1.8 km. Its description gives the range, as geoapi's does. */
+const FLAT = 32;
+const FLAT_SOURCE = {
+  ...SOURCE,
+  values: described({
+    encoding: Object.fromEntries(
+      Object.entries(tiles.cone.encoding).map(([key, v]) => [key, v / FLAT])
+    ) as RasterValues["encoding"],
+    range: [0, tiles.cone.height / FLAT],
+    integer: false,
+  }),
+} satisfies CompileInput["source"];
+
+const raster = (id: string, style: JsonObject, source: CompileInput["source"] = SOURCE): LabCase => ({
   id,
   style: { version: 1, kind: "raster", ...style },
   // A raster has no geometry of its own: the scene asks for one.
@@ -59,7 +73,7 @@ const raster = (id: string, style: JsonObject): LabCase => ({
   // Tiles where a cone of the fixture's height has slopes the hillshade shades fully, and a cell is many pixels wide.
   zoom: 12,
   fields: {},
-  source: SOURCE,
+  source,
 });
 
 async function scene(c: LabCase): Promise<Scene> {
@@ -124,9 +138,16 @@ describe("hillshade", () => {
     },
   });
 
-  for (const method of ["standard", "basic"]) {
-    it(`${method}: draws the highlight color on the flank toward the light, the shadow color on the other`, async () => {
-      const s = await scene(raster(`hillshade-${method}`, shaded(method)));
+  const cases = [
+    ["standard", SOURCE],
+    ["basic", SOURCE],
+    // Flat land is raised before MapLibre shades it, at the style's default strength.
+    ["standard", FLAT_SOURCE],
+  ] as const;
+  for (const [method, source] of cases) {
+    const flatLand = source === FLAT_SOURCE ? " on flat land" : "";
+    it(`${method}${flatLand}: draws the highlight color on the flank toward the light, the shadow color on the other`, async () => {
+      const s = await scene(raster(`hillshade-${method}${flatLand ? "-flat" : ""}`, shaded(method), source));
       expect(blank(s)).toBe(false);
 
       const render = s.style.render as JsonObject;

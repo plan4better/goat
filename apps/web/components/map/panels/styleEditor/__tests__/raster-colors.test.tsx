@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
@@ -9,6 +9,14 @@ import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/Po
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 
 import { choose, renderPanel } from "./renderPanel";
+
+// The map's loaded description of a formula's values: its range is the formula's (0 to 50), which the panel has no
+// statistics for.
+vi.mock("@/lib/api/rasters", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/rasters")>()),
+  useLoadedRasterValues: (url?: string) =>
+    url?.includes("formula=") ? { range: [0, 50], integer: false, version: "1", encoding: {} } : undefined,
+}));
 
 const MAP = {
   getBounds: () => ({
@@ -207,6 +215,26 @@ describe("raster colors", () => {
     await userEvent.click(within(rowOf("style_editor.hillshade_colors")).getByRole("checkbox"));
     await waitFor(() => expect(store.get("render.domain")).toEqual([3, 98]));
     expect(store.get("render.palette")).toBe("goat:elevation");
+  });
+
+  it("hillshade on flat terrain says under Strength that it is raised; steep terrain has no note", () => {
+    // 3.2 to 97.5: raised 8 times (the largest power of two that keeps the relief within 1000).
+    const { unmount } = setup({ type: "hillshade", exaggeration: 0.8 });
+    const note = within(rowOf("style_editor.hillshade_strength").parentElement as HTMLElement);
+    expect(note.getByText("style_editor.hillshade_raised")).toBeDefined();
+    unmount();
+    setup({ type: "hillshade" }, {}, { ...INFO, stats: stats(0, 2500) });
+    expect(screen.queryByText("style_editor.hillshade_raised")).toBeNull();
+  });
+
+  it("a hillshade of a band formula takes the range of the map's values description for the note", () => {
+    setup(
+      { type: "hillshade", band: { name: "Twice", expression: "b1 * 2" } },
+      {},
+      { ...INFO, stats: stats(0, 2500) }
+    );
+    // 0 to 50: raised 16 times, although band 1's statistics are steep.
+    expect(screen.getByText("style_editor.hillshade_raised")).toBeDefined();
   });
 
   it("hillshade shows the accent only for the standard method", async () => {
