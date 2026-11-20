@@ -52,11 +52,12 @@ def test_new_layers_never_get_the_pale_spectral_colors() -> None:
     assert not colors & pale
 
 
-def test_service_default_is_a_plain_image_slightly_see_through() -> None:
-    assert default_style(DataContext(kind="raster", source="xyz")) == {
+@pytest.mark.parametrize("source", ["xyz", "cog"])
+def test_raster_default_is_a_plain_image_at_full_opacity(source: str) -> None:
+    # No opacity key: rasters draw at the schema's opacity 1, so the colors on the map match the legend.
+    assert default_style(DataContext(kind="raster", source=source)) == {
         "version": "1.0.0",
         "kind": "raster",
-        "opacity": 0.8,
         "render": {"type": "image"},
     }
 

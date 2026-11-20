@@ -156,10 +156,10 @@ def test_stamping_touches_only_what_the_server_computes() -> None:
     assert stamp_computed(raster, "ducklake:1", "t") == raster
 
 
-def test_rasters_and_map_services_get_todays_opacity_by_default() -> None:
+def test_rasters_and_map_services_draw_at_full_opacity_by_default() -> None:
     for source in ("file", "wms", "wmts", "xyz"):
         doc = default_style(DataContext(kind="raster", source=source))  # type: ignore[arg-type]
-        assert doc["opacity"] == 0.8
+        assert "opacity" not in doc
         assert errors(doc, DataContext(kind="raster", source=source)) == []  # type: ignore[arg-type]
 
 

@@ -142,13 +142,8 @@ def _color(seed: str | None) -> str:
 def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any]:
     """A minimal valid document for a dataset; `seed` (the layer id) picks the color."""
     if ctx.kind == "raster":
-        # Files and map services start slightly see-through, as they always did.
-        return {
-            "version": "1.0.0",
-            "kind": "raster",
-            "opacity": 0.8,
-            "render": {"type": "image"},
-        }
+        # Files and map services draw at full opacity, so the colors on the map match the legend.
+        return {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}}
     color = _color(seed)
     if ctx.geometry == "point":
         symbol: dict[str, Any] = {

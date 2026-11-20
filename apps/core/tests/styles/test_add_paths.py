@@ -110,7 +110,6 @@ async def test_a_raster_created_through_the_api_gets_a_map_service_default(
     assert default.document == {
         "version": "1.0.0",
         "kind": "raster",
-        "opacity": 0.8,
         "render": {"type": "image"},
     }
 
