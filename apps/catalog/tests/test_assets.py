@@ -588,7 +588,7 @@ class TestRasterTiles:
         "domain": [0, 4],
     }
 
-    def _reader(self, tmp_path: Path) -> Any:
+    def _reader(self, tmp_path: Path, tags: dict[str, str] | None = None) -> Any:
         import numpy as np
         import rasterio
         from goatlib.raster.source import RasterSource
@@ -609,10 +609,15 @@ class TestRasterTiles:
             transform=from_bounds(10, 47, 11, 48, 64, 64),
         ) as dst:
             dst.write((np.arange(64 * 64).reshape(64, 64) % 4 + 1).astype("uint8"), 1)
+            if tags:
+                dst.update_tags(1, **tags)
 
         class _Local(RasterTileReader):
             def _source(self, generation: str, key: str) -> RasterSource:
                 return RasterSource(None, stored_file=tif)
+
+            def _version(self, generation: str, key: str) -> str:
+                return "file-1"
 
         settings = _settings(tmp_path)
         return _Local(settings, TileReader(settings))
@@ -650,6 +655,44 @@ class TestRasterTiles:
                 "g", {"parquet_url": "../../../data/r-1.tif"}, 8, 135, 90, "not-a-token"
             )
         assert bad_token.value.status_code == 400
+
+    def test_values_are_tiled_for_the_browser_to_color(self, tmp_path: Path) -> None:
+        """GOAT Style colors a raster in the browser from value tiles; the
+        description says how their codes become values, like geoapi's."""
+        from goatlib.raster.formula import parse_formula
+
+        reader = self._reader(tmp_path)
+        row = {"id": "r-1", "parquet_url": "../../../data/r-1.tif"}
+        band = parse_formula("b1")
+        encoding, maxzoom, version = reader.value_tileset("g", row, band)
+        assert encoding.integer and encoding.range == (1.0, 4.0)
+        assert maxzoom is not None and version == "file-1"
+        tile = reader.value_tile("g", row, 8, 135, 90, band, encoding, "nearest")
+        assert tile is not None and tile[8:12] == b"WEBP"
+        assert reader.value_tile("g", row, 8, 10, 10, band, encoding, "nearest") is None
+        with pytest.raises(ApiError) as missing_band:
+            reader.value_tileset("g", row, parse_formula("b2"))
+        assert missing_band.value.status_code == 400
+
+    def test_a_raster_its_reader_cannot_parse_is_not_available(
+        self, tmp_path: Path
+    ) -> None:
+        """Statistics written with a decimal comma break every read: 404, not 500."""
+        from goatlib.raster.formula import parse_formula
+        from goatlib.raster.token import encode_token
+        from goatlib.raster.values import value_encoding
+
+        reader = self._reader(
+            tmp_path, {"STATISTICS_MINIMUM": "1,5", "STATISTICS_MAXIMUM": "4,5"}
+        )
+        row = {"id": "r-1", "parquet_url": "../../../data/r-1.tif"}
+        band = parse_formula("b1")
+        with pytest.raises(ApiError) as drawn:
+            reader.tile("g", row, 8, 135, 90, encode_token(self.RAMP))
+        encoding = value_encoding("uint8", scaled=False, value_range=None)
+        with pytest.raises(ApiError) as values:
+            reader.value_tile("g", row, 8, 135, 90, band, encoding, "nearest")
+        assert drawn.value.status_code == values.value.status_code == 404
 
     def test_the_signed_address_names_the_bucket_object(self, tmp_path: Path) -> None:
         from catalog.services.tiles import TileReader

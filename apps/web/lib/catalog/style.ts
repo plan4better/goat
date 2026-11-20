@@ -23,9 +23,9 @@ function previewStyle(style: Record<string, unknown>): LayerStyle {
 /** A raster layer drawn by the catalog's raster tiles, colored by its style as a project draws it. */
 export function catalogRasterLayer(
   style: unknown,
-  source: { tiles: string; dem: string } | null
+  source: { tiles: string; coverage: string } | null
 ): RenderLayer | undefined {
-  if (!source || !isObject(style) || style.version !== 1 || style.kind !== "raster") return undefined;
+  if (!source || !isDrawableStyle(style) || style.kind !== "raster") return undefined;
   return {
     key: CATALOG_SAMPLE_KEY,
     style: previewStyle(style),
@@ -41,7 +41,7 @@ export function catalogTilesLayer(
   tilesUrl: string | null,
   highlight?: number
 ): RenderLayer | undefined {
-  if (!tilesUrl || !isObject(style) || style.version !== 1 || !geometryType || !GEOMETRIES.has(geometryType)) {
+  if (!tilesUrl || !isDrawableStyle(style) || !geometryType || !GEOMETRIES.has(geometryType)) {
     return undefined;
   }
   return {

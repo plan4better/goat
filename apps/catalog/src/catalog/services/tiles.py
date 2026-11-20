@@ -22,6 +22,8 @@ import time
 import urllib.error
 import urllib.request
 from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -231,6 +233,14 @@ class TileReader:
 _ADDRESS_REUSE_S = 12 * 3600
 _ADDRESS_VALID_S = 24 * 3600
 _RASTER_SUFFIXES = (".tif", ".tiff")
+_RANGES_KEPT = 256
+
+
+def _single_band(formula: Any) -> int | None:
+    """The band a formula only names (`b2`), else None."""
+    if len(formula.bands) == 1 and formula.expression.strip() == f"b{formula.bands[0]}":
+        return formula.bands[0]
+    return None
 
 
 class RasterTileReader:
@@ -243,6 +253,7 @@ class RasterTileReader:
         self._settings = settings
         self._tiles = tiles
         self._addresses: dict[tuple[str, str], tuple[str, float]] = {}
+        self._ranges: dict[tuple[str, str, str], tuple[float, float] | None] = {}
         self._lock = threading.Lock()
 
     def _key(self, row: dict[str, Any]) -> str:
@@ -268,6 +279,59 @@ class RasterTileReader:
         host = urlsplit(cached[0]).hostname or ""
         return RasterSource(cached[0], private_hosts=[host])
 
+    def _version(self, generation: str, key: str) -> str:
+        """The version of the file's value tiles: goat-data replaces a raster
+        under the same name, so the object's ETag counts, not only the sync."""
+        etag = self._tiles.read_range(key, 0, 1)[1]
+        return hashlib.sha1(f"{generation}:{etag}".encode()).hexdigest()[:16]
+
+    def _range(
+        self, version: str, key: str, source: Any, formula: Any
+    ) -> tuple[float, float] | None:
+        """A band's minimum and maximum from its statistics, or a formula's
+        from a sample of the file, as geoapi reads them; kept per version."""
+        import numpy as np
+
+        cache = (version, key, formula.expression)
+        with self._lock:
+            if cache in self._ranges:
+                return self._ranges[cache]
+        band = _single_band(formula)
+        if band is None:
+            sampled = source.sample(formula)
+            found = (
+                (float(np.min(sampled)), float(np.max(sampled)))
+                if sampled.size
+                else None
+            )
+        else:
+            stats = next((b for b in source.statistics() if b.index == band), None)
+            found = (
+                (stats.min, stats.max)
+                if stats is not None and stats.min is not None and stats.max is not None
+                else None
+            )
+        with self._lock:
+            self._ranges[cache] = found
+            while len(self._ranges) > _RANGES_KEPT:
+                self._ranges.pop(next(iter(self._ranges)))
+        return found
+
+    @contextmanager
+    def _reading(self, key: str) -> Iterator[None]:
+        """Errors of one read as API answers: a band the file lacks is the
+        caller's (400); a file that cannot be read, unreachable or with
+        metadata GDAL's readers reject (statistics with a decimal comma), 404."""
+        from goatlib.raster.source import BandError, RasterUnavailableError
+
+        try:
+            yield
+        except BandError as error:
+            raise ApiError(400, str(error)) from None
+        except (RasterUnavailableError, ValueError, OSError) as error:
+            logger.warning("raster %s not readable: %s", key, error)
+            raise ApiError(404, "the raster is not available") from None
+
     def tile(
         self,
         generation: str,
@@ -279,7 +343,6 @@ class RasterTileReader:
     ) -> bytes | None:
         """A colored WebP tile, None outside the file; 400 for a bad coloring,
         404 when the item is no raster or its file cannot be read."""
-        from goatlib.raster.source import BandError, RasterUnavailableError
         from goatlib.raster.token import TokenError, decode_token
 
         key = self._key(row)
@@ -287,25 +350,49 @@ class RasterTileReader:
             coloring = decode_token(token or "")
         except TokenError as error:
             raise ApiError(400, str(error)) from None
-        try:
-            with self._source(generation, key) as source:
-                return source.tile(z, x, y, coloring)
-        except BandError as error:
-            raise ApiError(400, str(error)) from None
-        except RasterUnavailableError as error:
-            logger.warning("raster tile of %s not available: %s", key, error)
-            raise ApiError(404, "the raster is not available") from None
+        with self._reading(key), self._source(generation, key) as source:
+            return source.tile(z, x, y, coloring)
 
-    def dem(
-        self, generation: str, row: dict[str, Any], z: int, x: int, y: int
-    ) -> bytes | None:
-        """The first band as Terrarium elevation tiles, for hillshade styles."""
-        from goatlib.raster.source import RasterUnavailableError
+    def value_tileset(
+        self, generation: str, row: dict[str, Any], formula: Any
+    ) -> tuple[Any, int | None, str]:
+        """How the value tiles of a band or formula hold its values, the file's
+        deepest useful zoom and the tiles' version (geoapi's coverage tileset)."""
+        from goatlib.raster.source import BandError
+        from goatlib.raster.values import value_encoding
 
         key = self._key(row)
-        try:
+        with self._reading(key):
+            version = self._version(generation, key)
             with self._source(generation, key) as source:
-                return source.dem(z, x, y)
-        except RasterUnavailableError as error:
-            logger.warning("raster dem of %s not available: %s", key, error)
-            raise ApiError(404, "the raster is not available") from None
+                info = source.info()
+                if max(formula.bands) > info.count:
+                    raise BandError(
+                        f"The raster has {info.count} band"
+                        f"{'s' if info.count != 1 else ''}."
+                    )
+                encoding = value_encoding(
+                    info.dtype,
+                    scaled=info.scaled,
+                    value_range=self._range(version, key, source, formula),
+                    formula=_single_band(formula) is None,
+                )
+                return encoding, info.maxzoom, version
+
+    def value_tile(
+        self,
+        generation: str,
+        row: dict[str, Any],
+        z: int,
+        x: int,
+        y: int,
+        formula: Any,
+        encoding: Any,
+        resampling: str,
+    ) -> bytes | None:
+        """A lossless WebP value tile in `encoding`, None outside the file."""
+        key = self._key(row)
+        if x >= 2**z or y >= 2**z:
+            return None
+        with self._reading(key), self._source(generation, key) as source:
+            return source.values(z, x, y, formula, encoding, resampling)
