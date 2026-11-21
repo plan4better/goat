@@ -9,6 +9,7 @@ from goatlib.io.ingest import convert_any
 from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.io.remote_source.wfs_reader import WFSReader
 from goatlib.models.io import DatasetMetadata
+from goatlib.utils.layer_address import text_without_keys, without_key
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def from_wfs(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not reader.can_handle(url):
-        raise ValueError(f"URL does not look like a WFS endpoint: {url}")
+        raise ValueError(f"URL does not look like a WFS endpoint: {without_key(url)}")
 
     # Fetch available layers
     layers = _fetch_wfs_layers(reader, url)
@@ -76,7 +77,7 @@ def _fetch_wfs_layers(reader: WFSReader, url: str) -> List[str]:
     try:
         return reader.get_layers(url)
     except RuntimeError as e:
-        raise RuntimeError(f"Failed to fetch WFS layers from {url}") from e
+        raise RuntimeError(f"Failed to fetch WFS layers from {without_key(url)}") from e
 
 
 def _display_available_layers(layers: List[str]) -> None:
@@ -135,7 +136,11 @@ def _convert_wfs_layers(
             results.extend(layer_results)
 
         except Exception as e:
-            logger.error("Failed to process WFS layer '%s': %s", layer_name, e)
+            logger.error(
+                "Failed to process WFS layer '%s': %s",
+                layer_name,
+                text_without_keys(str(e)),
+            )
             # Continue with next layer instead of failing completely
 
     # Return appropriate format based on number of results
@@ -191,14 +196,15 @@ def _fetch_wfs_to_geojson(
     clean_url = reader._clean_wfs_url(url)
     connection_string = f"WFS:{clean_url}"
 
-    logger.info("Opening WFS datasource: %s", connection_string)
+    logger.info("Opening WFS datasource: WFS:%s", without_key(clean_url))
 
     # Open WFS datasource
     wfs_ds = ogr.Open(connection_string, 0)
     if wfs_ds is None:
         error_msg = gdal.GetLastErrorMsg()
         raise RuntimeError(
-            f"Failed to open WFS datasource: {error_msg or 'Unknown error'}"
+            "Failed to open WFS datasource: "
+            f"{text_without_keys(error_msg) or 'Unknown error'}"
         )
 
     try:
@@ -243,7 +249,8 @@ def _fetch_wfs_to_geojson(
             if out_layer is None:
                 error_msg = gdal.GetLastErrorMsg()
                 raise RuntimeError(
-                    f"Failed to copy layer: {error_msg or 'Unknown error'}"
+                    "Failed to copy layer: "
+                    f"{text_without_keys(error_msg) or 'Unknown error'}"
                 )
 
             # Force write

@@ -779,11 +779,17 @@ import goes on. A failed import deletes the uploads it created, with the same to
 ## A remote file's address in a project archive
 
 A raster layer added from a file's address can carry an access key in it (a signed link's query string, a user and
-password before the host). Whoever may read a project may export it, so `project_export` writes such an address
-whole only for an exporter core's `layer_write_allowed` lets edit the layer, asked in its layer query; anyone else's
-archive holds it without query string, fragment and credentials. The rule is `utils/layer_address.py`, which core's
-layer reads use too. Map services keep their address, since the browser loads their tiles from it. A layer imported
-from such an archive needs its full address set again before its file can be read.
+password before the host), and so can a WFS copy's source address (`other_properties.url`, in the layer and in its
+project links), which names the service its features came from. Whoever may read a project may export it, so
+`project_export` writes those addresses whole only for an exporter core's `layer_write_allowed` lets edit the layer,
+asked in its layer query; anyone else's archive holds them without query string, fragment and credentials. The rule
+is `utils/layer_address.py` (`layer_shown`), which core's layer reads use too. Map services keep their address, since
+the browser loads their tiles from it. A remote-file layer imported from such an archive needs its full address set
+again before its file can be read. A WFS copy imported from it keeps the shortened source address too, so refreshing
+it asks the service without the key; no route edits that address (a link save keeps the stored one), so the way back
+is a new import from the service. Log lines and job errors, which more people read than a layer's editors, never hold
+such a key: the raster reader and the WFS import (`tools/layer_import.py`, `io/remote_source/`) name an address with
+`without_key` and clean quoted error text (GDAL's, requests') with `text_without_keys`.
 
 ## Files another pod just wrote
 

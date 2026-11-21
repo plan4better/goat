@@ -16,6 +16,7 @@ from fastapi import (
 )
 from fastapi_pagination import Page
 from fastapi_pagination import Params as PaginationParams
+from goatlib.utils.layer_address import layer_shown
 from pydantic import UUID4, BaseModel
 from sqlalchemy import select, text
 from sqlmodel import SQLModel
@@ -26,7 +27,7 @@ from core.core.config import settings
 from core.core.content import (
     read_content_by_id,
 )
-from core.core.layer_address import addresses_for
+from core.core.layer_address import shortened_layers
 from core.crud.crud_folder import folder as crud_folder
 from core.crud.crud_layer import layer as crud_layer
 from core.crud.crud_space import space as crud_space
@@ -209,12 +210,18 @@ async def read_layer(
         examples=["3fa85f64-5717-4562-b3fc-2c963f66afa6"],
     ),
 ) -> ILayerRead:
-    """Retrieve a layer by its ID. A remote raster file's address comes
-    without its query string to a caller who cannot edit the layer."""
+    """Retrieve a layer by its ID. A remote raster file's address and a WFS
+    copy's source address come without their query string to a caller who
+    cannot edit the layer."""
     layer = await read_content_by_id(
         async_session=async_session, id=layer_id, model=Layer, crud_content=crud_layer
     )
-    addresses = await addresses_for(async_session, user_id, [layer])
+    row = layer.model_dump()
+    catalog = layer.catalog_external_uid is not None
+    if layer.id in await shortened_layers(
+        async_session, user_id, [(layer.id, row, catalog)]
+    ):
+        row = dict(layer_shown(row, catalog=catalog, can_edit=False))
 
     # The owner, as the listing endpoint reports it. A catalog layer has no
     # user_id, so it keeps `owned_by` None.
@@ -234,13 +241,7 @@ async def read_layer(
         else None
     )
 
-    return ILayerRead.model_validate(
-        {
-            **layer.model_dump(),
-            **({"url": addresses[layer.id]} if layer.id in addresses else {}),
-            "owned_by": owned_by,
-        }
-    )
+    return ILayerRead.model_validate({**row, "owned_by": owned_by})
 
 
 @router.post(

@@ -1,16 +1,17 @@
 # Standard library imports
-from typing import List, Tuple, Union
+from typing import Any, List, Tuple, Union
 from uuid import UUID
 
 # Third party imports
 from fastapi import HTTPException, status
+from goatlib.utils.layer_address import layer_shown
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.core.config import settings
-from core.core.layer_address import addresses_for
+from core.core.layer_address import shortened_layers
 from core.db.models._link_model import LayerProjectGroup, LayerProjectLink
 from core.db.models.layer import Layer
 from core.db.models.project import Project
@@ -72,6 +73,23 @@ LOCKED_ROW_KEYS = frozenset(
         "layer_project_group_id",
     }
 )
+
+
+def keep_stored_source(stored: Any, sent: Any) -> Any:
+    """A link's `other_properties` as a save writes it: what was sent, with
+    the stored `url` whatever was sent. That `url` is a copy of the dataset's
+    address (a WFS copy's source, a service's address), never set through a
+    link; someone who may not edit the dataset reads it shortened, and their
+    saves send it back as read. Anything that is no dict is left for
+    validation."""
+    if sent is not None and not isinstance(sent, dict):
+        return sent
+    kept = dict(sent or {})
+    if isinstance(stored, dict) and "url" in stored:
+        kept["url"] = stored["url"]
+    else:
+        kept.pop("url", None)
+    return kept if kept or sent is not None else None
 
 
 def contains_pattern(text_: str) -> str:
@@ -325,14 +343,28 @@ class CRUDLayerProject(CRUDBase):
         own; such a row is rebuilt from ``LOCKED_ROW_KEYS`` alone, so it carries
         only what the layer tree needs to show that something is there.
 
-        A remote raster file's address comes without its query string to a
-        ``user_id`` who cannot edit its dataset, and to a read without a user
-        (the public snapshot); whoever can edit it gets it whole
-        (`core.core.layer_address`).
+        A remote raster file's address and a WFS copy's source address come
+        without their query string to a ``user_id`` who cannot edit the
+        dataset, and to a read without a user (the public snapshot); whoever
+        can edit it gets them whole (`core.core.layer_address`). The link's
+        `other_properties` (a copy of the layer's) is the one shown.
         """
         layer_projects_schemas = []
-        addresses = await addresses_for(
-            async_session, user_id, [row[0] for row in layers_project]
+        shortened = await shortened_layers(
+            async_session,
+            user_id,
+            [
+                (
+                    row[0].id,
+                    {
+                        "url": row[0].url,
+                        "data_type": row[0].data_type,
+                        "other_properties": row[1].other_properties,
+                    },
+                    row[0].catalog_external_uid is not None,
+                )
+                for row in layers_project
+            ],
         )
 
         # Loop through layer and layer projects
@@ -372,8 +404,14 @@ class CRUDLayerProject(CRUDBase):
                     if key in layer.other_properties:
                         merged[key] = layer.other_properties[key]
                 layer_dict["other_properties"] = merged
-            if layer.id in addresses:
-                layer_dict["url"] = addresses[layer.id]
+            if layer.id in shortened:
+                layer_dict = dict(
+                    layer_shown(
+                        layer_dict,
+                        catalog=layer.catalog_external_uid is not None,
+                        can_edit=False,
+                    )
+                )
             if locked_by_layer_id and locked_by_layer_id.get(layer.id):
                 # A locked row is rebuilt from LOCKED_ROW_KEYS only, so a field
                 # added to the layer or the link later cannot leak through it.
@@ -428,7 +466,8 @@ class CRUDLayerProject(CRUDBase):
         snapshot uses it: publishing is the widest audience there is, and whoever
         added such a layer could not share it with one person, let alone
         everyone. Without ``user_id`` (the public snapshot) every remote raster
-        file's address comes without its query string.
+        file's address and WFS copy's source address comes without its query
+        string.
         """
         # Get project to retrieve layer_order
         project = await CRUDBase(Project).get(async_session, id=project_id)
@@ -771,6 +810,15 @@ class CRUDLayerProject(CRUDBase):
             )
         else:
             model_type_update = layer_type_mapping_update.get(layer.type)
+
+        # The link's copy of the dataset's address stays as stored.
+        if "other_properties" in layer_in:
+            layer_in = {
+                **layer_in,
+                "other_properties": keep_stored_source(
+                    layer_project_old.other_properties, layer_in["other_properties"]
+                ),
+            }
 
         # Parse and validate the data against the model
         try:

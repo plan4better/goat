@@ -36,6 +36,9 @@ WMS = (
     "&key=service-key&BBOX={bbox-epsg-3857}"
 )
 XYZ = "https://tiles.example.org/{z}/{x}/{y}.png?api_key=service-key"
+#: Where a WFS copy's features came from (`other_properties.url`).
+WFS_COPY = "https://example.org/wfs?key=secret"
+WFS_SHOWN = "https://example.org/wfs"
 
 
 async def _raster(
@@ -56,6 +59,26 @@ async def _raster(
     return layer
 
 
+async def _wfs_copy(db: AsyncSession, owner: User, folder: Folder) -> Layer:
+    """A layer imported from a WFS: its features are GOAT's, its
+    `other_properties.url` names the service they came from."""
+    layer = Layer(
+        id=uuid4(),
+        user_id=owner.id,
+        folder_id=folder.id,
+        space_id=(await crud_space.ensure_personal(db, owner.id)).id,
+        name=f"wfs-{uuid4().hex[:6]}",
+        type="feature",
+        feature_layer_type="standard",
+        feature_layer_geometry_type="point",
+        data_type="wfs",
+        other_properties={"url": WFS_COPY, "layers": ["trees"]},
+    )
+    db.add(layer)
+    await db.flush()
+    return layer
+
+
 class World:
     owner: User
     viewer: User
@@ -64,6 +87,7 @@ class World:
     cog: Layer
     wms: Layer
     xyz: Layer
+    wfs: Layer
     links: dict[UUID, int]
 
 
@@ -77,9 +101,10 @@ async def world(
     make_folder: Callable[..., Awaitable[Folder]],
     make_project: Callable[..., Awaitable[Project]],
 ) -> World:
-    """A project in its owner's personal space with a remote file, a WMS and
-    an XYZ layer of the owner's. `viewer` views the project; `editor` views
-    it too and may edit the remote file's dataset."""
+    """A project in its owner's personal space with a remote file, a WMS, an
+    XYZ layer and a WFS copy of the owner's. `viewer` views the project;
+    `editor` views it too and may edit the remote file's and the WFS copy's
+    datasets."""
     w = World()
     org = await make_org()
     w.owner = await make_user(org.id)
@@ -90,6 +115,7 @@ async def world(
     w.cog = await _raster(db_session, w.owner, folder, data_type="cog", url=FILE)
     w.wms = await _raster(db_session, w.owner, folder, data_type="wms", url=WMS)
     w.xyz = await _raster(db_session, w.owner, folder, data_type="xyz", url=XYZ)
+    w.wfs = await _wfs_copy(db_session, w.owner, folder)
     for user in (w.viewer, w.editor):
         await _grant(
             db_session,
@@ -100,20 +126,23 @@ async def world(
             role_name="project-viewer",
             by=w.owner.id,
         )
-    await _grant(
-        db_session,
-        roles,
-        rtype="layer",
-        rid=w.cog.id,
-        grantee=w.editor.id,
-        role_name="layer-editor",
-        by=w.owner.id,
-    )
+    for dataset in (w.cog, w.wfs):
+        await _grant(
+            db_session,
+            roles,
+            rtype="layer",
+            rid=dataset.id,
+            grantee=w.editor.id,
+            role_name="layer-editor",
+            by=w.owner.id,
+        )
     await db_session.commit()
 
     added = await client.post(
         f"{API}/project/{w.project.id}/layer",
-        params={"layer_ids": [str(w.cog.id), str(w.wms.id), str(w.xyz.id)]},
+        params={
+            "layer_ids": [str(w.cog.id), str(w.wms.id), str(w.xyz.id), str(w.wfs.id)]
+        },
         headers=_bearer(w.owner.id),
     )
     assert added.status_code == 200, added.text
@@ -123,11 +152,18 @@ async def world(
     assert await _write_allowed(db_session, w.cog.id, w.owner.id) is True
     assert await _write_allowed(db_session, w.cog.id, w.editor.id) is True
     assert await _write_allowed(db_session, w.cog.id, w.viewer.id) is False
+    assert await _write_allowed(db_session, w.wfs.id, w.editor.id) is True
+    assert await _write_allowed(db_session, w.wfs.id, w.viewer.id) is False
     return w
 
 
 def _urls(rows: list[dict[str, Any]]) -> dict[str, str | None]:
     return {row["layer_id"]: row.get("url") for row in rows}
+
+
+def _sources(rows: list[dict[str, Any]], key: str = "layer_id") -> dict[str, Any]:
+    """Each row's `other_properties.url`: a WFS copy's source address."""
+    return {row[key]: (row.get("other_properties") or {}).get("url") for row in rows}
 
 
 async def _get(client: AsyncClient, path: str, user: User | None = None) -> Response:
@@ -291,12 +327,14 @@ async def test_a_snapshot_published_now_stores_and_serves_the_shortened_address(
         )
     ).scalar_one()
     assert _urls(stored["layers"])[str(w.cog.id)] == FILE_SHOWN
+    assert _sources(stored["layers"])[str(w.wfs.id)] == WFS_SHOWN
 
     public = await _get(client, f"project/{w.project.id}/public")
     urls = _urls(public.json()["config"]["layers"])
     assert urls[str(w.cog.id)] == FILE_SHOWN
     assert urls[str(w.wms.id)] == WMS
     assert urls[str(w.xyz.id)] == XYZ
+    assert _sources(public.json()["config"]["layers"])[str(w.wfs.id)] == WFS_SHOWN
 
 
 async def _store_full_addresses(db: AsyncSession, w: World) -> None:
@@ -311,6 +349,8 @@ async def _store_full_addresses(db: AsyncSession, w: World) -> None:
     for row in config["layers"]:
         if row["layer_id"] == str(w.cog.id):
             row["url"] = FILE
+        if row["layer_id"] == str(w.wfs.id):
+            row["other_properties"]["url"] = WFS_COPY
     await db.execute(
         text(
             f"UPDATE {S}.project_public SET config = CAST(:c AS jsonb) "
@@ -334,6 +374,7 @@ async def test_a_snapshot_published_before_is_served_with_the_shortened_address(
     assert urls[str(w.cog.id)] == FILE_SHOWN
     assert urls[str(w.wms.id)] == WMS
     assert urls[str(w.xyz.id)] == XYZ
+    assert _sources(public.json()["config"]["layers"])[str(w.wfs.id)] == WFS_SHOWN
 
     # The settings routes of a published project answer with the stored
     # snapshot too.
@@ -413,8 +454,20 @@ async def test_a_project_export_holds_the_address_the_exporter_may_see(
     assert urls(read)[str(w.xyz.id)] == XYZ
     assert "secret" not in json.dumps(read, default=str)
 
+    index = read["layers/index.json"]["layers"]
+    links = read["layer_project_links.json"]["links"]
+    assert _sources(index, "id")[str(w.wfs.id)] == WFS_SHOWN
+    assert _sources(links)[str(w.wfs.id)] == WFS_SHOWN
+
     for editor in (w.owner, w.editor):
-        assert urls(await _export(editor, w.project.id))[str(w.cog.id)] == FILE
+        files = await _export(editor, w.project.id)
+        assert urls(files)[str(w.cog.id)] == FILE
+        assert _sources(files["layers/index.json"]["layers"], "id")[str(w.wfs.id)] == (
+            WFS_COPY
+        )
+        assert _sources(files["layer_project_links.json"]["links"])[str(w.wfs.id)] == (
+            WFS_COPY
+        )
 
 
 async def _team_grant(
@@ -481,3 +534,120 @@ async def test_the_edit_right_through_a_team_gets_the_address_whole(
         assert listed[str(w.cog.id)] == expected
         dataset = await _get(client, f"layer/{w.cog.id}", user)
         assert dataset.json()["url"] == expected
+
+
+@pytest.mark.asyncio
+async def test_a_wfs_copys_source_address_follows_the_same_rule(
+    client: AsyncClient, db_session: AsyncSession, roles: dict[str, UUID], world: World
+) -> None:
+    """A WFS copy names the service its features came from in
+    `other_properties.url`, which can hold a key too: whoever cannot edit the
+    layer gets it shortened, whoever can gets it whole."""
+    w = world
+    wfs = str(w.wfs.id)
+    for user, expected in (
+        (w.viewer, WFS_SHOWN),
+        (w.owner, WFS_COPY),
+        (w.editor, WFS_COPY),
+    ):
+        listed = await _get(client, f"project/{w.project.id}/layer", user)
+        assert _sources(listed.json())[wfs] == expected
+        one = await _get(
+            client, f"project/{w.project.id}/layer/{w.links[w.wfs.id]}", user
+        )
+        assert (one.json()["other_properties"] or {})["url"] == expected
+        dataset = await _get(client, f"layer/{wfs}", user)
+        assert dataset.json()["other_properties"]["url"] == expected
+
+    # A listing of what is shared with the viewer's organization.
+    await db_session.execute(
+        text(
+            f"INSERT INTO {S}.resource_grant "
+            "(resource_type, resource_id, grantee_type, grantee_id, role_id, granted_by) "
+            "VALUES ('layer', :l, 'organization', :o, :r, :by)"
+        ),
+        {
+            "l": w.wfs.id,
+            "o": w.viewer.organization_id,
+            "r": roles["layer-viewer"],
+            "by": w.owner.id,
+        },
+    )
+    await db_session.commit()
+    listing = await client.post(
+        f"{API}/layer",
+        params={"organization_id": str(w.viewer.organization_id)},
+        json={},
+        headers=_bearer(w.viewer.id),
+    )
+    assert listing.status_code == 200, listing.text
+    assert _sources(listing.json()["items"], "id")[wfs] == WFS_SHOWN
+    assert "secret" not in listing.text
+
+
+async def _stored_link_source(db: AsyncSession, link_id: int) -> Any:
+    return (
+        await db.execute(
+            text(
+                f"SELECT other_properties->>'url' FROM {S}.layer_project WHERE id = :i"
+            ),
+            {"i": link_id},
+        )
+    ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_link_save_never_changes_the_stored_source_address(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    roles: dict[str, UUID],
+    make_folder: Callable[..., Awaitable[Folder]],
+    make_project: Callable[..., Awaitable[Project]],
+    world: World,
+) -> None:
+    """A project editor who may only view the WFS copy reads its source
+    address shortened; the data table's settings send `other_properties` back
+    as read. The stored address stays whole: it is a copy of the dataset's,
+    never set through a link, whoever saves."""
+    w = world
+    await _grant(
+        db_session,
+        roles,
+        rtype="layer",
+        rid=w.wfs.id,
+        grantee=w.viewer.id,
+        role_name="layer-viewer",
+        by=w.owner.id,
+    )
+    own = await make_project(w.viewer, await make_folder(w.viewer))
+    await db_session.commit()
+    added = await client.post(
+        f"{API}/project/{own.id}/layer",
+        params={"layer_ids": [str(w.wfs.id)]},
+        headers=_bearer(w.viewer.id),
+    )
+    assert added.status_code == 200, added.text
+    [row] = added.json()
+    assert row["other_properties"]["url"] == WFS_SHOWN
+    assert await _write_allowed(db_session, w.wfs.id, w.viewer.id) is False
+
+    echoed = {**row["other_properties"], "table_config": {"columns": ["a"]}}
+    saved = await client.put(
+        f"{API}/project/{own.id}/layer/{row['id']}",
+        json={"other_properties": echoed},
+        headers=_bearer(w.viewer.id),
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["other_properties"]["table_config"] == {"columns": ["a"]}
+    assert await _stored_link_source(db_session, row["id"]) == WFS_COPY
+
+    # Whoever may edit the dataset does not set it through a link either.
+    link = w.links[w.wfs.id]
+    elsewhere = {"url": "https://other.example/wfs", "table_config": {}}
+    saved = await client.put(
+        f"{API}/project/{w.project.id}/layer/{link}",
+        json={"other_properties": elsewhere},
+        headers=_bearer(w.owner.id),
+    )
+    assert saved.status_code == 200, saved.text
+    assert await _stored_link_source(db_session, link) == WFS_COPY

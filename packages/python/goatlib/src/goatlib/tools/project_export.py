@@ -36,7 +36,7 @@ from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.layer import (
     quoted_relation,
 )
-from goatlib.utils.layer_address import address_shown
+from goatlib.utils.layer_address import layer_shown
 from goatlib.utils.workflow_layers import drop_layer_refs, workflow_layer_refs
 
 logger = logging.getLogger(__name__)
@@ -278,12 +278,16 @@ class ProjectExportRunner(SimpleToolRunner):
                 *workflow_only_ids,
             ]
 
-            # Fetch layers in batch. A remote raster file's address may carry
-            # an access key: the archive holds it whole only for an exporter
-            # who may edit that layer (core's write rule, asked for remote
-            # files only); anyone else gets it without query string, fragment
-            # and credentials (`address_shown`).
+            # Fetch layers in batch. A remote raster file's address (`url`)
+            # and a WFS copy's source address (`other_properties.url`, also in
+            # its project links) may carry an access key: the archive holds
+            # them whole only for an exporter who may edit that layer (core's
+            # write rule, asked for those two kinds only); anyone else gets
+            # them without query string, fragment and credentials
+            # (`layer_shown`).
             layers_by_id: dict[str, dict[str, Any]] = {}
+            #: Per layer, whether its addresses are shown whole: catalog, can edit.
+            address_rule: dict[str, tuple[bool, bool]] = {}
             layer_rows: list[Any] = []
             if layer_ids:
                 layer_rows = await conn.fetch(
@@ -295,7 +299,7 @@ class ProjectExportRunner(SimpleToolRunner):
                            l.thumbnail_url, l.tags, l.public_read,
                            l.user_id, l.folder_id, l.field_config,
                            l.catalog_external_uid IS NOT NULL AS is_catalog,
-                           CASE WHEN l.data_type::text = 'cog'
+                           CASE WHEN l.data_type::text IN ('cog', 'wfs')
                                 THEN {schema}.layer_write_allowed(l.id, $2)
                            END AS can_edit,
                            (SELECT d.document FROM {schema}.layer_style d
@@ -308,17 +312,13 @@ class ProjectExportRunner(SimpleToolRunner):
                 )
                 for row in layer_rows:
                     lid = str(row["id"])
+                    address_rule[lid] = (bool(row["is_catalog"]), bool(row["can_edit"]))
                     layers_by_id[lid] = {
                         "id": lid,
                         "name": row["name"],
                         "description": row["description"],
                         "type": row["type"],
-                        "url": address_shown(
-                            row["url"],
-                            data_type=row["data_type"],
-                            catalog=bool(row["is_catalog"]),
-                            can_edit=bool(row["can_edit"]),
-                        ),
+                        "url": row["url"],
                         "data_type": row["data_type"],
                         "feature_layer_type": row["feature_layer_type"],
                         "feature_layer_geometry_type": row[
@@ -341,6 +341,12 @@ class ProjectExportRunner(SimpleToolRunner):
                         # the values but lose the definitions.
                         "field_config": row["field_config"] or {},
                     }
+                    catalog, can_edit = address_rule[lid]
+                    layers_by_id[lid] = dict(
+                        layer_shown(
+                            layers_by_id[lid], catalog=catalog, can_edit=can_edit
+                        )
+                    )
 
             # Exclude system layers (e.g. street_network) from export
             excluded_layer_ids: set[str] = set()
@@ -360,6 +366,18 @@ class ProjectExportRunner(SimpleToolRunner):
             for lp in lp_rows:
                 if str(lp["layer_id"]) in excluded_layer_ids:
                     continue
+                link_other = lp["other_properties"]
+                layer = layers_by_id.get(str(lp["layer_id"]))
+                if layer is not None:
+                    catalog, can_edit = address_rule[layer["id"]]
+                    link_other = layer_shown(
+                        {
+                            "data_type": layer["data_type"],
+                            "other_properties": link_other,
+                        },
+                        catalog=catalog,
+                        can_edit=can_edit,
+                    )["other_properties"]
                 layer_project_links_list.append(
                     {
                         "id": lp["id"],
@@ -368,7 +386,7 @@ class ProjectExportRunner(SimpleToolRunner):
                         "layer_project_group_id": lp["layer_project_group_id"],
                         "order": lp["order"],
                         "name": lp["name"],
-                        "other_properties": lp["other_properties"],
+                        "other_properties": link_other,
                         "query": lp["query"],
                         "charts": lp["charts"],
                         "styles": lp["styles"],

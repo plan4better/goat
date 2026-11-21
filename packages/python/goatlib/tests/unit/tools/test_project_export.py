@@ -851,8 +851,11 @@ class TestRemoteFileAddress:
     exporter_id = uuid.UUID("00000000-0000-0000-0000-000000000022")
     cog_id = uuid.UUID("00000000-0000-0000-0000-0000000000c0")
     wms_id = uuid.UUID("00000000-0000-0000-0000-0000000000c1")
+    wfs_id = uuid.UUID("00000000-0000-0000-0000-0000000000c2")
     FILE = "https://example.org/a/b.tif?sig=secret#x"
     WMS = "https://maps.example.org/wms?SERVICE=WMS&LAYERS=a&key=service-key"
+    #: A WFS copy's source address (`other_properties.url`).
+    WFS = "https://example.org/wfs?key=secret"
 
     @pytest.fixture()
     def runner(self) -> ProjectExportRunner:
@@ -866,13 +869,19 @@ class TestRemoteFileAddress:
         return runner
 
     def _layer(
-        self, layer_id: uuid.UUID, data_type: str, url: str, *, can_edit: bool | None
+        self,
+        layer_id: uuid.UUID,
+        data_type: str,
+        url: str | None,
+        *,
+        can_edit: bool | None,
+        other_properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return {
             "id": layer_id,
             "name": data_type,
             "description": None,
-            "type": "raster",
+            "type": "feature" if data_type == "wfs" else "raster",
             "url": url,
             "data_type": data_type,
             "feature_layer_type": None,
@@ -880,7 +889,7 @@ class TestRemoteFileAddress:
             "tool_type": None,
             "job_id": None,
             "style": None,
-            "other_properties": {},
+            "other_properties": other_properties or {},
             "size": None,
             "thumbnail_url": None,
             "tags": None,
@@ -897,6 +906,13 @@ class TestRemoteFileAddress:
         rows = [
             self._layer(self.cog_id, "cog", self.FILE, can_edit=can_edit),
             self._layer(self.wms_id, "wms", self.WMS, can_edit=None),
+            self._layer(
+                self.wfs_id,
+                "wfs",
+                None,
+                can_edit=can_edit,
+                other_properties={"url": self.WFS, "layers": ["trees"]},
+            ),
         ]
 
         async def fake_fetchrow(query: str, *args: object) -> dict[str, Any] | None:
@@ -914,7 +930,8 @@ class TestRemoteFileAddress:
                         "layer_project_group_id": None,
                         "order": index,
                         "name": row["name"],
-                        "other_properties": {},
+                        # The link keeps a copy of the layer's.
+                        "other_properties": row["other_properties"],
                         "query": None,
                         "charts": None,
                         "styles": [],
@@ -938,6 +955,8 @@ class TestRemoteFileAddress:
         return conn
 
     async def _urls(self, runner: ProjectExportRunner, can_edit: bool) -> dict:
+        """Each layer's `url`, and under `<id>:source` the WFS copy's
+        `other_properties.url` in the layer and in its link."""
         layer_queries: list[Any] = []
         conn = self._connection(can_edit, layer_queries)
         with patch("goatlib.tools.project_export.asyncpg") as mock_asyncpg:
@@ -949,7 +968,16 @@ class TestRemoteFileAddress:
         [(query, args)] = layer_queries
         assert "customer.layer_write_allowed(l.id, $2)" in query
         assert args[1] == self.exporter_id
-        return {layer["id"]: layer["url"] for layer in metadata["layers"]}
+        urls = {layer["id"]: layer["url"] for layer in metadata["layers"]}
+        [layer] = [x for x in metadata["layers"] if x["id"] == str(self.wfs_id)]
+        [link] = [
+            x
+            for x in metadata["layer_project_links"]
+            if x["layer_id"] == str(self.wfs_id)
+        ]
+        urls["layer:source"] = layer["other_properties"]["url"]
+        urls["link:source"] = link["other_properties"]["url"]
+        return urls
 
     @pytest.mark.asyncio
     async def test_a_reader_gets_the_files_address_without_its_query(
@@ -958,6 +986,7 @@ class TestRemoteFileAddress:
         urls = await self._urls(runner, can_edit=False)
         assert urls[str(self.cog_id)] == "https://example.org/a/b.tif"
         assert urls[str(self.wms_id)] == self.WMS
+        assert urls["layer:source"] == urls["link:source"] == "https://example.org/wfs"
 
     @pytest.mark.asyncio
     async def test_an_editor_gets_the_address_whole(
@@ -966,6 +995,7 @@ class TestRemoteFileAddress:
         urls = await self._urls(runner, can_edit=True)
         assert urls[str(self.cog_id)] == self.FILE
         assert urls[str(self.wms_id)] == self.WMS
+        assert urls["layer:source"] == urls["link:source"] == self.WFS
 
     def test_no_secret_anywhere_in_a_readers_archive(
         self, runner: ProjectExportRunner
@@ -993,6 +1023,7 @@ class TestRemoteFileAddress:
         assert {layer["url"] for layer in index["layers"]} == {
             "https://example.org/a/b.tif",
             self.WMS,
+            None,
         }
         for name, data in contents.items():
             assert b"secret" not in data, name

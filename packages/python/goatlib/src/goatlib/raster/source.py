@@ -41,7 +41,7 @@ from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
 from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.values import ValueEncoding
-from goatlib.utils.layer_address import address_shown
+from goatlib.utils.layer_address import text_without_keys, without_key
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +105,6 @@ def failure_key(url: str | None, stored_file: Path | None) -> str:
     return str(stored_file) if stored_file is not None else str(url)
 
 
-#: A query, a fragment or a `user:password@` in an error's text: the parts of
-#: the file's address that can be an access key. A query runs to the next
-#: whitespace, quotes included, so a quote inside it cannot end it early (the
-#: quote that closes a quoted address goes with it).
-_KEY_IN_TEXT = re.compile(r"[?#]\S*|(?<=//)[^/\s@]+@")
-
-
 class _WithoutKey(logging.Filter):
     """Rewrites a log record without the queries, fragments and credentials of
     the addresses it quotes; never drops one."""
@@ -123,13 +116,13 @@ class _WithoutKey(logging.Filter):
             message = record.getMessage()
         except Exception:
             return True
-        cleaned = _KEY_IN_TEXT.sub("", message)
+        cleaned = text_without_keys(message)
         if cleaned != message:
             record.msg, record.args = cleaned, ()
         # An attached exception is formatted from `exc_text` when it is set.
         if record.exc_info and not record.exc_text:
             trace = logging.Formatter().formatException(record.exc_info)
-            record.exc_text = _KEY_IN_TEXT.sub("", trace)
+            record.exc_text = text_without_keys(trace)
         return True
 
 
@@ -165,8 +158,7 @@ def logged(address: str, error: Exception) -> tuple[str, str]:
     as someone who cannot edit the layer gets it (scheme, host and path), and
     the error's text without the query, fragment and credentials of the
     addresses it quotes."""
-    shown = address_shown(address, data_type="cog", catalog=False, can_edit=False)
-    return shown or address, _KEY_IN_TEXT.sub("", str(error))
+    return without_key(address), text_without_keys(str(error))
 
 
 def read_failure(error: Exception) -> str:

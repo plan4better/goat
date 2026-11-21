@@ -34,6 +34,7 @@ from goatlib.tools.base import (
     drops_unrecorded_tables,
 )
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
+from goatlib.utils.layer_address import without_key
 
 if TYPE_CHECKING:
     pass
@@ -271,7 +272,10 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
         Returns:
             Dataset metadata from WFS import
         """
-        logger.info("Importing from WFS: %s (layer=%s)", wfs_url, layer_name)
+        # A WFS address can carry an access key: logs and errors name the
+        # service without its query, fragment and credentials.
+        service = without_key(wfs_url)
+        logger.info("Importing from WFS: %s (layer=%s)", service, layer_name)
 
         # Import lazily to avoid GDAL dependency when not using WFS
         from goatlib.io.remote_source.wfs import from_wfs
@@ -285,7 +289,7 @@ class LayerImportRunner(BaseToolRunner[LayerImportParams]):
         )
 
         if not results or results == (None, None):
-            raise ValueError(f"No data retrieved from WFS: {wfs_url}")
+            raise ValueError(f"No data retrieved from WFS: {service}")
 
         # Get first result (from_wfs can return list or tuple)
         if isinstance(results, list):

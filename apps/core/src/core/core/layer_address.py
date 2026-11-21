@@ -1,16 +1,17 @@
 """Which layers' addresses a caller gets shortened.
 
-The rule itself is goatlib's `address_shown` (`goatlib.utils.layer_address`,
-shared with the project export): a remote raster file's address comes without
-its query string, fragment and credentials to whoever cannot edit the layer.
-"Can edit" is `layer_write_allowed`, the one write rule for a layer.
+The rule itself is goatlib's (`goatlib.utils.layer_address`, shared with the
+project export): a remote raster file's address (`url`) and a WFS copy's
+source address (`other_properties.url`) come without their query string,
+fragment and credentials to whoever cannot edit the layer. "Can edit" is
+`layer_write_allowed`, the one write rule for a layer.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 from uuid import UUID
 
-from goatlib.utils.layer_address import address_shown
+from goatlib.utils.layer_address import layer_shown
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,28 +36,22 @@ async def writable_layer_ids(
     return {row[0] for row in result}
 
 
-async def addresses_for(
-    session: AsyncSession, user_id: UUID | None, layers: Iterable[Any]
-) -> dict[UUID, str | None]:
-    """The layers (rows with `id`, `url`, `data_type`, `catalog_external_uid`)
-    whose address this user gets shortened, with that address. A layer not in
-    the result is returned as stored. The write rule runs only for remote
-    files whose address has something to shorten, so most reads cost nothing."""
-    shortened: dict[UUID, str | None] = {}
-    for layer in layers:
-        shown = address_shown(
-            layer.url,
-            data_type=layer.data_type,
-            catalog=layer.catalog_external_uid is not None,
-            can_edit=False,
-        )
-        if shown != layer.url:
-            shortened[layer.id] = shown
-    if not shortened:
-        return {}
-    editable = await writable_layer_ids(session, shortened, user_id)
-    return {
-        layer_id: shown
-        for layer_id, shown in shortened.items()
-        if layer_id not in editable
+async def shortened_layers(
+    session: AsyncSession,
+    user_id: UUID | None,
+    layers: Iterable[tuple[UUID, Mapping[str, Any], bool]],
+) -> set[UUID]:
+    """Of these layers (id, a row with `data_type` and `url` or
+    `other_properties`, whether it is a catalog layer), those whose addresses
+    this user gets shortened: `layer_shown` would change them and the user may
+    not edit them; the caller passes those rows through `layer_shown`. The
+    write rule runs only for rows with something to shorten, so most reads
+    cost nothing; without a user, every such row is shortened."""
+    changed = {
+        layer_id
+        for layer_id, row, catalog in layers
+        if layer_shown(row, catalog=catalog, can_edit=False) is not row
     }
+    if not changed:
+        return set()
+    return changed - await writable_layer_ids(session, changed, user_id)

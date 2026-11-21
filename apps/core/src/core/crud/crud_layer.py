@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from fastapi_pagination import Page
 from fastapi_pagination import Params as PaginationParams
 from geoalchemy2.elements import WKTElement
+from goatlib.utils.layer_address import layer_shown
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +21,7 @@ from core.core.content import (
     grant_conditions,
     granted_ids,
 )
-from core.core.layer_address import addresses_for
+from core.core.layer_address import shortened_layers
 from core.crud.base import CRUDBase
 from core.db.models._link_model import (
     BundleLayerLink,
@@ -271,15 +272,23 @@ class CRUDLayer(CRUDBase):
             grants_by_resource=grants_by_resource,
         )
         # A team's or organization's listing shows layers its members may
-        # only view: a remote raster file's address comes without its query
-        # string to whoever cannot edit the layer.
-        addresses = await addresses_for(
-            async_session, user_id, [row[0] for row in layers.items]
+        # only view: a remote raster file's address and a WFS copy's source
+        # address come without their query string to whoever cannot edit the
+        # layer.
+        shortened = await shortened_layers(
+            async_session,
+            user_id,
+            [
+                (item["id"], item, item.get("catalog_external_uid") is not None)
+                for item in layers_arr
+            ],
         )
-        for item in layers_arr:
-            if item["id"] in addresses:
-                item["url"] = addresses[item["id"]]
-        layers.items = layers_arr
+        layers.items = [
+            dict(layer_shown(item, catalog=False, can_edit=False))
+            if item["id"] in shortened
+            else item
+            for item in layers_arr
+        ]
         return layers
 
 

@@ -517,3 +517,35 @@ class TestLayerImportOutputName:
 
         # Should keep explicit name
         assert params.output_name == "Explicit Name"
+
+
+def test_a_wfs_import_that_finds_no_data_names_the_service_without_its_key(
+    tmp_path, caplog
+):
+    """The job's error and the log name the service by scheme, host and path:
+    a WFS address can carry an access key in its query."""
+    import sys
+    import types
+
+    fake = types.ModuleType("goatlib.io.remote_source.wfs")
+    fake.from_wfs = MagicMock(return_value=(None, None))
+    runner = LayerImportRunner()
+    runner.settings = MagicMock()
+    with (
+        patch.dict(sys.modules, {"goatlib.io.remote_source.wfs": fake}),
+        caplog.at_level("INFO"),
+        pytest.raises(ValueError) as failed,
+    ):
+        runner._import_from_wfs(
+            wfs_url="https://user:pw@example.org/wfs?key=secret",
+            layer_name="trees",
+            temp_dir=tmp_path,
+            output_path=tmp_path / "out.parquet",
+        )
+    # The service is still read at its whole address.
+    assert fake.from_wfs.call_args.kwargs["url"] == (
+        "https://user:pw@example.org/wfs?key=secret"
+    )
+    for text in (str(failed.value), caplog.text):
+        assert "example.org/wfs" in text
+        assert "key=" not in text and "secret" not in text and "pw@" not in text
