@@ -255,6 +255,72 @@ describe("syncMapLayers", () => {
     ]);
   });
 
+  it("a raster below the labels goes below the basemap's labels", () => {
+    const basemap = [
+      { id: "base-bg", type: "background" },
+      { id: "base-road", type: "line", "source-layer": "transportation" },
+      { id: "base-label", type: "symbol" },
+    ];
+    const anchors = basemapAnchors(basemap);
+    const coverage = "https://geo/collections/d/coverage/tiles/WebMercatorQuad";
+    const tilesUrl = "https://geo/collections/d/raster/tiles/{z}/{x}/{y}.webp";
+    // A colored image of a file, a file's values colored and shaded in the browser, and a map service.
+    const image: RenderLayer = {
+      key: "1",
+      style: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
+      entry: { position: "below_labels" },
+      source: { type: "raster", id: "src-1", tiles: tilesUrl, coverage },
+    };
+    const values = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 32769 },
+      range: [100, 400] as [number, number],
+      integer: true,
+      version: "1-e1",
+    };
+    const reliefSource = { type: "raster" as const, id: "src-2", tiles: tilesUrl, coverage };
+    const relief: RenderLayer = {
+      key: "2",
+      style: {
+        version: "1.0.0",
+        kind: "raster",
+        render: { type: "hillshade", band: 1, palette: "goat:elevation", domain: [100, 400] },
+      } as LayerStyle,
+      entry: { position: "below_labels" },
+      source: reliefSource,
+    };
+    const service: RenderLayer = {
+      key: "3",
+      style: { version: "1.0.0", kind: "raster" } as LayerStyle,
+      entry: { position: "below_roads" },
+      source: {
+        type: "service",
+        id: "src-3",
+        service: "wms",
+        tiles: "https://wms.example/service?LAYERS=aerial&BBOX={bbox-epsg-3857}",
+      },
+    };
+    const map = orderedMap(basemap);
+    // The value tiles' description loads after the first draw: the layer draws nothing until then.
+    const state = syncMapLayers(map, null, [polygon("0"), image, relief, service], { locale: "en", anchors });
+    expect(map.order.some((id) => id.startsWith("2-"))).toBe(false);
+    syncMapLayers(
+      map,
+      state,
+      [polygon("0"), image, { ...relief, source: { ...reliefSource, values } }, service],
+      { locale: "en", anchors }
+    );
+    const at = (id: string) => map.order.indexOf(id);
+    expect(at("1-raster")).toBeGreaterThan(at("base-road"));
+    expect(at("1-raster")).toBeLessThan(at("base-label"));
+    for (const id of ["2-relief", "2-hillshade"]) {
+      expect(at(id)).toBeGreaterThan(at("base-road"));
+      expect(at(id)).toBeLessThan(at("1-raster"));
+    }
+    expect(at("3-raster")).toBeGreaterThan(at("base-bg"));
+    expect(at("3-raster")).toBeLessThan(at("base-road"));
+    expect(at("0-fill")).toBeGreaterThan(at("base-label"));
+  });
+
   it("a basemap switch keeps layers, images, locale and time state", async () => {
     const map = orderedMap([{ id: "old-bg", type: "background" }]);
     const timed = polygon("1", {

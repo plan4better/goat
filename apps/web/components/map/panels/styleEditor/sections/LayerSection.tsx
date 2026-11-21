@@ -162,8 +162,8 @@ function TimeRow() {
 
 const POSITIONS: Position[] = ["top", "below_labels", "below_roads"];
 
-/** Where the layer draws among the basemap's layers (map state, not style). */
-function PositionRow() {
+/** Where the layer draws among the basemap's layers (map state, not style); vector and raster layers alike. */
+export function PositionRow() {
   const { t } = useTranslation("common");
   const mapState = useLayerMapState();
   if (!mapState) return null;

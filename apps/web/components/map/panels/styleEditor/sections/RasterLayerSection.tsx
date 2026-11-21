@@ -1,8 +1,9 @@
 "use client";
 
 // Layer for raster files and map services (prototype 3.6, spec 9): opacity, resampling, the image adjustments, the
-// cell values drawn transparent, and the zooms. A map service has no cells, so no No data; No data waits for the
-// file's info, which names the file's own no-data value.
+// cell values drawn transparent, the zooms and the position among the basemap's layers (map state, as for vector
+// layers). A map service has no cells, so no No data; No data waits for the file's info, which names the file's own
+// no-data value.
 import { IconButton, Tooltip } from "@mui/material";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,7 +38,7 @@ import {
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ChoiceRow, NavRow, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
-import { VisibleRow } from "@/components/map/panels/styleEditor/sections/LayerSection";
+import { PositionRow, VisibleRow } from "@/components/map/panels/styleEditor/sections/LayerSection";
 import { ADJUSTMENTS } from "@/components/map/panels/styleEditor/sections/RasterGeneralSection";
 
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
@@ -180,6 +181,7 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
       {type === "image" && <AdjustmentsRow />}
       {!service && noData && <NoDataRow />}
       <VisibleRow />
+      <PositionRow />
     </PanelSection>
   );
 }
