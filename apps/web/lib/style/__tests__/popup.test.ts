@@ -97,7 +97,7 @@ describe("toPopupConfig", () => {
     expect(config?.blocks.map((b) => b.type)).toEqual(["text"]);
   });
 
-  it("leaves raster popups to the raster service", () => {
+  it("leaves a raster popup with bands to rasterPopupProperties", () => {
     expect(toPopupConfig(example(2071))).toBeNull();
   });
 });

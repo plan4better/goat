@@ -47,7 +47,7 @@ import PropertiesPanel from "@/components/map/panels/properties/Properties";
 import SimpleLayerStyle from "@/components/map/panels/style/SimpleLayerStyle";
 import { PopupContent } from "@/components/map/popover/MapFeaturePopover";
 import { layerPopup } from "@/components/map/popover/normalizePopup";
-import { findPopupLayer, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
+import { findPopupLayer, popupFields, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
 
 // --- Constants ---
 // Height of the puller strip above the drawer paper. In the default dashboard
@@ -707,6 +707,7 @@ const MobileProjectLayout = ({
                 // block list refreshes against the new feature properties.
                 key={highlightedFeature?.id ?? layerInfo.title ?? v4()}
                 layerId={popupFieldsLayerId(layerInfo.layerId, clickedPopupLayer)}
+                fields={popupFields(clickedPopupLayer, layerInfo.featureProperties ?? layerInfo.properties)}
                 popup={activePopupConfig}
                 properties={
                   (layerInfo.featureProperties ??

@@ -50,6 +50,7 @@ from geoapi.services.raster_service import (
     RasterLayer,
     Resampling,
     info_json,
+    palette,
     raster_service,
     valid_bounds,
 )
@@ -362,6 +363,15 @@ def _tileset(
     }
 
 
+#: The shape of the value tiles' description: its ETag names it, so a body that
+#: gains a field (`names`) is sent anew rather than revalidated as the one a
+#: browser kept. A tile's pixels do not change with it (`ENCODING_VERSION` does
+#: that), so the tiles keep their URLs.
+VALUES_DESCRIPTION_SHAPE = "names"
+#: The shape of the colored tiles' description, as `VALUES_DESCRIPTION_SHAPE`.
+IMAGE_DESCRIPTION_SHAPE = "color_table_palette"
+
+
 def _etag(*parts: object) -> str:
     return '"' + hashlib.sha1(":".join(map(str, parts)).encode()).hexdigest() + '"'
 
@@ -468,11 +478,11 @@ async def raster_tileset(
     version = await _read(layer, raster_service.values_version)
     # The default size leaves the link as other clients know it.
     shown: dict[str, int] = {"tilesize": size} if size != TILE_SIZE else {}
-    etag = _etag(layer.id, version, urlencode(shown))
+    etag = _etag(layer.id, version, urlencode(shown), IMAGE_DESCRIPTION_SHAPE)
     headers = {"Cache-Control": _description_cache(request), "ETag": etag}
     if if_none_match == etag:
         return Response(status_code=304, headers=headers)
-    maxzoom, bounds = await _read(layer, raster_service.image_tileset, size)
+    maxzoom, bounds, info = await _read(layer, raster_service.image_tileset, size)
     query = urlencode({**shown, "v": version}, quote_via=quote)
     base_url = str(request.base_url).rstrip("/")
     tiles = f"{base_url}/collections/{layer.id}/raster/tiles"
@@ -486,6 +496,24 @@ async def raster_tileset(
                 f"{tiles}/{{tileMatrix}}/{{tileCol}}/{{tileRow}}.webp?{query}",
             ),
             "goat:version": version,
+            # 8 bit bands drawn as they are (unscaled, without a color table)
+            # are the tiles' pixels, and a color table's code is the color
+            # only its entry has: a map reads their values there (spec 9.7).
+            "goat:bands": {
+                "count": info.count,
+                "dtype": info.dtype,
+                "scaled": info.scaled,
+                "color_table": bool(info.color_table),
+                "names": list(info.names),
+                # The bands that hold values: an alpha band is none.
+                "value_bands": list(info.value_bands),
+                # The bands marked red, green and blue are the ones an image
+                # draws (goatlib `image_bands`).
+                "color_interp": list(info.color_interp),
+                # Drawn with the file's color table: every entry's color, from
+                # which a map reads a pixel's code.
+                "palette": palette(info),
+            },
         },
         headers=headers,
     )
@@ -523,11 +551,11 @@ async def raster_values_tileset(
         # The default size leaves the link as other clients know it.
         **({"tilesize": size} if size != TILE_SIZE else {}),
     }
-    etag = _etag(layer.id, version, urlencode(shown))
+    etag = _etag(layer.id, version, urlencode(shown), VALUES_DESCRIPTION_SHAPE)
     headers = {"Cache-Control": _description_cache(request), "ETag": etag}
     if if_none_match == etag:
         return Response(status_code=304, headers=headers)
-    encoding, maxzoom, bounds = await _read(
+    encoding, maxzoom, bounds, names = await _read(
         layer, raster_service.value_tileset, values, size
     )
     query = urlencode(
@@ -555,6 +583,8 @@ async def raster_values_tileset(
                 "range": list(encoding.range) if encoding.range else None,
                 "integer": encoding.integer,
                 "version": version,
+                # A popup labels values with the file's band names.
+                "names": list(names),
             },
         },
         headers=headers,

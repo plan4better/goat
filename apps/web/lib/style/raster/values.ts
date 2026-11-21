@@ -4,6 +4,7 @@
 // stay. The coloring comes from `rasterColorSpec`, placed here on the codes as stops.
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type RasterColorSpec, rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
+import { colorInterpOf, fileName, paletteOf } from "@/lib/style/raster/metadata";
 
 /** The largest code (24 bits). */
 export const MAX_Q = 16_777_215;
@@ -13,6 +14,31 @@ export const TILE_SIZE = 512;
 /** The most stops a color-relief layer is given (WebGL 2 guarantees textures 2048 wide, common graphics cards 8192 or
  * more); a coloring that needs more draws from image tiles. */
 export const MAX_RELIEF_STOPS = 4096;
+
+/** The colors of the file's color table (geoapi `palette`): the band the table colors and each entry's color
+ * ("#rrggbb", without its alpha), the entries drawn fully transparent left out. */
+export interface Palette {
+  band: number;
+  colors: Record<number, string>;
+}
+
+/** What tells whether a raster image's tile pixels are its bands' values (`imagePixels`): the file's band count
+ * and data type, whether its bands are scaled, whether it has a color table; and the bands' names, "" where a band has
+ * none. */
+export interface BandFacts {
+  count: number;
+  dtype: string;
+  scaled: boolean;
+  colorTable: boolean;
+  names?: string[];
+  /** The bands that hold values, by index: every band but an alpha band (goatlib `RasterInfo.value_bands`). */
+  valueBands?: number[];
+  /** Each band's color interpretation, in band order (GDAL's names: "red", "green", "blue", "alpha", "palette",
+   * ...): an image draws the bands marked red, green and blue (`imageBands`). */
+  colorInterp?: string[];
+  /** With a color table: its entries' colors, which tell a drawn pixel's code where only one entry has its color. */
+  palette?: Palette;
+}
 
 /** What a tileset description of a raster file's tiles tells a map's source: the colored tiles' description holds
  * only this, the value tiles' their values too. */
@@ -24,6 +50,8 @@ export interface RasterTileset {
   maxzoom?: number;
   /** The file's west, south, east and north in degrees: the map asks only for the tiles that touch them. */
   bounds?: [number, number, number, number];
+  /** The colored tiles' description: the file's band facts, from its header; missing from older services. */
+  bands?: BandFacts;
 }
 
 /** A tileset description of value tiles (its `goat:values`, native zoom and bounds). */
@@ -34,6 +62,8 @@ export interface RasterValues extends RasterTileset {
   range: [number, number] | null;
   /** Whether the codes hold whole numbers exactly. */
   integer: boolean;
+  /** The file's band names in band order, "" where a band has none (a popup's labels); missing from older services. */
+  names?: string[];
 }
 
 /** What value tiles hold: a band or a formula's result, read nearest or bilinear. */
@@ -132,12 +162,49 @@ function extentOf(json: JsonObject): Pick<RasterTileset, "maxzoom" | "bounds"> {
   };
 }
 
-/** The colored tiles' description (`goat:version`, native zoom and bounds); null when it is not one. */
+/** The file's names of its bands, "" where a band has none; undefined for anything else. */
+const namesOf = (names: unknown): string[] | undefined =>
+  Array.isArray(names) && names.every((n) => typeof n === "string")
+    ? (names as string[]).map((name, i) => fileName(name, i + 1))
+    : undefined;
+
+/** The colored tiles' band facts (`goat:bands`); undefined when there are none or they are malformed. */
+function bandFactsOf(json: unknown): BandFacts | undefined {
+  if (!isObject(json)) return undefined;
+  const { count, dtype, scaled, color_table: colorTable } = json;
+  if (
+    !num(count) ||
+    typeof dtype !== "string" ||
+    typeof scaled !== "boolean" ||
+    typeof colorTable !== "boolean"
+  )
+    return undefined;
+  const names = namesOf(json.names);
+  const valueBands =
+    Array.isArray(json.value_bands) && json.value_bands.every(num)
+      ? (json.value_bands as number[])
+      : undefined;
+  const colorInterp = colorInterpOf(json.color_interp);
+  const palette = paletteOf(json.palette);
+  return {
+    count,
+    dtype,
+    scaled,
+    colorTable,
+    ...(names ? { names } : {}),
+    ...(valueBands ? { valueBands } : {}),
+    ...(colorInterp ? { colorInterp } : {}),
+    ...(palette ? { palette } : {}),
+  };
+}
+
+/** The colored tiles' description (`goat:version`, native zoom and bounds, band facts); null when it is not one. */
 export function rasterTilesetOf(json: unknown): RasterTileset | null {
   if (!isObject(json)) return null;
   const version = json["goat:version"];
   if (typeof version !== "string" || !version) return null;
-  return { version, ...extentOf(json) };
+  const bands = bandFactsOf(json["goat:bands"]);
+  return { version, ...extentOf(json), ...(bands ? { bands } : {}) };
 }
 
 /** The values of a tileset description; null when it is not one. */
@@ -152,11 +219,13 @@ export function rasterValuesOf(json: unknown): RasterValues | null {
   if (range !== null && !(Array.isArray(range) && range.length === 2 && range.every(num))) return null;
   if (typeof values.integer !== "boolean" || typeof values.version !== "string" || !values.version)
     return null;
+  const names = namesOf(values.names);
   return {
     encoding: { redFactor, greenFactor, blueFactor, baseShift },
     range: range as [number, number] | null,
     integer: values.integer,
     version: values.version,
+    ...(names ? { names } : {}),
     ...extentOf(json),
   };
 }
@@ -349,6 +418,31 @@ export function reliefStops(
   const stops = apart([[0, CLEAR], ...knots], values.encoding);
   if (stops.length > MAX_RELIEF_STOPS) return null;
   return stops.map(([q, color]) => [q, css(color)]);
+}
+
+/** The color the map draws at `value` with the relief stops it was given (`reliefColor`): linear between stops over
+ * premultiplied colors, as MapLibre interpolates them, the end colors beyond; "#rrggbb", or null where it draws
+ * nothing (transparent). */
+export function reliefColorAt(stops: ReliefStop[], values: RasterValues, value: number): string | null {
+  if (!stops.length || !Number.isFinite(value)) return null;
+  const q = (value + values.encoding.baseShift) / values.encoding.blueFactor;
+  const rgba = (color: string): Rgba => {
+    const [r, g, b, a] = (color.match(/[\d.]+/g) ?? []).map(Number);
+    return [r ?? 0, g ?? 0, b ?? 0, a ?? 1];
+  };
+  let i = stops.findIndex(([at]) => at >= q);
+  if (i === -1) i = stops.length - 1;
+  const [qb, cb] = stops[i];
+  const [qa, ca] = stops[Math.max(0, i - 1)];
+  const t = i === 0 || qb === qa || q >= qb ? 1 : (q - qa) / (qb - qa);
+  const [a0, b0] = [rgba(ca), rgba(cb)];
+  const alpha = a0[3] + (b0[3] - a0[3]) * t;
+  if (!(alpha > 0)) return null;
+  const channel = (k: number) =>
+    Math.round((a0[k] * a0[3] + (b0[k] * b0[3] - a0[k] * a0[3]) * t) / alpha)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
 }
 
 /** The `color-relief-color` of stops: each code's value as the source decodes it, raised `k` times with the source

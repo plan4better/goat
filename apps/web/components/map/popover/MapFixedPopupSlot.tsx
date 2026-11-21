@@ -12,7 +12,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 import { featureSwatchIcon } from "@/components/map/legend/StyleLegend";
 import { MapFeaturePopover } from "@/components/map/popover/MapFeaturePopover";
 import { layerPopup } from "@/components/map/popover/normalizePopup";
-import { findPopupLayer, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
+import { findPopupLayer, popupFields, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
 
 export interface MapFixedPopupSlotProps {
   /** The map's layers, each with its active style (the popup is the style's). */
@@ -104,6 +104,7 @@ export function MapFixedPopupSlot({ layers }: MapFixedPopupSlotProps) {
       {showClicked && popupInfo && activePopupConfig && (
         <MapFeaturePopover
           layerId={popupFieldsLayerId(popupInfo.layerId, clickedLayer)}
+          fields={popupFields(clickedLayer, popupInfo.featureProperties ?? popupInfo.properties)}
           layerName={popupInfo.title}
           popup={activePopupConfig}
           properties={

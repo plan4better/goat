@@ -3,14 +3,31 @@
 // Popup (prototype 2.9, spec 7.4): when it opens, its content and its appearance. Today's popup editors are used
 // unchanged: they edit today's configuration (toPopupConfig), and every change goes back into the style with
 // fromPopupConfig. Switching the popup off keeps its last content for this layer, so switching it on brings it back.
+// A raster file's popup (spec 9.7) is this popup over the cell's fields (the panel's data give them): it opens on
+// hover only where the map draws values (not for an image), its default content is the value and its class, and it
+// has no feature to highlight or preview.
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useLoadedRasterValues } from "@/lib/api/rasters";
+import { drawsValueTiles } from "@/lib/style/compile/rasters";
 import { symbolShown } from "@/lib/style/editor/parts";
 import type { EditorStore } from "@/lib/style/editor/store";
 import { colorsIn } from "@/lib/style/editor/summaries";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { coverageUrl } from "@/lib/style/layerSource";
 import { fromPopupConfig, toPopupConfig } from "@/lib/style/popup";
+import { bandFactsOf } from "@/lib/style/raster/metadata";
+import {
+  type RasterTexts,
+  imagePixels,
+  rasterPopupFrom,
+  rasterPopupProperties,
+  rasterPopupRuleOf,
+} from "@/lib/style/raster/popup";
+import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 import type { PopupBlock, PopupProperties } from "@/lib/validations/layer";
 
 import { HtmlModeCard } from "@/components/map/panels/style/popup/HtmlModeCard";
@@ -24,7 +41,12 @@ import { FieldListBlockEditor } from "@/components/map/panels/style/popup/blocks
 import { ImageBlockEditor } from "@/components/map/panels/style/popup/blocks/ImageBlockEditor";
 import type { OpenBlockColor } from "@/components/map/panels/style/popup/blocks/_shared";
 import { blocksToHtml } from "@/components/map/panels/style/popup/blocksToHtml";
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useStyleData,
+  useStyleSelector,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
@@ -66,15 +88,67 @@ const SHOW_ON_KEYS: Record<(typeof SHOW_ON)[number], string> = {
 /** The last popup of each layer whose popup was switched off. */
 const switchedOff = new WeakMap<EditorStore, unknown>();
 
+/** How a layer's popup reads and writes: a vector layer's over its dataset's fields, a raster file's (`raster`) over
+ * its cell's, with the default content of its render. */
+interface PopupKind {
+  raster: boolean;
+  texts: RasterTexts;
+  fieldTypes: Parameters<typeof toPopupConfig>[1];
+}
+
+/** Today's configuration of a style's popup (`popup`, in `doc`); null while it is off. */
+function configOf(doc: LayerStyle, popup: unknown, kind: PopupKind): PopupProperties | null {
+  if (!kind.raster) return toPopupConfig(popup, kind.fieldTypes);
+  const style = { ...(doc as unknown as JsonObject), popup } as JsonObject;
+  const rule = rasterPopupRuleOf(style);
+  return rule ? rasterPopupProperties(style, rule, undefined, kind.texts) : null;
+}
+
+/** A style's `popup` from today's configuration; `original` is the popup as it was. */
+function popupFrom(
+  doc: LayerStyle,
+  config: PopupProperties,
+  original: unknown,
+  kind: PopupKind
+): JsonObject | false {
+  if (!kind.raster) return fromPopupConfig(config, original);
+  return rasterPopupFrom(config, { ...(doc as unknown as JsonObject), popup: original }, kind.texts);
+}
+
+/** The bands a popup's blocks or template name (`band_<n>`). */
+function bandsNamed(config: PopupProperties): number[] {
+  const text = config.mode === "html" ? config.html : JSON.stringify(config.blocks);
+  return [...text.matchAll(/\bband_(\d+)\b/g)].map((m) => Number(m[1]));
+}
+
+/** The bands an image's pixels are the values of (`imagePixels`): a hover shows them without the raster service. */
+const pixelBands = (doc: LayerStyle, kind: PopupKind): readonly number[] =>
+  imagePixels(doc as unknown as JsonObject, bandFactsOf(kind.texts.info))?.bands ?? [];
+
+/** How this panel's layer reads its popup; renders again when the render or the legend (a raster's default content)
+ * changes. */
+function usePopupKind(): PopupKind {
+  const { t, i18n } = useTranslation("common");
+  const data = useStyleData();
+  useStyleValue("render");
+  useStyleValue("legend");
+  return {
+    raster: !!data.raster,
+    texts: { t, locale: i18n.language, info: data.raster?.info },
+    fieldTypes: data.fieldTypes,
+  };
+}
+
 /** Today's configuration of the style's popup and a way to change it; null while the popup is off. */
 function usePopupConfig() {
   const store = useEditor();
   const data = useStyleData();
   const popup = useStyleValue<unknown>("popup");
-  const config = toPopupConfig(popup, data.fieldTypes);
+  const kind = usePopupKind();
+  const config = configOf(store.document, popup, kind);
   const update = (patch: Partial<PopupProperties>) => {
     if (!config) return;
-    const next = fromPopupConfig({ ...config, ...patch }, store.get("popup"));
+    const next = popupFrom(store.document, { ...config, ...patch }, store.get("popup"), kind);
     store.set("popup", next === false || Object.keys(next).length ? next : undefined);
   };
   // Today's editors read fields as the layer API gives them.
@@ -83,7 +157,28 @@ function usePopupConfig() {
     type: f.type === "integer" ? "number" : f.type,
     ...(f.label !== f.name ? { display_config: { label: f.label } } : {}),
   }));
-  return { config, update, fields, layerId: data.layerId, layerName: data.layerName ?? "" };
+  // A file has no features: its editors ask no sample feature and no values of its dataset.
+  const layerId = kind.raster ? "" : data.layerId;
+  return { config, update, fields, layerId, layerName: data.layerName ?? "", raster: kind.raster, kind };
+}
+
+/** Whether a raster file's popup can open on hover: the map has its values to read (spec 9.7), on its value tiles or
+ * in an image's pixels that are its values (`imagePixels`: 8 bit bands drawn as they are, or codes whose colors tell
+ * them apart); not for other images or colors the raster service paints. Before the values' description has loaded,
+ * as for any color scale. */
+function useRasterHover(): boolean {
+  const store = useEditor();
+  const { raster } = useStyleData();
+  const address = useStyleSelector((doc) => {
+    const query = raster ? valueQuery(doc as unknown as JsonObject) : null;
+    return raster && query ? valuesUrl(coverageUrl(raster.dataset), query) : undefined;
+  });
+  const described = useLoadedRasterValues(address);
+  useStyleValue("render.bands");
+  if (!raster) return true;
+  const style = store.document as unknown as JsonObject;
+  if (!address) return imagePixels(style, bandFactsOf(raster.info)) !== null;
+  return !described || drawsValueTiles(style, described);
 }
 
 /** The editor's color picker for one color of a block, reading the block as stored now (it renders apart from the
@@ -151,7 +246,7 @@ function PopupContentEditor() {
   const { t } = useTranslation("common");
   const popover = usePopover();
   const next = useNextLevel();
-  const { config, update, fields, layerId, layerName } = usePopupConfig();
+  const { config, update, fields, layerId, layerName, raster } = usePopupConfig();
   if (!config) return null;
   return (
     <>
@@ -190,7 +285,14 @@ function PopupContentEditor() {
           }
         />
       ) : (
-        <HtmlModeCard layerId={layerId} layerName={layerName} popup={config} onChange={update} />
+        <HtmlModeCard
+          layerId={layerId}
+          layerName={layerName}
+          popup={config}
+          onChange={update}
+          // A file's fields are its cell's, which the dataset API does not know.
+          fields={raster ? fields : undefined}
+        />
       )}
     </>
   );
@@ -198,31 +300,34 @@ function PopupContentEditor() {
 
 function PopupAppearanceEditor() {
   const { t } = useTranslation("common");
-  const { config, update } = usePopupConfig();
+  const { config, update, raster } = usePopupConfig();
   if (!config) return null;
   return (
     <>
       <PopupAppearanceSettings popup={config} onChange={update} />
-      <SwitchRow
-        label={t("style_editor.popup_highlight")}
-        note={t("style_editor.popup_highlight_note")}
-        on={config.highlight_active_feature}
-        onToggle={() => update({ highlight_active_feature: !config.highlight_active_feature })}
-      />
+      {/* A file's cell is no feature to mark. */}
+      {!raster && (
+        <SwitchRow
+          label={t("style_editor.popup_highlight")}
+          note={t("style_editor.popup_highlight_note")}
+          on={config.highlight_active_feature}
+          onToggle={() => update({ highlight_active_feature: !config.highlight_active_feature })}
+        />
+      )}
     </>
   );
 }
 
-export function PopupSection() {
+/** The popup section; `children`: rows of a raster file's popup, under Show on. */
+export function PopupSection({ children }: { children?: ReactNode }) {
   const { t } = useTranslation("common");
   const store = useEditor();
-  const { layerId } = useStyleData();
   // A sample feature's popup pinned on the map while the section is being edited.
   const [preview, setPreview] = useState(false);
   const popover = usePopover();
   const next = useNextLevel();
-  const { config } = usePopupConfig();
-  useStyleValue("render");
+  const { config, layerId, raster, kind } = usePopupConfig();
+  const hoverable = useRasterHover();
   // A popup belongs to features that are drawn: not under a heatmap without points.
   if (!symbolShown(store.document)) return null;
 
@@ -232,13 +337,25 @@ export function PopupSection() {
       store.set("popup", false);
       return;
     }
-    const before = config ? store.get("popup") : switchedOff.get(store);
-    const base = toPopupConfig(before);
+    // A popup object is on: its keys, or none for the defaults.
+    const stored = config ? store.get("popup") : switchedOff.get(store);
+    const before = isObject(stored) ? stored : {};
+    const base = configOf(store.document, before, kind);
     if (!base) return;
-    const popup = fromPopupConfig({ ...base, enabled: true, trigger: value }, before);
+    const popup = popupFrom(store.document, { ...base, enabled: true, trigger: value }, before, kind);
     store.set("popup", popup === false || Object.keys(popup).length ? popup : undefined);
     switchedOff.delete(store);
   };
+  // Where the map draws no values (an image, colors the raster service paints) the popup opens on click only (spec
+  // 9.7); a hover trigger stored there still shows as set.
+  const trigger = config ? config.trigger : "off";
+  const options = hoverable ? SHOW_ON : SHOW_ON.filter((v) => !v.includes("hover") || v === trigger);
+  // Band values are the raster service's, which a hover does not ask.
+  const bandsOnClick =
+    raster &&
+    !!config &&
+    config.trigger !== "click" &&
+    bandsNamed(config).some((band) => !pixelBands(store.document, kind).includes(band));
 
   const label = t("style_editor.popup_show_on");
   const content = !config
@@ -250,14 +367,16 @@ export function PopupSection() {
     <PanelSection title={t("style_editor.section_popup")}>
       <ChoiceRow<(typeof SHOW_ON)[number]>
         label={label}
-        value={config ? config.trigger : "off"}
-        options={SHOW_ON.map((v) => ({
+        value={trigger}
+        options={options.map((v) => ({
           value: v,
           label: t(`style_editor.${SHOW_ON_KEYS[v]}`),
-          sub: t(`style_editor.${SHOW_ON_KEYS[v]}_sub`),
+          sub: t(`style_editor.${raster ? "raster_" : ""}${SHOW_ON_KEYS[v]}_sub`),
         }))}
         onChange={showOn}
+        note={bandsOnClick ? t("style_editor.popup_bands_on_click") : undefined}
       />
+      {children}
       {config && (
         <NavRow
           label={t("style_editor.popup_content")}

@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from goatlib.raster.color import bands_needed, colorize
+from goatlib.raster.color import bands_needed, colorize, image_bands
 from goatlib.raster.token import decode_token, encode_token
 
 
@@ -199,25 +199,70 @@ def test_categories_without_classes_draw_the_color_table() -> None:
 
 
 @pytest.mark.parametrize(
-    ("spec", "count", "expected"),
+    ("spec", "bands", "expected"),
     [
-        ({"kind": "rgb", "bands": None}, 4, (1, 2, 3)),
-        ({"kind": "rgb", "bands": None}, 1, (1,)),
-        ({"kind": "rgb", "bands": [4, 1, 2]}, 4, (1, 2, 4)),
+        ({"kind": "rgb", "bands": None}, (1, 2, 3, 4), (1, 2, 3)),
+        ({"kind": "rgb", "bands": None}, (1,), (1,)),
+        # An alpha band first: the image is the three value bands after it.
+        ({"kind": "rgb", "bands": None}, (2, 3, 4), (2, 3, 4)),
+        ({"kind": "rgb", "bands": [4, 1, 2]}, (1, 2, 3, 4), (1, 2, 4)),
         (
             {
                 "kind": "stops",
                 "band": "(b4 - b1) / b2",
                 "stops": [{"value": 0, "color": "#000"}],
             },
-            4,
+            (1, 2, 3, 4),
             (1, 2, 4),
         ),
-        ({"kind": "classes", "band": 3, "classes": [{"color": "#000"}]}, 4, (3,)),
+        (
+            {"kind": "classes", "band": 3, "classes": [{"color": "#000"}]},
+            (1, 2, 3, 4),
+            (3,),
+        ),
     ],
 )
-def test_the_bands_a_coloring_reads(spec: dict, count: int, expected: tuple) -> None:
-    assert bands_needed(coloring(**spec), count) == expected
+def test_the_bands_a_coloring_reads(spec: dict, bands: tuple, expected: tuple) -> None:
+    assert bands_needed(coloring(**spec), bands) == expected
+
+
+IMAGE = {"kind": "rgb", "bands": None}
+
+
+@pytest.mark.parametrize(
+    ("spec", "bands", "interp", "drawn"),
+    [
+        # A BGR file marked blue, green, red: red is band 3.
+        (IMAGE, (1, 2, 3), ("blue", "green", "red"), (3, 2, 1)),
+        # No markings, or not all three: the first three value bands.
+        (IMAGE, (1, 2, 3), ("gray", "undefined", "undefined"), (1, 2, 3)),
+        (IMAGE, (1, 2, 3), ("red", "undefined", "undefined"), (1, 2, 3)),
+        (IMAGE, (1, 2, 3), (), (1, 2, 3)),
+        # An RGBA file: its alpha band is no value band.
+        (IMAGE, (1, 2, 3), ("red", "green", "blue", "alpha"), (1, 2, 3)),
+        (IMAGE, (2, 3, 4), ("alpha", "red", "green", "blue"), (2, 3, 4)),
+        # One band: its grey or its color table.
+        (IMAGE, (1,), ("palette",), (1,)),
+        # The style's own bands win.
+        (
+            {"kind": "rgb", "bands": [1, 2, 3]},
+            (1, 2, 3),
+            ("blue", "green", "red"),
+            (1, 2, 3),
+        ),
+    ],
+)
+def test_an_image_draws_the_bands_its_file_marks_red_green_and_blue(
+    spec: dict, bands: tuple, interp: tuple, drawn: tuple
+) -> None:
+    c = coloring(**spec)
+    assert image_bands(c, bands, interp) == drawn
+    # It reads them (in band order) and draws them in that order.
+    assert bands_needed(c, bands, interp) == tuple(sorted(set(drawn)))
+    if len(drawn) == 3:
+        values = {i: np.array([[10 * i]], dtype="uint8") for i in sorted(set(drawn))}
+        rgba = colorize(c, values, bits=(8,) * 4, color_interp=interp)[0, 0].tolist()
+        assert rgba == [10 * i for i in drawn] + [255]
 
 
 def test_nearest_stops_take_the_first_of_the_closest_without_a_cell_per_stop_copy() -> (

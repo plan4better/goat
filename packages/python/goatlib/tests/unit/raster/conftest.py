@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 rasterio = pytest.importorskip("rasterio")
+from rasterio.enums import ColorInterp  # noqa: E402
 from rasterio.shutil import copy as rio_copy  # noqa: E402
 from rasterio.transform import from_bounds  # noqa: E402
 from rasterio.warp import transform_bounds  # noqa: E402
@@ -79,6 +80,7 @@ def _write_cog(
     colormap=None,
     overviews: str = "AUTO",
     crs: str = "EPSG:4326",
+    colorinterp: list[ColorInterp] | None = None,
 ) -> None:
     tmp = path.with_suffix(".plain.tif")
     bounds = transform_bounds("EPSG:4326", crs, *BOUNDS)
@@ -96,6 +98,8 @@ def _write_cog(
         dst.write(data)
         if colormap:
             dst.write_colormap(1, colormap)
+        if colorinterp:
+            dst.colorinterp = colorinterp
     rio_copy(
         tmp, path, driver="COG", BLOCKSIZE=256, OVERVIEWS=overviews, COMPRESS="DEFLATE"
     )
@@ -126,6 +130,13 @@ def cog_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     _write_cog(root / "landcover.tif", codes[None], nodata=0, colormap=table)
     bands = np.stack([np.full((SIZE, SIZE), v, "uint16") for v in (100, 200, 300, 500)])
     _write_cog(root / "multiband.tif", bands, nodata=0)
+    # A photo stored blue, green, red, and marked so.
+    bgr = np.stack([np.full((SIZE, SIZE), v, "uint8") for v in (50, 100, 200)])
+    _write_cog(
+        root / "bgr.tif",
+        bgr,
+        colorinterp=[ColorInterp.blue, ColorInterp.green, ColorInterp.red],
+    )
     big = np.full((1, 8192, 8192), 7, "uint8")
     _write_cog(root / "no_overviews.tif", big, overviews="NONE")
     (root / "notatiff.tif").write_text("hello")

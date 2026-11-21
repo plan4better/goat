@@ -184,6 +184,33 @@ describe("raster general section", () => {
     await userEvent.click(bands[3]);
     expect(store.get("render.bands")).toEqual([4, 2, 3]);
   });
+
+  it("a file marked blue, green, red: true color is the bands it marks, and bands 1, 2, 3 are written", async () => {
+    // goatlib draws such a file red from its third band (`image_bands`): Custom starts from the bands it draws.
+    const bgr: RasterInfo = {
+      ...RGB,
+      bands: 3,
+      bits: [8, 8, 8],
+      names: ["B", "G", "R"],
+      colorInterp: ["blue", "green", "red"],
+    };
+    const row = (channel: string) =>
+      within(screen.getByText(`style_editor.band_${channel}`).parentElement as HTMLElement).getByRole(
+        "combobox"
+      );
+    const view = setup({ type: "image" }, bgr);
+    await choose("style_editor.bands", "style_editor.bands_true", "style_editor.bands_custom");
+    expect(["red", "green", "blue"].map((c) => row(c).textContent)).toEqual(["R", "G", "B"]);
+    view.unmount();
+    const { store } = setup({ type: "image", bands: [1, 2, 1] }, bgr);
+    await userEvent.click(row("blue"));
+    const bands = within(screen.getByRole("listbox"))
+      .getAllByRole("option")
+      .filter((el) => el.classList.contains("MuiMenuItem-root"));
+    await userEvent.click(bands[2]);
+    // Not true color for this file: written as chosen.
+    expect(store.get("render.bands")).toEqual([1, 2, 3]);
+  });
 });
 
 describe("raster layer section", () => {

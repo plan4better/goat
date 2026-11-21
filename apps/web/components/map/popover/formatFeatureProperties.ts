@@ -14,6 +14,9 @@ export interface LayerField {
   /** Formula fields only — the result kind that drives formatting */
   output_kind?: string;
   display_config?: Record<string, unknown>;
+  /** A number format the field brings itself, in the reader's language; a field list's own format wins. A raster
+   * cell's values have "none": numbers as the reader writes them (popupVisibility `popupFields`). */
+  format?: FormatNumberTypes;
 }
 
 export interface FieldDecorator {
@@ -92,8 +95,9 @@ export function formatFeatureProperties(
     // format override on these kinds has no effect — unit conversion takes
     // priority.
     let result: string;
-    if (decorator?.format && kind === "number") {
-      result = formatNumber(Number(numericValue), decorator.format, lang);
+    const format = decorator?.format ?? f.format;
+    if (format && kind === "number") {
+      result = formatNumber(Number(numericValue), format, lang);
     } else {
       result = formatFieldValue(
         numericValue,

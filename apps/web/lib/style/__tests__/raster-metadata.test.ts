@@ -4,6 +4,7 @@ import { commonT } from "@/i18n/__tests__/commonI18n";
 
 import {
   type RasterInfoResponse,
+  bandFactsOf,
   bandLabel,
   rasterInfoOf,
   sampleOf,
@@ -56,8 +57,46 @@ describe("raster facts from the raster service", () => {
       color_table: { "1": [255, 0, 0, 255], "3": [0, 0, 255, 255] },
       bands: [band(1, { values: [1, 2, 3] })],
     });
-    expect(codes).toMatchObject({ colorTable: true, integer: true, noData: undefined });
+    expect(codes).toMatchObject({
+      colorTable: true,
+      integer: true,
+      noData: undefined,
+      dtype: "uint8",
+      scaled: false,
+    });
+    expect(rasterInfoOf({ ...INFO, scales: [0.01], offsets: [0] }).scaled).toBe(true);
+    expect(rasterInfoOf({ ...INFO, scales: [1], offsets: [-100] }).scaled).toBe(true);
     expect(codes.tableColors).toEqual({ 1: "#ff0000", 3: "#0000ff" });
+  });
+
+  it("the band facts carry the file's color interpretation and its color table's entries", () => {
+    const info = rasterInfoOf({
+      ...INFO,
+      dtype: "uint8",
+      nodata: null,
+      bits: [8],
+      color_table: { "1": [255, 0, 0, 255], "3": [0, 0, 255, 255] },
+      color_interp: ["palette"],
+      palette: { band: 1, colors: { "1": [255, 0, 0, 255], "3": [0, 0, 255, 255] } },
+      bands: [band(1, { values: [1, 3] })],
+    });
+    expect(bandFactsOf(info)).toEqual({
+      count: 1,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: true,
+      valueBands: [1],
+      colorInterp: ["palette"],
+      palette: { band: 1, colors: { 1: "#ff0000", 3: "#0000ff" } },
+    });
+    // An older geoapi tells neither.
+    expect(bandFactsOf(rasterInfoOf({ ...INFO, dtype: "uint8" }))).toEqual({
+      count: 1,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: false,
+      valueBands: [1],
+    });
   });
 
   it("From the data sets the domain to the band's 2nd and 98th percentiles", () => {

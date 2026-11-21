@@ -119,7 +119,8 @@ class Categories(_OneBand):
 
 class Rgb(_Coloring):
     kind: Literal["rgb"]
-    #: None: the file as it is (its color table, bands 1 to 3, or one band in grey).
+    #: None: the file as it is (its color table, the bands it marks red, green and
+    #: blue or its first three, or one band in grey: `color.image_bands`).
     bands: tuple[BandNumber, BandNumber, BandNumber] | None = None
 
 

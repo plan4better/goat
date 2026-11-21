@@ -6,6 +6,8 @@ import { Box, Skeleton, type SxProps, type Theme, Typography } from "@mui/materi
 import { Fragment, type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
 import { DASHES } from "@/lib/style/compile/constants";
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { SQUARE_RADIUS } from "@/lib/style/compile/markerImage";
@@ -444,12 +446,32 @@ export function layerSwatchIcon(
   );
 }
 
-/** A popup header's icon: the swatch of the class the clicked feature falls in. */
+/** A raster layer's icon, as the layer list shows it beside its name. */
+export function RasterLayerIcon() {
+  return (
+    <Icon
+      iconName={ICON_NAME.RASTER}
+      fontSize="small"
+      data-testid="raster-layer-icon"
+      sx={{ fontSize: "1rem", color: "action.active" }}
+    />
+  );
+}
+
+/** A popup header's icon: the swatch of the class the clicked feature falls in; a raster layer's, as the layer list
+ * shows it. */
 export function featureSwatchIcon(
-  layer: { style?: { document: unknown } | null; feature_layer_geometry_type?: string | null } | undefined,
+  layer:
+    | {
+        type?: string | null;
+        style?: { document: unknown } | null;
+        feature_layer_geometry_type?: string | null;
+      }
+    | undefined,
   properties: Record<string, unknown> | undefined,
   zoom = 12
 ): ReactNode | undefined {
+  if (layer?.type === "raster") return <RasterLayerIcon />;
   const geometry = layer?.feature_layer_geometry_type?.toLowerCase();
   if (!layer?.style || !geometry || !GEOMETRIES.has(geometry)) return undefined;
   const swatch = classOf(layer.style.document as JsonObject, properties, {

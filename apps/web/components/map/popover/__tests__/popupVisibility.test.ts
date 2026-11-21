@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
+  popupFields,
   popupFieldsLayerId,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
@@ -51,6 +52,22 @@ describe("findPopupLayer", () => {
   it("falls back to the dataset-id match when projectLayerId finds nothing", () => {
     const layers = [projectLayer()];
     expect(findPopupLayer("dataset-abc", layers, "999")).toBe(layers[0]);
+  });
+});
+
+describe("popupFields", () => {
+  it("a raster layer's popup formats its cell's values as numbers in the reader's language", () => {
+    const raster = { ...projectLayer(), type: "raster" };
+    expect(popupFields(raster, { value: 65.93717, class: "Wald", band_1: 65.93717, band_12: 3 })).toEqual([
+      { name: "value", type: "number", format: "none" },
+      { name: "band_1", type: "number", format: "none" },
+      { name: "band_12", type: "number", format: "none" },
+    ]);
+  });
+
+  it("a feature layer's popup takes its fields from its dataset", () => {
+    expect(popupFields({ ...projectLayer(), type: "feature" }, { value: 1 })).toBeUndefined();
+    expect(popupFields(undefined, { value: 1 })).toBeUndefined();
   });
 });
 

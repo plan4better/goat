@@ -17,6 +17,7 @@ import {
   rasterTilesetOf,
   rasterValuesOf,
   reliefColor,
+  reliefColorAt,
   reliefStops,
   resamplingOf,
   tilesetUrl,
@@ -240,6 +241,71 @@ describe("value tiles", () => {
     expect(rasterTilesetOf({ maxzoom: 14, "goat:values": { version: "abc-e3" } })).toBeNull();
   });
 
+  it("reads the colored tiles' band facts: what tells whether their pixels are the file's values", () => {
+    const description = {
+      maxzoom: 16,
+      "goat:version": "abc-e3",
+      "goat:bands": {
+        count: 4,
+        dtype: "uint8",
+        scaled: false,
+        color_table: false,
+        names: ["Rot", "Band 2", "", ""],
+        value_bands: [1, 2, 3],
+      },
+    };
+    expect(rasterTilesetOf(description)?.bands).toEqual({
+      count: 4,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: false,
+      names: ["Rot", "", "", ""],
+      valueBands: [1, 2, 3],
+    });
+    // An older geoapi tells none; facts of another shape are none.
+    expect(rasterTilesetOf({ ...description, "goat:bands": undefined })).not.toHaveProperty("bands");
+    expect(rasterTilesetOf({ ...description, "goat:bands": { count: "4" } })).not.toHaveProperty("bands");
+  });
+
+  it("reads which bands the file marks red, green and blue, and the colors of the color table's entries", () => {
+    const facts = {
+      count: 1,
+      dtype: "uint8",
+      scaled: false,
+      color_table: true,
+      names: [""],
+      value_bands: [1],
+    };
+    const bands = (extra: object) =>
+      rasterTilesetOf({ "goat:version": "abc-e3", "goat:bands": { ...facts, ...extra } })?.bands;
+    expect(
+      bands({
+        color_interp: ["palette"],
+        palette: { band: 1, colors: { "3": [255, 0, 0, 255], "7": [0, 128, 0] } },
+      })
+    ).toEqual({
+      count: 1,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: true,
+      names: [""],
+      valueBands: [1],
+      colorInterp: ["palette"],
+      palette: { band: 1, colors: { 3: "#ff0000", 7: "#008000" } },
+    });
+    // An entry drawn fully transparent is never read: it is left out. Entries that differ in alpha alone keep the
+    // same color.
+    expect(
+      bands({
+        palette: { band: 1, colors: { "3": [0, 0, 0, 255], "5": [0, 0, 0, 0], "6": [255, 0, 0, 128] } },
+      })?.palette
+    ).toEqual({ band: 1, colors: { 3: "#000000", 6: "#ff0000" } });
+    // No color table, a table too long to send, an older geoapi or another shape: no palette.
+    for (const palette of [null, undefined, { band: "1", colors: {} }, { band: 1, colors: { x: [1, 2, 3] } }])
+      expect(bands({ palette }), JSON.stringify(palette)).not.toHaveProperty("palette");
+    expect(bands({ color_interp: "red" })).not.toHaveProperty("colorInterp");
+  });
+
   it("the tile URL carries base and step from the encoding: the URL alone names its tile", () => {
     const coverage = "https://geo/collections/d1/coverage/tiles/WebMercatorQuad";
     const values = encoded(-6.000003814697266, 3.814697265625e-6, [-5, 5]);
@@ -318,6 +384,49 @@ describe("value tiles", () => {
       { ...description, "goat:values": { ...goat, version: undefined } },
     ])
       expect(rasterValuesOf(broken)).toBeNull();
+  });
+
+  it("reads the file's band names from the description; a band without one has none", () => {
+    const description = {
+      maxzoom: 14,
+      "goat:values": {
+        encoding: { redFactor: 16, greenFactor: 0.0625, blueFactor: 0.000244140625, baseShift: -95.5 },
+        range: [100, 400],
+        integer: false,
+        version: "abc-e1",
+        names: ["Höhe", "Band 2", ""],
+      },
+    };
+    expect(rasterValuesOf(description)?.names).toEqual(["Höhe", "", ""]);
+    // An older geoapi names none; names of another shape are left out.
+    const { names: _names, ...older } = description["goat:values"];
+    expect(rasterValuesOf({ ...description, "goat:values": older })).not.toHaveProperty("names");
+    expect(rasterValuesOf({ ...description, "goat:values": { ...older, names: [1, 2] } })).not.toHaveProperty(
+      "names"
+    );
+  });
+
+  it("the color the map draws at a value comes from its relief stops", () => {
+    // Codes of 1 from base 0: value v is code v.
+    const values: RasterValues = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 0 },
+      range: [0, 100],
+      integer: true,
+      version: "v",
+    };
+    const stops: ReliefStop[] = [
+      [0, "rgba(0, 0, 0, 0)"],
+      [10, "rgba(0, 0, 0, 1)"],
+      [20, "rgba(200, 100, 0, 1)"],
+      [30, "rgba(200, 100, 0, 0)"],
+    ];
+    expect(reliefColorAt(stops, values, 10)).toBe("#000000");
+    expect(reliefColorAt(stops, values, 15)).toBe("#643200");
+    expect(reliefColorAt(stops, values, 20)).toBe("#c86400");
+    // Past the last stop its color holds; a transparent one is no color.
+    expect(reliefColorAt(stops, values, 40)).toBeNull();
+    expect(reliefColorAt(stops.slice(0, 3), values, 40)).toBe("#c86400");
+    expect(reliefColorAt(stops, values, 0)).toBeNull();
   });
 
   it("covers every value case of the contract", () => {

@@ -273,6 +273,7 @@ def test_info_lists_the_bands_statistics(client: TestClient) -> None:
     body = client.get(f"/collections/{LAYER}/raster/info").json()
     assert body["count"] == 1 and body["dtype"] == "float32" and body["nodata"] == -9999
     assert body["bounds"] == [11.5, 48.1, 11.6, 48.2]
+    assert body["color_interp"] == [] and body["palette"] is None
     [band] = body["bands"]
     assert band["min"] == 100 and band["p98"] == 394 and band["approximate"] is True
     assert band["histogram"] == {"counts": [3, 4], "edges": [100.0, 250.0, 400.0]}
@@ -472,6 +473,37 @@ def test_the_value_tileset_describes_the_encoding(client: TestClient) -> None:
     )
 
 
+def test_the_value_tileset_names_the_files_bands(client: TestClient) -> None:
+    """The file's band names as `/raster/info` gives them (a band without a
+    description is "Band <n>"): a map's popup labels the values with them
+    without asking for the info."""
+    import dataclasses
+
+    assert client.get(COVERAGE).json()["goat:values"]["names"] == ["Band 1"]
+    named = dataclasses.replace(INFO, names=("Höhe",))
+    with patch.object(FakeSource, "info", lambda self: named):
+        body = client.get(f"{COVERAGE}?resampling=nearest").json()
+    assert body["goat:values"]["names"] == ["Höhe"]
+
+
+def test_the_value_tilesets_etag_names_its_shape(client: TestClient) -> None:
+    """A description that gained a field (`names`) is not a 304 of one kept
+    from before: its ETag names the body's shape, not only what the tiles
+    show, while the tiles keep their URLs (`ENCODING_VERSION`)."""
+    from urllib.parse import urlencode
+
+    from geoapi.routers import rasters
+
+    shown = urlencode({"f": "webp", "band": 1, "resampling": "bilinear"})
+    etag = client.get(COVERAGE).headers["etag"]
+    assert etag != rasters._etag(LAYER, CURRENT, shown)
+    assert etag == rasters._etag(
+        LAYER, CURRENT, shown, rasters.VALUES_DESCRIPTION_SHAPE
+    )
+    stale = rasters._etag(LAYER, CURRENT, shown)
+    assert client.get(COVERAGE, headers={"If-None-Match": stale}).status_code == 200
+
+
 def test_the_value_tileset_of_512_px_tiles_is_one_zoom_higher_up(
     client: TestClient,
 ) -> None:
@@ -512,12 +544,118 @@ def test_a_files_bounds_that_are_no_box_on_earth_are_null_in_the_value_tileset(
         assert client.get(COVERAGE).json()["bounds"] is None
 
 
+def test_the_image_tileset_tells_an_8_bit_files_bands(client: TestClient) -> None:
+    """A map reads an 8 bit image's values from the pixels it draws (spec
+    9.7): the description says the file's bands are 8 bit, unscaled and
+    without a color table. Its ETag names this shape."""
+    from urllib.parse import urlencode
+
+    from geoapi.routers import rasters
+
+    rgb = dataclasses.replace(
+        INFO,
+        count=4,
+        dtype="uint8",
+        nodata=None,
+        bits=(8, 8, 8, 8),
+        scales=(1.0,) * 4,
+        offsets=(0.0,) * 4,
+        names=("Rot", "Band 2", "Band 3", "Band 4"),
+    )
+    with patch.object(FakeSource, "info", lambda self: rgb):
+        r = client.get(IMAGE_TILESET)
+    assert r.json()["goat:bands"] == {
+        "count": 4,
+        "dtype": "uint8",
+        "scaled": False,
+        "color_table": False,
+        "names": ["Rot", "Band 2", "Band 3", "Band 4"],
+        "value_bands": [1, 2, 3, 4],
+        "color_interp": [],
+        "palette": None,
+    }
+    # Which bands the file marks red, green and blue: an image draws those.
+    bgr = dataclasses.replace(rgb, color_interp=("blue", "green", "red", "undefined"))
+    with patch.object(FakeSource, "info", lambda self: bgr):
+        bands = client.get(IMAGE_TILESET).json()["goat:bands"]
+    assert bands["color_interp"] == ["blue", "green", "red", "undefined"]
+    # An alpha band holds no values: the bands a map counts leave it out.
+    rgba = dataclasses.replace(rgb, alpha_bands=(4,))
+    with patch.object(FakeSource, "info", lambda self: rgba):
+        body = client.get(f"{IMAGE_TILESET}?tilesize=512").json()
+    assert body["goat:bands"]["value_bands"] == [1, 2, 3]
+    stale = rasters._etag(LAYER, CURRENT, urlencode({}))
+    assert r.headers["etag"] == rasters._etag(
+        LAYER, CURRENT, urlencode({}), rasters.IMAGE_DESCRIPTION_SHAPE
+    )
+    assert r.headers["etag"] != stale
+    scaled = dataclasses.replace(rgb, scales=(0.5, 1.0, 1.0, 1.0))
+    with patch.object(FakeSource, "info", lambda self: scaled):
+        assert client.get(f"{IMAGE_TILESET}?tilesize=512").json()["goat:bands"][
+            "scaled"
+        ]
+
+
+def test_the_image_tileset_and_the_info_tell_the_color_tables_colors(
+    client: TestClient,
+) -> None:
+    """An image drawn with the file's color table: the band it colors and the
+    table's every entry (RGBA), from the header, so a map tells a drawn pixel's
+    code from its color (spec 9.7), also a code the statistics' overview never
+    met. No statistics are read for it."""
+    paletted = dataclasses.replace(
+        INFO,
+        dtype="uint8",
+        nodata=None,
+        bits=(8,),
+        color_table={
+            1: (255, 0, 0, 255),
+            2: (0, 128, 0),
+            4: (0, 0, 0, 0),
+            9: (255, 0, 0, 255),
+        },
+        color_interp=("palette",),
+    )
+    palette = {
+        "band": 1,
+        "colors": {
+            "1": [255, 0, 0, 255],
+            "2": [0, 128, 0, 255],
+            "4": [0, 0, 0, 0],
+            "9": [255, 0, 0, 255],
+        },
+    }
+    with (
+        patch.object(FakeSource, "info", lambda self: paletted),
+        patch.object(FakeSource, "statistics") as statistics,
+    ):
+        bands = client.get(IMAGE_TILESET).json()["goat:bands"]
+        statistics.assert_not_called()
+        statistics.return_value = STATS
+        info = client.get(f"/collections/{LAYER}/raster/info").json()
+    assert bands["palette"] == palette
+    assert info["palette"] == palette
+    assert bands["color_interp"] == info["color_interp"] == ["palette"]
+    # A table of more entries than an 8 bit band has (a 16 bit file's), and
+    # stored values that are scaled (no codes of the table): none.
+    rs.raster_service.clear()
+    long = dataclasses.replace(
+        paletted, color_table={i: (i % 256, i // 256, 0, 255) for i in range(300)}
+    )
+    scaled = dataclasses.replace(paletted, scales=(0.5,))
+    for header in (long, scaled):
+        with patch.object(FakeSource, "info", lambda self, header=header: header):
+            assert client.get(IMAGE_TILESET).json()["goat:bands"]["palette"] is None
+        rs.raster_service.clear()
+
+
 def test_the_image_tileset_describes_the_files_edges_and_native_zoom(
     client: TestClient,
 ) -> None:
     """What a map needs for the colored tiles: the file's bounds, the zoom past
     which a tile only magnifies its cells, and the values version their
-    addresses name. Read from the file's header: no statistics."""
+    addresses name. Read from the file's header: no statistics (but for a
+    file with a color table, `palette`)."""
     with (
         patch.object(FakeSource, "statistics") as statistics,
         patch.object(FakeSource, "sample") as sample,
@@ -550,6 +688,18 @@ def test_the_image_tileset_describes_the_files_edges_and_native_zoom(
             }
         ],
         "goat:version": CURRENT,
+        # What tells whether the tiles' pixels are the file's values (8 bit
+        # bands drawn as they are), and the bands' names.
+        "goat:bands": {
+            "count": 1,
+            "dtype": "float32",
+            "scaled": False,
+            "color_table": False,
+            "names": ["Band 1"],
+            "value_bands": [1],
+            "color_interp": [],
+            "palette": None,
+        },
     }
     # The value tiles' facts for the same tile size.
     values = client.get(f"{COVERAGE}?tilesize=512").json()

@@ -114,6 +114,15 @@ export function loadedRasterValues(url: string): RasterValues | undefined {
   return undefined;
 }
 
+/** The colored tiles' description already loaded for `url` (`tilesetUrl` without a version), as
+ * `loadedRasterValues`; asks nothing. */
+export function loadedRasterTileset(url: string): RasterTileset | undefined {
+  for (const [key, entry] of valuesCache)
+    if ((key === url || key.startsWith(`${url}&v=`)) && entry.values && !("encoding" in entry.values))
+      return entry.values;
+  return undefined;
+}
+
 /** `loadedRasterValues` for a component, read again when a description arrives. */
 export function useLoadedRasterValues(url: string | undefined): RasterValues | undefined {
   return useSyncExternalStore(

@@ -121,6 +121,27 @@ describe("useStyleData", () => {
     expect(result.current.service).toBeUndefined();
   });
 
+  it("a raster file's fields are its cell's: the value, its class and every band", async () => {
+    useRasterInfo.mockReturnValueOnce({
+      info: { bands: 2, bits: [8, 8], noData: undefined, colorTable: false, integer: true, stats: [] },
+    } as never);
+    const { result } = renderHook(() =>
+      useStyleData({ id: "layer-r", source: { kind: "cog", url: "https://x/rgb.tif" } })
+    );
+    expect(result.current.fields.map((f) => [f.name, f.type])).toEqual([
+      ["value", "number"],
+      ["class", "string"],
+      ["band_1", "number"],
+      ["band_2", "number"],
+    ]);
+    expect(result.current.fieldTypes).toEqual({
+      value: "number",
+      class: "string",
+      band_1: "number",
+      band_2: "number",
+    });
+  });
+
   it("a map service gives how many layers it draws and its first legend", () => {
     const { result } = renderHook(() =>
       useStyleData({

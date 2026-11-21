@@ -36,6 +36,10 @@ function attribute(a: JsonObject, fields?: Record<string, FieldType>): JsonObjec
     ...(Object.keys(options).length ? { format_config: options } : {}),
     ...(typeof format.prefix === "string" ? { prefix: format.prefix } : {}),
     ...(typeof format.suffix === "string" ? { suffix: format.suffix } : {}),
+    // A raster's default content (never written into a style): the cell's color beside its value, and an image's
+    // values in one row.
+    ...(typeof a.swatch === "string" ? { swatch: a.swatch } : {}),
+    ...(Array.isArray(a.join) && a.join.every((f) => typeof f === "string") ? { join: a.join } : {}),
   };
 }
 
@@ -61,7 +65,7 @@ function block(b: JsonObject, index: number, fields?: Record<string, FieldType>)
 export function toPopupConfig(popup: unknown, fields?: Record<string, FieldType>): PopupProperties | null {
   if (popup === false) return null;
   const source: JsonObject = isObject(popup) ? popup : {};
-  // Raster popups (band values) come with the raster service.
+  // A raster file's popup (`bands`) is read with its cell's fields: rasterPopupProperties takes `bands` out first.
   if ("bands" in source || source.enabled === false) return null;
   // A block today's popup cannot draw (a badge without its field) is left out rather than failing the popup.
   const blocks = (
@@ -132,11 +136,16 @@ function fromBlock(b: JsonObject, original: JsonObject | undefined): JsonObject 
 
 /** A style's `popup` from today's configuration, the inverse of toPopupConfig: `field_list`, attributes by `field`, one
  * `format`; blocks keep the ids they had in `original`, a block added in the editor keeps its UUID; what the
- * configuration only filled in as a default stays out. A disabled popup is `false`. */
-export function fromPopupConfig(config: PopupProperties, original: unknown): JsonObject | false {
+ * configuration only filled in as a default stays out (`defaults`: the configuration of a popup without keys, a
+ * raster file's default content). A disabled popup is `false`. */
+export function fromPopupConfig(
+  config: PopupProperties,
+  original: unknown,
+  defaults?: PopupProperties
+): JsonObject | false {
   if (!config.enabled) return false;
   const source: JsonObject = isObject(original) ? original : {};
-  const absent = (toPopupConfig({}) ?? {}) as unknown as JsonObject;
+  const absent = (defaults ?? toPopupConfig({}) ?? {}) as unknown as JsonObject;
   const originals = Array.isArray(source.blocks) ? source.blocks.filter(isObject) : [];
   const byKey = new Map(originals.map((b, i) => [blockKey(b, i), b]));
   const out: JsonObject = {};

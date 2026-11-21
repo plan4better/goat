@@ -342,10 +342,23 @@ class RasterInfo:
     #: The zoom whose 256 px tile the file's smallest possible overview fills
     #: (rio-tiler's estimate).
     minzoom: int | None = None
+    #: The file's alpha bands (an orthophoto's transparency), by index: the
+    #: other bands' mask, no bands of values (`value_bands`).
+    alpha_bands: tuple[int, ...] = ()
+    #: Each band's color interpretation as rasterio reads it ("red", "green",
+    #: "blue", "alpha", "gray", "palette", "undefined", ...): an image draws the
+    #: bands marked red, green and blue (`image_bands`).
+    color_interp: tuple[str, ...] = ()
 
     @property
     def scaled(self) -> bool:
         return any(s != 1 for s in self.scales) or any(o != 0 for o in self.offsets)
+
+    @property
+    def value_bands(self) -> tuple[int, ...]:
+        """The bands that hold values, by index: every band but an alpha band.
+        The bands statistics, samples, tiles and validation take."""
+        return tuple(i for i in range(1, self.count + 1) if i not in self.alpha_bands)
 
 
 def native_zoom(info: RasterInfo, tilesize: TileSize = TILE_SIZE) -> int | None:
@@ -570,6 +583,7 @@ class RasterSource:
             names=tuple(d or f"Band {i}" for i, d in enumerate(ds.descriptions, 1)),
             maxzoom=int(self.reader.maxzoom),
             minzoom=int(self.reader.minzoom),
+            color_interp=tuple(c.name for c in ds.colorinterp),
         )
         return self._info
 
@@ -639,7 +653,7 @@ class RasterSource:
         outside the file. A 512 px tile is the tile z/x/y, the same area at
         twice the resolution."""
         info = self.info()
-        indexes = bands_needed(coloring, info.count)
+        indexes = bands_needed(coloring, info.value_bands, info.color_interp)
         if max(indexes) > info.count:
             raise BandError(
                 f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
@@ -669,6 +683,7 @@ class RasterSource:
             bits=info.bits,
             color_table=info.color_table,
             band_range=band_range,
+            color_interp=info.color_interp,
         )
         return encode_tile(rgba)
 

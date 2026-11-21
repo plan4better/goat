@@ -356,6 +356,12 @@ stack, so validation runs in core too.
   256-color lookup, stops blend or take the nearest, classes are `[from, to)`,
   categories match the rounded value; no data (the file's, with float32 rounding,
   NaN, the style's values) is transparent.
+- **An image without chosen bands draws the bands its file marks red, green and
+  blue** (`color.py`, `image_bands`, from `RasterInfo.color_interp`): a file
+  stored blue, green, red and marked so draws red from its third band. Without
+  all three marks it draws its first three value bands, or its first. The web
+  mirrors this rule (`imageBands` in `apps/web/lib/style/raster/metadata.ts`) to
+  read an image's values from its pixels, so a change here changes both.
 - **Only checked addresses open** (`source.py`): http(s) hosts that resolve to
   public addresses or are listed by the service (`private_hosts`); redirects
   answered to a HEAD request are followed hop by hop with the same check

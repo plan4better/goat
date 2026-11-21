@@ -3,12 +3,20 @@
 // fixture tile, made from synthetic data by fixtures/raster/make_tiles.py, so every tile on the map is the same: the
 // tile whose top left corner is at the map's center [0, 0] is the one read. Most fixtures are 256 px tiles, drawn at
 // their own width so a whole tile fits the lab's map; a few are 512 px tiles drawn at the compiler's own tile size.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CompileInput } from "@/lib/style/compile/types";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { JsonObject } from "@/lib/style/json";
-import type { RasterValues } from "@/lib/style/raster/values";
+import {
+  type TileValueDeps,
+  browserReaders,
+  decodeWith,
+  tileUnder,
+  tileValueAt,
+  valueTileOptions,
+} from "@/lib/style/raster/tileValues";
+import { type RasterValues, valueTilesUrl } from "@/lib/style/raster/values";
 
 import contract from "../../../../../../packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json";
 import { type Rgb, WHITE, blank, distance, over, readRect } from "./checks";
@@ -296,6 +304,149 @@ describe("value tiles colored in the browser", () => {
       return near(drawn, want) ? [] : [`value ${sample.value}: drawn ${drawn}, want ${want}`];
     });
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("values read from value tiles", () => {
+  const c = VALUE_CASES.find((v) => v.id === "categories")!;
+  const { codes, ...about } = VALUE_TILES[c.id];
+  const values = described(about);
+  // The middle of each sample's block on the tile whose top left corner is at [0, 0], as a place at zoom 12.
+  const zoom = 12;
+  const n = 2 ** zoom;
+  const tile = { z: zoom, x: n / 2, y: n / 2 };
+  const places = c.samples.map((_, k) => {
+    const x = n / 2 + ((k % BLOCKS_PER_ROW) + 0.5) * (BLOCK / VALUE_TILE_SIZE);
+    const y = n / 2 + (Math.floor(k / BLOCKS_PER_ROW) + 0.5) * (BLOCK / VALUE_TILE_SIZE);
+    return {
+      lng: (x / n) * 360 - 180,
+      lat: (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI,
+    };
+  });
+  // A sample of the file's no data has code 0 in the tile: no value.
+  const want = c.samples.map((sample, k) => (codes[k] === 0 ? null : sample.value));
+
+  /** Each sample's value read on the 256 px tile and on the 512 px one, which covers the same area at twice the
+   * resolution; `reader` names the read, so its tiles are not the ones another read kept. */
+  async function readSamples(reader: string, deps?: Partial<TileValueDeps>) {
+    expect(want).toContain(null);
+    for (const fixture of [`values-${c.id}`, `values-${tiles.large.size}-${c.id}`]) {
+      const template = `${valueTilesUrl(
+        `${location.origin}/lab-raster/${fixture}`,
+        { band: 1, resampling: "nearest" },
+        values
+      )}&reader=${reader}`;
+      const read = await Promise.all(places.map((at) => tileValueAt(values, template, at, tile, deps)));
+      expect(read, `${fixture}, ${reader}`).toEqual(want);
+    }
+  }
+
+  it("decodes a value tile in the browser", async () => {
+    // The lab's browser reads a canvas back exactly: the default reads through one.
+    expect(browserReaders.canvasExact()).toBe(true);
+    await readSamples("default");
+  });
+
+  it("decodes a value tile through a video frame as through the canvas", async () => {
+    // As where the canvas adds noise.
+    await readSamples("video-frame", { decode: decodeWith({ ...browserReaders, canvasExact: () => false }) });
+  });
+
+  /** A scene of the 512 px value tiles, as the compiler asks for them and as the options of the tiles read are. */
+  const valueScene = (id: string) =>
+    scene({
+      ...raster(`${c.id}-${id}`, c.style),
+      tileSize: undefined,
+      source: {
+        ...SOURCE,
+        tiles: `${location.origin}/lab-raster/none/{z}/{x}/{y}.webp`,
+        coverage: `${location.origin}/lab-raster/values-${tiles.large.size}-${c.id}`,
+        values,
+      },
+    });
+
+  const settled = (s: Scene) =>
+    new Promise((done) => {
+      s.map.once("idle", done);
+      s.map.triggerRepaint();
+    });
+
+  /** The tile under points from the bottom of the map, near the camera, to its top, far away: each one a tile the map
+   * drew for the value source, read at its own zoom. Gives the drawn tiles and the tiles found, as `z/x/y`. */
+  async function readsDrawnTiles(s: Scene): Promise<{ drawn: Set<string>; found: string[] }> {
+    const template = (s.compiled?.sources[SOURCE.id] as { tiles: string[] }).tiles[0];
+    const drawn = new Set(
+      s.map.style.tileManagers[SOURCE.id]
+        .getVisibleCoordinates()
+        .map(({ canonical: { z, x, y } }) => `${z}/${x}/${y}`)
+    );
+    const { clientWidth: width, clientHeight: height } = s.map.getContainer();
+    const points = Array.from({ length: 24 }, (_, k) =>
+      s.map.unproject([width / 2, height - 4 - (k * (height - 8)) / 23])
+    );
+    const tilesUnder = points.map((at) => tileUnder(s.map, valueTileOptions(values), at));
+    // The lower half of the map is all ground.
+    expect(tilesUnder.slice(0, 12)).not.toContain(null);
+    const found = tilesUnder.flatMap((t) => (t ? [`${t.z}/${t.x}/${t.y}`] : []));
+    expect(found.filter((key) => !drawn.has(key))).toEqual([]);
+    // Read at its own zoom: a sample's value or no data.
+    const read = await Promise.all(points.map((at, k) => tileValueAt(values, template, at, tilesUnder[k])));
+    const known = new Set([...c.samples.map((sample) => sample.value), null]);
+    expect(read.filter((value) => !known.has(value))).toEqual([]);
+    return { drawn, found };
+  }
+
+  it("reads the tile MapLibre drew under each point of a tilted map", async () => {
+    const s = await valueScene("tilted");
+    // Tilted past 60 degrees MapLibre loads lower zooms away from the camera.
+    s.map.setMaxPitch(85);
+    s.map.jumpTo({ pitch: 75 });
+    await settled(s);
+    expect(s.errors).toEqual([]);
+    const { found } = await readsDrawnTiles(s);
+    expect(new Set(found.map((key) => key.split("/")[0])).size).toBeGreaterThan(1);
+  });
+
+  it("computes the covering tiles anew when the map is resized", async () => {
+    const s = await valueScene("resized");
+    const covering = vi.spyOn(s.map, "coveringTiles");
+    const options = valueTileOptions(values);
+    const center = s.map.getCenter();
+    tileUnder(s.map, options, center);
+    tileUnder(s.map, options, center);
+    expect(covering).toHaveBeenCalledTimes(1);
+    // A side panel opening: the map is narrower, its camera stays.
+    const container = s.map.getContainer();
+    const before = s.map.getCanvas().width;
+    container.style.width = `${Math.round(container.clientWidth / 2)}px`;
+    s.map.resize();
+    expect(s.map.getCanvas().width).toBeLessThan(before);
+    tileUnder(s.map, options, center);
+    tileUnder(s.map, options, center);
+    expect(covering).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads the tile MapLibre drew under each point of a map with terrain", async () => {
+    const s = await valueScene("terrain");
+    // Terrain of the cone's tiles; with terrain MapLibre picks a zoom per tile, and culls tiles by their heights.
+    s.map.addSource("terrain", {
+      type: "raster-dem",
+      tiles: [`${location.origin}/lab-raster/cone/{z}/{x}/{y}.webp`],
+      tileSize: tiles.cone.size,
+      encoding: "custom",
+      ...tiles.cone.encoding,
+    });
+    s.map.setTerrain({ source: "terrain" });
+    s.map.jumpTo({ pitch: 55 });
+    await settled(s);
+    expect(s.errors).toEqual([]);
+    const { drawn } = await readsDrawnTiles(s);
+    // The tiles covering the view without the terrain are others: a MapLibre that no longer hands the terrain on
+    // through `coveringTiles` shows here.
+    const flat = s.map
+      .coveringTiles(valueTileOptions(values))
+      .map(({ canonical: { z, x, y } }) => `${z}/${x}/${y}`);
+    expect(new Set(flat)).not.toEqual(drawn);
   });
 });
 

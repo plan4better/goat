@@ -9,10 +9,11 @@ import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
+import { type RasterColorSpec, rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
 import {
   type RasterValues,
+  type ReliefStop,
   TILE_SIZE,
   type ValueQuery,
   reliefColor,
@@ -113,6 +114,22 @@ function valueSource(
   };
 }
 
+/** The color-relief stops of a coloring over value tiles of `values`; null where the browser does not color them and
+ * geoapi does: images, float codes of an unknown range (they cover only a stand-in span, too narrow to place colors
+ * on), a coloring past the stop limit. */
+export function browserStops(spec: RasterColorSpec | null, values: RasterValues): ReliefStop[] | null {
+  const placeable = values.range !== null || values.integer;
+  return placeable && spec && spec.kind !== "rgb" ? reliefStops(spec, values) : null;
+}
+
+/** Whether a raster style draws value tiles once their description (`values`) is loaded: colors the browser paints,
+ * or a hillshade's shading. Where it does not, nothing on the map holds the cells' values. */
+export function drawsValueTiles(style: JsonObject, values: RasterValues): boolean {
+  const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
+  if (!valueQuery(style)) return false;
+  return render.type === "hillshade" || browserStops(rasterColorSpec(render), values) !== null;
+}
+
 /** The layers of a raster file style; its sources and colorings go into `out`. */
 export function rasterLayers(
   id: string,
@@ -127,10 +144,8 @@ export function rasterLayers(
   // A render of values draws once their description is loaded, an image whose source names the colored tiles'
   // description once that has answered (null: there is none); until then nothing, and nothing is missing.
   if (query ? !values : source.tileset !== undefined && source.image === undefined) return [];
-  // Float codes of an unknown range cover only a stand-in span, too narrow to place colors on: geoapi colors those
-  // cells. A hillshade alone still draws from the values (flat, as their span is).
-  const placeable = values !== undefined && (values.range !== null || values.integer);
-  const stops = values && placeable && spec && spec.kind !== "rgb" ? reliefStops(spec, values) : null;
+  // A hillshade alone still draws from values of an unknown range (flat, as their span is).
+  const stops = values ? browserStops(spec, values) : null;
   // Images, colors over an unknown range and a coloring with more stops than color-relief takes draw image tiles.
   const token = spec && !stops ? rasterToken(spec) : null;
   // A coloring too long for a URL (hundreds of categories past the stop limit) is not sent (spec 19: raster_service).

@@ -142,6 +142,10 @@ export const attributeSchema = z.object({
   format_config: attributeFormatConfig.optional(),
   prefix: z.string().optional(),
   suffix: z.string().optional(),
+  /** A color shown as a small swatch before the value: a raster cell's color in its default popup. */
+  swatch: z.string().optional(),
+  /** Fields whose values the row shows in one, joined: an image's bands in its default popup. */
+  join: z.array(z.string()).optional(),
 });
 
 // Popup v2 — new customizable popup schema. Lives alongside `interaction`

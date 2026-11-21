@@ -29,7 +29,7 @@ from uuid import UUID
 
 import numpy as np
 from cachetools import TTLCache
-from goatlib.raster.color import Coloring
+from goatlib.raster.color import Coloring, image_bands
 from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.source import (
     TILE_SIZE,
@@ -254,20 +254,25 @@ class RasterService:
 
     def value_tileset(
         self, layer: RasterLayer, formula: Formula, tilesize: TileSize = TILE_SIZE
-    ) -> tuple[ValueEncoding, int | None, tuple[float, float, float, float]]:
-        """The formula's encoding and the file's extent (`_extent`), for the
-        value tiles' description."""
+    ) -> tuple[
+        ValueEncoding, int | None, tuple[float, float, float, float], tuple[str, ...]
+    ]:
+        """The formula's encoding, the file's extent (`_extent`) and its band
+        names (from the header, as the info has them), for the value tiles'
+        description."""
         with self._source(layer) as source:
             encoding = self.encoding(layer, source, formula)
-            return (encoding, *_extent(source.info(), tilesize))
+            info = source.info()
+            return (encoding, *_extent(info, tilesize), info.names)
 
     def image_tileset(
         self, layer: RasterLayer, tilesize: TileSize = TILE_SIZE
-    ) -> tuple[int | None, tuple[float, float, float, float]]:
-        """The file's extent (`_extent`), for the colored tiles' description:
-        from the file's header, no statistics."""
+    ) -> tuple[int | None, tuple[float, float, float, float], RasterInfo]:
+        """The file's extent (`_extent`) and its header's facts, for the
+        colored tiles' description: no statistics."""
         with self._source(layer) as source:
-            return _extent(source.info(), tilesize)
+            info = source.info()
+            return (*_extent(info, tilesize), info)
 
     def values_version(self, layer: RasterLayer) -> str:
         """The version of the layer's value tiles: the row's, the remote file's
@@ -392,6 +397,31 @@ def valid_bounds(bounds: tuple[float, ...]) -> bool:
     return -180 <= west < east <= 180 and -90 <= south < north <= 90
 
 
+#: The most entries a color table is sent with: an 8 bit band's codes.
+MAX_PALETTE = 256
+
+
+def palette(info: RasterInfo) -> dict[str, Any] | None:
+    """What an image drawn with the file's color table (goatlib `_image`)
+    shows, from the header: the band the table colors (`image_bands`) and every
+    entry's color (RGBA; goatlib draws an entry without alpha opaque, a value
+    the table does not list transparent). A map reads a drawn pixel's code from
+    its color where exactly one entry it can draw has that color (spec 9.7),
+    so a code no statistics met is never mistaken for another. None without a
+    color table, for stored values that are scaled (no codes of the table), and
+    for a table longer than an 8 bit band's."""
+    table = info.color_table
+    if not table or len(table) > MAX_PALETTE or info.scaled or not info.value_bands:
+        return None
+    image = Rgb(v=1, noData=[], kind="rgb")
+    band = image_bands(image, info.value_bands, info.color_interp)[0]
+    colors = {
+        str(code): list((tuple(color) + (255,) * 4)[:4])
+        for code, color in table.items()
+    }
+    return {"band": band, "colors": colors}
+
+
 def info_json(info: RasterInfo, stats: list[BandStats]) -> dict[str, Any]:
     return {
         "width": info.width,
@@ -407,6 +437,10 @@ def info_json(info: RasterInfo, stats: list[BandStats]) -> dict[str, Any]:
             else None
         ),
         "names": list(info.names),
+        # Which bands the file marks red, green, blue, alpha or palette (GDAL's
+        # names): an image draws the bands marked red, green and blue.
+        "color_interp": list(info.color_interp),
+        "palette": palette(info),
         "scales": list(info.scales),
         "offsets": list(info.offsets),
         "bands": [

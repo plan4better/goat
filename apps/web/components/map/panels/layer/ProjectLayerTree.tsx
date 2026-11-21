@@ -82,7 +82,7 @@ import PopupContentRenderer from "@/components/builder/widgets/common/PopupConte
 // Common Components
 import MoreMenu from "@/components/common/PopperMenu";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
-import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
+import { RasterLayerIcon, StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
 import { areaOutlineStore, showSavedArea } from "@/components/map/panels/filter/area/outline";
 import { LayerTimeSlider } from "@/components/map/panels/layer/LayerTimeSlider";
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
@@ -1368,11 +1368,7 @@ export const ProjectLayerTree = ({
           : null;
       const icon =
         node.layer_type === "raster" ? (
-          <Icon
-            iconName={ICON_NAME.RASTER}
-            fontSize="small"
-            style={{ fontSize: "1rem", color: theme.palette.action.active }}
-          />
+          <RasterLayerIcon />
         ) : style ? (
           <SwatchIcon swatch={baseSwatch(style, { geometry: geometry ?? "polygon", zoom: treeZoom })} />
         ) : undefined;

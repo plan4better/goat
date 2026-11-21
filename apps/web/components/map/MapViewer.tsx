@@ -16,7 +16,8 @@ import {
   setPopupPreview,
 } from "@/lib/store/map/slice";
 import { HEXAGON_PART, hexagonPopup, hexagonValues, isHexagon } from "@/lib/style/h3Popup";
-import { rasterPopupLayer, rasterValuesAt } from "@/lib/style/raster/popup";
+import { type InfoRecord, infoSourceOf } from "@/lib/style/popup/infoSources";
+import { opensOn, rasterPopupLayers, rasterPopupOf } from "@/lib/style/raster/popup";
 import { BUILDINGS_TILES_URL, TERRAIN_TILES_URL } from "@/lib/constants";
 import { BASEMAPS, DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
 import { type Tone, isImageryBasemap, toneOf } from "@/lib/scene/auto";
@@ -53,7 +54,7 @@ import { useRenderLayers } from "@/hooks/map/useRenderLayers";
 import { ExplorerMapLayers } from "@/components/explorer/ExplorerMapLayers";
 import FilterAreaLayer from "@/components/map/FilterAreaLayer";
 import GeocoderLayer from "@/components/map/GeocoderLayer";
-import { type EditedLayer, StyledLayers, useLiveLayer } from "@/components/map/StyledLayers";
+import { type EditedLayer, StyledLayers, liveLayer, useLiveLayer } from "@/components/map/StyledLayers";
 import ToolboxLayers from "@/components/map/ToolboxLayers";
 import UserLocationLayer from "@/components/map/UserLocationLayer";
 import DrawControl from "@/components/map/controls/Draw";
@@ -68,6 +69,7 @@ import { layerPopup } from "@/components/map/popover/normalizePopup";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
+  popupFields,
   popupFieldsLayerId,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
@@ -137,8 +139,8 @@ const triggerOf = (layer: ViewLayer): PopupTrigger | undefined => {
 /** The dataset a popup reads its fields from: a project layer's `layer_id`, a dataset's own id. */
 const datasetOf = (layer: ViewLayer): string => String(layer.layer_id ?? layer.id);
 
-/** The least time between two cell value reads while hovering a raster file, in ms. */
-const RASTER_HOVER_INTERVAL = 100;
+/** How long a hover popup may stay at the pointer's last place while the read of its new place is on its way, in ms. */
+const STALE_HOVER_MS = 100;
 
 /** The map's zoom as the store holds it: rounded down to a tenth. MapLibre draws a tile's images and switches layers
  * and clusters at the whole zoom at or below the map's, so at 12.96 every reader of the store sees zoom 12, as drawn. */
@@ -335,44 +337,202 @@ const MapViewer: React.FC<MapProps> = ({
     );
   }, [drawnLayerIds, mapRef]);
 
-  // A raster file's popup (spec 9.7): the cell values under the pointer, from the raster service; the latest pointer
-  // position wins over answers still on their way.
-  const rasterRequestRef = useRef(0);
-  const lastRasterHoverRef = useRef(0);
-  const openRasterPopup = (lngLat: { lng: number; lat: number }, trigger: "click" | "hover"): boolean => {
-    const map = mapRef?.current?.getMap();
-    const layer = map ? rasterPopupLayer(layers ?? [], trigger) : undefined;
-    if (!map || !layer) return false;
+  // A raster file's popup (spec 9.7): the cell under the pointer. Hovering reads the value tiles the map has loaded,
+  // so it sends no request; a click shows that value at once, then the raster service's exact values. A pointer move
+  // wins over the reads of earlier moves (`rasterReadRef`); a click wins over earlier clicks, and closing the popup
+  // drops the answer of the click still on its way (`clickReadRef`), whatever the pointer does meanwhile.
+  const rasterReadRef = useRef(0);
+  const clickReadRef = useRef(0);
+  /** The map moves (pans, zooms, rotates, tilts): a file's hover popup hides until the next pointer move after it. */
+  const mapMovingRef = useRef(false);
+  /** The clicks so far: a hover read started before a click shows nothing over the click's popup. */
+  const clicksRef = useRef(0);
+  /** The pointer move whose read the hover popup shows (its `rasterReadRef`). */
+  const hoverShownRef = useRef(0);
+  /** A click's read is on its way: hovering opens no popup over the one it is about to open. */
+  const clickPendingRef = useRef(false);
+  /** The files as drawn (an open style panel's document); while a popup is open, only its layer. */
+  const rasterLayers = (): ViewLayer[] => {
     const activeLayerId = popupInfo?.layerId;
-    if (activeLayerId && activeLayerId !== datasetOf(layer)) return false;
-    const request = ++rasterRequestRef.current;
-    void rasterValuesAt(layer, lngLat).then((values) => {
-      if (request !== rasterRequestRef.current) return;
-      if (!values) {
-        if (trigger === "hover" && hoverPopupKeyRef.current !== undefined) {
-          hoverPopupKeyRef.current = undefined;
-          dispatch(setPopupInfo(undefined));
-        }
-        return;
-      }
-      if (trigger === "hover") hoverPopupKeyRef.current = `raster:${layer.id}`;
-      dispatch(
-        setPopupInfo({
-          lngLat: [lngLat.lng, lngLat.lat],
-          properties: values as unknown as Record<string, string>,
-          featureProperties: values,
-          triggeredBy: trigger,
-          title: layer.name ?? "",
-          layerId: datasetOf(layer),
-          projectLayerId: layer.id.toString(),
-          onClose: handlePopoverClose,
-        }),
-      );
+    return (layers ?? [])
+      .filter((layer) => !activeLayerId || datasetOf(layer) === activeLayerId)
+      .map((layer) => liveLayer(layer, editing));
+  };
+  /** The first of a list of files with a value at `lngLat`; each file's cell is read once, so the pointer and the hover
+   * popup of one move share the read. `onFirst` hears a click's value from the map's tiles. Never rejects: a read
+   * that fails has no value. */
+  const rasterCells = (
+    map: MaplibreMap,
+    lngLat: { lng: number; lat: number },
+    trigger: "click" | "hover",
+    onFirst?: (layer: ViewLayer, record: InfoRecord) => void,
+  ) => {
+    // By layer id (`Map` here is the map component).
+    const reads: Record<string, Promise<InfoRecord | null>> = {};
+    const paints: Record<string, Promise<boolean>> = {};
+    const ctx = (layer: ViewLayer) => ({
+      map,
+      trigger,
+      t,
+      locale: locale || i18n.language,
+      onFirst: onFirst && ((first: InfoRecord) => onFirst(layer, first)),
     });
+    const readOf = (layer: ViewLayer) =>
+      (reads[String(layer.id)] ??=
+        infoSourceOf(layer)?.at(layer, lngLat, ctx(layer)).catch(() => null) ?? Promise.resolve(null));
+    const paintsOf = (layer: ViewLayer) =>
+      (paints[String(layer.id)] ??=
+        infoSourceOf(layer)?.paints(layer, lngLat, ctx(layer)).catch(() => false) ?? Promise.resolve(false));
+    return {
+      /** The first file with a value there, and its record. */
+      first: async (candidates: ViewLayer[]): Promise<{ layer: ViewLayer; record: InfoRecord } | null> => {
+        for (const layer of candidates) {
+          const record = await readOf(layer);
+          if (record) return { layer, record };
+        }
+        return null;
+      },
+      /** Whether one of the files draws something there that its popup shows: a cell with a value on its value
+       * tiles, else, for a popup a click opens, a painted pixel of its colored tiles (a hover reads nothing there). */
+      shown: async (candidates: ViewLayer[]): Promise<boolean> => {
+        for (const layer of candidates) {
+          if (await readOf(layer)) return true;
+          if (opensOn(rasterPopupOf(layer)?.trigger, "click") && (await paintsOf(layer))) return true;
+        }
+        return false;
+      },
+    };
+  };
+  const showRasterPopup = (
+    layer: ViewLayer,
+    record: InfoRecord,
+    lngLat: { lng: number; lat: number },
+    trigger: "click" | "hover",
+  ) =>
+    dispatch(
+      setPopupInfo({
+        lngLat: [lngLat.lng, lngLat.lat],
+        properties: record.values as unknown as Record<string, string>,
+        featureProperties: record.values,
+        triggeredBy: trigger,
+        title: layer.name ?? "",
+        layerId: datasetOf(layer),
+        projectLayerId: layer.id.toString(),
+        onClose: handlePopoverClose,
+      }),
+    );
+  /** A click on the files: false when none opens a popup on click. Where none has a value, the popup closes. */
+  const openRasterPopup = (lngLat: { lng: number; lat: number }): boolean => {
+    const map = mapRef?.current?.getMap();
+    const candidates = map ? rasterPopupLayers(rasterLayers(), "click") : [];
+    if (!map || !candidates.length) return false;
+    const read = ++clickReadRef.current;
+    clickPendingRef.current = true;
+    // A click supersedes the hover popup, as a feature's click does: a move before the map draws the click's popup
+    // does not close it as a hover popup the pointer left.
+    hoverPopupKeyRef.current = undefined;
+    const show = (layer: ViewLayer, record: InfoRecord) => {
+      if (read === clickReadRef.current) showRasterPopup(layer, record, lngLat, "click");
+    };
+    void rasterCells(map, lngLat, "click", show)
+      .first(candidates)
+      .then((found) => {
+        if (read !== clickReadRef.current) return;
+        clickPendingRef.current = false;
+        if (found) show(found.layer, found.record);
+        else dispatch(setPopupInfo(undefined));
+      });
     return true;
   };
 
+  // However the popup closes (its button, the feature editor, the data table, a dataset preview), the answer of a raster
+  // click still on its way opens nothing.
+  useEffect(() => {
+    if (popupInfo) return;
+    clickReadRef.current += 1;
+    clickPendingRef.current = false;
+  }, [popupInfo]);
+
+  /** The map's cursor for what is under the pointer (`features`, and the cells of `rasters`): a drawing or measuring
+   * tool's own; none while the map moves, so MapLibre's grabbing cursor shows while it is dragged; the pointer over a
+   * feature, and over what a file's popup shows, as a feature does: a cell with a value, a painted pixel of an image,
+   * read from the tiles the map has loaded, never from a request. A file's popup counts whatever opens it. */
+  const updateCursor = (
+    map: MaplibreMap,
+    features: MapGeoJSONFeature[] | undefined,
+    rasters: ViewLayer[],
+    read: number,
+    cells: ReturnType<typeof rasterCells> | undefined,
+  ) => {
+    // This is a hack to change the cursor to a pointer when hovering over a feature
+    // It's not recommended to change the state of a component through internal methods
+    // However, this is the only way to do it with the current version of react-map-gl
+    // See https://github.com/visgl/react-map-gl/issues/579#issuecomment-1275163348
+    const canvas = map.getCanvas();
+    if (mapCursor) {
+      canvas.style.cursor = mapCursor;
+      return;
+    }
+    if (mapMovingRef.current) {
+      canvas.style.cursor = "";
+      return;
+    }
+    const pointable = features?.length
+      ? []
+      : rasters.filter((layer) => layer.visible !== false && rasterPopupOf(layer));
+    if (cells && pointable.length) {
+      void cells.shown(pointable).then((shown) => {
+        if (read === rasterReadRef.current) canvas.style.cursor = shown ? "pointer" : "";
+      });
+    } else {
+      canvas.style.cursor = features?.length ? "pointer" : "";
+    }
+  };
+
+  // While the map moves a file's hover popup would read the place the pointer passes on the moving map: it hides at
+  // once, and the next pointer move after the move reads afresh at the new zoom. A click's popup stays at its place.
+  // The pointer gives way to MapLibre's grabbing cursor while the map is dragged, rotated or tilted.
+  const handleMoveStart = () => {
+    mapMovingRef.current = true;
+    rasterReadRef.current += 1;
+    const map = mapRef?.current?.getMap();
+    if (map && !mapCursor) map.getCanvas().style.cursor = "";
+    if (!hoverPopupKeyRef.current?.startsWith("raster:")) return;
+    hoverPopupKeyRef.current = undefined;
+    dispatch(setPopupInfo(undefined));
+  };
+  /** After a move the pointer's cursor is the one for what is under it now, without waiting for a pointer move. */
+  const handleMoveEnd = (e: ViewStateChangeEvent) => {
+    mapMovingRef.current = false;
+    onMoveEnd?.(e);
+    const map = mapRef?.current?.getMap();
+    const pointer = e.originalEvent as { clientX?: number; clientY?: number } | undefined;
+    if (!map || typeof pointer?.clientX !== "number" || typeof pointer.clientY !== "number") return;
+    const box = map.getCanvas().getBoundingClientRect();
+    const point: [number, number] = [pointer.clientX - box.left, pointer.clientY - box.top];
+    const features = map.queryRenderedFeatures(point, {
+      layers: interactiveLayerIds.filter((id) => map.getLayer(id)),
+    }) as MapGeoJSONFeature[];
+    const read = ++rasterReadRef.current;
+    const rasters = isGetInfoActive && !popupInteractionsBlocked ? rasterLayers() : [];
+    updateCursor(map, features, rasters, read, rasterCells(map, map.unproject(point), "hover"));
+  };
+  // The pointer left the map (onto a panel or a control over it): a hover popup closes, a click's stays. A feature's
+  // hover popup takes the pointer (its buttons and links): moving into it is no leaving.
+  const handleMouseOut = (e?: { originalEvent?: { relatedTarget?: unknown } }) => {
+    rasterReadRef.current += 1;
+    if (hoverPopupKeyRef.current === undefined || popupInfo?.triggeredBy !== "hover") return;
+    const to = e?.originalEvent?.relatedTarget;
+    if (to instanceof Element && to.closest(".goat-feature-popup") && !to.closest(".goat-popup-passive")) return;
+    hoverPopupKeyRef.current = undefined;
+    dispatch(setPopupInfo(undefined));
+    dispatch(setHighlightedFeature(undefined));
+  };
+
   const handlePopoverClose = () => {
+    // A click's answer still on its way opens nothing any more.
+    clickReadRef.current += 1;
+    clickPendingRef.current = false;
     dispatch(setPopupInfo(undefined));
     dispatch(setHighlightedFeature(undefined));
     hoverPopupKeyRef.current = undefined;
@@ -443,6 +603,11 @@ const MapViewer: React.FC<MapProps> = ({
     // click — those tools have their own click handlers and a stray
     // popup would fight the UX.
     if (popupInteractionsBlocked) return;
+    // A click wins over the raster reads of earlier clicks and moves.
+    clickReadRef.current += 1;
+    clicksRef.current += 1;
+    clickPendingRef.current = false;
+    rasterReadRef.current += 1;
     let features = e.features;
 
     // Expand the hit-test area when no features are directly under the
@@ -533,12 +698,12 @@ const MapViewer: React.FC<MapProps> = ({
       } else {
         // No interactive features were found in the click stack.
         dispatch(setHighlightedFeature(undefined));
-        if (!openRasterPopup(e.lngLat, "click")) dispatch(setPopupInfo(undefined));
+        if (!openRasterPopup(e.lngLat)) dispatch(setPopupInfo(undefined));
       }
     } else {
       // No features clicked or get info tool is not active.
       dispatch(setHighlightedFeature(undefined));
-      if (!(map && isGetInfoActive && openRasterPopup(e.lngLat, "click"))) dispatch(setPopupInfo(undefined));
+      if (!(map && isGetInfoActive && openRasterPopup(e.lngLat))) dispatch(setPopupInfo(undefined));
     }
 
     // Click-to-filter: dispatch clicked feature independently of popup interaction settings.
@@ -610,18 +775,15 @@ const MapViewer: React.FC<MapProps> = ({
   const handleMapOverImmediate = (e: MapLayerMouseEvent) => {
     // Extract features immediately
     const features = e.features;
-    if (mapRef?.current) {
-      // This is a hack to change the cursor to a pointer when hovering over a feature
-      // It's not recommended to change the state of a component through internal methods
-      // However, this is the only way to do it with the current version of react-map-gl
-      // See https://github.com/visgl/react-map-gl/issues/579#issuecomment-1275163348
-      const map = mapRef.current.getMap();
-      if (mapCursor) {
-        map.getCanvas().style.cursor = mapCursor;
-      } else {
-        map.getCanvas().style.cursor = features?.length ? "pointer" : "";
-      }
-    }
+    // The latest move wins over raster reads still on their way; a click after it, over its hover popup.
+    const read = ++rasterReadRef.current;
+    const clicked = clicksRef.current;
+    const pointerMap = mapRef?.current?.getMap();
+    const rasters =
+      pointerMap && isGetInfoActive && !popupInteractionsBlocked && !mapMovingRef.current ? rasterLayers() : [];
+    // One read of each file's cell serves the pointer and the hover popup.
+    const cells = pointerMap ? rasterCells(pointerMap, e.lngLat, "hover") : undefined;
+    if (pointerMap) updateCursor(pointerMap, features, rasters, read, cells);
 
     if (!isGetInfoActive) return;
     // Don't fire hover popups while another tool owns the interaction
@@ -655,12 +817,33 @@ const MapViewer: React.FC<MapProps> = ({
           : `${hoverLayer.id}:${hoverFeature.id ?? hoverFeature.properties?.id ?? ""}`
         : undefined;
 
-    // Without a feature under the pointer, a file's cell values while hovering, at a limited rate.
-    if (!hoverKey && map && rasterPopupLayer(layers ?? [], "hover")) {
-      const now = Date.now();
-      if (now - lastRasterHoverRef.current < RASTER_HOVER_INTERVAL) return;
-      lastRasterHoverRef.current = now;
-      if (openRasterPopup(e.lngLat, "hover")) return;
+    // Without a feature under the pointer, a file's cell value while hovering, from the value tiles the map has
+    // loaded.
+    const hoverable = !hoverKey && !clickPendingRef.current ? rasterPopupLayers(rasters, "hover") : [];
+    if (cells && hoverable.length) {
+      const lngLat = e.lngLat;
+      // A read that takes long (a tile's first read, the browser cache disabled): the popup leaves the old place
+      // rather than show its value there, and shows again when a read answers.
+      setTimeout(() => {
+        if (hoverShownRef.current >= read || !hoverPopupKeyRef.current?.startsWith("raster:")) return;
+        hoverPopupKeyRef.current = undefined;
+        dispatch(setPopupInfo(undefined));
+      }, STALE_HOVER_MS);
+      void cells.first(hoverable).then((found) => {
+        if (read !== rasterReadRef.current || clicked !== clicksRef.current) return;
+        hoverShownRef.current = read;
+        if (!found) {
+          if (hoverPopupKeyRef.current === undefined) return;
+          hoverPopupKeyRef.current = undefined;
+          dispatch(setPopupInfo(undefined));
+          dispatch(setHighlightedFeature(undefined));
+          return;
+        }
+        // The popup follows the pointer on every move with a value, the same value over a wide area too.
+        hoverPopupKeyRef.current = `raster:${found.layer.id}`;
+        showRasterPopup(found.layer, found.record, lngLat, "hover");
+      });
+      return;
     }
 
     if (hoverKey === hoverPopupKeyRef.current) return;
@@ -953,6 +1136,11 @@ const MapViewer: React.FC<MapProps> = ({
             borderRadius: "6px",
             background: theme.palette.background.paper,
           },
+          // A hover popup lets the pointer through to the map, content and all, so it never catches the pointer it
+          // follows.
+          ".goat-popup-passive, .goat-popup-passive *": {
+            pointerEvents: "none",
+          },
           ".maplibregl-popup-anchor-top .maplibregl-popup-tip, .maplibregl-popup-anchor-top-left .maplibregl-popup-tip, .maplibregl-popup-anchor-top-right .maplibregl-popup-tip":
             {
               borderBottomColor: theme.palette.background.paper,
@@ -1012,7 +1200,9 @@ const MapViewer: React.FC<MapProps> = ({
           attributionControl={false}
           // MapLibre's own UI strings; the canvas is announced by this title.
           locale={{ "Map.Title": t("map") }}
-          onMoveEnd={onMoveEnd}
+          onMoveStart={handleMoveStart}
+          onMoveEnd={handleMoveEnd}
+          onMouseOut={handleMouseOut}
           onClick={handleMapClick}
           onTouchStart={handleMapTouchStart}
           onTouchEnd={handleMapTouchEnd}
@@ -1055,8 +1245,18 @@ const MapViewer: React.FC<MapProps> = ({
                   pulse below still marks the feature on the map. */}
               {!popupInDrawer && activePopupConfig.layout !== "pinned" && (
                 <MapFeaturePopover
-                  key={highlightedFeature?.id ?? v4()}
+                  // A new feature or place puts the popup in place anew; new values for the same place (a raster
+                  // click's exact answer) update it, so a press on its close button is not lost between renders. A
+                  // hover popup without a feature (a raster's cell, a hexagon) moves with the pointer as one popup.
+                  key={
+                    highlightedFeature?.id ??
+                    (popupInfo.triggeredBy === "hover"
+                      ? `hover:${popupInfo.projectLayerId ?? popupInfo.layerId}`
+                      : `${popupInfo.projectLayerId ?? popupInfo.layerId}:${popupInfo.lngLat.join(",")}`)
+                  }
                   layerId={popupFieldsLayerId(popupInfo.layerId, clickedPopupLayer)}
+                  // A file's cell values: numbers in the reader's language, as a feature's are by its fields.
+                  fields={popupFields(clickedPopupLayer, clickedFeatureProperties)}
                   layerName={popupInfo.title}
                   popup={activePopupConfig}
                   properties={
@@ -1073,6 +1273,9 @@ const MapViewer: React.FC<MapProps> = ({
                   lngLat={{ lng: popupInfo.lngLat[0], lat: popupInfo.lngLat[1] }}
                   onClose={popupInfo.onClose}
                   layerIcon={clickedPopupLayerIcon}
+                  // A file's hover popup follows the pointer and lets it through to the map; a feature's takes
+                  // it, so its buttons and links can be pressed.
+                  passive={popupInfo.triggeredBy === "hover" && clickedPopupLayer?.type === "raster"}
                 />
               )}
               <ActiveFeaturePulseLayer

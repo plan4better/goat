@@ -1,8 +1,10 @@
 "use client";
 
 // What the style panel knows about a layer's data: its fields with types for the compiler, field profiles on demand,
-// a sample feature for previews, the feature count, and the user's uploaded icons.
+// a sample feature for previews, the feature count, and the user's uploaded icons. A raster file's fields are its
+// cell's, which its popup shows (spec 9.7).
 import { useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useAssets } from "@/lib/api/assets";
 import { getLayerClassBreaks, getLayerUniqueValues, useLayerQueryables } from "@/lib/api/layers";
@@ -10,6 +12,7 @@ import { useFeatureCount } from "@/lib/api/processes";
 import { useRasterInfo } from "@/lib/api/rasters";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import type { StyleSourceInfo } from "@/lib/style/layerSource";
+import { cellSource } from "@/lib/style/popup/infoSources";
 import { assetTypeEnum } from "@/lib/validations/assets";
 
 import type {
@@ -131,9 +134,13 @@ export function useStyleData(layer: {
     [source]
   );
 
+  const { t } = useTranslation("common");
   const fields = useMemo(
-    () => fieldsOf(queryables?.properties as Record<string, Queryable> | undefined),
-    [queryables]
+    () =>
+      rasterDataset
+        ? cellSource.fields(undefined, rasterInfo, t)
+        : fieldsOf(queryables?.properties as Record<string, Queryable> | undefined),
+    [queryables, rasterDataset, rasterInfo, t]
   );
   const fieldTypes = useMemo(() => Object.fromEntries(fields.map((f) => [f.name, f.type])), [fields]);
   const types = useRef(fieldTypes);

@@ -2246,8 +2246,10 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 { "version": "1.0.0", "kind": "raster", "resampling": "nearest", "render": { "type": "image" } }
 ```
 
-- `bands` maps three bands to red, green and blue (rasters with three or more bands). A single-band raster without a
-  color table is drawn in grey from its lowest to its highest value.
+- `bands` maps three bands to red, green and blue (rasters with three or more bands). Without `bands` an image draws
+  the file's color table; else the bands the file marks red, green and blue (its color interpretation), in that order,
+  where it marks all three; else its first three bands of values (an alpha band holds none). A single-band raster
+  without a color table is drawn in grey from its lowest to its highest value.
 - `brightness` b compiles to MapLibre as `raster-brightness-min = max(0, b)` and `raster-brightness-max = min(1, 1 + b)`;
   `contrast`, `saturation` and `hue` map one to one to `raster-contrast`, `raster-saturation`, `raster-hue-rotate`.
 
@@ -2505,16 +2507,30 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
   (9.5), "Other" for a value in no category when `other_color` is set, left out otherwise and for a ramp without
   classes; `band_1` to `band_<n>`, every band of the file. Blocks and templates name them as fields (7.4), and the
   validator checks them against the file (`band_9` on a 3-band file is `unknown_field`).
-- **Without `blocks` or `html`** the popup shows `value` with the legend's `unit` and `class` as a badge; an image
-  draws bands, not one value, so its `value` and `class` are empty and it shows the bands it draws. `bands: "all"` adds
-  every band's value; `styled`, the default, does not.
+- **Without `blocks` or `html`** the popup shows `value` with the legend's `unit`, the cell's color as the map draws
+  it beside the value, and `class` as a badge; an image draws bands, not one value, so its `class` is empty, and so is
+  its `value` but for an image drawn with its color table, whose `value` is the code of the band the table colors. An
+  image shows the bands it draws, with the pixel's color where its pixels are its values: three bands in one row, named
+  by the bands' names where the file names them all, else "Red, Green, Blue" where the file marks them so, else
+  "Color". `bands: "all"` adds every band's value; `styled`, the default, does not.
 - **Without a `popup` key** a color scale (`continuous`, `categorical`, `hillshade`) opens a popup on click and an
   image none; map services have none (9.8).
 - **Where the values come from:** hover reads `value` from the value tiles the map has loaded (9), so it sends no
   request and shows what the map draws. A click shows that value at once, then the exact value and every band from
-  the raster service's point query; `band_<n>` is known on click only. An image, and a color scale the raster service
-  colors (9), draw no value tiles: they never open on hover, and a click shows the exact values from the point query
-  only.
+  the raster service's point query; `band_<n>` is known on click only. An image whose pixels are its values hovers
+  the same way, reading the bands it draws from the pixels of the colored tiles the map has loaded: unsigned 8 bit
+  bands without a scale or offset, drawn as they are (the three it draws by default without a color table, 9.1, or
+  three chosen in `bands`). An image drawn with its file's color table hovers the code whose color the pixel has, as
+  `value` and `band_<n>`, where only one entry of the table has that color: the raster service's description of the
+  colored tiles gives every entry's color from the file's header, so the map tells that before any hover, also for a
+  code no statistics met. Entries drawn fully transparent do not count; two that differ in alpha alone share a color.
+  Over a color two entries share, or none has, and over a pixel that is not opaque (its color read back may round onto
+  another entry's), a hover shows nothing and a click asks the point query. Other images, and a color scale the raster
+  service colors (9), have no values on the map: they never open on hover, and a click shows the exact values from
+  the point query only.
+- **Pointer:** while the popup is on, whatever opens it, the pointer shows over what it shows: a cell with a value, or a
+  pixel the map paints of an image. A hover popup hides while the map moves and reads afresh on the next pointer
+  move.
 
 > "Elevation on click and while hovering: the height with one decimal and its unit, in a compact popup."
 

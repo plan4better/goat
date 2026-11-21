@@ -7,6 +7,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 import { NavRow } from "@/components/map/panels/styleEditor/rows";
+import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 
 import { HtmlEditorDialog } from "./HtmlEditorDialog";
 
@@ -16,9 +17,11 @@ interface Props {
   layerIcon?: ReactNode;
   popup: PopupProperties;
   onChange: (patch: Partial<PopupProperties>) => void;
+  /** The fields to offer, where the layer's dataset has none to ask for (a raster file's cell). */
+  fields?: LayerField[];
 }
 
-export function HtmlModeCard({ layerId, layerName, layerIcon, popup, onChange }: Props) {
+export function HtmlModeCard({ layerId, layerName, layerIcon, popup, onChange, fields }: Props) {
   const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
 
@@ -46,6 +49,7 @@ export function HtmlModeCard({ layerId, layerName, layerIcon, popup, onChange }:
           layerIcon={layerIcon}
           popup={popup}
           onChange={onChange}
+          fields={fields}
           onClose={() => setOpen(false)}
         />
       )}

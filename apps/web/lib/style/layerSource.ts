@@ -110,6 +110,10 @@ export interface SourceOptions {
 export const coverageUrl = (datasetId: string, base = GEOAPI_BASE_URL): string =>
   `${base}/collections/${datasetId}/coverage/tiles/WebMercatorQuad`;
 
+/** The address of a raster dataset's colored tiles without z/x/y, which their description has (`tilesetUrl`). */
+export const imageTilesetUrl = (datasetId: string, base = GEOAPI_BASE_URL): string =>
+  `${base}/collections/${datasetId}/raster/tiles`;
+
 /** The compiler's source for a layer; null when the layer has nothing to draw from. */
 export function compileSourceFor(layer: SourceLayer, opts: SourceOptions): CompileSource | null {
   const id = opts.id ?? `src-${layer.id}`;
@@ -129,7 +133,7 @@ export function compileSourceFor(layer: SourceLayer, opts: SourceOptions): Compi
       type: "raster",
       id,
       tiles: `${base}/collections/${dataset}/raster/tiles/{z}/{x}/{y}.webp`,
-      tileset: `${base}/collections/${dataset}/raster/tiles`,
+      tileset: imageTilesetUrl(dataset, base),
       coverage: coverageUrl(dataset, base),
       ...(version ? { version } : {}),
       ...(bounds ? { bounds } : {}),

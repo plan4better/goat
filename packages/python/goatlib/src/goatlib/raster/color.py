@@ -39,12 +39,38 @@ def _to_byte(x: np.ndarray) -> np.ndarray:
     return np.clip(np.rint(x), 0, 255).astype("uint8")
 
 
-def bands_needed(coloring: Coloring, count: int) -> tuple[int, ...]:
-    """The bands a coloring reads from a file of `count` bands."""
+_RGB = ("red", "green", "blue")
+
+
+def image_bands(
+    coloring: Rgb, bands: Sequence[int], color_interp: Sequence[str] = ()
+) -> tuple[int, ...]:
+    """The bands an image draws, red, green and blue in that order (or one band:
+    its grey or its color table), from a file whose value bands are `bands`
+    (`RasterInfo.value_bands`) and whose bands' color interpretations are
+    `color_interp` (`RasterInfo.color_interp`): its own `bands`; else the value
+    bands the file marks red, green and blue, when it marks all three; else its
+    first three value bands, or the first of fewer."""
+    if coloring.bands is not None:
+        return tuple(coloring.bands)
+    marked = {
+        color_interp[i - 1]: i
+        for i in bands
+        if i <= len(color_interp) and color_interp[i - 1] in _RGB
+    }
+    if all(c in marked for c in _RGB):
+        return tuple(marked[c] for c in _RGB)
+    return tuple(bands[:3]) if len(bands) >= 3 else tuple(bands[:1])
+
+
+def bands_needed(
+    coloring: Coloring, bands: Sequence[int], color_interp: Sequence[str] = ()
+) -> tuple[int, ...]:
+    """The bands a coloring reads, in band order, from a file whose value bands
+    are `bands` (`RasterInfo.value_bands`): an image's (`image_bands`), or the
+    formula's."""
     if isinstance(coloring, Rgb):
-        if coloring.bands is None:
-            return (1, 2, 3) if count >= 3 else (1,)
-        return tuple(sorted(set(coloring.bands)))
+        return tuple(sorted(set(image_bands(coloring, bands, color_interp))))
     return coloring.formula.bands
 
 
@@ -168,23 +194,21 @@ def colorize(
     bits: Sequence[int] = (),
     color_table: ColorTable | None = None,
     band_range: tuple[float, float] | None = None,
+    color_interp: Sequence[str] = (),
 ) -> np.ndarray:
     """RGBA bytes (H x W x 4) for band arrays of one shape (band index to
     values, masked arrays allowed), already scaled by the file's scale and
     offset. `band_range` (the band's or formula's minimum and maximum) stands in
-    for a missing domain and stretches a one-band image."""
+    for a missing domain and stretches a one-band image; `color_interp` (the
+    file's) tells an image which bands are red, green and blue (`image_bands`)."""
     invalid = {i: _invalid(a, file_no_data) for i, a in bands.items()}
     if isinstance(coloring, Rgb):
-        return _image(coloring, bands, invalid, bits, color_table, band_range)
+        drawn = image_bands(coloring, sorted(bands), color_interp)
+        return _image(coloring, drawn, bands, invalid, bits, color_table, band_range)
     if isinstance(coloring, Categories) and not coloring.classes:
-        return _image(
-            Rgb(v=1, noData=coloring.no_data, kind="rgb"),
-            bands,
-            invalid,
-            bits,
-            color_table,
-            band_range,
-        )
+        image = Rgb(v=1, noData=coloring.no_data, kind="rgb")
+        drawn = image_bands(image, sorted(bands), color_interp)
+        return _image(image, drawn, bands, invalid, bits, color_table, band_range)
     formula = coloring.formula
     bad = np.zeros(next(iter(bands.values())).shape, dtype=bool)
     for i in formula.bands:
@@ -208,22 +232,26 @@ def colorize(
 
 def _image(
     c: Rgb,
+    drawn: Sequence[int],
     bands: Mapping[int, np.ndarray],
     invalid: Mapping[int, np.ndarray],
     bits: Sequence[int],
     color_table: ColorTable | None,
     band_range: tuple[float, float] | None,
 ) -> np.ndarray:
+    """An image of the bands it draws (`image_bands`): red, green and blue, or one
+    band's color table or grey."""
+    first = drawn[0]
     if c.bands is None and color_table:
-        out = _table(bands[1], invalid[1], color_table)
-        hide = _style_no_data(np.ma.getdata(bands[1]).astype("float64"), c.no_data)
+        out = _table(bands[first], invalid[first], color_table)
+        hide = _style_no_data(np.ma.getdata(bands[first]).astype("float64"), c.no_data)
         out[hide] = 0
         return out
-    picked = c.bands or ((1, 2, 3) if len(bands) >= 3 else None)
+    picked = tuple(drawn) if len(drawn) == 3 else None
     if picked is None:
         # One band without a color table: grey from its lowest to its highest value.
-        v = np.ma.getdata(bands[1]).astype("float64")
-        bad = invalid[1] | _style_no_data(v, c.no_data)
+        v = np.ma.getdata(bands[first]).astype("float64")
+        bad = invalid[first] | _style_no_data(v, c.no_data)
         lo, hi = band_range or (0.0, 2.0 ** (bits[0] if bits else 8) - 1)
         grey = np.clip((v - lo) / ((hi - lo) or 1.0), 0, 1) * 255
         return _rgba(np.stack([grey] * 3, axis=-1), bad)

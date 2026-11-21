@@ -109,6 +109,25 @@ def test_info_describes_the_file(cog_server: str) -> None:
     assert info.bounds == pytest.approx(BOUNDS, abs=1e-6)
 
 
+def test_info_tells_each_bands_color_interpretation(cog_server: str) -> None:
+    """As rasterio reads the file: an image draws the bands marked red, green
+    and blue (`image_bands`)."""
+    with RasterSource(f"{cog_server}/bgr.tif", LOCAL) as src:
+        assert src.info().color_interp == ("blue", "green", "red")
+    with RasterSource(f"{cog_server}/landcover.tif", LOCAL) as src:
+        assert src.info().color_interp == ("palette",)
+
+
+def test_an_image_of_a_bgr_file_draws_red_from_its_third_band(cog_server: str) -> None:
+    image = decode_token(
+        encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
+    )
+    z, x, y = _tile_at(*CENTER, 13)
+    with RasterSource(f"{cog_server}/bgr.tif", LOCAL) as src:
+        rgba = _png(src.tile(z, x, y, image))
+    assert rgba[128, 128].tolist() == [200, 100, 50, 255]
+
+
 def test_a_tile_is_colored_from_the_overview_the_zoom_needs(cog_server: str) -> None:
     z, x, y = _tile_at(*CENTER, 13)
     with RasterSource(f"{cog_server}/elevation.tif", LOCAL) as src:

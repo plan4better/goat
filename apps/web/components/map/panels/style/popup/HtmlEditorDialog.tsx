@@ -30,9 +30,20 @@ interface Props {
   popup: PopupProperties;
   onChange: (patch: Partial<PopupProperties>) => void;
   onClose: () => void;
+  /** The fields to offer in place of the layer's (a raster file's cell has its own). */
+  fields?: LayerField[];
 }
 
-export function HtmlEditorDialog({ open, layerId, layerName, layerIcon, popup, onChange, onClose }: Props) {
+export function HtmlEditorDialog({
+  open,
+  layerId,
+  layerName,
+  layerIcon,
+  popup,
+  onChange,
+  onClose,
+  fields,
+}: Props) {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const { layerFields } = useLayerFields(layerId);
@@ -80,7 +91,11 @@ export function HtmlEditorDialog({ open, layerId, layerName, layerIcon, popup, o
             flexDirection: "column",
             overflow: "hidden",
           }}>
-          <HtmlModeEditor value={draftHtml} onChange={setDraftHtml} fields={layerFields as LayerField[]} />
+          <HtmlModeEditor
+            value={draftHtml}
+            onChange={setDraftHtml}
+            fields={fields ?? (layerFields as LayerField[])}
+          />
         </Box>
 
         {/* Center — preview canvas */}

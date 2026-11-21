@@ -69,22 +69,34 @@ const nextFrame = (callback: () => void): number =>
 const cancelFrame = (handle: number) =>
   typeof cancelAnimationFrame === "function" ? cancelAnimationFrame(handle) : clearTimeout(handle);
 
+type StyledLayer = { id: number | string; style?: { document: LayerStyle } | null };
+
+/** The store of a layer whose style panel is open. */
+const editorOf = (layer: StyledLayer, editing: EditedLayer[] | undefined): EditorStore | undefined =>
+  editing?.find((entry) => entry.key === String(layer.id))?.store;
+
+/** A layer with `document` as its style's (an open style panel's), or as it is without one. */
+const withDocument = <T extends StyledLayer>(layer: T, document: LayerStyle | undefined): T =>
+  layer.style && document ? { ...layer, style: { ...layer.style, document } } : layer;
+
+/** A layer as the map draws it now: with its open style panel's document. For event handlers; a component that
+ * renders the layer uses `useLiveLayer`, which renders again when the document changes. */
+export const liveLayer = <T extends StyledLayer>(layer: T, editing: EditedLayer[] | undefined): T =>
+  withDocument(layer, editorOf(layer, editing)?.document);
+
 /** A layer whose style panel is open, with its document taken from the store (what the map draws, so popups agree). */
-export function useLiveLayer<T extends { id: number | string; style?: { document: LayerStyle } | null }>(
+export function useLiveLayer<T extends StyledLayer>(
   layer: T | undefined,
   editing: EditedLayer[] | undefined
 ): T | undefined {
-  const store = layer ? editing?.find((entry) => entry.key === String(layer.id))?.store : undefined;
+  const store = layer ? editorOf(layer, editing) : undefined;
   const subscribe = useCallback(
     (listener: () => void) => (store ? store.subscribe(listener) : () => undefined),
     [store]
   );
   const read = () => store?.document;
   const document = useSyncExternalStore(subscribe, read, read);
-  return useMemo(
-    () => (layer?.style && document ? { ...layer, style: { ...layer.style, document } } : layer),
-    [layer, document]
-  );
+  return useMemo(() => (layer ? withDocument(layer, document) : layer), [layer, document]);
 }
 
 function EditedStyle({

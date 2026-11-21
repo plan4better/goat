@@ -9,6 +9,8 @@
  * helpers let the map hosts decide when to dismiss such an orphaned popup.
  */
 
+import type { LayerField } from "./formatFeatureProperties";
+
 /** A ProjectLayer/Layer as far as popup visibility resolution is concerned. */
 export interface PopupLayerLike {
   id: string | number;
@@ -39,6 +41,23 @@ export function findPopupLayer<T extends PopupLayerLike>(
   }
   if (!layerId) return undefined;
   return layers.find((l) => l.layer_id === layerId || l.id.toString() === layerId);
+}
+
+/**
+ * The fields an open popup's values are formatted by when its layer has none
+ * to ask for: a raster file's cell values (`value`, `band_<n>`), numbers in the
+ * reader's language, as the legend writes them. A format set in the popup panel
+ * wins. Undefined for other layers, whose dataset's fields answer
+ * (`popupFieldsLayerId`).
+ */
+export function popupFields(
+  layer: { type?: string | null } | undefined,
+  properties: Record<string, unknown> | undefined,
+): LayerField[] | undefined {
+  if (layer?.type !== "raster") return undefined;
+  return Object.keys(properties ?? {})
+    .filter((name) => name === "value" || /^band_\d+$/.test(name))
+    .map((name) => ({ name, type: "number", format: "none" as const }));
 }
 
 /**

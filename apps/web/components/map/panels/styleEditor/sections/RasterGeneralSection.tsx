@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { type RasterRenderType, defaultRender, drawAsOptions, equalClasses } from "@/lib/style/editor/raster";
 import { setIn } from "@/lib/style/editor/store";
 import { isObject } from "@/lib/style/json";
-import { bandLabel, seedDomain } from "@/lib/style/raster/metadata";
+import { bandLabel, drawingFacts, imageBands, seedDomain } from "@/lib/style/raster/metadata";
 import type { StyleIssue } from "@/lib/style/save";
 
 import { IssueNotice } from "@/components/map/panels/styleEditor/IssueNotice";
@@ -104,12 +104,16 @@ export function RasterGeneralSection() {
       }
     : null;
   const bandCount = info?.bands ?? 1;
-  const bands = Array.isArray(bandsValue) ? bandsValue : TRUE_COLOR;
+  // True color: the bands an image draws without chosen ones (`imageBands`), those its file marks red, green and blue,
+  // else its first three.
+  const drawn = imageBands(undefined, drawingFacts(info));
+  const trueColor = drawn?.length === 3 ? drawn : TRUE_COLOR;
+  const bands = Array.isArray(bandsValue) ? bandsValue : trueColor;
   // Custom stays picked while its bands equal true or false color: the default stays out of the document.
   const combination =
-    custom || !(same(bands, TRUE_COLOR) || same(bands, FALSE_COLOR))
+    custom || !(same(bands, trueColor) || same(bands, FALSE_COLOR))
       ? "custom"
-      : same(bands, TRUE_COLOR)
+      : same(bands, trueColor)
         ? "true"
         : "false";
   const bandOptions = Array.from({ length: bandCount }, (_, i) => ({
@@ -182,7 +186,7 @@ export function RasterGeneralSection() {
                 onChange={(next) => {
                   const picked = [...bands] as number[];
                   picked[i] = next;
-                  store.set("render.bands", same(picked, TRUE_COLOR) ? undefined : picked);
+                  store.set("render.bands", same(picked, trueColor) ? undefined : picked);
                 }}
               />
             ))}
