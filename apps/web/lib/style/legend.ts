@@ -624,7 +624,10 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
       : [];
   }
   if (spec.kind === "categories") {
-    const written = list(render.classes);
+    // The coloring's categories are the entries with a value: their names after the same filter.
+    const written = list(render.classes).filter(
+      (c) => typeof c.value === "number" && Number.isFinite(c.value)
+    );
     const entries = spec.classes.flatMap((c, i): LegendEntry[] =>
       c.color === null || written[i]?.legend === false
         ? []

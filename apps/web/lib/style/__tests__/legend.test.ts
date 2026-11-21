@@ -1271,6 +1271,25 @@ describe("raster legends", () => {
     ).toMatchObject({ entries: [{ id: "other", extra: "other" }] });
   });
 
+  it("a category entry without a value shifts no names: they stay with their colors", () => {
+    // The coloring leaves an entry without a value out, so the names are matched after the same filter.
+    const categories = raster({
+      type: "categorical",
+      classes: [
+        { name: "No value" },
+        { value: 1, name: "Water", color: "#4a90c2" },
+        { value: 3, name: "Forest", color: "#2e7d32" },
+      ],
+    });
+    expect(categories?.sections[0]).toMatchObject({
+      kind: "entries",
+      entries: [
+        { name: "Water", values: [1], swatch: { fill: { color: "#4a90c2" } } },
+        { name: "Forest", values: [3], swatch: { fill: { color: "#2e7d32" } } },
+      ],
+    });
+  });
+
   it("manual classes and categories list their visible classes with colors", () => {
     const classes = raster({
       type: "continuous",
