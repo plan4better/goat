@@ -19,8 +19,8 @@ lines through the stops is also what outgrows the import's memory bound).
 they came from. It is written last, so its presence means the tables are
 complete.
 
-Built where a ``public_transport`` base data version is built, then published
-with it (``python -m goatlib.tasks.sync_base_data publish``)::
+Built where a ``public_transport`` base data version is built, and published
+with it::
 
     python -m goatlib.bundles.importers.pt_network.store gtfs.zip \\
         <version>/pt_network/gtfs_tables

@@ -136,18 +136,14 @@ derived member it is never written back to the feed.
 
 ## GOAT's public transport network is cut like an upload
 
-GOAT's default public transport network is one GTFS feed combining several
-countries, too large to be a bundle. Its timetable lies on the workers' shared
-volume (`${DATA_DIR}/pt_network/gtfs.bin`), and next to it the same feed as
-GTFS tables (`${DATA_DIR}/pt_network/gtfs_tables/`), which `fetch_pt_network`
-cuts to an area as a new GTFS bundle. Both arrive with the `public_transport`
-base data version (`tasks/sync_base_data.py`). When the combined feed is regenerated, the
-`build_pt_network` task builds the version from it (the timetable, the walking
-access/egress table and the tables) and publishes it: the same timetable and
-access/egress build as any GTFS bundle's, against the worker's global street
-network. It does not build the legacy `gtfs/` files that ÖV-Güteklassen and
-trip count read, so a channel should not point at its version until those
-come with it.
+GOAT's default public transport network combines many operators' feeds, too
+large to be a bundle. Its timetable lies on the workers' shared volume
+(`${DATA_DIR}/pt_network/gtfs.bin`), and next to it the same feeds as GTFS
+tables (`${DATA_DIR}/pt_network/gtfs_tables/`), which `fetch_pt_network` cuts
+to an area as a new GTFS bundle. Both arrive with the `public_transport` base
+data version (`tasks/sync_base_data.py`), which is built and published outside
+this repository (the goat-data pipeline), with the network's coverage mask and
+the dates its timetable covers.
 
 The tables are the GTFS importer's own output, and a cut writes the same, so
 it is ingested, typed and built (timetable, access and egress) exactly as an
