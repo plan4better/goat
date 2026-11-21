@@ -170,7 +170,7 @@ class CRUDProject(CRUDBase[Project, Any, Any]):
         # given; fall back to the default otherwise (e.g. a caller with no
         # view state of its own).
         seeded_view_state: dict[str, Any] = (
-            initial_view_state.model_dump()
+            initial_view_state.model_dump(exclude_none=True)
             if initial_view_state is not None
             else dict(DEFAULT_INITIAL_VIEW_STATE)
         )
@@ -583,10 +583,21 @@ class CRUDProject(CRUDBase[Project, Any, Any]):
             folder_id=project.folder_id,
             builder_config=project.builder_config,
         )
+        from core.services.map_document import map_snapshot
+
+        map_document, styles = await map_snapshot(
+            async_session,
+            project_id=project.id,
+            user_id=user_id,
+            link_ids=published_link_ids,
+            view_state=initial_view_state,
+        )
         new_project_public_config = ProjectPublicConfig(
             layers=project_layers,
             layer_groups=project_layer_groups,
             project=new_project_public_project_config,
+            map=map_document,
+            styles=styles,
         )
         new_config = json.loads(new_project_public_config.model_dump_json())
 

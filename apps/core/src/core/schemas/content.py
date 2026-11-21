@@ -123,8 +123,8 @@ class ContentItem(BaseModel):
     source_host: str | None = Field(
         default=None,
         description="Layers only: the host a linked layer is drawn from, or a "
-        "WFS import was copied from. The host alone: a full tile URL can carry "
-        "an API key.",
+        "WFS import was copied from; only for an http(s) address. The host "
+        "alone: a full tile URL can carry an API key.",
     )
     is_shortcut: bool = Field(
         default=False,

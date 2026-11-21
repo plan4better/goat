@@ -7,9 +7,11 @@ import { mutate } from "swr";
 import { describe, expect, it, vi } from "vitest";
 
 import { PROJECTS_API_BASE_URL } from "@/lib/api/projects";
-import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template";
+import type { ProjectLayer } from "@/lib/validations/project";
+import type { TemplateInput, TemplateRead, TemplateUseResult } from "@/lib/validations/template";
 
 import {
+  bindingCandidates,
   refreshTemplateProject,
   startedCopyJobIds,
   templateResultHref,
@@ -83,5 +85,33 @@ describe("refreshTemplateProject", () => {
     await refreshTemplateProject(baseResult);
     expect(mutate).toHaveBeenCalledWith([`${PROJECTS_API_BASE_URL}/${baseResult.project_id}/layer`]);
     expect(mutate).toHaveBeenCalledWith([`${PROJECTS_API_BASE_URL}/${baseResult.project_id}/group`]);
+  });
+});
+
+describe("bindingCandidates", () => {
+  const layer = (id: number, layerId: string, type: string, geometry?: string) =>
+    ({
+      id,
+      layer_id: layerId,
+      name: `Layer ${id}`,
+      type,
+      feature_layer_geometry_type: geometry,
+    }) as ProjectLayer;
+  const layers = [
+    layer(1, "L1", "feature", "point"),
+    layer(2, "L1", "feature", "point"),
+    layer(3, "L3", "table"),
+    layer(4, "L4", "raster"),
+  ];
+  const input = { key: "layer:a", mode: "ask" } as TemplateInput;
+
+  it("offers each dataset once, of the input's type and geometry", () => {
+    const points = { ...input, layer_type: "feature", geometry_type: "point" } as TemplateInput;
+    expect(bindingCandidates(points, layers, "workflow").map((l) => l.id)).toEqual([1]);
+  });
+
+  it("a workflow takes no raster layer; a layout or a project may", () => {
+    expect(bindingCandidates(input, layers, "workflow").map((l) => l.id)).toEqual([1, 3]);
+    expect(bindingCandidates(input, layers, "layout").map((l) => l.id)).toEqual([1, 3, 4]);
   });
 });

@@ -26,6 +26,7 @@ Available controls:
 |---|---|
 | `Location search` | Search bar to jump to a location on the map |
 | `Measure` | Tool to measure distances and areas on the map |
+| `3D view` | The **View** button: viewers switch between `2D` and `3D`, turn on `Globe when zoomed out`, and in 3D `Terrain` and `3D buildings`. Their changes stay on their screen. New dashboards have it at the bottom right; existing dashboards keep their controls until you add it |
 | `Zoom controls` | Zoom in / zoom out buttons |
 | `Basemap switcher` | Dropdown to switch the background map |
 | `Fullscreen` | Toggle fullscreen mode |

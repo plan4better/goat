@@ -15,6 +15,26 @@ export const DOCUMENT_ACCEPT = {
   "application/msword": [".doc"],
 };
 
+/** The icon types core takes, by MIME type with their extensions (browsers name an .ico either way). */
+export const ICON_ACCEPT: Record<string, string[]> = {
+  "image/svg+xml": [".svg"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/webp": [".webp"],
+  "image/bmp": [".bmp"],
+  "image/x-icon": [".ico"],
+  "image/vnd.microsoft.icon": [".ico"],
+};
+
+/** The `accept` of an icon file input: the types and their extensions. */
+export const ICON_ACCEPT_LIST = [...new Set(Object.entries(ICON_ACCEPT).flat(2))].join(",");
+
+/** Whether core takes the file as an icon: by its extension (as core reads it), else by its type. */
+export function isIconFile(file: { name: string; type: string }): boolean {
+  const extension = /\.[^.]+$/.exec(file.name)?.[0].toLowerCase();
+  return extension ? Object.values(ICON_ACCEPT).flat().includes(extension) : file.type in ICON_ACCEPT;
+}
+
 export const assetTypeEnum = z.enum(["image", "icon", "document"]);
 
 export const uploadedAssetSchema = z.object({

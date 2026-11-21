@@ -2,6 +2,7 @@ import * as z from "zod";
 
 import { DEFAULT_WKT_EXTENT } from "@/lib/constants";
 import { basicLayout } from "@/lib/constants/dashboard-builder-template-layouts";
+import type { LayerStyle, MapDocument } from "@/lib/style/generated/types";
 import {
   contentMetadataSchema,
   getContentQueryParamsSchema,
@@ -102,6 +103,7 @@ export const CORNER_KEYS = ["top-left", "top-right", "bottom-left", "bottom-righ
 export type CornerKey = (typeof CORNER_KEYS)[number];
 
 export const CONTROL_KEYS = [
+  "view",
   "location",
   "measure",
   "zoom_controls",
@@ -128,7 +130,7 @@ const controlPositionsSchema = z
   })
   .default({
     "top-left": ["location", "measure"],
-    "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+    "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
   });
 
 export type ControlPositions = z.infer<typeof controlPositionsSchema>;
@@ -137,7 +139,7 @@ export const DEFAULT_CONTROL_POSITIONS: ControlPositions = {
   "top-left": ["location", "measure"],
   "top-right": [],
   "bottom-left": [],
-  "bottom-right": ["zoom_controls", "basemap", "fullscreen"],
+  "bottom-right": ["view", "zoom_controls", "basemap", "fullscreen"],
 };
 
 export const builderConfigSchema = z.object({
@@ -307,6 +309,8 @@ export const projectSchema = contentMetadataSchema.extend({
     interface: basicLayout.interface as any,
   }),
   basemap: z.string().nullable().default("streets"),
+  // Number and date locale of public maps, dashboards and print; null = the viewer's language.
+  locale: z.string().nullish(),
   custom_basemaps: z.array(customBasemapSchema).default([]),
   /** Counts the stored dashboard's changes; a dashboard save sends it back as
    * `builder_base_revision`. */
@@ -333,8 +337,7 @@ export const projectSchema = contentMetadataSchema.extend({
 // order: int = Field(0, description="Visual sorting order")
 // layer_project_group_id: int | None = Field(None, description="Parent group ID")
 export const projectLayerSchema = layerSchema.extend({
-  /** The dataset's own last change — `updated_at` also moves when this
-   * project restyles the layer, because the tile source keys on it. */
+  /** The dataset's own last change; `updated_at` is the project entry's. */
   dataset_updated_at: z.string().optional(),
   id: z.number(),
   // See layerSchema: absent for a catalog layer.
@@ -349,6 +352,8 @@ export const projectLayerSchema = layerSchema.extend({
         })
         .passthrough()
         .optional(),
+      // The filter panel's notes (switched-off rows); they never change which features pass.
+      ui: z.record(z.unknown()).nullish(),
     })
     .nullable()
     .optional(),
@@ -359,9 +364,8 @@ export const projectLayerSchema = layerSchema.extend({
   // D7: true when the current user has no access of their own to the
   // underlying dataset. The backend then whitelists the row to id/layer_id/
   // name/type/feature_layer_type/feature_layer_geometry_type/order/
-  // layer_project_group_id, with `properties: {}` and every other
-  // style/metadata field null — nothing here may be dereferenced for a
-  // locked row.
+  // layer_project_group_id, with every style/metadata field null — nothing
+  // here may be dereferenced for a locked row.
   locked: z.boolean().default(false),
 });
 
@@ -369,6 +373,9 @@ export const projectLayerGroupSchema = z.object({
   id: z.number(),
   name: z.string(),
   properties: z.record(z.any()).nullable().optional(),
+  /** Map state (spec 10): shown on the map, and open in the layer tree. */
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
   order: z.number().optional(),
   project_id: z.string().uuid(),
   parent_id: z.number().nullable().optional(),
@@ -383,6 +390,24 @@ export const projectPublicSchemaConfig = z.object({
   project: projectSchema,
   layers: z.array(layerSchema),
   layer_groups: z.array(projectLayerGroupSchema).optional().default([]),
+  /** The published map document (GOAT Style spec 10); absent in snapshots published before it. */
+  map: z.custom<MapDocument>().nullish(),
+  /** Every named style of every published layer, by project layer id (`StyleRead`); absent before GOAT Style. */
+  styles: z
+    .record(
+      z.array(
+        z.custom<{
+          id: string;
+          name: string;
+          position: number;
+          revision: number;
+          document: LayerStyle;
+          issues: unknown[];
+          stale: boolean;
+        }>()
+      )
+    )
+    .nullish(),
 });
 
 export const projectPublicAnalyticsSchema = z.object({
@@ -416,13 +441,18 @@ export const projectLayerTreeNodeSchema = z.object({
   layer_type: z.string().nullable().optional(),
   geometry_type: z.string().nullable().optional(),
   // Dictionary / JSON properties
-  properties: z.record(z.any()).nullable().optional(),
   other_properties: z.record(z.any()).nullable().optional(),
   query: z.record(z.any()).nullable().optional(),
   user_id: z.string().optional(),
   is_catalog: z.boolean().optional(),
   // See projectLayerSchema: a locked node carries no style/data to draw.
   locked: z.boolean().optional(),
+  // Map state (spec 10): a node's own visibility, a group open in the tree, a layer's legend open.
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  legend_expanded: z.boolean().optional(),
+  // A layer's active style (GOAT Style document); none for groups and locked layers.
+  style: z.custom<LayerStyle>().nullish(),
 });
 
 export const projectLayerTreeUpdateItemSchema = z.object({
@@ -430,7 +460,10 @@ export const projectLayerTreeUpdateItemSchema = z.object({
   type: z.enum(["group", "layer"]),
   order: z.number(),
   parent_id: z.number().nullable().optional(),
-  properties: z.record(z.any()).nullable().optional(),
+  // Map state the tree PUT may write; left out, it stays as it is.
+  visible: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  legend_expanded: z.boolean().optional(),
 });
 
 export const projectLayerTreeUpdateSchema = z.object({
@@ -443,8 +476,12 @@ export const projectViewStateSchema = z.object({
   zoom: z.number().min(0).max(24),
   min_zoom: z.number().min(0).max(24),
   max_zoom: z.number().min(0).max(24),
-  bearing: z.number().min(0).max(360),
-  pitch: z.number().min(0).max(60),
+  // Any bearing; core stores it from 0 up to 360.
+  bearing: z.number(),
+  pitch: z.number().min(0).max(85),
+  // Missing: 3D when the view is tilted (3D spec 5.1).
+  mode: z.enum(["2d", "3d"]).optional(),
+  projection: z.enum(["mercator", "globe"]).optional(),
 });
 
 export const postProjectSchema = z.object({

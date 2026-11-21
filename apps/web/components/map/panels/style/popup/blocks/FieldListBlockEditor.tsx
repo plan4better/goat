@@ -4,22 +4,7 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
-import {
-  Box,
-  Button,
-  ClickAwayListener,
-  IconButton,
-  Input,
-  Menu,
-  MenuItem,
-  MenuList,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-  alpha,
-  useTheme,
-} from "@mui/material";
+import { Box, IconButton, Input, Stack, Tooltip, Typography, alpha, useTheme } from "@mui/material";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -27,12 +12,14 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { AttributeFormatConfig, PopupFieldListBlock } from "@/lib/validations/layer";
 
+import { useStyleData } from "@/components/map/panels/styleEditor/context";
+import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { AddButton, NumberInput, Row, SegmentedRow } from "@/components/map/panels/styleEditor/rows";
 import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 import { formatFeatureProperties } from "@/components/map/popover/formatFeatureProperties";
 import { useSampleFeature } from "@/components/map/popover/sampleFeature";
 
 import { FieldFormatPopover } from "./FieldFormatPopover";
-import { MiniLabel, PillToggleGroup } from "./_shared";
 
 type AttributeEntry = PopupFieldListBlock["attributes"][number];
 type AttributeType = AttributeEntry["type"];
@@ -64,7 +51,7 @@ function truncateSample(s: string): string {
 
 export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props) {
   const { t, i18n } = useTranslation("common");
-  const theme = useTheme();
+  const { fields: styleFields } = useStyleData();
   const [addMenuAnchor, setAddMenuAnchor] = useState<null | HTMLElement>(null);
   const [formatTarget, setFormatTarget] = useState<{
     name: string;
@@ -134,38 +121,26 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
   const formatTargetAttr = formatTarget ? attributes.find((a) => a.name === formatTarget.name) : null;
 
   return (
-    <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
-      {/* Layout */}
-      <Box>
-        <MiniLabel>{t("layout")}</MiniLabel>
-        <PillToggleGroup
-          value={block.layout}
-          onChange={(v) => onChange({ ...block, layout: v })}
-          options={[
-            { value: "table", label: t("table") },
-            { value: "list", label: t("list") },
-          ]}
-        />
-      </Box>
+    <>
+      <SegmentedRow<PopupFieldListBlock["layout"]>
+        label={t("layout")}
+        value={block.layout}
+        onChange={(layout) => onChange({ ...block, layout })}
+        options={[
+          { value: "table", label: t("table") },
+          { value: "list", label: t("list") },
+        ]}
+      />
 
-      {/* Attributes header + framed list */}
-      <Box>
-        <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ pb: 0.75 }}>
-          <MiniLabel>{t("attributes")}</MiniLabel>
-          <Stack direction="row" spacing={1.25} alignItems="center">
-            <Typography variant="caption" color="text.secondary">
-              {t("n_fields", { count: attributes.length })}
-            </Typography>
-            {unAddedFields.length > 0 && attributes.length === 0 && (
-              <Typography
-                variant="caption"
-                color="primary"
-                sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
-                onClick={resetToAllFields}>
-                {t("common:add_all_fields")}
-              </Typography>
-            )}
-          </Stack>
+      {/* The attributes: a heading with their count, the framed list, then "Add attribute". */}
+      <Box sx={{ px: 3, pt: 2 }}>
+        <Stack direction="row" alignItems="baseline" justifyContent="space-between" sx={{ pb: 1 }}>
+          <Typography variant="caption" color="text.secondary" fontWeight="bold">
+            {t("attributes")}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {t("n_fields", { count: attributes.length })}
+          </Typography>
         </Stack>
 
         <Box
@@ -207,92 +182,39 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
           </DndContext>
         </Box>
 
-        {/* + Add attribute — dashed-outline pill */}
-        <Box sx={{ pt: 1 }}>
-          <Button
-            variant="outlined"
-            fullWidth
-            disabled={unAddedFields.length === 0}
-            onClick={(e) => setAddMenuAnchor(e.currentTarget)}
-            startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 12 }} />}
-            sx={{
-              textTransform: "none",
-              borderStyle: "dashed",
-              borderColor: alpha(theme.palette.primary.main, 0.5),
-              color: theme.palette.primary.main,
-              py: 0.75,
-              "&:hover": {
-                borderStyle: "dashed",
-                bgcolor: alpha(theme.palette.primary.main, 0.04),
-              },
-            }}>
-            {t("add_attribute")}
-          </Button>
-          <Menu
-            anchorEl={addMenuAnchor}
-            open={Boolean(addMenuAnchor)}
-            onClose={() => setAddMenuAnchor(null)}
-            anchorOrigin={{ vertical: "top", horizontal: "center" }}
-            transformOrigin={{ vertical: "bottom", horizontal: "center" }}
-            MenuListProps={{
-              sx: { width: addMenuAnchor ? addMenuAnchor.offsetWidth - 10 : undefined, p: 0 },
-            }}>
-            <Box sx={{ maxHeight: 300, overflowY: "auto" }}>
-              <ClickAwayListener onClickAway={() => setAddMenuAnchor(null)}>
-                <MenuList>
-                  <MenuItem
-                    onClick={() => {
-                      resetToAllFields();
-                      setAddMenuAnchor(null);
-                    }}>
-                    <Typography variant="body2" fontWeight="bold">
-                      {t("common:add_all_fields")}
-                    </Typography>
-                  </MenuItem>
-                  {unAddedFields.map((f) => (
-                    <MenuItem
-                      key={f.name}
-                      onClick={() => {
-                        addField(f);
-                        setAddMenuAnchor(null);
-                      }}>
-                      <Typography variant="body2">{f.name}</Typography>
-                    </MenuItem>
-                  ))}
-                </MenuList>
-              </ClickAwayListener>
-            </Box>
-          </Menu>
-        </Box>
+        {/* Under the list, its plus on the content's edge; the menu offers every field not listed yet. */}
+        <AddButton
+          disabled={unAddedFields.length === 0}
+          onClick={(e) => setAddMenuAnchor(addMenuAnchor ? null : e.currentTarget)}
+          sx={{ ml: -2.5, mt: 1 }}>
+          {t("add_attribute")}
+        </AddButton>
+        <FieldPicker
+          anchorEl={addMenuAnchor}
+          onClose={() => setAddMenuAnchor(null)}
+          placement="bottom-start"
+          fields={styleFields}
+          exclude={attributes.map((a) => a.name)}
+          before={[{ label: t("add_all_fields"), icon: ICON_NAME.LIST, onClick: resetToAllFields }]}
+          onChange={(name) => {
+            const f = fieldByName.get(name);
+            if (f) addField(f);
+          }}
+        />
       </Box>
 
-      {/* Collapse after N rows */}
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Typography variant="body2">{t("collapse_after")}</Typography>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <TextField
-            type="number"
-            size="small"
-            value={block.collapse_after ?? ""}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              onChange({
-                ...block,
-                collapse_after: Number.isFinite(n) && n >= 1 ? n : null,
-              });
-            }}
-            placeholder={t("collapse_after_placeholder")}
-            inputProps={{
-              style: { textAlign: "right", fontSize: 13, padding: "6px 8px" },
-              min: 1,
-            }}
-            sx={{ width: 76 }}
-          />
-          <Typography variant="caption" color="text.secondary">
-            {t("rows")}
-          </Typography>
-        </Stack>
-      </Stack>
+      <Row label={t("collapse_after")} note={t("collapse_after_help")}>
+        <NumberInput
+          value={block.collapse_after ?? undefined}
+          unit={t("collapse_after_unit")}
+          min={1}
+          width={96}
+          placeholder={t("collapse_after_placeholder")}
+          ariaLabel={t("collapse_after")}
+          onChange={(n) => onChange({ ...block, collapse_after: Number.isInteger(n) && n >= 1 ? n : null })}
+          onClear={() => onChange({ ...block, collapse_after: null })}
+        />
+      </Row>
 
       {/* Number-format popover — anchored to the row's "123" button.
           Floats outside the parent popper (placement="left-start") so it
@@ -320,7 +242,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
         }}
         onClose={() => setFormatTarget(null)}
       />
-    </Stack>
+    </>
   );
 }
 

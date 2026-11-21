@@ -26,6 +26,8 @@ import { MapSidebarItemID } from "@/types/map/common";
 import { useAuthZ } from "@/hooks/auth/AuthZ";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useCustomBasemapMutations } from "@/hooks/map/useCustomBasemapMutations";
+import { useLayerTreeState } from "@/hooks/map/useLayerTreeState";
+import { useMapLayers, withMapGroups } from "@/hooks/map/useMapLayers";
 import { useMeasureTool } from "@/hooks/map/useMeasureTool";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -38,14 +40,18 @@ import { EXPLORER_RIGHT_PANEL_WIDTH, useRightPanelWidth } from "@/components/exp
 import { STRIP_TOP } from "@/components/explorer/strip/stripLayout";
 import AttributionControl from "@/components/map/controls/Attribution";
 import { BasemapSelector } from "@/components/map/controls/BasemapSelector";
+import { Compass } from "@/components/map/controls/Compass";
 import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDialog";
 import { Fullscren } from "@/components/map/controls/Fullscreen";
 import Scalebar from "@/components/map/controls/Scalebar";
 import { Toolbox as ToolboxCtrl } from "@/components/map/controls/Toolbox";
+import { ViewControl } from "@/components/map/controls/ViewControl";
 import { Zoom } from "@/components/map/controls/Zoom";
+import { CONTROL_COLUMN_SX } from "@/components/map/controls/controlColumn";
 import { MeasureButton, MeasureResultsPanel } from "@/components/map/controls/measure";
 import SearchControl from "@/components/map/controls/search/SearchControl";
 import { useEditorSearchLayers } from "@/components/map/controls/search/editorSearchLayers";
+import { isMeasureCardShown, rightStackInsets } from "@/components/map/layouts/desktop/rightStack";
 import { DATA_PANEL_HEIGHT_CONSUMER_ATTR, DATA_PANEL_HEIGHT_VAR } from "@/components/map/panels/DataPanel";
 import FeatureEditPanel from "@/components/map/panels/FeatureEditPanel";
 import BundleSettingsPanel from "@/components/map/panels/bundle/BundleSettingsPanel";
@@ -56,6 +62,7 @@ import { MapFixedPopupSlot } from "@/components/map/popover/MapFixedPopupSlot";
 
 const toolbarHeight = 52;
 const panelWidth = 300;
+const LAYER_SETTINGS_IDS = [MapSidebarItemID.PROPERTIES, MapSidebarItemID.FILTER, MapSidebarItemID.STYLE];
 const GAP_SIZE = 16;
 /** The room the Explorer leaves under its left panel and bottom bar, whose
  * bottoms line up: the scale bar sits in it under the panel (EXPLORER_FOOT_GAP
@@ -91,16 +98,26 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   const { layers: allProjectLayers, mutate: mutateProjectLayers } = useProjectLayers(projectId);
   const { layerGroups: projectLayerGroups, mutate: mutateProjectLayerGroups } =
     useProjectLayerGroups(projectId);
+  // The same rows joined with the map request (styles and map state): the layer tree and popups read them.
+  const { layers: mapLayers, map: projectMap, mutate: mutateMap } = useMapLayers(projectId);
 
   // Filter out system layers
   const projectLayers = useMemo(() => {
     return allProjectLayers?.filter((layer) => !SYSTEM_LAYERS_IDS.includes(layer.layer_id)) || [];
   }, [allProjectLayers]);
+  const treeLayers = useMemo(
+    () => mapLayers.filter((layer) => !SYSTEM_LAYERS_IDS.includes(layer.layer_id)),
+    [mapLayers]
+  );
+  const treeGroups = useMemo(
+    () => withMapGroups(projectLayerGroups ?? [], projectMap?.map),
+    [projectLayerGroups, projectMap?.map]
+  );
 
   // Queryables for the search scope are only fetched once the control is opened.
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [searchPanelOpen, setSearchPanelOpen] = useState(false);
-  const { searchLayers, layersById: searchLayersById } = useEditorSearchLayers(projectLayers, searchExpanded);
+  const { searchLayers, layersById: searchLayersById } = useEditorSearchLayers(treeLayers, searchExpanded);
   const searchSource = useMemo(
     () => ({ mode: "editor" as const, placesEnabled: true as const, layers: searchLayers }),
     [searchLayers]
@@ -137,10 +154,6 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   // drawn, and again after Done returns to draw mode for the next one. Draw
   // mode has its own indicator.
   const showFeatureEditPanel = !!featureEditorActive && !!featureEditorActiveFeature;
-  // Panel height is read via CSS variable --data-panel-height for real-time updates
-  const isDataPanelOpen = useAppSelector((state) => state.map.isDataPanelOpen);
-  const mapMode = useAppSelector((state) => state.map.mapMode);
-  const dataPanelVisible = mapMode === "data" && isDataPanelOpen;
   const { isOrgEditor } = useAuthZ();
   const { folders } = useFolders({});
   const projectFolder = useMemo(
@@ -200,56 +213,44 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
     }
   };
 
-  // Unified tree update handler - handles all tree changes
+  // Shown or hidden layers and groups, legends opened or closed: map state, written by editors.
+  const treeState = useLayerTreeState(projectId, isProjectEditor ? "edit" : "view");
+
+  // Order, parents and groups opened or closed: the tree PUT, shown at once in both caches.
   const handleTreeUpdate = async (updatePayload: ProjectLayerTreeUpdate) => {
     try {
-      // First, do optimistic updates to both caches to prevent visual flicker
       if (allProjectLayers) {
-        // Update layers with new order, parent relationships, and properties
         const updatedLayers = allProjectLayers.map((layer) => {
           const updateItem = updatePayload.items.find(
             (item) => item.id === layer.id && item.type === "layer"
           );
-          if (updateItem) {
-            return {
-              ...layer,
-              order: updateItem.order,
-              layer_project_group_id: updateItem.parent_id || null,
-              // Update properties if provided (includes legend.collapsed, visibility, etc.)
-              properties: updateItem.properties
-                ? { ...layer.properties, ...updateItem.properties }
-                : layer.properties,
-            };
-          }
-          return layer;
+          return updateItem
+            ? { ...layer, order: updateItem.order, layer_project_group_id: updateItem.parent_id || null }
+            : layer;
         });
         mutateProjectLayers(updatedLayers, false);
       }
 
       if (projectLayerGroups) {
-        // Update groups with new order, parent relationships, and properties
         const updatedGroups = projectLayerGroups.map((group) => {
           const updateItem = updatePayload.items.find(
             (item) => item.id === group.id && item.type === "group"
           );
-          if (updateItem) {
-            return {
-              ...group,
-              order: updateItem.order,
-              parent_id: updateItem.parent_id || null,
-              // Update properties if provided (includes expanded, visibility, etc.)
-              properties: updateItem.properties
-                ? { ...group.properties, ...updateItem.properties }
-                : group.properties,
-            };
-          }
-          return group;
+          return updateItem
+            ? {
+                ...group,
+                order: updateItem.order,
+                parent_id: updateItem.parent_id || null,
+                ...(updateItem.expanded !== undefined ? { expanded: updateItem.expanded } : {}),
+              }
+            : group;
         });
         mutateProjectLayerGroups(updatedGroups, false);
       }
 
-      // Then sync with server using the batch update endpoint
       await updateProjectLayerTree(projectId, updatePayload);
+      // The map's order follows the tree.
+      await mutateMap();
     } catch (error) {
       console.error("Failed to update tree", error);
       toast.error(t("error_updating_tree"));
@@ -273,21 +274,17 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
 
   // --- DYNAMIC CONTENT ---
   const activeRightComponent = useMemo(() => {
-    // Check for ANY layer configuration panel ID
-    const layerSettingsIds = [MapSidebarItemID.PROPERTIES, MapSidebarItemID.FILTER, MapSidebarItemID.STYLE];
-
     // A bundle is selected instead of a layer: same panel slot, its own panel.
-    if (activeRight && layerSettingsIds.includes(activeRight) && selectedBundleId) {
+    if (activeRight && LAYER_SETTINGS_IDS.includes(activeRight) && selectedBundleId) {
       return <BundleSettingsPanel projectId={projectId} />;
     }
-    if (activeRight && layerSettingsIds.includes(activeRight)) {
-      // Return the new panel component
-      return <LayerSettingsPanel projectId={projectId} projectLayers={projectLayers || []} />;
+    if (activeRight && LAYER_SETTINGS_IDS.includes(activeRight)) {
+      return <LayerSettingsPanel projectId={projectId} projectLayers={treeLayers} />;
     }
 
     // B. STANDARD TOOLS
     return rightSidebar.topItems?.find((item) => item.id === activeRight)?.component;
-  }, [activeRight, rightSidebar.topItems, projectId, projectLayers, selectedBundleId]);
+  }, [activeRight, rightSidebar.topItems, projectId, treeLayers, selectedBundleId]);
 
   // --- INTERACTION LOGIC ---
 
@@ -321,28 +318,32 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
     }
   }, [activeRight, selectedLayerIds, projectLayers, selectedBundleId, dispatch]);
 
-  // Width occupied by the right-side stack (measure results, feature
-  // editor panel, active right component). Used to size the fixed-popup
-  // host below so it doesn't extend behind the panels.
-  const measureVisible = measureTool.measureOpen || measureTool.measurements.length > 0;
-  const rightStackWidth = useMemo(() => {
-    const FEATURE_EDIT_PANEL_WIDTH = 320;
-    const MEASURE_PANEL_WIDTH = 320;
-    const widths: number[] = [];
-    if (measureVisible) widths.push(MEASURE_PANEL_WIDTH);
-    if (showFeatureEditPanel) widths.push(FEATURE_EDIT_PANEL_WIDTH);
-    if (activeRight) widths.push(panelWidth);
-    if (widths.length === 0) return 0;
-    return widths.reduce((a, b) => a + b, 0) + GAP_SIZE * (widths.length - 1);
-  }, [measureVisible, showFeatureEditPanel, activeRight]);
+  // The full-height panels on the right push the map controls aside; the
+  // measure card sits above the controls, and the fixed-popup host below keeps
+  // clear of both.
+  const measureCard = isMeasureCardShown({
+    measureOpen: measureTool.measureOpen,
+    activeTool: measureTool.activeMeasureTool,
+    measurementCount: measureTool.measurements.length,
+  });
+  const rightInsets = rightStackInsets({
+    measureCard,
+    featureEdit: showFeatureEditPanel,
+    rightPanel: !!activeRight,
+    explorerActive,
+    explorerRightRoom,
+  });
 
   const layerTree = (
     <ProjectLayerTree
       projectId={projectId}
-      projectLayers={projectLayers || []}
-      projectLayerGroups={projectLayerGroups || []}
+      projectLayers={treeLayers}
+      projectLayerGroups={treeGroups}
       isLoading={false}
       onTreeUpdate={handleTreeUpdate}
+      onLayerStateChange={treeState.onLayerStateChange}
+      onGroupStateChange={treeState.onGroupStateChange}
+      onLayerTimeChange={treeState.onLayerTimeChange}
       onLayerDuplicate={handleLayerDuplicate}
       onCreateGroup={handleCreateGroup}
       onUpdateGroup={handleUpdateGroup}
@@ -432,53 +433,30 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           position: "absolute",
           top: toolbarHeight + 10,
           height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-          right:
-            dataPanelVisible && activeRightComponent
-              ? `${panelWidth + GAP_SIZE + 10}px`
-              : explorerActive
-                ? 10 + explorerRightRoom
-                : 10,
+          // The map controls sit left of the right panels, which run the whole height (prototype `.style`),
+          // and of the Explorer's right panel.
+          right: rightInsets.controlsRight,
           zIndex: (theme) => theme.zIndex.drawer + 1,
           pointerEvents: "none",
           alignItems: "flex-end",
         }}>
-        {!dataPanelVisible && (
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{
-              alignItems: "flex-start",
-              flex: 1,
-              minHeight: 0,
-              overflow: "hidden",
-            }}>
-            <MeasureResultsPanel {...measureTool} />
-            {showFeaturePanel && (
-              <FloatingPanel width={320} maxHeight="100%" fillHeight>
-                <FeatureEditPanel />
-              </FloatingPanel>
-            )}
-            {rightComponent && (
-              <FloatingPanel width={panelWidth} maxHeight="100%" fillHeight>
-                {rightComponent}
-              </FloatingPanel>
-            )}
-          </Stack>
-        )}
+        {/* The measure card is short: it sits above the controls, clipped by them, instead of moving them aside. */}
+        <Stack direction="row" sx={{ alignItems: "flex-start", flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <MeasureResultsPanel {...measureTool} />
+        </Stack>
         <Stack
           direction="column"
           alignItems="flex-end"
           sx={{
-            mt: dataPanelVisible ? "auto" : 2,
+            mt: 2,
             flexShrink: 0,
             pointerEvents: "none",
           }}>
           {/* In the Explorer the controls end on the panels' and the bar's
               line, EXPLORER_FOOT above the map's edge. */}
-          <Stack
-            direction="column"
-            alignItems="flex-end"
-            sx={{ mb: explorerActive ? `${EXPLORER_CONTROLS_LIFT + 4}px` : 1 }}>
+          <Stack sx={{ ...CONTROL_COLUMN_SX, mb: explorerActive ? `${EXPLORER_CONTROLS_LIFT + 4}px` : 3 }}>
+            <Compass />
+            <ViewControl showSky={isProjectEditor} />
             <Zoom tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />
             <Fullscren tooltipOpen={t("fullscreen")} tooltipExit={t("exit_fullscreen")} />
             <BasemapSelector
@@ -513,15 +491,15 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           </Box>
         </Stack>
       </Stack>
-      {/* Right panel + measure results — rendered separately when data panel is open so controls can be to the left */}
-      {dataPanelVisible && (
+      {/* Right panels, the whole height, the map controls to their left */}
+      {rightInsets.panelsWidth > 0 && (
         <Box
           {...{ [DATA_PANEL_HEIGHT_CONSUMER_ATTR]: "" }}
           sx={{
             position: "absolute",
             top: toolbarHeight + 10,
             height: `calc(100% - ${toolbarHeight + 20}px - var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
-            right: 10,
+            right: 10 + (explorerActive ? explorerRightRoom : 0),
             zIndex: (theme) => theme.zIndex.drawer + 1,
             pointerEvents: "none",
           }}>
@@ -529,7 +507,6 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             direction="row"
             spacing={2}
             sx={{ alignItems: "flex-start", height: "100%", overflow: "hidden" }}>
-            <MeasureResultsPanel {...measureTool} />
             {showFeaturePanel && (
               <FloatingPanel width={320} maxHeight="100%" fillHeight>
                 <FeatureEditPanel />
@@ -557,7 +534,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           position: "absolute",
           top: toolbarHeight + 10,
           left: leftWidth + GAP_SIZE + 10,
-          right: (rightStackWidth ? rightStackWidth + GAP_SIZE : 0) + 10,
+          right: rightInsets.popupRight,
           bottom: `calc(10px + var(${DATA_PANEL_HEIGHT_VAR}, 0px))`,
           pointerEvents: "none",
           // Above layout controls (drawer + 1), so a popup at the top-left
@@ -565,7 +542,7 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
           // button column.
           zIndex: (theme) => theme.zIndex.drawer + 2,
         }}>
-        <MapFixedPopupSlot layers={projectLayers} />
+        <MapFixedPopupSlot layers={mapLayers} />
       </Box>
       {explorerActive && explorerRight > 0 && (
         // As high as the left panel, ending at the same foot: the credits run

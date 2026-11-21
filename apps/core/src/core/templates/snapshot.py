@@ -309,7 +309,9 @@ def bind_workflow_config(
     For every dataset node carrying ``data.templateInput``, looks up its key
     in ``bindings`` — ``(layer_id, layer_project_id)`` for the target
     project. When a ``layer_id`` is supplied: sets the node's ``layerId`` /
-    ``projectLayerId`` and clears ``unresolved``; if the node also carried
+    ``projectLayerId`` and clears ``unresolved`` (a layer other than the one
+    the node names loses the stored ``layerType`` / ``geometryType``, which
+    described the template's layer); if the node also carried
     ``templateSourceProjectLayerId`` (a "ship" input), tool-node config
     values still pointing at that old projectLayerId are rewritten to the
     new one.
@@ -358,6 +360,12 @@ def bind_workflow_config(
             if isinstance(old_layer_id, str):
                 replacements.append((old_layer_id, None))
             continue
+        if data.get("layerId") != str(layer_id):
+            # The stored types describe the template's layer, not the bound
+            # one, which this pass does not know: they go, and the editor
+            # reads the bound layer's own.
+            data.pop("layerType", None)
+            data.pop("geometryType", None)
         data["layerId"] = str(layer_id)
         if project_layer_id is not None:
             data["projectLayerId"] = project_layer_id

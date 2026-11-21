@@ -258,7 +258,7 @@ def test_starting_points_without_rows_are_saved_as_points(
     starting_points = _empty_points(tmp_path / "starting_points.parquet")
     runner = CatchmentAreaV2ToolRunner()
     saved = _record_layers(runner, monkeypatch)
-    monkeypatch.setattr(runner, "get_layer_properties", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "get_layer_style", lambda *a, **k: None)
 
     def process(params: Any, temp_dir: Path) -> tuple[Path, DatasetMetadata]:
         runner._starting_points_parquet = starting_points
@@ -295,7 +295,7 @@ def test_a_clustering_summary_without_rows_is_saved_as_points(
     )
     runner = ZonesClusteringToolRunner()
     saved = _record_layers(runner, monkeypatch)
-    monkeypatch.setattr(runner, "get_layer_properties", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "get_layer_style", lambda *a, **k: None)
     monkeypatch.setattr(runner, "_get_summary_style", lambda *a, **k: None)
 
     def process(params: Any, temp_dir: Path) -> tuple[Path, DatasetMetadata]:

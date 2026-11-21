@@ -81,6 +81,34 @@ describe("MAPTILER_KEY", () => {
   });
 });
 
+describe.each([
+  ["TERRAIN_TILES_URL", "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"],
+  ["BUILDINGS_TILES_URL", "https://tiles.openfreemap.org/planet"],
+] as const)("%s (3D source)", (name, fallback) => {
+  const env = `NEXT_PUBLIC_${name}`;
+
+  it("is off when set to an empty value", async () => {
+    vi.stubEnv(env, "");
+    const constants = await loadConstants();
+    expect(constants[name]).toBeUndefined();
+  });
+
+  it("is the default when unset, still the Docker placeholder, or left unset by the entrypoint", async () => {
+    vi.stubEnv(env, undefined);
+    expect((await loadConstants())[name]).toBe(fallback);
+    vi.stubEnv(env, `APP_${env}`);
+    expect((await loadConstants())[name]).toBe(fallback);
+    // entrypoint.sh leaves the bare prefix for a 3D source the container does not set
+    vi.stubEnv(env, "APP_NEXT_PUBLIC_");
+    expect((await loadConstants())[name]).toBe(fallback);
+  });
+
+  it("uses the configured URL", async () => {
+    vi.stubEnv(env, "https://dem.example.org/{z}/{x}/{y}.webp");
+    expect((await loadConstants())[name]).toBe("https://dem.example.org/{z}/{x}/{y}.webp");
+  });
+});
+
 describe("a saved MapTiler basemap without a key", () => {
   it("resolves to the default basemap", async () => {
     vi.stubEnv("NEXT_PUBLIC_MAPTILER_KEY", "");
@@ -117,22 +145,16 @@ describe("ASSETS_URL", () => {
     expect(GEOFENCE_LAYERS_PATH).toBe("https://cdn.client.test/other/geofence");
   });
 
-  it("builds the marker, pattern and basemap urls from the same base", async () => {
+  it("builds the marker and basemap urls from the same base", async () => {
     vi.stubEnv("NEXT_PUBLIC_ASSETS_URL", "");
     vi.resetModules();
     const { MAKI_ICONS_BASE_URL } = await import("@/lib/constants/icons");
-    const { PATTERN_IMAGES } = await import("@/lib/constants/pattern-images");
     const { BASEMAPS } = await import("@/lib/constants/basemaps");
     expect(MAKI_ICONS_BASE_URL).toBe("/assets/icons/maki");
-    expect(PATTERN_IMAGES.every((p) => p.url.startsWith("/assets/patterns/"))).toBe(true);
     expect(BASEMAPS.find((b) => b.value === "basemap_de_landuse")?.url).toBe(
       "/assets/goat/basemaps/bm_web_col_landuse_plan4better.json"
     );
-    const everyUrl = [
-      MAKI_ICONS_BASE_URL,
-      ...PATTERN_IMAGES.map((p) => p.url),
-      ...BASEMAPS.map((b) => b.url),
-    ];
+    const everyUrl = [MAKI_ICONS_BASE_URL, ...BASEMAPS.map((b) => b.url)];
     expect(everyUrl.some((u) => u?.includes("plan4better.de"))).toBe(false);
   });
 });

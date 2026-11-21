@@ -38,4 +38,14 @@ describe("MapDropTarget", () => {
     expect(importMock).not.toHaveBeenCalled();
     dock.remove();
   });
+
+  it("leaves a drop on a popper to it: the style editor's icon picker takes its own", () => {
+    render(<MapDropTarget projectId="p1" />);
+    const popper = document.createElement("div");
+    popper.className = "MuiPopper-root";
+    document.body.appendChild(popper);
+    drop(popper, new File(["{}"], "netz.geojson"));
+    expect(importMock).not.toHaveBeenCalled();
+    popper.remove();
+  });
 });

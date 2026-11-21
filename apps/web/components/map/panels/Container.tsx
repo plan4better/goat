@@ -1,5 +1,6 @@
 import { Box, Divider, IconButton, Paper, Stack, Tooltip, Typography, useTheme } from "@mui/material";
 import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -23,6 +24,7 @@ export default function Container(props: ContainerProps) {
   const textRef = useRef<HTMLSpanElement>(null);
 
   const theme = useTheme();
+  const { t } = useTranslation("common");
 
   useEffect(() => {
     const checkOverflow = () => {
@@ -64,7 +66,7 @@ export default function Container(props: ContainerProps) {
                 }}>
                 {header}
                 {disableClose !== true && close && (
-                  <IconButton onClick={() => close(undefined)}>
+                  <IconButton aria-label={t("close")} onClick={() => close(undefined)}>
                     <Icon iconName={ICON_NAME.CLOSE} fontSize="small" />
                   </IconButton>
                 )}
@@ -94,7 +96,7 @@ export default function Container(props: ContainerProps) {
                   </Typography>
                 </Tooltip>
                 {disableClose !== true && close && (
-                  <IconButton onClick={() => close(undefined)}>
+                  <IconButton aria-label={t("close")} onClick={() => close(undefined)}>
                     <Icon iconName={ICON_NAME.CLOSE} fontSize="small" />
                   </IconButton>
                 )}

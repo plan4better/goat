@@ -18,6 +18,7 @@ from goatlib.tools.layer_export import (
     LayerExportParams,
     LayerExportRunner,
 )
+from pydantic import ValidationError
 
 
 class TestLayerExportParams:
@@ -96,14 +97,14 @@ class TestLayerExportParams:
         )
         assert params.crs == "EPSG:3857"
 
-    def test_with_sql_query_filter(self):
-        """Valid params with SQL query filter."""
-        params = LayerExportParams(
-            **self.BASE_PARAMS,
-            file_type="geojson",
-            query="status = 'active'",
-        )
-        assert params.query == "status = 'active'"
+    def test_text_query_is_refused(self):
+        """The filter is a CQL2 object: text would reach the query as SQL."""
+        with pytest.raises(ValidationError):
+            LayerExportParams(
+                **self.BASE_PARAMS,
+                file_type="geojson",
+                query="status = 'active'",
+            )
 
     def test_with_cql2_dict_filter(self):
         """Valid params with CQL2 dict filter."""
@@ -354,11 +355,10 @@ class TestLayerExportRunner:
 
         assert result is False
 
-    def test_convert_cql2_to_sql_string_passthrough(self, runner):
-        """Test that SQL string query passes through unchanged."""
-        result = runner._convert_cql2_to_sql("status = 'active'", "lake.user_xxx.t_yyy")
-
-        assert result == "status = 'active'"
+    def test_convert_cql2_to_sql_refuses_text(self, runner):
+        """Text never becomes part of the query, whoever passes it."""
+        with pytest.raises(ValueError):
+            runner._convert_cql2_to_sql("status = 'active'", "lake.user_xxx.t_yyy")
 
     def test_convert_cql2_to_sql_none(self, runner):
         """Test that None query returns None."""
@@ -369,9 +369,9 @@ class TestLayerExportRunner:
     def test_convert_cql2_to_sql_dict(self, runner):
         """Test CQL2 dict conversion."""
         runner._duckdb_con.execute.return_value.fetchall.return_value = [
-            ("status",),
-            ("name",),
-            ("geometry",),
+            ("status", "VARCHAR"),
+            ("name", "VARCHAR"),
+            ("geometry", "GEOMETRY"),
         ]
 
         cql2_filter = {
@@ -379,11 +379,9 @@ class TestLayerExportRunner:
             "args": [{"property": "status"}, "active"],
         }
 
-        with patch("goatlib.storage.cql_to_where_clause") as mock_cql:
-            mock_cql.return_value = "status = 'active'"
-            result = runner._convert_cql2_to_sql(cql2_filter, "lake.user_xxx.t_yyy")
+        result = runner._convert_cql2_to_sql(cql2_filter, "lake.user_xxx.t_yyy")
 
-        assert result == "status = 'active'"
+        assert result == "(\"status\" = 'active')"
 
 
 class TestLayerExportCRS:

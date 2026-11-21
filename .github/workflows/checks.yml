@@ -92,6 +92,8 @@ jobs:
                 - 'apps/web/**'
                 - 'apps/assistant/tests/fixtures/workflow_drafts.json'
                 - 'packages/js/**'
+                - 'packages/python/goatlib/src/goatlib/style/data/**'
+                - 'packages/python/goatlib/tests/unit/style/fixtures/**'
                 - '.prettier*'
                 - 'pnpm-lock.yaml'
 

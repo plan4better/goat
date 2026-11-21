@@ -13,8 +13,8 @@ import { previewSql } from "@/lib/api/expressions";
 import { apiRequestAuth } from "@/lib/api/fetcher";
 import { useDatasetCollectionItems } from "@/lib/api/layers";
 import { PROCESSES_API_BASE_URL } from "@/lib/api/processes";
+import { isCustomRow } from "@/lib/filter/model";
 import { usePublicProjectId } from "@/lib/providers/PublicProjectProvider";
-import { filterColumnType, filterValueLabel } from "@/lib/utils/columnFilterOperators";
 import { appendUniqueFeatures } from "@/lib/utils/features";
 import { formatNumber } from "@/lib/utils/format-number";
 import { formatFieldValue } from "@/lib/utils/formatFieldValue";
@@ -34,6 +34,7 @@ import type { FormatNumberTypes } from "@/lib/validations/widget";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
 import { useChartWidget } from "@/hooks/map/DashboardBuilderHooks";
+import { useFilterFields } from "@/hooks/map/useFilterFields";
 import { combineCqlFilters, useTableViewFilterController } from "@/hooks/useTableViewFilterController";
 
 import { NumberFormatSelector } from "@/components/builder/widgets/common/WidgetCommonConfigs";
@@ -41,7 +42,8 @@ import { WidgetStatusContainer } from "@/components/builder/widgets/common/Widge
 import WidgetAggregateTable from "@/components/builder/widgets/data/WidgetAggregateTable";
 import FeatureTable from "@/components/common/FeatureTable";
 import { fieldIndicatorKind } from "@/components/common/FieldKindIcon";
-import ColumnFilterPopover from "@/components/map/panels/ColumnFilterPopover";
+import ColumnFilterPopover, { canFilterColumn } from "@/components/map/panels/ColumnFilterPopover";
+import { rowSentence } from "@/components/map/panels/filter/ConditionRow";
 
 interface TableDataWidgetProps {
   widgetId: string;
@@ -243,13 +245,16 @@ export const TableDataWidget = ({
 
   const { layerFields, isLoading: areFieldsLoading } = useLayerFields(recordsLayerId || "");
 
+  // The fields as the filter writes them (a date told from a moment).
+  const { fields: filterFields } = useFilterFields(recordsLayerId || "");
+
   // A dashboard has no Filter panel, so a viewer's column filters live in view
   // state and are ANDed onto whatever the author configured.
   const {
     controller: viewFilterController,
     cqlFilter: viewCqlFilter,
     clear: clearViewFilters,
-  } = useTableViewFilterController(layerFields);
+  } = useTableViewFilterController(filterFields);
   const [filterColumn, setFilterColumn] = useState<string | null>(null);
   const [filterAnchorEl, setFilterAnchorEl] = useState<HTMLElement | null>(null);
 
@@ -754,12 +759,14 @@ export const TableDataWidget = ({
                   ]
                 : []),
             ]),
-        ...(!filteringEnabled
+        ...(!filteringEnabled || !canFilterColumn(viewFilterController, fieldName)
           ? []
           : [
               {
                 key: "filter",
-                label: viewFilterController.expressions.some((e) => e.attribute === fieldName)
+                label: viewFilterController.model.rows.some(
+                  (row) => !isCustomRow(row) && row.field === fieldName
+                )
                   ? t("edit_filter", { defaultValue: "Edit filter" })
                   : t("add_filter", { defaultValue: "Add filter" }),
                 icon: <FilterAltIcon />,
@@ -772,7 +779,7 @@ export const TableDataWidget = ({
             ]),
       ];
     },
-    [interactiveSort, t, viewFilterController.expressions, sortingEnabled, filteringEnabled]
+    [interactiveSort, t, viewFilterController, sortingEnabled, filteringEnabled]
   );
 
   const handleInteractiveSortClick = useCallback((columnKey: string) => {
@@ -1907,33 +1914,26 @@ export const TableDataWidget = ({
 
       {!isSqlMode && !isGroupedMode && displayRecordsData && isRecordsConfigured && (
         <Box sx={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          {filteringEnabled && viewFilterController.expressions.length > 0 && (
+          {filteringEnabled && viewFilterController.model.rows.length > 0 && (
             <Stack direction="row" flexWrap="wrap" gap={1} sx={{ pb: 2 }}>
-              {viewFilterController.expressions.map((expression) => {
-                const columnLabel = recordColumnLabelMap[expression.attribute] || expression.attribute;
-                const operatorLabel = t(`filter_expressions.${expression.expression}`);
-                const valueLabel = filterValueLabel(
-                  filterColumnType(
-                    layerFields.find((field) => field.name === expression.attribute) ?? {
-                      type: "string",
-                    }
-                  ),
-                  expression
-                );
+              {viewFilterController.model.rows.map((row) => {
+                // The popover adds condition rows only.
+                if (isCustomRow(row)) return null;
+                const columnLabel = recordColumnLabelMap[row.field] || row.field;
                 // A chip has to stay narrow enough that several fit on one row, so
                 // long values still truncate — the tooltip is how you read them.
-                const fullLabel = [columnLabel, operatorLabel, valueLabel].filter(Boolean).join(" ");
+                // Worded as the layer Filter panel words its rows.
                 return (
-                  <Tooltip key={expression.id} title={fullLabel} placement="top">
+                  <Tooltip key={row.id} title={rowSentence(row, columnLabel, t)} placement="top">
                     <Chip
                       size="small"
                       variant="outlined"
                       label={
                         <Typography variant="caption" noWrap>
-                          <b>{columnLabel}</b> {operatorLabel} {valueLabel}
+                          <b>{columnLabel}</b> {rowSentence(row, "", t)}
                         </Typography>
                       }
-                      onDelete={() => viewFilterController.remove(expression.id)}
+                      onDelete={() => viewFilterController.remove(row.id)}
                       sx={{ maxWidth: 280 }}
                     />
                   </Tooltip>
@@ -2153,9 +2153,6 @@ export const TableDataWidget = ({
           key={filterColumn}
           anchorEl={filterAnchorEl}
           columnName={filterColumn}
-          columnType={filterColumnType(
-            layerFields.find((field) => field.name === filterColumn) ?? { type: "string" }
-          )}
           iconKind={fieldIndicatorKind(
             layerFields.find((field) => field.name === filterColumn) ?? { type: "string" }
           )}

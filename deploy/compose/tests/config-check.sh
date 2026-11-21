@@ -53,6 +53,8 @@ check_common() {
   # every table it needs (apps/assistant/sql/grants.sql lists them).
   jq -e '.services as $s | $s.assistant.environment | .POSTGRES_USER == $s.core.environment.POSTGRES_USER and .POSTGRES_USER == $s["core-migrate"].environment.POSTGRES_USER and .POSTGRES_DB == $s.core.environment.POSTGRES_DB' <<<"$json" >/dev/null || fail "assistant must use GOAT's database role"
   jq -e '.services.assistant.environment.REDIS_URL == "redis://redis:6379/0"' <<<"$json" >/dev/null || fail "assistant redis"
+  # The project archive jobs reach core on the compose network, as processes tells them.
+  jq -e '.services.processes.environment.CORE_URL == "http://core:8000"' <<<"$json" >/dev/null || fail "processes has no CORE_URL for the jobs"
   jq -e '.services.assistant.environment | .ASSISTANT_CORE_URL == "http://core:8000" and .ASSISTANT_GEOAPI_URL == "http://geoapi:8000" and .ASSISTANT_CATALOG_URL == "http://catalog:8400" and .GOAT_PROCESSES_URL == "http://processes:8000"' <<<"$json" >/dev/null || fail "assistant service urls"
   jq -e '.services as $s | $s.assistant.environment.KEYCLOAK_CLIENT_ID == $s.web.environment.KEYCLOAK_CLIENT_ID and $s.assistant.environment.KEYCLOAK_CLIENT_SECRET == $s.web.environment.KEYCLOAK_CLIENT_SECRET' <<<"$json" >/dev/null || fail "assistant must refresh logins with the web client"
   jq -e '.services.assistant.environment.ASSISTANT_TOKEN_EXCHANGE_ENABLED == "false"' <<<"$json" >/dev/null || fail "token exchange needs Keycloak 26.2"
@@ -121,6 +123,23 @@ jq -e '.services.core.environment.ODOO_SUPPORT_POST_ACTION == "GOAT: post messag
 jq -e '[.services[] | select(.environment | has("ODOO_SUPPORT_API_KEY"))] | length == 1' <<<"$j" >/dev/null || fail "support api key outside core"
 # Token client allow-list off by default: empty for every service that verifies tokens.
 jq -e '[.services | (.core, .geoapi, .processes, .catalog) | .environment.AUTH_ALLOWED_CLIENTS] | all(. == "")' <<<"$j" >/dev/null || fail "allowed clients not empty by default"
+# Raster files are read only from public hosts by default: the private-host list is empty for both readers.
+jq -e '[.services | (.geoapi, .processes) | .environment.RASTER_PRIVATE_HOSTS] | all(. == "")' <<<"$j" >/dev/null || fail "raster private hosts not empty by default"
+# core asks geoapi for a COG layer's bounds on geoapi's in-network port.
+jq -e '.services.core.environment.GOAT_GEOAPI_URL == "http://geoapi:8000"' <<<"$j" >/dev/null || fail "core lacks the geoapi URL"
+
+# 3D sources: one value per source reaches the web (browser) and core (scene checks), the public defaults while unset.
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp" and .services.core.environment.TERRAIN_TILES_URL == .services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL' <<<"$j" >/dev/null || fail "terrain tiles url default or twins differ"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "https://tiles.openfreemap.org/planet" and .services.core.environment.BUILDINGS_TILES_URL == .services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL' <<<"$j" >/dev/null || fail "buildings tiles url default or twins differ"
+
+variant=no-3d-sources
+# An empty value turns a source off and stays empty (no default fills it in), for both twins.
+d3=$(make_variant --public-url https://goat.example.org --tls off)
+sed -i '/^TERRAIN_TILES_URL=/d; /^BUILDINGS_TILES_URL=/d' "$d3/.env"
+printf 'TERRAIN_TILES_URL=\nBUILDINGS_TILES_URL=\n' >> "$d3/.env"
+j3=$(render "$d3"); check_common "$j3"
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "" and .services.core.environment.TERRAIN_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty terrain tiles url not kept empty"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "" and .services.core.environment.BUILDINGS_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty buildings tiles url not kept empty"
 
 variant=support
 d2=$(make_variant --public-url https://goat.example.org --tls auto --acme-email ops@plan4better.de)
@@ -197,8 +216,12 @@ jq -e '.services.core.environment.S3_ENDPOINT_URL == "https://s3.example.org"' <
 jq -e '.services.web.environment.NEXT_PUBLIC_KEYCLOAK_ISSUER == "https://login.example.org/realms/goat"' <<<"$j" >/dev/null || fail "external issuer"
 # A realm shared with other applications: the allow-list reaches every service that verifies tokens.
 echo "AUTH_ALLOWED_CLIENTS=goat,goat-scripts" >> "$d/.env"
+echo "RASTER_PRIVATE_HOSTS=garage,files.internal" >> "$d/.env"
+echo "GOAT_GEOAPI_URL=http://geoapi.internal:8100" >> "$d/.env"
 j=$(render "$d"); check_common "$j"
 jq -e '[.services | (.core, .geoapi, .processes, .catalog) | .environment.AUTH_ALLOWED_CLIENTS] | all(. == "goat,goat-scripts")' <<<"$j" >/dev/null || fail "allowed clients not passed to the APIs"
+jq -e '[.services | (.geoapi, .processes) | .environment.RASTER_PRIVATE_HOSTS] | all(. == "garage,files.internal")' <<<"$j" >/dev/null || fail "raster private hosts not passed to geoapi and processes"
+jq -e '.services.core.environment.GOAT_GEOAPI_URL == "http://geoapi.internal:8100"' <<<"$j" >/dev/null || fail "geoapi URL not passed to core"
 
 variant=auth-false
 d=$(make_variant --public-url http://localhost --tls off)

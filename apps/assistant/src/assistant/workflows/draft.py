@@ -772,6 +772,12 @@ def _dataset_data(
             f"step {step.id!r}: there is no layer {step.layer} in the project; "
             "call project_get_layers for the layer_project_ids"
         )
+    if layer.type == "raster":
+        raise DraftError(
+            f"step {step.id!r}: {layer.name!r} is a raster layer; workflows take "
+            "feature layers and tables. Choose another layer or leave the step open "
+            "(layer null)."
+        )
     data: dict[str, Any] = {
         "type": "dataset",
         "label": step.label or layer.name,
@@ -785,7 +791,7 @@ def _dataset_data(
     }
     if layer.geometry_type:
         data["geometryType"] = layer.geometry_type
-    if layer.type in ("feature", "table", "raster"):
+    if layer.type in ("feature", "table"):
         data["layerType"] = layer.type
     step_filter = dataset_filter(step, regions, salt)
     if step_filter is not None:

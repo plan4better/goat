@@ -150,12 +150,7 @@ Wenn ein **Datensatz-Knoten** ausgewählt ist, erscheint das Datensatz-Panel mit
 
 **Quelle Tab**: Zeigen Sie Metadaten aus der Datenquelle an und greifen Sie auf Tabellen- und Kartenansichten zu. Sie können auch den dem Knoten zugewiesenen Datensatz von diesem Tab aus ändern.
 
-Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen.
-
-**Filter Tab** schon vor der ersten Ausführung eingerichtet werden können. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
-- Jede Ausführung holt die Daten neu, das Ergebnis folgt also Änderungen in der Quelle.
-- Kann die Verbindung nicht ausgeführt werden, zeigt der Knoten ein Hinweis-Symbol mit dem Grund, zum Beispiel wenn eine Ausführung stoppte, weil der WFS nicht erreichbar war.
-- Es werden höchstens 1.000.000 Features abgerufen, sehr große Gebiete werden abgelehnt. <code>Im Workflow verwenden</code> bleibt deaktiviert, bis die Auswahl gültig ist, und nennt den Grund.
+Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen. Workflows verwenden Feature-Layer und Tabellen; Raster-Layer werden nicht angeboten und lassen sich nicht auf die Leinwand ziehen.
 
 **Filter Tab**: Wenden Sie spezifische Filter für den Workflow an, ohne die ursprüngliche Ebene zu beeinträchtigen.
 

@@ -160,10 +160,10 @@ SOURCE = "27ceed82-0a35-46dc-bb71-3a574744e297"
 COPY = "f16bfd54-0000-4000-8000-000000000001"
 
 
-def _pruefroutine_config() -> dict[str, Any]:
-    """The shape of the Bonn "Prüfroutine (mehrere Vorhaben)" input: a dataset
-    node saved with `layerId` only (`layerType: "layer"`, no
-    `projectLayerId`), read by a tool node, plus an unrelated dataset."""
+def _layer_only_config() -> dict[str, Any]:
+    """A workflow whose input is a dataset node saved with `layerId` only
+    (`layerType: "layer"`, no `projectLayerId`), read by a tool node, plus an
+    unrelated dataset."""
     return {
         "nodes": [
             {
@@ -171,9 +171,9 @@ def _pruefroutine_config() -> dict[str, Any]:
                 "type": "dataset",
                 "data": {
                     "type": "dataset",
-                    "label": "Vorhaben (Eingabe)",
+                    "label": "Standorte (Eingabe)",
                     "layerId": SOURCE,
-                    "layerName": "Vorhaben (Eingabe)",
+                    "layerName": "Standorte (Eingabe)",
                     "layerType": "layer",
                     "geometryType": "point",
                     "filterInitialized": True,
@@ -202,7 +202,7 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
     out = _unlinked_retargeted(
-        _pruefroutine_config(),
+        _layer_only_config(),
         source_layer_id=SOURCE,
         layer_id=COPY,
         link_id=748,
@@ -210,11 +210,11 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
     )
 
     assert out is not None
-    vorhaben, other, tool = out["nodes"]
-    assert vorhaben["data"]["layerId"] == COPY
+    site, other, tool = out["nodes"]
+    assert site["data"]["layerId"] == COPY
     # Given the entry, so later swaps behind it reach the node too.
-    assert vorhaben["data"]["projectLayerId"] == 748
-    assert vorhaben["data"]["layerName"] == "Vorhaben (Eingabe)"
+    assert site["data"]["projectLayerId"] == 748
+    assert site["data"]["layerName"] == "Standorte (Eingabe)"
     assert other["data"] == {"type": "dataset", "layerId": "other-layer"}
     assert tool["data"]["config"] == {"input_layer_id": COPY, "distances": [500]}
 
@@ -222,7 +222,7 @@ def test_a_node_without_an_entry_follows_the_copy_by_its_layer() -> None:
 def test_a_node_with_an_entry_of_the_project_is_left_to_its_entry() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
-    config = _pruefroutine_config()
+    config = _layer_only_config()
     config["nodes"][0]["data"]["projectLayerId"] = 749
     assert (
         _unlinked_retargeted(
@@ -239,7 +239,7 @@ def test_a_node_with_an_entry_of_the_project_is_left_to_its_entry() -> None:
 def test_a_node_with_an_entry_of_another_project_counts_as_without() -> None:
     from goatlib.tools.workflow_dataset_nodes import _unlinked_retargeted
 
-    config = _pruefroutine_config()
+    config = _layer_only_config()
     config["nodes"][0]["data"]["projectLayerId"] = 12  # the author's project
     out = _unlinked_retargeted(
         config,
@@ -257,7 +257,7 @@ def test_nothing_names_the_source_nothing_changes() -> None:
 
     assert (
         _unlinked_retargeted(
-            _pruefroutine_config(),
+            _layer_only_config(),
             source_layer_id="not-in-this-workflow",
             layer_id=COPY,
             link_id=748,
@@ -265,148 +265,3 @@ def test_nothing_names_the_source_nothing_changes() -> None:
         )
         is None
     )
-
-
-# --- The style an export saves a dataset step's rows in -----------------------
-
-USER = "00000000-0000-0000-0000-000000000001"
-LAYER = "90e3bcb2-d7ec-4abf-955d-50633ab4a101"
-
-
-class _StyleConn:
-    """A connection answering the style query with one row, remembering the
-    arguments it was given."""
-
-    def __init__(self, entry_style: Any = None, layer_style: Any = None) -> None:
-        self.row = {"entry_style": entry_style, "layer_style": layer_style}
-        self.args: tuple[Any, ...] = ()
-
-    async def fetchrow(self, query: str, *args: Any) -> dict[str, Any]:
-        self.args = args
-        return self.row
-
-
-async def _style(conn: _StyleConn, node: dict[str, Any]) -> Any:
-    from goatlib.tools.workflow_dataset_nodes import dataset_style
-
-    return await dataset_style(
-        conn, "customer", user_id=USER, project_id=PROJECT, node=node
-    )
-
-
-async def test_a_dataset_steps_style_is_its_project_entrys() -> None:
-    """The entry's style is the one the project shows the layer in; the
-    layer's own is what it had when it was added."""
-    import json
-    import uuid
-
-    conn = _StyleConn(
-        entry_style=json.dumps({"color": "red", "visibility": True}),
-        layer_style=json.dumps({"color": "blue", "visibility": True}),
-    )
-
-    style = await _style(conn, _dataset("dataset-1", LAYER, 7))
-
-    assert style == {"color": "red", "visibility": True}
-    assert conn.args == (uuid.UUID(PROJECT), uuid.UUID(USER), 7, uuid.UUID(LAYER))
-
-
-async def test_without_a_live_entry_the_layers_own_style_applies() -> None:
-    import json
-
-    conn = _StyleConn(layer_style=json.dumps({"color": "blue"}))
-
-    style = await _style(conn, _dataset("dataset-1", LAYER))
-
-    assert style == {"color": "blue", "visibility": True}
-    # A node without an entry asks for none.
-    assert conn.args[2] is None
-
-
-async def test_a_hidden_dataset_is_saved_visible() -> None:
-    """Visibility is the project's view state, not style: the saved layer is
-    added to the project shown, as core adds a layer a project already has."""
-    import json
-
-    conn = _StyleConn(entry_style=json.dumps({"color": "red", "visibility": False}))
-
-    style = await _style(conn, _dataset("dataset-1", LAYER, 7))
-
-    assert style == {"color": "red", "visibility": True}
-
-
-@pytest.mark.parametrize("empty", [None, "null", "{}", "[]"])
-async def test_an_empty_style_leaves_the_default_style(empty: Any) -> None:
-    """None: finalize_layer then gives the saved layer the default style."""
-    import json
-
-    assert await _style(_StyleConn(empty, empty), _dataset("d", LAYER, 7)) is None
-    # An empty entry style does not hide the layer's own.
-    conn = _StyleConn(empty, json.dumps({"color": "blue"}))
-    assert await _style(conn, _dataset("d", LAYER, 7)) == {
-        "color": "blue",
-        "visibility": True,
-    }
-
-
-def _style_params() -> WorkflowRunnerParams:
-    return WorkflowRunnerParams(
-        user_id=USER,
-        project_id=PROJECT,
-        workflow_id="00000000-0000-0000-0000-000000000010",
-        folder_id="00000000-0000-0000-0000-000000000040",
-        nodes=[],
-        edges=[],
-    )
-
-
-def test_runner_looks_up_a_dataset_steps_style() -> None:
-    conn = MagicMock()
-    conn.close = AsyncMock()
-    lookup = AsyncMock(return_value={"color": "red", "visibility": True})
-    node = _dataset("dataset-1", LAYER, 7)
-
-    with (
-        patch.object(
-            workflow_runner, "_connect", new=AsyncMock(return_value=(conn, "customer"))
-        ),
-        patch.object(workflow_runner, "dataset_style", new=lookup),
-    ):
-        style = workflow_runner.dataset_layer_style(_style_params(), node)
-
-    assert style == {"color": "red", "visibility": True}
-    assert lookup.await_args.kwargs == {
-        "user_id": USER,
-        "project_id": PROJECT,
-        "node": node,
-    }
-    conn.close.assert_awaited_once()
-
-
-def test_a_failed_style_lookup_saves_in_the_default_style(
-    capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
-) -> None:
-    """The style must not fail the export; and job output is visible to the
-    user, so no connection details go into it."""
-    detail = "postgresql://goat:s3cret@db-internal:5432/goat refused"
-
-    with patch.object(
-        workflow_runner, "_connect", new=AsyncMock(side_effect=OSError(detail))
-    ):
-        style = workflow_runner.dataset_layer_style(
-            _style_params(), _dataset("dataset-1", LAYER, 7)
-        )
-
-    assert style is None
-    assert "s3cret" not in capsys.readouterr().out
-    assert "s3cret" not in caplog.text
-
-
-def test_a_dataset_step_without_a_layer_asks_for_no_style() -> None:
-    connect = AsyncMock()
-    node = {"id": "dataset-1", "type": "dataset", "data": {"type": "dataset"}}
-
-    with patch.object(workflow_runner, "_connect", new=connect):
-        assert workflow_runner.dataset_layer_style(_style_params(), node) is None
-
-    connect.assert_not_awaited()

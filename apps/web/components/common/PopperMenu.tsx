@@ -25,6 +25,8 @@ export interface PopperMenuItem {
   icon?: ICON_NAME;
   color?: string;
   disabled?: boolean;
+  /** Shown on hover; for a disabled item, why it is. */
+  tooltip?: string;
   group?: string;
   tag?: string;
   tagTooltip?: string;
@@ -89,77 +91,88 @@ export default function PopperMenu(props: PopperMenuProps) {
           <List disablePadding>
             {Object.keys(groupedMenuItems).map((group, groupIndex) => (
               <div key={groupIndex}>
-                {groupedMenuItems[group].map((item) => (
-                  <ListItemButton
-                    disabled={item.disabled}
-                    selected={selectedItem?.label === item.label}
-                    key={item.id}
-                    onClick={(event) => {
-                      props?.onSelect?.(item);
-                      item.onClick?.();
-                      setPopperMenuOpen(false);
-                      event.stopPropagation();
-                    }}
-                    sx={{
-                      ...POPOVER_ROW_SX,
-                      color: item.color || "text.primary",
-                      // Tinted, a row among the menu's other rows.
-                      ...(item.featured && {
-                        mb: "2px",
-                        bgcolor: alpha(theme.palette.primary.main, 0.08),
-                        "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.14) },
-                      }),
-                    }}>
-                    {/* The tile is centred on the plain icons' column and its label
-                        starts where theirs do. */}
-                    {item.featured && item.icon && (
-                      <ListItemIcon sx={{ minWidth: 0, mx: "-3.5px" }}>
-                        <Box
-                          sx={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            bgcolor: "primary.main",
-                            color: "primary.contrastText",
-                          }}>
-                          <Icon style={{ fontSize: 11 }} iconName={item.icon} htmlColor="inherit" />
-                        </Box>
-                      </ListItemIcon>
-                    )}
-                    {!item.featured && item.icon && (
-                      <ListItemIcon sx={{ minWidth: 0, color: item.color || "text.secondary" }}>
-                        <Icon
-                          style={{ fontSize: POPOVER_ROW_ICON_SIZE }}
-                          iconName={item.icon}
-                          htmlColor="inherit"
-                        />
-                      </ListItemIcon>
-                    )}
-                    <ListItemText
-                      primary={item.label}
-                      primaryTypographyProps={{
-                        sx: { fontSize: "inherit", fontWeight: "inherit", color: "inherit" },
+                {groupedMenuItems[group].map((item) => {
+                  const button = (
+                    <ListItemButton
+                      disabled={item.disabled}
+                      selected={selectedItem?.label === item.label}
+                      key={item.id}
+                      onClick={(event) => {
+                        if (item.disabled) return;
+                        props?.onSelect?.(item);
+                        item.onClick?.();
+                        setPopperMenuOpen(false);
+                        event.stopPropagation();
                       }}
-                      sx={{ my: 0 }}
-                    />
-                    {item.tag && (
-                      <Tooltip title={item.tagTooltip || ""} placement="right" arrow>
-                        <Chip
-                          label={item.tag}
-                          size="small"
-                          sx={{
-                            height: 18,
-                            fontSize: "0.65rem",
-                            fontWeight: 600,
-                          }}
-                        />
-                      </Tooltip>
-                    )}
-                  </ListItemButton>
-                ))}
+                      sx={{
+                        ...POPOVER_ROW_SX,
+                        color: item.color || "text.primary",
+                        // Tinted, a row among the menu's other rows.
+                        ...(item.featured && {
+                          mb: "2px",
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                          "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.14) },
+                        }),
+                      }}>
+                      {/* The tile is centred on the plain icons' column and its label
+                            starts where theirs do. */}
+                      {item.featured && item.icon && (
+                        <ListItemIcon sx={{ minWidth: 0, mx: "-3.5px" }}>
+                          <Box
+                            sx={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              bgcolor: "primary.main",
+                              color: "primary.contrastText",
+                            }}>
+                            <Icon style={{ fontSize: 11 }} iconName={item.icon} htmlColor="inherit" />
+                          </Box>
+                        </ListItemIcon>
+                      )}
+                      {!item.featured && item.icon && (
+                        <ListItemIcon sx={{ minWidth: 0, color: item.color || "text.secondary" }}>
+                          <Icon
+                            style={{ fontSize: POPOVER_ROW_ICON_SIZE }}
+                            iconName={item.icon}
+                            htmlColor="inherit"
+                          />
+                        </ListItemIcon>
+                      )}
+                      <ListItemText
+                        primary={item.label}
+                        primaryTypographyProps={{
+                          sx: { fontSize: "inherit", fontWeight: "inherit", color: "inherit" },
+                        }}
+                        sx={{ my: 0 }}
+                      />
+                      {item.tag && (
+                        <Tooltip title={item.tagTooltip || ""} placement="right" arrow>
+                          <Chip
+                            label={item.tag}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: "0.65rem",
+                              fontWeight: 600,
+                            }}
+                          />
+                        </Tooltip>
+                      )}
+                    </ListItemButton>
+                  );
+                  // A disabled button takes no pointer events: the tooltip listens on a wrapper.
+                  return item.tooltip ? (
+                    <Tooltip key={item.id} title={item.tooltip} placement="right" arrow>
+                      <span style={{ display: "block" }}>{button}</span>
+                    </Tooltip>
+                  ) : (
+                    button
+                  );
+                })}
                 {groupIndex < Object.keys(groupedMenuItems).length - 1 && <Divider sx={{ my: "4px" }} />}
               </div>
             ))}

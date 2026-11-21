@@ -459,3 +459,91 @@ class TestLayerUpdateRegistry:
         assert "layer_id" in schema["properties"]
         assert "s3_key" in schema["properties"]
         assert "refresh_wfs" in schema["properties"]
+
+
+def test_a_wfs_refresh_that_finds_no_data_names_the_service_without_its_key(
+    caplog,
+):
+    """The job's error and the log name the service by scheme, host and path:
+    a WFS copy's source address can carry an access key."""
+    import sys
+    import types
+
+    service = "https://user:pw@example.org/wfs?key=secret"
+    fake = types.ModuleType("goatlib.io.remote_source.wfs")
+    fake.from_wfs = MagicMock(return_value=(None, None))
+    runner = LayerUpdateRunner()
+    runner.settings = MagicMock()
+    layer_info = {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "00000000-0000-0000-0000-000000000002",
+        "folder_id": "00000000-0000-0000-0000-000000000003",
+        "name": "Trees",
+        "type": "feature",
+        "data_type": "wfs",
+        "feature_layer_type": "standard",
+        "geometry_type": "point",
+        "other_properties": {"url": service, "layers": ["trees"]},
+    }
+    with (
+        patch.dict(sys.modules, {"goatlib.io.remote_source.wfs": fake}),
+        patch.object(runner, "_get_layer_full_info", new_callable=AsyncMock) as layer,
+        caplog.at_level("INFO"),
+    ):
+        layer.return_value = layer_info
+        result = runner.run(
+            LayerUpdateParams(
+                user_id="00000000-0000-0000-0000-000000000002",
+                layer_id="00000000-0000-0000-0000-000000000001",
+                refresh_wfs=True,
+            )
+        )
+    # The service is still read at its whole address.
+    assert fake.from_wfs.call_args.kwargs["url"] == service
+    assert result["updated"] is False
+    for text in (result["error"], caplog.text):
+        assert "example.org/wfs" in text
+        # `?key=`: the job's own line reads "s3_key=None".
+        assert "?key=" not in text and "secret" not in text and "pw@" not in text
+
+
+def test_a_failed_update_logs_its_traceback_without_the_key(caplog):
+    """An error a reader's library raises may quote the whole address; the log
+    line and the traceback attached to it name it without its key."""
+    import sys
+    import types
+
+    service = "https://user:pw@example.org/wfs?key=secret"
+    fake = types.ModuleType("goatlib.io.remote_source.wfs")
+    fake.from_wfs = MagicMock(side_effect=RuntimeError(f"Could not open {service}"))
+    runner = LayerUpdateRunner()
+    runner.settings = MagicMock()
+    layer_info = {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "00000000-0000-0000-0000-000000000002",
+        "folder_id": "00000000-0000-0000-0000-000000000003",
+        "name": "Trees",
+        "type": "feature",
+        "data_type": "wfs",
+        "feature_layer_type": "standard",
+        "geometry_type": "point",
+        "other_properties": {"url": service, "layers": ["trees"]},
+    }
+    with (
+        patch.dict(sys.modules, {"goatlib.io.remote_source.wfs": fake}),
+        patch.object(runner, "_get_layer_full_info", new_callable=AsyncMock) as layer,
+        caplog.at_level("INFO"),
+    ):
+        layer.return_value = layer_info
+        result = runner.run(
+            LayerUpdateParams(
+                user_id="00000000-0000-0000-0000-000000000002",
+                layer_id="00000000-0000-0000-0000-000000000001",
+                refresh_wfs=True,
+            )
+        )
+    assert result["updated"] is False
+    assert "example.org/wfs" in caplog.text
+    assert "Traceback" in caplog.text
+    for text in (caplog.text, result["error"]):
+        assert "?key=" not in text and "secret" not in text and "pw@" not in text

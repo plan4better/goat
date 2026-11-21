@@ -135,10 +135,10 @@ def test_upload_limit_default_is_shared(monkeypatch: pytest.MonkeyPatch) -> None
 
 @pytest.mark.unit
 def test_starting_point_marker_is_the_web_apps_own_icon() -> None:
-    from goatlib.tools.style import get_starting_points_style
+    from goatlib.tools.style import starting_points_style
 
-    marker = get_starting_points_style()["marker"]
-    assert marker["url"] == "/assets/icons/maki/foundation-marker.svg"
+    marker = starting_points_style()["symbol"]["marker"]
+    assert (marker["shape"], marker["icon"]) == ("icon", "goat:foundation-marker")
 
 
 @pytest.mark.unit

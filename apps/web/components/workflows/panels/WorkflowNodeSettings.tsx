@@ -56,10 +56,10 @@ import {
   isSectionEnabled,
   processInputsWithSections,
 } from "@/lib/utils/ogc-utils";
-import { isToolNode } from "@/lib/utils/workflowDatasets";
+import { isRasterDataset, isToolNode } from "@/lib/utils/workflowDatasets";
 import type { ContentItem } from "@/lib/validations/content";
 import type { ProjectLayer } from "@/lib/validations/project";
-import type { ExportNodeData, WorkflowNode } from "@/lib/validations/workflow";
+import type { DatasetNodeData, ExportNodeData, WorkflowNode } from "@/lib/validations/workflow";
 import { INTEGRATE_PROCESS_ID, integrationColumns } from "@/lib/workflows/datasetConnection";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -415,8 +415,9 @@ export default function WorkflowNodeSettings({
       const sourceNode = nodes.find((n) => n.id === edge.source);
       if (!sourceNode) return undefined;
 
-      // If source is a dataset node, get its configured layerId
+      // If source is a dataset node, get its configured layerId; a raster layer (workflows take none) counts as none
       if (sourceNode.data?.type === "dataset" && sourceNode.data?.layerId) {
+        if (isRasterDataset(sourceNode.data as DatasetNodeData, layers)) return undefined;
         return sourceNode.data.layerId as string;
       }
 
@@ -428,7 +429,7 @@ export default function WorkflowNodeSettings({
 
       return undefined;
     },
-    [edges, node.id, nodes, allInputs.length]
+    [edges, node.id, nodes, allInputs.length, layers]
   );
 
   // Compute layer geometry types for visibility conditions
@@ -571,7 +572,12 @@ export default function WorkflowNodeSettings({
       // to the connected layer's dataset ID
       let sourceDatasetId: string | undefined;
       let sourcePredictedCols: Record<string, string> | undefined;
-      if (sourceNode?.data?.type === "dataset" && sourceNode.data.layerId) {
+      // A raster layer (workflows take none) has no fields to offer.
+      if (
+        sourceNode?.data?.type === "dataset" &&
+        sourceNode.data.layerId &&
+        !isRasterDataset(sourceNode.data as DatasetNodeData, layers)
+      ) {
         const layerIdValue = sourceNode.data.layerId as string;
         const isUUID = layerIdValue.includes("-") && layerIdValue.length > 20;
         if (isUUID) {
@@ -833,6 +839,8 @@ export default function WorkflowNodeSettings({
               const srcNode = nodes.find((n) => n.id === srcEdge.source);
 
               if (srcNode?.data?.type === "dataset" && srcNode.data.layerId) {
+                // A raster layer (workflows take none) has no columns to predict from.
+                if (isRasterDataset(srcNode.data as DatasetNodeData, currentLayers)) continue;
                 // Dataset: resolve layer UUID for layer_id-based prediction
                 const layerIdValue = srcNode.data.layerId as string;
                 let layer = currentLayers?.find((l) => l.layer_id === layerIdValue);

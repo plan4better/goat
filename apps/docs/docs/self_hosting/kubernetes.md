@@ -47,6 +47,8 @@ You can also point the chart at an existing PostgreSQL or Redis instead of the b
 
 Every service has memory requests and limits by default, and a CPU request without a limit. The chart README lists them; raise them under `<service>.resources` if a service needs more, for example geoapi on a large catalog, and set requests and limits together.
 
+Raster layers are COG files that geoapi and processes read over HTTPS where their address points, so both need outbound HTTPS to those hosts. A host that resolves to a private, loopback or link-local address is refused, so a layer cannot make GOAT read from inside the cluster. List the hosts that may anyway, such as an object store in the cluster that holds COGs, in `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS`). GDAL, which reads the files, resolves a host again when it reads and follows redirects, so also block outgoing traffic from geoapi and processes to private address ranges with a NetworkPolicy, except for the hosts you listed. When a raster layer is added from a COG file or its file address changes, core asks geoapi for the file's bounds and stores them as the layer's extent; the chart points core at its own geoapi. If geoapi runs outside the release, set `core.config.GOAT_GEOAPI_URL` to its in-cluster address.
+
 ## What you have to set {#required-values}
 
 ### Public URLs {#public-urls}
@@ -57,6 +59,8 @@ The browser calls core, geoapi, processes, catalog and the assistant directly, s
 Without the URLs of core, geoapi, processes and catalog, the web app shows a blank page. Without the assistant's URL it only hides the assistant.
 :::
 
+Layer filters travel in the URL of geoapi's tile and feature requests, as OGC API Features defines it. A filter with a detailed area makes URLs of up to about 60,000 characters. ingress-nginx takes request lines of up to 8 KB by default and answers longer ones with 414: raise it in the controller's ConfigMap with `large-client-header-buffers: "4 64k"`. Any other proxy in front of geoapi needs the same room.
+
 ### Object storage {#storage}
 
 Describe your S3 store once in `global.s3`: the bucket for uploads, the provider, endpoint, region and whether it needs path-style URLs, and a Secret with the access key pair (`global.s3.existingSecret`). Core, geoapi, processes and the analysis workers (below) all get these settings.
@@ -64,6 +68,8 @@ Describe your S3 store once in `global.s3`: the bucket for uploads, the provider
 Uploaded images, such as project and dataset thumbnails, avatars and dashboard images, go to a second bucket in the same store (`global.s3.assets.bucket`). Browsers load them straight from that bucket, so make it publicly readable and set its public URL in `global.s3.assets.publicUrl`. Outside AWS the URL is required. GOAT's own artwork ships in the web app and needs neither.
 
 If your store allows no publicly readable bucket, set `global.s3.assets.servedByCore: true` instead (`ASSETS_SERVED_BY_CORE`). GOAT then keeps the images in the uploads bucket under `assets/`, and core serves them through its API, so you need no assets bucket and no public URL. Core must run GOAT v3.0.9 or later, newer than the chart's default: set `core.image.tag`. The image links point to core's API on the web app's host; if core has a host of its own, set `global.s3.assets.publicUrl` to `<core's public URL>/api/v2/asset/file`.
+
+Project exports and imports carry uploaded icons and images through core's API, never through the images' store: the tools worker fetches each image from its link, so it must reach core (the chart sets `CORE_URL` in processes to core's Service; set `processes.config.CORE_URL` when core runs elsewhere) and the images' public address.
 
 Without a store of your own, set `garage.enabled: true`: the chart runs a single-node Garage, as the Docker Compose bundle does, creates both buckets and a key pair, and fills `global.s3` for it. Browsers reach it on the web app's host, uploads at `/<bucket>` and images at `/<assets bucket>`; `garage.ingress.enabled: true` sets up both routes for ingress-nginx. With another ingress controller, route them yourself (see the chart's README). It is one node without replication: back up its data volume.
 
@@ -128,6 +134,20 @@ Give the assistant an Ingress (`assistant.ingress`) or set `web.publicUrls.assis
 **Database.** The assistant connects as GOAT's database user, which owns the database. A role of its own needs the grants in `apps/assistant/sql/grants.sql`, because GOAT's permission checks run with the caller's privileges; `python -m assistant.dbcheck` in the assistant's pod prints `ok` or lists what is missing. On a first install the assistant's start-up check runs before the database migration has created its schema. Readiness checks only the database connection and Redis, so the pod is Ready, but every conversation request fails until the migration has run, and the start-up log and each background sweep name the missing schema. This is expected during the install. Check again with `dbcheck` afterwards.
 
 **Probes and load.** Readiness is `/readyz` (the database and Redis are reachable), liveness is `/healthz`. The conversation history list checks access with `customer.can` once per listed row, up to 200 rows per request: include it in load tests and when you size the database.
+
+## 3D view sources {#map-3d}
+
+The map's 3D view loads terrain and 3D buildings from tile servers outside your cluster: `map.terrainTilesUrl` (elevation tiles, Mapterhorn's public server by default) and `map.buildingsTilesUrl` (a vector TileJSON for buildings on basemaps without their own, OpenFreeMap by default). The chart gives each value to the web app (`NEXT_PUBLIC_TERRAIN_TILES_URL`, `NEXT_PUBLIC_BUILDINGS_TILES_URL`) and to core (`TERRAIN_TILES_URL`, `BUILDINGS_TILES_URL`). Viewers' browsers request the tiles directly, so these providers see their IP addresses. Set a value to your own copy, or to `""` to turn the feature off. What each source is, the privacy note and how to host the terrain yourself: [3D view sources](./docker_compose/external_services.md#map-3d).
+
+## Upgrades {#upgrade}
+
+`helm upgrade` runs the database migrations in core's migrate hook before the new pods start; the chart README says what each chart version changes. The release that introduces GOAT Style, the new layer styles, converts every stored style in that hook (tens of thousands of styles take about a minute) and keeps the old styles for one release. Back up the database before you upgrade: going back means restoring that backup, and style changes made after the upgrade are lost. Map thumbnails are drawn again once. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again. A project published while the upgrade ran shows no layers on its public page until it is published again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG file, so zoom to layer and map previews find it. Layers added before have none. Once the new release runs, fill them in once (it changes only layers without an extent, so running it again does no harm; `--dry-run` lists what it would store):
+
+```bash
+kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
+```
 
 ## Further reading {#further-reading}
 

@@ -173,6 +173,22 @@ class Settings(BaseSettings):
     # from its bundle page.
     PROCESSES_URL: str = os.getenv("GOAT_PROCESSES_URL", "")
 
+    # Hosts raster files may be read from although they resolve to a private
+    # address (an object store inside the cluster), comma-separated. Every other
+    # host must resolve to public addresses. Bare name, shared with processes.
+    RASTER_PRIVATE_HOSTS: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "RASTER_PRIVATE_HOSTS", "GEOAPI_RASTER_PRIVATE_HOSTS"
+        ),
+    )
+
+    @property
+    def raster_private_hosts(self) -> tuple[str, ...]:
+        return tuple(
+            h.strip() for h in self.RASTER_PRIVATE_HOSTS.split(",") if h.strip()
+        )
+
     # SaaS: meter outbound bytes for credits and refuse downloads of an
     # organization over its budget. Self-hosted installs leave it unset. Read
     # unprefixed like the other shared settings: processes and the workers

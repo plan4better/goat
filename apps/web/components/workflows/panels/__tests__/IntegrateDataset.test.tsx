@@ -7,6 +7,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import type { ToolNodeData } from "@/lib/validations/workflow";
 import {
   type DatasetConnection,
+  datasetConnectionSchema,
   integrationColumns,
   integrationNeedsArea,
 } from "@/lib/workflows/datasetConnection";
@@ -187,6 +188,33 @@ describe("Integrate dataset node", () => {
     );
     expect(
       screen.getByText("amenity fetch_features_filter_is_not school; shop fetch_features_filter_is_not_set")
+    ).toBeInTheDocument();
+  });
+
+  it("names every piece of an area made of several", () => {
+    const areaChoice = {
+      kind: "pieces" as const,
+      pieces: [
+        { kind: "region" as const, nutsIds: ["DE2", "DE3"], names: { DE2: "Bayern" } },
+        { kind: "point" as const, lng: 11, lat: 48, km: 3 },
+        {
+          kind: "polygon" as const,
+          ring: [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+          ] as [number, number][],
+        },
+      ],
+    };
+    // Kept on the node as it is saved, and read back.
+    expect(datasetConnectionSchema.shape.areaChoice.parse(areaChoice)).toEqual(areaChoice);
+    expect(() =>
+      datasetConnectionSchema.shape.areaChoice.parse({ kind: "pieces", pieces: [areaChoice] })
+    ).toThrow();
+    render(<IntegrateDatasetSettings nodeId="n1" data={{ ...chosen, areaChoice }} />);
+    expect(
+      screen.getByText("fetch_features_area: Bayern, DE3, catalog_mode_point, catalog_mode_polygon")
     ).toBeInTheDocument();
   });
 });

@@ -35,7 +35,12 @@ import asyncpg
 from pydantic import BaseModel, Field
 
 from goatlib.io.bbox_columns import star_excluding, stray_bbox_columns
+from goatlib.io.spatial_order import hilbert_key
+from goatlib.io.sql import sql_identifier
 from goatlib.storage.ducklake import fetch_one
+from goatlib.style.context import DataContext
+from goatlib.style.fingerprint import fingerprint
+from goatlib.style.migrate import stored_document
 from goatlib.tools.authz import authorize_workflow_export
 from goatlib.tools.base import (
     BaseToolRunner,
@@ -49,6 +54,7 @@ from goatlib.tools.layer_replace import (
     style_entries_as_feature_layer,
 )
 from goatlib.tools.schemas import ToolInputBase
+from goatlib.tools.style_rows import insert_first_style
 from goatlib.tools.workflow_dataset_nodes import retarget_dataset_nodes
 from goatlib.tools.workflow_export_target import (
     ExportTarget,
@@ -86,10 +92,10 @@ class FinalizeLayerParams(ToolInputBase):
         "Default False to keep files available for frontend preview. "
         "Cleanup happens at the start of the next workflow execution.",
     )
-    properties: dict[str, Any] | None = Field(
+    style: dict[str, Any] | None = Field(
         default=None,
-        description="Layer style properties from the source tool. "
-        "If None, properties are read from metadata.json or defaults are used.",
+        description="The layer's style: the template's remembered style or the "
+        "source tool's. If None, the style in metadata.json or the default is used.",
     )
     overwrite_previous: bool = Field(
         default=False,
@@ -454,60 +460,80 @@ class FinalizeLayerRunner(
             )
             if row:
                 return int(row["id"])
-
-            if shareable_for is None:
-                inserted = await pool.fetchrow(
-                    f"""
-                    INSERT INTO {schema}.layer_project (
-                        layer_id, project_id, name, "order",
-                        created_at, updated_at
-                    )
-                    VALUES ($1, $2, $3, 0, NOW(), NOW())
-                    RETURNING id
-                    """,
-                    uuid_module.UUID(layer_id),
-                    uuid_module.UUID(project_id),
-                    name,
+            async with pool.acquire() as conn, conn.transaction():
+                return await self._insert_project_link(
+                    conn, schema, layer_id, project_id, name, shareable_for
                 )
-            else:
-                inserted = await pool.fetchrow(
-                    f"""
-                    INSERT INTO {schema}.layer_project (
-                        layer_id, project_id, name, "order", shareable,
-                        created_at, updated_at
-                    )
-                    VALUES (
-                        $1, $2, $3, 0,
-                        {schema}.layer_is_catalog($1)
-                            OR {schema}.can('layer', $1, $4, 'share'),
-                        NOW(), NOW()
-                    )
-                    RETURNING id
-                    """,
-                    uuid_module.UUID(layer_id),
-                    uuid_module.UUID(project_id),
-                    name,
-                    uuid_module.UUID(shareable_for),
-                )
-            if inserted is None:
-                raise RuntimeError(
-                    f"Failed to link layer {layer_id} to project {project_id}"
-                )
-            link_id = int(inserted["id"])
-
-            await pool.execute(
-                f"""
-                UPDATE {schema}.project
-                SET layer_order = array_prepend($1, COALESCE(layer_order, ARRAY[]::int[])),
-                    updated_at = NOW()
-                WHERE id = $2
-                """,
-                link_id,
-                uuid_module.UUID(project_id),
-            )
-            return link_id
         finally:
             await pool.close()
+
+    @staticmethod
+    async def _insert_project_link(
+        conn: Any,
+        schema: str,
+        layer_id: str,
+        project_id: str,
+        name: str,
+        shareable_for: str | None = None,
+    ) -> int:
+        """A new project entry at the top, with its first style (a copy of the
+        dataset's default). Run it inside the caller's transaction. With
+        ``shareable_for`` the entry travels with the project only if that user
+        may share the layer (see ``_get_or_create_project_link``)."""
+        import uuid as uuid_module
+
+        if shareable_for is None:
+            inserted = await conn.fetchrow(
+                f"""
+                INSERT INTO {schema}.layer_project (
+                    layer_id, project_id, name, "order",
+                    created_at, updated_at
+                )
+                VALUES ($1, $2, $3, 0, NOW(), NOW())
+                RETURNING id
+                """,
+                uuid_module.UUID(layer_id),
+                uuid_module.UUID(project_id),
+                name,
+            )
+        else:
+            inserted = await conn.fetchrow(
+                f"""
+                INSERT INTO {schema}.layer_project (
+                    layer_id, project_id, name, "order", shareable,
+                    created_at, updated_at
+                )
+                VALUES (
+                    $1, $2, $3, 0,
+                    {schema}.layer_is_catalog($1)
+                        OR {schema}.can('layer', $1, $4, 'share'),
+                    NOW(), NOW()
+                )
+                RETURNING id
+                """,
+                uuid_module.UUID(layer_id),
+                uuid_module.UUID(project_id),
+                name,
+                uuid_module.UUID(shareable_for),
+            )
+        if inserted is None:
+            raise RuntimeError(
+                f"Failed to link layer {layer_id} to project {project_id}"
+            )
+        link_id = int(inserted["id"])
+        await insert_first_style(conn, schema, link_id)
+
+        await conn.execute(
+            f"""
+            UPDATE {schema}.project
+            SET layer_order = array_prepend($1, COALESCE(layer_order, ARRAY[]::int[])),
+                updated_at = NOW()
+            WHERE id = $2
+            """,
+            link_id,
+            uuid_module.UUID(project_id),
+        )
+        return link_id
 
     async def _record_provenance(self, layer_id: str, provenance: dict) -> None:
         from goatlib.tools.db import ToolDatabaseService
@@ -625,6 +651,36 @@ class FinalizeLayerRunner(
         except Exception as e:
             logger.warning(f"Failed to delete temp files: {e}")
 
+    def _layer_style(
+        self,
+        style: dict[str, Any] | None,
+        *,
+        geometry_type: str | None,
+        relation: str,
+        data_snapshot: int | None,
+        layer_id: str,
+    ) -> dict[str, Any] | None:
+        """The saved layer's default style: `style` at the current version (a
+        version 0 style, remembered by an older template, is converted for the
+        real geometry), else the default, computed for the saved data. None for
+        a table."""
+        from goatlib.tools.db import normalize_geometry_type
+
+        geometry = normalize_geometry_type(geometry_type)
+        if geometry is None:
+            return None
+        document = None
+        if style:
+            ctx = DataContext(kind="vector", geometry=geometry)  # type: ignore[arg-type]
+            document = stored_document(style, ctx, seed=layer_id)
+        return self.computed_style(
+            document,
+            relation=relation,
+            geometry=geometry,
+            fingerprint=fingerprint(data_snapshot=data_snapshot, catalog_version=None),
+            seed=layer_id,
+        )
+
     def _create_new_layer(
         self,
         params: FinalizeLayerParams,
@@ -663,10 +719,12 @@ class FinalizeLayerRunner(
         columns = star_excluding(stray_bbox_columns(cols))
 
         if geom_col:
+            # goatlib.io.spatial_order: rows near each other share row groups
+            source = f"read_parquet('{parquet_path}')"
             con.execute(f"""
                 CREATE TABLE {table_name} AS
-                SELECT {columns} FROM read_parquet('{parquet_path}')
-                ORDER BY ST_Hilbert({geom_col})
+                SELECT {columns} FROM {source}
+                ORDER BY {hilbert_key(sql_identifier(geom_col), source)}
             """)
         else:
             con.execute(f"""
@@ -692,6 +750,13 @@ class FinalizeLayerRunner(
 
         snapshot_id = self._get_ducklake_snapshot_id(
             schema, f"t_{new_layer_id.replace('-', '')}"
+        )
+        layer_style = self._layer_style(
+            params.style or metadata.get("style"),
+            geometry_type=geometry_type,
+            relation=table_name,
+            data_snapshot=snapshot_id,
+            layer_id=new_layer_id,
         )
 
         if (
@@ -734,14 +799,14 @@ class FinalizeLayerRunner(
                 }
             }
 
-        async def create_layer_record(db_service: Any) -> dict[str, Any] | None:
+        async def create_layer_record(db_service: Any) -> None:
             folder_id = await db_service.get_project_folder_id(params.project_id)
             if not folder_id:
                 raise ValueError(
                     f"Could not find folder for project {params.project_id}"
                 )
             is_feature = bool(geometry_type)
-            properties: dict[str, Any] | None = await db_service.create_layer(
+            await db_service.create_layer(
                 layer_id=new_layer_id,
                 user_id=user_id,
                 folder_id=folder_id,
@@ -752,27 +817,25 @@ class FinalizeLayerRunner(
                 extent_wkt=extent_wkt,
                 feature_count=feature_count,
                 size=parquet_path.stat().st_size,
-                properties=params.properties or metadata.get("properties"),
+                style=layer_style,
                 other_properties=stamp,
                 tool_type=metadata.get("process_id"),
                 job_id=None,
+                data_snapshot=snapshot_id,
             )
-            return properties
 
         async def create_db_records() -> int:
-            from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
-            from goatlib.tools.style import get_default_style
+            from goatlib.tools.db import ToolDatabaseService
 
             pool = await self.get_postgres_pool()
             try:
                 if claim_link_id is None:
                     db_service = ToolDatabaseService(pool, schema=schema)
-                    layer_properties = await create_layer_record(db_service)
+                    await create_layer_record(db_service)
                     link_id: int = await db_service.add_to_project(
                         layer_id=new_layer_id,
                         project_id=params.project_id,
                         name=layer_name,
-                        properties=layer_properties,
                         other_properties=stamp,
                     )
                     return link_id
@@ -781,12 +844,10 @@ class FinalizeLayerRunner(
                 # failure cannot leave a layer that no project shows.
                 assert params.export_node_id is not None
                 async with pool.acquire() as conn, conn.transaction():
-                    layer_properties = await create_layer_record(
-                        ToolDatabaseService(conn, schema=schema)
-                    )
+                    await create_layer_record(ToolDatabaseService(conn, schema=schema))
                     # The entry was made for the layer it shows now; one made
-                    # for a table, or without a style, is styled for the
-                    # feature layer it is about to show.
+                    # for a table, or without a style, gets the new layer's
+                    # default style as its first.
                     restyle = bool(geometry_type) and await entry_needs_feature_style(
                         conn, schema, claim_link_id
                     )
@@ -804,12 +865,7 @@ class FinalizeLayerRunner(
                             conn,
                             schema,
                             new_layer_id,
-                            {
-                                **get_default_style(
-                                    normalize_geometry_type(geometry_type)
-                                ),
-                                **(layer_properties or {}),
-                            },
+                            layer_style,
                             link_id=claim_link_id,
                         )
                     await retarget_dataset_nodes(
@@ -869,7 +925,7 @@ def main(
     folder_id: str,
     layer_name: str | None = None,
     export_node_id: str | None = None,
-    properties: dict[str, Any] | None = None,
+    style: dict[str, Any] | None = None,
     overwrite_previous: bool = False,
     target_layer_id: str | None = None,
     add_to_project: bool = True,
@@ -887,7 +943,7 @@ def main(
         project_id=project_id,
         folder_id=folder_id,
         layer_name=layer_name,
-        properties=properties,
+        style=style,
         overwrite_previous=overwrite_previous,
         export_node_id=export_node_id,
         target_layer_id=target_layer_id,

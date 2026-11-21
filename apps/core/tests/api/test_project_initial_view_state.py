@@ -284,3 +284,75 @@ async def test_an_explicit_view_state_still_wins(
         f"{settings.API_V2_STR}/project/{response.json()['id']}/initial-view-state"
     )
     assert read.json()["latitude"] == pytest.approx(41.3275)
+
+
+@pytest.mark.asyncio
+async def test_view_keeps_maplibre_numbers_and_3d_keys(
+    client: AsyncClient,
+    fixture_create_user: UUID,
+    fixture_create_folder: dict[str, Any],
+) -> None:
+    """MapLibre's own numbers (a fractional zoom, a negative fractional bearing,
+    a fractional pitch) are stored, the bearing normalised to 0 (incl.) to 360
+    (excl.)."""
+    project = await _create_project(client, fixture_create_folder["id"], "3D")
+    body = {
+        **_CREATE_PAYLOAD_VIEW_STATE,
+        "zoom": 15.7,
+        "bearing": -20.5,
+        "pitch": 55.3,
+        "mode": "3d",
+        "projection": "globe",
+    }
+    url = f"{settings.API_V2_STR}/project/{project['id']}/initial-view-state"
+    put = await client.put(url, json=body)
+    assert put.status_code == 200, put.text
+    read = (await client.get(url)).json()
+    assert read["zoom"] == 15.7
+    assert read["bearing"] == 339.5 and read["pitch"] == 55.3
+    assert read["mode"] == "3d" and read["projection"] == "globe"
+
+
+@pytest.mark.asyncio
+async def test_view_without_3d_keys_stores_none_of_them(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_create_folder: dict[str, Any],
+) -> None:
+    """A view saved without `mode` and `projection` stays without them (missing
+    `mode` follows the pitch), and a bearing of 360 reads as 0."""
+    project = await _create_project(client, fixture_create_folder["id"], "Flat")
+    url = f"{settings.API_V2_STR}/project/{project['id']}/initial-view-state"
+    put = await client.put(url, json={**_CREATE_PAYLOAD_VIEW_STATE, "bearing": 360})
+    assert put.status_code == 200, put.text
+    stored = (
+        await db_session.execute(
+            text(
+                f'SELECT initial_view_state FROM "{S}".user_project '
+                "WHERE project_id = :p"
+            ),
+            {"p": project["id"]},
+        )
+    ).scalar_one()
+    assert "mode" not in stored and "projection" not in stored
+    assert stored["bearing"] == 0
+
+
+@pytest.mark.asyncio
+async def test_view_refuses_pitch_above_85(
+    client: AsyncClient,
+    fixture_create_user: UUID,
+    fixture_create_folder: dict[str, Any],
+) -> None:
+    project = await _create_project(client, fixture_create_folder["id"], "Steep")
+    url = f"{settings.API_V2_STR}/project/{project['id']}/initial-view-state"
+    for refused in (
+        {"pitch": 86},
+        {"mode": "4d"},
+        {"projection": "albers"},
+        {"bearing": True},
+        {"zoom": 24.5},
+    ):
+        put = await client.put(url, json={**_CREATE_PAYLOAD_VIEW_STATE, **refused})
+        assert put.status_code == 422, refused

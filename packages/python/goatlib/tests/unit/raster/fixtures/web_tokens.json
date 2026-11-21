@@ -1,0 +1,122 @@
+[
+  {
+    "spec": {
+      "kind": "ramp",
+      "band": 1,
+      "noData": [
+        -9999
+      ],
+      "colors": [
+        "#000000",
+        "#ffffff"
+      ],
+      "domain": [
+        0,
+        100
+      ],
+      "outside": "clamp"
+    },
+    "token": "eyJiYW5kIjoxLCJjb2xvcnMiOlsiIzAwMDAwMCIsIiNmZmZmZmYiXSwiZG9tYWluIjpbMCwxMDBdLCJraW5kIjoicmFtcCIsIm5vRGF0YSI6Wy05OTk5XSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0"
+  },
+  {
+    "spec": {
+      "kind": "ramp",
+      "band": "(b4 - b1) / (b4 + b1)",
+      "noData": [],
+      "colors": [
+        "#000",
+        "#fff",
+        "#ff000080"
+      ],
+      "domain": null,
+      "outside": "hide"
+    },
+    "token": "eyJiYW5kIjoiKGI0IC0gYjEpIC8gKGI0ICsgYjEpIiwiY29sb3JzIjpbIiMwMDAiLCIjZmZmIiwiI2ZmMDAwMDgwIl0sImRvbWFpbiI6bnVsbCwia2luZCI6InJhbXAiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiaGlkZSIsInYiOjF9"
+  },
+  {
+    "spec": {
+      "kind": "stops",
+      "band": 2,
+      "noData": [
+        0
+      ],
+      "stops": [
+        {
+          "value": 0,
+          "color": "#1a9850"
+        },
+        {
+          "value": 2.5,
+          "color": "#a50026"
+        }
+      ],
+      "interpolate": "nearest",
+      "outside": "clamp"
+    },
+    "token": "eyJiYW5kIjoyLCJpbnRlcnBvbGF0ZSI6Im5lYXJlc3QiLCJraW5kIjoic3RvcHMiLCJub0RhdGEiOlswXSwib3V0c2lkZSI6ImNsYW1wIiwic3RvcHMiOlt7ImNvbG9yIjoiIzFhOTg1MCIsInZhbHVlIjowfSx7ImNvbG9yIjoiI2E1MDAyNiIsInZhbHVlIjoyLjV9XSwidiI6MX0"
+  },
+  {
+    "spec": {
+      "kind": "classes",
+      "band": 1,
+      "noData": [],
+      "classes": [
+        {
+          "to": 240,
+          "color": "#111111"
+        },
+        {
+          "from": 240,
+          "to": 300,
+          "color": null
+        },
+        {
+          "from": 300,
+          "color": "#333333"
+        }
+      ]
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxMTExMTEiLCJ0byI6MjQwfSx7ImNvbG9yIjpudWxsLCJmcm9tIjoyNDAsInRvIjozMDB9LHsiY29sb3IiOiIjMzMzMzMzIiwiZnJvbSI6MzAwfV0sImtpbmQiOiJjbGFzc2VzIiwibm9EYXRhIjpbXSwidiI6MX0"
+  },
+  {
+    "spec": {
+      "kind": "categories",
+      "band": 1,
+      "noData": [],
+      "classes": [
+        {
+          "value": 1,
+          "color": "#4a90c2"
+        },
+        {
+          "value": 6,
+          "color": null
+        }
+      ],
+      "other": "#cccccc"
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiM0YTkwYzIiLCJ2YWx1ZSI6MX0seyJjb2xvciI6bnVsbCwidmFsdWUiOjZ9XSwia2luZCI6ImNhdGVnb3JpZXMiLCJub0RhdGEiOltdLCJvdGhlciI6IiNjY2NjY2MiLCJ2IjoxfQ"
+  },
+  {
+    "spec": {
+      "kind": "rgb",
+      "bands": [
+        4,
+        1,
+        2
+      ],
+      "noData": [
+        0
+      ]
+    },
+    "token": "eyJiYW5kcyI6WzQsMSwyXSwia2luZCI6InJnYiIsIm5vRGF0YSI6WzBdLCJ2IjoxfQ"
+  },
+  {
+    "spec": {
+      "kind": "rgb",
+      "bands": null,
+      "noData": []
+    },
+    "token": "eyJiYW5kcyI6bnVsbCwia2luZCI6InJnYiIsIm5vRGF0YSI6W10sInYiOjF9"
+  }
+]

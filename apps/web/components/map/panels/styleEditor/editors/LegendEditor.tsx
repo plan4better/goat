@@ -1,0 +1,190 @@
+"use client";
+
+// What the legend shows (spec 7.2, prototype 4.9), with the legend as it will look on top: a caption, and per classification its place, whether it is in the
+// legend, its heading, unit and, for a number field, how its numbers read. The order is also the order the
+// classifications apply in.
+import { Box, Typography } from "@mui/material";
+import { useTranslation } from "react-i18next";
+
+import type { NumberFormatSpec } from "@/lib/style/compile/labels";
+import type { Geometry } from "@/lib/style/compile/types";
+import { moveClassification } from "@/lib/style/editor/classify";
+import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { type LegendClasses, classificationProperty, legendClasses } from "@/lib/style/legend";
+import { rasterColorSpec } from "@/lib/style/raster/color";
+import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
+
+import { useLayerLegend } from "@/hooks/style/useLegendPresence";
+
+import { StyleLegend } from "@/components/map/legend/StyleLegend";
+import {
+  useEditor,
+  useMapZoom,
+  useStyleData,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
+import {
+  NumberFormatEditor,
+  PREVIEW_NUMBER,
+} from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
+import {
+  anchorTopOf,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ChoiceRow, NavRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
+import { useServiceLegendUrl } from "@/components/map/panels/styleEditor/sections/ServiceSection";
+
+/** The legend as it will look; it follows every edit of what it draws, so it subscribes on its own. Its classes are
+ * those its `legend.classes` lists: those the layer's filter keeps, or those in the map's view. */
+export function LiveLegend() {
+  const store = useEditor();
+  const { geometry, layerName, legendLayer } = useStyleData();
+  const serviceLegendUrl = useServiceLegendUrl();
+  const mapZoom = useMapZoom();
+  useStyleValue("symbol");
+  useStyleValue("classify");
+  useStyleValue("legend");
+  useStyleValue("render");
+  const legend = useLayerLegend(
+    store.document as unknown as JsonObject,
+    { geometry, zoom: mapZoom, serviceLegendUrl },
+    legendLayer,
+    MAP_SCOPE
+  );
+  return legend ? <StyleLegend legend={legend} layerName={layerName} /> : null;
+}
+
+export function LegendEditor() {
+  const { t, i18n } = useTranslation("common");
+  const store = useEditor();
+  const { fields, geometry, fieldTypes } = useStyleData();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const caption = useStyleValue<unknown>("legend.caption");
+  const kind = useStyleValue<unknown>("kind");
+  const render = useStyleValue<unknown>("render");
+  // A raster's end labels replace the end values of a ramp; classes and categories have none.
+  const rasterSpec = kind === "raster" ? rasterColorSpec(isObject(render) ? render : {}) : null;
+  const rasterLabels =
+    rasterSpec?.kind === "ramp" || rasterSpec?.kind === "stops"
+      ? (["unit", "min_label", "max_label"] as const)
+      : (["unit"] as const);
+  const legendText = (key: string) => {
+    const value = store.get(`legend.${key}`);
+    return typeof value === "string" ? value : "";
+  };
+  useStyleValue("legend");
+  const all = useStyleValue<unknown>("classify");
+  const classify = (Array.isArray(all) ? all : []).filter(isObject);
+  // The geometry the legend reads its property words with.
+  const legendGeometry = geometry ?? (store.get("geometry") as Geometry | undefined) ?? "point";
+  const positionLabel = (i: number) =>
+    i === 0
+      ? t("style_editor.order_first")
+      : i === classify.length - 1
+        ? t("style_editor.order_last")
+        : t("style_editor.order_position", { n: i + 1 });
+  return (
+    <>
+      <LiveLegend />
+      <TextRow
+        label={t("style_editor.caption")}
+        value={typeof caption === "string" ? caption : ""}
+        placeholder={t("style_editor.caption_placeholder")}
+        onChange={(value) => store.set("legend.caption", value || undefined)}
+      />
+      {/* Which classes the legend lists, wherever it shows: every class, those the layer's filter keeps, those in view. */}
+      {kind !== "raster" && classify.length > 0 && (
+        <ChoiceRow<LegendClasses>
+          label={t("style_editor.classes_shown")}
+          value={legendClasses(store.document as unknown as JsonObject)}
+          options={(["all", "filter", "view"] as const).map((value) => ({
+            value,
+            label: t(`style_editor.classes_${value}`),
+          }))}
+          onChange={(value) =>
+            store.set("legend.classes", value === DEFAULTS["legend.classes"] ? undefined : value)
+          }
+        />
+      )}
+      {kind === "raster" &&
+        rasterLabels.map((key) => (
+          <TextRow
+            key={key}
+            label={t(`style_editor.legend_${key}`)}
+            value={legendText(key)}
+            placeholder={t(`style_editor.legend_${key}_placeholder`)}
+            onChange={(value) => store.set(`legend.${key}`, value || undefined)}
+          />
+        ))}
+      {classify.map((c, ci) => {
+        const fieldLabel = fields.find((f) => f.name === c.field)?.label ?? String(c.field ?? "");
+        // Two classifications, often of one field, read "Size · field" as the legend titles them.
+        const heading =
+          classify.length > 1
+            ? `${t(classificationProperty(c, legendGeometry))} · ${fieldLabel}`
+            : fieldLabel;
+        return (
+          <Box key={typeof c.id === "string" ? c.id : ci} sx={{ pt: 2 }}>
+            <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ px: 3 }}>
+              {typeof c.title === "string" && c.title ? c.title : heading}
+            </Typography>
+            {classify.length > 1 && (
+              <ChoiceRow<string>
+                label={t("style_editor.order")}
+                value={String(ci)}
+                options={classify.map((_, i) => ({
+                  value: String(i),
+                  label: positionLabel(i),
+                  sub: t("style_editor.order_sub"),
+                }))}
+                onChange={(to) => store.update((doc) => moveClassification(doc, ci, Number(to)))}
+              />
+            )}
+            <SwitchRow
+              label={t("style_editor.in_legend")}
+              on={c.legend !== false}
+              onToggle={() => store.set(`classify.${ci}.legend`, c.legend === false ? undefined : false)}
+            />
+            <TextRow
+              label={t("style_editor.heading")}
+              value={typeof c.title === "string" ? c.title : ""}
+              placeholder={heading}
+              onChange={(value) => store.set(`classify.${ci}.title`, value || undefined)}
+            />
+            <TextRow
+              label={t("style_editor.unit")}
+              value={typeof c.unit === "string" ? c.unit : ""}
+              placeholder={t("style_editor.unit_placeholder")}
+              onChange={(value) => store.set(`classify.${ci}.unit`, value || undefined)}
+            />
+            {/* Class bounds of a number field: how the legend writes them. Categories show their values as they are. */}
+            {isNumberType(fieldTypes[String(c.field)]) && c.method !== "categories" && (
+              <NavRow
+                label={t("style_editor.numbers")}
+                value={
+                  isObject(c.format)
+                    ? t("style_editor.example", {
+                        value: formatNumberText(PREVIEW_NUMBER, c.format as NumberFormatSpec, i18n.language),
+                      })
+                    : t("style_editor.as_in_dataset")
+                }
+                onOpen={(anchor) =>
+                  popover.open(next, {
+                    key: `legend:format:${ci}`,
+                    title: t("style_editor.number_format"),
+                    anchorTop: anchorTopOf(anchor),
+                    render: () => <NumberFormatEditor path={`classify.${ci}.format`} />,
+                  })
+                }
+              />
+            )}
+          </Box>
+        );
+      })}
+    </>
+  );
+}

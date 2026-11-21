@@ -21,4 +21,21 @@ describe("ManageIconsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("loads each icon as a CORS request, as the map loads it", async () => {
+    const url = "https://core.example/api/v2/asset/file/users/u1/icons/bench.png";
+    render(
+      <ManageIconsDialog
+        open
+        onClose={vi.fn()}
+        markers={[{ id: "1", name: "Bench", url, source: "custom", category: "" }]}
+        onDelete={vi.fn()}
+        onUpdate={vi.fn()}
+      />
+    );
+
+    const image = await screen.findByAltText("Bench");
+    expect(image.getAttribute("src")).toBe(url);
+    expect(image.getAttribute("crossorigin")).toBe("anonymous");
+  });
 });

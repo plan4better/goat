@@ -4,13 +4,15 @@ An origin-destination run saves two layers: the lines and the destination
 points. Inside a workflow it writes only the lines, so the points layer is
 saved only here, with real PostgreSQL and DuckLake. On a matrix whose rows
 name no zone of the layer neither layer has rows, and each is saved as a
-feature layer of its own geometry type.
+feature layer of its own geometry type, the points with their weight style
+as the dataset's default style row.
 
 Run on a throwaway database (see chains/conftest.py):
     POSTGRES_DB=goat_chains_test DUCKLAKE_DATA_DIR="$(mktemp -d)" uv run --no-sync --env-file ../../../.env pytest tests/integration/tools/test_origin_destination_runner.py -v
 """
 
 import asyncio
+import json
 import uuid
 from typing import Any
 
@@ -85,8 +87,10 @@ async def test_an_empty_run_saves_a_line_layer_and_a_point_layer(
         try:
             rows = {
                 name: await conn.fetchrow(
-                    f"SELECT type, feature_layer_geometry_type, properties "
-                    f"FROM {TEST_CUSTOMER_SCHEMA}.layer WHERE id = $1",
+                    f"SELECT l.type, l.feature_layer_geometry_type, s.document "
+                    f"FROM {TEST_CUSTOMER_SCHEMA}.layer l "
+                    f"LEFT JOIN {TEST_CUSTOMER_SCHEMA}.layer_style s "
+                    f"ON s.layer_id = l.id WHERE l.id = $1",
                     uuid.UUID(layer_id),
                 )
                 for name, layer_id in (
@@ -106,7 +110,9 @@ async def test_an_empty_run_saves_a_line_layer_and_a_point_layer(
             rows["points"]["type"],
             rows["points"]["feature_layer_geometry_type"],
         ) == ("feature", "point")
-        assert rows["points"]["properties"] is not None
+        style = json.loads(rows["points"]["document"])
+        assert style["symbol"]["marker"]["size"]["field"] == "weight"
+        assert [c["field"] for c in style["classify"]] == ["weight"]
     finally:
         await cleanup_output_layer(result["layer_id"])
         await cleanup_output_layer(points["layer_id"])

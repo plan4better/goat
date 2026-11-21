@@ -227,7 +227,6 @@ class TestMultiOutputRun:
             return polygons, DatasetMetadata(path=str(polygons), source_type="tabular")
 
         runner.process = process
-        runner.get_layer_properties = lambda *args, **kwargs: None
         params = SimpleNamespace(
             user_id=USER,
             folder_id=FOLDER,

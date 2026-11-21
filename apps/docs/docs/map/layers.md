@@ -164,7 +164,7 @@ GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overtur
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
+  <div class="content"><p>Choose the <code>Area</code>. It starts as the <code>Map view</code>: pan and zoom the map until the dashed box shows the area. Under <code>Add to area</code> you can instead pick <code>Regions</code> from a searchable list, <code>Draw polygon</code> on the map (click its corners, double-click to finish), or place a <code>Point and radius</code> (click the centre, then set the radius under it; its pen icon lets you drag the centre or the edge on the map). Regions, polygons and circles can be combined into one area; the map view replaces them, and they replace the map view. Remove a part with the cross on its row; <code>Cancel</code> or the Escape key stops drawing.</p>Every feature that touches the area is added, including one that crosses its border.</div>
 </div>
 
 <div class="step">

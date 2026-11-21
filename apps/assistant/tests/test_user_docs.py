@@ -328,7 +328,9 @@ def test_every_indexed_page_has_a_description() -> None:
 
 def test_the_interface_pages_come_out_about_half_as_long() -> None:
     """The pages of the map and of sharing are mostly steps, screenshots and
-    labels; prose-heavy pages (self-hosting, methods) shrink less."""
+    labels; prose-heavy pages (self-hosting, methods) shrink less. The layer
+    style pages are prose since their old screenshots went, so the map pages
+    shrink less than they used to."""
     raw = cleaned = 0
     for language, pages in USER_DOCS.items():
         for page in pages.values():
@@ -336,7 +338,7 @@ def test_the_interface_pages_come_out_about_half_as_long() -> None:
                 path = CHECKOUT[language] / f"{page.id}.md"
                 raw += len(path.read_text(encoding="utf-8"))
                 cleaned += len(page.text)
-    assert cleaned < raw * 0.65
+    assert cleaned < raw * 0.75
 
 
 def test_the_service_reads_the_docs_of_this_checkout() -> None:

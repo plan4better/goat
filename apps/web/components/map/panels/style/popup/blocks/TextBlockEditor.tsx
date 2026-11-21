@@ -1,10 +1,8 @@
-import { Box, Button, Menu, MenuItem, MenuList } from "@mui/material";
+import { Box, Button } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import type { Editor } from "@tiptap/core";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { PopupTextBlock } from "@/lib/validations/layer";
 
@@ -14,16 +12,17 @@ import {
   DEFAULT_INLINE_EXTENSIONS,
   InlineRichTextEditor,
 } from "@/components/common/InlineRichTextEditor";
-import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
+import { useStyleData } from "@/components/map/panels/styleEditor/context";
+import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 
 interface Props {
   block: PopupTextBlock;
-  fields: LayerField[];
   onChange: (next: PopupTextBlock) => void;
 }
 
-export function TextBlockEditor({ block, fields, onChange }: Props) {
+export function TextBlockEditor({ block, onChange }: Props) {
   const { t } = useTranslation("common");
+  const { fields } = useStyleData();
   const [fieldMenu, setFieldMenu] = useState<HTMLElement | null>(null);
 
   // Spread the editor's default extensions so toolbar commands (color,
@@ -34,53 +33,32 @@ export function TextBlockEditor({ block, fields, onChange }: Props) {
     [],
   );
 
+  // "Insert field" as the label template's: a text button opening the app's field list.
   const renderInsertField = (editor: Editor) => (
     <>
       <Button
-        size="small"
         variant="text"
-        onClick={(e) => setFieldMenu(e.currentTarget)}
-        startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 11 }} />}
-        sx={(theme) => ({
-          textTransform: "none",
-          fontSize: 11,
-          fontWeight: "bold",
-          color: "primary.main",
-          bgcolor: alpha(theme.palette.primary.main, 0.1),
-          border: `1px solid ${alpha(theme.palette.primary.main, 0.4)}`,
-          borderRadius: 999,
-          px: 1.25,
-          py: 0.25,
-          minWidth: 0,
-          "&:hover": { bgcolor: alpha(theme.palette.primary.main, 0.18) },
-        })}>
-        {t("insert_field")}
+        size="small"
+        color="inherit"
+        aria-haspopup="listbox"
+        aria-expanded={fieldMenu !== null}
+        onClick={(e) => setFieldMenu(fieldMenu ? null : e.currentTarget)}>
+        {t("style_editor.insert_field")}
       </Button>
-      <Menu
+      <FieldPicker
         anchorEl={fieldMenu}
-        open={Boolean(fieldMenu)}
         onClose={() => setFieldMenu(null)}
-        slotProps={{ paper: { sx: { maxHeight: 280 } } }}>
-        <MenuList dense>
-          {fields.map((f) => (
-            <MenuItem
-              key={f.name}
-              onClick={() => {
-                editor.chain().focus().insertField(f.name).run();
-                setFieldMenu(null);
-              }}
-              sx={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>
-              {f.name}
-            </MenuItem>
-          ))}
-        </MenuList>
-      </Menu>
+        title={t("style_editor.insert_field")}
+        placement="bottom-start"
+        fields={fields}
+        onChange={(name) => editor.chain().focus().insertField(name).run()}
+      />
     </>
   );
 
   return (
-    // Outer padding so the editor's border isn't flush with the popper edge.
-    <Box sx={{ px: 2, pb: 2 }}>
+    // The rows' inset, so the editor lines up with the rows of the other blocks.
+    <Box sx={{ px: 3 }}>
       <InlineRichTextEditor
         value={block.html}
         onChange={(html) => onChange({ ...block, html })}

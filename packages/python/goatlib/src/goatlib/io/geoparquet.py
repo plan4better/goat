@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING
 
 from goatlib.io.bbox_columns import BBOX_COLUMN, star_excluding, stray_bbox_columns
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.io.sql import sql_identifier, sql_literal
 
 if TYPE_CHECKING:
@@ -276,13 +277,12 @@ def _build_optimized_query(
                 'ymax': ST_YMax({geom_expr})
             }} AS bbox"""
 
-    # Build ORDER BY for Hilbert sorting
-    # ST_Hilbert creates a Hilbert curve index from geometry
-    # This groups spatially nearby features together in row groups
+    # Sort along a Hilbert curve over the source's own extent, so that each
+    # row group holds the features of a small part of the map
+    # (goatlib.io.spatial_order).
     order_by = ""
     if hilbert_sort:
-        # ST_Hilbert(geometry) computes Hilbert index for the geometry
-        order_by = f"ORDER BY ST_Hilbert({geom_expr})"
+        order_by = f"ORDER BY {hilbert_key(geom_expr, f'({source_query}) AS _extent')}"
 
     # Leave out the source's bounding-box columns (see _bbox_columns_to_drop).
     star = star_excluding(exclude_columns)

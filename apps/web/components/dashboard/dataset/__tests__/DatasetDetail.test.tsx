@@ -10,6 +10,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
 
+vi.mock("@/lib/api/users", () => ({
+  useUserProfile: () => ({ userProfile: { id: "u-me" } }),
+}));
+
 vi.mock("@/components/dashboard/dataset/DatasetMapPreview", () => ({
   default: () => <div data-testid="map" />,
 }));
@@ -188,5 +192,51 @@ describe("DatasetDetail", () => {
 
     expect(screen.getByText("metadata.headings.lineage")).toBeInTheDocument();
     expect(screen.getByText("Harvested weekly")).toBeInTheDocument();
+  });
+
+  describe("where it comes from", () => {
+    const SIGNED = "https://maplibre.org/maplibre-gl-js/docs/assets/cog.tif?sig=x";
+    const remoteCog = (user_id: string) =>
+      datasetOf("raster", { data_type: "cog", url: SIGNED, user_id } as Partial<Layer>);
+
+    it("says a remote file is one, with its address as the Metadata tab gives it", () => {
+      render(<DatasetDetail dataset={remoteCog("u-other")} />);
+
+      expect(screen.getByText("source")).toBeInTheDocument();
+      expect(screen.getByText("metadata.source_remote_file")).toBeInTheDocument();
+      expect(screen.getByText("address")).toBeInTheDocument();
+      // Someone else's dataset: the address without its query string, as on a shared map.
+      const link = screen.getByRole("link");
+      expect(link.textContent).toBe("maplibre.org/…/cog.tif");
+      expect(link.getAttribute("href")).toBe("https://maplibre.org/maplibre-gl-js/docs/assets/cog.tif");
+      expect(screen.getByRole("button", { name: "metadata.copy_address" })).toBeInTheDocument();
+    });
+
+    it("shows the owner of the dataset its whole address", () => {
+      render(<DatasetDetail dataset={remoteCog("u-me")} />);
+
+      expect(screen.getByRole("link").getAttribute("href")).toBe(SIGNED);
+    });
+
+    it("says a WFS layer is a copy, with the service it came from", () => {
+      render(
+        <DatasetDetail
+          dataset={datasetOf("feature", {
+            data_type: "wfs",
+            other_properties: { url: "https://www.wfs.nrw.de/geobasis/wfs_nw_alkis?SERVICE=WFS" },
+          } as Partial<Layer>)}
+        />
+      );
+
+      expect(screen.getByText("metadata.source_wfs_copy")).toBeInTheDocument();
+      expect(screen.getByText("www.wfs.nrw.de/…/wfs_nw_alkis")).toBeInTheDocument();
+    });
+
+    it("says nothing of a source or an address for an upload", () => {
+      render(<DatasetDetail dataset={datasetOf("feature")} />);
+
+      expect(screen.queryByText("source")).not.toBeInTheDocument();
+      expect(screen.queryByText("address")).not.toBeInTheDocument();
+    });
   });
 });

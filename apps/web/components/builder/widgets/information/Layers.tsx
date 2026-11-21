@@ -43,11 +43,12 @@ export const LayerInformationWidget = ({
       ? (selectedBuilderItem.config as LayerInformationSchema)
       : configProp;
 
+  // A published dashboard's map layers (view state included) are in the store; the builder reads the project's map.
   const {
     projectId,
     layers: allLayers,
     layerGroups: allGroups,
-    updateTree: handleTreeUpdate,
+    treeState,
   } = useWidgetLayerTree(viewOnly);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,12 +74,12 @@ export const LayerInformationWidget = ({
       // Hidden from legend by "Show in legend" toggle
       if (legendHiddenLayers.includes(layer.id)) return false;
       // Hide layers outside zoom range (only when behavior is "hide")
-      if (outOfZoomBehavior === "hide" && currentZoom !== undefined) {
-        const minZoom = layer.properties?.min_zoom;
-        const maxZoom = layer.properties?.max_zoom;
-        if (minZoom !== undefined && maxZoom !== undefined) {
-          if (currentZoom < minZoom || currentZoom > maxZoom) return false;
-        }
+      if (outOfZoomBehavior === "hide" && currentZoom !== undefined && layer.style) {
+        const { min_zoom: minZoom, max_zoom: maxZoom } = layer.style.document as {
+          min_zoom?: number;
+          max_zoom?: number;
+        };
+        if (currentZoom < (minZoom ?? 0) || currentZoom > (maxZoom ?? 24)) return false;
       }
       if (searchText) {
         return layer.name?.toLowerCase().includes(searchText.toLowerCase());
@@ -152,7 +153,9 @@ export const LayerInformationWidget = ({
           projectLayers={filteredLayers}
           projectLayerGroups={filteredGroups}
           config={config}
-          onTreeUpdate={handleTreeUpdate}
+          onLayerStateChange={treeState.onLayerStateChange}
+          onGroupStateChange={treeState.onGroupStateChange}
+          onLayerTimeChange={treeState.onLayerTimeChange}
           viewOnly={viewOnly}
           downloadableLayers={downloadableLayers}
           simpleLegendLayerIds={legendSimpleLayers}
@@ -168,7 +171,9 @@ export const LayerInformationWidget = ({
           projectLayerGroups={filteredGroups}
           viewMode="view"
           isLoading={false}
-          onTreeUpdate={handleTreeUpdate}
+          onLayerStateChange={treeState.onLayerStateChange}
+          onGroupStateChange={treeState.onGroupStateChange}
+          onLayerTimeChange={treeState.onLayerTimeChange}
           toggleStyle={options?.toggle_style}
           togglePosition={options?.toggle_position}
           moreOptionsStyle={options?.more_options_style}

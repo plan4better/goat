@@ -28,13 +28,15 @@ import {
   unassignDomainFromProject,
   useOrganizationDomains,
 } from "@/lib/api/customDomains";
+import { useProjectMap } from "@/lib/api/map";
 import {
   setProjectAnalytics,
   setProjectTrackingRequireConsent,
   useOrganizationAnalytics,
 } from "@/lib/api/organizationAnalytics";
-import { publishProject, unpublishProject, usePublicProject } from "@/lib/api/projects";
+import { publishProject, unpublishProject, useProjectLayers, usePublicProject } from "@/lib/api/projects";
 import { useOrganization } from "@/lib/api/users";
+import { copyText } from "@/lib/utils/clipboard";
 import type { Project } from "@/lib/validations/project";
 
 export interface ShareWithPublicTabProps {
@@ -73,7 +75,11 @@ const CopyPill = ({ value, label }: { value: string; label: string }) => {
 
   const copy = async () => {
     if (copied) return;
-    await navigator.clipboard.writeText(value);
+    // As CopyButton: a copy that could not be made says so.
+    if (!(await copyText(value))) {
+      toast.error(t("settings_card_copy_failed"));
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -97,6 +103,46 @@ const CopyPill = ({ value, label }: { value: string; label: string }) => {
       }}>
       {copied ? t("copied") : label}
     </Button>
+  );
+};
+
+/** The layers whose style differs from the published snapshot, each with why (spec 13.2): edited in the project, or
+ * its classes recomputed for new data. Republishing takes them over. */
+const UnpublishedNote = ({ projectId }: { projectId: string }) => {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  const { map } = useProjectMap(projectId);
+  const { layers } = useProjectLayers(projectId);
+  const changes = map?.unpublished ?? [];
+  if (!changes.length) return null;
+  const nameOf = (id: number) => layers?.find((layer) => layer.id === id)?.name ?? String(id);
+  return (
+    <Box
+      sx={{
+        mb: 3,
+        px: 3,
+        py: 2,
+        borderRadius: "9px",
+        backgroundColor: alpha(theme.palette.warning.main, 0.08),
+        border: `1px solid ${alpha(theme.palette.warning.main, 0.27)}`,
+      }}>
+      <Typography component="div" sx={{ fontSize: 12.5, fontWeight: 700, mb: "4px" }}>
+        {t("unpublished_changes")}
+      </Typography>
+      <Stack component="ul" spacing={0.5} sx={{ m: 0, pl: 4 }}>
+        {changes.map((change) => (
+          <Typography
+            key={change.layer_project_id}
+            component="li"
+            sx={{ fontSize: 11.8, color: theme.palette.text.secondary, lineHeight: 1.45 }}>
+            {t(`unpublished_reason_${change.reason}`, { name: nameOf(change.layer_project_id) })}
+          </Typography>
+        ))}
+      </Stack>
+      <Typography component="div" sx={{ fontSize: 11.8, color: theme.palette.text.secondary, mt: "4px" }}>
+        {t("unpublished_changes_hint")}
+      </Typography>
+    </Box>
   );
 };
 
@@ -151,6 +197,7 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const { sharedProject, isLoading, mutate } = usePublicProject(project.id);
+  const { mutate: mutateMap } = useProjectMap(project.id);
   const { organization } = useOrganization();
   const { domains: orgDomains, mutate: mutateOrgDomains } = useOrganizationDomains(organization?.id);
   const { analyticsList, mutate: mutateOrgAnalytics } = useOrganizationAnalytics(organization?.id);
@@ -243,6 +290,8 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
       setIsPublishing(true);
       await publishProject(project.id);
       mutate();
+      // The map request says again which layers differ from the new snapshot.
+      void mutateMap();
     } catch {
       toast.error(t("error_publishing_project"));
     } finally {
@@ -383,6 +432,7 @@ const ShareWithPublicTab: React.FC<ShareWithPublicTabProps> = ({ project }) => {
           {t("republish")}
         </LoadingButton>
       </Stack>
+      <UnpublishedNote projectId={project.id} />
 
       <SectionLabel first>{t("address")}</SectionLabel>
       {showDomainPicker && (

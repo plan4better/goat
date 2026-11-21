@@ -475,6 +475,28 @@ def test_a_step_left_open_gets_a_label_naming_what_is_missing() -> None:
         )
 
 
+DEM = ProjectLayer(37, "e2000000-0000-0000-0000-000000000037", "DEM", "raster")
+
+
+def test_a_raster_layer_is_refused_like_a_locked_one() -> None:
+    context = _context(layers={**LAYERS, 37: DEM})
+    with pytest.raises(EditError, match="'DEM' is a raster layer") as added:
+        plan(
+            STORED,
+            _ops(
+                {"op": "add_step", "step": {"id": "x", "kind": "dataset", "layer": 37}}
+            ),
+            context,
+        )
+    assert str(added.value).startswith("operation 0 (add_step): ")
+    with pytest.raises(EditError, match="'DEM' is a raster layer"):
+        plan(
+            STORED,
+            _ops({"op": "set_layer", "id": "dataset-a", "layer": 37}),
+            context,
+        )
+
+
 def test_set_layer_refuses_a_locked_layer_and_a_step_of_another_kind() -> None:
     with pytest.raises(EditError, match="no access to its data"):
         plan(

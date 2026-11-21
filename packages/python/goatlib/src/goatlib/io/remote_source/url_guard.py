@@ -1,9 +1,11 @@
 """Refuse user-supplied URLs that would make the server fetch from inside.
 
-A WFS import runs in the worker, so whatever address a user types in is
-fetched from our network, not theirs: without a check, `http://169.254.169.254/`
-or a cluster-internal service name reads back through the import. Only http(s)
-addresses whose every resolved IP is globally routable pass.
+A WFS import runs in the worker, and geoapi and processes read raster files, so
+whatever address a user types in is fetched from our network, not theirs:
+without a check, `http://169.254.169.254/` or a cluster-internal service name
+reads back through the server. Only http(s) addresses whose every resolved IP is
+globally routable pass, and hosts a deployment lists on purpose (its own object
+store).
 
 Residuals, accepted for now: the name is resolved again when GDAL connects
 (DNS rebinding), and GDAL follows HTTP redirects without asking us.
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from collections.abc import Collection
 from urllib.parse import urlparse
 
 
@@ -20,14 +23,17 @@ class UnsafeUrlError(ValueError):
     """The URL is not an http(s) address that resolves to public IPs only."""
 
 
-def assert_public_http_url(url: str) -> None:
-    """Raise `UnsafeUrlError` unless `url` is http(s) and resolves to public IPs."""
+def assert_public_http_url(url: str, allowed_hosts: Collection[str] = ()) -> None:
+    """Raise `UnsafeUrlError` unless `url` is http(s) and resolves to public IPs
+    or its host is one of `allowed_hosts`."""
     parsed = urlparse(url.strip())
     if parsed.scheme not in ("http", "https"):
         raise UnsafeUrlError("Only http and https service addresses can be used")
     host = parsed.hostname
     if not host:
         raise UnsafeUrlError("The service address has no host")
+    if host.lower() in {h.strip().lower() for h in allowed_hosts}:
+        return
 
     try:
         infos = socket.getaddrinfo(host, parsed.port, proto=socket.IPPROTO_TCP)

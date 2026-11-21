@@ -145,19 +145,10 @@ def test_an_unreadable_directory_is_unknown(tmp_path: Path) -> None:
         layers.chmod(0o755)
 
 
-def test_a_layer_type_without_a_parquet_copy_is_not_judged(tmp_path: Path) -> None:
-    """The job writes a parquet for feature and table layers only."""
-    assert copy_on_disk(tmp_path, LAYER_ID, "raster") is None
+def test_a_layer_type_without_a_copy_is_not_judged(tmp_path: Path) -> None:
+    """The job writes a copy for feature, table and raster layers only."""
     assert copy_on_disk(tmp_path, LAYER_ID, None) is None
-
-
-def test_the_copy_name_is_the_writers() -> None:
-    """core cannot import goatlib's layer helpers (their module needs the
-    stack core's image lacks), so the name is spelled twice; this keeps the
-    two the same."""
-    from goatlib.utils.layer import layer_id_to_table_name
-
-    assert _copy(Path(".")).name == f"{layer_id_to_table_name(str(LAYER_ID))}.parquet"
+    assert copy_on_disk(tmp_path, LAYER_ID, "unknown") is None
 
 
 @pytest.fixture
@@ -181,3 +172,12 @@ def test_core_looks_where_the_writer_writes(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("CATALOG_LAYERS_DIR", "/srv/catalog-layers")
     assert Settings().CATALOG_LAYERS_DIR == "/srv/catalog-layers"
     assert catalog_layers_dir() == Path("/srv/catalog-layers")
+
+
+def test_a_raster_copy_is_its_stored_file(tmp_path: Path) -> None:
+    """The job copies a catalog raster's GeoTIFF to the layer's stored raster
+    file, beside the parquet copies, so a ready raster whose file is gone heals
+    like a vector layer."""
+    assert copy_on_disk(tmp_path, LAYER_ID, "raster") is False
+    (tmp_path / f"t_{LAYER_ID.hex}.tif").write_bytes(b"II*\x00")
+    assert copy_on_disk(tmp_path, LAYER_ID, "raster") is True

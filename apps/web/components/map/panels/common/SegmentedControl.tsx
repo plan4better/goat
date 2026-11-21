@@ -11,6 +11,8 @@ type SegmentedControlProps = {
   onChange: (value: SelectorItem["value"]) => void;
   items: SelectorItem[];
   label?: string;
+  /** The group's name for assistive technology where no label is shown. */
+  ariaLabel?: string;
   tooltip?: string;
   disabled?: boolean;
 };
@@ -22,7 +24,15 @@ type SegmentedControlProps = {
  * dropdown for this wherever the options fit on one row. Longer or open-ended
  * lists stay a `Selector`.
  */
-const SegmentedControl = ({ value, onChange, items, label, tooltip, disabled }: SegmentedControlProps) => {
+const SegmentedControl = ({
+  value,
+  onChange,
+  items,
+  label,
+  ariaLabel,
+  tooltip,
+  disabled,
+}: SegmentedControlProps) => {
   const theme = useTheme();
 
   return (
@@ -37,11 +47,10 @@ const SegmentedControl = ({ value, onChange, items, label, tooltip, disabled }: 
       <ToggleButtonGroup
         exclusive
         size="small"
-        color="primary"
         fullWidth
         disabled={disabled}
         value={value ?? null}
-        aria-label={label}
+        aria-label={ariaLabel ?? label}
         // A click on the selected option deselects it in MUI; a setting always keeps one value
         onChange={(_, next) => next !== null && onChange(next)}>
         {items.map((item) => (
@@ -50,7 +59,7 @@ const SegmentedControl = ({ value, onChange, items, label, tooltip, disabled }: 
             value={item.value}
             disabled={item.disabled}
             title={item.label}
-            sx={{ fontSize: 12, py: 0.5, gap: 0.75, textTransform: "none", minWidth: 0 }}>
+            sx={{ gap: 0.75 }}>
             {item.icon && <Icon iconName={item.icon} style={{ fontSize: 13 }} htmlColor="inherit" />}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {item.label}

@@ -8,6 +8,8 @@ emitted as a quoted identifier with embedded quotes doubled.
 
 import duckdb
 
+from goatlib.utils.column_types import column_types
+
 
 def quote_identifier(name: str) -> str:
     """Quote a SQL identifier, doubling any embedded double quotes."""
@@ -15,22 +17,8 @@ def quote_identifier(name: str) -> str:
 
 
 def table_column_names(con: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
-    """Column names of a table or table expression.
-
-    DESCRIBE loads only this relation's metadata; information_schema.columns
-    would lazily load every table in the catalog to answer.
-
-    Described as a SELECT because bare `DESCRIBE <relation>` only parses an
-    identifier: callers legitimately pass an expression such as
-    `read_parquet('...')`, and `DESCRIBE read_parquet('...')` is a parser error
-    ("syntax error at or near \"(\""). `DESCRIBE SELECT * FROM ...` binds the
-    same metadata for both shapes without scanning either.
-    """
-    return {
-        str(row[0])
-        for row in con.execute(f"DESCRIBE SELECT * FROM {table_name}").fetchall()
-        if row
-    }
+    """Column names of a table or table expression (`column_types`)."""
+    return set(column_types(con, table_name))
 
 
 def require_column(

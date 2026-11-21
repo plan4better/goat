@@ -11,7 +11,7 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
-from sqlalchemy import Index, text
+from sqlalchemy import BigInteger, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlmodel import (
@@ -195,6 +195,14 @@ class Layer(LayerBase, GeospatialAttributes, DateTimeBase, table=True):
             "The catalog item's version at promotion time. Projects keep the "
             "version they added; a newer upstream version promotes into a new "
             "layer rather than touching this one."
+        ),
+    )
+    data_snapshot: int | None = Field(
+        default=None,
+        sa_column=Column(BigInteger, nullable=True),
+        description=(
+            "The last DuckLake snapshot that changed the layer's data: the data "
+            "fingerprint its styles' computed values are compared with (spec 12)."
         ),
     )
     folder_id: UUID | None = Field(

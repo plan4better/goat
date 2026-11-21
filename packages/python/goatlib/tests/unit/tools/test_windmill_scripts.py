@@ -247,3 +247,14 @@ def test_a_dry_run_writes_nothing_and_counts_its_scripts(
     assert {r["status"] for r in results} == {"dry-run"}
     assert windmill.requests == []
     assert f"Done: {len(ALL_PATHS)} dry-run" in caplog.text
+
+
+def test_the_users_session_stays_out_of_the_scripts_form() -> None:
+    """processes sets core's address and the user's tokens; the job gets them
+    through `**kwargs`, and Windmill's form for the script shows none."""
+    for tool in ("project_export", "project_import"):
+        script = windmill_script(f"f/goat/tools/{tool}")
+        signature = script.split("def main(", 1)[1].split(") -> dict", 1)[0]
+        for name in ("core_url", "access_token", "refresh_token"):
+            assert name not in signature
+        assert "**kwargs" in signature

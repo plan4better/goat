@@ -38,11 +38,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from io import BufferedReader
 from pathlib import Path
-from typing import Any, Literal, NamedTuple, Optional
+from typing import Any, Callable, Literal, NamedTuple, Optional, TypeVar
 
 import manby
 from cachetools import LRUCache, TTLCache
 from goatlib.storage import build_filters
+from goatlib.style.h3 import auto_resolution, cell_values_sql, tile_margin_degrees
 from pmtiles.reader import MmapSource
 from pmtiles.tile import (
     Compression,
@@ -65,6 +66,16 @@ from geoapi.services.tile_filter import (
 from geoapi.tile_cache import cache_tile, get_cached_tile
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
+
+
+def _decoration_set(decoration: str) -> set[str]:
+    """The kinds of decoration points a request names (`start_and_end` is both ends)."""
+    kinds = set(decoration.split(","))
+    if "start_and_end" in kinds:
+        kinds |= {"start", "end"}
+    return kinds
 
 
 def _qi(name: str) -> str:
@@ -127,6 +138,42 @@ def _manby_concurrency() -> int:
 # to wait. Requests wait in the loop, not in a worker thread, which keeps them
 # off the default executor's few threads that other `to_thread` calls share.
 _manby_slots = asyncio.Semaphore(_manby_concurrency())
+
+
+def _filtered_tile_concurrency() -> int:
+    """How many filtered tiles DuckDB may draw at once: one less than the
+    dynamic-tile threads and than the pool's connections, at least 1."""
+    threads = _dynamic_tile_executor._max_workers
+    return max(1, min(threads, settings.DUCKLAKE_POOL_SIZE) - 1)
+
+
+# Bounds the filtered tiles DuckDB draws at once. One can take seconds and a
+# screen asks for many, so unbounded they hold every dynamic-tile thread and
+# every DuckDB connection, and the tiles of the layers DuckDB draws without a
+# filter wait behind them. Requests wait in the loop, as for `_manby_slots`.
+_filtered_tile_slots = asyncio.Semaphore(_filtered_tile_concurrency())
+
+
+async def _run_dynamic_tile(work: Callable[[], T], filtered: bool) -> T:
+    """Run a tile's DuckDB work on a dynamic-tile thread, a filtered tile's in
+    one of `_filtered_tile_slots`.
+
+    The slot goes back when the thread is done, not when the request is: a
+    request that timed out leaves its query running on the thread.
+    """
+    loop = asyncio.get_running_loop()
+    if not filtered:
+        return await loop.run_in_executor(_dynamic_tile_executor, work)
+    slots = _filtered_tile_slots
+    await slots.acquire()
+    try:
+        job = _dynamic_tile_executor.submit(work)
+    except BaseException:
+        slots.release()
+        raise
+    job.add_done_callback(lambda _: loop.call_soon_threadsafe(slots.release))
+    return await asyncio.wrap_future(job)
+
 
 # Maximum leaf directory entries to cache per PMTiles file (~64KB per file)
 _LEAF_CACHE_MAX_SIZE = 1000
@@ -464,6 +511,121 @@ def tile_to_bbox_3857(z: int, x: int, y: int) -> tuple[float, float, float, floa
     y_max = WEB_MERCATOR_EXTENT - y * tile_size
     y_min = WEB_MERCATOR_EXTENT - (y + 1) * tile_size
     return (x_min, y_min, x_max, y_max)
+
+
+def _bbox_prune_sql(
+    bbox_columns: str | None, xmin: float, ymin: float, xmax: float, ymax: float
+) -> str:
+    """Row-group pruning on a table's bounding box columns (scalar or GeoParquet
+    1.1 struct), or nothing without them."""
+    if bbox_columns == "scalar":
+        return (
+            f'"$minx" <= {xmax} AND "$maxx" >= {xmin} '
+            f'AND "$miny" <= {ymax} AND "$maxy" >= {ymin} AND '
+        )
+    if bbox_columns == "struct":
+        return (
+            f"bbox.xmin <= {xmax} AND bbox.xmax >= {xmin} "
+            f"AND bbox.ymin <= {ymax} AND bbox.ymax >= {ymin} AND "
+        )
+    return ""
+
+
+def h3_tile_cells_sql(
+    table: str,
+    geom_col: str,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str | int,
+    op: str,
+    field: str | None,
+    extra_where_sql: str,
+    params: list,
+    bbox_columns: str | None = None,
+) -> tuple[str, list]:
+    """`(cell, value, n, resolution)` of the H3 cells a tile draws (spec 8.3).
+
+    The points are read from the tile grown by two cell edges, so a cell on the
+    tile's border gets all its points and both tiles draw it with the same
+    value; only cells whose hexagon meets the tile are kept. `resolution` is a
+    number or "auto" (from the zoom). `extra_where_sql` (filters, starting with
+    " AND ") binds `params`.
+    """
+    res = auto_resolution(z) if resolution == "auto" else int(resolution)
+    xmin, ymin, xmax, ymax = tile_to_bbox_4326(z, x, y)
+    dlat, dlng = tile_margin_degrees(res, max(abs(ymin), abs(ymax)))
+    gxmin, gymin = max(xmin - dlng, -180.0), max(ymin - dlat, -90.0)
+    gxmax, gymax = min(xmax + dlng, 180.0), min(ymax + dlat, 90.0)
+    where = (
+        _bbox_prune_sql(bbox_columns, gxmin, gymin, gxmax, gymax)
+        + f'ST_Intersects("{geom_col}", ST_MakeEnvelope({gxmin}, {gymin}, {gxmax}, {gymax}))'
+        + extra_where_sql
+    )
+    cells = cell_values_sql(table, geom_col, op, field, res, where)
+    sql = f"""
+        SELECT h3_h3_to_string(cell) AS cell, value, n, {res} AS resolution
+        FROM ({cells})
+        WHERE ST_Intersects(
+            ST_GeomFromText(h3_cell_to_boundary_wkt(cell)),
+            ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax})
+        )
+    """
+    return sql, list(params)
+
+
+def h3_tile_query(
+    table: str,
+    geom_col: str,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str | int,
+    op: str,
+    field: str | None,
+    extra_where_sql: str,
+    params: list,
+    bbox_columns: str | None = None,
+) -> tuple[str, list]:
+    """The H3 tile: an MVT layer `h3` of hexagons with `value`, `count`,
+    `resolution` and `cell` (the index as text: as a number it would not fit a
+    JavaScript number, so the hexagons have no feature id). No row for a tile
+    without cells."""
+    cells, params = h3_tile_cells_sql(
+        table,
+        geom_col,
+        z,
+        x,
+        y,
+        resolution,
+        op,
+        field,
+        extra_where_sql,
+        params,
+        bbox_columns,
+    )
+    bx0, by0, bx1, by1 = tile_to_bbox_3857(z, x, y)
+    sql = f"""
+        SELECT ST_AsMVT(
+            struct_pack(
+                geometry := ST_AsMVTGeom(
+                    ST_Transform(
+                        ST_GeomFromText(h3_cell_to_boundary_wkt(h3_string_to_h3(cells.cell))),
+                        'EPSG:4326', 'EPSG:3857', always_xy := true
+                    ),
+                    ST_Extent(ST_MakeEnvelope({bx0}, {by0}, {bx1}, {by1}))
+                ),
+                "value" := cells.value,
+                "count" := cells.n,
+                "resolution" := cells.resolution,
+                "cell" := cells.cell
+            ),
+            'h3', 4096, 'geometry'
+        )
+        FROM ({cells}) AS cells
+        HAVING count(*) > 0
+    """
+    return sql, params
 
 
 def _stored_tile(
@@ -1775,9 +1937,7 @@ class TileService:
         # If CQL filter, bbox, force_dynamic, or decoration is set, use dynamic GeoParquet generation
         if cql_filter or bbox or force_dynamic or decoration:
             # Run in thread pool to avoid blocking the event loop
-            loop = asyncio.get_event_loop()
-            tile_data = await loop.run_in_executor(
-                _dynamic_tile_executor,
+            tile_data = await _run_dynamic_tile(
                 lambda: self._generate_dynamic_tile(
                     layer_info=layer_info,
                     z=z,
@@ -1792,6 +1952,7 @@ class TileService:
                     geometry_type=geometry_type,
                     decoration=decoration,
                 ),
+                filtered=bool(cql_filter or bbox),
             )
             if tile_data is None:
                 return None
@@ -1843,6 +2004,62 @@ class TileService:
 
         # Tile not in PMTiles (outside zoom bounds)
         return None
+
+    async def get_h3_tile(
+        self,
+        layer_info: LayerInfo,
+        z: int,
+        x: int,
+        y: int,
+        resolution: str,
+        op: str,
+        field: Optional[str],
+        column_names: list[str],
+        geometry_column: str = "geometry",
+        cql_filter: Optional[dict] = None,
+        bbox: Optional[list[float]] = None,
+        ids: Optional[list[str]] = None,
+    ) -> Optional[bytes]:
+        """An H3 hexagon tile of a point layer (`h3_tile_query`), or None
+        without cells. Filters and feature ids apply; there is no feature limit."""
+        if all(c in column_names for c in ("$minx", "$miny", "$maxx", "$maxy")):
+            bbox_columns: str | None = "scalar"
+        else:
+            bbox_columns = "struct" if "bbox" in column_names else None
+
+        def run() -> Optional[bytes]:
+            # In the worker too: preparing a filter's area can take a while.
+            filters = build_filters(
+                bbox=bbox,
+                cql_filter=cql_filter,
+                ids=ids,
+                geometry_column=geometry_column,
+                column_names=column_names,
+                has_geometry=True,
+            )
+            sql, params = h3_tile_query(
+                layer_info.full_table_name,
+                geometry_column,
+                z,
+                x,
+                y,
+                resolution,
+                op,
+                field,
+                filters.to_where_sql(),
+                filters.params,
+                bbox_columns,
+            )
+            result = ducklake_pool.execute_with_retry(
+                sql,
+                params=params or None,
+                max_retries=3,
+                fetch_all=False,
+                timeout=settings.QUERY_TIMEOUT,
+            )
+            return bytes(result[0]) if result and result[0] else None
+
+        return await _run_dynamic_tile(run, filtered=bool(cql_filter or bbox))
 
     def _generate_dynamic_tile(
         self,
@@ -2152,6 +2369,20 @@ class TileService:
                     bbox_4326=(tile_xmin, tile_ymin, tile_xmax, tile_ymax),
                     extra_where_sql=extra_where_sql,
                     params=params,
+                    select_parts=select_parts,
+                    prop_cols=prop_cols,
+                    bbox_prune=_bbox_prune_sql(
+                        "scalar"
+                        if has_scalar_bbox
+                        else "struct"
+                        if has_struct_bbox
+                        else None,
+                        tile_xmin,
+                        tile_ymin,
+                        tile_xmax,
+                        tile_ymax,
+                    ),
+                    limit=limit,
                 )
                 if decoration_data:
                     tile_data = tile_data + decoration_data
@@ -2173,33 +2404,56 @@ class TileService:
         bbox_4326: tuple[float, float, float, float],
         extra_where_sql: str = "",
         params: list | None = None,
+        select_parts: list[str] | None = None,
+        prop_cols: list[str] | None = None,
+        bbox_prune: str = "",
+        limit: int | None = None,
     ) -> Optional[bytes]:
         """Generate an MVT layer of decoration placement points + bearings for a line layer.
 
-        Emits one or two point features per line that intersects the tile bbox,
-        depending on `decoration`. Each feature has a `bearing` property in degrees
-        clockwise from north (0..360), computed from the relevant segment of the
-        full source geometry (read pre-tile-clipping, so endpoints are real
-        endpoints rather than tile-boundary intersections).
+        Emits one point feature per line that intersects the tile bbox and per
+        kind of point in `decoration`. Each feature has a `bearing` property in
+        degrees clockwise from north (0..360), computed from the relevant
+        segment of the full source geometry (read pre-tile-clipping, so
+        endpoints are real endpoints rather than tile-boundary intersections),
+        `_decoration`, its kind, and the line's properties of the main tile.
 
-        A multipart line counts as one line: its parts joined where they meet
-        end to end (`ST_LineMerge`, which may turn a part to follow the
-        others), else its longest part.
+        The lines are those of the main tile: the same filters, bounding box
+        pruning and feature limit. A multipart line counts as one line: its
+        parts joined where they meet end to end (`ST_LineMerge`, which may
+        turn a part to follow the others), else its longest part.
 
         Args:
             table: Fully qualified table name
             geom_col: Geometry column name
-            decoration: One of "start" | "end" | "start_and_end" | "center"
+            decoration: Kinds of points, comma-separated, of "start", "end" and
+                "center"; "start_and_end" is "start,end"
             bbox_3857: (xmin, ymin, xmax, ymax) tile bounds in EPSG:3857
             bbox_4326: (xmin, ymin, xmax, ymax) tile bounds in EPSG:4326
             extra_where_sql: Optional additional WHERE clause text (e.g. CQL/bbox filters)
             params: Query parameters bound by `extra_where_sql`
+            select_parts: The main tile's property selection (with casts)
+            prop_cols: The property names `select_parts` selects
+            bbox_prune: The main tile's row group pruning (`_bbox_prune_sql`)
+            limit: The main tile's feature limit
 
         Returns:
             MVT bytes for the 'default_decoration' layer, or None if empty
         """
         tile_xmin_3857, tile_ymin_3857, tile_xmax_3857, tile_ymax_3857 = bbox_3857
         tile_xmin, tile_ymin, tile_xmax, tile_ymax = bbox_4326
+
+        # The point's own properties win over a column of the same name.
+        # Internal columns are named `__deco_*`, so a line attribute such as
+        # `kind` or `geom` keeps its value.
+        own = {"bearing", "_decoration", "_rowid"}
+        props = [
+            (part, col)
+            for part, col in zip(select_parts or [], prop_cols or [])
+            if col not in own
+        ]
+        candidate_props = "".join(f", {part}" for part, _ in props)
+        point_props = "".join(f", {_qi(col)}" for _, col in props)
 
         g = _qi(geom_col)
         # One LINESTRING per feature: ST_StartPoint and ST_EndPoint answer NULL
@@ -2228,12 +2482,7 @@ class TileService:
                 f"ST_LineInterpolatePoint({line}, 0.51))",
             ),
         }
-        kinds = {
-            "start": ["start"],
-            "end": ["end"],
-            "start_and_end": ["start", "end"],
-            "center": ["center"],
-        }.get(decoration)
+        kinds = [k for k in placements if k in _decoration_set(decoration)]
         if not kinds:
             return None
         # ST_AsMVTGeom must never see a NULL geometry: with other rows beside
@@ -2242,13 +2491,19 @@ class TileService:
         placement_cte = "\n                UNION ALL\n".join(
             f"""
                 SELECT
-                    {placements[k][0]} AS geom,
-                    DEGREES({placements[k][1]}) AS bearing,
-                    rowid
+                    {placements[k][0]} AS __deco_geom,
+                    DEGREES({placements[k][1]}) AS __deco_bearing,
+                    '{k}' AS __deco_kind,
+                    __deco_rowid{point_props}
                 FROM lines
                 WHERE {placements[k][0]} IS NOT NULL"""
             for k in kinds
         )
+        struct_props = "".join(
+            f",\n                    {_qi(col)} := placement_pts.{_qi(col)}"
+            for _, col in props
+        )
+        limit_sql = f"\n                LIMIT {int(limit)}" if limit else ""
 
         placement_query = f"""
             WITH bounds AS (
@@ -2257,9 +2512,9 @@ class TileService:
                     ST_MakeEnvelope({tile_xmin}, {tile_ymin}, {tile_xmax}, {tile_ymax}) AS bbox4326
             ),
             candidates AS (
-                SELECT {line_of_feature} AS {line}, rowid
+                SELECT {line_of_feature} AS {line}{candidate_props}, rowid AS __deco_rowid
                 FROM {table}, bounds
-                WHERE ST_Intersects({g}, bounds.bbox4326){extra_where_sql}
+                WHERE {bbox_prune}ST_Intersects({g}, bounds.bbox4326){extra_where_sql}{limit_sql}
             ),
             lines AS (
                 SELECT * FROM candidates
@@ -2271,11 +2526,12 @@ class TileService:
             SELECT ST_AsMVT(
                 struct_pack(
                     geometry := ST_AsMVTGeom(
-                        ST_Transform(placement_pts.geom, 'EPSG:4326', 'EPSG:3857', always_xy := true),
+                        ST_Transform(placement_pts.__deco_geom, 'EPSG:4326', 'EPSG:3857', always_xy := true),
                         ST_Extent(bounds.bbox3857)
                     ),
-                    "_rowid" := placement_pts.rowid + 1,
-                    "bearing" := COALESCE(((placement_pts.bearing % 360) + 360) % 360, 0)
+                    "_rowid" := placement_pts.__deco_rowid + 1,
+                    "bearing" := COALESCE(((placement_pts.__deco_bearing % 360) + 360) % 360, 0),
+                    "_decoration" := placement_pts.__deco_kind{struct_props}
                 ),
                 'default_decoration',
                 4096,

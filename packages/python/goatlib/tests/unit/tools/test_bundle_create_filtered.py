@@ -400,5 +400,5 @@ async def test_a_member_the_filter_empties_keeps_its_source_s_geometry(
         "feature",
         "line",
     )
-    assert db.created["properties"] is not None
+    assert db.created["style"] is not None
     assert copied.geometry_type == "line"

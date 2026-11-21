@@ -225,7 +225,7 @@ async def test_layer_tree_update_ignores_a_foreign_link(
                     "type": "layer",
                     "parent_id": None,
                     "order": 99,
-                    "properties": {"visibility": False},
+                    "visible": False,
                 }
             ]
         },
@@ -235,11 +235,11 @@ async def test_layer_tree_update_ignores_a_foreign_link(
 
     row = (
         await db_session.execute(
-            text(f'SELECT "order", properties FROM {S}.layer_project WHERE id = :i'),
+            text(f'SELECT "order", visible FROM {S}.layer_project WHERE id = :i'),
             {"i": theirs_link},
         )
     ).one()
     order: int = row[0]
-    properties: dict[str, object] | None = row[1]
+    visible: bool = row[1]
     assert order == 0, "another project's link must not be reordered"
-    assert not properties, "another project's link must not be restyled"
+    assert visible, "another project's link must not be hidden"

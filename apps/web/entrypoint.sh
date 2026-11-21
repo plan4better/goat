@@ -43,6 +43,20 @@ for name in $names; do
   done
 done
 
+# Variables whose app value has a default that only an explicitly empty value
+# turns off (the 3D sources). Unset, their placeholder becomes the bare
+# APP_NEXT_PUBLIC_ prefix, which the app reads as "not set" and so takes its
+# default; set to empty, they were replaced by "" above.
+UNSET_MEANS_DEFAULT="NEXT_PUBLIC_TERRAIN_TILES_URL NEXT_PUBLIC_BUILDINGS_TILES_URL"
+for name in $UNSET_MEANS_DEFAULT; do
+  eval "set_=\${$name+x}"
+  [ -n "$set_" ] && continue
+  echo "Leaving APP_$name to the app's default"
+  grep -rlF "APP_$name" "$NEXT_DIR" | while IFS= read -r file; do
+    sed -i "s|APP_$name|APP_NEXT_PUBLIC_|g" "$file"
+  done
+done
+
 # What is left belongs to variables the container does not set (or skipped
 # above). Each becomes empty, which the app reads as "not set": left in place,
 # the placeholder's name would be taken for a value, e.g. fetched as a URL.

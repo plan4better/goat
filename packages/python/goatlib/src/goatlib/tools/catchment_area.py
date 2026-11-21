@@ -47,6 +47,7 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools._routing_limits import speed_default_by_field
 from goatlib.tools.base import BaseToolRunner, drops_unrecorded_tables
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
+from goatlib.tools.style import categories, starting_points_style
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
@@ -456,49 +457,35 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             "geometry": "GEOMETRY",
         }
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: CatchmentAreaWindmillParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return style for catchment area with ordinal scale based on minute values.
+        """One class per travel cost step, yellow to green: lines for a network
+        output, polygons otherwise.
 
-        Queries unique minute values from the table or parquet and builds a color_map.
-        Uses polygon style for polygon/grid output and line style for network output.
+        The steps are read from the output; without them, from the params.
         """
         from goatlib.analysis.schemas.statistics import SortOrder
         from goatlib.analysis.statistics import calculate_unique_values
-        from goatlib.tools.style import (
-            get_ordinal_line_style,
-            get_ordinal_polygon_style,
-        )
 
         color_field = "cost_step"
-
-        # Determine table expression: DuckLake table or read_parquet()
-        table_expr = None
-        if table_info and table_info.get("table_name"):
-            table_expr = table_info["table_name"]
-        elif parquet_path:
-            table_expr = f"read_parquet('{parquet_path}')"
-
-        # Query actual unique minute values
-        unique_values: list[int | float] = []
-        if table_expr:
-            try:
-                result = calculate_unique_values(
-                    con=self.duckdb_con,
-                    table_name=table_expr,
-                    attribute=color_field,
-                    order=SortOrder.ascendent,
-                    limit=20,  # Allow more values with interpolation
-                )
-                unique_values = sorted(int(v.value) for v in result.values)
-                logger.info("Found unique %s values: %s", color_field, unique_values)
-            except Exception as e:
-                logger.warning("Failed to query unique values: %s", e)
+        unique_values: list[int] = []
+        try:
+            result = calculate_unique_values(
+                con=self.duckdb_con,
+                table_name=relation,
+                attribute=color_field,
+                order=SortOrder.ascendent,
+                limit=20,
+            )
+            unique_values = sorted(int(v.value) for v in result.values)
+            logger.info("Found unique %s values: %s", color_field, unique_values)
+        except Exception as e:
+            logger.warning("Failed to query unique values: %s", e)
 
         if not unique_values:
             # Fallback: expected values from params. Two param shapes reach
@@ -526,23 +513,17 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 unique_values = [
                     int(round(step_size * (i + 1))) for i in range(params.steps)
                 ]
+        unique_values = sorted(set(unique_values))
 
-        # Use line style for network output, polygon style for polygon/grid output
-        is_network = params.catchment_area_type == CatchmentAreaType.network
-        if is_network:
-            return get_ordinal_line_style(
-                color_field=color_field,
-                values=unique_values,
-                palette="YlGn",
-                opacity=1.0,
-                stroke_width=3,
+        if params.catchment_area_type == CatchmentAreaType.network:
+            return categories(
+                color_field,
+                unique_values,
+                "colorbrewer:YlGn",
+                "line",
+                symbol={"line": {"width": 3}},
             )
-        return get_ordinal_polygon_style(
-            color_field=color_field,
-            values=unique_values,
-            palette="YlGn",
-            opacity=0.8,
-        )
+        return categories(color_field, unique_values, "colorbrewer:YlGn", "polygon")
 
     @staticmethod
     def _validated_reference_column(
@@ -625,9 +606,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 WHERE "{geom_col}" IS NOT NULL
             """).fetchall()
         else:
-            import json
-
-            from goatlib.storage.query_builder import build_cql_filter
+            from goatlib.storage.query_builder import checked_cql_filter
 
             # Look up the layer's actual owner to correctly access shared/catalog layers
             layer_owner_id = self.get_layer_owner_id_sync(layer_id)
@@ -662,8 +641,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             params: list[Any] = []
 
             if cql_filter:
-                filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-                cql_filters = build_cql_filter(filter_dict, column_names, geom_col)
+                # One it cannot apply is refused: the starting points of the
+                # whole layer are not what was asked for.
+                cql_filters = checked_cql_filter(cql_filter, column_types, geom_col)
                 if cql_filters.clauses:
                     where_clause += " AND " + " AND ".join(cql_filters.clauses)
                     params = cql_filters.params
@@ -958,7 +938,6 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         import uuid as uuid_module
 
         from goatlib.tools.schemas import ToolOutputBase
-        from goatlib.tools.style import get_starting_points_style
 
         # Check if we're in temp mode (for workflow preview)
         temp_mode = getattr(params, "temp_mode", False)
@@ -1001,11 +980,6 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 f"at {output_parquet}"
             )
 
-            # Compute style from parquet (works for both temp and permanent)
-            custom_properties = self.get_layer_properties(
-                params, metadata, parquet_path=output_parquet
-            )
-
             # Temp mode: write primary output only, skip starting points and DB records
             if temp_mode:
                 result = self._write_temp_result(
@@ -1013,7 +987,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     output_parquet=output_parquet,
                     output_name=output_name,
                     output_layer_id=output_layer_id,
-                    properties=custom_properties,
+                    metadata=metadata,
                 )
                 asyncio.get_event_loop().run_until_complete(self._close_db_service())
                 return result
@@ -1080,7 +1054,6 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     output_name=output_name,
                     metadata=metadata,
                     table_info=table_info,
-                    custom_properties=custom_properties,
                 )
             )
 
@@ -1104,7 +1077,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                             output_name=starting_points_output_name,
                             metadata=starting_points_metadata,
                             table_info=starting_points_table_info,
-                            custom_properties=get_starting_points_style(),
+                            style=starting_points_style(),
                         )
                     )
                 )

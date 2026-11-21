@@ -1,8 +1,11 @@
+import re
 from datetime import datetime
 from enum import Enum
 from typing import Any, List, Literal, Optional
 from uuid import UUID
 
+from goatlib.style import limits
+from goatlib.utils.layer_address import layer_shown
 from pydantic import (
     UUID4,
     BaseModel,
@@ -25,12 +28,17 @@ from core.schemas.layer import (
     RasterRead,
     TableRead,
 )
+from core.schemas.style import StyleRead
 from core.utils import optional
-
 
 ################################################################################
 # Project DTOs
 ################################################################################
+
+#: A BCP 47 language tag's shape (`de`, `de-DE`, `pt-BR`).
+_LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*")
+
+
 class ProjectContentType(str, Enum):
     layer = "layer"
 
@@ -46,18 +54,34 @@ class IProjectCopy(BaseModel):
 class InitialViewState(BaseModel):
     latitude: float = Field(..., description="Latitude", ge=-90, le=90)
     longitude: float = Field(..., description="Longitude", ge=-180, le=180)
-    zoom: int = Field(..., description="Zoom level", ge=0, le=20)
+    zoom: float = Field(..., description="Zoom level", **limits.bounds("view.zoom"))
     min_zoom: int = Field(..., description="Minimum zoom level", ge=0, le=20)
     max_zoom: int = Field(..., description="Maximum zoom level", ge=0, le=20)
-    bearing: int = Field(..., description="Bearing", ge=0, le=360)
-    pitch: int = Field(..., description="Pitch", ge=0, le=60)
+    bearing: float = Field(
+        ...,
+        description="Bearing in degrees; any number is stored as 0 (incl.) to 360 (excl.)",
+        ge=0,
+        lt=360,
+    )
+    pitch: float = Field(..., description="Pitch in degrees", ge=0, le=85)
+    mode: Literal["2d", "3d"] | None = Field(
+        None, description="2D or 3D; missing means 3D when the pitch is above 0"
+    )
+    projection: Literal["mercator", "globe"] | None = Field(
+        None, description="Map projection; missing means mercator"
+    )
 
-    @field_validator("zoom", mode="before")
+    @field_validator("bearing", mode="before")
     @classmethod
-    def convert_zoom(cls: type["InitialViewState"], value: int | float) -> int:
-        if isinstance(value, float):
-            return int(value)
-        return value
+    def normalise_bearing(cls: type["InitialViewState"], value: Any) -> Any:
+        """MapLibre answers -180 to 180; the view stores 0 (incl.) to 360 (excl.)."""
+        if isinstance(value, bool):
+            raise ValueError("bearing must be a number")
+        if not isinstance(value, (int, float)):
+            return value
+        bearing = value % 360
+        # A tiny negative float rounds up to 360.0.
+        return 0 if bearing >= 360 else bearing
 
     @field_validator("max_zoom", mode="after")
     @classmethod
@@ -132,8 +156,15 @@ class IProjectRead(ContentBaseAttributes, DateTimeBase):
     layer_order: list[int] | None = Field(None, description="Layer order in project")
     thumbnail_url: str | None = Field(description="Project thumbnail URL")
     basemap: str | None = Field(None, description="Project basemap")
+    locale: str | None = Field(
+        None, description="Number and date locale; null = the viewer's language"
+    )
     custom_basemaps: list[CustomBasemap] = Field(
         default_factory=list, description="Per-project custom basemap library"
+    )
+    scene: dict[str, Any] | None = Field(
+        None,
+        description="The 3D scene (3D spec 5.2); null = automatic",
     )
     shared_with: dict[str, Any] | None = Field(None, description="Shared with")
     owned_by: dict[str, Any] | None = Field(None, description="Owned by")
@@ -205,6 +236,11 @@ class IProjectBaseUpdate(SQLModel):
     )
     layer_order: list[int] | None = Field(None, description="Layer order in project")
     basemap: str | None = Field(None, description="Project basemap")
+    locale: str | None = Field(
+        None,
+        max_length=35,
+        description="Number and date locale of public maps, dashboards and print; null = the viewer's language",
+    )
     custom_basemaps: list[CustomBasemap] | None = Field(
         default=None, description="Per-project custom basemap library"
     )
@@ -220,11 +256,26 @@ class IProjectBaseUpdate(SQLModel):
             "it the change lands anyway."
         ),
     )
+    scene: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The whole 3D scene (3D spec 5.2), checked by goatlib: an error answers "
+            "422 `invalid_scene` and stores nothing; null or {} resets it to automatic"
+        ),
+    )
     tags: List[str] | None = Field(
         default=None,
         sa_column=Column(ARRAY(Text), nullable=True),
         description="Layer tags",
     )
+
+    @field_validator("locale")
+    @classmethod
+    def locale_is_a_language_tag(cls, value: str | None) -> str | None:
+        """A BCP 47 shape (`de`, `de-DE`, `pt-BR`): the web formats numbers with it."""
+        if value is not None and not _LANGUAGE_TAG.fullmatch(value):
+            raise ValueError("locale must be a language tag such as de-DE")
+        return value
 
 
 class LayerProjectIds(BaseModel):
@@ -292,10 +343,6 @@ class IFeatureBaseProject(CQLQuery):
 
 
 class IFeatureBaseProjectRead(IFeatureBaseProject):
-    properties: dict[str, Any] = Field(
-        ...,
-        description="Layer properties",
-    )
     total_count: int | None = Field(
         None, description="Total count of features in the layer"
     )
@@ -334,26 +381,14 @@ class IFeatureStreetNetworkProjectRead(
 
 class IFeatureStandardProjectUpdate(IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
-    properties: dict[str, Any] | None = Field(
-        default=None,
-        description="Layer properties",
-    )
 
 
 class IFeatureStreetNetworkProjectUpdate(IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
-    properties: dict[str, Any] | None = Field(
-        default=None,
-        description="Layer properties",
-    )
 
 
 class IFeatureToolProjectUpdate(IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
-    properties: dict[str, Any] | None = Field(
-        default=None,
-        description="Layer properties",
-    )
 
 
 class ITableProjectRead(LayerProjectIds, TableRead, CQLQuery):
@@ -388,10 +423,6 @@ class IRasterProjectRead(LayerProjectIds, RasterRead):
     # Unbounded on read: one row over a limit fails the whole response, not just
     # this field. The limit belongs on create/update.
     group: str | None = Field(None, description="Layer group name")
-    properties: Optional[dict[str, Any]] = Field(
-        None,
-        description="Layer properties",
-    )
     order: int = Field(0, description="Visual sorting order")
     layer_project_group_id: int | None = Field(None, description="Parent group ID")
 
@@ -400,10 +431,6 @@ class IRasterProjectRead(LayerProjectIds, RasterRead):
 class IRasterProjectUpdate(BaseModel):
     name: str | None = Field(None, description="Layer name", max_length=255)
     group: str | None = Field(None, description="Layer group name", max_length=255)
-    properties: dict[str, Any] | None = Field(
-        None,
-        description="Layer properties",
-    )
     other_properties: ExternalServiceOtherProperties | None = Field(
         None,
         description="Other properties of the layer",
@@ -483,6 +510,37 @@ class ProjectPublicConfig(BaseModel):
     project: ProjectPublicProjectConfig = Field(
         ..., description="Project configuration"
     )
+    map: dict[str, Any] | None = Field(
+        None, description="The published map document (GOAT Style spec 10)"
+    )
+    styles: dict[str, list[StyleRead]] | None = Field(
+        None,
+        description="Every named style of every published layer, by project layer id; "
+        "computed values included, a published map never computes (spec 13.2)",
+    )
+
+    @field_validator("layers", mode="before")
+    @classmethod
+    def file_addresses_without_query(cls, layers: Any) -> Any:
+        """The public snapshot is read without signing in, so nobody reading it
+        can edit a layer: a remote raster file's address and a WFS copy's
+        source address come without their query string. Publishing stores
+        them that way, and a snapshot stored with them whole is shortened here
+        on every read."""
+        if not isinstance(layers, list):
+            return layers
+        shown = []
+        for layer in layers:
+            if isinstance(layer, dict):
+                # A stored row is a read model, which has no
+                # `catalog_external_uid`; a catalog layer is known by the
+                # `catalog_item` its `other_properties` keep, as the web reads
+                # it. Catalog rasters store no address anyway.
+                other = layer.get("other_properties")
+                catalog = isinstance(other, dict) and "catalog_item" in other
+                layer = dict(layer_shown(layer, catalog=catalog, can_edit=False))
+            shown.append(layer)
+        return shown
 
 
 class PublicAnalytics(BaseModel):
@@ -527,11 +585,17 @@ class ProjectPublicRead(BaseModel):
 
 # WRITE Model (PUT) - for the bulk update
 class LayerTreeItem(BaseModel):
+    """One item of the layer tree: its place, and the map state the tree shows
+    (spec 10). `visible` on groups and layers, `expanded` on groups,
+    `legend_expanded` on layers; what is left out stays as it is."""
+
     id: int
     type: Literal["group", "layer"]
     order: int
-    properties: dict[str, Any] | None = None
     parent_id: Optional[int] = None
+    visible: bool | None = None
+    expanded: bool | None = None
+    legend_expanded: bool | None = None
 
 
 class LayerTreeUpdate(BaseModel):
@@ -543,13 +607,11 @@ class ILayerProjectGroupCreate(BaseModel):
     # The column is unbounded `text`, so nothing else stops a group name of any
     # size — 5,000 characters was accepted and stored.
     name: str = Field(..., max_length=255)
-    properties: dict[str, Any] | None = None
     parent_id: Optional[int] = None
 
 
 class ILayerProjectGroupUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
-    properties: dict[str, Any] | None = None
     parent_id: Optional[int] = None
 
 
@@ -560,6 +622,8 @@ class ILayerProjectGroupRead(ILayerProjectGroupCreate):
     id: int
     project_id: UUID4
     order: int
+    visible: bool = Field(True, description="Whether the group is shown")
+    expanded: bool = Field(True, description="Whether the layer tree shows it open")
     # Read-only: a bundle-backed group is created through the dedicated
     # add-bundle endpoint (which authorizes the bundle), never through the
     # generic group create.
@@ -598,16 +662,6 @@ request_examples = {
                 "name": "Feature Layer Standard",
                 "group": "Group 1",
                 "query": {"op": "=", "args": [{"property": "category"}, "bus_stop"]},
-                "properties": {
-                    "type": "circle",
-                    "paint": {
-                        "circle-radius": 5,
-                        "circle-color": "#ff0000",
-                    },
-                    "layout": {"visibility": "visible"},
-                    "minzoom": 0,
-                    "maxzoom": 22,
-                },
             },
         },
         "feature_tool": {
@@ -615,16 +669,6 @@ request_examples = {
             "value": {
                 "name": "Feature Layer Tool",
                 "group": "Group 1",
-                "properties": {
-                    "type": "circle",
-                    "paint": {
-                        "circle-radius": 5,
-                        "circle-color": "#ff0000",
-                    },
-                    "layout": {"visibility": "visible"},
-                    "minzoom": 0,
-                    "maxzoom": 22,
-                },
             },
         },
         "table": {

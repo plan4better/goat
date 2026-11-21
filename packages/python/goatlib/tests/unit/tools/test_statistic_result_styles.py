@@ -1,9 +1,7 @@
 """A statistics tool colours its result by the column the run wrote."""
 
-from pathlib import Path
 from typing import Any
 
-import duckdb
 import pytest
 from goatlib.analysis.schemas.aggregate import AggregationAreaType
 from goatlib.tools.aggregate_points import (
@@ -91,24 +89,10 @@ def _dissolve(**stat: Any) -> DissolveToolParams:
     ],
 )
 def test_the_style_colours_by_the_result_column(
-    tmp_path: Path, runner_class: type, params: Any, column: str
+    runner_class: type, params: Any, column: str
 ) -> None:
-    result = tmp_path / "result.parquet"
-    quoted = '"' + column.replace('"', '""') + '"'
-    con = duckdb.connect()
-    con.execute(
-        f"COPY (SELECT range::DOUBLE AS {quoted} FROM range(1, 21)) "
-        f"TO '{result}' (FORMAT PARQUET)"
+    style = runner_class().get_layer_style(
+        params, None, "polygon", "read_parquet('result.parquet')"
     )
-    con.close()
 
-    runner = runner_class()
-    runner._duckdb_con = duckdb.connect()
-    try:
-        style = runner.get_layer_properties(params, None, parquet_path=result)
-    finally:
-        runner._duckdb_con.close()
-        runner._duckdb_con = None
-
-    assert style["color_field"]["name"] == column
-    assert style["color_scale_breaks"]["attribute"] == column
+    assert style["classify"][0]["field"] == column

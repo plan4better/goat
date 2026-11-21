@@ -2,15 +2,25 @@
 
 import { ButtonBase, alpha, useTheme } from "@mui/material";
 import NextLink from "next/link";
-import { forwardRef } from "react";
+import { type ReactNode, forwardRef } from "react";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import CountPill from "@/components/dashboard/common/CountPill";
 
 interface ToolPillProps {
-  icon: ICON_NAME;
+  icon?: ICON_NAME;
   label: string;
+  /** In front of the label instead of the icon (a class's swatch). */
+  start?: ReactNode;
+  /** A pill of the style panel (the named style, a section's scope): 28px, its text and icons those of the panel's
+   * field values (body2 bold, the secondary text color, 14px icons). */
+  small?: boolean;
+  /** What the pill does, when its label shows the choice in force instead, or the name assistive tech reads where
+   * the label cannot give one (a label still loading); else the label. */
+  ariaLabel?: string;
+  /** What the pill opens, for assistive tech, and whether it is open. */
+  popup?: { kind: "menu" | "dialog"; open: boolean };
   /** Rendered next to the label; hidden when the label is. Only for a pill
    * that opens something (a popover, a menu) — a pill that just toggles says
    * so through `active` instead. */
@@ -36,9 +46,6 @@ interface ToolPillProps {
   pressed?: boolean;
   /** A pill that goes to another page: a link there instead of a button. */
   href?: string;
-  /** The name assistive tech reads where the label cannot give one (a label
-   * still loading); else the label. */
-  ariaLabel?: string;
   onClick?: () => void;
 }
 
@@ -49,6 +56,10 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
   {
     icon,
     label,
+    start,
+    small,
+    ariaLabel,
+    popup,
     chevron,
     active,
     badge,
@@ -59,7 +70,6 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
     describedBy,
     pressed,
     href,
-    ariaLabel,
     onClick,
   },
   ref
@@ -69,7 +79,9 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
     ? theme.palette.error.main
     : active
       ? theme.palette.primary.main
-      : theme.palette.text.primary;
+      : small
+        ? theme.palette.text.secondary
+        : theme.palette.text.primary;
   const iconColor = danger
     ? theme.palette.error.main
     : active
@@ -83,16 +95,20 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
       disabled={disabled}
       onClick={onClick}
       aria-label={ariaLabel ?? label}
+      aria-haspopup={popup?.kind}
+      aria-expanded={popup ? popup.open : undefined}
       aria-describedby={describedBy}
       aria-pressed={pressed}
       sx={{
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        gap: "7px",
-        height: flat ? 34 : 38,
-        px: iconOnly ? 0 : "14px",
+        height: small ? 28 : flat ? 34 : 38,
+        px: iconOnly ? 0 : small ? "10px" : "14px",
         width: iconOnly ? (flat ? 34 : 38) : "auto",
+        maxWidth: "100%",
+        minWidth: 0,
+        gap: small ? "6px" : "7px",
         borderRadius: "999px",
         whiteSpace: "nowrap",
         border: `1px solid ${active ? theme.palette.primary.main : theme.palette.divider}`,
@@ -101,9 +117,12 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
           : flat
             ? "transparent"
             : theme.palette.background.paper,
+        // In the style panel the text of its field values (body2: the page's font, size and spacing).
+        ...(small ? theme.typography.body2 : { fontSize: 13 }),
+        // A button does not take the page's font by itself.
+        fontFamily: "inherit",
         color: accent,
-        fontSize: 13,
-        fontWeight: flat ? 600 : 700,
+        fontWeight: flat && !small ? 600 : 700,
         flexShrink: 0,
         opacity: disabled ? 0.45 : 1,
         transition: theme.transitions.create(["background-color", "border-color"], {
@@ -113,11 +132,14 @@ const ToolPill = forwardRef<HTMLButtonElement, ToolPillProps>(function ToolPill(
           backgroundColor: active ? alpha(theme.palette.primary.main, 0.16) : theme.palette.action.hover,
         },
       }}>
-      <Icon iconName={icon} style={{ fontSize: 14, color: iconColor }} />
-      {!iconOnly && label}
+      {start}
+      {icon && !start && <Icon iconName={icon} style={{ fontSize: 14, color: iconColor }} />}
+      {!iconOnly && (
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+      )}
       {!iconOnly && badge !== undefined && <CountPill active>{badge}</CountPill>}
       {!iconOnly && chevron && (
-        <Icon iconName={ICON_NAME.CHEVRON_DOWN} style={{ fontSize: 12, color: iconColor }} />
+        <Icon iconName={ICON_NAME.CHEVRON_DOWN} style={{ fontSize: small ? 10 : 12, color: iconColor }} />
       )}
     </ButtonBase>
   );

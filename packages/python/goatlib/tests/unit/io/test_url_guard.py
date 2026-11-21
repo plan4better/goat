@@ -91,3 +91,16 @@ def test_from_wfs_refuses_an_internal_url_before_fetching(
     monkeypatch.setattr(wfs, "_fetch_wfs_layers", must_not_fetch)
     with pytest.raises(UnsafeUrlError):
         wfs.from_wfs("http://metadata.example/wfs?SERVICE=WFS", tmp_path)
+
+
+def test_a_listed_host_may_resolve_to_a_private_address(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _resolves_to(monkeypatch, "10.0.0.7")
+    assert_public_http_url(
+        "http://minio.internal:9000/b/x.tif", allowed_hosts=("MinIO.internal",)
+    )
+    with pytest.raises(UnsafeUrlError):
+        assert_public_http_url(
+            "http://other.internal/x.tif", allowed_hosts=("minio.internal",)
+        )

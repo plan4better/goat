@@ -95,3 +95,8 @@ The Elements Panel contains all the tools you need to add and customize elements
   <div class="step-number">4</div>
   <div class="content">With an element selected, use the <code>Properties Panel</code> on the right to <b>customize its appearance</b> and settings.</div>
 </div>
+
+### Tilted maps {#tilted-maps}
+
+A map element shows the view it was given. When that view is tilted in 3D, the element prints it as an image of the view, with the project's terrain, buildings and sky. A tilted map has no single scale, so a scale bar connected to it reads <code>Not to scale. The map is tilted, so distances change across the view.</code> The map element's settings say so too and offer <code>Print flat instead</code>, which sets the tilt and the rotation back to 0. Maps controlled by an atlas always print flat.
+

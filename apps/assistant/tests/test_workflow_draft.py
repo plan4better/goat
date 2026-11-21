@@ -465,6 +465,21 @@ def test_an_unknown_layer_is_a_draft_error() -> None:
         _convert(_draft([_shops(layer=99)]))
 
 
+def test_a_raster_layer_is_a_draft_error() -> None:
+    dem = ProjectLayer(37, "e2000000-0000-0000-0000-000000000037", "DEM", "raster")
+    with pytest.raises(
+        DraftError,
+        match="step 'shops': 'DEM' is a raster layer; workflows take feature layers "
+        "and tables",
+    ):
+        to_config(
+            _draft([_shops(layer=37)]),
+            layers={**LAYERS, 37: dem},
+            regions={},
+            titles=TITLES,
+        )
+
+
 def test_open_steps_follow_the_connections() -> None:
     draft = _draft(
         [

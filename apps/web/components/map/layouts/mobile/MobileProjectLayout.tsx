@@ -1,6 +1,7 @@
 import { Global } from "@emotion/react";
 import type { Theme } from "@mui/material";
 import { Box, IconButton, Stack, SwipeableDrawer, Typography, styled, useTheme } from "@mui/material";
+import type { MapMovementEvent } from "maplibre-gl";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
@@ -14,7 +15,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
-import type { PopupProperties } from "@/lib/validations/layer";
+import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import type { CustomBasemap } from "@/lib/validations/project";
 import { projectSchema } from "@/lib/validations/project";
 
@@ -24,6 +25,7 @@ import { useDashboardLanguageOverride } from "@/hooks/dashboard/useDashboardLang
 import { useLayerStyleChange } from "@/hooks/map/LayerStyleHooks";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useCustomBasemapMutations } from "@/hooks/map/useCustomBasemapMutations";
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import WidgetWrapper from "@/components/builder/widgets/WidgetWrapper";
@@ -34,17 +36,18 @@ import { BaseMapSelectorList, BasemapSelectorButton } from "@/components/map/con
 import { CustomBasemapDialog } from "@/components/map/controls/CustomBasemapDialog";
 import Scalebar from "@/components/map/controls/Scalebar";
 import { UserLocation } from "@/components/map/controls/UserLocation";
+import { Compass } from "@/components/map/controls/Compass";
+import { ViewControl } from "@/components/map/controls/ViewControl";
 import { Zoom } from "@/components/map/controls/Zoom";
 import SearchControl from "@/components/map/controls/search/SearchControl";
 import { usePublicSearchSource } from "@/components/map/controls/search/publicSearchLayers";
 import type { PublicProjectLayoutProps } from "@/components/map/layouts/desktop/PublicProjectLayout";
+import { featureSwatchIcon } from "@/components/map/legend/StyleLegend";
 import PropertiesPanel from "@/components/map/panels/properties/Properties";
-import { buildLayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
-import { seedPopupFromInteraction } from "@/components/map/panels/style/popup/seedFromLegacy";
 import SimpleLayerStyle from "@/components/map/panels/style/SimpleLayerStyle";
 import { PopupContent } from "@/components/map/popover/MapFeaturePopover";
-import { normalizePopup } from "@/components/map/popover/normalizePopup";
-import { findPopupLayer } from "@/components/map/popover/popupVisibility";
+import { layerPopup } from "@/components/map/popover/normalizePopup";
+import { findPopupLayer, popupFields, popupFieldsLayerId } from "@/components/map/popover/popupVisibility";
 
 // --- Constants ---
 // Height of the puller strip above the drawer paper. In the default dashboard
@@ -167,7 +170,7 @@ const MobileProjectLayout = ({
   useDashboardLanguageOverride(_project?.builder_config?.settings?.language, viewOnly);
 
   // Layer style change hook
-  const { handleStyleChange } = useLayerStyleChange(projectLayers, viewOnly);
+  const { onOpacityChange, onStyleChange } = useLayerStyleChange(_project?.id, viewOnly);
   const project = useMemo(() => {
     const parsedProject = projectSchema.safeParse(_project);
     if (parsedProject.success) {
@@ -182,10 +185,8 @@ const MobileProjectLayout = ({
     source: searchSource,
     layersById: searchLayersById,
     placeholder: searchPlaceholder,
-  } = usePublicSearchSource(
-    project,
-    projectLayers
-  );
+    // The rows here are the published map's layers, with their styles.
+  } = usePublicSearchSource(project, projectLayers as MapLayer[]);
 
   // --- State ---
   const [open, setOpen] = useState(false); // Drawer open/closed state
@@ -215,32 +216,25 @@ const MobileProjectLayout = ({
   // Mirrors the resolution used by `MapViewer` / `MapFixedPopupSlot`:
   //  - resolve the owning layer by the clicked ProjectLayer's own id (the
   //    same dataset can back several project layers), dataset id as fallback
-  //  - prefer the new `popup` block on the layer
-  //  - fall back to a default seeded from the legacy `interaction`
-  // Layers without either still get a sensible "show all fields"
-  // popup courtesy of seedPopupFromInteraction.
+  //  - the popup is the layer's style's (the rows here are the published
+  //    map's layers, with their styles)
   const clickedPopupLayer = useMemo(
     () => findPopupLayer(layerInfo?.layerId, projectLayers, layerInfo?.projectLayerId),
     [layerInfo?.layerId, layerInfo?.projectLayerId, projectLayers],
   );
-  const activePopupConfig = useMemo<PopupProperties | undefined>(() => {
-    if (!clickedPopupLayer) return undefined;
-    const props = clickedPopupLayer.properties as
-      | {
-          popup?: PopupProperties;
-          interaction?: { type?: string; content?: never[] };
-        }
-      | undefined;
-    if (props?.popup) return normalizePopup(props.popup);
-    return normalizePopup(seedPopupFromInteraction(props?.interaction));
-  }, [clickedPopupLayer]);
+  const activePopupConfig = useMemo(
+    () =>
+      layerInfo?.popup ??
+      layerPopup(clickedPopupLayer as ViewLayer | undefined, layerInfo?.featureProperties, { t }),
+    [clickedPopupLayer, layerInfo?.popup, layerInfo?.featureProperties, t]
+  );
   // Layer-style icon for the popup header (same look as the Layers panel
   // and the desktop popup).
   const clickedFeatureProperties = (layerInfo?.featureProperties ??
     layerInfo?.properties) as Record<string, unknown> | undefined;
   const clickedPopupLayerIcon = useMemo(
-    () => buildLayerIcon(clickedPopupLayer, clickedFeatureProperties),
-    [clickedPopupLayer, clickedFeatureProperties],
+    () => featureSwatchIcon(clickedPopupLayer as ViewLayer | undefined, clickedFeatureProperties),
+    [clickedPopupLayer, clickedFeatureProperties]
   );
 
   // --- Hooks ---
@@ -334,7 +328,7 @@ const MobileProjectLayout = ({
   const searchCameraAnimatingRef = useRef(false);
   useEffect(() => {
     if (!map) return;
-    const handleMoveStart = (event: { searchSelection?: boolean }) => {
+    const handleMoveStart = (event: MapMovementEvent & { searchSelection?: boolean }) => {
       if (event.searchSelection) {
         searchCameraAnimatingRef.current = true;
       }
@@ -570,6 +564,8 @@ const MobileProjectLayout = ({
             {project && hasControl("project_info") && (
               <ProjectInfo project={project} viewOnly={viewOnly} onProjectUpdate={onProjectUpdate} />
             )}
+            <Compass />
+            {hasControl("view") && <ViewControl showSky={false} />}
             {hasControl("zoom_controls") && (
               <Zoom tooltipZoomIn={t("zoom_in")} tooltipZoomOut={t("zoom_out")} />
             )}
@@ -710,7 +706,8 @@ const MobileProjectLayout = ({
                 // Force re-mount when the clicked feature changes so the
                 // block list refreshes against the new feature properties.
                 key={highlightedFeature?.id ?? layerInfo.title ?? v4()}
-                layerId={layerInfo.layerId ?? ""}
+                layerId={popupFieldsLayerId(layerInfo.layerId, clickedPopupLayer)}
+                fields={popupFields(clickedPopupLayer, layerInfo.featureProperties ?? layerInfo.properties)}
                 popup={activePopupConfig}
                 properties={
                   (layerInfo.featureProperties ??
@@ -770,10 +767,14 @@ const MobileProjectLayout = ({
                   gap: 2,
                 }}>
                 {activeRightPanel === MapSidebarItemID.PROPERTIES && (
-                  <PropertiesPanel activeLayer={activeLayer} />
+                  <PropertiesPanel activeLayer={activeLayer} showFields={false} />
                 )}
                 {activeRightPanel === MapSidebarItemID.STYLE && (
-                  <SimpleLayerStyle activeLayer={activeLayer} onStyleChange={handleStyleChange} />
+                  <SimpleLayerStyle
+                    layer={activeLayer as MapLayer}
+                    onOpacityChange={onOpacityChange}
+                    onStyleChange={onStyleChange}
+                  />
                 )}
               </Box>
             )}

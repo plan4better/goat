@@ -44,11 +44,6 @@ export enum LayerStyleActions {
   SAVE_AS_DEFAULT = "saveAsDefault",
 }
 
-export enum FilterExpressionActions {
-  DELETE = "delete",
-  DUPLICATE = "duplicate",
-}
-
 export type ResponseResult = {
   message: string;
   status?: "error" | "success";

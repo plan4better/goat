@@ -2,6 +2,24 @@ import * as z from "zod";
 
 import type { ToolNodeData } from "@/lib/validations/workflow";
 
+// One piece of the area as it was chosen: regions, a point with its radius, a polygon's corners or the map view's box.
+const areaPieceChoice = [
+  z.object({
+    kind: z.literal("region"),
+    nutsIds: z.array(z.string()),
+    names: z.record(z.string()).optional(),
+  }),
+  z.object({
+    kind: z.literal("point"),
+    lng: z.number(),
+    lat: z.number(),
+    km: z.number(),
+    label: z.string().optional(),
+  }),
+  z.object({ kind: z.literal("polygon"), ring: z.array(z.tuple([z.number(), z.number()])) }),
+  z.object({ kind: z.literal("view"), bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]) }),
+] as const;
+
 // Keys match what the workflow runner reads; params never carry user_id, project_id or folder_id.
 export const datasetConnectionSchema = z.object({
   processId: z.literal("fetch_data"),
@@ -9,28 +27,26 @@ export const datasetConnectionSchema = z.object({
   summary: z.string(),
   geometryType: z.string(),
   fields: z.array(z.object({ name: z.string(), type: z.string() })),
-  // How the area was chosen, so the dialog reopens on it; the runner reads only params.
+  // How the area was chosen, so the dialog reopens on it; the runner reads only params. An area of one piece is kept
+  // as that piece, as before an area had pieces; one of several as their list.
   areaChoice: z
     .discriminatedUnion("kind", [
+      ...areaPieceChoice,
       z.object({
-        kind: z.literal("region"),
-        nutsIds: z.array(z.string()),
-        names: z.record(z.string()).optional(),
+        kind: z.literal("pieces"),
+        pieces: z.array(z.discriminatedUnion("kind", [...areaPieceChoice])),
       }),
-      z.object({
-        kind: z.literal("point"),
-        lng: z.number(),
-        lat: z.number(),
-        km: z.number(),
-        label: z.string().optional(),
-      }),
-      z.object({ kind: z.literal("polygon"), ring: z.array(z.tuple([z.number(), z.number()])) }),
-      z.object({ kind: z.literal("view"), bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]) }),
     ])
     .optional(),
 });
 
 export type DatasetConnection = z.infer<typeof datasetConnectionSchema>;
+export type AreaChoiceSaved = NonNullable<DatasetConnection["areaChoice"]>;
+export type AreaPieceChoice = Exclude<AreaChoiceSaved, { kind: "pieces" }>;
+
+/** The pieces a saved choice is made of: one for a choice of one piece. */
+export const choicePieces = (choice: AreaChoiceSaved): AreaPieceChoice[] =>
+  choice.kind === "pieces" ? choice.pieces : [choice];
 
 export const INTEGRATE_PROCESS_ID = "fetch_data";
 

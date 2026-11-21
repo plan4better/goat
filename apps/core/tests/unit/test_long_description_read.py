@@ -30,7 +30,6 @@ def _project_layer(description: str) -> dict:
         "type": "feature",
         "feature_layer_type": "standard",
         "feature_layer_geometry_type": "polygon",
-        "properties": {"visibility": True},
     }
 
 

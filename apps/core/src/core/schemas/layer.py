@@ -70,15 +70,6 @@ class LayerReadBaseAttributes(BaseModel):
     owned_by: Dict[str, Any] | None = Field(None, description="User ID of the owner")
 
 
-class LayerProperties(BaseModel):
-    """Base model for layer properties."""
-
-    type: str = Field(..., description="Mapbox style type", max_length=500)
-    paint: Dict[str, Any] = Field(
-        ..., description="Paint of the mapbox style of the layer"
-    )
-
-
 ################################################################################
 # External service DTOs
 ################################################################################
@@ -206,35 +197,14 @@ class FeatureReadBaseAttributes(
         ..., description="Feature layer geometry type"
     )
     size: int | None = Field(None, description="Size of the layer in bytes")
-    properties: Dict[str, Any] = Field(
-        default_factory=dict, description="Layer properties."
-    )
-
-    @field_validator("properties", mode="before")
-    @classmethod
-    def properties_default(
-        cls: type["FeatureReadBaseAttributes"], v: Dict[str, Any] | None
-    ) -> Dict[str, Any]:
-        """Ensure properties is never None."""
-        return v if v is not None else {}
 
 
 class FeatureUpdateBase(LayerBase, GeospatialAttributes):
-    """Base model for feature layer updates."""
-
-    properties: Dict[str, Any] | None = Field(None, description="Layer properties.")
+    """Base model for feature layer updates. A layer's style is its default style
+    row (`PUT /layer/{id}/style`), never part of these."""
 
 
 feature_layer_update_base_example = {
-    "properties": [
-        "match",
-        ["get", "category"],
-        ["forest"],
-        "hsl(137, 37%, 30%)",
-        ["park"],
-        "hsl(135, 100%, 100%)",
-        "#000000",
-    ],
     "size": 1000,
 }
 
@@ -306,84 +276,10 @@ class IFeatureStreetNetworkUpdate(IFeatureStandardUpdate):
 ################################################################################
 
 
-# Raster Style Property Classes
-class RasterStyleImageProperties(BaseModel):
-    """Properties for simple image raster style."""
-
-    style_type: Literal["image"] = Field("image", description="Style type identifier")
-    band: int = Field(1, ge=1, description="Band number to display (1-indexed)")
-    opacity: float = Field(1.0, ge=0.0, le=1.0, description="Layer opacity")
-    brightness: float = Field(1.0, ge=0.0, le=2.0, description="Brightness adjustment")
-    contrast: float = Field(0.0, ge=-1.0, le=1.0, description="Contrast adjustment")
-    saturation: float = Field(0.0, ge=-1.0, le=1.0, description="Saturation adjustment")
-    gamma: float = Field(1.0, ge=0.1, le=3.0, description="Gamma correction")
-
-
-class RasterStyleColorRangeProperties(BaseModel):
-    """Properties for color range raster style."""
-
-    style_type: Literal["color_range"] = Field(
-        "color_range", description="Style type identifier"
-    )
-    band: int = Field(1, ge=1, description="Band number to colorize (1-indexed)")
-    min_value: float = Field(..., description="Minimum value for color range")
-    max_value: float = Field(..., description="Maximum value for color range")
-    colors: List[str] = Field(
-        ..., min_length=2, description="Array of hex color codes for gradient"
-    )
-    color_map: List[tuple[float, str]] = Field(
-        default_factory=list, description="Custom color stops as (value, color) pairs"
-    )
-    no_data_color: str | None = Field(
-        "transparent", description="Color for no-data values"
-    )
-    interpolate: bool = Field(True, description="Whether to interpolate between colors")
-
-
-class RasterStyleCategoriesProperties(BaseModel):
-    """Properties for categorical raster style."""
-
-    style_type: Literal["categories"] = Field(
-        "categories", description="Style type identifier"
-    )
-    band: int = Field(1, ge=1, description="Band number to categorize (1-indexed)")
-    categories: List[Dict[str, Any]] = Field(
-        ...,
-        min_length=1,
-        description="Array of category definitions with value, color, and optional label",
-    )
-    default_color: str = Field(
-        "#cccccc", description="Default color for uncategorized values"
-    )
-    no_data_color: str | None = Field(
-        "transparent", description="Color for no-data values"
-    )
-
-
-class RasterStyleHillshadeProperties(BaseModel):
-    """Properties for hillshade raster style."""
-
-    style_type: Literal["hillshade"] = Field(
-        "hillshade", description="Style type identifier"
-    )
-    band: int = Field(1, ge=1, description="Band number for elevation data (1-indexed)")
-    azimuth: float = Field(
-        315.0, ge=0.0, le=360.0, description="Light source azimuth angle in degrees"
-    )
-    altitude: float = Field(
-        45.0, ge=0.0, le=90.0, description="Light source altitude angle in degrees"
-    )
-    z_factor: float = Field(1.0, ge=0.01, description="Vertical exaggeration factor")
-    opacity: float = Field(1.0, ge=0.0, le=1.0, description="Layer opacity")
-
-
 class RasterAttributesBase(ExternalServiceAttributesBase):
     """Base model for attributes pertaining to an external service providing a raster."""
 
     type: LayerType = Field(..., description="Layer type")
-    properties: Dict[str, Any] | None = Field(
-        {"visibility": True}, description="Layer properties."
-    )
 
     pass
 
@@ -391,10 +287,6 @@ class RasterAttributesBase(ExternalServiceAttributesBase):
 imagery_layer_attributes_example = {
     "url": "https://geodata.nationaalgeoregister.nl/luchtfoto/rgb/wms?request=GetCapabilities&service=WMS",
     "data_type": "wms",
-    "properties": {
-        "type": "raster",
-        "paint": {"raster-opacity": 1},
-    },
     "other_properties": {
         "layers": ["Actueel_ortho25"],
         "width": 256,
@@ -441,7 +333,6 @@ class IRasterUpdate(LayerBase, GeospatialAttributes):
     """Model to update a raster layer."""
 
     url: str | None = Field(None, description="Layer URL")
-    properties: Dict[str, Any] | None = Field(None, description="Layer properties.")
     other_properties: ExternalServiceOtherProperties | None = Field(
         None, description="Additional layer properties."
     )
@@ -461,18 +352,6 @@ class IRasterUpdate(LayerBase, GeospatialAttributes):
 
 imagery_layer_update_base_example = {
     "url": "https://geodata.nationaalgeoregister.nl/luchtfoto/rgb/wms?request=GetCapabilities&service=WMS",
-    "properties": {
-        "type": "raster",
-        "paint": {"raster-opacity": 0.5},
-        "layers": ["Actueel_ortho25"],
-        "width": 256,
-        "height": 256,
-        "srs": "EPSG:3857",
-        "legend_urls": [
-            "https://geodata.nationaalgeoregister.nl/luchtfoto/rgb/wms?request=GetLegendGraphic&service=WMS&layer=Actueel_ortho25&format=image/png&width=20&height=20",
-            "https://geodata.nationaalgeoregister.nl/luchtfoto/rgb/wms?request=GetLegendGraphic&service=WMS&layer=Actueel_ortho25&format=image/png&width=20&height=20",
-        ],
-    },
 }
 
 ################################################################################

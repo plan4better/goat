@@ -2,6 +2,8 @@
 
 import React, { type ReactNode, createContext, useContext, useMemo, useRef } from "react";
 
+import type { LayerStyle } from "@/lib/style/generated/types";
+
 export type NodeExecutionStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
 export interface NodeExecutionInfo {
@@ -16,7 +18,7 @@ interface WorkflowExecutionContextValue {
   nodeExecutionInfo: Record<string, NodeExecutionInfo>;
   tempLayerIds: Record<string, string>;
   exportedLayerIds: Record<string, string>;
-  tempLayerProperties: Record<string, Record<string, unknown>>;
+  tempLayerStyles: Record<string, LayerStyle>;
   onSaveNode?: (nodeId: string, layerName?: string) => Promise<string | null>;
 }
 
@@ -26,7 +28,7 @@ const WorkflowExecutionContext = createContext<WorkflowExecutionContextValue>({
   nodeExecutionInfo: {},
   tempLayerIds: {},
   exportedLayerIds: {},
-  tempLayerProperties: {},
+  tempLayerStyles: {},
 });
 
 export interface WorkflowExecutionProviderProps {
@@ -36,7 +38,7 @@ export interface WorkflowExecutionProviderProps {
   nodeExecutionInfo: Record<string, NodeExecutionInfo>;
   tempLayerIds: Record<string, string>;
   exportedLayerIds: Record<string, string>;
-  tempLayerProperties: Record<string, Record<string, unknown>>;
+  tempLayerStyles: Record<string, LayerStyle>;
   onSaveNode?: (nodeId: string, layerName?: string) => Promise<string | null>;
 }
 
@@ -66,14 +68,14 @@ export const WorkflowExecutionProvider: React.FC<WorkflowExecutionProviderProps>
   nodeExecutionInfo,
   tempLayerIds,
   exportedLayerIds,
-  tempLayerProperties,
+  tempLayerStyles,
   onSaveNode,
 }) => {
   const stableNodeStatuses = useStableRecord(nodeStatuses);
   const stableNodeExecutionInfo = useStableRecord(nodeExecutionInfo);
   const stableTempLayerIds = useStableRecord(tempLayerIds);
   const stableExportedLayerIds = useStableRecord(exportedLayerIds);
-  const stableTempLayerProperties = useStableRecord(tempLayerProperties);
+  const stableTempLayerStyles = useStableRecord(tempLayerStyles);
 
   const value = useMemo(
     () => ({
@@ -82,10 +84,10 @@ export const WorkflowExecutionProvider: React.FC<WorkflowExecutionProviderProps>
       nodeExecutionInfo: stableNodeExecutionInfo,
       tempLayerIds: stableTempLayerIds,
       exportedLayerIds: stableExportedLayerIds,
-      tempLayerProperties: stableTempLayerProperties,
+      tempLayerStyles: stableTempLayerStyles,
       onSaveNode,
     }),
-    [isExecuting, stableNodeStatuses, stableNodeExecutionInfo, stableTempLayerIds, stableExportedLayerIds, stableTempLayerProperties, onSaveNode]
+    [isExecuting, stableNodeStatuses, stableNodeExecutionInfo, stableTempLayerIds, stableExportedLayerIds, stableTempLayerStyles, onSaveNode]
   );
 
   return (

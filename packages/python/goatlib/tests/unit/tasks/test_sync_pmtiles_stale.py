@@ -16,13 +16,16 @@ from types import SimpleNamespace
 import duckdb
 import manby
 import pytest
-from goatlib.io.pmtiles import MANBY_MARKER, PMTilesGenerator
+from goatlib.io.pmtiles import MANBY_MARKER, MANBY_RECIPES, PMTilesGenerator
 from goatlib.tasks.sync_pmtiles import LayerInfo, PMTilesSyncParams, PMTilesSyncTask
 
 LAYER = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 SNAPSHOT = 7
 POINT = "ST_Point(7.6, 47.5)"
 POLYGON = "ST_GeomFromText('POLYGON((7.5 47.5, 7.6 47.5, 7.6 47.6, 7.5 47.5))')"
+LINE = "ST_GeomFromText('LINESTRING(7.5 47.5, 7.6 47.6)')"
+# What every manby build recorded before each recipe had a version of its own
+FIRST_RECIPE = {"tiler": "manby", "recipe": 1}
 
 
 class _Manager:
@@ -116,6 +119,23 @@ def _sync(task: PMTilesSyncTask, **params: object) -> dict:
     return task.run(PMTilesSyncParams(**params))
 
 
+def _first_recipe_tileset(
+    path: Path, geometry: str, layer: str = "default", snapshot_id: int | None = None
+) -> None:
+    """Tiles of `geometry` as manby built them with the first recipe."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    description = FIRST_RECIPE
+    if snapshot_id is not None:
+        description = {"snapshot_id": snapshot_id, **description}
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    flags = ["-z5", "-l", layer, f"--description={json.dumps(description)}"]
+    if layer == "default_anchor":
+        flags.append("--convert-polygons-to-label-points")
+    manby.tile(con.sql(f"SELECT {geometry} AS geometry"), path, *flags)
+    con.close()
+
+
 # =====================================================================
 #  DuckLake layers
 # =====================================================================
@@ -200,6 +220,45 @@ def test_a_polygon_run_rebuilds_old_tiles_that_have_anchors(
     stats = _sync(task, geometry_type_filter="polygon")
 
     assert stats["stale"] == 1 and stats["generated"] == 1
+
+
+def test_a_new_point_recipe_rebuilds_point_layers_only(
+    task: PMTilesSyncTask,
+    con: duckdb.DuckDBPyConnection,
+    dirs: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point, line, polygon = (
+        f"00000000-0000-0000-0000-00000000000{n}" for n in range(1, 4)
+    )
+    layers = [
+        _ducklake_layer(con, POINT, point),
+        _ducklake_layer(con, LINE, line),
+        _ducklake_layer(con, POLYGON, polygon),
+    ]
+    monkeypatch.setattr(task, "get_geometry_layers", lambda **_: layers)
+    for layer, geometry in zip(layers, (POINT, LINE, POLYGON)):
+        path = dirs.tiles / f"{layer.table_name}.pmtiles"
+        _first_recipe_tileset(path, geometry, snapshot_id=SNAPSHOT)
+    _first_recipe_tileset(
+        dirs.tiles / f"{layers[2].table_name}_anchor.pmtiles",
+        POLYGON,
+        "default_anchor",
+        SNAPSHOT,
+    )
+
+    stats = _sync(task, layers="ducklake")
+
+    assert stats["stale"] == 1 and stats["in_sync"] == 2
+    assert stats["generated"] == 1
+    generator = PMTilesGenerator(tiles_data_dir=dirs.tiles)
+    recipes = {
+        layer.layer_id: generator.read_marker(
+            dirs.tiles / f"{layer.table_name}.pmtiles"
+        )["recipe"]
+        for layer in layers
+    }
+    assert recipes == {point: MANBY_RECIPES["points"], line: 1, polygon: 1}
 
 
 # =====================================================================
@@ -308,3 +367,25 @@ def test_ducklake_filters_leave_the_catalog_layers_out(
     monkeypatch.setattr(task, "_promoted_layer_ids", listed)
 
     assert _sync(task, **narrowing)["total_layers"] == 0
+
+
+def test_a_new_point_recipe_rebuilds_point_catalog_layers_only(
+    task: PMTilesSyncTask,
+    dirs: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point, line = (f"00000000-0000-0000-0000-00000000000{n}" for n in range(1, 3))
+    _catalog_parquet(dirs, point)
+    _catalog_parquet(dirs, line, columns=f"1 AS n, {LINE} AS geom")
+    monkeypatch.setattr(task, "_promoted_layer_ids", lambda: [point, line])
+    _first_recipe_tileset(_catalog_tiles(dirs, point), POINT)
+    _first_recipe_tileset(_catalog_tiles(dirs, line), LINE)
+
+    stats = _sync(task, layers="catalog")
+
+    assert stats["stale"] == 1 and stats["in_sync"] == 1
+    assert stats["generated"] == 1
+    generator = PMTilesGenerator(tiles_data_dir=dirs.catalog_tiles)
+    point_marker = generator.read_marker(_catalog_tiles(dirs, point))
+    assert point_marker["recipe"] == MANBY_RECIPES["points"]
+    assert generator.read_marker(_catalog_tiles(dirs, line))["recipe"] == 1

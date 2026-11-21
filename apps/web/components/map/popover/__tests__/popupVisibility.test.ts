@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   findPopupLayer,
   layerHighlightsActiveFeature,
+  popupFields,
+  popupFieldsLayerId,
   shouldClosePopupForHiddenLayer,
   shouldHighlightActivePopupFeature,
 } from "../popupVisibility";
@@ -12,7 +14,7 @@ import {
 const projectLayer = (over: Partial<Record<string, unknown>> = {}) => ({
   id: 42,
   layer_id: "dataset-abc",
-  properties: { visibility: true },
+  visible: true,
   ...over,
 });
 
@@ -23,7 +25,7 @@ describe("findPopupLayer", () => {
   });
 
   it("matches on stringified id (plain Layer)", () => {
-    const layers = [{ id: 7, properties: { visibility: true } }];
+    const layers = [{ id: 7, visible: true }];
     expect(findPopupLayer("7", layers)).toBe(layers[0]);
   });
 
@@ -53,9 +55,41 @@ describe("findPopupLayer", () => {
   });
 });
 
+describe("popupFields", () => {
+  it("a raster layer's popup formats its cell's values as numbers in the reader's language", () => {
+    const raster = { ...projectLayer(), type: "raster" };
+    expect(popupFields(raster, { value: 65.93717, class: "Wald", band_1: 65.93717, band_12: 3 })).toEqual([
+      { name: "value", type: "number", format: "none" },
+      { name: "band_1", type: "number", format: "none" },
+      { name: "band_12", type: "number", format: "none" },
+    ]);
+  });
+
+  it("a feature layer's popup takes its fields from its dataset", () => {
+    expect(popupFields({ ...projectLayer(), type: "feature" }, { value: 1 })).toBeUndefined();
+    expect(popupFields(undefined, { value: 1 })).toBeUndefined();
+  });
+});
+
+describe("popupFieldsLayerId", () => {
+  it("a feature layer's popup formats its values by the dataset's fields", () => {
+    expect(popupFieldsLayerId("dataset-abc", { ...projectLayer(), type: "feature" })).toBe("dataset-abc");
+    expect(popupFieldsLayerId("dataset-abc", { ...projectLayer(), type: "table" })).toBe("dataset-abc");
+  });
+
+  it("a raster layer's popup asks for no fields: a file's cell values are no dataset's columns", () => {
+    expect(popupFieldsLayerId("dataset-abc", { ...projectLayer(), type: "raster" })).toBeUndefined();
+  });
+
+  it("a popup whose layer is not found keeps its dataset", () => {
+    expect(popupFieldsLayerId("dataset-abc", undefined)).toBe("dataset-abc");
+    expect(popupFieldsLayerId(undefined, undefined)).toBeUndefined();
+  });
+});
+
 describe("shouldClosePopupForHiddenLayer", () => {
-  it("closes when the owning layer's visibility is toggled off", () => {
-    const layers = [projectLayer({ properties: { visibility: false } })];
+  it("closes when the owning layer is hidden", () => {
+    const layers = [projectLayer({ visible: false })];
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers)).toBe(true);
   });
 
@@ -63,8 +97,8 @@ describe("shouldClosePopupForHiddenLayer", () => {
     expect(shouldClosePopupForHiddenLayer("dataset-abc", [projectLayer()])).toBe(false);
   });
 
-  it("treats a missing visibility flag as visible (default true)", () => {
-    const layers = [projectLayer({ properties: {} })];
+  it("treats a missing visible flag as drawn", () => {
+    const layers = [projectLayer({ visible: undefined })];
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers)).toBe(false);
   });
 
@@ -81,13 +115,22 @@ describe("shouldClosePopupForHiddenLayer", () => {
   });
 
   it("tracks the clicked twin's visibility when the dataset backs multiple project layers", () => {
-    const hiddenTwin = projectLayer({ id: 9, properties: { visibility: false } });
+    const hiddenTwin = projectLayer({ id: 9, visible: false });
     const visibleTwin = projectLayer({ id: 23 });
     const layers = [hiddenTwin, visibleTwin];
     // Popup opened on the visible twin: the hidden sibling must not close it.
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers, "23")).toBe(false);
     // Popup opened on the hidden twin: close even though a visible sibling exists.
     expect(shouldClosePopupForHiddenLayer("dataset-abc", layers, "9")).toBe(true);
+  });
+});
+
+describe("shouldClosePopupForHiddenLayer on map layers", () => {
+  it("closes when the map layer is not drawn (its own or a group's visibility)", () => {
+    const hidden = { id: 42, layer_id: "dataset-abc", visible: false };
+    expect(shouldClosePopupForHiddenLayer("dataset-abc", [hidden], "42")).toBe(true);
+    expect(shouldClosePopupForHiddenLayer("dataset-abc", [{ ...hidden, visible: true }], "42")).toBe(false);
+    expect(findPopupLayer("dataset-abc", [{ ...hidden, layer_id: null }], "42")?.id).toBe(42);
   });
 });
 

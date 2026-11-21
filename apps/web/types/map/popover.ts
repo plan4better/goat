@@ -1,4 +1,4 @@
-import type { Layer } from "@/lib/validations/layer";
+import type { Layer, PopupProperties } from "@/lib/validations/layer";
 import type { FormatNumberTypes } from "@/lib/validations/common";
 import type { MapGeoJSONFeature } from "react-map-gl/maplibre";
 
@@ -67,6 +67,8 @@ export interface MapPopoverInfoProps {
    * hover popups are transient and the pulse animation reads too loud.
    */
   triggeredBy?: "click" | "hover";
+  /** The popup shown instead of the layer's own: a hexagon's (lib/style/h3Popup.ts). */
+  popup?: PopupProperties;
   onClose: () => void;
 }
 

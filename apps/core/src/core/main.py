@@ -107,8 +107,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # The web app names a downloaded export (CSV) from this header.
-    expose_headers=["Content-Disposition"],
+    # The web app runs on another origin: it reads the map request's ETag to ask with If-None-Match,
+    # and names a downloaded export (CSV) from Content-Disposition.
+    expose_headers=["ETag", "Content-Disposition"],
     # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
     max_age=7200,
 )

@@ -26,11 +26,13 @@ from goatlib.storage.ducklake import (
 from goatlib.storage.pin_errors import is_pin_miss_error
 from goatlib.storage.query_builder import (
     QueryFilters,
+    UnreadableFilterError,
     build_bbox_filter,
     build_cql_filter,
     build_filters,
     build_id_filter,
     build_order_clause,
+    checked_cql_filter,
 )
 from goatlib.storage.snapshot_pin import SnapshotPin
 
@@ -53,11 +55,13 @@ __all__ = [
     "parse_cql2_filter",
     # Query Builder
     "QueryFilters",
+    "UnreadableFilterError",
     "build_bbox_filter",
     "build_cql_filter",
     "build_filters",
     "build_id_filter",
     "build_order_clause",
+    "checked_cql_filter",
     # Snapshot Pin
     "SnapshotPin",
     "is_pin_miss_error",

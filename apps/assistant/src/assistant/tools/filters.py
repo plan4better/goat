@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
+from goatlib.filter.limits import TABLE
 from pydantic import BaseModel, ConfigDict, Field, WithJsonSchema, model_validator
 
 from assistant.tools.runtime import InputInvalid
@@ -30,6 +31,42 @@ FILTERABLE_KINDS = frozenset({"string", "number", "integer", "boolean", "date-ti
 _CQL_OPS = {"=": "=", "!=": "<>", "<": "<", "<=": "<=", ">": ">", ">=": ">="}
 _ORDERING = {"<", "<=", ">", ">="}
 _CONDITION_KEYS = frozenset({"field", "op", "value"})
+
+#: The operators that name a row of the web's filter panel, by the row's name in
+#: goatlib's operator table (`goatlib/filter/data/operators.json`).
+_PANEL_ROWS: dict[str, str] = {
+    "=": "is",
+    "!=": "is_not",
+    "<": "is_less_than",
+    "<=": "is_at_most",
+    ">": "is_greater_than",
+    ">=": "is_at_least",
+    "in": "includes",
+    "contains": "contains_the_text",
+    "is_null": "is_blank",
+    "is_not_null": "is_not_blank",
+}
+
+
+def _from_panel(kind: str) -> frozenset[str]:
+    rows = TABLE["operators"][kind]
+    return frozenset(op for op, row in _PANEL_ROWS.items() if row in rows)
+
+
+#: The operators each field kind takes. Text and numbers take those goatlib's
+#: table gives their rows; "like" (any pattern) has no row but the services and
+#: the checker read it. The panel names the conditions on true or false and on
+#: dates differently ("is true", "is on"), so those two keep their own lists:
+#: everything but text matching, and for true or false no order.
+OPERATORS: dict[str, frozenset[str]] = {
+    "string": _from_panel("string") | {"like"},
+    "number": _from_panel("number"),
+    "integer": _from_panel("integer"),
+    "boolean": frozenset({"=", "!=", "in", "is_null", "is_not_null"}),
+    "date-time": frozenset(
+        {"=", "!=", "<", "<=", ">", ">=", "in", "is_null", "is_not_null"}
+    ),
+}
 _FILTER_KEYS = frozenset({"match", "conditions"})
 
 #: One valid condition. Models tend to write ``{"field": "speed", ">=": 0.2}``,
@@ -96,7 +133,8 @@ class Condition(BaseModel):
     op: Op = Field(
         description=(
             "'like': case-insensitive, % as wildcard; 'contains': the text "
-            "anywhere, case-insensitive; is_null and is_not_null take no value."
+            "anywhere, case-insensitive; is_null and is_not_null take no value; "
+            "'!=' keeps the features without a value."
         )
     )
     # Typed for validation; the model sees one line instead of six alternatives,
@@ -251,10 +289,19 @@ def _condition(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any
         return {"op": "like", "args": [prop, condition.value]}
     if condition.op in _ORDERING and kind == "boolean":
         raise InputInvalid(f"Field {condition.field!r} is true or false; use = or !=.")
-    return {
-        "op": _CQL_OPS[condition.op],
-        "args": [prop, _typed(condition.field, kind, condition.value)],
-    }
+    if condition.op not in OPERATORS[kind]:
+        raise InputInvalid(
+            f"Operator {condition.op!r} does not apply to {condition.field!r} "
+            f"({kind}); use one of {', '.join(sorted(OPERATORS[kind]))}."
+        )
+    value = _typed(condition.field, kind, condition.value)
+    comparison = {"op": _CQL_OPS[condition.op], "args": [prop, value]}
+    if condition.op == "!=" and value != "":
+        # Every negation keeps the features without a value, as the web's
+        # filter writes it: `x <> v` alone is unknown, not true, where x is
+        # empty. `x <> ''` asks for a value and stays as it is.
+        return {"op": "or", "args": [comparison, {"op": "isNull", "args": [prop]}]}
+    return comparison
 
 
 def to_cql2(feature_filter: FeatureFilter, fields: Mapping[str, str]) -> dict[str, Any]:

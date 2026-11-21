@@ -25,6 +25,7 @@ from core.db.models.project import Project
 from core.db.models.report_layout import ReportLayout
 from core.db.models.workflow import Workflow
 from core.schemas.error import FolderNotFoundError
+from core.services.style import copy_styles
 from core.templates.snapshot import _rewrite_tool_configs
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,8 @@ async def copy_project(
         tags=copy.deepcopy(source_project.tags) if source_project.tags else None,
         layer_order=None,  # will be updated after links are created
         basemap=source_project.basemap,
+        locale=source_project.locale,
+        scene=copy.deepcopy(source_project.scene),
         custom_basemaps=copy.deepcopy(source_project.custom_basemaps)
         if source_project.custom_basemaps
         else [],
@@ -245,9 +248,8 @@ async def copy_project(
             project_id=new_project.id,
             name=source_group.name,
             order=source_group.order,
-            properties=copy.deepcopy(source_group.properties)
-            if source_group.properties
-            else None,
+            visible=source_group.visible,
+            expanded=source_group.expanded,
             parent_id=new_parent_id,
         )
         async_session.add(new_group)
@@ -320,9 +322,6 @@ async def copy_project(
             layer_project_group_id=new_group_id,
             order=source_link.order,
             name=source_link.name,
-            properties=copy.deepcopy(source_link.properties)
-            if source_link.properties
-            else None,
             other_properties=_copy_export_stamp(
                 source_link.other_properties,
                 layer_other_properties.get(source_link.layer_id),
@@ -343,6 +342,10 @@ async def copy_project(
 
         assert new_link.id is not None
         old_to_new_link_id[source_link.id] = new_link.id
+
+    # Every named style of every link, with the active one and the map state
+    # (spec 10), in one statement.
+    await copy_styles(async_session, list(old_to_new_link_id.items()))
 
     # ------------------------------------------------------------------
     # 8a. Point the copied workflows' dataset nodes at the copy's links

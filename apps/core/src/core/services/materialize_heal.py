@@ -22,7 +22,8 @@ The rules, and why each exists:
   document outlives the file when storage is lost or a database is restored
   without its files, and every tool and tile request on the layer then fails.
   The document cannot tell, so the endpoint looks (`copy_on_disk`, one `stat`)
-  for the layer types the job writes a parquet for; an unreadable directory
+  for the copy the job writes: a parquet for a vector or table layer, the
+  layer's stored raster file (a GeoTIFF) for a raster; an unreadable directory
   is "unknown", which trusts the document as before.
 * `ready` with `tiles: failed …` → re-enqueue. The data is served either way,
   but the PMTiles cache never gets rebuilt otherwise.
@@ -36,14 +37,17 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from goatlib.utils.layer import layer_id_to_table_name, stored_raster_file
+
 #: A queued job should have been picked up within this; older `pending` means
 #: the enqueue was lost.
 PENDING_REENQUEUE_AFTER = timedelta(minutes=2)
 #: Longer than any materialize we have seen; older `running` means the worker
 #: died. The trade-off is described in the module docstring.
 RUNNING_STALE_AFTER = timedelta(minutes=30)
-#: The layer types the job writes a parquet copy for (its `vector` handler).
-#: Any other type has no file to look for.
+#: The layer types the job writes a parquet copy for (its `vector` handler);
+#: for a raster it writes the layer's `stored_raster_file`. Any other type has
+#: no file to look for.
 PARQUET_LAYER_TYPES = frozenset({"feature", "table"})
 
 
@@ -59,19 +63,22 @@ class HealDecision:
 def copy_on_disk(
     layers_dir: Path, layer_id: UUID, layer_type: str | None
 ) -> bool | None:
-    """Whether the job's parquet copy of the layer exists, or None if unknown.
+    """Whether the job's copy of the layer exists, or None if unknown.
 
-    One `stat`. The file name is goatlib's `layer_id_to_table_name` plus
-    `.parquet`, spelled out here because that module needs libraries core's
-    image does not install. A missing directory counts as a missing file: the
-    job creates the directory with its first file, so storage that lost
+    One `stat`, of the file the job writes: goatlib's names for it, so core
+    looks where the job writes. A missing directory counts as a missing file:
+    the job creates the directory with its first file, so storage that lost
     everything has neither. Any other error (no permission, a stale network
     mount) is unknown, and an unknown file leaves the document's word standing.
     """
-    if layer_type not in PARQUET_LAYER_TYPES:
+    if layer_type == "raster":
+        copy = stored_raster_file(str(layer_id), layers_dir)
+    elif layer_type in PARQUET_LAYER_TYPES:
+        copy = layers_dir / f"{layer_id_to_table_name(str(layer_id))}.parquet"
+    else:
         return None
     try:
-        (layers_dir / f"t_{layer_id.hex}.parquet").stat()
+        copy.stat()
     except FileNotFoundError:
         return False
     except OSError:
