@@ -98,13 +98,17 @@ _DEFAULT_THUMBNAILS: dict[str, str | None] = {
 
 
 def _host_of(url: str | None) -> str | None:
-    """The host of a stored service address, or None; never the rest of it."""
+    """The host of a stored http(s) address, or None; never the rest of it.
+
+    A storage path (`s3://bucket/...`) or another scheme names no host: the web
+    reads a host as the web address a layer is drawn or copied from."""
     if not url:
         return None
     try:
-        return urlparse(url).hostname
+        parsed = urlparse(url)
     except ValueError:
         return None
+    return parsed.hostname if parsed.scheme.lower() in ("http", "https") else None
 
 
 def _thumbnail_url(resource_type: str, stored: str | None) -> str | None:

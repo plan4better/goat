@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import PropertiesPanel from "@/components/map/panels/properties/Properties";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    // A map service's kind is part of what its row says, so it is kept.
+    // A file's format and a map service's kind are part of what its row says, so they are kept.
     t: (key: string, options?: { kind?: string }) => (options?.kind ? `${key}:${options.kind}` : key),
     i18n: { exists: () => false, language: "en" },
   }),
@@ -37,7 +37,6 @@ afterEach(() => {
   data.queryables = undefined;
   data.featureCount = undefined;
   data.asked = { queryables: [], count: [] };
-  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
 });
 
 const CATALOG_ITEM = {
@@ -291,7 +290,6 @@ const remoteFile = (url: string, extra: Record<string, unknown> = {}) =>
   }) as never;
 
 const SIGNED = "https://example.org/b.tif?sig=x";
-const WMS_TEMPLATE = "https://example.org/geoserver/ows?SERVICE=WMS&BBOX={bbox-epsg-3857}";
 
 describe("PropertiesPanel origin", () => {
   it("says a raster file added by its address is a remote file, and gives the address", () => {
@@ -299,7 +297,7 @@ describe("PropertiesPanel origin", () => {
 
     const details = screen.getByRole("heading", { name: "details" }).closest("section") as HTMLElement;
     expect(within(details).getByText("source").parentElement).toBe(
-      within(details).getByText("metadata.source_remote_file").parentElement?.parentElement
+      within(details).getByText("metadata.source_remote_file:COG").parentElement?.parentElement
     );
     expect(within(details).getByRole("link").textContent).toBe("example.org/b.tif");
     // Where it comes from first, then its address, then the facts.
@@ -323,6 +321,21 @@ describe("PropertiesPanel origin", () => {
     expect(screen.getByText("address")).toBeDefined();
   });
 
+  it("says a WFS layer is a copy, and gives the service it was copied from", () => {
+    render(
+      <PropertiesPanel
+        activeLayer={featureLayer({
+          data_type: "wfs",
+          other_properties: { url: "https://www.wfs.nrw.de/geobasis/wfs_nw_alkis?SERVICE=WFS" },
+        })}
+      />
+    );
+
+    expect(screen.getByText("metadata.source_wfs_copy")).toBeDefined();
+    expect(screen.getByText("address")).toBeDefined();
+    expect(screen.getByText("www.wfs.nrw.de/…/wfs_nw_alkis")).toBeDefined();
+  });
+
   it("gives no source and no address for an uploaded layer", () => {
     render(<PropertiesPanel activeLayer={featureLayer()} />);
 
@@ -331,6 +344,8 @@ describe("PropertiesPanel origin", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 
+  // The address row itself (link, tooltip, copy, shortening) is tested with LayerAddress; here only that the panel
+  // hands it who may see the whole address.
   it("shows someone who may not edit the layer the address without its query string", () => {
     const { container } = render(<PropertiesPanel activeLayer={remoteFile(SIGNED)} />);
 
@@ -346,103 +361,6 @@ describe("PropertiesPanel origin", () => {
     const link = screen.getByRole("link");
     expect(link.textContent).toBe("example.org/b.tif?sig=x");
     expect(link.getAttribute("href")).toBe(SIGNED);
-  });
-
-  it("opens the address in a new tab, without handing it this page", () => {
-    render(<PropertiesPanel activeLayer={remoteFile(SIGNED)} />);
-
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")?.split(" ")).toEqual(expect.arrayContaining(["noopener", "noreferrer"]));
-  });
-
-  it("shows the full address on hover", async () => {
-    render(<PropertiesPanel activeLayer={remoteFile(SIGNED)} />);
-
-    fireEvent.mouseOver(screen.getByRole("link"));
-    expect((await screen.findByRole("tooltip")).textContent).toBe("https://example.org/b.tif");
-  });
-
-  it("shows the host and the file name in full, the folders between left out, wrapping where it must", () => {
-    render(
-      <PropertiesPanel
-        activeLayer={remoteFile("https://maplibre.org/maplibre-gl-js/docs/assets/cog.tif?sig=x")}
-      />
-    );
-
-    const link = screen.getByRole("link");
-    expect(link.textContent).toBe("maplibre.org/…/cog.tif");
-    expect(link.getAttribute("href")).toBe("https://maplibre.org/maplibre-gl-js/docs/assets/cog.tif");
-    // No ellipsis cuts it: a long host or file name wraps onto further lines.
-    expect(getComputedStyle(link.parentElement as HTMLElement).overflowWrap).toBe("anywhere");
-    expect(getComputedStyle(link).textOverflow).not.toBe("ellipsis");
-  });
-
-  it.each([
-    [false, "https://example.org/geoserver/ows"],
-    [true, WMS_TEMPLATE],
-  ])(
-    "shows a map service's address as text, not a link, without its query (editor: %s)",
-    async (canEdit, full) => {
-      const writeText = vi.fn().mockResolvedValue(undefined);
-      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-      render(
-        <PropertiesPanel activeLayer={remoteFile(WMS_TEMPLATE, { data_type: "wms" })} canEdit={canEdit} />
-      );
-
-      // A tile template or a GetMap request opens no useful page.
-      expect(screen.queryByRole("link")).toBeNull();
-      const text = screen.getByText("example.org/…/ows");
-      // Reachable by keyboard, so its tooltip opens there too.
-      expect(text.getAttribute("tabindex")).toBe("0");
-      // The whole address it may see is on hover and in the copy.
-      fireEvent.mouseOver(text);
-      expect((await screen.findByRole("tooltip")).textContent).toBe(full);
-      fireEvent.click(screen.getByRole("button", { name: "metadata.copy_address" }));
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(full));
-    }
-  );
-
-  it("shows a percent-encoded file name as it reads; the link and the copy keep the real address", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<PropertiesPanel activeLayer={remoteFile("https://example.org/data/My%20File.tif")} />);
-
-    const link = screen.getByRole("link");
-    expect(link.textContent).toBe("example.org/…/My File.tif");
-    expect(link.getAttribute("href")).toBe("https://example.org/data/My%20File.tif");
-    fireEvent.click(screen.getByRole("button", { name: "metadata.copy_address" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://example.org/data/My%20File.tif"));
-  });
-
-  it("never shows someone who may not edit the layer a user and password in the address", () => {
-    const { container } = render(
-      <PropertiesPanel activeLayer={remoteFile("https://reader:secret@example.org/b.tif")} />
-    );
-
-    expect(screen.getByRole("link").getAttribute("href")).toBe("https://example.org/b.tif");
-    expect(container.innerHTML).not.toContain("secret");
-  });
-
-  it("puts the copy button after the address, in the same line of text", () => {
-    render(<PropertiesPanel activeLayer={remoteFile(SIGNED)} />);
-
-    const link = screen.getByRole("link");
-    const copy = screen.getByRole("button", { name: "metadata.copy_address" });
-    expect(link.parentElement?.contains(copy)).toBe(true);
-    expect(link.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it.each([
-    [false, "https://example.org/b.tif"],
-    [true, SIGNED],
-  ])("copies the address that person is shown (editor: %s)", async (canEdit, copied) => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<PropertiesPanel activeLayer={remoteFile(SIGNED)} canEdit={canEdit} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "metadata.copy_address" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(copied));
   });
 
   it("gives a catalog layer no address, whatever it carries", () => {

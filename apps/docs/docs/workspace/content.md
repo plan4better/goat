@@ -180,7 +180,9 @@ A service that already publishes the data, such as a **Web Feature Service (WFS)
 Once added, a connected layer appears on this page like any other dataset, with two differences that show where its data comes from:
 
 - A **`Linked`** tag, meaning the layer is **drawn live from the external service** rather than stored in GOAT. Its content can change or disappear if the service does.
-- A **source line** showing the format and host, for example `WMS, linked from wms.nrw.de`. A **WFS** layer is imported as a copy into GOAT instead, and reads `Imported from WFS (wfs.nrw.de)`.
+- A **`Source`** in its `Details`, for example `Remote file (COG) · maplibre.org` or `Map service (WMS) · wms.nrw.de`: where the layer comes from, and its host. A **WFS** layer is imported as a copy into GOAT instead, and reads `Copied from WFS · wfs.nrw.de`.
+
+Opened, the dataset shows the same `Source` and its `Address`, with a button to copy it, as the layer's `Metadata` tab does on a map. The part of the address after a `?`, where a key or a signature may sit, is shown only to someone who may edit the dataset: in the opened dataset, its owner; on a map, the project's owner and editors, for their own datasets and those of the project's owner.
 
 ## Working with a dataset
 

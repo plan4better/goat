@@ -306,6 +306,20 @@ describe("StyleLegend", () => {
     expect(["Water", "Other"].map((text) => screen.getByText(text))).toHaveLength(2);
   });
 
+  it("a ramp's end labels keep a gap between them, so they never run together in a narrow box", () => {
+    const raster = legendOf({
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "continuous", palette: ["#000000", "#ffffff"], domain: [0, 255] },
+    });
+    const { container } = render(<StyleLegend legend={raster} variant="tree" />);
+    const labels = container.querySelector("[data-legend-ramp-labels]") as HTMLElement;
+    expect(labels).not.toBeNull();
+    expect([...labels.children].map((child) => child.textContent)).toEqual(["0", "255"]);
+    // The gap is a theme step; any width will do, as long as there is one.
+    expect(getComputedStyle(labels).gap).toMatch(/^[1-9][\d.]*(px|rem)$/);
+  });
+
   it("a ramp on a log scale names its middle value between the ends", () => {
     const legend = legendOf(
       {

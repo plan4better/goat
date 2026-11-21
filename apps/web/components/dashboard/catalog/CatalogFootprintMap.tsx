@@ -21,8 +21,8 @@ import type { PopupProperties } from "@/lib/validations/layer";
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
+import DetailMapLegend from "@/components/dashboard/common/DetailMapLegend";
 import { StyledLayers } from "@/components/map/StyledLayers";
-import { StyleLegend } from "@/components/map/legend/StyleLegend";
 import { MapFeaturePopover } from "@/components/map/popover/MapFeaturePopover";
 import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 
@@ -431,31 +431,8 @@ const CatalogFootprintMap = ({
           </Paper>
         )}
 
-        {/* The dataset's legend, drawn by the Layers panel's own component from the
-            same style the features use. */}
-        {styledSample && (
-          <Paper
-            elevation={0}
-            sx={{
-              position: "absolute",
-              left: 8,
-              bottom: 8,
-              maxWidth: 280,
-              maxHeight: "70%",
-              overflowY: "auto",
-              px: 2,
-              py: 1.5,
-              borderRadius: 1.5,
-              backgroundColor: theme.palette.background.paper,
-              opacity: 0.96,
-              // Above the credit strip, which sets a z-index of its own and would
-              // otherwise cover the legend where the two meet on a narrow map.
-              zIndex: 2,
-            }}>
-            {/* Headings kept: the field a classification reads turns a column of swatches into an explanation. */}
-            {legend && <StyleLegend legend={legend} variant="tree" />}
-          </Paper>
-        )}
+        {/* The dataset's legend, drawn from the same style the features use. */}
+        <DetailMapLegend legend={styledSample ? legend : null} />
       </Box>
     </Box>
   );

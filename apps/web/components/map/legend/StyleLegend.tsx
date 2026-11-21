@@ -491,9 +491,10 @@ interface StyleLegendProps {
   hideHeading?: boolean;
   /** The number locale (the map's); the viewer's language without one. */
   locale?: string;
-  /** Typography of the entries and the section headings (print). */
+  /** Typography of the entries, the section headings and the caption (print, the detail maps' legend). */
   itemSx?: SxProps<Theme>;
   headingSx?: SxProps<Theme>;
+  captionSx?: SxProps<Theme>;
   /** Draws an entry's text, keyed `<section>_<entry>` (print's inline edits); a caption by default. */
   renderText?: (key: string, text: string) => ReactNode;
 }
@@ -506,6 +507,7 @@ export function StyleLegend({
   locale,
   itemSx,
   headingSx,
+  captionSx,
   renderText,
 }: StyleLegendProps) {
   const { t, i18n } = useTranslation("common");
@@ -620,7 +622,10 @@ export function StyleLegend({
       )}
       {/* The caption under the layer's name, where the layer list and print place it too. */}
       {legend.caption && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={[{ display: "block" }, ...(Array.isArray(captionSx) ? captionSx : [captionSx])]}>
           {legend.caption}
         </Typography>
       )}
@@ -693,7 +698,10 @@ export function StyleLegend({
                     opacity: section.opacity ?? 1,
                   }}
                 />
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                {/* A gap, so the end labels never run together ("0255") however narrow the box. */}
+                <Box
+                  data-legend-ramp-labels
+                  sx={{ display: "flex", justifyContent: "space-between", gap: 1 }}>
                   {[0, 1].map((end) => (
                     <Fragment key={end}>
                       {end === 1 && section.middle !== undefined && (

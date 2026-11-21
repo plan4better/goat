@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 
+import { commonT } from "@/i18n/__tests__/commonI18n";
+
 import {
   addressShownTo,
+  feedSource,
+  hasAddress,
   layerOrigin,
   readableAddress,
   shortAddress,
+  sourceLabel,
   withoutQuery,
   withoutScheme,
 } from "@/lib/utils/layerOrigin";
 
 const COG_URL = "https://maplibre.org/maplibre-gl-js/docs/assets/cog.tif";
+const WFS_URL =
+  "https://www.wfs.nrw.de/geobasis/wfs_nw_alkis_vereinfacht?SERVICE=WFS&REQUEST=GetCapabilities";
 
 const raster = (fields: Record<string, unknown>) =>
   ({ type: "raster", other_properties: {}, ...fields }) as never;
@@ -18,10 +25,12 @@ describe("layerOrigin", () => {
   it("calls a raster file read from an http(s) address a remote file", () => {
     expect(layerOrigin(raster({ data_type: "cog", url: COG_URL }))).toEqual({
       kind: "remote_file",
+      format: "cog",
       url: COG_URL,
     });
     expect(layerOrigin(raster({ data_type: "cog", url: "http://example.org/a.tif" }))).toEqual({
       kind: "remote_file",
+      format: "cog",
       url: "http://example.org/a.tif",
     });
   });
@@ -85,15 +94,103 @@ describe("layerOrigin", () => {
     expect(layerOrigin(raster({ data_type: "wms", url: "s3://goat-bucket/wms" }))).toBeUndefined();
   });
 
-  it("says nothing for a feature layer read from a WFS (its features were copied into GOAT)", () => {
+  it("calls a feature layer read from a WFS a copy, with the service it came from", () => {
+    // The import keeps the service's address in other_properties; the layer's own url stays empty.
     expect(
-      layerOrigin({
-        type: "feature",
-        data_type: "wfs",
-        url: "https://example.org/wfs",
-        other_properties: {},
-      } as never)
+      layerOrigin({ type: "feature", data_type: "wfs", other_properties: { url: WFS_URL } } as never)
+    ).toEqual({ kind: "wfs_copy", url: WFS_URL });
+    expect(
+      layerOrigin({ type: "feature", data_type: "wfs", url: WFS_URL, other_properties: {} } as never)
+    ).toEqual({ kind: "wfs_copy", url: WFS_URL });
+  });
+
+  it("says nothing for a WFS copy without a web address", () => {
+    expect(layerOrigin({ type: "feature", data_type: "wfs", other_properties: {} } as never)).toBeUndefined();
+    expect(
+      layerOrigin({ type: "feature", data_type: "wfs", other_properties: { url: "s3://bucket/x" } } as never)
     ).toBeUndefined();
+  });
+});
+
+describe("hasAddress", () => {
+  it("is true for every origin but the catalog, and for none", () => {
+    expect(hasAddress({ kind: "remote_file", format: "cog", url: COG_URL })).toBe(true);
+    expect(hasAddress({ kind: "map_service", service: "wms", url: COG_URL })).toBe(true);
+    expect(hasAddress({ kind: "wfs_copy", url: WFS_URL })).toBe(true);
+    expect(hasAddress({ kind: "catalog" })).toBe(false);
+    expect(hasAddress(undefined)).toBe(false);
+  });
+});
+
+describe("sourceLabel", () => {
+  it.each([
+    [
+      "en",
+      "Remote file (COG)",
+      "Map service (WMS)",
+      "Map service (WMTS)",
+      "Map service (XYZ)",
+      "Copied from WFS",
+      "Catalog",
+    ],
+    [
+      "de",
+      "Externe Datei (COG)",
+      "Kartendienst (WMS)",
+      "Kartendienst (WMTS)",
+      "Kartendienst (XYZ)",
+      "Kopie aus WFS",
+      "Katalog",
+    ],
+  ] as const)(
+    "words each origin the same everywhere (%s)",
+    (language, file, wms, wmts, xyz, wfs, catalog) => {
+      const t = commonT(language);
+      expect(sourceLabel({ kind: "remote_file", format: "cog" }, t)).toBe(file);
+      expect(sourceLabel({ kind: "map_service", service: "wms" }, t)).toBe(wms);
+      expect(sourceLabel({ kind: "map_service", service: "wmts" }, t)).toBe(wmts);
+      expect(sourceLabel({ kind: "map_service", service: "xyz" }, t)).toBe(xyz);
+      expect(sourceLabel({ kind: "wfs_copy" }, t)).toBe(wfs);
+      expect(sourceLabel({ kind: "catalog" }, t)).toBe(catalog);
+    }
+  );
+
+  it("takes a layer's whole origin, its address left aside", () => {
+    expect(sourceLabel({ kind: "remote_file", format: "cog", url: COG_URL }, commonT("en"))).toBe(
+      "Remote file (COG)"
+    );
+  });
+});
+
+describe("feedSource", () => {
+  it("reads the same origins off the three facts the content feed sends", () => {
+    expect(feedSource({ data_type: "cog", is_linked: true, source_host: "maplibre.org" })).toEqual({
+      kind: "remote_file",
+      format: "cog",
+    });
+    expect(feedSource({ data_type: "wms", is_linked: true, source_host: "www.wms.nrw.de" })).toEqual({
+      kind: "map_service",
+      service: "wms",
+    });
+    expect(feedSource({ data_type: "wfs", is_linked: false, source_host: "www.wfs.nrw.de" })).toEqual({
+      kind: "wfs_copy",
+    });
+  });
+
+  it("says nothing for data GOAT holds", () => {
+    expect(feedSource({ data_type: null, is_linked: false, source_host: null })).toBeUndefined();
+    expect(feedSource({})).toBeUndefined();
+    // A raster file GOAT stores: a format, but no address.
+    expect(feedSource({ data_type: "cog", is_linked: false, source_host: null })).toBeUndefined();
+    expect(feedSource({ data_type: "wfs", is_linked: false, source_host: null })).toBeUndefined();
+  });
+
+  it("applies the layer rule's http(s) check: a linked layer without a web host says nothing", () => {
+    // Core names a host only for an http(s) address, so a stored storage path (s3://, a file) arrives without one,
+    // as layerOrigin ignores such an address too.
+    expect(feedSource({ data_type: "cog", is_linked: true, source_host: null })).toBeUndefined();
+    expect(feedSource({ data_type: "xyz", is_linked: true, source_host: null })).toBeUndefined();
+    expect(feedSource({ data_type: "cog", is_linked: true })).toBeUndefined();
   });
 });
 

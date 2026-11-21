@@ -1,4 +1,4 @@
-import { Box, Paper, useTheme } from "@mui/material";
+import { Box } from "@mui/material";
 import bbox from "@turf/bbox";
 import "maplibre-gl/dist/maplibre-gl.css";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,8 +26,8 @@ import useLayerFields from "@/hooks/map/CommonHooks";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
+import DetailMapLegend from "@/components/dashboard/common/DetailMapLegend";
 import MapViewer from "@/components/map/MapViewer";
-import { StyleLegend } from "@/components/map/legend/StyleLegend";
 import { MapFixedPopupSlot } from "@/components/map/popover/MapFixedPopupSlot";
 
 /** Room kept clear for the credit strip, which sits in the corner opposite the pinned panel. */
@@ -45,7 +45,6 @@ interface DatasetMapPreviewProps {
  * the chrome the catalog's detail map wears. It fills the box it is placed in,
  * which is where its height comes from. */
 const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
-  const theme = useTheme();
   const mapRef = useRef<MapRef | null>(null);
   // `MapViewer` needs a style from the first render; the light basemap stands
   // in where the theme lookup finds none.
@@ -158,32 +157,9 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
                 `MapViewer`'s own root. */}
             <MapFixedPopupSlot layers={layers} />
 
-            {/* The dataset's legend, drawn like the layer list's from the style
-                the features are rendered with, only where it says more than the
+            {/* The dataset's legend, from the style the features are rendered with, only where it says more than the
                 base look. */}
-            {legend && informative(legend) && (
-              <Paper
-                elevation={0}
-                sx={{
-                  position: "absolute",
-                  left: 8,
-                  bottom: 8,
-                  maxWidth: 280,
-                  maxHeight: "70%",
-                  overflowY: "auto",
-                  px: 2,
-                  py: 1.5,
-                  borderRadius: 1.5,
-                  backgroundColor: theme.palette.background.paper,
-                  opacity: 0.96,
-                  // Above the credit strip, which sets a z-index of its own and
-                  // would otherwise cover the legend where the two meet on a
-                  // narrow map.
-                  zIndex: 2,
-                }}>
-                <StyleLegend legend={legend} variant="tree" />
-              </Paper>
-            )}
+            <DetailMapLegend legend={legend && informative(legend) ? legend : null} />
           </MapViewer>
         </Box>
       </MapProvider>

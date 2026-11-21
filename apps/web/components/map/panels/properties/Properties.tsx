@@ -1,10 +1,10 @@
 // The layer panel's Metadata tab, laid out as the style panel is: sections with a heading each (the description, the
 // lineage, the details, the fields), the facts as rows of a label and its value, the 12 px gutter. The details open
-// with where the data comes from (the catalog, a file or a map service added by its address, with that address), then
-// the dataset's size (its geometry and feature count are in the panel's header); the catalog facts after it are read
-// from the catalog record the layer carries (a promoted catalog layer's own record, a fetched layer's provenance), in
-// the catalog's vocabulary.
-import { Box, Button, Link, Tooltip, Typography } from "@mui/material";
+// with where the data comes from (the catalog, a file or a map service added by its address, a WFS copied in, with that
+// address; the dataset detail tells it by the same rule and address row), then the dataset's size (its geometry and
+// feature count are in the panel's header); the catalog facts after it are read from the catalog record the layer
+// carries (a promoted catalog layer's own record, a fetched layer's provenance), in the catalog's vocabulary.
+import { Box, Button, Tooltip, Typography } from "@mui/material";
 import { format, formatDistance } from "date-fns";
 import prettyBytes from "pretty-bytes";
 import { type ReactNode, useMemo, useState } from "react";
@@ -17,22 +17,14 @@ import { useDateFnsLocale } from "@/i18n/utils";
 import { useLayerQueryables } from "@/lib/api/layers";
 import type { FieldType } from "@/lib/style/compile/types";
 import { datasetUpdatedAt } from "@/lib/utils/datasetDates";
-import {
-  type LayerOrigin,
-  addressShownTo,
-  layerOrigin,
-  readableAddress,
-  shortAddress,
-  withoutQuery,
-  withoutScheme,
-} from "@/lib/utils/layerOrigin";
+import { hasAddress, layerOrigin, sourceLabel } from "@/lib/utils/layerOrigin";
 import type { ProjectLayer } from "@/lib/validations/project";
 
 import { useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
 import { fieldsOf } from "@/hooks/style/useStyleData";
 
-import CopyButton from "@/components/common/CopyButton";
 import FieldKindIcon, { type FieldIndicatorKind, fieldIndicatorKind } from "@/components/common/FieldKindIcon";
+import LayerAddress from "@/components/common/LayerAddress";
 import MarkdownProse from "@/components/dashboard/common/MarkdownProse";
 import { PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
 
@@ -55,34 +47,6 @@ const Value = ({ children }: { children: ReactNode }) => (
     {children}
   </Typography>
 );
-
-/**
- * A layer's address: the host and the last segment in full and the folders between left out, decoded to read,
- * wrapping where it must; the whole of it (as this person may see it) on hover and in the copy. A file's address is a
- * link that opens it in a new tab; a map service's is text, as its tile template or GetMap request opens no useful
- * page, and its query is left out of the text. The copy button follows the text on its last line, so it never covers
- * it.
- */
-const Address = ({ href, link, copyLabel }: { href: string; link: boolean; copyLabel: string }) => {
-  const text = readableAddress(shortAddress(withoutScheme(link ? href : withoutQuery(href))));
-  return (
-    <Value>
-      <Tooltip title={href} placement="bottom-start" arrow>
-        {link ? (
-          <Link href={href} target="_blank" rel="noopener noreferrer" underline="hover">
-            {text}
-          </Link>
-        ) : (
-          // Focusable, so a keyboard opens its tooltip as a pointer does.
-          <span tabIndex={0}>{text}</span>
-        )}
-      </Tooltip>
-      <Box component="span" sx={{ display: "inline-flex", verticalAlign: "middle", ml: 0.5 }}>
-        <CopyButton value={href} label={copyLabel} />
-      </Box>
-    </Value>
-  );
-};
 
 /** Prose (the description, the lineage) in the panel's gutter. */
 const Prose = ({ children }: { children: string }) => (
@@ -136,13 +100,6 @@ interface PropertiesPanelProps {
   canEdit?: boolean;
 }
 
-/** What the Source row says the data came from. */
-const SOURCE_LABEL_KEYS: Record<LayerOrigin["kind"], string> = {
-  catalog: "catalog",
-  remote_file: "metadata.source_remote_file",
-  map_service: "metadata.source_map_service",
-};
-
 const PropertiesPanel = ({ activeLayer, showFields = true, canEdit = false }: PropertiesPanelProps) => {
   const { t, i18n } = useTranslation("common");
   const dateLocale = useDateFnsLocale();
@@ -152,7 +109,6 @@ const PropertiesPanel = ({ activeLayer, showFields = true, canEdit = false }: Pr
   const lineage = text(record?.["processing:lineage"]);
   const updatedAt = datasetUpdatedAt(activeLayer);
   const origin = layerOrigin(activeLayer);
-  const address = origin && origin.kind !== "catalog" ? addressShownTo(origin.url, canEdit) : undefined;
   // Which layer's fields are all shown: another layer opens with its list short again.
   const [allFieldsOf, setAllFieldsOf] = useState<string>();
 
@@ -209,27 +165,20 @@ const PropertiesPanel = ({ activeLayer, showFields = true, canEdit = false }: Pr
       )}
       {(facts.length > 0 || origin || updatedAt) && (
         <PanelSection title={t("details")}>
-          {/* Where the layer came from: the catalog, or the address a file or a map service was added with. A
-            catalog layer deliberately gets no link to its entry: the mirror is rebuilt wholesale on every sync, so a
-            promoted layer outlives the entry it came from and the link would eventually 404. */}
+          {/* Where the layer came from: the catalog, or the address a file or a map service was added with or a WFS
+            copy was made from. A catalog layer deliberately gets no link to its entry: the mirror is rebuilt wholesale
+            on every sync, so a promoted layer outlives the entry it came from and the link would eventually 404. */}
           {origin && (
             <Row label={t("source")}>
               <Icon iconName={ICON_NAME.GLOBE} sx={{ fontSize: 13, color: "text.secondary" }} />
-              <Value>
-                {t(
-                  SOURCE_LABEL_KEYS[origin.kind],
-                  origin.kind === "map_service" ? { kind: origin.service.toUpperCase() } : undefined
-                )}
-              </Value>
+              <Value>{sourceLabel(origin, t)}</Value>
             </Row>
           )}
-          {address && (
+          {hasAddress(origin) && (
             <Row label={t("address")}>
-              <Address
-                href={address}
-                link={origin?.kind === "remote_file"}
-                copyLabel={t("metadata.copy_address")}
-              />
+              <Value>
+                <LayerAddress origin={origin} canEdit={canEdit} />
+              </Value>
             </Row>
           )}
           {facts.map(({ key, label, value }) => (

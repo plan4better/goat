@@ -180,7 +180,9 @@ Ein Dienst, der die Daten bereits veröffentlicht, etwa ein **Web Feature Servic
 Nach dem Hinzufügen erscheint ein verbundener Layer auf dieser Seite wie jeder andere Datensatz, mit zwei Unterschieden, die die Herkunft der Daten kennzeichnen:
 
 - Ein **`Verbunden`**-Tag bedeutet, dass der Layer **live vom externen Dienst gezeichnet** wird und nicht in GOAT gespeichert ist. Sein Inhalt kann sich ändern oder verschwinden, wenn sich der Dienst ändert.
-- Eine **Quellenzeile** zeigt Format und Host an, zum Beispiel `WMS, verbunden mit wms.nrw.de`. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Aus WFS importiert (wfs.nrw.de)`.
+- Eine **`Quelle`** in den `Einzelheiten`, zum Beispiel `Externe Datei (COG) · maplibre.org` oder `Kartendienst (WMS) · wms.nrw.de`: woher der Layer kommt, und sein Host. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Kopie aus WFS · wfs.nrw.de`.
+
+Geöffnet zeigt der Datensatz dieselbe `Quelle` und seine `Adresse`, mit einer Schaltfläche zum Kopieren, wie der Reiter `Metadaten` eines Layers in der Karte. Den Teil der Adresse nach einem `?`, in dem ein Schlüssel oder eine Signatur stehen kann, sieht nur, wer den Datensatz bearbeiten darf: im geöffneten Datensatz sein Eigentümer, in der Karte Eigentümer und Bearbeiter des Projekts, für ihre eigenen Datensätze und die des Projekteigentümers.
 
 ## Mit einem Datensatz arbeiten
 
