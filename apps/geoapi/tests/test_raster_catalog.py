@@ -93,5 +93,8 @@ def test_the_stored_file_is_opened_as_a_file(tmp_path: Path) -> None:
     with patch.object(rs, "RasterSource", Source):
         rs.raster_service._source(rs.RasterLayer(LAYER, None, "v", copy))
         rs.raster_service._source(rs.RasterLayer(LAYER, "https://x.example/a.tif", "v"))
-    assert opened[0] == (None, {"stored_file": copy})
-    assert opened[1] == ("https://x.example/a.tif", {"stored_file": None})
+    assert opened[0] == (None, {"stored_file": copy, "remember_failures": True})
+    assert opened[1] == (
+        "https://x.example/a.tif",
+        {"stored_file": None, "remember_failures": True},
+    )

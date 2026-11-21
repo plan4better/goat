@@ -519,31 +519,28 @@ class _Checker:
             self.capability("service_popups", ["popup"], "Map service popups")
 
     def bands(self, render: dict[str, Any], rtype: str) -> None:
-        count = len(self.ctx.bands)
+        # The file's bands that hold values, by index: an alpha band (an
+        # orthophoto's transparency) is none, wherever it is, as the raster
+        # service's tiles take them (`goatlib.raster.source.check_bands`).
+        held = {b.index for b in self.ctx.bands}
+        count = len(held)
+        said = f"The raster has {count} band{'s' if count != 1 else ''}."
         band = render.get("band")
         if isinstance(band, int) and not isinstance(band, bool):
-            if count and band > count:
-                self.add(
-                    "unknown_band",
-                    ["render", "band"],
-                    f"The raster has {count} band{'s' if count != 1 else ''}.",
-                )
+            if held and band not in held:
+                self.add("unknown_band", ["render", "band"], said)
         elif isinstance(band, dict):
             self.capability("band_formulas", ["render", "band"], "Band formulas")
             expression = band.get("expression")
-            if isinstance(expression, str) and not _valid_formula(expression, count):
+            if isinstance(expression, str) and not _valid_formula(expression, held):
                 self.add(
                     "invalid_band_expression",
                     ["render", "band", "expression"],
                     f"A band formula uses b1 to b{count or 'N'}, numbers and + - * / ( ).",
                 )
         for i, b in enumerate(as_list(render.get("bands"))):
-            if isinstance(b, int) and count and b > count:
-                self.add(
-                    "unknown_band",
-                    ["render", "bands", str(i)],
-                    f"The raster has {count} bands.",
-                )
+            if isinstance(b, int) and held and b not in held:
+                self.add("unknown_band", ["render", "bands", str(i)], said)
 
     def raster_classes(self, render: dict[str, Any]) -> None:
         band = self.ctx.bands[0]
@@ -573,12 +570,14 @@ class _Checker:
                 )
 
 
-def _valid_formula(expression: str, bands: int) -> bool:
+def _valid_formula(expression: str, bands: set[int]) -> bool:
+    """Whether `expression` parses and names only the bands `bands` (any band
+    while the file's are unknown)."""
     try:
-        parse_formula(expression, bands or None)
+        formula = parse_formula(expression)
     except FormulaError:
         return False
-    return True
+    return not bands or set(formula.bands) <= bands
 
 
 def _time_field(info: FieldInfo) -> bool:

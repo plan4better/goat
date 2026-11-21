@@ -11,6 +11,7 @@ failing."""
 
 import asyncio
 import hashlib
+import logging
 import math
 import time
 from collections.abc import Callable, Iterator
@@ -38,6 +39,7 @@ from goatlib.raster.source import (
     TILE_SIZE,
     BandError,
     RasterUnavailableError,
+    logged,
     recent_failure,
     remember_failure,
 )
@@ -47,14 +49,17 @@ from goatlib.raster.values import ENCODING_VERSION, MAX_Q, ValueEncoding
 from geoapi.dependencies import normalize_layer_id
 from geoapi.deps.authz import require_layer_read
 from geoapi.services.raster_service import (
+    BandBreaks,
     RasterLayer,
     Resampling,
+    band_breaks,
     info_json,
     palette,
     raster_service,
     valid_bounds,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collections", tags=["Rasters"])
 
 CACHE = "public, max-age=3600"
@@ -82,6 +87,12 @@ RASTER_EXECUTOR = ThreadPoolExecutor(max_workers=16, thread_name_prefix="raster"
 #: At most this many reads of one layer at once; the others wait without a thread.
 READS_PER_LAYER = 4
 _slots: LRUCache[tuple[int, str], asyncio.Semaphore] = LRUCache(4096)
+#: Class breaks are classified on threads of their own, after the read slot
+#: is released: tiles never wait for them.
+BREAKS_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="breaks")
+#: The class breaks being computed, by event loop and file version: the infos
+#: of a cold layer wait for one computation, without a read slot or a thread.
+_breaks_runs: dict[tuple[int, str], asyncio.Future[BandBreaks]] = {}
 #: A tile read taking longer answers 504. GDAL's timeouts bound each request a
 #: read sends, not the read.
 TILE_DEADLINE_S = 10.0
@@ -384,15 +395,58 @@ def _sized(tilesize: int) -> tuple[int, ...]:
 
 @router.get(
     "/{collectionId}/raster/info",
-    summary="A raster file's size, bands and band statistics",
+    summary="A raster file's size, bands, band statistics and class breaks",
     dependencies=[Depends(require_layer_read)],
 )
 async def raster_info(
     collection_id: Annotated[str, Path(alias="collectionId")],
 ) -> dict[str, Any]:
     layer = await _layer(collection_id)
-    info, stats = await _read(layer, raster_service.statistics)
-    return info_json(info, stats)
+    file, info, stats = await _read(layer, raster_service.described)
+    return info_json(info, stats, await _breaks(layer, file))
+
+
+async def _breaks(layer: RasterLayer, file: str) -> BandBreaks:
+    """Every band's class breaks of the file version `file`: kept, or computed
+    once while every info asking meanwhile waits for that computation without
+    a read slot. Never fails: an info without breaks still answers."""
+    kept = raster_service.kept_breaks(file)
+    if kept is not None:
+        return kept
+    key = (id(asyncio.get_running_loop()), file)
+    run = _breaks_runs.get(key)
+    if run is None:
+        run = _breaks_runs[key] = asyncio.ensure_future(_compute_breaks(layer, file))
+        run.add_done_callback(lambda _: _breaks_runs.pop(key, None))
+    # A caller that goes away leaves the computation to the others.
+    return await asyncio.shield(run)
+
+
+async def _compute_breaks(layer: RasterLayer, file: str) -> BandBreaks:
+    """Reads every band's sample in one of the layer's read slots, then
+    classifies them after releasing it; a failed read gives no breaks and is
+    remembered for 30 seconds, for the breaks only."""
+    loop = asyncio.get_running_loop()
+    try:
+        async with _slot(layer.id):
+            samples = await loop.run_in_executor(
+                RASTER_EXECUTOR, raster_service.band_samples, layer
+            )
+    except Exception as error:
+        address, text = logged(raster_service.failure_key(layer), error)
+        logger.warning(
+            "The class breaks of the raster file %s were not computed: %s: %s",
+            address,
+            type(error).__name__,
+            text,
+        )
+        raster_service.keep_breaks(file, {}, complete=False)
+        return {}
+    breaks, complete = await loop.run_in_executor(
+        BREAKS_EXECUTOR, band_breaks, layer, samples
+    )
+    raster_service.keep_breaks(file, breaks, complete)
+    return breaks
 
 
 @router.get(

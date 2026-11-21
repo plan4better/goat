@@ -80,8 +80,11 @@ def _write_cog(
     colormap=None,
     overviews: str = "AUTO",
     crs: str = "EPSG:4326",
+    alpha: bool = False,
     colorinterp: list[ColorInterp] | None = None,
 ) -> None:
+    """A COG of `data`; with `alpha`, its last band is the alpha band of an RGB
+    image (an orthophoto's transparency)."""
     tmp = path.with_suffix(".plain.tif")
     bounds = transform_bounds("EPSG:4326", crs, *BOUNDS)
     profile = {
@@ -94,6 +97,8 @@ def _write_cog(
         "transform": from_bounds(*bounds, data.shape[2], data.shape[1]),
         "nodata": nodata,
     }
+    if alpha:
+        profile.update(photometric="RGB", alpha="YES")
     with rasterio.open(tmp, "w", **profile) as dst:
         dst.write(data)
         if colormap:
@@ -130,6 +135,10 @@ def cog_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     _write_cog(root / "landcover.tif", codes[None], nodata=0, colormap=table)
     bands = np.stack([np.full((SIZE, SIZE), v, "uint16") for v in (100, 200, 300, 500)])
     _write_cog(root / "multiband.tif", bands, nodata=0)
+    # An orthophoto with an alpha band: its left quarter transparent.
+    opacity = np.where(x < SIZE // 4, 0, 255)
+    rgba = np.stack([x % 256, y % 256, np.full_like(x, 50), opacity]).astype("uint8")
+    _write_cog(root / "rgba.tif", rgba, alpha=True)
     # A photo stored blue, green, red, and marked so.
     bgr = np.stack([np.full((SIZE, SIZE), v, "uint8") for v in (50, 100, 200)])
     _write_cog(

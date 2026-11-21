@@ -2916,10 +2916,6 @@
    "render": {
     "type": "continuous",
     "palette": "goat:elevation",
-    "domain": [
-     181,
-     440
-    ],
     "classify": {
      "method": "quantile",
      "count": 5,

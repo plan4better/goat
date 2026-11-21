@@ -23,7 +23,7 @@ from goatlib.raster.source import (
 from goatlib.raster.token import decode_token, encode_token
 from goatlib.raster.values import value_encoding
 
-from .conftest import BOUNDS
+from .conftest import BOUNDS, SIZE
 
 LOCAL = ("127.0.0.1",)
 TMS = morecantile.tms.get("WebMercatorQuad")
@@ -114,6 +114,8 @@ def test_info_tells_each_bands_color_interpretation(cog_server: str) -> None:
     and blue (`image_bands`)."""
     with RasterSource(f"{cog_server}/bgr.tif", LOCAL) as src:
         assert src.info().color_interp == ("blue", "green", "red")
+    with RasterSource(f"{cog_server}/rgba.tif", LOCAL) as src:
+        assert src.info().color_interp == ("red", "green", "blue", "alpha")
     with RasterSource(f"{cog_server}/landcover.tif", LOCAL) as src:
         assert src.info().color_interp == ("palette",)
 
@@ -177,9 +179,13 @@ def test_statistics_come_from_an_overview_and_list_the_codes_of_a_whole_number_b
         sum(band.histogram[0]) > 0
         and len(band.histogram[1]) == len(band.histogram[0]) + 1
     )
+    assert band.counts is None
     with RasterSource(f"{cog_server}/landcover.tif", LOCAL) as src:
         [codes] = src.statistics()
     assert codes.values == [1, 2, 3, 4]
+    # Each code fills a quarter of the overview: how many cells hold it, in the
+    # order of `values`, summing to the cells with a value.
+    assert codes.counts == [SIZE * SIZE // 4] * 4
 
 
 def test_a_formulas_values_are_sampled(cog_server: str) -> None:
@@ -949,3 +955,152 @@ def test_an_address_with_a_fragment_opens_as_the_file(
         "/vsicurl/https://bucket.example/a.tif?X-Amz-Signature=s1"
     )
     assert _gdal_path("/data/catalog/layers/x.tif") == "/data/catalog/layers/x.tif"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "elevation.tif",
+        "rgb.tif",
+        "landcover.tif",
+        "multiband.tif",
+        "dem_utm.tif",
+        "no_overviews.tif",
+    ],
+)
+def test_one_read_gives_every_bands_sample(cog_server: str, name: str) -> None:
+    """Every band's values from one overview read are those `sample` reads for
+    the band alone, in the same order: the class breaks of the raster info and
+    of a style check are drawn from them alike."""
+    with RasterSource(f"{cog_server}/{name}", LOCAL) as src:
+        samples = dict(src.band_samples())
+        count = src.info().count
+        for band in range(1, count + 1):
+            alone = src.sample(parse_formula(f"b{band}"))
+            assert np.array_equal(samples[band], alone), band
+            assert samples[band].dtype == alone.dtype
+    assert list(samples) == list(range(1, count + 1))
+
+
+@pytest.mark.parametrize(
+    "address", ["{server}/notatiff.tif", "http://127.0.0.1:9/x.tif"]
+)
+def test_a_read_that_does_not_remember_its_failure(
+    cog_server: str, address: str
+) -> None:
+    """A read whose failure the file's other reads must not inherit (geoapi's
+    optional class breaks) raises as any other, but the file is not marked
+    failing for the next 30 seconds."""
+    from unittest.mock import patch
+
+    import goatlib.raster.source as source
+
+    url = address.format(server=cog_server)
+    with patch.dict(source._failures, clear=True):
+        with pytest.raises(RasterUnavailableError):
+            with RasterSource(url, LOCAL, remember_failures=False) as src:
+                dict(src.band_samples())
+        assert recent_failure(failure_key(url, None)) is None
+        with pytest.raises(RasterUnavailableError):
+            with RasterSource(url, LOCAL) as src:
+                src.info()
+        assert recent_failure(failure_key(url, None)) is not None
+
+
+@pytest.mark.parametrize("dtype", ["float64", "int32"])
+def test_one_read_gives_every_bands_sample_as_sample_rounds_it(
+    tmp_path: Path, dtype: str
+) -> None:
+    """Values float32 cannot hold (a float64 file, whole numbers past 2^24) come
+    out of both reads alike."""
+    from .conftest import _write_cog
+
+    rng = np.random.default_rng(6)
+    if dtype == "float64":
+        data = rng.normal(1000.0, 1.0, (2, 512, 512))
+    else:
+        data = rng.integers(2**25, 2**30, (2, 512, 512)).astype("int32")
+    path = tmp_path / f"{dtype}.tif"
+    _write_cog(path, data)
+    with RasterSource(None, stored_file=path) as src:
+        samples = dict(src.band_samples())
+        for band in (1, 2):
+            assert np.array_equal(samples[band], src.sample(parse_formula(f"b{band}")))
+
+
+def test_an_alpha_band_is_the_images_transparency_not_a_band(cog_server: str) -> None:
+    """As the reader takes it: the alpha band masks the other bands and has no
+    statistics, sample or value of its own; the file still has four bands."""
+    with RasterSource(f"{cog_server}/rgba.tif", LOCAL) as src:
+        info = src.info()
+        stats = src.statistics()
+        samples = dict(src.band_samples())
+        west, south, east, north = info.bounds
+        lat = (south + north) / 2
+        opaque = src.point(west + (east - west) * 0.75, lat)
+        clear = src.point(west + (east - west) * 0.1, lat)
+    assert info.count == 4
+    assert [b.index for b in stats] == [1, 2, 3] and list(samples) == [1, 2, 3]
+    # The transparent quarter is no data in every band.
+    assert {v.size for v in samples.values()} == {SIZE * SIZE * 3 // 4}
+    assert stats[2].min == stats[2].max == 50
+    assert opaque.values[2] == 50 and opaque.values[3] is None
+    assert None not in opaque.values[:3]
+    assert clear.values == [None, None, None, None]
+
+
+def test_an_alpha_bands_image_draws_its_transparency(cog_server: str) -> None:
+    """Colored tiles and value tiles of an RGBA file: the transparent part is
+    transparent (no data)."""
+    image = decode_token(
+        encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
+    )
+    with RasterSource(f"{cog_server}/rgba.tif", LOCAL) as src:
+        west, south, east, north = src.info().bounds
+        tile = TMS.tile(west + (east - west) * 0.25, (south + north) / 2, 14)
+        colored = src.tile(tile.z, tile.x, tile.y, image)
+        encoding = value_encoding("uint8", scaled=False, value_range=None)
+        values = src.values(tile.z, tile.x, tile.y, parse_formula("b3"), encoding)
+    assert colored is not None and values is not None
+    alpha = _png(colored)[..., 3]
+    assert alpha.min() == 0 and alpha.max() == 255
+    codes = _png(values)
+    assert (codes[..., :3].sum(axis=-1) == 0).any() and (codes[..., 2] > 0).any()
+
+
+def test_band_samples_come_one_band_at_a_time(cog_server: str) -> None:
+    """A caller can reduce each band (draw its sample) before the next band's
+    float64 values exist: a file with many bands never holds them all."""
+    from collections.abc import Iterator
+
+    with RasterSource(f"{cog_server}/multiband.tif", LOCAL) as src:
+        samples = src.band_samples()
+        assert isinstance(samples, Iterator) and not isinstance(samples, dict)
+        index, first = next(samples)
+    assert index == 1 and first.dtype == np.float64
+
+
+def test_a_coloring_or_formula_naming_the_alpha_band_is_refused(
+    cog_server: str,
+) -> None:
+    """Tiles take the bands validation takes, the value bands, in its words."""
+    from goatlib.raster.source import BandError
+
+    ramp = {"v": 1, "noData": [], "colors": ["#000000", "#ffffff"], "domain": [0, 255]}
+    with RasterSource(f"{cog_server}/rgba.tif", LOCAL) as src:
+        assert src.info().value_bands == (1, 2, 3)
+        west, south, east, north = src.info().bounds
+        tile = TMS.tile(west + (east - west) * 0.6, (south + north) / 2, 14)
+        encoding = value_encoding("uint8", scaled=False, value_range=None)
+        for expression in ("b4", "b4 * 2"):
+            with pytest.raises(BandError, match=r"^The raster has 3 bands\.$"):
+                src.values(tile.z, tile.x, tile.y, parse_formula(expression), encoding)
+        for token in (
+            {**ramp, "kind": "ramp", "band": 4, "outside": "clamp"},
+            {"v": 1, "kind": "rgb", "bands": [1, 2, 4], "noData": []},
+        ):
+            with pytest.raises(BandError, match=r"^The raster has 3 bands\.$"):
+                src.tile(tile.z, tile.x, tile.y, decode_token(encode_token(token)))
+        for band in (1, 2, 3):
+            formula = parse_formula(f"b{band}")
+            assert src.values(tile.z, tile.x, tile.y, formula, encoding) is not None

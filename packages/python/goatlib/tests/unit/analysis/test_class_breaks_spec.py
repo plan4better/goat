@@ -11,7 +11,9 @@ import pytest
 from goatlib.analysis.schemas.statistics import ClassBreakMethod
 from goatlib.analysis.statistics.class_breaks import (
     calculate_class_breaks,
+    calculate_class_breaks_by_count,
     jenks_breaks,
+    jenks_breaks_by_classes,
 )
 
 
@@ -114,3 +116,42 @@ def test_natural_breaks_on_a_parquet_view(tmp_path) -> None:
         f"CREATE VIEW t AS SELECT * FROM read_parquet('{tmp_path / 'v.parquet'}')"
     )
     assert len(breaks(con, ClassBreakMethod.natural_breaks, 3)) == 3
+
+
+def _samples() -> dict[str, list[float]]:
+    import numpy as np
+
+    rng = np.random.default_rng(4)
+    return {
+        "gamma": rng.gamma(2.0, 50.0, 3_000).tolist(),
+        "lognormal": rng.lognormal(3, 1, 3_000).tolist(),
+        "few values": rng.integers(0, 7, 3_000).astype(float).tolist(),
+        "two values": [1.0] * 40 + [5.0] * 60,
+        "over the natural breaks sample": rng.normal(0, 1, 25_000).tolist(),
+    }
+
+
+@pytest.mark.parametrize("name", list(_samples()))
+def test_one_jenks_run_gives_every_class_count(name: str) -> None:
+    values = _samples()[name][:5_000]
+    asked = [0, 1, *range(2, 14)]
+    together = jenks_breaks_by_classes(values, asked)
+    assert together == {classes: jenks_breaks(values, classes) for classes in asked}
+
+
+@pytest.mark.parametrize("method", list(ClassBreakMethod))
+@pytest.mark.parametrize("name", list(_samples()))
+def test_breaks_for_several_counts_are_each_counts_own(
+    method: ClassBreakMethod, name: str
+) -> None:
+    """One query (and one Fisher-Jenks run) for several numbers of breaks gives
+    each exactly what asking for it alone gives."""
+    import numpy as np
+
+    con = duckdb.connect(config={"threads": 1})
+    con.register("t", {"v": np.array(_samples()[name])})
+    asked = [0, *range(2, 12)]
+    together = calculate_class_breaks_by_count(con, "t", "v", method, asked)
+    assert list(together) == asked
+    for n in asked:
+        assert together[n] == calculate_class_breaks(con, "t", "v", method, n), n

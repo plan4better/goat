@@ -356,6 +356,32 @@ stack, so validation runs in core too.
   256-color lookup, stops blend or take the nearest, classes are `[from, to)`,
   categories match the rounded value; no data (the file's, with float32 rounding,
   NaN, the style's values) is transparent.
+- **A band's class breaks come ready for every method and count** (`stats.py`,
+  `precomputed_breaks`): geoapi's raster info gives them with the band's
+  statistics, so a style panel switches methods without asking. They are the
+  vector classes' breaks: one call of the shared classifier per method gives
+  every count, exactly as asking for each count alone does
+  (`calculate_class_breaks_by_count`: one quantile query, one Fisher-Jenks run),
+  over an in-memory DuckDB table on one thread (DuckDB sums in parallel, and
+  every pod must give the same digits), from at most 100,000 of the overview's
+  values drawn with a fixed seed (`classified_sample`). The style check
+  classifies a band or formula with every method but equal intervals
+  (quantiles, natural breaks, standard deviation, heads and tails) over the same
+  sample of the whole band, whatever the style's `render.domain`, so the breaks a panel offers are the classes a
+  saved style gets; only equal intervals use the domain (they split it), and
+  without one read the ends of all the overview's values. A count's list can be
+  shorter than its count less one, or empty (equal breaks merge; standard
+  deviation leaves out breaks outside the data). geoapi reads every band's
+  values in one overview read (`RasterSource.band_samples`, the values `sample`
+  gives each band) with `remember_failures` off, so a failed read for the breaks
+  never marks the file failing for its tiles.
+- **An alpha band is the image's transparency, not a band of values**
+  (`source.py`, `RasterInfo.value_bands`): rio-tiler reads it as the other
+  bands' mask, so statistics, band samples, class breaks and point values cover
+  the other bands only. Tiles and validation take the same bands, wherever the
+  alpha band is: a coloring or formula naming it is refused in the same words
+  ("The raster has 3 bands.", `check_bands`; validation checks the band indexes
+  it knows). The file's band count (`RasterInfo.count`) still includes it.
 - **An image without chosen bands draws the bands its file marks red, green and
   blue** (`color.py`, `image_bands`, from `RasterInfo.color_interp`): a file
   stored blue, green, red and marked so draws red from its third band. Without

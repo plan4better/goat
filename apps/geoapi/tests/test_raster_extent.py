@@ -39,7 +39,12 @@ class FakeSource:
     headers = 0
 
     def __init__(
-        self, url: str, private_hosts: Any = (), *, stored_file: Any = None
+        self,
+        url: str,
+        private_hosts: Any = (),
+        *,
+        stored_file: Any = None,
+        remember_failures: bool = True,
     ) -> None:
         self.url = url
 

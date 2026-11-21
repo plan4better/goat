@@ -35,10 +35,11 @@ from rasterio.warp import transform_bounds
 from rasterio.windows import Window
 from rio_tiler.errors import RioTilerError, TileOutsideBounds
 from rio_tiler.io import Reader
+from rio_tiler.utils import non_alpha_indexes
 
 from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
-from goatlib.raster.formula import Formula
+from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.values import ValueEncoding
 from goatlib.utils.layer_address import address_shown
 
@@ -54,7 +55,8 @@ MAX_REDIRECTS = 3
 SAMPLE_SIZE = 1024
 #: Whole-number bands with at most this many distinct values list them.
 MAX_VALUES = 1024
-HISTOGRAM_BINS = 20
+#: A band's histogram, which a style panel draws its classes over.
+HISTOGRAM_BINS = 50
 #: A read may decimate the file's coarsest overview at most this much more: a
 #: file without overviews is not downloaded whole for a low zoom.
 MAX_EXTRA_DECIMATION = 8
@@ -361,6 +363,15 @@ class RasterInfo:
         return tuple(i for i in range(1, self.count + 1) if i not in self.alpha_bands)
 
 
+def check_bands(info: RasterInfo, bands: Sequence[int]) -> None:
+    """Raises BandError for a band that is not one of the file's value bands
+    (`RasterInfo.value_bands`), in the words validation uses."""
+    held = info.value_bands
+    if not set(bands) <= set(held):
+        n = len(held)
+        raise BandError(f"The raster has {n} band{'s' if n != 1 else ''}.")
+
+
 def native_zoom(info: RasterInfo, tilesize: TileSize = TILE_SIZE) -> int | None:
     """The zoom whose tiles of `tilesize` show the file's cells at their own
     size: a 512 px tile shows them one zoom higher up than a 256 px one, never
@@ -385,6 +396,9 @@ class BandStats:
     #: The distinct values of a whole-number band, when there are few.
     values: list[float] | None
     approximate: bool = True
+    #: How many cells of the overview hold each of `values`, in its order:
+    #: they sum to the cells with a value, so each code's share follows.
+    counts: list[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -399,11 +413,12 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
     if values.size == 0:
         return BandStats(index, None, None, None, None, None, None, ([], []), None)
     counts, edges = np.histogram(values, bins=HISTOGRAM_BINS)
-    distinct = None
+    distinct = cells = None
     if integer:
-        unique = np.unique(values)
+        unique, held = np.unique(values, return_counts=True)
         if unique.size <= MAX_VALUES:
             distinct = [int(v) for v in unique]
+            cells = [int(n) for n in held]
     p2, p98 = np.percentile(values, [2, 98])
     return BandStats(
         index=index,
@@ -415,7 +430,17 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
         p98=float(p98),
         histogram=([int(c) for c in counts], [float(e) for e in edges]),
         values=distinct,
+        counts=cells,
     )
+
+
+def _value_bands(band_names: Sequence[str]) -> list[int]:
+    """The indexes of the bands a read gave (rio-tiler names them `b1`, `b2`,
+    ...): the file's bands but an alpha band. As the reader takes it, an alpha
+    band is the other bands' transparency, not a band of values: it masks them
+    and gets no statistics, sample or point value of its own, while the file's
+    band count still includes it."""
+    return [int(name.removeprefix("b")) for name in band_names]
 
 
 def _needs_s3_session(address: str) -> bool:
@@ -473,6 +498,10 @@ class RasterSource:
     `goatlib.utils.layer.stored_raster_file`, named from the layer's id), which
     opens as it is, or the address the user typed (`url`), which opens only
     through the URL guard. A path typed as a `url` is therefore refused.
+
+    A failed read marks the file failing for the next 30 seconds
+    (`remember_failure`), unless `remember_failures` is off: a read others can
+    do without (geoapi's class breaks) then never makes the file's tiles fail.
     """
 
     def __init__(
@@ -481,12 +510,14 @@ class RasterSource:
         private_hosts: Collection[str] = (),
         *,
         stored_file: Path | None = None,
+        remember_failures: bool = True,
     ) -> None:
         if stored_file is None and url is None:
             raise ValueError("A raster source needs a stored file or a url")
         self.url = url
         self.private_hosts = tuple(private_hosts)
         self.stored_file = stored_file
+        self.remember_failures = remember_failures
         #: What a failure is remembered under: the file that was read.
         self._key = failure_key(url, stored_file)
         self._reader: Reader | None = None
@@ -503,7 +534,8 @@ class RasterSource:
             try:
                 address = resolve_address(str(self.url), self.private_hosts)
             except RasterUnavailableError as error:
-                remember_failure(self._key, str(error))
+                if self.remember_failures:
+                    remember_failure(self._key, str(error))
                 raise
         self._env = gdal_env(address)
         self._env.__enter__()
@@ -542,12 +574,14 @@ class RasterSource:
 
     def _failed(self, error: Exception) -> RasterUnavailableError:
         """The failure to raise for a read that failed with `error`, remembered
-        for the next 30 seconds; the error itself is logged (`logged`)."""
+        for the next 30 seconds (`remember_failures`); the error itself is
+        logged (`logged`)."""
         logger.warning(
             "The raster file %s could not be read: %s", *logged(self._key, error)
         )
         message = read_failure(error)
-        remember_failure(self._key, message)
+        if self.remember_failures:
+            remember_failure(self._key, message)
         return RasterUnavailableError(message)
 
     def info(self) -> RasterInfo:
@@ -569,6 +603,8 @@ class RasterSource:
             west, south, east, north = self.reader.get_geographic_bounds(
                 rasterio.crs.CRS.from_epsg(4326)
             )
+            # As rio-tiler reads the file: its alpha bands mask the others.
+            alpha = sorted(set(ds.indexes) - set(non_alpha_indexes(ds)))
         self._info = RasterInfo(
             width=ds.width,
             height=ds.height,
@@ -583,6 +619,7 @@ class RasterSource:
             names=tuple(d or f"Band {i}" for i, d in enumerate(ds.descriptions, 1)),
             maxzoom=int(self.reader.maxzoom),
             minzoom=int(self.reader.minzoom),
+            alpha_bands=tuple(alpha),
             color_interp=tuple(c.name for c in ds.colorinterp),
         )
         return self._info
@@ -620,14 +657,13 @@ class RasterSource:
         return np.issubdtype(np.dtype(info.dtype), np.integer) and not info.scaled
 
     def statistics(self) -> list[BandStats]:
-        """Every band's statistics, from an overview at most 1024 px wide."""
-        info = self.info()
+        """Every value band's statistics, from an overview at most 1024 px
+        wide (`_value_bands`: an alpha band has none)."""
         image = self._overview(None)
         out = []
-        for k in range(info.count):
-            band = image.array[k]
-            values = np.ma.compressed(band).astype("float64")
-            out.append(_stats(k + 1, values[np.isfinite(values)], self._integer()))
+        for k, index in enumerate(_value_bands(image.band_names)):
+            values = np.ma.compressed(image.array[k]).astype("float64")
+            out.append(_stats(index, values[np.isfinite(values)], self._integer()))
         return out
 
     def sample(self, formula: Formula) -> np.ndarray:
@@ -639,6 +675,19 @@ class RasterSource:
             invalid |= np.ma.getmaskarray(a)
         values = formula.evaluate({i: np.ma.getdata(a) for i, a in arrays.items()})
         return values[~invalid & np.isfinite(values)].astype("float64")
+
+    def band_samples(self) -> Iterator[tuple[int, np.ndarray]]:
+        """Every value band's index and valid values (`_value_bands`) over one
+        read of an overview at most 1024 px wide: for each band exactly what
+        `sample` gives its formula (`b2`, evaluated as a formula is, in
+        float32), in the same order. A band at a time, so a caller can reduce
+        each (draw its sample) before the next band's float64 values exist."""
+        image = self._overview(None)
+        for k, index in enumerate(_value_bands(image.band_names)):
+            band = image.array[k]
+            values = parse_formula(f"b{index}").evaluate({index: np.ma.getdata(band)})
+            valid = ~np.ma.getmaskarray(band) & np.isfinite(values)
+            yield index, values[valid].astype("float64")
 
     def tile(
         self,
@@ -654,10 +703,7 @@ class RasterSource:
         twice the resolution."""
         info = self.info()
         indexes = bands_needed(coloring, info.value_bands, info.color_interp)
-        if max(indexes) > info.count:
-            raise BandError(
-                f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
-            )
+        check_bands(info, indexes)
         rgb = getattr(coloring, "kind", None) == "rgb"
         with self._reading():
             if not self.reader.tile_exists(x, y, z) or self._too_coarse(
@@ -704,10 +750,7 @@ class RasterSource:
         is the read's and the reprojection's: a file in another CRS than the
         tile's is smooth too."""
         info = self.info()
-        if max(formula.bands) > info.count:
-            raise BandError(
-                f"The raster has {info.count} band{'s' if info.count != 1 else ''}."
-            )
+        check_bands(info, formula.bands)
         with self._reading():
             if not self.reader.tile_exists(x, y, z) or self._too_coarse(
                 z, x, y, tilesize
@@ -744,13 +787,14 @@ class RasterSource:
                 data = self.reader.point(lon, lat, unscale=info.scaled)
             except (TileOutsideBounds, RioTilerError):
                 return PointValues([None] * info.count)
-        values: list[float | None] = []
+        # An alpha band has no value (`_value_bands`).
+        values: list[float | None] = [None] * info.count
         raw = np.ma.getdata(data.array)
-        for k in range(info.count):
+        for k, index in enumerate(_value_bands(data.band_names)):
             masked = bool(np.ma.getmaskarray(data.array)[k])
             # A float32 cell as its shortest decimal (0.1, not 0.10000000149).
             v = float(str(raw[k])) if raw.dtype == np.float32 else float(raw[k])
-            values.append(None if masked or not np.isfinite(v) else v)
+            values[index - 1] = None if masked or not np.isfinite(v) else v
         if formula is None:
             return PointValues(values)
         if any(i > info.count or values[i - 1] is None for i in formula.bands):

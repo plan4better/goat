@@ -2354,7 +2354,6 @@ sets on a class by position survives a recompute (section 12).
   "render": {
     "type": "continuous",
     "palette": "goat:elevation",
-    "domain": [181, 440],
     "classify": {
       "method": "quantile",
       "count": 5,
@@ -2383,8 +2382,11 @@ sets on a class by position survives a recompute (section 12).
 }
 ```
 
-Quantiles and natural breaks come from a sample of the band's values (its overviews), computed with the same class
-break statistics as a vector field's when the style is checked (section 12).
+Quantiles, natural breaks, standard deviation and heads and tails classes come from a sample of the whole band's
+values (its overviews), computed with the same class break statistics as a vector field's when the style is checked
+(section 12). `domain` does not narrow them: they classify every value of the band, so the breaks an editor offers for
+a method and count are the classes the style keeps. Equal intervals split `domain` when it is set, else the band's
+range.
 
 ### 9.5 Categories
 

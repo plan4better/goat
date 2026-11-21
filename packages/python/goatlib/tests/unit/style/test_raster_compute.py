@@ -4,6 +4,7 @@ band's range and classes from the band's values, written like a vector style's."
 import copy
 from typing import Any
 
+import pytest
 from goatlib.style.colors import sample_colors
 from goatlib.style.compute import Breaks, apply_computed, computed_missing, needed_stats
 from goatlib.style.context import BandInfo, DataContext
@@ -216,3 +217,102 @@ def test_a_raster_style_computed_from_another_file_is_stale() -> None:
     assert is_stale(doc, "url:other")
     assert is_stale(raster(type="continuous", palette="goat:elevation"), "url:abc")
     assert not is_stale(raster(type="image"), "url:abc")
+
+
+@pytest.mark.parametrize("method", ["quantile", "natural_breaks"])
+@pytest.mark.parametrize("band", [None, NDVI], ids=["band", "formula"])
+def test_precomputed_breaks_match_a_style_check(
+    method: str, band: dict[str, str] | None
+) -> None:
+    """The breaks the raster panel is given for a method and count are those a
+    style check writes into the classes for them, also for a band with more
+    values than are classified, and a formula is classified over the same
+    sample."""
+    from types import SimpleNamespace
+
+    import numpy as np
+    from goatlib.raster.stats import (
+        PRECOMPUTE_SAMPLE,
+        compute_raster_into,
+        precomputed_breaks,
+    )
+
+    values = np.random.default_rng(11).gamma(2.0, 50.0, PRECOMPUTE_SAMPLE * 3)
+    file = SimpleNamespace(
+        info=lambda: SimpleNamespace(count=4, value_bands=(1, 2, 3, 4)),
+        sample=lambda formula: values,
+    )
+    doc = raster(
+        type="continuous",
+        palette="goat:elevation",
+        classify={"method": method, "count": 5},
+        **({"band": band} if band else {}),
+    )
+    checked, _ = compute_raster_into(file, doc, fingerprint="url:abc")  # type: ignore[arg-type]
+    written = [k["to"] for k in checked["render"]["classify"]["classes"][:-1]]
+    assert len(written) == 4
+    assert written == precomputed_breaks(values)[method]["5"]
+
+
+def _file(values: Any) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        info=lambda: SimpleNamespace(count=1, value_bands=(1,)),
+        sample=lambda formula: values,
+    )
+
+
+@pytest.mark.parametrize("method", ["quantile", "natural_breaks", "std_dev"])
+def test_a_domain_does_not_narrow_computed_classes(method: str) -> None:
+    """Quantiles, natural breaks and standard deviation classify the whole band,
+    as the panel's precomputed breaks do: a style with a domain is checked to
+    the same bounds as without one, so saving moves no class."""
+    import numpy as np
+    from goatlib.raster.stats import (
+        PRECOMPUTE_SAMPLE,
+        compute_raster_into,
+        precomputed_breaks,
+    )
+
+    values = np.random.default_rng(12).gamma(2.0, 50.0, PRECOMPUTE_SAMPLE * 3)
+
+    def bounds(**domain: Any) -> list[float]:
+        doc = raster(
+            type="continuous",
+            palette="goat:elevation",
+            classify={"method": method, "count": 5},
+            **domain,
+        )
+        checked, _ = compute_raster_into(_file(values), doc, fingerprint="url:abc")
+        return [k["to"] for k in checked["render"]["classify"]["classes"][:-1]]
+
+    whole = bounds()
+    assert whole == precomputed_breaks(values)[method]["5"]
+    assert bounds(domain=[20, 300]) == whole
+
+
+def test_equal_intervals_read_every_value_not_the_sample() -> None:
+    """A value the sample leaves out still sets the top of equal intervals."""
+    import numpy as np
+    from goatlib.raster.stats import (
+        PRECOMPUTE_SAMPLE,
+        classified_sample,
+        compute_raster_into,
+    )
+
+    size = PRECOMPUTE_SAMPLE * 3
+    drawn = set(classified_sample(np.arange(size, dtype="float64")).astype(int))
+    outlier = next(i for i in range(size) if i not in drawn)
+    values = np.random.default_rng(13).uniform(0, 100, size)
+    values[outlier] = 1000.0
+    assert classified_sample(values).max() < 1000
+    doc = raster(
+        type="continuous",
+        palette="goat:elevation",
+        classify={"method": "equal_interval", "count": 4},
+    )
+    checked, _ = compute_raster_into(_file(values), doc, fingerprint="url:abc")
+    written = [k["to"] for k in checked["render"]["classify"]["classes"][:-1]]
+    low = float(values.min())
+    assert written == pytest.approx([low + i * (1000 - low) / 4 for i in (1, 2, 3)])
