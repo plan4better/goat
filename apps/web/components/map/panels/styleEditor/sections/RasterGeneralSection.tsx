@@ -6,10 +6,17 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type RasterRenderType, defaultRender, drawAsOptions, equalClasses } from "@/lib/style/editor/raster";
-import { setIn } from "@/lib/style/editor/store";
+import {
+  type RasterRenderType,
+  categoriesOf,
+  defaultRender,
+  drawAsOptions,
+  equalClasses,
+  rasterClassesRender,
+} from "@/lib/style/editor/raster";
+import { getIn, setIn } from "@/lib/style/editor/store";
 import { isObject } from "@/lib/style/json";
-import { bandLabel, drawingFacts, imageBands, seedDomain } from "@/lib/style/raster/metadata";
+import { bandLabel, drawingFacts, imageBands, seedDomain, valueBands } from "@/lib/style/raster/metadata";
 import type { StyleIssue } from "@/lib/style/save";
 
 import { IssueNotice } from "@/components/map/panels/styleEditor/IssueNotice";
@@ -55,23 +62,52 @@ export function RasterGeneralSection() {
     if (!found || !info) return;
     const now = store.get("render");
     if (!isObject(now) || now.type !== kind) return;
-    if (kind === "categorical" && !Array.isArray(now.classes)) {
-      store.set("render.classes", defaultRender("categorical", { info, sample: found }).classes);
-    }
     if (kind === "continuous" || kind === "hillshade") {
       const domain = seedDomain(found, info);
       if (!domain) return;
       store.update((doc) => {
+        const render = getIn(doc, "render");
+        const classify = isObject(render) && isObject(render.classify) ? render.classify : null;
+        const classes = classify && Array.isArray(classify.classes) ? classify.classes : [];
+        const method = typeof classify?.method === "string" ? classify.method : "manual";
+        // Equal intervals split the band's range.
+        if (isObject(render) && classify && method === "equal_interval") {
+          const count = typeof classify.count === "number" ? classify.count : classes.length || 5;
+          return setIn(doc, "render", rasterClassesRender({ ...render, domain }, method, count, info));
+        }
         let next = setIn(doc, "render.domain", domain);
-        const classify = store.get("render.classify");
-        if (isObject(classify) && Array.isArray(classify.classes))
-          next = setIn(next, "render.classify.classes", equalClasses(domain, classify.classes.length));
+        if (classes.length)
+          next = setIn(next, "render.classify.classes", equalClasses(domain, classes.length));
         return next;
       });
     }
   };
 
+  /** Another band: categories take its codes (the other values' color kept); classes the band's values classify
+   * themselves (quantiles, natural breaks, ...) take its breaks at once; a range and its equal or manual classes start
+   * from its values. */
+  const setBand = (next: number) => {
+    const render = store.get("render");
+    const classify = isObject(render) && isObject(render.classify) ? render.classify : null;
+    const method = typeof classify?.method === "string" ? classify.method : "manual";
+    const computed = !!classify && method !== "manual" && method !== "equal_interval";
+    store.update((doc) => {
+      const out = setIn(doc, "render.band", next === 1 ? undefined : next);
+      const now = getIn(out, "render");
+      if (!isObject(now)) return out;
+      if (type === "categorical") return setIn(out, "render.classes", categoriesOf(info, next) ?? undefined);
+      if (computed && isObject(now.classify)) {
+        const classes = Array.isArray(now.classify.classes) ? now.classify.classes : [];
+        const count = typeof now.classify.count === "number" ? now.classify.count : classes.length || 5;
+        return setIn(out, "render", rasterClassesRender(now, method, count, info));
+      }
+      return out;
+    }, "render.band");
+    if (type === "continuous" && !computed) void seedFromData(next, type);
+  };
+
   const drawAs = async (next: RasterRenderType) => {
+    // Categories start with the band's codes, in the file's colors where it has a table.
     let start = defaultRender(next, { info });
     if (next === "continuous" && !start.domain) {
       // A color range starts from the band's values: without any, the drawing stays as it is.
@@ -89,7 +125,6 @@ export function RasterGeneralSection() {
       if (next !== "image") for (const key of ADJUSTMENTS) out = setIn(out, key, undefined);
       return out;
     }, "render.type");
-    if (next === "categorical" && !info?.colorTable) void seedFromData(1, next);
   };
 
   const label = t("style_editor.draw_as");
@@ -103,7 +138,9 @@ export function RasterGeneralSection() {
         ),
       }
     : null;
-  const bandCount = info?.bands ?? 1;
+  // The bands of values: an alpha band (an orthophoto's transparency) is none, though the file counts it.
+  const ownBands = info ? valueBands(info) : [1];
+  const bandCount = ownBands.length;
   // True color: the bands an image draws without chosen ones (`imageBands`), those its file marks red, green and blue,
   // else its first three.
   const drawn = imageBands(undefined, drawingFacts(info));
@@ -116,10 +153,7 @@ export function RasterGeneralSection() {
       : same(bands, trueColor)
         ? "true"
         : "false";
-  const bandOptions = Array.from({ length: bandCount }, (_, i) => ({
-    value: i + 1,
-    label: bandLabel(info, i + 1, t),
-  }));
+  const bandOptions = ownBands.map((index) => ({ value: index, label: bandLabel(info, index, t) }));
   return (
     <PanelSection
       title={t("style_editor.section_general")}
@@ -143,10 +177,7 @@ export function RasterGeneralSection() {
           label={t("style_editor.band")}
           value={band}
           options={bandOptions}
-          onChange={(next) => {
-            store.set("render.band", next === 1 ? undefined : next);
-            if (type === "continuous") void seedFromData(next, type);
-          }}
+          onChange={setBand}
         />
       )}
       {type === "image" && bandCount >= 3 && (

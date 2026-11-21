@@ -2,14 +2,13 @@
 // colors, the breaks as dashed lines, the minimum and maximum under it (without `format`, the bars alone).
 import { useTheme } from "@mui/material";
 
+import type { HistogramBin } from "@/lib/style/raster/metadata";
+
+export type { HistogramBin };
+
 const WIDTH = 270;
 const HEIGHT = 64;
 const BARS = 46;
-
-export interface HistogramBin {
-  range: [number, number];
-  count: number;
-}
 
 export function Histogram({
   bins,

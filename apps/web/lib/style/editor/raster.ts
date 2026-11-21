@@ -1,44 +1,74 @@
-// Raster render choices of the panel (spec 9): which renders fit a file, how each starts, equal classes over a range.
+// Raster render choices of the panel (spec 9): which renders fit a file, how each starts, and its classes by method:
+// equal classes over a range, or the breaks the raster service computed for the band.
+import { CLASS_COUNTS, MAX_CLASS_COUNT } from "@/lib/style/editor/classify";
 import { getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
-import { type RasterInfo, type ValueSample, seedDomain } from "@/lib/style/raster/metadata";
+import {
+  type RasterInfo,
+  type ValueSample,
+  bandBreaks,
+  bandRange,
+  sampleOf,
+  seedDomain,
+  valueBands,
+} from "@/lib/style/raster/metadata";
 
 export type RasterRenderType = "hillshade" | "continuous" | "categorical" | "image";
 
 /** The panel's palette for new categories. */
 const CATEGORY_PALETTE = "colorbrewer:Set3";
 
-/** The renders a file allows, none until its info answered: hillshade on one band of elevation, a color range on any
- * band without a color table, categories on whole-number cells, the image always. */
+/** The renders a file allows, none until its info answered: hillshade on one band of elevation (an alpha band beside
+ * it is no band of values), a color range on any band without a color table, categories on whole-number cells, the
+ * image always. */
 export function drawAsOptions(info: RasterInfo | undefined): RasterRenderType[] {
   if (!info) return [];
   const out: RasterRenderType[] = [];
-  if (info.bands === 1 && !info.colorTable) out.push("hillshade");
+  if (valueBands(info).length === 1 && !info.colorTable) out.push("hillshade");
   if (!info.colorTable) out.push("continuous");
   if (info.integer) out.push("categorical");
   out.push("image");
   return out;
 }
 
+/** One category per code `band` holds (the raster service's distinct values, at most `limit`: as many as a
+ * classification's All values), each in the file's color table color for it, else the palette's colors in order; named
+ * by its code. Null where the codes are not known (float cells, or too many codes to list). */
+export function categoriesOf(
+  info: RasterInfo | undefined,
+  band = 1,
+  limit = MAX_CLASS_COUNT
+): Array<{ value: number; color: string }> | null {
+  const values = info?.stats.find((b) => b.index === band)?.values;
+  if (!values?.length) return null;
+  const codes = values.slice(0, limit);
+  const colors = paletteSteps(CATEGORY_PALETTE, Math.min(codes.length, 12));
+  return codes.map((value, i) => ({
+    value,
+    color: info?.tableColors?.[value] ?? colors[i % colors.length],
+  }));
+}
+
 /** A render of `type` from what is known about the file: a color range gets a written range (the browser cannot
- * compute one), categories the sampled values; everything else stays at its defaults. */
+ * compute one), categories the band's codes; everything else stays at its defaults. */
 export function defaultRender(
   type: RasterRenderType,
-  opts: { info?: RasterInfo; sample?: ValueSample | null; stops?: Array<{ value: number }> } = {}
+  opts: {
+    info?: RasterInfo;
+    sample?: ValueSample | null;
+    stops?: Array<{ value: number }>;
+    band?: number;
+  } = {}
 ): JsonObject {
   if (type === "continuous") {
     const domain = opts.info ? seedDomain(opts.sample ?? null, opts.info, opts.stops) : null;
     return domain ? { type, domain } : { type };
   }
-  // A file with its own color table keeps drawing in it; categories are added one by one in its colors.
-  if (type === "categorical" && opts.sample?.values.length && !opts.info?.colorTable) {
-    const colors = paletteSteps(CATEGORY_PALETTE, Math.min(opts.sample.values.length, 12));
-    return {
-      type,
-      classes: opts.sample.values.map((value, i) => ({ value, color: colors[i % colors.length] })),
-    };
+  if (type === "categorical") {
+    const classes = categoriesOf(opts.info, opts.band);
+    return classes ? { type, classes } : { type };
   }
   return { type };
 }
@@ -55,6 +85,136 @@ export function equalClasses(domain: [number, number], count: number): Array<{ f
     ...(i > 0 ? { from: breaks[i - 1] } : {}),
     ...(i < count - 1 ? { to: breaks[i] } : {}),
   }));
+}
+
+/** The ways of coloring that cover `render.domain`; every other method classifies the whole band. */
+export const RANGED_METHODS: readonly string[] = ["continuous", "equal_interval", "manual"];
+
+/** The methods whose breaks the raster service computes for each band (goatlib `BREAK_METHODS`). */
+export const BREAK_METHODS: readonly string[] = ["quantile", "natural_breaks", "std_dev"];
+
+/** A number as a style check writes it: twelve significant digits (goatlib `stable`). */
+const stable = (x: number) => Number(x.toPrecision(12));
+
+/** Classes from inner breaks: the first open below, the last open above; one class without breaks. */
+export function classesFromBreaks(breaks: number[]): Array<{ from?: number; to?: number }> {
+  return Array.from({ length: breaks.length + 1 }, (_, i) => ({
+    ...(i > 0 ? { from: breaks[i - 1] } : {}),
+    ...(i < breaks.length ? { to: breaks[i] } : {}),
+  }));
+}
+
+/** `count` equal classes over a range as a style check computes them (goatlib `compute_raster_stats`), so the saved
+ * classes are the ones the panel wrote: unrounded, to twelve digits. */
+export function equalIntervalClasses(
+  [d0, d1]: [number, number],
+  count: number
+): Array<{ from?: number; to?: number }> {
+  const raw = Array.from({ length: count - 1 }, (_, i) => stable(d0 + ((i + 1) * (d1 - d0)) / count));
+  const low = stable(d0);
+  const high = stable(d1);
+  return classesFromBreaks([...new Set(raw)].filter((b) => low < b && b < high).sort((a, b) => a - b));
+}
+
+/** The class counts `method` offers on `band`: those the raster service computed breaks for, none for a band formula;
+ * 2 to 12 for equal intervals and manual breaks, which need no breaks. */
+export function breakCounts(info: RasterInfo | undefined, band: unknown, method: string): number[] {
+  if (!BREAK_METHODS.includes(method)) return [...CLASS_COUNTS];
+  if (typeof band !== "number") return [];
+  return CLASS_COUNTS.filter((n) => bandBreaks(info, band, method, n) !== undefined);
+}
+
+/** A class's own settings (spec 9.4: they survive a recompute by position): its name, visibility, legend and a color
+ * picked by hand; a color the server wrote with the classes (`computed.generated`) is the palette's and goes. */
+function ownSettings(classify: JsonObject, record: unknown): JsonObject {
+  if (!isObject(record)) return {};
+  const generated = isObject(classify.computed) ? classify.computed.generated : undefined;
+  const written =
+    isObject(generated) && generated.target === "color" && isObject(generated.values) ? generated.values : {};
+  const byServer = typeof record.id === "string" && written[record.id] === record.color;
+  return {
+    ...(typeof record.name === "string" && record.name ? { name: record.name } : {}),
+    ...(typeof record.color === "string" && !byServer ? { color: record.color } : {}),
+    ...(record.visible === false ? { visible: false } : {}),
+    ...(record.legend === false ? { legend: false } : {}),
+  };
+}
+
+/** The range a color range or its equal or manual classes cover: the written one, else the band's 2nd to 98th
+ * percentile as Draw as Color range starts it (`seedDomain`, so a switch back from a method without a range of its own
+ * does not spread the colors over the band's outliers), else the range the check computed, else the band's minimum and
+ * maximum. */
+function classRange(render: JsonObject, info: RasterInfo | undefined): [number, number] | null {
+  const given = Array.isArray(render.domain) ? render.domain : null;
+  if (given && given.length === 2 && given.every((v) => typeof v === "number"))
+    return given as [number, number];
+  const band = render.band ?? 1;
+  const seeded = typeof band === "number" && info ? seedDomain(sampleOf(info, band), info) : null;
+  if (seeded) return seeded;
+  const computed =
+    isObject(render.computed) && Array.isArray(render.computed.domain) ? render.computed.domain : null;
+  if (computed && computed.length === 2 && computed.every((v) => typeof v === "number"))
+    return computed as [number, number];
+  return typeof band === "number" ? bandRange(info, band) : null;
+}
+
+/** The color range's render with its colors by `method` in `count` classes (spec 9.4), written by the panel at once:
+ * `continuous` without classes; equal intervals over the range (written, so the check splits the same one); quantiles,
+ * natural breaks and standard deviation from the breaks the raster service computed for the band, without a range (they
+ * classify the whole band, and the check then writes the band's minimum and maximum, which close the first and last
+ * class in labels and the legend); manual breaks keep the classes there are when there are `count` of them, else start
+ * as equal classes. A palette, equal and manual classes without a written range get one (`classRange`). What the
+ * author set on a class stays by position. */
+export function rasterClassesRender(
+  render: JsonObject,
+  method: string,
+  count: number,
+  info: RasterInfo | undefined
+): JsonObject {
+  const next: JsonObject = { ...render };
+  const before = isObject(render.classify) ? render.classify : {};
+  const old = Array.isArray(before.classes) ? before.classes : [];
+  delete next.classify;
+  const written = classRange(render, info);
+  // A palette, equal and manual classes cover a range: one is written where the render has none (after quantiles).
+  if (RANGED_METHODS.includes(method) && !Array.isArray(render.domain) && written) next.domain = written;
+  if (method === "continuous") return next;
+  const own: JsonObject = {
+    ...(before.palette !== undefined ? { palette: before.palette } : {}),
+    ...(before.reverse !== undefined ? { reverse: before.reverse } : {}),
+  };
+  const settle = (bounds: Array<{ from?: number; to?: number }>) =>
+    bounds.map((b, i) => ({ ...b, ...ownSettings(before, old[i]) }));
+  const range = written ?? [0, 1];
+  if (method === "manual") {
+    const kept = old.filter(isObject).filter((c) => typeof c.from === "number" || typeof c.to === "number");
+    const bounds =
+      kept.length === count
+        ? kept.map((c) => ({
+            ...(typeof c.from === "number" ? { from: c.from } : {}),
+            ...(typeof c.to === "number" ? { to: c.to } : {}),
+          }))
+        : equalClasses(range, count);
+    next.classify = { method, ...own, classes: settle(bounds) };
+    return next;
+  }
+  if (method === "equal_interval") {
+    next.domain = range;
+    next.classify = { method, count, ...own, classes: settle(equalIntervalClasses(range, count)) };
+    return next;
+  }
+  const breaks =
+    typeof render.band === "object"
+      ? undefined
+      : bandBreaks(info, (render.band as number) ?? 1, method, count);
+  delete next.domain;
+  next.classify = {
+    method,
+    count,
+    ...own,
+    ...(breaks ? { classes: settle(classesFromBreaks(breaks)) } : {}),
+  };
+  return next;
 }
 
 /** Whether no-data values change the drawing (spec 9): not where the file draws itself, by its color table,

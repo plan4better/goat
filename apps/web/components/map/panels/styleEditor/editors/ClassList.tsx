@@ -3,8 +3,9 @@
 // The classes of a classification (prototype 4.5 class list): per class its value for the target (a color, a number,
 // a choice or an icon), the lower bound of manual breaks, the name with the automatic label as placeholder, the
 // feature count, show or hide, and "Style this class"; then Other and No data. A category class's label opens its
-// values to pick, and "Add class" starts a new one. The rows share one grid, so values, labels and counts line up in
-// columns; a number column keeps room for its longest value, as a slider's value does.
+// values to pick, and "Add class" starts a new one. The rows share one grid (`ClassGrid`, a raster's classes use it
+// too), so values, labels and counts line up in columns; a number column keeps room for its longest value, as a
+// slider's value does.
 import { Box, ButtonBase, IconButton, InputBase, Tooltip, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
@@ -23,7 +24,11 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 import { type RangeFormat, classDomain, labelRange, rangeText, valuesText } from "@/lib/style/legend";
 
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
-import { CATEGORY_GRAY } from "@/components/map/panels/styleEditor/editors/CategoriesEditor";
+import {
+  CATEGORY_GRAY,
+  ClassGrid,
+  ClassGridRow,
+} from "@/components/map/panels/styleEditor/editors/ClassGrid";
 import { ClassValues } from "@/components/map/panels/styleEditor/editors/ClassValues";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { PathIconPicker } from "@/components/map/panels/styleEditor/editors/IconRow";
@@ -39,9 +44,6 @@ import { valueChars } from "@/components/map/panels/styleEditor/rows/SliderRow";
 
 type RecordKey = number | "other" | "no_data";
 
-/** The line between what the classes set and the field's values they cover. */
-const Rule = () => <Box aria-hidden sx={{ alignSelf: "stretch", width: "1px", bgcolor: "divider" }} />;
-
 /** The label of the panel's row that sets `target` ("Size", "Color"), short enough for the head of the value column. */
 function rowLabelKey(target: string, geometry?: Geometry): string | undefined {
   for (const group of geometry ? GROUPS[geometry] : [])
@@ -56,7 +58,7 @@ const numberText = (value: number, pct?: boolean, language = "en") =>
 
 /** The characters a column of numbers keeps room for: the longest end of the property's range (as a slider's value
  * does), or a longer value in the column. */
-function columnChars(values: unknown[], target?: string): number {
+export function columnChars(values: unknown[], target?: string): number {
   const range = target ? SLIDERS[target] : undefined;
   const numbers = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   return Math.max(
@@ -315,115 +317,101 @@ function ClassRow({
   const name = typeof rec.name === "string" ? rec.name : "";
   const hidden = rec.visible === false;
   const bound = bounds && typeof record === "number" && record > 0;
-  const labelColumn = bounds && !bound ? { gridColumn: "span 2" } : undefined;
   return (
-    // A row of the list's grid: every cell sits in its column, an empty one where the row has nothing there.
-    <Box
-      data-class-row
-      data-absent={absent || undefined}
+    <ClassGridRow
+      absent={absent}
       title={absent ? t("style_editor.none_in_data") : undefined}
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "subgrid",
-        gridColumn: "1 / -1",
-        alignItems: "center",
-        minHeight: 32,
-        opacity: hidden || absent ? 0.55 : 1,
-      }}>
-      <TargetValue
-        path={path}
-        target={target}
-        title={name || range || label}
-        choices={choices}
-        reserve={reserve.value}
-      />
-      <Rule />
-      {/* Manual breaks: a class after the first starts at its bound, typed in front of the rest of its range; the
-          first class, Other and No data have no bound, their label takes the bound's column too. */}
-      {bound ? (
-        <NumberInput
-          value={typeof rec.from === "number" ? rec.from : undefined}
-          plain
-          reserve={reserve.bound}
-          ariaLabel={t("style_editor.lower_bound")}
-          onChange={(v) => store.update((doc) => setManualBound(doc, ci, record, v), `${path}.from`)}
+      hidden={hidden}
+      onToggle={() => store.set(`${path}.visible`, hidden ? undefined : false)}
+      swatch={
+        <TargetValue
+          path={path}
+          target={target}
+          title={name || range || label}
+          choices={choices}
+          reserve={reserve.value}
         />
-      ) : null}
-      {values && typeof record === "number" ? (
-        <ButtonBase
-          aria-haspopup="dialog"
-          title={name || label || undefined}
-          onClick={(event) => openValues(event.currentTarget, ci, record, values.classificationId)}
-          sx={{
-            ...labelColumn,
-            minWidth: 0,
-            height: 28,
-            mx: -1,
-            px: 1,
-            borderRadius: 1,
-            justifyContent: "flex-start",
-            "&:hover": { bgcolor: "action.hover" },
-          }}>
-          <Typography
-            variant="body2"
-            noWrap
-            sx={name || label ? undefined : { color: "primary.main", fontStyle: "italic" }}>
-            {name || label || t("style_editor.pick_values")}
-          </Typography>
-        </ButtonBase>
-      ) : (
-        <InputBase
-          value={name}
-          placeholder={label}
-          inputProps={{ "aria-label": t("style_editor.class_name") }}
-          onChange={(event) => store.set(`${path}.name`, event.target.value || undefined)}
-          sx={{ ...labelColumn, minWidth: 0, typography: "body2", "& input": { p: 0 } }}
-        />
-      )}
-      {count !== undefined ? (
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ justifySelf: "end", fontVariantNumeric: "tabular-nums" }}>
-          {formatNumberText(count, {}, i18n.language)}
-        </Typography>
-      ) : (
-        <span />
-      )}
-      <IconButton
-        size="small"
-        aria-label={t(hidden ? "style_editor.show_class" : "style_editor.hide_class")}
-        onClick={() => store.set(`${path}.visible`, hidden ? undefined : false)}>
-        <Icon iconName={hidden ? ICON_NAME.EYE_SLASH : ICON_NAME.EYE} sx={{ fontSize: 12 }} />
-      </IconButton>
-      {record === "no_data" ? (
-        <span />
-      ) : (
-        <Tooltip title={t("style_editor.style_this_class")}>
-          <IconButton
-            size="small"
-            aria-label={t("style_editor.style_this_class")}
-            onClick={() => {
-              store.setScope({ classify: ci, key: record });
-              popover.close(1);
+      }
+      // Manual breaks: a class after the first starts at its bound, typed in front of the rest of its range; the
+      // first class, Other and No data have no bound, their label takes the bound's column too.
+      bound={
+        bound ? (
+          <NumberInput
+            value={typeof rec.from === "number" ? rec.from : undefined}
+            plain
+            reserve={reserve.bound}
+            ariaLabel={t("style_editor.lower_bound")}
+            onChange={(v) => store.update((doc) => setManualBound(doc, ci, record, v), `${path}.from`)}
+          />
+        ) : undefined
+      }
+      label={
+        values && typeof record === "number" ? (
+          <ButtonBase
+            aria-haspopup="dialog"
+            title={name || label || undefined}
+            onClick={(event) => openValues(event.currentTarget, ci, record, values.classificationId)}
+            sx={{
+              minWidth: 0,
+              height: 28,
+              mx: -1,
+              px: 1,
+              borderRadius: 1,
+              justifyContent: "flex-start",
+              "&:hover": { bgcolor: "action.hover" },
             }}>
-            <Icon iconName={ICON_NAME.EDIT} sx={{ fontSize: 12 }} />
-          </IconButton>
-        </Tooltip>
-      )}
-    </Box>
+            <Typography
+              variant="body2"
+              noWrap
+              sx={name || label ? undefined : { color: "primary.main", fontStyle: "italic" }}>
+              {name || label || t("style_editor.pick_values")}
+            </Typography>
+          </ButtonBase>
+        ) : (
+          <InputBase
+            value={name}
+            placeholder={label}
+            inputProps={{ "aria-label": t("style_editor.class_name") }}
+            onChange={(event) => store.set(`${path}.name`, event.target.value || undefined)}
+            sx={{ minWidth: 0, typography: "body2", "& input": { p: 0 } }}
+          />
+        )
+      }
+      count={count !== undefined ? formatNumberText(count, {}, i18n.language) : undefined}
+      style={
+        record === "no_data" ? undefined : (
+          <Tooltip title={t("style_editor.style_this_class")}>
+            <IconButton
+              size="small"
+              aria-label={t("style_editor.style_this_class")}
+              onClick={() => {
+                store.setScope({ classify: ci, key: record });
+                popover.close(1);
+              }}>
+              <Icon iconName={ICON_NAME.EDIT} sx={{ fontSize: 12 }} />
+            </IconButton>
+          </Tooltip>
+        )
+      }
+    />
   );
 }
 
+/** How range labels are written: the words, the locale, a unit and number format, the data's ends. */
+export type RangeOptions = Parameters<typeof rangeText>[1];
+
+/** The legend's words for ranges. */
+export const rangeWords = (t: (key: string) => string): RangeOptions["words"] => ({
+  under: t("style_editor.range_under"),
+  to: t("style_editor.range_to"),
+  andMore: t("style_editor.range_and_more"),
+});
+
 /** The legend's range words, unit and number format of classification `c`, and the data's minimum and maximum the
  * server computed with it, which its open classes read (as the legend does). */
-const rangeOptions = (c: JsonObject, t: (key: string) => string, locale: string) => ({
+const rangeOptions = (c: JsonObject, t: (key: string) => string, locale: string): RangeOptions => ({
   locale,
-  words: {
-    under: t("style_editor.range_under"),
-    to: t("style_editor.range_to"),
-    andMore: t("style_editor.range_and_more"),
-  },
+  words: rangeWords(t),
   unit: typeof c.unit === "string" ? c.unit : undefined,
   format: isObject(c.format) ? (c.format as RangeFormat) : undefined,
   domain: classDomain(c),
@@ -448,8 +436,7 @@ export function classLabel(
 
 /** The range of a manual class after its typed bound: "to 14.81"; for the last class "to" the data's maximum, else
  * "and more". */
-function rangeAfterBound(c: JsonObject, record: JsonObject, t: (key: string) => string, locale: string) {
-  const options = rangeOptions(c, t, locale);
+export function rangeAfterBound(record: JsonObject, options: RangeOptions, t: (key: string) => string) {
   // The last class runs to the data's maximum where that reads as a range.
   const to =
     typeof record.to === "number"
@@ -550,51 +537,26 @@ export function ClassList({
   const rowLabel = rowLabelKey(target, geometry);
   const fieldName = typeof c.field === "string" ? c.field : "";
   const fieldLabel = fields.find((f) => f.name === fieldName)?.label ?? fieldName;
-  const head = { variant: "caption", color: "text.secondary", noWrap: true } as const;
   return (
     <Box sx={{ py: 1 }}>
-      {/* The columns: the value the class sets, a rule, then the field's side: the lower bound (manual breaks), the
-          label, the count; show or hide and style this class. The numbers stand at the end of their room, as in a
-          table. */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: `auto 1px ${bounds ? "auto " : ""}minmax(0, 1fr) auto auto auto`,
-          columnGap: 1,
-          px: 3,
-          "& [data-reserve]": { justifyContent: "flex-end" },
-        }}>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: "subgrid",
-            gridColumn: "1 / -1",
-            alignItems: "center",
-            minHeight: 24,
-          }}>
-          {/* Over the numbers at their end, over swatches and choices at their start. */}
-          <Typography
-            {...head}
-            sx={{ justifySelf: CAPABILITIES[target]?.kind === "number" ? "end" : "start" }}>
-            {rowLabel ? t(rowLabel) : valueLabel}
-          </Typography>
-          <Rule />
-          <Typography {...head} title={fieldLabel} sx={bounds ? { gridColumn: "span 2" } : undefined}>
-            {fieldLabel}
-          </Typography>
-          <Typography {...head} sx={{ justifySelf: "end" }}>
-            {t("features")}
-          </Typography>
-          <span />
-          <span />
-        </Box>
+      <ClassGrid
+        head={{
+          value: rowLabel ? t(rowLabel) : valueLabel,
+          label: fieldLabel,
+          count: t("features"),
+          // Over the numbers at their end, over swatches and choices at their start.
+          valueAlign: CAPABILITIES[target]?.kind === "number" ? "end" : "start",
+        }}
+        bounds={bounds}>
         {classes.map((record, i) => (
           <ClassRow
             key={typeof record.id === "string" ? record.id : i}
             ci={ci}
             record={i}
             target={target}
-            label={bounds && i > 0 ? rangeAfterBound(c, record, t, i18n.language) : auto(record)}
+            label={
+              bounds && i > 0 ? rangeAfterBound(record, rangeOptions(c, t, i18n.language), t) : auto(record)
+            }
             range={auto(record)}
             count={counts?.classes?.[i]}
             bounds={bounds}
@@ -629,7 +591,7 @@ export function ClassList({
             choices={choices}
           />
         )}
-      </Box>
+      </ClassGrid>
       {categories && <AddClassButton ci={ci} c={c} target={target} palette={palette ?? "colorbrewer:Set2"} />}
     </Box>
   );

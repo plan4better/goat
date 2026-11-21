@@ -33,8 +33,16 @@ export interface RasterInfoResponse {
     histogram: { counts: number[]; edges: number[] };
     values: number[] | null;
     approximate: boolean;
+    /** The cells holding each of `values`, in the same order; null where `values` is. */
+    counts?: number[] | null;
+    /** Inner class breaks by method and class count ("3" to "12"), over the same sample a style check classifies;
+     * a list can be shorter than count - 1, or empty; `{}` for a band without values. */
+    breaks?: BandBreaks;
   }>;
 }
+
+/** Inner class breaks by method (`quantile`, `natural_breaks`, `std_dev`) and class count. */
+export type BandBreaks = Record<string, Record<string, number[]>>;
 
 export interface BandStats {
   index: number;
@@ -44,6 +52,13 @@ export interface BandStats {
   p98: number | null;
   /** The distinct values of a whole-number band with few of them. */
   values: number[] | null;
+  /** The cells holding each of `values`, in the same order. */
+  counts?: number[] | null;
+  mean?: number | null;
+  std?: number | null;
+  /** Cell counts per bin and the bins' edges (one more than the counts), over the band's minimum to maximum. */
+  histogram?: { counts: number[]; edges: number[] };
+  breaks?: BandBreaks;
 }
 
 export interface RasterInfo {
@@ -190,6 +205,11 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
       p2: b.p2,
       p98: b.p98,
       values: b.values,
+      counts: b.counts ?? null,
+      mean: b.mean,
+      std: b.std,
+      histogram: b.histogram,
+      breaks: b.breaks ?? {},
     })),
   };
 }
@@ -199,6 +219,89 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
 export function shortNumber(value: number): string {
   const text = String(value);
   return text.length <= 10 ? text : value.toPrecision(3).replace(/\.?0+(?=e|$)/, "");
+}
+
+/** A bin of a histogram: its range and how many values fall in it (a band's cells, a field's features). */
+export interface HistogramBin {
+  range: [number, number];
+  count: number;
+}
+
+/** A band's histogram as bins; none where the info has none for it. */
+export function bandHistogram(info: RasterInfo | undefined, band: number): HistogramBin[] {
+  const histogram = info?.stats.find((b) => b.index === band)?.histogram;
+  if (!histogram) return [];
+  const { counts, edges } = histogram;
+  return counts.map((count, i) => ({ range: [edges[i], edges[i + 1]], count }));
+}
+
+/** The inner breaks the raster service computed for `count` classes of `method` on a band; undefined where it computed
+ * none (a formula, another count, a band without values). */
+export function bandBreaks(
+  info: RasterInfo | undefined,
+  band: number,
+  method: string,
+  count: number
+): number[] | undefined {
+  return info?.stats.find((b) => b.index === band)?.breaks?.[method]?.[String(count)];
+}
+
+const binTotal = (bins: HistogramBin[]) => bins.reduce((sum, bin) => sum + bin.count, 0);
+
+/** The share (0 to 1) of a band's cells in the class from `from` up to `to` (from inclusive, an open end unbounded):
+ * each bin adds the part of its cells that lies in the class, taking the cells as spread evenly over the bin, so the
+ * classes of a band add up to all of it; a bin without width (a band of one value) counts whole in the class its edge
+ * falls in. Undefined without a histogram. */
+export function rangeShare(bins: HistogramBin[], from?: number, to?: number): number | undefined {
+  const total = binTotal(bins);
+  if (!total) return undefined;
+  const low = from ?? -Infinity;
+  const high = to ?? Infinity;
+  let inside = 0;
+  for (const { range, count } of bins) {
+    const [a, b] = range;
+    if (b <= a) {
+      if (a >= low && a < high) inside += count;
+      continue;
+    }
+    const covered = Math.min(b, high) - Math.max(a, low);
+    if (covered > 0) inside += (count * covered) / (b - a);
+  }
+  return inside / total;
+}
+
+/** The bin `value` falls in, as the service's histogram counts it (the last bin holds its upper edge); -1 beyond. */
+function binOf(bins: HistogramBin[], value: number): number {
+  return bins.findIndex(
+    (bin, i) =>
+      value >= bin.range[0] && (value < bin.range[1] || (i === bins.length - 1 && value === bin.range[1]))
+  );
+}
+
+/** The share (0 to 1) of a band's cells holding the whole number `value`, out of the band's distinct `values`: known
+ * where it is the only one of them in its bin (the histogram counts bins, not values); 0 for a value the band does not
+ * hold, undefined where its bin holds others too. */
+export function valueShare(bins: HistogramBin[], values: number[], value: number): number | undefined {
+  const total = binTotal(bins);
+  if (!total) return undefined;
+  if (!values.includes(value)) return 0;
+  const k = binOf(bins, value);
+  if (k < 0) return 0;
+  return values.some((v) => v !== value && binOf(bins, v) === k) ? undefined : bins[k].count / total;
+}
+
+/** The share (0 to 1) of a band's cells holding the code `value`: its cell count over all the codes' counts (the
+ * service counts every code of a band whose codes it lists), exact; from the histogram where an info has no counts
+ * (`valueShare`). 0 for a code the band does not hold, undefined where the band's codes are not known. */
+export function codeShare(info: RasterInfo | undefined, band: number, value: number): number | undefined {
+  const stats = info?.stats.find((b) => b.index === band);
+  if (!stats?.values) return undefined;
+  const { values, counts } = stats;
+  if (!counts || counts.length !== values.length) return valueShare(bandHistogram(info, band), values, value);
+  const total = counts.reduce((sum, n) => sum + n, 0);
+  if (!total) return undefined;
+  const i = values.indexOf(value);
+  return i < 0 ? 0 : counts[i] / total;
 }
 
 /** A band's minimum and maximum, as the values' description gives them; null when unknown. */

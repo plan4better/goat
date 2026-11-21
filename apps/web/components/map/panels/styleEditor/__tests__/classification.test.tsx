@@ -429,6 +429,59 @@ describe("class values", () => {
     expect(values()[3].placeholder).toBe("1");
   });
 
+  it("vector classes look as before", () => {
+    // The list's grid: the value, a rule, the lower bound (manual breaks), the label, the count, show or hide, and
+    // style this class; the head and every row are rows of it.
+    const MANUAL = {
+      id: "p",
+      field: "population",
+      method: "manual",
+      classes: [{ to: 10 }, { from: 10, to: 20 }, { from: 20 }],
+    };
+    shell(doc([MANUAL]));
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+    const grid = rows[0].parentElement as HTMLElement;
+    expect(getComputedStyle(grid).gridTemplateColumns).toBe("auto 1px auto minmax(0, 1fr) auto auto auto");
+    const head = grid.firstElementChild as HTMLElement;
+    expect(head.hasAttribute("data-class-row")).toBe(false);
+    for (const row of [head, ...rows]) {
+      expect(getComputedStyle(row).gridTemplateColumns).toBe("subgrid");
+      expect(getComputedStyle(row).gridColumn.replace(/ /g, "")).toBe("1/-1");
+    }
+    // The head: the property, a rule, the field over the bound and label columns, the count, two empty cells.
+    expect(Array.from(head.children).map((el) => el.textContent)).toEqual([
+      "style_editor.color",
+      "",
+      "population",
+      "features",
+      "",
+      "",
+    ]);
+    expect(getComputedStyle(head.children[2]).gridColumn).toBe("span 2");
+    // The first class has no bound: its label takes the bound's column too; the others have seven cells.
+    expect(rows[0].children.length).toBe(6);
+    expect(getComputedStyle(rows[0].children[2]).gridColumn).toBe("span 2");
+    expect((rows[0].children[2].querySelector("input") as HTMLInputElement).placeholder).toBe(
+      "style_editor.range_under 10"
+    );
+    expect(rows[1].children.length).toBe(7);
+    expect(rows[1].children[2].querySelector("input")?.getAttribute("aria-label")).toBe(
+      "style_editor.lower_bound"
+    );
+    expect(getComputedStyle(rows[1].children[3]).gridColumn).not.toBe("span 2");
+    expect(within(rows[1]).getByRole("button", { name: "style_editor.style_this_class" })).toBeDefined();
+    expect(within(rows[1]).getByRole("button", { name: "style_editor.hide_class" })).toBeDefined();
+  });
+
+  it("a computed classification's grid has no bound column", () => {
+    shell(doc([QUANTILE]));
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+    const grid = rows[0].parentElement as HTMLElement;
+    expect(getComputedStyle(grid).gridTemplateColumns).toBe("auto 1px minmax(0, 1fr) auto auto auto");
+    expect(rows.map((row) => row.children.length)).toEqual([6, 6, 6, 6]);
+    expect(getComputedStyle(rows[0].children[2]).gridColumn).not.toBe("span 2");
+  });
+
   it("manual lower bounds are one column too", () => {
     shell(
       doc([

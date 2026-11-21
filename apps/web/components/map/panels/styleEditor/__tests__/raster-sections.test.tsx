@@ -158,6 +158,145 @@ describe("raster general section", () => {
     ]);
   });
 
+  it("Categories fill one class per code the band holds, in the file's colors", async () => {
+    // A paletted file: 8-bit codes with a color table.
+    const paletted: RasterInfo = {
+      bands: 1,
+      bits: [8],
+      colorTable: true,
+      integer: true,
+      names: [""],
+      tableColors: { 0: "#000000", 1: "#ff0000", 5: "#00ff00" },
+      stats: [{ ...band(1, 0, 5), values: [0, 1, 5] }],
+    };
+    const { store } = setup({ type: "image" }, paletted);
+    await choose(
+      "style_editor.draw_as",
+      "style_editor.raster_type_image",
+      "style_editor.raster_type_categorical"
+    );
+    expect(store.get("render")).toEqual({
+      type: "categorical",
+      classes: [
+        { value: 0, color: "#000000" },
+        { value: 1, color: "#ff0000" },
+        { value: 5, color: "#00ff00" },
+      ],
+    });
+  });
+
+  it("the band picker and the combination list the bands of values: an alpha band is none", async () => {
+    // An orthophoto: red, green, blue and its transparency; the service gives statistics for bands 1 to 3.
+    const rgba: RasterInfo = { ...RGB, stats: [band(1, 0, 255), band(2, 0, 255), band(3, 0, 255)] };
+    const { unmount } = setup({ type: "continuous", domain: [0, 255] }, rgba);
+    const items = await menuItems("style_editor.band", "style_editor.band_n");
+    expect(items.filter((item) => item !== "style_editor.band")).toHaveLength(3);
+    unmount();
+    setup({ type: "image" }, rgba);
+    // False color needs a fourth band of values.
+    const combinations = await menuItems("style_editor.bands", "style_editor.bands_true");
+    expect(combinations.join("|")).not.toContain("style_editor.bands_false");
+  });
+
+  it("another band takes its own breaks for computed classes", async () => {
+    const breaks = (b: number[]) => ({ quantile: { "3": b } });
+    const two: RasterInfo = {
+      ...RGB,
+      bands: 2,
+      names: ["", ""],
+      stats: [
+        { ...band(1, 0, 100), breaks: breaks([30, 60]) },
+        { ...band(2, 500, 900), breaks: breaks([600, 700]) },
+      ],
+    };
+    const quantiles = {
+      type: "continuous",
+      palette: "goat:elevation",
+      classify: { method: "quantile", count: 3, classes: [{ to: 30 }, { from: 30, to: 60 }, { from: 60 }] },
+    };
+    const { store, unmount } = setup(quantiles, two);
+    await userEvent.click(
+      within(screen.getByText("style_editor.band").parentElement as HTMLElement).getByRole("combobox")
+    );
+    await userEvent.click(
+      within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .filter((el) => el.classList.contains("MuiMenuItem-root"))[1]
+    );
+    await waitFor(() => expect(store.get("render.band")).toBe(2));
+    await waitFor(() =>
+      expect(store.get("render.classify.classes")).toEqual([
+        { to: 600 },
+        { from: 600, to: 700 },
+        { from: 700 },
+      ])
+    );
+    expect(store.get("render.domain")).toBeUndefined();
+    unmount();
+  });
+
+  const pickBand = async (n: number) => {
+    await userEvent.click(
+      within(screen.getByText("style_editor.band").parentElement as HTMLElement).getByRole("combobox")
+    );
+    await userEvent.click(
+      within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .filter((el) => el.classList.contains("MuiMenuItem-root"))[n - 1]
+    );
+  };
+
+  it("another band's breaks apply at once, also where the band has no values to sample", async () => {
+    // Band 2 has breaks but no percentiles: the classes do not wait for a sample.
+    const two: RasterInfo = {
+      ...RGB,
+      bands: 2,
+      names: ["", ""],
+      stats: [
+        { ...band(1, 0, 100), breaks: { quantile: { "3": [30, 60] } } },
+        { ...band(2, null, null), breaks: { quantile: { "3": [600, 700] } } },
+      ],
+    };
+    const quantiles = {
+      type: "continuous",
+      palette: "goat:elevation",
+      classify: { method: "quantile", count: 3, classes: [{ to: 30 }, { from: 30, to: 60 }, { from: 60 }] },
+    };
+    const { store } = setup(quantiles, two);
+    await pickBand(2);
+    expect(store.get("render.band")).toBe(2);
+    expect(store.get("render.classify.classes")).toEqual([
+      { to: 600 },
+      { from: 600, to: 700 },
+      { from: 700 },
+    ]);
+  });
+
+  it("another band of categories takes that band's codes and keeps the other values' color", async () => {
+    const two: RasterInfo = {
+      ...BYTE,
+      bands: 2,
+      names: ["", ""],
+      tableColors: undefined,
+      stats: [
+        { ...band(1, 1, 3), values: [1, 2, 3] },
+        { ...band(2, 7, 9), values: [7, 9] },
+      ],
+    };
+    const { store } = setup(
+      {
+        type: "categorical",
+        classes: [1, 2, 3].map((value) => ({ value, color: "#111111" })),
+        other_color: "#cccccc",
+      },
+      two
+    );
+    await pickBand(2);
+    expect(store.get("render.band")).toBe(2);
+    expect((store.get("render.classes") as Array<{ value: number }>).map((c) => c.value)).toEqual([7, 9]);
+    expect(store.get("render.other_color")).toBe("#cccccc");
+  });
+
   it("the band combination shows only for three or more bands", async () => {
     setup({ type: "image" }, FLOAT);
     expect(screen.queryByText("style_editor.bands")).toBeNull();

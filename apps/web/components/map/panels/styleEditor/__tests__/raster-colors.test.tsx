@@ -2,9 +2,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { equalIntervalClasses } from "@/lib/style/editor/raster";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
 
+import { shareText } from "@/components/map/panels/styleEditor/editors/RasterClassList";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 
@@ -361,5 +363,322 @@ describe("raster colors", () => {
     expect((within(rowOf("style_editor.colors")).getByRole("button") as HTMLButtonElement).disabled).toBe(
       true
     );
+  });
+});
+
+// A band of 0 to 100 with one cell sample per bin (50 bins of 2), and the breaks the raster service computed for it.
+const BREAKS = {
+  quantile: { "3": [33, 66], "5": [20, 40, 60, 80] },
+  natural_breaks: { "5": [10, 30, 50, 90] },
+  std_dev: { "5": [30, 70] },
+};
+const CLASSED: RasterInfo = {
+  ...INFO,
+  stats: [
+    {
+      index: 1,
+      min: 0,
+      max: 100,
+      p2: 3.2,
+      p98: 97.5,
+      values: null,
+      histogram: {
+        counts: Array.from({ length: 50 }, () => 1),
+        edges: Array.from({ length: 51 }, (_, i) => i * 2),
+      },
+      breaks: BREAKS,
+    },
+  ],
+};
+const QUANTILES = {
+  type: "continuous",
+  palette: "goat:elevation",
+  classify: {
+    method: "quantile",
+    count: 5,
+    classes: [{ to: 20 }, { from: 20, to: 40 }, { from: 40, to: 60 }, { from: 60, to: 80 }, { from: 80 }],
+  },
+};
+const classRows = () => Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+const optionOf = (label: string) =>
+  within(screen.getByRole("listbox")).getByText(label).closest("li") as HTMLElement;
+
+describe("raster classes and categories on the shared grid", () => {
+  it("raster classes render on the shared grid", async () => {
+    setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    const rows = classRows();
+    expect(rows).toHaveLength(5);
+    // The columns of the vector class list: the color, a rule, the range as the name's placeholder, the share, the eye;
+    // a raster class has no style of its own, so no column for it.
+    const grid = rows[0].parentElement as HTMLElement;
+    expect(getComputedStyle(grid).gridTemplateColumns).toBe("auto 1px minmax(0, 1fr) auto auto");
+    const head = grid.firstElementChild as HTMLElement;
+    expect(Array.from(head.children).map((el) => el.textContent)).toEqual([
+      "style_editor.color",
+      "",
+      "style_editor.band_n",
+      "style_editor.share",
+      "",
+    ]);
+    for (const row of rows) {
+      expect(row.children).toHaveLength(5);
+      expect(within(row).getByRole("button", { name: "style_editor.class_color" })).toBeDefined();
+      expect(within(row).getByRole("textbox", { name: "style_editor.class_name" })).toBeDefined();
+      expect(within(row).getByRole("button", { name: "style_editor.hide_class" })).toBeDefined();
+      // Ten of the fifty bins in each class.
+      expect(within(row).getByText("20%")).toBeDefined();
+    }
+    const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+    // Open ends read the band's minimum and maximum, as the legend writes them.
+    expect(names.map((n) => n.placeholder)).toEqual([
+      "0 style_editor.range_to 20",
+      "20 style_editor.range_to 40",
+      "40 style_editor.range_to 60",
+      "60 style_editor.range_to 80",
+      "80 style_editor.range_to 100",
+    ]);
+  });
+
+  it("a histogram shows the band with the breaks", async () => {
+    setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    const svg = Array.from(document.querySelectorAll("svg")).find((el) =>
+      el.querySelector("rect")
+    ) as SVGElement;
+    expect(svg.querySelectorAll("rect")).toHaveLength(50);
+    expect(svg.querySelectorAll("line[stroke-dasharray]")).toHaveLength(4);
+  });
+
+  it("switching to quantiles uses the precomputed breaks without a request", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [3, 98] }, {}, CLASSED);
+    await openColors();
+    await choose(
+      "style_editor.method",
+      "style_editor.raster_method_continuous",
+      "style_editor.method_quantile"
+    );
+    const classes = store.get("render.classify.classes") as Array<{ from?: number; to?: number }>;
+    expect(classes.slice(1).map((c) => c.from)).toEqual(BREAKS.quantile["5"]);
+    expect(classes.slice(0, -1).map((c) => c.to)).toEqual(BREAKS.quantile["5"]);
+    expect(store.get("render.classify.method")).toBe("quantile");
+    expect(store.get("render.classify.count")).toBe(5);
+    // The style check classifies the band's values without a range as the service did, so the classes stay.
+    expect(store.get("render.domain")).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("equal intervals need no breaks from the server", async () => {
+    const none: RasterInfo = { ...CLASSED, stats: [{ ...CLASSED.stats[0], breaks: {} }] };
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 90] }, {}, none);
+    await openColors();
+    await choose(
+      "style_editor.method",
+      "style_editor.raster_method_continuous",
+      "style_editor.method_equal_interval"
+    );
+    expect(store.get("render.classify")).toEqual({
+      method: "equal_interval",
+      count: 5,
+      classes: equalIntervalClasses([0, 90], 5),
+    });
+    expect(store.get("render.domain")).toEqual([0, 90]);
+  });
+
+  it("methods without breaks for the band are disabled with a note", async () => {
+    const none: RasterInfo = { ...CLASSED, stats: [{ ...CLASSED.stats[0], breaks: {} }] };
+    setup({ type: "continuous", palette: "goat:elevation", domain: [0, 90] }, {}, none);
+    await openColors();
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    for (const method of ["quantile", "natural_breaks", "std_dev"]) {
+      const option = optionOf(`style_editor.method_${method}`);
+      expect(option.getAttribute("aria-disabled")).toBe("true");
+      expect(within(option).getByText("style_editor.no_breaks_for_band")).toBeDefined();
+    }
+    for (const method of ["equal_interval", "manual"])
+      expect(optionOf(`style_editor.method_${method}`).getAttribute("aria-disabled")).toBeNull();
+    // What used to wait for the raster service is there now.
+    expect(screen.queryByText("style_editor.needs_raster_service")).toBeNull();
+  });
+
+  it("a band formula has no precomputed breaks: its computed methods are disabled", async () => {
+    setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [0, 50],
+        band: { name: "Twice", expression: "b1 * 2" },
+      },
+      {},
+      CLASSED
+    );
+    await openColors();
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    expect(optionOf("style_editor.method_quantile").getAttribute("aria-disabled")).toBe("true");
+    // The histogram is band 1's, not the formula's: none.
+    await userEvent.keyboard("{Escape}");
+    expect(document.querySelector("svg[viewBox] rect")).toBeNull();
+  });
+
+  it("the classes offer the counts the service computed breaks for", async () => {
+    const { store } = setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    await userEvent.click(within(rowOf("style_editor.classes")).getByRole("combobox"));
+    const counts = within(screen.getByRole("listbox"))
+      .getAllByRole("option")
+      .filter((el) => el.classList.contains("MuiMenuItem-root"));
+    // 3 and 5: the fixture's lists.
+    expect(counts).toHaveLength(2);
+    await userEvent.click(counts[0]);
+    expect(store.get("render.classify.count")).toBe(3);
+    expect(store.get("render.classify.classes")).toEqual([{ to: 33 }, { from: 33, to: 66 }, { from: 66 }]);
+  });
+
+  it("the colors row names the method and the number of classes", () => {
+    setup(QUANTILES, {}, CLASSED);
+    expect(within(rowOf("style_editor.colors")).getByRole("button").textContent).toBe(
+      "style_editor.raster_classes_n"
+    );
+  });
+
+  it("categories are offered from the file's values", async () => {
+    const codes: RasterInfo = {
+      bands: 1,
+      bits: [8],
+      colorTable: true,
+      integer: true,
+      tableColors: { 1: "#ff0000", 2: "#00ff00", 5: "#0000ff" },
+      stats: [
+        {
+          index: 1,
+          min: 1,
+          max: 5,
+          p2: 1,
+          p98: 5,
+          values: [1, 2, 5],
+          histogram: { counts: [10, 30, 0, 0, 60], edges: [1, 1.8, 2.6, 3.4, 4.2, 5] },
+        },
+      ],
+    };
+    const { store } = setup({ type: "categorical", classes: [{ value: 1, color: "#ff0000" }] }, {}, codes);
+    // The class on the grid with its share.
+    const [row] = classRows();
+    expect(within(row).getByText("10%")).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    const menu = screen.getByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    // The codes not used yet, each with its share.
+    expect(items.map((el) => el.textContent)).toEqual(["230%", "560%"]);
+    await userEvent.click(within(menu).getByText("5"));
+    expect(store.get("render.classes")).toEqual([
+      { value: 1, color: "#ff0000" },
+      { value: 5, color: "#0000ff" },
+    ]);
+  });
+
+  it("every category shows its share from the file's cell counts", async () => {
+    // A paletted file whose codes 0, 1 and 2 fall in one histogram bin: the service counts each code.
+    const paletted: RasterInfo = {
+      bands: 1,
+      bits: [8],
+      colorTable: true,
+      integer: true,
+      tableColors: { 0: "#ffffff", 1: "#ff0000", 2: "#00ff00", 205: "#0000ff" },
+      stats: [
+        {
+          index: 1,
+          min: 0,
+          max: 205,
+          p2: 0,
+          p98: 205,
+          values: [0, 1, 2, 205],
+          counts: [50, 25, 15, 10],
+          histogram: { counts: [90, 10], edges: [0, 102.5, 205] },
+        },
+      ],
+    };
+    const classes = [0, 1, 2].map((value) => ({ value, color: "#cccccc" }));
+    setup({ type: "categorical", classes }, {}, paletted);
+    expect(classRows().map((row) => row.textContent)).toEqual(["050%", "125%", "215%"]);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    expect(
+      within(screen.getByRole("menu"))
+        .getAllByRole("menuitem")
+        .map((el) => el.textContent)
+    ).toEqual(["20510%"]);
+  });
+
+  it("a share above nothing but under a thousandth reads as under 0.1 %", () => {
+    expect(shareText(0.000066, "en")).toBe("< 0.1%");
+    expect(shareText(0.000066, "de")).toBe("< 0,1\u00a0%");
+    expect(shareText(0, "en")).toBe("0%");
+    expect(shareText(0.004, "en")).toBe("0.4%");
+    expect(shareText(undefined, "en")).toBeUndefined();
+  });
+
+  it("a stored heads and tails classification names its method and has no range of its own", async () => {
+    setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [0, 100],
+        classify: {
+          method: "heads_and_tails",
+          count: 3,
+          classes: [{ to: 30 }, { from: 30, to: 60 }, { from: 60 }],
+        },
+      },
+      {},
+      CLASSED
+    );
+    await openColors();
+    expect(within(rowOf("style_editor.method")).getByRole("combobox").textContent).toBe(
+      "style_editor.method_heads_and_tails"
+    );
+    expect(screen.queryByText("style_editor.range")).toBeNull();
+    expect(screen.queryByRole("button", { name: "style_editor.range_from_data" })).toBeNull();
+  });
+
+  it("a category's editor and a new category are titled with its code, as its row and the legend", async () => {
+    const codes: RasterInfo = {
+      bands: 1,
+      bits: [8],
+      colorTable: false,
+      integer: true,
+      stats: [{ index: 1, min: 1, max: 15, p2: 1, p98: 15, values: null }],
+    };
+    setup({ type: "categorical", classes: [{ value: 15, color: "#ff0000" }] }, {}, codes);
+    await userEvent.click(screen.getByRole("button", { name: "15" }));
+    expect(
+      (screen.getByRole("textbox", { name: "style_editor.category_name" }) as HTMLInputElement).placeholder
+    ).toBe("15");
+    await userEvent.keyboard("{Escape}");
+    // Without the band's codes, Add a class starts the next value and opens its editor, titled with it.
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    expect(screen.getAllByText("16").length).toBeGreaterThan(0);
+    expect(screen.queryByText("style_editor.value_n")).toBeNull();
+  });
+
+  it("back to Continuous after quantiles, the range starts from the band's 2nd to 98th percentile again", async () => {
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [3, 98] }, {}, CLASSED);
+    await openColors();
+    await choose(
+      "style_editor.method",
+      "style_editor.raster_method_continuous",
+      "style_editor.method_quantile"
+    );
+    expect(store.get("render.domain")).toBeUndefined();
+    await choose(
+      "style_editor.method",
+      "style_editor.method_quantile",
+      "style_editor.raster_method_continuous"
+    );
+    // 3.2 to 97.5, in whole numbers around them: not the band's minimum and maximum (0 to 100).
+    expect(store.get("render.domain")).toEqual([3, 98]);
+    expect(
+      (screen.getByRole("textbox", { name: "style_editor.range_lowest" }) as HTMLInputElement).value
+    ).toBe("3");
   });
 });
