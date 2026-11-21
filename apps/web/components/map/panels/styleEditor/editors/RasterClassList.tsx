@@ -8,22 +8,30 @@ import { ButtonBase, InputBase, Typography } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { useLoadedRasterValues } from "@/lib/api/rasters";
 import { setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { coverageUrl } from "@/lib/style/layerSource";
 import { rangeText, valuesText } from "@/lib/style/legend";
-import { paletteColors, paletteSteps } from "@/lib/style/palettes";
+import { paletteColors } from "@/lib/style/palettes";
+import { classColors, classEnds } from "@/lib/style/raster/color";
 import {
   type HistogramBin,
   type RasterInfo,
   bandHistogram,
   bandLabel,
-  bandRange,
   codeShare,
   rangeShare,
 } from "@/lib/style/raster/metadata";
+import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useStyleData,
+  useStyleSelector,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import {
   CATEGORY_GRAY,
   ClassGrid,
@@ -53,7 +61,8 @@ export function paletteStrip(colors: string[], stepped: boolean): string | undef
   return `linear-gradient(90deg, ${colors.map((c, i) => `${c} ${(i / n) * 100}% ${((i + 1) / n) * 100}%`).join(", ")})`;
 }
 
-/** The colors a render shows, in order: its stops, its classes or its palette. */
+/** The colors a render shows, in order: its stops, its classes (as the map draws them, `classColors`) or its
+ * palette. */
 export function renderColors(render: JsonObject): { colors: string[]; stepped: boolean } {
   if (Array.isArray(render.stops))
     return {
@@ -62,16 +71,8 @@ export function renderColors(render: JsonObject): { colors: string[]; stepped: b
     };
   const palette = (render.palette ?? DEFAULTS["continuous.palette"]) as string | string[];
   const classify = isObject(render.classify) ? render.classify : null;
-  if (classify && Array.isArray(classify.classes)) {
-    const steps = paletteSteps(palette, classify.classes.length);
-    const colors = render.reverse === true ? [...steps].reverse() : steps;
-    return {
-      colors: classify.classes.map((c, i) =>
-        isObject(c) && typeof c.color === "string" ? c.color : colors[i]
-      ),
-      stepped: true,
-    };
-  }
+  if (classify && Array.isArray(classify.classes))
+    return { colors: classColors(classify, palette, render.reverse), stepped: true };
   const colors = paletteColors(palette);
   return { colors: render.reverse === true ? [...colors].reverse() : colors, stepped: false };
 }
@@ -334,14 +335,14 @@ export function RasterClassList({ kind }: { kind: "classes" | "categories" }) {
   const render: JsonObject = isObject(value) ? value : {};
   const info = raster?.info;
   const bins = renderHistogram(render, info);
-  const band = renderBand(render);
-  // Open ends read the range the colors cover, else the band's minimum and maximum, as the legend writes them.
-  const given = Array.isArray(render.domain) ? render.domain : undefined;
-  const computed =
-    isObject(render.computed) && Array.isArray(render.computed.domain) ? render.computed.domain : undefined;
-  const domain =
-    ((given ?? computed) as [number, number] | undefined) ??
-    (band !== undefined ? (bandRange(info, band) ?? undefined) : undefined);
+  // Open ends read the band's minimum and maximum (a formula's from the values the map loaded), as the legend and the
+  // popup write them (`classEnds`).
+  const address = useStyleSelector((doc) => {
+    const query = raster ? valueQuery(doc as unknown as JsonObject) : null;
+    return raster && query ? valuesUrl(coverageUrl(raster.dataset), query) : undefined;
+  });
+  const described = useLoadedRasterValues(address);
+  const domain = classEnds(render, { info, range: described?.range });
   const options: RangeOptions = {
     locale: i18n.language,
     words: rangeWords(t),

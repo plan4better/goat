@@ -21,6 +21,7 @@ import {
   isStyleNoData,
   pixelValuesAt,
   rasterClassOf,
+  rasterDraws,
   rasterPopupOf,
   renderOf,
   tableBand,
@@ -137,14 +138,24 @@ function atStep(value: number, values: RasterValues): number {
   return Number(value.toFixed(decimals));
 }
 
-/** The record of a cell's value: the value and its class; null for no value and the style's no data. */
+/** The values description the map loaded for a layer's style (its band's or formula's range names the open classes);
+ * undefined for an image or before it loaded. */
+function describedOf(layer: PopupRaster, style: JsonObject): RasterValues | undefined {
+  const query = valueQuery(style);
+  return query ? loadedRasterValues(valuesUrl(coverageUrl(datasetOf(layer)), query)) : undefined;
+}
+
+/** The record of a cell's value: the value and its class (its open ends named by the range of `described`, the values
+ * the map loaded); null for no value, the style's no data and a cell the map does not draw (`rasterDraws`: a hidden
+ * class, a value in no category, beyond a range left out), as no popup opens over a feature its style hides. */
 function valueRecord(
   style: JsonObject,
   value: number | null | undefined,
-  ctx: InfoContext
+  ctx: InfoContext,
+  described: RasterValues | undefined
 ): Record<string, unknown> | null {
-  if (!num(value) || isStyleNoData(style, value)) return null;
-  const name = rasterClassOf(style, value, { t: ctx.t, locale: ctx.locale });
+  if (!num(value) || isStyleNoData(style, value) || !rasterDraws(style, value, described)) return null;
+  const name = rasterClassOf(style, value, { t: ctx.t, locale: ctx.locale, described });
   return name === undefined ? { value } : { value, class: name };
 }
 
@@ -165,7 +176,10 @@ async function pointRecord(
   if (!point) return null;
   const image = render.type === "image" || render.type === undefined;
   const styled = image ? null : formula ? point.styled : point.values[(num(band) ? band : 1) - 1];
-  const out: Record<string, unknown> = image ? {} : (valueRecord(style, styled, ctx) ?? {});
+  const record = image ? {} : valueRecord(style, styled, ctx, describedOf(layer, style));
+  // A styled value the map does not draw there (the style's no data, a hidden class): no popup.
+  if (record === null && num(styled)) return null;
+  const out: Record<string, unknown> = record ?? {};
   point.values.forEach((value, i) => {
     if (num(value)) out[`band_${i + 1}`] = value;
   });
@@ -216,7 +230,7 @@ export const cellSource: InfoSource = {
         lngLat,
         tileUnder(ctx.map, valueTileOptions(tiles.values), lngLat)
       );
-      shown = valueRecord(style, code === null ? null : atStep(code, tiles.values), ctx);
+      shown = valueRecord(style, code === null ? null : atStep(code, tiles.values), ctx, tiles.values);
     }
     if (!shown) return null;
     const first: InfoRecord = { values: shown, exact: false };

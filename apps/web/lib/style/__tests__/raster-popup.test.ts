@@ -6,11 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { commonT } from "@/i18n/__tests__/commonI18n";
 
 import { fetchRasterPoint, loadedRasterTileset, loadedRasterValues } from "@/lib/api/rasters";
+import { equalIntervalClasses } from "@/lib/style/editor/raster";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { coverageUrl } from "@/lib/style/layerSource";
 import { cellSource, infoSourceOf } from "@/lib/style/popup/infoSources";
 import { rasterColorSpec } from "@/lib/style/raster/color";
-import { bandFactsOf, imageBands, rasterInfoOf } from "@/lib/style/raster/metadata";
+import { type RasterInfo, bandFactsOf, imageBands, rasterInfoOf } from "@/lib/style/raster/metadata";
 import {
   RASTER_POPUP_ON_BY_DEFAULT,
   imagePixels,
@@ -998,6 +999,126 @@ describe("where a raster popup's values come from", () => {
     );
   });
 
+  it("no popup over cells the map does not draw, on hover or on click", async () => {
+    const integer: RasterValues = {
+      ...VALUES,
+      integer: true,
+      encoding: { ...VALUES.encoding, blueFactor: 1 },
+    };
+    /** The record a hover and a click give at a cell of `value` over value tiles. */
+    const records = async (render: object, value: number) => {
+      const layer = cog(1, { version: "1.0.0", kind: "raster", render });
+      const { map } = mapDrawing(layer, integer);
+      vi.mocked(loadedRasterValues).mockReturnValue(integer);
+      vi.mocked(tileValueAt).mockResolvedValue(value);
+      vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [value], styled: null });
+      return [
+        await cellSource.at(layer, here, ctx(map, "hover")),
+        await cellSource.at(layer, here, ctx(map, "click")),
+      ];
+    };
+    const classes = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 30],
+      classify: {
+        method: "manual",
+        classes: [{ to: 10 }, { from: 10, to: 20, visible: false }, { from: 20 }],
+      },
+    };
+    // A hidden class.
+    expect(await records(classes, 15)).toEqual([null, null]);
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+    expect((await records(classes, 25)).map((r) => r?.values.value)).toEqual([25, 25]);
+    // A value in no category, without a color for the rest; a hidden category.
+    const categories = {
+      type: "categorical",
+      classes: [
+        { value: 1, color: "#4a90c2" },
+        { value: 6, color: "#7a87c6", visible: false },
+      ],
+    };
+    expect(await records(categories, 9)).toEqual([null, null]);
+    expect(await records(categories, 6)).toEqual([null, null]);
+    expect((await records({ ...categories, other_color: "#cccccc" }, 9))[0]?.values.value).toBe(9);
+    // Beyond a color range or the stops whose outside cells are left out; drawn in the end colors otherwise.
+    const ramp = { type: "continuous", palette: "goat:elevation", domain: [100, 200] };
+    expect(await records({ ...ramp, outside: "hide" }, 250)).toEqual([null, null]);
+    expect((await records({ ...ramp, outside: "hide" }, 150))[0]?.values.value).toBe(150);
+    expect((await records(ramp, 250))[0]?.values.value).toBe(250);
+    const stops = {
+      type: "continuous",
+      stops: [
+        { value: 100, color: "#000000" },
+        { value: 200, color: "#ffffff" },
+      ],
+      outside: "hide",
+    };
+    expect(await records(stops, 50)).toEqual([null, null]);
+    // A hillshade draws its shading under colors left out.
+    expect((await records({ ...ramp, type: "hillshade", outside: "hide" }, 250))[0]?.values.value).toBe(250);
+    // Colors the raster service paints: a click's exact value in a hidden class opens nothing either.
+    const layer = cog(1, { version: "1.0.0", kind: "raster", render: classes });
+    const served = { ...mapDrawing(layer).map, getSource: () => ({ type: "raster", tiles: ["https://x"] }) };
+    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [15], styled: null });
+    expect(await cellSource.at(layer, here, ctx(served, "click"))).toBeNull();
+    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [25], styled: null });
+    expect((await cellSource.at(layer, here, ctx(served, "click")))?.values).toMatchObject({ value: 25 });
+  });
+
+  it("an open class is named by the band's minimum and maximum, whatever `outside` says", async () => {
+    const en = commonT("en");
+    // Equal intervals 5 over the colour range [32, 119] of a band that holds -38.94 to 189.14 (the description's range,
+    // the band's statistics).
+    const render = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [32, 119],
+      classify: { method: "equal_interval", count: 5, classes: equalIntervalClasses([32, 119], 5) },
+    };
+    const values: RasterValues = { ...VALUES, range: [-38.94, 189.14] };
+    const classOf = async (r: object, value: number, trigger: "hover" | "click") => {
+      const layer = cog(1, { version: "1.0.0", kind: "raster", render: r, legend: { unit: "m" } });
+      const { map } = mapDrawing(layer, values);
+      vi.mocked(loadedRasterValues).mockReturnValue(values);
+      vi.mocked(tileValueAt).mockResolvedValueOnce(value);
+      vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [value], styled: null });
+      const record = await cellSource.at(layer, here, { map, trigger, t: en, locale: "en" } as never);
+      return record?.values.class;
+    };
+    expect(await classOf(render, 12, "hover")).toBe("-38.94 to 49.4 m");
+    expect(await classOf(render, 200, "hover")).toBe("101.6 to 189.14 m");
+    // A click's exact value from geoapi is named the same.
+    expect(await classOf(render, 12, "click")).toBe("-38.94 to 49.4 m");
+    // Classes draw every cell in the end classes whatever `outside` says: a stored "hide" names them the same, and the
+    // cell beyond the colour range still opens its popup.
+    const hide = { ...render, outside: "hide" };
+    expect(await classOf(hide, 12, "hover")).toBe("-38.94 to 49.4 m");
+    expect(await classOf(hide, 200, "click")).toBe("101.6 to 189.14 m");
+    // The panel's preview names them from the file's statistics.
+    const info: RasterInfo = {
+      bands: 1,
+      bits: [32],
+      colorTable: false,
+      integer: false,
+      names: [""],
+      stats: [{ index: 1, min: -38.94, max: 189.14, p2: 32, p98: 119, values: null }],
+    };
+    const preview = rasterPopupProperties(
+      { version: "1.0.0", kind: "raster", render, legend: { unit: "m" } },
+      { trigger: "click", bands: "styled", popup: {} },
+      undefined,
+      { t: en, locale: "en", info }
+    );
+    expect(Object.keys((preview.blocks[1] as { palette: object }).palette)).toEqual([
+      "-38.94 to 49.4 m",
+      "49.4 to 66.8 m",
+      "66.8 to 84.2 m",
+      "84.2 to 101.6 m",
+      "101.6 to 189.14 m",
+    ]);
+  });
+
   it("a cell's class is its name, the legend's text for it, or Other", async () => {
     const landCover = cog(1, {
       version: "1.0.0",
@@ -1032,8 +1153,8 @@ describe("where a raster popup's values come from", () => {
     expect(await at(3)).toEqual({ value: 3, class: "Wald" });
     expect(await at(4)).toEqual({ value: 4, class: "4" });
     expect(await at(9)).toEqual({ value: 9, class: de("style_editor.other") });
-    // A hidden category: its value, no class.
-    expect(await at(6)).toEqual({ value: 6 });
+    // A hidden category: the map draws nothing there, no popup.
+    expect(await at(6)).toBeUndefined();
     // The default badge colors the cell's class.
     expect(layerPopup(landCover, { value: 9, class: "Andere" }, { t: de })?.blocks[1]).toEqual(
       expect.objectContaining({ type: "badge", palette: { Andere: "#cccccc" } })

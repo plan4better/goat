@@ -11,9 +11,10 @@ import useSWR from "swr";
 
 import { getFeatureCount, getUniqueValues } from "@/lib/api/processes";
 import { getHistogramStats } from "@/lib/api/projects";
+import { useLoadedRasterValues } from "@/lib/api/rasters";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { JsonObject } from "@/lib/style/json";
-import { layerFilter } from "@/lib/style/layerSource";
+import { coverageUrl, layerFilter } from "@/lib/style/layerSource";
 import { type Legend, PRESENCE_PENDING, type Presence, buildLegend, legendClasses } from "@/lib/style/legend";
 import {
   type PresenceCount,
@@ -21,6 +22,7 @@ import {
   presenceFromCounts,
   presenceRequests,
 } from "@/lib/style/presence";
+import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 import { subscribeViewPresence, viewCounted, viewPresence } from "@/lib/style/render/viewPresence";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
@@ -196,8 +198,14 @@ export function useLayerLegend(
     };
   }, [isWaiting]);
   const { geometry, zoom, serviceLegendUrl } = ctx;
+  // A raster file's classes read the minimum and maximum of the values the map loaded for it (asks nothing).
+  const query = style?.kind === "raster" && layer?.dataset ? valueQuery(style) : null;
+  const values = useLoadedRasterValues(
+    query && layer?.dataset ? valuesUrl(coverageUrl(layer.dataset), query) : undefined
+  );
+  const valueRange = values?.range;
   return useMemo(
-    () => (style ? buildLegend(style, { geometry, zoom, serviceLegendUrl, present }) : null),
-    [style, geometry, zoom, serviceLegendUrl, present]
+    () => (style ? buildLegend(style, { geometry, zoom, serviceLegendUrl, present, valueRange }) : null),
+    [style, geometry, zoom, serviceLegendUrl, present, valueRange]
   );
 }

@@ -1737,7 +1737,7 @@ rasters and map services do not change.
 | H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp; one hexagon swatch while the values are not computed; the points as for a heatmap |
 | `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
-| raster `continuous` | a ramp or classes with the domain and `unit`; `min_label` and `max_label` replace the end values |
+| raster `continuous` | a ramp with the domain and `unit`, or classes with the `unit`, an open first or last class closed by the band's minimum and maximum (classes draw every cell, whatever `outside` says); `min_label` and `max_label` replace the end values |
 | raster `categorical` | one entry per class (its value with the `unit`, or its `name`), then Other in `other_color` where one is set (the legend cannot know whether any cell has another value) |
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
@@ -2507,8 +2507,9 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
 
 - **Fields:** `value`, the band or band formula the style colors; `class`, the name of its class (9.4) or category
   (9.5), "Other" for a value in no category when `other_color` is set, left out otherwise and for a ramp without
-  classes; `band_1` to `band_<n>`, every band of the file. Blocks and templates name them as fields (7.4), and the
-  validator checks them against the file (`band_9` on a 3-band file is `unknown_field`).
+  classes; `band_1` to `band_<n>`, every band of values of the file (an alpha band, the image's transparency, has no
+  field). Blocks and templates name them as fields (7.4), and the validator checks them against the file (`band_9` on
+  a 3-band file is `unknown_field`).
 - **Without `blocks` or `html`** the popup shows `value` with the legend's `unit`, the cell's color as the map draws
   it beside the value, and `class` as a badge; an image draws bands, not one value, so its `class` is empty, and so is
   its `value` but for an image drawn with its color table, whose `value` is the code of the band the table colors. An
@@ -2533,6 +2534,13 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
 - **Pointer:** while the popup is on, whatever opens it, the pointer shows over what it shows: a cell with a value, or a
   pixel the map paints of an image. A hover popup hides while the map moves and reads afresh on the next pointer
   move.
+- **Only over drawn cells:** a cell the map does not draw opens no popup and shows no pointer, on hover and on click,
+  as a feature its style hides: the style's no data, a value in a hidden class or category, a value in no category
+  without `other_color`, and a value beyond the `domain` or the stops of a color range with `outside: "hide"`. A
+  hillshade draws its shading under any color, so its cells always count.
+- **Class names:** a class without a `name` is named by its range as the legend writes it (7.2); an open first or last
+  class is closed by the band's minimum and maximum, as classes draw the cells below and above the color range in
+  those classes whatever `outside` says.
 
 > "Elevation on click and while hovering: the height with one decimal and its unit, in a compact popup."
 

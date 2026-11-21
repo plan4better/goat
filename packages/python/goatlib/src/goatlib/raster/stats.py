@@ -215,7 +215,7 @@ def raster_context(
     return DataContext(
         kind="raster",
         source="file",
-        fields=raster_fields(info.count),
+        fields=raster_fields(info.value_bands),
         bands=bands,
         no_data=info.nodata,
         data_type=info.dtype,

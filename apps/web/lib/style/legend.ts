@@ -12,7 +12,7 @@ import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { PROPERTY_KINDS } from "@/lib/style/generated/properties";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
-import { rasterColorSpec } from "@/lib/style/raster/color";
+import { classEnds, rasterColorSpec } from "@/lib/style/raster/color";
 
 type Part = Record<string, unknown>;
 
@@ -553,7 +553,11 @@ function valueFormSections(
 
 /** The legend of a raster file or map service (spec 9.2 to 9.5, 9.8): a ramp, the visible classes, or the service's
  * legend image; an image and shading without colors have none. */
-function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSection[] {
+function rasterSections(
+  style: JsonObject,
+  serviceLegendUrl?: string,
+  valueRange?: [number, number] | null
+): LegendSection[] {
   if (serviceLegendUrl) return [{ kind: "image", id: "service", url: serviceLegendUrl }];
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
   const spec = rasterColorSpec(render);
@@ -615,10 +619,9 @@ function rasterSections(style: JsonObject, serviceLegendUrl?: string): LegendSec
             },
           ]
     );
-    // The render's domain (the style's, else the computed one) closes an open first or last class, as the data's
-    // minimum and maximum do a classification's.
-    const span = domainOf(render);
-    const domain = span && span.every(Number.isFinite) && span[0] <= span[1] ? span : undefined;
+    // The band's minimum and maximum close an open first or last class, as the data's do a classification's
+    // (`classEnds`).
+    const domain = classEnds(render, { range: valueRange });
     return entries.length
       ? [{ kind: "entries", id: "raster", entries, ...(domain ? { domain } : {}), ...(unit ? { unit } : {}) }]
       : [];
@@ -816,6 +819,9 @@ export function buildLegend(
     geometry?: Geometry;
     zoom: number;
     serviceLegendUrl?: string;
+    /** A raster file's minimum and maximum of what it colors (its value tiles' description): the open first and last
+     * class read them (`classEnds`). */
+    valueRange?: [number, number] | null;
     /** The classes that have features (spec 7.2 `legend.classes`); without it, or with `all`, every class; while
      * they are counted, placeholder rows. */
     present?: Presence | typeof PRESENCE_PENDING;
@@ -824,7 +830,7 @@ export function buildLegend(
   const legend = style.legend;
   if (legend === false || (isObject(legend) && legend.show === false)) return null;
   if (style.kind === "raster") {
-    const sections = rasterSections(style, ctx.serviceLegendUrl);
+    const sections = rasterSections(style, ctx.serviceLegendUrl, ctx.valueRange);
     if (!sections.length) return null;
     return {
       ...(isObject(legend) && typeof legend.title === "string" ? { title: legend.title } : {}),

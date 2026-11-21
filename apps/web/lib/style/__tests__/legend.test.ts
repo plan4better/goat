@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { equalIntervalClasses } from "@/lib/style/editor/raster";
 import {
   LEGEND_NEUTRAL,
   type LegendSection,
@@ -1347,27 +1348,63 @@ describe("raster legends", () => {
     expect(without?.sections[0]).not.toHaveProperty("unit");
   });
 
-  it("raster classes carry the render's domain: an open first or last class reads it", () => {
-    const classify = { method: "manual", classes: [{ to: 55 }, { from: 55, to: 65 }, { from: 65 }] };
-    const own = raster({ type: "continuous", palette: "colorbrewer:BuGn", domain: [40, 80], classify });
-    const section = own?.sections[0];
-    expect(section).toMatchObject({ kind: "entries", domain: [40, 80] });
-    if (section?.kind !== "entries") throw new Error("entries expected");
-    const opts = { locale: "en-US", words: WORDS, domain: section.domain };
-    expect(section.entries.map((e) => rangeText(e.range ?? {}, opts))).toEqual([
-      "40 to 55",
-      "55 to 65",
-      "65 to 80",
-    ]);
-    // The computed domain where the style has none; categories read no domain.
-    const computed = raster({
+  it("an open first or last raster class reads the band's minimum and maximum, whatever `outside` says", () => {
+    // Equal intervals 5 over the colour range [32, 119] of a band that holds -38.94 to 189.14: cells beyond the range
+    // take the end classes, so the ends read the band's.
+    const render = {
       type: "continuous",
       palette: "colorbrewer:BuGn",
-      computed: { at: "t", data: "url:x", domain: [38, 91] },
-      classify,
-    });
-    expect(computed?.sections[0]).toMatchObject({ kind: "entries", domain: [38, 91] });
-    const categories = raster({ type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] });
+      domain: [32, 119],
+      classify: { method: "equal_interval", count: 5, classes: equalIntervalClasses([32, 119], 5) },
+    };
+    const band: [number, number] = [-38.94, 189.14];
+    const labels = (legend: ReturnType<typeof buildLegend>) => {
+      const section = legend?.sections[0];
+      if (section?.kind !== "entries") throw new Error("entries expected");
+      const opts = { locale: "en-US", words: WORDS, unit: section.unit, domain: section.domain };
+      return section.entries.map((e) => rangeText(e.range ?? {}, opts));
+    };
+    const legendOf = (r: object, range?: [number, number]) =>
+      buildLegend(
+        { version: "1.0.0", kind: "raster", render: r, legend: { unit: "m" } },
+        { zoom: 10, ...(range ? { valueRange: range } : {}) }
+      );
+    expect(labels(legendOf(render, band))).toEqual([
+      "-38.94 to 49.4 m",
+      "49.4 to 66.8 m",
+      "66.8 to 84.2 m",
+      "84.2 to 101.6 m",
+      "101.6 to 189.14 m",
+    ]);
+    // Classes draw every cell in the end classes whatever `outside` says: a stored "hide" reads the band's too.
+    expect(labels(legendOf({ ...render, outside: "hide" }, band))).toEqual([
+      "-38.94 to 49.4 m",
+      "49.4 to 66.8 m",
+      "66.8 to 84.2 m",
+      "84.2 to 101.6 m",
+      "101.6 to 189.14 m",
+    ]);
+    expect(labels(legendOf({ ...render, outside: "hide" }))[0]).toBe("under 49.4 m");
+    // The band's range not known: never the colour range; the bounds alone.
+    const unknown = labels(legendOf(render));
+    expect([unknown[0], unknown[4]]).toEqual(["under 49.4 m", "101.6 and more m"]);
+    // The range the check computed where the band's is not known, the band's over it; categories read none.
+    const quantiles = {
+      type: "continuous",
+      palette: "colorbrewer:BuGn",
+      computed: { at: "t", data: "url:x", domain: [5, 140] },
+      classify: { method: "quantile", count: 3, classes: [{ to: 40 }, { from: 40, to: 90 }, { from: 90 }] },
+    };
+    expect(labels(legendOf(quantiles))).toEqual(["5 to 40 m", "40 to 90 m", "90 to 140 m"]);
+    expect(labels(legendOf(quantiles, [2, 160]))).toEqual(["2 to 40 m", "40 to 90 m", "90 to 160 m"]);
+    const categories = buildLegend(
+      {
+        version: "1.0.0",
+        kind: "raster",
+        render: { type: "categorical", classes: [{ value: 55, color: "#fee8c8" }] },
+      },
+      { zoom: 10, valueRange: band }
+    );
     expect(categories?.sections[0]).not.toHaveProperty("domain");
   });
 

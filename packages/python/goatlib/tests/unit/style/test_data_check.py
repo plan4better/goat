@@ -530,7 +530,7 @@ def _three_bands() -> object:
 
     bands = tuple(BandInfo(i, 0, 255) for i in (1, 2, 3))
     return DataContext(
-        kind="raster", bands=bands, data_type="uint8", fields=raster_fields(3)
+        kind="raster", bands=bands, data_type="uint8", fields=raster_fields((1, 2, 3))
     )
 
 

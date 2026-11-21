@@ -6,7 +6,7 @@ and passed in; `goatlib.style` itself does no IO.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, Sequence
 
 FieldType = Literal["string", "number", "integer", "boolean", "date", "datetime"]
 
@@ -33,12 +33,13 @@ class BandInfo:
     max: float
 
 
-def raster_fields(bands: int) -> dict[str, FieldInfo]:
+def raster_fields(bands: Sequence[int]) -> dict[str, FieldInfo]:
     """The fields a raster file's popup reads (the specification's section 7.4):
     `value`, the band or formula the style draws; `class`, the name of its class or
-    category; `band_1` to `band_<bands>`, every band's value."""
+    category; `band_<n>` for every band of values in `bands` (an alpha band is the
+    image's transparency, no field: `RasterInfo.value_bands`)."""
     fields = [FieldInfo("value", "number"), FieldInfo("class", "string")]
-    fields += [FieldInfo(f"band_{n}", "number") for n in range(1, bands + 1)]
+    fields += [FieldInfo(f"band_{n}", "number") for n in bands]
     return {f.name: f for f in fields}
 
 

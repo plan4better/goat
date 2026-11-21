@@ -241,6 +241,25 @@ def test_an_alpha_band_is_no_band_a_style_can_color(cog_server: str) -> None:
     )
 
 
+def test_an_alpha_band_is_no_popup_field(cog_server: str) -> None:
+    """An orthophoto's popup reads its three color bands: its alpha band has no
+    field, as the panel, the point query and popup.md leave it out."""
+    with RasterSource(f"{cog_server}/rgba.tif", LOCAL) as src:
+        ctx = raster_context(src)
+    assert ctx.fields is not None
+    assert [n for n in ctx.fields if n.startswith("band_")] == [
+        "band_1",
+        "band_2",
+        "band_3",
+    ]
+    attributes = [{"field": "band_3"}, {"field": "band_4"}]
+    popup = {"blocks": [{"type": "field_list", "attributes": attributes}]}
+    issues = validate({**raster(type="image"), "popup": popup}, ctx)
+    assert [(i.code, i.path) for i in issues if i.code == "unknown_field"] == [
+        ("unknown_field", "/popup/blocks/0/attributes/1/field")
+    ]
+
+
 def test_validation_takes_the_value_bands_wherever_the_alpha_band_is() -> None:
     """An alpha band first (bands 2 to 4 hold values): band 1 is unknown, band
     4 is known, as tiles take them."""

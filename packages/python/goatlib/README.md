@@ -381,7 +381,8 @@ stack, so validation runs in core too.
   the other bands only. Tiles and validation take the same bands, wherever the
   alpha band is: a coloring or formula naming it is refused in the same words
   ("The raster has 3 bands.", `check_bands`; validation checks the band indexes
-  it knows). The file's band count (`RasterInfo.count`) still includes it.
+  it knows), and its popup has no field for it (`raster_fields`). The file's
+  band count (`RasterInfo.count`) still includes it.
 - **An image without chosen bands draws the bands its file marks red, green and
   blue** (`color.py`, `image_bands`, from `RasterInfo.color_interp`): a file
   stored blue, green, red and marked so draws red from its third band. Without

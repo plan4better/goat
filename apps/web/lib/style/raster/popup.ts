@@ -12,7 +12,7 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 import { type SourceLayer, coverageUrl, imageTilesetUrl, sourceOf } from "@/lib/style/layerSource";
 import { rangeText, valuesText } from "@/lib/style/legend";
 import { fromPopupConfig, toPopupConfig } from "@/lib/style/popup";
-import { rasterColorSpec } from "@/lib/style/raster/color";
+import { classEnds, rasterColorSpec } from "@/lib/style/raster/color";
 import {
   type RasterInfo,
   bandFactsOf,
@@ -219,34 +219,39 @@ export function isStyleNoData(style: JsonObject, value: number): boolean {
   return values.some((x) => Math.abs(value - x) <= 1e-6 * Math.max(1, Math.abs(x)));
 }
 
-/** A ramp's domain, the author's else the computed one, where it reads as a range. */
-function domainOf(render: JsonObject): [number, number] | undefined {
-  const d = Array.isArray(render.domain)
-    ? render.domain
-    : isObject(render.computed) && Array.isArray(render.computed.domain)
-      ? render.computed.domain
-      : null;
-  return d && d.length === 2 && num(d[0]) && num(d[1]) && d[0] <= d[1] ? [d[0], d[1]] : undefined;
-}
-
 /** The style's coloring with a name on each class or category: the style's name for it, else the legend's text (its
- * range or value, with the legend's unit). A copy of `rasterColorSpec`, whose own entries carry no names (they go
- * into tile URLs); its entries are matched after the same filter. Null for colorings without classes. */
+ * range or value, with the legend's unit; an open first or last class closed by `classEnds` of the file's statistics
+ * in `texts.info`, else the values the map loaded in `texts.described`). A copy of `rasterColorSpec`, whose own
+ * entries carry no names (they go into tile URLs); its entries are matched after the same filter. Null for colorings
+ * without classes. */
 export function namedRasterSpec(style: JsonObject, texts: RasterTexts = {}): NamedRasterColorSpec | null {
-  // Read on every pointer move: kept per document, language and locale.
+  // Read on every pointer move: kept per document, language, locale and the ends of its open classes.
+  const ends = classEnds(renderOf(style), { info: texts.info, range: texts.described?.range });
   const kept = named.get(style);
-  if (kept && kept.t === texts.t && kept.locale === texts.locale) return kept.spec;
-  const spec = nameClasses(style, texts);
-  named.set(style, { t: texts.t, locale: texts.locale, spec });
+  if (
+    kept &&
+    kept.t === texts.t &&
+    kept.locale === texts.locale &&
+    kept.ends?.[0] === ends?.[0] &&
+    kept.ends?.[1] === ends?.[1]
+  )
+    return kept.spec;
+  const spec = nameClasses(style, texts, ends);
+  named.set(style, { t: texts.t, locale: texts.locale, ends, spec });
   return spec;
 }
 
 const named = new WeakMap<
   JsonObject,
-  { t?: TFunction; locale?: string; spec: NamedRasterColorSpec | null }
+  { t?: TFunction; locale?: string; ends?: [number, number]; spec: NamedRasterColorSpec | null }
 >();
 
-function nameClasses(style: JsonObject, texts: RasterTexts): NamedRasterColorSpec | null {
+/** `ends`: what closes the open first and last class (`classEnds`). */
+function nameClasses(
+  style: JsonObject,
+  texts: RasterTexts,
+  ends: [number, number] | undefined
+): NamedRasterColorSpec | null {
   const render = renderOf(style);
   const spec = rasterColorSpec(render);
   if (!spec || (spec.kind !== "classes" && spec.kind !== "categories")) return null;
@@ -262,14 +267,13 @@ function nameClasses(style: JsonObject, texts: RasterTexts): NamedRasterColorSpe
       to: t ? t("style_editor.range_to") : "to",
       andMore: t ? t("style_editor.range_and_more") : "and more",
     };
-    const domain = domainOf(render);
     return {
       ...spec,
       classes: spec.classes.map((c, i) => ({
         ...c,
         name:
           text(written[i]?.name) ??
-          rangeText({ from: c.from, to: c.to }, { locale, words, unit, ...(domain ? { domain } : {}) }),
+          rangeText({ from: c.from, to: c.to }, { locale, words, unit, ...(ends ? { domain: ends } : {}) }),
       })),
     };
   }
@@ -291,6 +295,26 @@ export function rasterClassOf(style: JsonObject, value: number, texts: RasterTex
   if (found === null) return undefined;
   if (found === "other") return texts.t ? texts.t("style_editor.other") : "Other";
   return found.name;
+}
+
+/** Whether the map draws a cell of `value` (the raster service colors it the same, goatlib.raster.color): not in a
+ * hidden class or category, nor a value in no category without a color for the rest, nor beyond a color range or
+ * stops whose outside cells are left out (`outside: "hide"`; a range not yet known spreads over the values the map
+ * loaded, `described`). A hillshade draws its shading under any color; an image is drawn as it is. */
+export function rasterDraws(style: JsonObject, value: number, described?: RasterValues): boolean {
+  const render = renderOf(style);
+  const spec = render.type === "hillshade" ? null : rasterColorSpec(render);
+  if (!spec || spec.kind === "rgb") return true;
+  if (spec.kind === "classes" || spec.kind === "categories") return rasterClassAt(spec, value) !== null;
+  if (spec.outside !== "hide") return true;
+  if (spec.kind === "stops")
+    return value >= spec.stops[0].value && value <= spec.stops[spec.stops.length - 1].value;
+  const domain = spec.domain ?? described?.range;
+  if (!domain) return true;
+  // A range of one value colors that value and the next, as the service does.
+  const [d0, d1] = domain;
+  const end = d0 + (d1 - d0 || 1);
+  return value >= Math.min(d0, end) && value <= Math.max(d0, end);
 }
 
 /** The badge's colors: the cell's class in its color; without a cell (the style panel), every class. */

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getFeatureCount, getUniqueValues } from "@/lib/api/processes";
 import { getHistogramStats } from "@/lib/api/projects";
+import { useLoadedRasterValues } from "@/lib/api/rasters";
 import { makeStore } from "@/lib/store";
 import { setActiveRightPanel, setCurrentZoom } from "@/lib/store/map/slice";
 import type { JsonObject } from "@/lib/style/json";
@@ -32,6 +33,12 @@ vi.mock("@/lib/api/projects", async (importOriginal) => ({
   getHistogramStats: vi.fn(),
 }));
 
+vi.mock("@/lib/api/rasters", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/rasters")>()),
+  useLoadedRasterValues: vi.fn(() => undefined),
+}));
+
+const loaded = vi.mocked(useLoadedRasterValues);
 const uniqueValues = vi.mocked(getUniqueValues);
 const featureCount = vi.mocked(getFeatureCount);
 const histogram = vi.mocked(getHistogramStats);
@@ -210,6 +217,42 @@ describe("useLegendPresence", () => {
     expect(result.current).toBe(true);
     await waitFor(() => expect(result.current).toBe(false));
     unmount();
+  });
+});
+
+describe("useLayerLegend of a raster file", () => {
+  it("every legend of the file (layer list, print, panel) closes open classes with the values the map loaded", () => {
+    const dem: JsonObject = {
+      version: "1.0.0",
+      kind: "raster",
+      render: {
+        type: "continuous",
+        palette: "colorbrewer:BuGn",
+        domain: [32, 119],
+        classify: { method: "manual", classes: [{ to: 60 }, { from: 60, to: 90 }, { from: 90 }] },
+      },
+    };
+    loaded.mockImplementation((url?: string) =>
+      url?.includes("/collections/dem-1/coverage/")
+        ? ({ range: [-38.94, 189.14], integer: false, version: "1", encoding: {} } as never)
+        : undefined
+    );
+    const { result } = renderHook(
+      () => useLayerLegend(dem, { zoom: 10 }, { key: "9", dataset: "dem-1" }, "map"),
+      {
+        wrapper,
+      }
+    );
+    expect(result.current?.sections[0]).toMatchObject({ kind: "entries", domain: [-38.94, 189.14] });
+    // Before the map loaded them: the bounds alone, never the color range.
+    loaded.mockReturnValue(undefined);
+    const before = renderHook(
+      () => useLayerLegend(dem, { zoom: 10 }, { key: "9", dataset: "dem-1" }, "map"),
+      {
+        wrapper,
+      }
+    );
+    expect(before.result.current?.sections[0]).not.toHaveProperty("domain");
   });
 });
 

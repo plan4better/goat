@@ -6,13 +6,16 @@ import type { MapRef } from "react-map-gl/maplibre";
 import { MapProvider } from "react-map-gl/maplibre";
 
 import { useDatasetStyle } from "@/lib/api/map";
+import { useLoadedRasterValues } from "@/lib/api/rasters";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import { setHighlightedFeature, setPopupInfo } from "@/lib/store/map/slice";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
+import { coverageUrl } from "@/lib/style/layerSource";
 import { buildLegend, informative } from "@/lib/style/legend";
 import { fromPopupConfig } from "@/lib/style/popup";
+import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { detailPopupConfig } from "@/lib/utils/map/detailPopup";
 import { storedBounds } from "@/lib/utils/map/extentBounds";
@@ -114,6 +117,12 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
   }, [dataset, popup, style]);
 
   const geometry = dataset.feature_layer_geometry_type?.toLowerCase();
+  // A raster file's classes read the minimum and maximum of the values the map loaded for it, as in the project.
+  const query =
+    style?.document.kind === "raster" ? valueQuery(style.document as unknown as JsonObject) : null;
+  const valueRange = useLoadedRasterValues(
+    query ? valuesUrl(coverageUrl(String(dataset.id)), query) : undefined
+  )?.range;
   const legend = useMemo(
     () =>
       style
@@ -123,9 +132,10 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
             zoom: 12,
             serviceLegendUrl: (dataset.other_properties as { legend_urls?: string[] } | null)
               ?.legend_urls?.[0],
+            valueRange,
           })
         : null,
-    [style, geometry, dataset.other_properties]
+    [style, geometry, dataset.other_properties, valueRange]
   );
 
   return (

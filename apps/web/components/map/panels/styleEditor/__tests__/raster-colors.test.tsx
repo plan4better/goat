@@ -4,9 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { equalIntervalClasses } from "@/lib/style/editor/raster";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import { rasterColorSpec } from "@/lib/style/raster/color";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
 
-import { shareText } from "@/components/map/panels/styleEditor/editors/RasterClassList";
+import { renderColors, shareText } from "@/components/map/panels/styleEditor/editors/RasterClassList";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 
@@ -437,6 +438,60 @@ describe("raster classes and categories on the shared grid", () => {
       "40 style_editor.range_to 60",
       "60 style_editor.range_to 80",
       "80 style_editor.range_to 100",
+    ]);
+  });
+
+  it("open ends read the band's minimum and maximum over a narrower colour range, whatever `outside` says", async () => {
+    const band: RasterInfo = {
+      ...INFO,
+      stats: [{ ...INFO.stats[0], min: -38.94, max: 189.14, p2: 32, p98: 119 }],
+    };
+    const render = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [32, 119],
+      classify: { method: "equal_interval", count: 5, classes: equalIntervalClasses([32, 119], 5) },
+    };
+    const ends = () => {
+      const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+      return [names[0].placeholder, names[names.length - 1].placeholder];
+    };
+    const clamped = setup(render, {}, band);
+    await openColors();
+    expect(ends()).toEqual(["-38.94 style_editor.range_to 49.4", "101.6 style_editor.range_to 189.14"]);
+    clamped.unmount();
+    // Classes draw every cell in the end classes: a stored "hide" reads the band's too.
+    setup({ ...render, outside: "hide" }, {}, band);
+    await openColors();
+    expect(ends()).toEqual(["-38.94 style_editor.range_to 49.4", "101.6 style_editor.range_to 189.14"]);
+  });
+
+  it("class colors, the strip and the bars take a classification's own palette, as the map draws them", async () => {
+    const render = {
+      type: "continuous",
+      palette: "colorbrewer:Spectral",
+      domain: [0, 100],
+      classify: { method: "manual", palette: "colorbrewer:Blues", classes: [{ to: 50 }, { from: 50 }] },
+    };
+    const drawn = (spec: ReturnType<typeof rasterColorSpec>) =>
+      spec?.kind === "classes" ? spec.classes.map((c) => c.color) : [];
+    expect(drawn(rasterColorSpec(render))).toEqual(["#f7fbff", "#08306b"]);
+    expect(renderColors(render).colors).toEqual(["#f7fbff", "#08306b"]);
+    // Its own reverse too; a class's own color stays.
+    const reversed = { ...render, classify: { ...render.classify, reverse: true } };
+    expect(renderColors(reversed).colors).toEqual(drawn(rasterColorSpec(reversed)));
+    expect(renderColors(reversed).colors).toEqual(["#08306b", "#f7fbff"]);
+    const picked = {
+      ...render,
+      classify: { ...render.classify, classes: [{ to: 50, color: "#ff0000" }, { from: 50 }] },
+    };
+    expect(renderColors(picked).colors).toEqual(["#ff0000", "#08306b"]);
+    setup(render);
+    await openColors();
+    const swatches = screen.getAllByRole("button", { name: "style_editor.class_color" });
+    expect(swatches.map((s) => getComputedStyle(s).backgroundColor)).toEqual([
+      "rgb(247, 251, 255)",
+      "rgb(8, 48, 107)",
     ]);
   });
 

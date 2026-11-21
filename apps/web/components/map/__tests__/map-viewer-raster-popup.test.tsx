@@ -522,6 +522,46 @@ describe("MapViewer raster popup", () => {
     expect(recorded.requests).toEqual([]);
   });
 
+  it("no popup and the default pointer over cells the map does not draw", async () => {
+    const hidden = demWith({
+      popup: { trigger: "click_and_hover" },
+      render: {
+        type: "continuous",
+        palette: "colorbrewer:OrRd",
+        domain: [32, 119],
+        classify: {
+          method: "manual",
+          classes: [{ to: 60 }, { from: 60, to: 90, visible: false }, { from: 90 }],
+        },
+      },
+    });
+    const beyond = demWith({
+      popup: { trigger: "click_and_hover" },
+      render: { ...dem.style!.document.render, outside: "hide" },
+    });
+    for (const [layer, value] of [
+      [hidden, 70],
+      [beyond, 150],
+    ] as const) {
+      vi.mocked(tileValueAt).mockResolvedValue(value);
+      const store = viewer({ layers: [layer] });
+      canvas.style.cursor = "pointer";
+      await move();
+      await waitFor(() => expect(canvas.style.cursor).toBe(""));
+      expect(store.getState().map.popupInfo).toBeUndefined();
+      await click();
+      expect(store.getState().map.popupInfo).toBeUndefined();
+      expect(fetchRasterPoint).not.toHaveBeenCalled();
+      cleanup();
+    }
+    // A drawn cell of the same layer: the hand and the popup.
+    vi.mocked(tileValueAt).mockResolvedValue(39.2);
+    const store = viewer({ layers: [beyond] });
+    await move();
+    await waitFor(() => expect(canvas.style.cursor).toBe("pointer"));
+    await waitFor(() => expect(store.getState().map.popupInfo).toBeDefined());
+  });
+
   it("a read that fails is no value: no popup, the default pointer", async () => {
     vi.mocked(tileValueAt).mockRejectedValue(new Error("no tile"));
     const store = viewer({ layers: [demWith({ popup: { trigger: "click_and_hover" } })] });

@@ -73,6 +73,44 @@ function domainOf(render: JsonObject): [number, number] | null {
   return domain && domain.length === 2 && domain.every(num) ? (domain as [number, number]) : null;
 }
 
+/** A minimum and maximum, where it reads as one. */
+const span = (d: unknown): [number, number] | undefined =>
+  Array.isArray(d) && d.length === 2 && d.every(num) && d[0] <= d[1] ? [d[0], d[1]] : undefined;
+
+/** What the cells a render colors hold: its band's minimum and maximum from the file's statistics (`info`), else the
+ * values the map loaded (`range`, the value tiles' description: the band's statistics, or a formula's sample). */
+export interface RasterDataRange {
+  info?: { stats: Array<{ index: number; min: number | null; max: number | null }> };
+  range?: readonly number[] | null;
+}
+
+/** The minimum and maximum that close a raster class list's open first and last class wherever their names show (the
+ * legend, the popup's class, the panel's rows). Classes draw every cell beyond the color range in the first and last
+ * class, whatever `outside` says, so the ends read the data's: the band's (`data`), else the range the check computed.
+ * Undefined where none is known: the ends read by their bound alone ("Under 49.4", "101.6 and more"). */
+export function classEnds(render: JsonObject, data: RasterDataRange = {}): [number, number] | undefined {
+  const band = render.band ?? 1;
+  const stats = num(band) ? data.info?.stats.find((b) => b.index === band) : undefined;
+  return (
+    span(stats ? [stats.min, stats.max] : undefined) ??
+    span(data.range) ??
+    span(isObject(render.computed) ? render.computed.domain : undefined)
+  );
+}
+
+/** The color of each class of a raster classification (spec 9.4), hidden ones too: its own, else the color goatlib
+ * compute writes into it (`paletteSteps`, as its `sample_colors`) from the classification's own palette and reverse,
+ * else the render's `palette` and `reverse`. The map's colors (`rasterColorSpec`) and the panel's (its classes, strip
+ * and histogram) both. */
+export function classColors(classify: JsonObject, palette: string | string[], reverse: unknown): string[] {
+  const written = (Array.isArray(classify.classes) ? classify.classes : []).filter(isObject);
+  const own = classify.palette !== undefined && classify.palette !== null;
+  const steps = paletteSteps((own ? classify.palette : palette) as string | string[], written.length, {
+    reverse: (own ? classify.reverse : reverse) === true,
+  });
+  return written.map((c, i) => (typeof c.color === "string" ? c.color : (steps[i] ?? CLASS_GRAY)));
+}
+
 /** The coloring of a raster render; null for shading without colors (hillshade without a palette). */
 export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   const noData =
@@ -129,12 +167,7 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   // Computed classes draw once the server filled their bounds; until then the color range stands in.
   const bounded = written.length > 0 && (manual || written.some((c) => num(c.from) || num(c.to)));
   if (classify && bounded) {
-    // A class without a color takes the color goatlib compute writes into it (`paletteSteps`, as its
-    // `sample_colors`), from the classification's own palette, else the render's.
-    const own = classify.palette !== undefined && classify.palette !== null;
-    const colors = paletteSteps((own ? classify.palette : palette) as string | string[], written.length, {
-      reverse: (own ? classify.reverse : render.reverse) === true,
-    });
+    const colors = classColors(classify, palette, render.reverse);
     return {
       kind: "classes",
       band,
@@ -142,7 +175,7 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
       classes: written.map((c, i) => ({
         ...(num(c.from) ? { from: c.from } : {}),
         ...(num(c.to) ? { to: c.to } : {}),
-        color: c.visible === false ? null : typeof c.color === "string" ? c.color : (colors[i] ?? CLASS_GRAY),
+        color: c.visible === false ? null : colors[i],
       })),
     };
   }
