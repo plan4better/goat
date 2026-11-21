@@ -25,6 +25,8 @@ GOAT_ONLY = {
     "ImageBlock.height",
     "Popup.max_height",
     "Popup.width",
+    "RasterPopup.max_height",
+    "RasterPopup.width",
     "Zoom*.base",
 }
 

@@ -33,6 +33,15 @@ class BandInfo:
     max: float
 
 
+def raster_fields(bands: int) -> dict[str, FieldInfo]:
+    """The fields a raster file's popup reads (the specification's section 7.4):
+    `value`, the band or formula the style draws; `class`, the name of its class or
+    category; `band_1` to `band_<bands>`, every band's value."""
+    fields = [FieldInfo("value", "number"), FieldInfo("class", "string")]
+    fields += [FieldInfo(f"band_{n}", "number") for n in range(1, bands + 1)]
+    return {f.name: f for f in fields}
+
+
 @dataclass(frozen=True)
 class DataContext:
     """One dataset as validation sees it.

@@ -1250,14 +1250,24 @@ export interface RasterLegend {
   max_label?: string | null;
 }
 /**
- * A raster's popup: the cell values from the raster service, or a map service's feature info.
+ * A raster's popup (the specification's section 9.7): a vector popup over the
+ * cell's fields `value`, `class` and `band_<n>`, or a map service's feature info.
+ * It has no feature to highlight.
  *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "RasterPopup".
  */
 export interface RasterPopup {
   enabled?: boolean | null;
-  trigger?: ("click" | "hover") | null;
+  trigger?: ("click" | "hover" | "click_and_hover") | null;
+  mode?: ("simple" | "html") | null;
+  blocks?: (FieldListBlock | TextBlock | ImageBlock | ButtonBlock | BadgeBlock | DividerBlock)[] | null;
+  html?: string | null;
+  layout?: ("popup" | "pinned" | "modal" | "left_sidebar" | "right_sidebar") | null;
+  anchor?: ("top_left" | "top_right" | "bottom_left" | "bottom_right") | null;
+  width?: number | null;
+  max_height?: number | null;
+  header?: ("standard" | "compact" | "none") | null;
   bands?: ("styled" | "all") | null;
 }
 /**

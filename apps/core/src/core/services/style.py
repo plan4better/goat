@@ -226,9 +226,12 @@ async def check_document(
     compute: bool = True,
 ) -> tuple[dict[str, Any], list[Issue]]:
     """A document checked (spec 11) and its computed values filled (spec 12): by
-    processes when the style reads the layer's data, else by goatlib alone.
-    Raises StyleCheckUnavailable when processes cannot answer."""
-    if referenced_fields(document) or needed_stats(document):
+    processes when the style reads the layer's data, else by goatlib alone. A map
+    service has no data there (processes would read it as a raster file), so
+    goatlib checks it alone. Raises StyleCheckUnavailable when processes cannot
+    answer."""
+    ctx = stored.context(document)
+    if not ctx.is_service and (referenced_fields(document) or needed_stats(document)):
         result = await style_check(
             layer_id=stored.dataset_id,
             document=document,
@@ -241,7 +244,7 @@ async def check_document(
         return result["document"], [
             Issue.model_validate(i) for i in result.get("issues", [])
         ]
-    return document, validate(document, stored.context(document))
+    return document, validate(document, ctx)
 
 
 async def _base_document(
@@ -277,7 +280,13 @@ async def read_style(
     (`damaged` ones included) answered and nothing stored, unless it lacks what
     its data holds beside the classes, which is computed and stored then. When processes cannot
     answer, or could not compute it, the style comes back marked `stale`."""
-    document = upgrade(stored.document, stored.context(stored.document)).document
+    ctx = stored.context(stored.document)
+    document = upgrade(stored.document, ctx).document
+    if ctx.is_service:
+        # Nothing to compute, and processes would read a map service as a raster file.
+        return stored.read(
+            document, validate(document, ctx, stored=True) if check else None
+        )
     stale = is_stale(document, stored.fingerprint)
     # The panel opening asks processes anyway: a style that does not yet say what
     # its data holds beside the classes (`computed.no_data`, `computed.other`; one

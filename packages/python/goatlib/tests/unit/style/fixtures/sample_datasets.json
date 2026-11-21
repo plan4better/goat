@@ -275,6 +275,20 @@
  "landcover": {
   "kind": "raster",
   "source": "file",
+  "fields": [
+   {
+    "name": "value",
+    "type": "number"
+   },
+   {
+    "name": "class",
+    "type": "string"
+   },
+   {
+    "name": "band_1",
+    "type": "number"
+   }
+  ],
   "bands": [
    {
     "index": 1,
@@ -289,6 +303,32 @@
  "satellite": {
   "kind": "raster",
   "source": "file",
+  "fields": [
+   {
+    "name": "value",
+    "type": "number"
+   },
+   {
+    "name": "class",
+    "type": "string"
+   },
+   {
+    "name": "band_1",
+    "type": "number"
+   },
+   {
+    "name": "band_2",
+    "type": "number"
+   },
+   {
+    "name": "band_3",
+    "type": "number"
+   },
+   {
+    "name": "band_4",
+    "type": "number"
+   }
+  ],
   "bands": [
    {
     "index": 1,
@@ -318,6 +358,20 @@
  "elevation": {
   "kind": "raster",
   "source": "file",
+  "fields": [
+   {
+    "name": "value",
+    "type": "number"
+   },
+   {
+    "name": "class",
+    "type": "string"
+   },
+   {
+    "name": "band_1",
+    "type": "number"
+   }
+  ],
   "bands": [
    {
     "index": 1,

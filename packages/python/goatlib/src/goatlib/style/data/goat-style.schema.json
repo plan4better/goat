@@ -5769,7 +5769,7 @@
   },
   "RasterPopup": {
    "additionalProperties": false,
-   "description": "A raster's popup: the cell values from the raster service, or a map service's feature info.",
+   "description": "A raster's popup (the specification's section 9.7): a vector popup over the\ncell's fields `value`, `class` and `band_<n>`, or a map service's feature info.\nIt has no feature to highlight.",
    "properties": {
     "enabled": {
      "anyOf": [
@@ -5788,7 +5788,8 @@
       {
        "enum": [
         "click",
-        "hover"
+        "hover",
+        "click_and_hover"
        ],
        "type": "string"
       },
@@ -5798,6 +5799,150 @@
      ],
      "default": null,
      "title": "Trigger"
+    },
+    "mode": {
+     "anyOf": [
+      {
+       "enum": [
+        "simple",
+        "html"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Mode"
+    },
+    "blocks": {
+     "anyOf": [
+      {
+       "items": {
+        "oneOf": [
+         {
+          "$ref": "#/$defs/FieldListBlock"
+         },
+         {
+          "$ref": "#/$defs/TextBlock"
+         },
+         {
+          "$ref": "#/$defs/ImageBlock"
+         },
+         {
+          "$ref": "#/$defs/ButtonBlock"
+         },
+         {
+          "$ref": "#/$defs/BadgeBlock"
+         },
+         {
+          "$ref": "#/$defs/DividerBlock"
+         }
+        ]
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Blocks"
+    },
+    "html": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Html"
+    },
+    "layout": {
+     "anyOf": [
+      {
+       "enum": [
+        "popup",
+        "pinned",
+        "modal",
+        "left_sidebar",
+        "right_sidebar"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Layout"
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "enum": [
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Anchor"
+    },
+    "width": {
+     "anyOf": [
+      {
+       "maximum": 4000,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Width"
+    },
+    "max_height": {
+     "anyOf": [
+      {
+       "maximum": 4000,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Max Height"
+    },
+    "header": {
+     "anyOf": [
+      {
+       "enum": [
+        "standard",
+        "compact",
+        "none"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Header"
     },
     "bands": {
      "anyOf": [

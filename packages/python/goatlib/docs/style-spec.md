@@ -1961,6 +1961,10 @@ The validator checks every field a popup names against the dataset: attributes, 
 }
 ```
 
+A raster file's popup takes the same keys but `highlight_active_feature`, plus `bands`, and the same blocks over the
+fields of the cell under the pointer: `value` (the band or formula the style colors), `class` (its class or category)
+and `band_1` to `band_<n>` (every band); section 9.7.
+
 ## 8. How points are drawn: `render`
 
 `render.type`: `features` (default), `heatmap`, `cluster`, `h3`. Heatmaps and H3 can hand over to the point symbol at
@@ -2494,8 +2498,39 @@ The other methods:
 }
 ```
 
-A raster popup takes `enabled`, `trigger` (`click` or `hover`) and `bands`: `styled` (the band or formula the style
-uses) or `all`. The values come from the raster service's point query.
+A raster popup is the popup of 7.4 over the cell under the pointer, with every key but `highlight_active_feature`
+(`unknown_key`: there is no feature to mark), and `bands`:
+
+- **Fields:** `value`, the band or band formula the style colors; `class`, the name of its class (9.4) or category
+  (9.5), "Other" for a value in no category when `other_color` is set, left out otherwise and for a ramp without
+  classes; `band_1` to `band_<n>`, every band of the file. Blocks and templates name them as fields (7.4), and the
+  validator checks them against the file (`band_9` on a 3-band file is `unknown_field`).
+- **Without `blocks` or `html`** the popup shows `value` with the legend's `unit` and `class` as a badge; an image
+  draws bands, not one value, so its `value` and `class` are empty and it shows the bands it draws. `bands: "all"` adds
+  every band's value; `styled`, the default, does not.
+- **Without a `popup` key** a color scale (`continuous`, `categorical`, `hillshade`) opens a popup on click and an
+  image none; map services have none (9.8).
+- **Where the values come from:** hover reads `value` from the value tiles the map has loaded (9), so it sends no
+  request and shows what the map draws. A click shows that value at once, then the exact value and every band from
+  the raster service's point query; `band_<n>` is known on click only. An image, and a color scale the raster service
+  colors (9), draw no value tiles: they never open on hover, and a click shows the exact values from the point query
+  only.
+
+> "Elevation on click and while hovering: the height with one decimal and its unit, in a compact popup."
+
+<!-- check: elevation -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "raster",
+  "render": { "type": "continuous", "palette": "goat:elevation", "domain": [181, 440] },
+  "popup": {
+    "trigger": "click_and_hover",
+    "header": "compact",
+    "blocks": [{ "type": "field_list", "attributes": [{ "field": "value", "label": "Elevation", "format": { "decimals": 1, "suffix": " m" } }] }]
+  }
+}
+```
 
 ### 9.8 Map services (WMS, WMTS, XYZ)
 
@@ -2539,7 +2574,8 @@ uses) or `all`. The values come from the raster service's point query.
 - **Not for services** (`render_not_for_source`): `bands`, `no_data`, and the `continuous`, `categorical` and
   `hillshade` renders.
 - **Popup:** the service's feature info (WMS `GetFeatureInfo`) for layers the service marks as queryable, with
-  `enabled` and `trigger`. Later (`not_supported_yet`, section 19); the default is no popup.
+  `enabled` and `trigger` only (other popup keys are `render_not_for_source`). Later (`not_supported_yet`, section
+  19); the default is no popup.
 - **Where the pictures come from is not style:** `url`, `layers`, `srs`, `dpi`, `tile_size`, the service version and
   the legend URLs read from the capabilities stay in the layer's service configuration.
 
@@ -2779,7 +2815,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `range_invalid`, `domain_invalid`, `stops_order` | error | a range or domain from high to low, stops not ascending |
 | `render_not_for_geometry` | error | `heatmap`, `cluster` or `h3` on lines or polygons |
 | `render_type_mismatch` | error | a raster render type that does not fit the raster (hillshade on land cover codes) |
-| `render_not_for_source` | error | what the layer's source cannot do: a render other than `image`, `bands` or `no_data` on a map service; `service_style` on a layer that is not one |
+| `render_not_for_source` | error | what the layer's source cannot do: a render other than `image`, `bands`, `no_data` or a popup key other than `enabled` and `trigger` on a map service; `service_style` on a layer that is not one |
 | `unknown_band`, `invalid_band_expression` | error | a band the raster does not have, a formula with other symbols |
 | `too_many_features_for_render` | error | `cluster` on a layer above the feature limit (8.2) |
 | `not_supported_yet` | error | a construct this deployment cannot render yet (section 19) |
@@ -3514,7 +3550,7 @@ part overrides.
 
 | Key | Values and defaults |
 |---|---|
-| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` |
+| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` (on click for `continuous`, `categorical` and `hillshade`, none for `image`) |
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |
@@ -3566,7 +3602,7 @@ what it cannot render yet, so the AI and the panel never offer it:
 |---|---|
 | vector parts, value forms, classifications, rules, order, legend, time, popup, named styles, map document | H3 (geoapi H3 tiles) |
 | heatmap, clusters, map services (9.8) | raster band formulas, ranges and class breaks computed from a band's values, value tiles, colored tiles for images and point values (raster service) |
-| raster `image`, `continuous`, `categorical`, `hillshade` (9) | map service popups (`GetFeatureInfo`) |
+| raster `image`, `continuous`, `categorical`, `hillshade` (9) | map service popups (WMS `GetFeatureInfo`, ArcGIS identify, OGC API Features through the connections gateway) |
 | 3D: polygon `extrude` (3.6), H3 columns (8.3), `view.mode` and `view.projection` (10.1), `scene` (10.2) | |
 
 GOAT's services draw H3 and the raster service's constructs; map service popups answer `not_supported_yet`.

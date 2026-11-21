@@ -15,6 +15,7 @@ from goatlib.style.context import DataContext, FieldInfo
 from goatlib.style.defaults import REFERENCE_DEFAULTS
 from goatlib.style.issues import Issue, make_issue
 from goatlib.style.models.classify import NUMERIC_METHODS
+from goatlib.style.models.popup import RasterPopup
 from goatlib.style.pointer import item_key, to_pointer
 from goatlib.style.template import placeholders, problems
 
@@ -23,6 +24,10 @@ NUMERIC = ("number", "integer")
 CLUSTER_FIELDS = ("count", "value")
 #: The cluster values computed from a number field.
 CLUSTER_AGGREGATES = ("sum", "mean", "min", "max")
+#: What a map service's popup takes (spec 9.8): its feature info has no blocks or bands.
+SERVICE_POPUP_KEYS = ("enabled", "trigger")
+#: The keys a raster file's popup takes (`RasterPopup`), without the one it refuses.
+RASTER_POPUP_KEYS = frozenset(RasterPopup.model_fields) - {"highlight_active_feature"}
 #: GOAT's arrow (spec 3.2): the arrows' default icon.
 ARROW = REFERENCE_DEFAULTS["arrows.icon"]
 _LIQUID_OUT = re.compile(r"\{\{-?\s*([^\W\d][\w-]*)")
@@ -395,6 +400,7 @@ class _Checker:
         render = doc.get("render") if isinstance(doc.get("render"), dict) else {}
         rtype = render.get("type", "image")
         if ctx.is_service:
+            self.service_popup(doc.get("popup"))
             if rtype != "image":
                 self.add(
                     "render_not_for_source",
@@ -423,9 +429,6 @@ class _Checker:
                     "The service does not offer this style.",
                     allowed=allowed or None,
                 )
-            popup = doc.get("popup")
-            if isinstance(popup, dict) and popup.get("enabled", True):
-                self.capability("service_popups", ["popup"], "Map service popups")
             return
         if "service_style" in render:
             self.add(
@@ -433,6 +436,7 @@ class _Checker:
                 ["render", "service_style"],
                 "Only map services offer service styles.",
             )
+        self.popup(doc.get("popup"))
         # Values computed from the band's values need the raster service (spec 19).
         classify = render.get("classify")
         if isinstance(classify, dict) and classify.get("method", "manual") != "manual":
@@ -495,6 +499,24 @@ class _Checker:
             )
         if rtype == "categorical" and ctx.bands:
             self.raster_classes(render)
+
+    def service_popup(self, popup: Any) -> None:
+        if not isinstance(popup, dict):
+            return
+        for key, value in popup.items():
+            # Keys a raster popup does not have are parsing's to refuse; a null is unset.
+            if (
+                key in RASTER_POPUP_KEYS
+                and key not in SERVICE_POPUP_KEYS
+                and value is not None
+            ):
+                self.add(
+                    "render_not_for_source",
+                    ["popup", str(key)],
+                    "A map service's popup shows its feature info; it takes enabled and trigger only.",
+                )
+        if popup.get("enabled", True):
+            self.capability("service_popups", ["popup"], "Map service popups")
 
     def bands(self, render: dict[str, Any], rtype: str) -> None:
         count = len(self.ctx.bands)
@@ -586,8 +608,10 @@ def check_against_data(
 
 
 def referenced_fields(doc: dict[str, Any]) -> set[str]:
-    """Every field a vector style reads, as the checks above find them:
-    classifications, value forms, rules, labels, order, time, popup, render."""
+    """Every field a style reads, as the checks above find them: a vector style's
+    classifications, value forms, rules, labels, order, time, popup and render; a
+    raster style's popup fields (`value`, `class`, `band_<n>`), which only a check
+    that reads the file can know."""
     checker = _Checker(doc, DataContext(kind="vector"))
     checker.vector()
     return checker.seen

@@ -90,3 +90,17 @@ def test_breaks_are_those_of_the_shared_class_break_statistics() -> None:
     assert isinstance(b, Breaks) and b.breaks == pytest.approx((25.75, 50.5, 75.25))
     assert b.min == 1 and b.max == 100
     assert breaks_of(np.array([], dtype="float64"), "quantile", 3).min is None
+
+
+def test_raster_context_lists_value_class_and_bands(cog_server: str) -> None:
+    with RasterSource(f"{cog_server}/rgb.tif", LOCAL) as src:
+        ctx = raster_context(src)
+    assert ctx.fields is not None
+    assert {name: f.type for name, f in ctx.fields.items()} == {
+        "value": "number",
+        "class": "string",
+        "band_1": "number",
+        "band_2": "number",
+        "band_3": "number",
+    }
+    assert all(name == f.name for name, f in ctx.fields.items())

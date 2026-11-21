@@ -3166,6 +3166,42 @@
   }
  },
  {
+  "line": 2520,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "domain": [
+     181,
+     440
+    ]
+   },
+   "popup": {
+    "trigger": "click_and_hover",
+    "header": "compact",
+    "blocks": [
+     {
+      "type": "field_list",
+      "attributes": [
+       {
+        "field": "value",
+        "label": "Elevation",
+        "format": {
+         "decimals": 1,
+         "suffix": " m"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ {
   "line": 2102,
   "target": "wms",
   "expect": [],

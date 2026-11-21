@@ -110,6 +110,9 @@ _BOUNDS = {
 def _message(code: str, segments: list[str], error: dict[str, Any]) -> str:
     key = segments[-1] if segments else ""
     if code == "unknown_key":
+        # A model that refuses a key itself (`PydanticCustomError`) says why.
+        if error["type"] == "unknown_key":
+            return str(error["msg"])
         return f'"{key}" is not a key here.'
     if code == "missing_required":
         return f'"{key}" is required here.'

@@ -28,3 +28,14 @@ def test_rasters_and_services(contexts: dict) -> None:
 
 def test_unknown_fields_are_none_not_empty() -> None:
     assert DataContext(kind="vector", geometry="point").fields is None
+
+
+def test_raster_files_carry_the_cell_fields(contexts: dict) -> None:
+    from goatlib.style.context import raster_fields
+
+    files = {n: c for n, c in contexts.items() if c.kind == "raster"}
+    files = {n: c for n, c in files.items() if not c.is_service}
+    assert set(files) == {"elevation", "landcover", "satellite"}
+    for name, ctx in files.items():
+        assert ctx.fields == raster_fields(len(ctx.bands)), name
+    assert contexts["wms"].fields is None and contexts["tiles"].fields is None

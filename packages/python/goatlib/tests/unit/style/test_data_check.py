@@ -523,3 +523,101 @@ def test_a_cluster_value_field_is_a_field_the_style_reads() -> None:
 
     doc = _cluster({"op": "mean", "field": "pupils"}, {"label": {"text": "{value}"}})
     assert referenced_fields(doc) == {"pupils"}
+
+
+def _three_bands() -> object:
+    from goatlib.style.context import BandInfo, DataContext, raster_fields
+
+    bands = tuple(BandInfo(i, 0, 255) for i in (1, 2, 3))
+    return DataContext(
+        kind="raster", bands=bands, data_type="uint8", fields=raster_fields(3)
+    )
+
+
+def test_raster_popup_takes_blocks() -> None:
+    popup = {
+        "trigger": "click_and_hover",
+        "blocks": [{"type": "field_list", "attributes": [{"field": "value"}]}],
+    }
+    doc = {**R, "render": {"type": "continuous", "domain": [0, 255]}, "popup": popup}
+    assert codes(doc, _three_bands()) == set()
+
+
+def test_raster_popup_fields_are_checked() -> None:
+    def popup_issues(popup: dict) -> list[tuple[str, str]]:
+        doc = {**R, "render": {"type": "image"}, "popup": popup}
+        return [(i.code, i.path) for i in validate(doc, _three_bands())]
+
+    blocks = [
+        {"type": "field_list", "attributes": [{"field": "band_3"}, {"field": "band_9"}]}
+    ]
+    assert popup_issues({"blocks": blocks}) == [
+        ("unknown_field", "/popup/blocks/0/attributes/1/field")
+    ]
+    html = "{{ value }} {{ class }} {{ band_4 }}"
+    assert popup_issues({"mode": "html", "html": html}) == [
+        ("unknown_field", "/popup/html")
+    ]
+
+
+def test_raster_popup_refuses_highlight_active_feature() -> None:
+    for value in (True, False, None):
+        popup = {"trigger": "click", "highlight_active_feature": value}
+        doc = {**R, "render": {"type": "image"}, "popup": popup}
+        issues = validate(doc, _three_bands())
+        assert ("unknown_key", "/popup/highlight_active_feature") in [
+            (i.code, i.path) for i in issues
+        ], value
+
+
+def test_a_map_service_popup_takes_enabled_and_trigger_only(contexts: dict) -> None:
+    def popup_issues(popup: dict) -> list[tuple[str, str]]:
+        doc = {**R, "render": {"type": "image"}, "popup": popup}
+        return [(i.code, i.path) for i in validate(doc, contexts["wms"])]
+
+    assert popup_issues({"enabled": True, "trigger": "click"}) == []
+    blocks = [{"type": "field_list", "attributes": [{"field": "value"}]}]
+    assert popup_issues(
+        {"trigger": "click", "blocks": blocks, "mode": "html", "html": "{{ x }}"}
+    ) == [
+        ("render_not_for_source", "/popup/blocks"),
+        ("render_not_for_source", "/popup/html"),
+        ("render_not_for_source", "/popup/mode"),
+    ]
+    assert popup_issues({"enabled": False, "bands": "all"}) == [
+        ("render_not_for_source", "/popup/bands")
+    ]
+
+
+def test_a_map_service_popup_names_each_wrong_key_once(contexts: dict) -> None:
+    def popup_issues(popup: dict) -> list[tuple[str, str]]:
+        doc = {**R, "render": {"type": "image"}, "popup": popup}
+        return [(i.code, i.path) for i in validate(doc, contexts["wms"])]
+
+    # Keys parsing refuses already are refused as on a raster file, not a second time.
+    assert popup_issues({"foo": 1}) == [
+        ("invalid_value", "/popup"),
+        ("unknown_key", "/popup/foo"),
+    ]
+    assert popup_issues({"highlight_active_feature": True}) == [
+        ("invalid_value", "/popup"),
+        ("unknown_key", "/popup/highlight_active_feature"),
+    ]
+    # A null reads as unset.
+    assert popup_issues({"trigger": "click", "blocks": None}) == []
+
+
+def test_a_map_service_with_a_popup_keeps_its_render_checks(contexts: dict) -> None:
+    popup = {"blocks": [{"type": "field_list", "attributes": [{"field": "value"}]}]}
+    ramp = {"type": "continuous", "palette": "goat:elevation"}
+    issues = {
+        (i.code, i.path)
+        for i in validate({**R, "render": ramp, "popup": popup}, contexts["wms"])
+    }
+    assert ("render_not_for_source", "/render/type") in issues
+    grey = {"type": "image", "service_style": "grey"}
+    issues = {
+        (i.code, i.path)
+        for i in validate({**R, "render": grey, "popup": popup}, contexts["wms"])
+    }
+    assert ("render_not_for_source", "/render/service_style") not in issues

@@ -179,3 +179,81 @@ async def test_a_save_or_check_with_a_direction_outside_maplibres_bounds_is_an_e
     assert [(i.code, i.path) for i in issues] == [
         ("invalid_value", "/render/direction")
     ]
+
+
+class FileCheck:
+    """processes' style-check of a raster layer without a file row: it reads the
+    style as a raster file's (`DataContext(kind="raster")`)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(self, **kwargs: Any) -> dict[str, Any]:
+        from goatlib.style.context import DataContext
+        from goatlib.style.validate import validate
+
+        self.calls.append(kwargs)
+        issues = validate(kwargs["document"], DataContext(kind="raster"))
+        return {
+            "document": kwargs["document"],
+            "issues": [i.model_dump(mode="json", exclude_none=True) for i in issues],
+        }
+
+
+def wms_style(document: dict[str, Any]) -> style_service.StoredStyle:
+    return style_service.StoredStyle(
+        id=uuid4(),
+        name="Aerial photo",
+        position=0,
+        revision=1,
+        document=document,
+        layer_project_id=None,
+        dataset_id=uuid4(),
+        layer_type="raster",
+        geometry=None,
+        data_snapshot=None,
+        catalog_version=None,
+        data_type="wms",
+        url="https://wms.example/service",
+    )
+
+
+FIELD_POPUP = {"blocks": [{"type": "field_list", "attributes": [{"field": "value"}]}]}
+
+
+@pytest.mark.asyncio
+async def test_a_map_service_style_is_checked_by_goatlib_never_as_a_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    check = FileCheck()
+    monkeypatch.setattr(style_service, "style_check", check)
+    image = {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}}
+    stored = wms_style(image)
+    ramp = {**RAMP, "popup": FIELD_POPUP}
+    _, issues = await check_style(stored, ramp, "t")
+    found = {(i.code, i.path) for i in issues}
+    assert ("render_not_for_source", "/render/type") in found
+    assert ("render_not_for_source", "/popup/blocks") in found
+    grey = {**image, "render": {"type": "image", "service_style": "grey"}}
+    _, issues = await check_style(stored, {**grey, "popup": FIELD_POPUP}, "t")
+    found = {(i.code, i.path) for i in issues}
+    assert ("render_not_for_source", "/render/service_style") not in found
+    assert ("render_not_for_source", "/popup/blocks") in found
+    assert check.calls == []
+
+
+@pytest.mark.asyncio
+async def test_opening_a_map_service_style_checks_it_by_goatlib(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    check = FileCheck()
+    monkeypatch.setattr(style_service, "style_check", check)
+    grey = {
+        "version": "1.0.0",
+        "kind": "raster",
+        "render": {"type": "image", "service_style": "grey"},
+    }
+    result = await read_style(db_session, wms_style(grey), access_token="t", check=True)
+    assert result.issues == [] and result.stale is False
+    assert result.document == grey
+    assert check.calls == []

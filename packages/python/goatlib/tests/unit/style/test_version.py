@@ -190,6 +190,33 @@ def test_required_version_takes_the_highest_since(
     )
 
 
+def test_raster_popup_with_blocks_is_1_0_0() -> None:
+    doc = {
+        "version": "1.0.0",
+        "kind": "raster",
+        "render": {"type": "continuous", "domain": [0, 9]},
+        "popup": {
+            "trigger": "click_and_hover",
+            "mode": "simple",
+            "blocks": [{"type": "field_list", "attributes": [{"field": "value"}]}],
+            "layout": "pinned",
+            "anchor": "top_left",
+            "width": 300,
+            "max_height": 200,
+            "header": "compact",
+            "bands": "all",
+        },
+    }
+    new = {
+        "RasterPopup.blocks",
+        "RasterPopup.trigger=click_and_hover",
+        "RasterPopup.header=compact",
+    }
+    assert new <= used_keys(_parsed(doc))
+    assert new <= schema_keys()
+    assert required_version(_parsed(doc)) == "1.0.0"
+
+
 def test_keys_left_at_their_default_do_not_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

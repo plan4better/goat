@@ -2,7 +2,9 @@
 
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import Discriminator, Field, Tag
+from pydantic import Discriminator, Field, Tag, field_validator
+from pydantic.json_schema import SkipJsonSchema
+from pydantic_core import PydanticCustomError
 
 from goatlib.style.models.base import StyleModel
 from goatlib.style.models.values import Color, NumberFormat
@@ -106,9 +108,17 @@ class Popup(StyleModel):
     highlight_active_feature: bool | None = None
 
 
-class RasterPopup(StyleModel):
-    """A raster's popup: the cell values from the raster service, or a map service's feature info."""
+class RasterPopup(Popup):
+    """A raster's popup (the specification's section 9.7): a vector popup over the
+    cell's fields `value`, `class` and `band_<n>`, or a map service's feature info.
+    It has no feature to highlight."""
 
-    enabled: bool | None = None
-    trigger: Literal["click", "hover"] | None = None
+    highlight_active_feature: SkipJsonSchema[None] = None
     bands: Literal["styled", "all"] | None = None
+
+    @field_validator("highlight_active_feature", mode="before")
+    @classmethod
+    def _no_highlight(cls, _: Any) -> None:
+        raise PydanticCustomError(
+            "unknown_key", "A raster has no feature to highlight."
+        )

@@ -22,7 +22,12 @@ from goatlib.style.compute import (
     breaks_for_classes,
     needed_stats,
 )
-from goatlib.style.context import ALL_CAPABILITIES, BandInfo, DataContext
+from goatlib.style.context import (
+    ALL_CAPABILITIES,
+    BandInfo,
+    DataContext,
+    raster_fields,
+)
 from goatlib.style.issues import Issue
 
 
@@ -96,7 +101,7 @@ def raster_context(
     source: RasterSource, capabilities: frozenset[str] = ALL_CAPABILITIES
 ) -> DataContext:
     """The file as validation sees it: its bands with their ranges, data type,
-    no-data value and whether it has a color table."""
+    no-data value, whether it has a color table, and the fields its popup reads."""
     info = source.info()
     bands = tuple(
         BandInfo(index=b.index, min=b.min or 0.0, max=b.max or 0.0)
@@ -105,6 +110,7 @@ def raster_context(
     return DataContext(
         kind="raster",
         source="file",
+        fields=raster_fields(info.count),
         bands=bands,
         no_data=info.nodata,
         data_type=info.dtype,

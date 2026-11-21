@@ -20,6 +20,30 @@ def test_unknown_key_path_points_at_the_key() -> None:
     assert [(i.code, i.path) for i in issues] == [("unknown_key", "/revers")]
 
 
+def test_a_key_a_model_refuses_says_why() -> None:
+    from goatlib.style.parse import parse_for_write
+
+    raster = {"version": "1.0.0", "kind": "raster"}
+    popup = {"trigger": "click", "highlight_active_feature": True}
+    _, issues = parse_for_write({**raster, "popup": popup})
+    assert ("unknown_key", "/popup/highlight_active_feature") in [
+        (i.code, i.path) for i in issues
+    ]
+    [message] = [i.message for i in issues if i.code == "unknown_key"]
+    assert message == "A raster has no feature to highlight."
+    ramp = {"type": "continuous", "domain": [0, 9]}
+    _, issues = parse_for_write({**raster, "render": ramp, "brightness": 0.2})
+    assert [(i.code, i.message) for i in issues] == [
+        (
+            "unknown_key",
+            "brightness, contrast, saturation and hue apply to image renders only.",
+        )
+    ]
+    color = {"field": "x", "palette": "d3:viridis", "revers": True}
+    _, issues = parse(ByAttributeColor, color)
+    assert [i.message for i in issues] == ['"revers" is not a key here.']
+
+
 def test_missing_required_key() -> None:
     _, issues = parse(ByAttributeColor, {"palette": "d3:viridis"})
     assert [(i.code, i.path) for i in issues] == [("missing_required", "/field")]
