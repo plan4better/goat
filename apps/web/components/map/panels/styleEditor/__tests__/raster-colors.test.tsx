@@ -504,7 +504,276 @@ describe("raster classes and categories on the shared grid", () => {
       el.querySelector("rect")
     ) as SVGElement;
     expect(svg.querySelectorAll("rect")).toHaveLength(50);
-    expect(svg.querySelectorAll("line[stroke-dasharray]")).toHaveLength(4);
+    // The breaks stand on it as handles to drag; quantiles have no range of their own, so no ends.
+    const handles = screen.getAllByRole("slider");
+    expect(handles.map((h) => [h.getAttribute("data-handle"), h.getAttribute("aria-valuenow")])).toEqual([
+      ["break", "20"],
+      ["break", "40"],
+      ["break", "60"],
+      ["break", "80"],
+    ]);
+  });
+
+  it("the histogram marks the range: its ends move as the range boxes type them", async () => {
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [10, 90] }, {}, CLASSED);
+    await openColors();
+    const [lowest, highest] = screen.getAllByRole("slider");
+    expect(lowest.getAttribute("aria-label")).toBe("style_editor.range_lowest");
+    expect([lowest.getAttribute("aria-valuenow"), highest.getAttribute("aria-valuenow")]).toEqual([
+      "10",
+      "90",
+    ]);
+    expect([lowest.getAttribute("data-handle"), highest.getAttribute("data-handle")]).toEqual(["end", "end"]);
+    // A step is a hundredth of the band's span (0 to 100).
+    fireEvent.keyDown(lowest, { key: "ArrowRight" });
+    expect(store.get("render.domain")).toEqual([11, 90]);
+    fireEvent.keyDown(screen.getAllByRole("slider")[1], { key: "PageDown" });
+    expect(store.get("render.domain")).toEqual([11, 80]);
+    const boxes = screen.getAllByRole("textbox", {
+      name: /style_editor.range_(lowest|highest)/,
+    }) as HTMLInputElement[];
+    expect(boxes.map((b) => b.value)).toEqual(["11", "80"]);
+  });
+
+  it("equal intervals split the dragged range again; a dragged break makes them manual and keeps the others", async () => {
+    const equal = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      classify: { method: "equal_interval", count: 4, classes: equalIntervalClasses([0, 100], 4) },
+    };
+    const { store } = setup(equal, {}, CLASSED);
+    await openColors();
+    expect(screen.getAllByRole("slider").map((h) => h.getAttribute("data-handle"))).toEqual([
+      "end",
+      "end",
+      "break",
+      "break",
+      "break",
+    ]);
+    fireEvent.keyDown(screen.getAllByRole("slider")[1], { key: "PageDown" });
+    expect(store.get("render.domain")).toEqual([0, 90]);
+    expect(store.get("render.classify")).toEqual({
+      method: "equal_interval",
+      count: 4,
+      classes: equalIntervalClasses([0, 90], 4),
+    });
+    // The middle break (45) one step down: manual breaks, the others where they were.
+    const middle = screen.getAllByRole("slider")[3];
+    expect(middle.getAttribute("aria-label")).toBe("style_editor.class_break_n");
+    fireEvent.keyDown(middle, { key: "ArrowLeft" });
+    expect(store.get("render.classify")).toEqual({
+      method: "manual",
+      classes: [{ to: 22.5 }, { from: 22.5, to: 44 }, { from: 44, to: 67.5 }, { from: 67.5 }],
+    });
+    expect(store.get("render.domain")).toEqual([0, 90]);
+  });
+
+  it("a break of a computed method dragged on the histogram makes the classes manual", async () => {
+    const { store } = setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    fireEvent.keyDown(screen.getAllByRole("slider")[0], { key: "ArrowRight", shiftKey: true });
+    expect(store.get("render.classify")).toEqual({
+      method: "manual",
+      classes: [{ to: 30 }, { from: 30, to: 40 }, { from: 40, to: 60 }, { from: 60, to: 80 }, { from: 80 }],
+    });
+    // Manual breaks cover a range, as the Range row: its ends join the breaks on the histogram.
+    const handles = screen.getAllByRole("slider");
+    expect(handles.map((h) => h.getAttribute("data-handle"))).toEqual([
+      "end",
+      "end",
+      "break",
+      "break",
+      "break",
+      "break",
+    ]);
+    // A break stops a step short of its neighbour.
+    fireEvent.keyDown(handles[2], { key: "End" });
+    expect(store.get("render.classify.classes.0")).toEqual({ to: 39 });
+  });
+
+  it("a byte band's range of 0 to 255 over bars of 7 to 107: a step away from the bars leaves an end where it is", async () => {
+    const byte: RasterInfo = {
+      ...INFO,
+      bits: [8],
+      integer: true,
+      stats: [
+        {
+          index: 1,
+          min: 7,
+          max: 107,
+          p2: 10,
+          p98: 100,
+          values: null,
+          histogram: {
+            counts: Array.from({ length: 50 }, () => 1),
+            edges: Array.from({ length: 51 }, (_, i) => 7 + i * 2),
+          },
+        },
+      ],
+    };
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 255] }, {}, byte);
+    await openColors();
+    const [lowest, highest] = screen.getAllByRole("slider");
+    fireEvent.keyDown(lowest, { key: "ArrowLeft" });
+    fireEvent.keyDown(lowest, { key: "Home" });
+    fireEvent.keyDown(highest, { key: "ArrowRight" });
+    fireEvent.keyDown(highest, { key: "End" });
+    expect(store.get("render.domain")).toEqual([0, 255]);
+    fireEvent.keyDown(screen.getAllByRole("slider")[0], { key: "ArrowRight" });
+    expect(store.get("render.domain")).toEqual([1, 255]);
+  });
+
+  it("a computed break stepped with the keys keeps the focus and moves the same break again", async () => {
+    const { store } = setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    const third = screen.getAllByRole("slider").filter((h) => h.getAttribute("data-handle") === "break")[2];
+    third.focus();
+    fireEvent.keyDown(third, { key: "ArrowRight" });
+    // Manual now: the range's ends join in front, the focused break stays the one stepped.
+    expect(store.get("render.classify.method")).toBe("manual");
+    expect(document.activeElement?.getAttribute("aria-valuenow")).toBe("61");
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowRight" });
+    expect(store.get("render.classify.classes.3.from")).toBe(62);
+    expect(store.get("render.classify.classes.1.from")).toBe(20);
+  });
+
+  it("with values outside left out, the histogram's ends are the classes' outer ends", async () => {
+    const { store } = setup({ ...QUANTILES, outside: "hide" }, {}, CLASSED);
+    await openColors();
+    const [lowest, highest] = screen.getAllByRole("slider");
+    expect([lowest.getAttribute("aria-valuenow"), highest.getAttribute("aria-valuenow")]).toEqual([
+      "0",
+      "100",
+    ]);
+    fireEvent.keyDown(lowest, { key: "ArrowRight", shiftKey: true });
+    expect(store.get("render.classify.method")).toBe("manual");
+    expect(store.get("render.classify.classes.0")).toEqual({ from: 10, to: 20 });
+    // An outer end stays outside the classes' breaks.
+    fireEvent.keyDown(screen.getAllByRole("slider")[1], { key: "Home" });
+    expect(store.get("render.classify.classes.4")).toEqual({ from: 80, to: 81 });
+    expect(store.get("render.domain")).toBeUndefined();
+  });
+
+  it("with values outside left out, equal intervals' histogram ends split the range again, as their boxes do", async () => {
+    const equal = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      outside: "hide",
+      classify: { method: "equal_interval", count: 4, classes: equalIntervalClasses([0, 100], 4) },
+    };
+    const { store } = setup(equal, {}, CLASSED);
+    await openColors();
+    fireEvent.keyDown(screen.getAllByRole("slider")[0], { key: "PageUp" });
+    expect(store.get("render.domain")).toEqual([10, 100]);
+    expect(store.get("render.classify")).toEqual({
+      method: "equal_interval",
+      count: 4,
+      classes: equalIntervalClasses([10, 100], 4),
+    });
+  });
+
+  it("equal intervals with values outside left out: a dragged break stays inside the range's ends", async () => {
+    const { store } = setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [20, 80],
+        outside: "hide",
+        classify: { method: "equal_interval", count: 4, classes: equalIntervalClasses([20, 80], 4) },
+      },
+      {},
+      CLASSED
+    );
+    await openColors();
+    const breaks = () =>
+      screen.getAllByRole("slider").filter((h) => h.getAttribute("data-handle") === "break");
+    expect(breaks().map((h) => h.getAttribute("aria-valuenow"))).toEqual(["35", "50", "65"]);
+    // The first and last break keep a step from the range's ends, as from a neighbouring break.
+    expect(breaks()[0].getAttribute("aria-valuemin")).toBe("21");
+    expect(breaks()[2].getAttribute("aria-valuemax")).toBe("79");
+    // One drag from 35 to 10, over bars 200 px wide for 0 to 100.
+    const box = document.querySelector("[data-histogram]") as HTMLElement;
+    box.getBoundingClientRect = () =>
+      ({ left: 0, right: 200, width: 200, top: 0, bottom: 50, height: 50, x: 0, y: 0 }) as DOMRect;
+    const first = breaks()[0];
+    fireEvent.pointerDown(first, { clientX: 70, pointerId: 1 });
+    fireEvent.pointerMove(first, { clientX: 20, pointerId: 1 });
+    fireEvent.pointerUp(first, { clientX: 20, pointerId: 1 });
+    expect(store.get("render.domain")).toEqual([20, 80]);
+    expect(store.get("render.classify")).toEqual({
+      method: "manual",
+      classes: [{ to: 21 }, { from: 21, to: 50 }, { from: 50, to: 65 }, { from: 65 }],
+    });
+    // The first class reads from the range's end up to the break.
+    const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+    expect(names[0].placeholder).toBe("20 style_editor.range_to 21");
+  });
+
+  it("a band of whole numbers steps its breaks and ends by whole numbers; a scaled one by a hundredth of its span", async () => {
+    // Bars over 0 to 50: a hundredth of the span is half a unit.
+    const small = (over: Partial<RasterInfo>): RasterInfo => ({
+      ...INFO,
+      bits: [8],
+      integer: true,
+      ...over,
+      stats: [
+        {
+          index: 1,
+          min: 0,
+          max: 50,
+          p2: 1,
+          p98: 49,
+          values: null,
+          histogram: {
+            counts: Array.from({ length: 25 }, () => 1),
+            edges: Array.from({ length: 26 }, (_, i) => i * 2),
+          },
+        },
+      ],
+    });
+    const manual = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 50],
+      classify: { method: "manual", classes: [{ to: 20 }, { from: 20 }] },
+    };
+    const whole = setup(manual, {}, small({}));
+    await openColors();
+    const cut = () => screen.getAllByRole("slider").find((h) => h.getAttribute("data-handle") === "break")!;
+    fireEvent.keyDown(cut(), { key: "ArrowRight" });
+    expect(whole.store.get("render.classify.classes.1.from")).toBe(21);
+    fireEvent.keyDown(screen.getAllByRole("slider")[0], { key: "ArrowRight" });
+    expect(whole.store.get("render.domain")).toEqual([1, 50]);
+    whole.unmount();
+    const scaled = setup(manual, {}, small({ scaled: true }));
+    await openColors();
+    fireEvent.keyDown(cut(), { key: "ArrowRight" });
+    expect(scaled.store.get("render.classify.classes.1.from")).toBe(20.5);
+  });
+
+  it("the histogram's end labels read as the range boxes do", async () => {
+    const wide: RasterInfo = {
+      ...INFO,
+      stats: [
+        {
+          index: 1,
+          min: -38.935,
+          max: 189.141,
+          p2: 32,
+          p98: 119,
+          values: null,
+          histogram: { counts: [5, 1], edges: [-38.935, 75.103, 189.141] },
+        },
+      ],
+    };
+    setup({ type: "continuous", palette: "goat:elevation", domain: [32, 119] }, {}, wide);
+    await openColors();
+    const svg = Array.from(document.querySelectorAll("svg")).find((el) =>
+      el.querySelector("rect")
+    ) as SVGElement;
+    expect(Array.from(svg.querySelectorAll("text")).map((t) => t.textContent)).toEqual(["-38.94", "189.14"]);
   });
 
   it("switching to quantiles uses the precomputed breaks without a request", async () => {

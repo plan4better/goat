@@ -45,9 +45,22 @@ function setup(doc: object, data: object = {}) {
   );
 }
 
+/** The legend section alone: the popup section shows the legend's unit too. */
+function legendSetup(doc: object) {
+  return renderPanel(
+    <PopoverProvider>
+      <LegendSection />
+    </PopoverProvider>,
+    {
+      document: { version: "1.0.0", kind: "raster", ...doc } as LayerStyle,
+      data: { raster: { dataset: "d1", info: INFO } },
+    }
+  );
+}
+
 describe("raster legend", () => {
   it("the legend popover offers a unit and end labels for rasters", async () => {
-    const { store } = setup({
+    const { store } = legendSetup({
       render: { type: "continuous", palette: "goat:elevation", domain: [200, 450] },
     });
     await userEvent.click(
@@ -61,7 +74,7 @@ describe("raster legend", () => {
   });
 
   it("the legend summary counts a raster's classes", () => {
-    setup({
+    legendSetup({
       render: {
         type: "continuous",
         palette: "colorbrewer:BuGn",
@@ -75,7 +88,7 @@ describe("raster legend", () => {
   });
 
   it("the legend summary counts a categorical raster's classes", () => {
-    setup({
+    legendSetup({
       render: {
         type: "categorical",
         classes: [
@@ -88,8 +101,39 @@ describe("raster legend", () => {
     expect(within(row).getByText("style_editor.count_classes")).toBeDefined();
   });
 
+  it("a ramp's legend summary reads the ramp with its end values and unit, its end labels where set", () => {
+    const summary = () =>
+      within(screen.getByText("style_editor.contents").parentElement as HTMLElement).getByRole("button")
+        .textContent;
+    const ramp = legendSetup({
+      render: { type: "continuous", palette: "goat:elevation", domain: [32, 119] },
+      legend: { unit: "m" },
+    });
+    expect(summary()).toBe("style_editor.legend_ramp, 32 style_editor.to 119 m");
+    ramp.unmount();
+    // Own colors at values are a ramp from the first stop to the last; end labels stand for the numbers.
+    const stops = legendSetup({
+      render: {
+        type: "continuous",
+        stops: [
+          { value: 0, color: "#000000" },
+          { value: 10.5, color: "#ffffff" },
+        ],
+      },
+      legend: { caption: "Source", unit: "m", max_label: "High" },
+    });
+    expect(summary()).toBe("style_editor.caption · style_editor.legend_ramp, 0 m style_editor.to High");
+    stops.unmount();
+    // Shading in colors shows its ramp; before the range is known, the word alone.
+    const shaded = legendSetup({ render: { type: "hillshade", palette: "goat:elevation", domain: [1, 2] } });
+    expect(summary()).toBe("style_editor.legend_ramp, 1 style_editor.to 2");
+    shaded.unmount();
+    legendSetup({ render: { type: "continuous", palette: "goat:elevation" } });
+    expect(summary()).toBe("style_editor.legend_ramp");
+  });
+
   it("shading without colors reads no classes in the legend summary", () => {
-    setup({
+    legendSetup({
       render: {
         type: "hillshade",
         classify: { method: "manual", classes: [{ to: 55 }, { from: 55 }] },
@@ -101,7 +145,7 @@ describe("raster legend", () => {
 
   it("end labels are offered for ramps only", async () => {
     const labelsOf = async (render: object) => {
-      const view = setup({ render });
+      const view = legendSetup({ render });
       await userEvent.click(
         within(screen.getByText("style_editor.contents").parentElement as HTMLElement).getAllByRole(
           "button"
@@ -143,7 +187,7 @@ describe("raster legend", () => {
   });
 
   it("a raster's classes read with the legend unit", async () => {
-    const { store } = setup({
+    const { store } = legendSetup({
       render: {
         type: "continuous",
         palette: "colorbrewer:BuGn",
@@ -421,6 +465,79 @@ describe("raster popup", () => {
       expect.objectContaining({ type: "field_list", layout: "list" })
     );
     expect(store.get("popup.highlight_active_feature")).toBeUndefined();
+  });
+
+  it("the popup's unit note fits the case; own content has no unit row", () => {
+    const shading = popupSetup({ render: { type: "hillshade" } });
+    // Shading without colors has no legend: the unit stands after the value only.
+    expect(screen.getByText("style_editor.popup_unit_note_value")).toBeDefined();
+    shading.unmount();
+    const shaded = popupSetup({ render: { type: "hillshade", palette: "goat:elevation", domain: [0, 9] } });
+    expect(screen.getByText("style_editor.popup_unit_note")).toBeDefined();
+    shaded.unmount();
+    // Blocks or HTML of one's own: the unit does not reach them.
+    const blocks = popupSetup({
+      render: ELEVATION,
+      popup: { blocks: [{ type: "field_list", attributes: [{ field: "value" }] }] },
+    });
+    expect(screen.queryByRole("textbox", { name: "style_editor.legend_unit" })).toBeNull();
+    blocks.unmount();
+    popupSetup({ render: ELEVATION, popup: { mode: "html", html: "<b>{{ value }}</b>" } });
+    expect(screen.queryByRole("textbox", { name: "style_editor.legend_unit" })).toBeNull();
+  });
+
+  it("the unit is set in the popup too: one stored value, the legend's", async () => {
+    const { store, unmount } = popupSetup({ render: ELEVATION, legend: { unit: "m" } });
+    const box = screen.getByRole("textbox", { name: "style_editor.legend_unit" }) as HTMLInputElement;
+    expect(box.value).toBe("m");
+    expect(screen.getByText("style_editor.popup_unit_note")).toBeDefined();
+    await userEvent.clear(box);
+    await userEvent.type(box, "ft");
+    expect(store.get("legend.unit")).toBe("ft");
+    expect(store.get("popup")).toBeUndefined();
+    // The legend's popover shows the same value.
+    await userEvent.click(
+      within(screen.getByText("style_editor.contents").parentElement as HTMLElement).getAllByRole("button")[0]
+    );
+    const both = screen.getAllByRole("textbox", { name: "style_editor.legend_unit" }) as HTMLInputElement[];
+    expect(both.map((b) => b.value)).toEqual(["ft", "ft"]);
+    // Emptied, the key goes.
+    await userEvent.clear(both[0]);
+    expect(store.get("legend")).toBeUndefined();
+    unmount();
+    // No popup, no unit row; an image's popup shows no unit.
+    const off = popupSetup({ render: ELEVATION, popup: false });
+    expect(screen.queryByRole("textbox", { name: "style_editor.legend_unit" })).toBeNull();
+    off.unmount();
+    popupSetup({ render: { type: "image" }, popup: { trigger: "click" } });
+    expect(screen.getByText("style_editor.popup_content")).toBeDefined();
+    expect(screen.queryByRole("textbox", { name: "style_editor.legend_unit" })).toBeNull();
+  });
+
+  it("a unit typed for a legend hidden as `legend: false` keeps the legend hidden", async () => {
+    const { store } = popupSetup({ render: ELEVATION, legend: false });
+    const box = screen.getByRole("textbox", { name: "style_editor.legend_unit" });
+    await userEvent.type(box, "m");
+    expect(store.get("legend")).toEqual({ show: false, unit: "m" });
+    expect(screen.getByText("style_editor.legend_hidden")).toBeDefined();
+    await userEvent.clear(box);
+    expect(store.get("legend")).toEqual({ show: false });
+  });
+
+  it("a raster's field list of one value has no layout and no Show first; a second value brings both", async () => {
+    const { store } = popupSetup({ render: ELEVATION });
+    const content = screen.getByText("style_editor.popup_content").parentElement as HTMLElement;
+    await userEvent.click(within(content).getByRole("button"));
+    const lists = screen.getAllByText("field_list");
+    await userEvent.click(lists[lists.length - 1].closest("button") as HTMLElement);
+    expect(screen.getByText("attributes")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "table" })).toBeNull();
+    expect(screen.queryByText("collapse_after")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "add_attribute" }));
+    await userEvent.click(screen.getByText("Band 2"));
+    expect(store.get("popup.blocks.0.attributes")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "table" })).toBeDefined();
+    expect(screen.getByText("collapse_after")).toBeDefined();
   });
 
   it("a raster's popup has no highlight and no preview of a feature", async () => {

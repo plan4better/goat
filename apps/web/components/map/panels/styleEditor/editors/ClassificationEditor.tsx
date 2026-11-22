@@ -1,7 +1,8 @@
 "use client";
 
 // One classification (spec 5, prototype 4.5): its field, the property it sets, the method and number of classes, the
-// palette or range, the field's histogram with the breaks, and the class list. The server computes the classes: an
+// palette or range, the field's histogram with the breaks (handles to drag: a break dragged is a bound typed by hand),
+// and the class list. The server computes the classes: an
 // intent edit saves at once and the classes show as pending until the reply. Conflicts between classifications
 // come from the server's issues; the panel draws no conclusions of its own.
 import { Alert, Box, Typography } from "@mui/material";
@@ -25,6 +26,7 @@ import {
   retarget,
   serverFillsClasses,
   setClassificationField,
+  setManualBound,
   setMethod,
 } from "@/lib/style/editor/classify";
 import { SLIDERS, withStored } from "@/lib/style/editor/defaults";
@@ -46,7 +48,7 @@ import {
 import { profileRange } from "@/components/map/panels/styleEditor/editors/AttributeEditor";
 import { ClassList } from "@/components/map/panels/styleEditor/editors/ClassList";
 import { VALUES_LIMIT } from "@/components/map/panels/styleEditor/editors/ClassValues";
-import { Histogram } from "@/components/map/panels/styleEditor/editors/Histogram";
+import { Histogram, type HistogramHandle } from "@/components/map/panels/styleEditor/editors/Histogram";
 import { choiceValues } from "@/components/map/panels/styleEditor/editors/partRows";
 import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
@@ -252,6 +254,20 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
       ...paletteColors(palette, classes.length || undefined),
     ]);
 
+  // The breaks on the histogram: one dragged becomes a bound typed by hand (manual breaks, the others kept).
+  const cuts = classes.flatMap((record, k) =>
+    k > 0 && typeof record.from === "number" ? [{ k, at: record.from }] : []
+  );
+  const breakHandles: HistogramHandle[] = cuts.map(({ k, at }, j) => ({
+    id: `break-${k}`,
+    value: at,
+    kind: "break",
+    label: t("style_editor.class_break_n", { n: j + 1 }),
+    min: cuts[j - 1]?.at,
+    max: cuts[j + 1]?.at,
+    onChange: (v) => store.update((doc) => setManualBound(doc, ci, k, v), `${path}.classes.${k}.from`),
+  }));
+
   const classColorAt = (v: number) => {
     const i = breaks.filter((b) => v >= b).length;
     const color = classes[i] ? getIn(classes[i], target) : undefined;
@@ -430,7 +446,14 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
         )}
         {histogramStats && histogramStats.bins.length > 0 && (
           <Box sx={{ px: 3, py: 1 }}>
-            <Histogram bins={histogramStats.bins} breaks={breaks} colorAt={classColorAt} format={number} />
+            <Histogram
+              bins={histogramStats.bins}
+              breaks={[]}
+              colorAt={classColorAt}
+              format={number}
+              handles={breakHandles}
+              integer={fieldType === "integer"}
+            />
           </Box>
         )}
       </Box>

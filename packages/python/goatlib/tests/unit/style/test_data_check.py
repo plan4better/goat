@@ -201,6 +201,20 @@ def test_a_band_formula_domain_is_not_compared_with_band_1(contexts: dict) -> No
     assert codes(doc, contexts["satellite"]) == set()
 
 
+def test_hillshade_shades_any_band_of_values_not_a_color_table(contexts: dict) -> None:
+    # A file of several bands (a surface and a terrain model) shades the band it names.
+    for band in (1, 2):
+        doc = {
+            "version": "1.0.0",
+            "kind": "raster",
+            "render": {"type": "hillshade", "band": band},
+        }
+        assert codes(doc, contexts["satellite"]) == set()
+    # Codes with a color table are no elevation.
+    doc = {"version": "1.0.0", "kind": "raster", "render": {"type": "hillshade"}}
+    assert "render_type_mismatch" in codes(doc, contexts["landcover"])
+
+
 def test_liquid_reads_unicode_and_hyphenated_field_names() -> None:
     from goatlib.style.context import DataContext, FieldInfo
 

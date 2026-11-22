@@ -70,6 +70,119 @@ async def test_a_new_link_gets_an_active_default_copied_from_the_dataset_default
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("render", "position"),
+    [
+        (
+            {"type": "continuous", "palette": "goat:elevation", "domain": [0, 9]},
+            "below_labels",
+        ),
+        ({"type": "hillshade"}, "below_labels"),
+        ({"type": "image"}, "top"),
+        (
+            {"type": "categorical", "classes": [{"value": 1, "color": "#00aa00"}]},
+            "below_labels",
+        ),
+    ],
+)
+async def test_a_new_layer_in_colours_or_a_hillshade_starts_below_the_labels(
+    db_session: AsyncSession,
+    style_world: StyleWorld,
+    render: dict[str, Any],
+    position: str,
+) -> None:
+    # An opaque colour range, categories or a shading would hide the basemap's place
+    # names; an image (an aerial photo) stays on top.
+    document = {"version": "1.0.0", "kind": "raster", "render": render}
+    await insert_dataset_default(db_session, style_world.layer_id, document)
+    await add_first_styles(db_session, [style_world.layer_project_id])
+    stored = (
+        await db_session.execute(
+            text(f"SELECT position FROM {S}.layer_project WHERE id = :lp"),
+            {"lp": style_world.layer_project_id},
+        )
+    ).scalar_one()
+    assert stored == position
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "render",
+    [
+        None,
+        {"type": "features"},
+        {"type": "heatmap"},
+        {"type": "cluster"},
+        {"type": "h3", "resolution": 8},
+    ],
+    ids=["no render", "features", "heatmap", "cluster", "h3"],
+)
+async def test_a_new_vector_layer_starts_on_top(
+    db_session: AsyncSession, style_world: StyleWorld, render: dict[str, Any] | None
+) -> None:
+    # Only a raster in colours or a hillshade starts below the labels: a vector
+    # layer keeps the place every new layer gets, whatever it draws.
+    document = {**GREEN, **({"render": render} if render else {})}
+    await insert_dataset_default(db_session, style_world.layer_id, document)
+    await add_first_styles(db_session, [style_world.layer_project_id])
+    stored = (
+        await db_session.execute(
+            text(f"SELECT position FROM {S}.layer_project WHERE id = :lp"),
+            {"lp": style_world.layer_project_id},
+        )
+    ).scalar_one()
+    assert stored == "top"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("position", ["top", "below_roads"])
+async def test_a_duplicate_keeps_the_original_layers_position(
+    db_session: AsyncSession, style_world: StyleWorld, position: str
+) -> None:
+    ramp = {"version": "1.0.0", "kind": "raster", "render": {"type": "continuous"}}
+    await insert_dataset_default(db_session, style_world.layer_id, ramp)
+    await add_first_styles(db_session, [style_world.layer_project_id])
+    await db_session.execute(
+        text(f"UPDATE {S}.layer_project SET position = :p WHERE id = :lp"),
+        {"p": position, "lp": style_world.layer_project_id},
+    )
+    await db_session.commit()
+    # A duplicate matches what the user made: its styles and where it draws.
+    duplicate = await new_link(db_session, style_world)
+    await add_first_styles(db_session, [duplicate])
+    stored = (
+        await db_session.execute(
+            text(f"SELECT position FROM {S}.layer_project WHERE id = :lp"),
+            {"lp": duplicate},
+        )
+    ).scalar_one()
+    assert stored == position
+
+
+@pytest.mark.asyncio
+async def test_a_layer_that_has_styles_keeps_its_position(
+    db_session: AsyncSession, style_world: StyleWorld
+) -> None:
+    ramp = {"version": "1.0.0", "kind": "raster", "render": {"type": "hillshade"}}
+    await insert_dataset_default(db_session, style_world.layer_id, ramp)
+    await add_first_styles(db_session, [style_world.layer_project_id])
+    await db_session.execute(
+        text(f"UPDATE {S}.layer_project SET position = 'top' WHERE id = :lp"),
+        {"lp": style_world.layer_project_id},
+    )
+    await db_session.commit()
+    # Asked again (two writers at once), a layer with its styles is left as it is.
+    await add_first_styles(db_session, [style_world.layer_project_id])
+    stored = (
+        await db_session.execute(
+            text(f"SELECT position FROM {S}.layer_project WHERE id = :lp"),
+            {"lp": style_world.layer_project_id},
+        )
+    ).scalar_one()
+    assert stored == "top"
+
+
+@pytest.mark.asyncio
 async def test_a_dataset_without_a_default_gets_goatlibs_default_first(
     db_session: AsyncSession, style_world: StyleWorld
 ) -> None:

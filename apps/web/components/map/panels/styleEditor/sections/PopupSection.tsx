@@ -207,7 +207,7 @@ function BlockColorPicker<B extends PopupBlock>({
 
 function PopupBlockEditor({ id }: { id: string }) {
   const popover = usePopover();
-  const { config, update, fields, layerId } = usePopupConfig();
+  const { config, update, fields, layerId, raster } = usePopupConfig();
   const block = config?.blocks.find((b) => b.id === id);
   if (!config || !block) return null;
   const onChange = (next: PopupBlock) =>
@@ -230,7 +230,15 @@ function PopupBlockEditor({ id }: { id: string }) {
     case "text":
       return <TextBlockEditor block={block} onChange={onChange} />;
     case "fieldList":
-      return <FieldListBlockEditor block={block} fields={fields} layerId={layerId} onChange={onChange} />;
+      return (
+        <FieldListBlockEditor
+          block={block}
+          fields={fields}
+          layerId={layerId}
+          onChange={onChange}
+          cell={raster}
+        />
+      );
     case "image":
       return <ImageBlockEditor block={block} onChange={onChange} />;
     case "button":

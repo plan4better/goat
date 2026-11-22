@@ -9,6 +9,7 @@ import { useMap } from "react-map-gl/maplibre";
 
 import { useProjectMap } from "@/lib/api/map";
 import type { Geometry } from "@/lib/style/compile/types";
+import { useStyleStores } from "@/lib/style/editor/StyleStores";
 import type { EditorStore } from "@/lib/style/editor/store";
 import { sourceOf } from "@/lib/style/layerSource";
 import { createCoreTransport } from "@/lib/style/transports/core";
@@ -61,7 +62,13 @@ export function ProjectStylePanel({
   /** Off while the Style tab is not the open one: the panel's popovers close. */
   visible?: boolean;
 }) {
-  const store = useLayerStyle(projectId, layer);
+  const held = useLayerStyle(projectId, layer);
+  // The store of the layer and style shown. Another layer or named style picked in the open panel arrives a render
+  // before its store does: until then there is none, so no section shows or edits one layer with the other's style.
+  const registry = useStyleStores();
+  const styleId = layer.style?.id;
+  const store =
+    held && styleId && registry?.get({ projectId, layerProjectId: layer.id, styleId }) === held ? held : null;
   useOpeningCheck(projectId, layer, store);
   const source = useMemo(() => sourceOf(layer), [layer]);
   const geometry = geometryOf(layer.feature_layer_geometry_type);
@@ -83,23 +90,32 @@ export function ProjectStylePanel({
   const { setLayerState } = useProjectMap(projectId);
   const position = (layer.entry?.position ?? "top") as Position;
   const mapState = useMemo(
-    () => ({ position, onPosition: (next: Position) => void setLayerState(layer.id, { position: next }) }),
+    () => ({
+      position,
+      layer: layer.id,
+      onPosition: (next: Position) => void setLayerState(layer.id, { position: next }),
+    }),
     [position, setLayerState, layer.id]
   );
-  if (!store) return null;
+  // The editor stays over the swap of its store, which closes its popovers; the sections start anew with each layer
+  // and named style, so nothing half picked in one shows in the next.
+  const shell = store ?? held;
+  if (!shell) return null;
   return (
     <StyleEditor
       layer={{ id: String(layer.id), name: layer.name, geometry, kind }}
-      store={store}
+      store={shell}
       data={data}
       map={map}
       mapZoom={zoom}
       top={top}
       header={false}
       shown={visible}>
-      <MapStateProvider value={mapState}>
-        <StyleSections kind={kind} />
-      </MapStateProvider>
+      {store && (
+        <MapStateProvider value={mapState}>
+          <StyleSections key={`${layer.id}:${styleId}`} kind={kind} />
+        </MapStateProvider>
+      )}
     </StyleEditor>
   );
 }

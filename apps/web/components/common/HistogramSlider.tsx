@@ -8,20 +8,16 @@ import { Box, Slider, type SxProps, type Theme, Typography, alpha, useTheme } fr
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Histogram, type HistogramBin } from "@/components/map/panels/styleEditor/editors/Histogram";
+import {
+  Histogram,
+  type HistogramBin,
+  niceStep,
+} from "@/components/map/panels/styleEditor/editors/Histogram";
 
 /** What a condition keeps of the range: above or below one value, between or outside two. */
 export type HistogramSliderMode = "above" | "below" | "between" | "outside";
 
 const NO_BREAKS: number[] = [];
-
-/** The step over a range `span` wide: a hundredth of it, rounded to 1, 2 or 5 times a power of ten. */
-export function niceStep(span: number): number {
-  const raw = span / 100;
-  const power = 10 ** Math.floor(Math.log10(raw));
-  const m = raw / power;
-  return Number(((m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * power).toPrecision(1));
-}
 
 /** The field's range, the step and the slider's ends (the range widened to whole steps); null without a range. */
 function scaleOf(bins: HistogramBin[], integer: boolean | undefined) {

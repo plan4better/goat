@@ -2500,6 +2500,8 @@ with a color table, as an image drawn with it (9.1), without the adjustments.
 }
 ```
 
+- `band` (default 1): any band of values, so a file holding a surface and a terrain model shades either; codes with a
+  color table are no elevation (`render_type_mismatch`).
 - `method`: `standard` (one light, `accent_color` for steep slopes), `multidirectional`, `combined`, `igor`, `basic`.
 - `direction` (degrees the light comes from, 0 to 359), `altitude` (degrees above the horizon), `exaggeration` (0 to 1).
 - With `palette` the shading lies over a color range (`domain`, `classify`, `outside` as in 9.2 and 9.4).
@@ -2701,7 +2703,12 @@ carry a project's map state.
 - **Order** is the list order, top first; groups nest. A layer is visible when it and all its groups are visible.
 - **`position`** places the layer relative to the basemap: `top` (default), `below_labels` or `below_roads`. Every
   basemap names which of its layers start those groups, so switching the basemap keeps the placement. It compiles to
-  MapLibre's `beforeId`.
+  MapLibre's `beforeId`. A raster layer added to a project through core (the panel, the API) whose dataset default
+  draws a color range, categories or a hillshade (`continuous`, `categorical`, `hillshade`) starts at `below_labels`,
+  so its colors do not hide the place names; images stay on top, and a duplicate of a layer draws where the original
+  does. The style panel never moves a layer: when the user switches Draw as from an image to one of these while the
+  layer is at `top`, its Position row says that the colors hide the place names and offers the move to
+  `below_labels`, until the layer is placed, is no longer at `top` or draws an image again.
 - **`locale`** (optional) fixes the number and date locale for public maps, dashboards and print; otherwise the
   viewer's language is used.
 - **`view`**: `center`, `zoom`, `pitch`, `bearing`, optional `bounds` (the area the map may not leave), and the 3D
@@ -2940,7 +2947,7 @@ Examples that fail:
 ```
 
 <!-- check: satellite -->
-<!-- expect: unknown_band, render_type_mismatch -->
+<!-- expect: unknown_band -->
 ```json
 { "version": "1.0.0", "kind": "raster", "render": { "type": "hillshade", "band": 7 } }
 ```

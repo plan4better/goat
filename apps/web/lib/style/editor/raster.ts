@@ -5,6 +5,7 @@ import { getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
+import { classEnds } from "@/lib/style/raster/color";
 import { bandOrFormula } from "@/lib/style/raster/formula";
 import {
   type RasterInfo,
@@ -21,13 +22,12 @@ export type RasterRenderType = "hillshade" | "continuous" | "categorical" | "ima
 /** The panel's palette for new categories. */
 const CATEGORY_PALETTE = "colorbrewer:Set3";
 
-/** The renders a file allows, none until its info answered: hillshade on one band of elevation (an alpha band beside
- * it is no band of values), a color range on any band without a color table, categories on whole-number cells, the
- * image always. */
+/** The renders a file allows, none until its info answered: hillshade and a color range on any band of values (an
+ * alpha band is none) without a color table, categories on whole-number cells, the image always. */
 export function drawAsOptions(info: RasterInfo | undefined): RasterRenderType[] {
   if (!info) return [];
   const out: RasterRenderType[] = [];
-  if (valueBands(info).length === 1 && !info.colorTable) out.push("hillshade");
+  if (valueBands(info).length > 0 && !info.colorTable) out.push("hillshade");
   if (!info.colorTable) out.push("continuous");
   if (info.integer) out.push("categorical");
   out.push("image");
@@ -264,6 +264,24 @@ export function setOuterEnd(render: JsonObject, end: "from" | "to", value: numbe
   return asManual(render, (i) => ({
     ...(end === "from" && i === 0 ? { from: value } : {}),
     ...(end === "to" && i === last ? { to: value } : {}),
+  }));
+}
+
+/** The render with the break before class `k` dragged to `value` on the histogram: class `k` starts there and class
+ * `k - 1` ends there. As a typed outer end, the classes become manual and keep their other breaks and what the author
+ * set on them. A value at or past a neighbouring break, or a `k` that is no break, changes nothing; nor does, with
+ * values outside left out, one at or past the end the first or last class draws to (`classEnds`: its own, else the
+ * range's, else the band's from `info`), which would leave that class without values. */
+export function setBreak(render: JsonObject, k: number, value: number, info?: RasterInfo): JsonObject {
+  const old = classesOf(render);
+  if (k < 1 || k >= old.length) return render;
+  const ends = render.outside === "hide" ? classEnds(render, { info }) : undefined;
+  const low = k === 1 && ends ? ends[0] : old[k - 1].from;
+  const high = k === old.length - 1 && ends ? ends[1] : old[k].to;
+  if ((typeof low === "number" && value <= low) || (typeof high === "number" && value >= high)) return render;
+  return asManual(render, (i) => ({
+    ...(i === k ? { from: value } : {}),
+    ...(i === k - 1 ? { to: value } : {}),
   }));
 }
 

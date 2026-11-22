@@ -73,7 +73,7 @@ By classes splits the values of one field into classes and gives each class its 
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">For colors, choose a <code>Palette</code>; for sizes and widths, a <code>Range</code>. For a number field, a histogram shows the values and the class breaks.</div>
+  <div class="content">For colors, choose a <code>Palette</code>; for sizes and widths, a <code>Range</code>. For a number field, a histogram shows the values and the class breaks; drag a break along it, or click it and use the arrow keys, to move it: the classes become <code>Manual breaks</code> and keep the other breaks. A break stays a step inside the histogram's bars; for a field of whole numbers it moves by whole numbers.</div>
 </div>
 
 <div class="step">

@@ -10,6 +10,7 @@ import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import type { Geometry } from "@/lib/style/compile/types";
 import { moveClassification } from "@/lib/style/editor/classify";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
+import { type EditorStore, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type LegendClasses, classificationProperty, legendClasses } from "@/lib/style/legend";
@@ -36,6 +37,16 @@ import {
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ChoiceRow, NavRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
 import { useServiceLegendUrl } from "@/components/map/panels/styleEditor/sections/ServiceSection";
+
+/** Writes one key of the legend (`legend.<key>`); a legend hidden by the shorthand `false` stays hidden
+ * (`{show: false, <key>}`). */
+export function setLegendKey(store: EditorStore, key: string, value: unknown): void {
+  store.update(
+    (doc) =>
+      setIn(doc.legend === false ? setIn(doc, "legend", { show: false }) : doc, `legend.${key}`, value),
+    `legend.${key}`
+  );
+}
 
 /** The legend as it will look; it follows every edit of what it draws, so it subscribes on its own. Its classes are
  * those its `legend.classes` lists: those the layer's filter keeps, or those in the map's view. */
@@ -94,7 +105,7 @@ export function LegendEditor() {
         label={t("style_editor.caption")}
         value={typeof caption === "string" ? caption : ""}
         placeholder={t("style_editor.caption_placeholder")}
-        onChange={(value) => store.set("legend.caption", value || undefined)}
+        onChange={(value) => setLegendKey(store, "caption", value || undefined)}
       />
       {/* Which classes the legend lists, wherever it shows: every class, those the layer's filter keeps, those in view. */}
       {kind !== "raster" && classify.length > 0 && (
@@ -106,7 +117,7 @@ export function LegendEditor() {
             label: t(`style_editor.classes_${value}`),
           }))}
           onChange={(value) =>
-            store.set("legend.classes", value === DEFAULTS["legend.classes"] ? undefined : value)
+            setLegendKey(store, "classes", value === DEFAULTS["legend.classes"] ? undefined : value)
           }
         />
       )}
@@ -117,7 +128,7 @@ export function LegendEditor() {
             label={t(`style_editor.legend_${key}`)}
             value={legendText(key)}
             placeholder={t(`style_editor.legend_${key}_placeholder`)}
-            onChange={(value) => store.set(`legend.${key}`, value || undefined)}
+            onChange={(value) => setLegendKey(store, key, value || undefined)}
           />
         ))}
       {classify.map((c, ci) => {

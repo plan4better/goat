@@ -816,7 +816,10 @@ async def add_first_styles(session: AsyncSession, link_ids: list[int]) -> None:
     of every named style of another project layer of the same dataset in the
     project (today's "a duplicate matches what the user made"), else a "Default"
     copied from the dataset default. Each gets its revision 1 row; the active style
-    maps across; the new layers are shown. A project layer is claimed first (its
+    maps across; the new layers are shown. A duplicate draws where its original
+    does; a layer from the dataset default whose style draws a color range,
+    categories or a hillshade starts below the basemap's labels, which an opaque one
+    would hide, everything else on top (spec 10). A project layer is claimed first (its
     `active_style_id` set while still empty), so two writers at once give it one
     set of styles."""
     if not link_ids:
@@ -834,7 +837,8 @@ async def add_first_styles(session: AsyncSession, link_ids: list[int]) -> None:
                   )
             ),
             sibling AS (
-                SELECT DISTINCT ON (n.id) n.id AS new_id, o.id AS old_id, o.active_style_id
+                SELECT DISTINCT ON (n.id) n.id AS new_id, o.id AS old_id, o.active_style_id,
+                       o.position AS old_position
                 FROM new n
                 JOIN {schema}.layer_project o
                   ON o.project_id = n.project_id AND o.layer_id = n.layer_id
@@ -846,21 +850,28 @@ async def add_first_styles(session: AsyncSession, link_ids: list[int]) -> None:
             ),
             plan AS MATERIALIZED (
                 SELECT gen_random_uuid() AS id, sb.new_id AS lp, s.name, s.position,
-                       s.document, s.id = sb.active_style_id AS was_active
+                       s.document, s.id = sb.active_style_id AS was_active,
+                       sb.old_position
                 FROM sibling sb JOIN {schema}.layer_style s ON s.layer_project_id = sb.old_id
                 UNION ALL
-                SELECT gen_random_uuid(), n.id, 'Default', 0, d.document, true
+                SELECT gen_random_uuid(), n.id, 'Default', 0, d.document, true, NULL
                 FROM new n JOIN {schema}.layer_style d ON d.layer_id = n.layer_id
                 WHERE NOT EXISTS (SELECT 1 FROM sibling sb WHERE sb.new_id = n.id)
             ),
+            chosen AS (
+                SELECT DISTINCT ON (p.lp) p.lp, p.id, p.document, p.old_position
+                FROM plan p ORDER BY p.lp, p.was_active IS TRUE DESC, p.position
+            ),
             claimed AS (
                 UPDATE {schema}.layer_project lp
-                SET active_style_id = coalesce(
-                        (SELECT p.id FROM plan p WHERE p.lp = lp.id AND p.was_active LIMIT 1),
-                        (SELECT p.id FROM plan p WHERE p.lp = lp.id ORDER BY p.position LIMIT 1)
-                    ),
-                    visible = true
-                WHERE lp.id IN (SELECT lp FROM plan) AND lp.active_style_id IS NULL
+                SET active_style_id = c.id,
+                    visible = true,
+                    position = CASE
+                        WHEN c.old_position IS NOT NULL THEN c.old_position
+                        WHEN c.document->'render'->>'type' IN ('continuous', 'categorical', 'hillshade')
+                        THEN 'below_labels' ELSE lp.position END
+                FROM chosen c
+                WHERE c.lp = lp.id AND lp.active_style_id IS NULL
                 RETURNING lp.id
             ),
             ins AS (

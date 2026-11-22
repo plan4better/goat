@@ -479,11 +479,13 @@ class _Checker:
         integer = (ctx.data_type or "").startswith(
             ("int", "uint")
         ) or ctx.data_type == "integer"
-        if rtype == "hillshade" and (len(ctx.bands) > 1 or ctx.color_table):
+        # Any band of values can be shaded (`render.band`, a surface or a terrain
+        # model of one file); codes drawn with a color table are no elevation.
+        if rtype == "hillshade" and ctx.color_table:
             self.add(
                 "render_type_mismatch",
                 ["render", "type"],
-                "Hillshade needs a single-band elevation raster.",
+                "Hillshade needs elevation values, not codes with a color table.",
             )
         elif rtype == "continuous" and ctx.color_table and integer:
             self.add(

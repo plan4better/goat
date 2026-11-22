@@ -28,6 +28,12 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { drawAsIcon } from "@/components/map/panels/styleEditor/drawAsIcons";
+import {
+  dropOffer,
+  offerMove,
+  placementKey,
+  useLayerMapState,
+} from "@/components/map/panels/styleEditor/mapState";
 import { ChoiceRow, PanelSection } from "@/components/map/panels/styleEditor/rows";
 
 /** The image adjustments (spec 9.1), only for images. */
@@ -42,6 +48,7 @@ export function RasterGeneralSection() {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { raster } = useStyleData();
+  const mapState = useLayerMapState();
   const sample = useRasterSample();
   const waiting = useRasterWaiting();
   // Each key on its own: `render` also holds the classes, which this section does not show.
@@ -107,6 +114,9 @@ export function RasterGeneralSection() {
   };
 
   const drawAs = async (next: RasterRenderType) => {
+    // The layer and its place as the choice is made: the values of a color range may take a request.
+    const onTop = mapState?.position === "top";
+    const key = mapState ? placementKey(mapState, store) : undefined;
     // Categories start with the band's codes, in the file's colors where it has a table.
     let start = defaultRender(next, { info });
     if (next === "continuous" && !start.domain) {
@@ -125,6 +135,11 @@ export function RasterGeneralSection() {
       if (next !== "image") for (const key of ADJUSTMENTS) out = setIn(out, key, undefined);
       return out;
     }, "render.type");
+    if (key === undefined) return;
+    // Colors of its own in place of an image, on top of the basemap: they hide its place names, so the Position row
+    // offers the move below them (spec 10). The layer stays where it is.
+    if (type === "image" && next !== "image" && onTop) offerMove(key, store);
+    else if (next === "image") dropOffer(key);
   };
 
   const label = t("style_editor.draw_as");

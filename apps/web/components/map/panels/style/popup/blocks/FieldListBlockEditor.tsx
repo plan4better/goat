@@ -40,6 +40,9 @@ interface Props {
   fields: LayerField[];
   layerId: string;
   onChange: (next: PopupFieldListBlock) => void;
+  /** A raster cell's fields: while the list shows one value, a layout of rows and "Show first" make no sense and are
+   * left out. */
+  cell?: boolean;
 }
 
 const MAX_SAMPLE_DISPLAY_LENGTH = 18;
@@ -49,7 +52,7 @@ function truncateSample(s: string): string {
   return s.slice(0, MAX_SAMPLE_DISPLAY_LENGTH - 1) + "…";
 }
 
-export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props) {
+export function FieldListBlockEditor({ block, fields, layerId, onChange, cell = false }: Props) {
   const { t, i18n } = useTranslation("common");
   const { fields: styleFields } = useStyleData();
   const [addMenuAnchor, setAddMenuAnchor] = useState<null | HTMLElement>(null);
@@ -59,6 +62,7 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
   } | null>(null);
 
   const attributes = block.attributes;
+  const oneValue = cell && attributes.length <= 1;
 
   const setAttributes = (next: AttributeEntry[]) => {
     onChange({ ...block, attributes: next });
@@ -122,15 +126,17 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
 
   return (
     <>
-      <SegmentedRow<PopupFieldListBlock["layout"]>
-        label={t("layout")}
-        value={block.layout}
-        onChange={(layout) => onChange({ ...block, layout })}
-        options={[
-          { value: "table", label: t("table") },
-          { value: "list", label: t("list") },
-        ]}
-      />
+      {!oneValue && (
+        <SegmentedRow<PopupFieldListBlock["layout"]>
+          label={t("layout")}
+          value={block.layout}
+          onChange={(layout) => onChange({ ...block, layout })}
+          options={[
+            { value: "table", label: t("table") },
+            { value: "list", label: t("list") },
+          ]}
+        />
+      )}
 
       {/* The attributes: a heading with their count, the framed list, then "Add attribute". */}
       <Box sx={{ px: 3, pt: 2 }}>
@@ -203,18 +209,20 @@ export function FieldListBlockEditor({ block, fields, layerId, onChange }: Props
         />
       </Box>
 
-      <Row label={t("collapse_after")} note={t("collapse_after_help")}>
-        <NumberInput
-          value={block.collapse_after ?? undefined}
-          unit={t("collapse_after_unit")}
-          min={1}
-          width={96}
-          placeholder={t("collapse_after_placeholder")}
-          ariaLabel={t("collapse_after")}
-          onChange={(n) => onChange({ ...block, collapse_after: Number.isInteger(n) && n >= 1 ? n : null })}
-          onClear={() => onChange({ ...block, collapse_after: null })}
-        />
-      </Row>
+      {!oneValue && (
+        <Row label={t("collapse_after")} note={t("collapse_after_help")}>
+          <NumberInput
+            value={block.collapse_after ?? undefined}
+            unit={t("collapse_after_unit")}
+            min={1}
+            width={96}
+            placeholder={t("collapse_after_placeholder")}
+            ariaLabel={t("collapse_after")}
+            onChange={(n) => onChange({ ...block, collapse_after: Number.isInteger(n) && n >= 1 ? n : null })}
+            onClear={() => onChange({ ...block, collapse_after: null })}
+          />
+        </Row>
+      )}
 
       {/* Number-format popover — anchored to the row's "123" button.
           Floats outside the parent popper (placement="left-start") so it

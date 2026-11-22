@@ -12,6 +12,7 @@ import {
   geometricRefused,
   noDataApplies,
   rasterClassesRender,
+  setBreak,
   setOuterEnd,
 } from "@/lib/style/editor/raster";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
@@ -25,17 +26,26 @@ describe("raster render choices", () => {
   it("offers what fits the file", () => {
     expect(drawAsOptions(float)).toEqual(["hillshade", "continuous", "image"]);
     expect(drawAsOptions(byte)).toEqual(["hillshade", "continuous", "categorical", "image"]);
-    expect(drawAsOptions(rgb)).toEqual(["continuous", "categorical", "image"]);
+    expect(drawAsOptions(rgb)).toEqual(["hillshade", "continuous", "categorical", "image"]);
     expect(drawAsOptions(landcover)).toEqual(["categorical", "image"]);
     // Nothing until the file's info answered: the list does not change under the pointer.
     expect(drawAsOptions(undefined)).toEqual([]);
   });
 
-  it("hillshade is offered on one band of values, an alpha band besides it not counted", () => {
+  it("hillshade is offered on any band of values, not on codes with a color table", () => {
     const stats = (index: number) => ({ index, min: 0, max: 9, p2: 0, p98: 9, values: null });
     // Elevation with a transparency band: the service gives statistics for band 1 only.
     expect(drawAsOptions({ ...byte, bands: 2, stats: [stats(1)] })).toContain("hillshade");
-    expect(drawAsOptions({ ...rgb, stats: [stats(1), stats(2), stats(3)] })).not.toContain("hillshade");
+    // A surface and a terrain model in one file: the Band row picks the one to shade.
+    expect(drawAsOptions({ ...rgb, stats: [stats(1), stats(2), stats(3)] })).toContain("hillshade");
+    expect(drawAsOptions(landcover)).not.toContain("hillshade");
+    // Bands the file marks red, green and blue are offered too.
+    const photo = {
+      ...rgb,
+      colorInterp: ["red", "green", "blue", "alpha"],
+      stats: [stats(1), stats(2), stats(3)],
+    };
+    expect(drawAsOptions(photo)).toEqual(["hillshade", "continuous", "categorical", "image"]);
   });
 
   it("starts each render from what is known, defaults left out", () => {
@@ -363,6 +373,81 @@ describe("raster classes by method", () => {
     // An end on the wrong side of the class's other bound would make no class: nothing changes.
     expect(setOuterEnd(quantiles, "from", 20)).toBe(quantiles);
     expect(setOuterEnd(quantiles, "to", 50)).toBe(quantiles);
+  });
+
+  it("a break dragged on the histogram makes the classes manual and keeps the other breaks", () => {
+    const quantiles = render({
+      domain: undefined,
+      classify: {
+        method: "quantile",
+        count: 3,
+        palette: "colorbrewer:Blues",
+        classes: [
+          { id: "c1", to: 20, name: "Low", color: "#111111" },
+          { id: "c2", from: 20, to: 60, visible: false },
+          { id: "c3", from: 60, color: "#333333" },
+        ],
+        computed: { generated: { target: "color", values: { c1: "#111111", c3: "#333333" } } },
+      },
+    });
+    // The break between the second and the third class (class 2 starts there).
+    expect(setBreak(quantiles, 2, 45)).toEqual({
+      ...quantiles,
+      classify: {
+        method: "manual",
+        palette: "colorbrewer:Blues",
+        classes: [{ to: 20, name: "Low" }, { from: 20, to: 45, visible: false }, { from: 45 }],
+      },
+    });
+    expect((setBreak(quantiles, 1, 10).classify as JsonLike).classes).toEqual([
+      { to: 10, name: "Low" },
+      { from: 10, to: 60, visible: false },
+      { from: 60 },
+    ]);
+    // Past a neighbouring break, or not a break at all: nothing changes.
+    expect(setBreak(quantiles, 2, 20)).toBe(quantiles);
+    expect(setBreak(quantiles, 1, 60)).toBe(quantiles);
+    expect(setBreak(quantiles, 0, 5)).toBe(quantiles);
+    expect(setBreak(quantiles, 3, 70)).toBe(quantiles);
+  });
+
+  it("with values outside left out a break stays inside the ends the drawing stops at", () => {
+    const equal = render({
+      domain: [20, 80],
+      outside: "hide",
+      classify: {
+        method: "equal_interval",
+        count: 3,
+        classes: [{ to: 40 }, { from: 40, to: 60 }, { from: 60 }],
+      },
+    });
+    // At or beyond the range's ends: nothing changes.
+    expect(setBreak(equal, 1, 10)).toBe(equal);
+    expect(setBreak(equal, 1, 20)).toBe(equal);
+    expect(setBreak(equal, 2, 80)).toBe(equal);
+    expect(setBreak(equal, 2, 95)).toBe(equal);
+    expect((setBreak(equal, 1, 21).classify as JsonLike).classes).toEqual([
+      { to: 21 },
+      { from: 21, to: 60 },
+      { from: 60 },
+    ]);
+    // The end colors outside: the first and last class hold every cell beyond, a break may lie beyond the range.
+    const clamped = { ...equal, outside: undefined };
+    expect((setBreak(clamped, 1, 10).classify as JsonLike).classes).toEqual([
+      { to: 10 },
+      { from: 10, to: 60 },
+      { from: 60 },
+    ]);
+    // Without a range of their own the classes end at the band's minimum and maximum.
+    const quantiles = render({
+      domain: undefined,
+      outside: "hide",
+      classify: { method: "quantile", count: 2, classes: [{ to: 50 }, { from: 50 }] },
+    });
+    const info = { ...INFO, stats: [{ index: 1, min: 5, max: 90, p2: 6, p98: 89, values: null }] };
+    expect(setBreak(quantiles, 1, 5, info)).toBe(quantiles);
+    expect(setBreak(quantiles, 1, 90, info)).toBe(quantiles);
+    expect((setBreak(quantiles, 1, 6, info).classify as JsonLike).classes).toEqual([{ to: 6 }, { from: 6 }]);
   });
 });
 

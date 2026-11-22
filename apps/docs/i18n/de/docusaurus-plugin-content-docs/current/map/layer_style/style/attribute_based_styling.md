@@ -73,7 +73,7 @@ Nach Klassen teilt die Werte eines Feldes in Klassen und gibt jeder Klasse einen
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Wählen Sie bei Farben eine <code>Palette</code>, bei Größen und Breiten einen <code>Bereich</code>. Bei einem Zahlenfeld zeigt ein Histogramm die Werte und die Klassengrenzen.</div>
+  <div class="content">Wählen Sie bei Farben eine <code>Palette</code>, bei Größen und Breiten einen <code>Bereich</code>. Bei einem Zahlenfeld zeigt ein Histogramm die Werte und die Klassengrenzen; ziehen Sie eine Grenze daran entlang, oder klicken Sie darauf und verwenden Sie die Pfeiltasten: Die Klassen werden zu <code>Manuelle Grenzen</code>, und die übrigen Grenzen bleiben. Eine Grenze bleibt einen Schritt innerhalb der Balken des Histogramms; bei einem Feld aus ganzen Zahlen bewegt sie sich in ganzen Zahlen.</div>
 </div>
 
 <div class="step">

@@ -11,7 +11,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { withStored } from "@/lib/style/editor/defaults";
-import { formatNumberText } from "@/lib/style/editor/labels";
 import {
   BREAK_METHODS,
   RANGED_METHODS,
@@ -19,8 +18,10 @@ import {
   equalClasses,
   geometricRefused,
   rasterClassesRender,
+  setBreak,
   setOuterEnd,
   setRasterPalette,
+  wholeBand,
 } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
 import { plainNumber } from "@/lib/style/editor/summaries";
@@ -40,7 +41,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { paletteLabel } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
-import { Histogram } from "@/components/map/panels/styleEditor/editors/Histogram";
+import { Histogram, type HistogramHandle } from "@/components/map/panels/styleEditor/editors/Histogram";
 import {
   RasterClassList,
   paletteStrip,
@@ -113,6 +114,7 @@ export function RasterColorsEditor() {
   // the map draws by): those are the range, typed as a whole. Equal intervals keep splitting their range instead.
   const ranged = RANGED_METHODS.includes(method);
   const hide = render.outside === "hide";
+  const classed = classes.filter(isObject);
   const outer: [number, number] | null =
     classify && hide && classes.length && method !== "equal_interval"
       ? (classEnds(render, { info }) ?? domain)
@@ -245,6 +247,52 @@ export function RasterColorsEditor() {
     const at = d1 === d0 ? 0 : Math.min(1, Math.max(0, (v - d0) / (d1 - d0)));
     return ordered[Math.round(at * (ordered.length - 1))] ?? "#9aa3ad";
   };
+  // On the histogram: the range's ends, dragged as their boxes type them (with values outside left out, the classes'
+  // outer ends, which stay outside the breaks), and the breaks, dragged as a bound typed in the grid (the classes
+  // become manual and keep their other breaks). With values outside left out the first and last break stay inside the
+  // ends the classes draw to (`shown`: their outer ends, or equal intervals' range).
+  const cuts = classed.flatMap((c, k) => (k > 0 && typeof c.from === "number" ? [{ k, at: c.from }] : []));
+  const handles: HistogramHandle[] = [];
+  if (ranged || outer) {
+    const [lo, hi] = shown;
+    const firstCut = outer ? cuts[0]?.at : undefined;
+    const lastCut = outer ? cuts[cuts.length - 1]?.at : undefined;
+    handles.push(
+      {
+        id: "lo",
+        value: lo,
+        kind: "end",
+        label: t("style_editor.range_lowest"),
+        max: firstCut ?? hi,
+        onChange: (v) =>
+          outer ? setEnd("from", v) : store.update((doc) => withRange(doc, [v, domain[1]]), "render.domain"),
+      },
+      {
+        id: "hi",
+        value: hi,
+        kind: "end",
+        label: t("style_editor.range_highest"),
+        min: lastCut ?? lo,
+        onChange: (v) =>
+          outer ? setEnd("to", v) : store.update((doc) => withRange(doc, [domain[0], v]), "render.domain"),
+      }
+    );
+  }
+  cuts.forEach(({ k, at }, j) =>
+    handles.push({
+      id: `break-${k}`,
+      value: at,
+      kind: "break",
+      label: t("style_editor.class_break_n", { n: j + 1 }),
+      min: cuts[j - 1]?.at ?? (hide ? shown[0] : undefined),
+      max: cuts[j + 1]?.at ?? (hide ? shown[1] : undefined),
+      onChange: (v) =>
+        store.update((doc) => {
+          const now = getIn(doc, "render");
+          return setIn(doc, "render", setBreak(isObject(now) ? now : render, k, v, info));
+        }, "render.classify"),
+    })
+  );
   return (
     <>
       {hillshade && (
@@ -360,9 +408,12 @@ export function RasterColorsEditor() {
               <Box sx={{ px: 3, py: 1 }}>
                 <Histogram
                   bins={bins}
-                  breaks={breaks}
+                  breaks={[]}
                   colorAt={colorAt}
-                  format={(n) => formatNumberText(n, {}, i18n.language)}
+                  // The numbers as the range boxes show them.
+                  format={(n) => plainNumber(n, i18n.language)}
+                  handles={handles}
+                  integer={wholeBand(info, render.band ?? 1)}
                 />
               </Box>
             )}

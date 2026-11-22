@@ -3497,8 +3497,7 @@
   "line": 2310,
   "target": "satellite",
   "expect": [
-   "unknown_band",
-   "render_type_mismatch"
+   "unknown_band"
   ],
   "doc": {
    "version": "1.0.0",

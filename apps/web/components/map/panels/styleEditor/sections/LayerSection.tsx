@@ -3,7 +3,9 @@
 // Layer (prototype 2.7): opacity, the zooms the layer shows at, which features draw on top, the position among the
 // basemap's layers (map state, where there is a map document) and a time field. The filter and the time slider's value
 // belong to the map document.
+import { Link } from "@mui/material";
 import type { TFunction } from "i18next";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { classifyCount } from "@/lib/style/editor/classify";
@@ -20,7 +22,13 @@ import {
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { VisibleEditor } from "@/components/map/panels/styleEditor/editors/VisibleEditor";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
-import { type Position, useLayerMapState } from "@/components/map/panels/styleEditor/mapState";
+import {
+  type Position,
+  dropOffer,
+  placementKey,
+  useLayerMapState,
+  useMoveOffered,
+} from "@/components/map/panels/styleEditor/mapState";
 import {
   anchorTopOf,
   useNextLevel,
@@ -162,10 +170,40 @@ function TimeRow() {
 
 const POSITIONS: Position[] = ["top", "below_labels", "below_roads"];
 
+/** "The colors hide the basemap's place names. Move below labels", the Position row's note after Draw as turned an
+ * image on top into colors of its own: the move as a text link. */
+function MoveBelowLabels({ onMove }: { onMove: () => void }) {
+  const { t } = useTranslation("common");
+  return (
+    <>
+      {t("style_editor.position_hides_labels")}{" "}
+      <Link
+        component="button"
+        type="button"
+        variant="caption"
+        underline="hover"
+        onClick={onMove}
+        sx={{ verticalAlign: "baseline", textAlign: "left" }}>
+        {t("style_editor.position_move_below_labels")}
+      </Link>
+    </>
+  );
+}
+
 /** Where the layer draws among the basemap's layers (map state, not style); vector and raster layers alike. */
 export function PositionRow() {
   const { t } = useTranslation("common");
+  const store = useEditor();
   const mapState = useLayerMapState();
+  const type = useStyleValue<unknown>("render.type");
+  const key = mapState ? placementKey(mapState, store) : undefined;
+  const offered = useMoveOffered(key, store);
+  // The offer shows in the named style it was made in, while the layer is on top and draws colors of its own there:
+  // an image again (an undo) or another place ends it, so neither a redo nor a way back on top brings the note back.
+  const stands = mapState?.position === "top" && typeof type === "string" && type !== "image";
+  useEffect(() => {
+    if (offered && !stands) dropOffer(key);
+  }, [offered, stands, key]);
   if (!mapState) return null;
   const label = t("position");
   return (
@@ -173,7 +211,20 @@ export function PositionRow() {
       label={label}
       value={mapState.position}
       options={POSITIONS.map((value) => ({ value, label: t(`style_editor.position_${value}`) }))}
-      onChange={mapState.onPosition}
+      note={
+        offered && stands ? (
+          <MoveBelowLabels
+            onMove={() => {
+              dropOffer(key);
+              mapState.onPosition("below_labels");
+            }}
+          />
+        ) : undefined
+      }
+      onChange={(next) => {
+        dropOffer(key);
+        mapState.onPosition(next);
+      }}
     />
   );
 }

@@ -143,6 +143,17 @@ describe("legend section", () => {
     expect(store.get("legend")).toBeUndefined();
   });
 
+  it("the legend's contents edited for a legend hidden as `legend: false` keep it hidden", async () => {
+    const { store } = setup({ classify: CLASSIFY, legend: false });
+    await userEvent.click(within(rowOf("style_editor.contents")).getAllByRole("button")[0]);
+    await choose("style_editor.classes_shown", "style_editor.classes_filter", "style_editor.classes_view");
+    expect(store.get("legend")).toEqual({ show: false, classes: "view" });
+    fireEvent.change(screen.getByRole("textbox", { name: "style_editor.caption" }), {
+      target: { value: "Source: census" },
+    });
+    expect(store.get("legend")).toEqual({ show: false, classes: "view", caption: "Source: census" });
+  });
+
   it("one change of Classes shown saves once", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const transport = echoTransport();
