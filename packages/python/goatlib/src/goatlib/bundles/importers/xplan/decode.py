@@ -97,13 +97,14 @@ def _label(version: str | None, cls: str, table: pa.Table) -> list[str | None]:
 
 
 def _text(value: object) -> str | None:
-    """A plan field as text; one with several values (the keys of a plan
-    lying in several municipalities) joined like every other list."""
+    """A plan field as text, without the blanks a file has around a value;
+    one with several values (the keys of a plan lying in several
+    municipalities) joined like every other list."""
     if value is None:
         return None
     if isinstance(value, list):
-        return "; ".join(str(v) for v in value if v is not None) or None
-    return str(value)
+        return "; ".join(str(v).strip() for v in value if v is not None) or None
+    return str(value).strip() or None
 
 
 def _with(table: pa.Table, name: str, values: list) -> pa.Table:

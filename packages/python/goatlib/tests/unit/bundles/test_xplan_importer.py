@@ -590,6 +590,19 @@ def test_a_plan_of_several_municipalities_lists_their_keys(tmp_path: Path):
         assert {row["xpAgs"] for row in _rows(layers[role])} == {"05314000; 05315000"}
 
 
+def test_a_key_is_written_without_the_blanks_around_it(tmp_path: Path):
+    """Plans from practice state a key with a blank after it; the objects
+    carry the key itself, which is what it is compared and joined on."""
+    spaced = XPLAN_51.replace(
+        "<xplan:ags>05314000</xplan:ags>", "<xplan:ags>05314000 </xplan:ags>", 1
+    )
+    assert spaced != XPLAN_51
+    layers = _extract(tmp_path, spaced)
+
+    for role in ("BP_Plan", "BP_BaugebietsTeilFlaeche"):
+        assert {row["xpAgs"] for row in _rows(layers[role])} == {"05314000"}
+
+
 @pytest.mark.parametrize("version", ["4/1", "6/2", "7/0"])
 def test_a_version_without_code_lists_is_refused(tmp_path: Path, version: str):
     """GOAT decodes a plan with the code lists of its version. A version it
