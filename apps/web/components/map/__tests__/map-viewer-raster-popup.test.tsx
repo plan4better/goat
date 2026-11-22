@@ -14,6 +14,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { commonI18n } from "@/i18n/__tests__/commonI18n";
 
+import { getFeature } from "@/lib/api/layers";
 import {
   type RasterPoint,
   fetchRasterPoint,
@@ -75,6 +76,11 @@ vi.mock("@/lib/api/fetcher", async (importOriginal) => ({
     return { ok: false, status: 404, json: async () => ({ detail: "Not Found" }) };
   },
 }));
+// A clustered layer's feature properties, asked of geoapi by the feature's id; a test may hold the answer.
+vi.mock("@/lib/api/layers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/layers")>();
+  return { ...actual, getFeature: vi.fn(actual.getFeature) };
+});
 vi.mock("@/lib/api/rasters", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchRasterPoint: vi.fn(async () => ({ values: [39.164505], styled: null })),
@@ -729,6 +735,166 @@ describe("MapViewer raster popup", () => {
     expect(store.getState().map.popupInfo?.lngLat).toEqual([here.lng, here.lat]);
   });
 
+  it("a click opens the popup of the file below while another file's hover popup shows", async () => {
+    // A hover-only file on top (a wind map) over a color range that opens on click: the click pins the lower file's
+    // popup, it does not just close the hover popup.
+    const wind: ViewLayer = { ...demWith({ popup: { trigger: "hover" } }), id: 3, layer_id: "wind" };
+    const terrain: ViewLayer = demWith({ popup: { trigger: "click" } });
+    const store = viewer({ layers: [wind, terrain] });
+    await move();
+    await waitFor(() => expect(store.getState().map.popupInfo?.layerId).toBe("wind"));
+    await click();
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
+    expect(store.getState().map.popupInfo?.layerId).toBe(String(terrain.layer_id));
+  });
+
+  it("a click opens the popup of the feature under it while a hover popup of another layer shows", async () => {
+    // A raster's hover popup covers an area, a feature's hover popup is another layer's: neither keeps a click from
+    // opening the clicked feature's popup.
+    const actual = await vi.importActual<typeof import("@/lib/style/render/viewLayers")>(
+      "@/lib/style/render/viewLayers"
+    );
+    const vector = (id: number, trigger: string): ViewLayer =>
+      ({
+        id,
+        layer_id: `dataset-${id}`,
+        name: `Layer ${id}`,
+        type: "feature",
+        visible: true,
+        style: {
+          id: `s${id}`,
+          document: {
+            version: "1.0.0",
+            kind: "vector",
+            popup: { trigger, blocks: [{ type: "field_list", attributes: [{ field: "name" }] }] },
+          } as unknown as LayerStyle,
+        },
+      }) as unknown as ViewLayer;
+    const roads = vector(7, "click");
+    const parks = vector(8, "hover");
+    const paths = vector(9, "click");
+    const featureOf = (layer: ViewLayer) => ({
+      id: Number(layer.id) * 10,
+      layer: { id: `${layer.id}-fill` },
+      properties: { name: String(layer.name) },
+      geometry: { type: "Polygon" },
+    });
+    vi.mocked(topFeature).mockImplementation(((
+      _map: unknown,
+      features: Array<{ layer: { id: string } }> | undefined,
+      _layers: unknown,
+      accept: (layer: ViewLayer) => boolean
+    ) => {
+      for (const layer of [parks, roads, paths]) {
+        const f = features?.find((x) => x.layer.id === `${layer.id}-fill`);
+        if (f && accept(layer)) return { feature: f, layer };
+      }
+      return undefined;
+    }) as never);
+    try {
+      // A raster's hover popup shows; the click lands on a road.
+      const store = viewer({ layers: [roads, demWith({ popup: { trigger: "hover" } })] });
+      await move();
+      await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover"));
+      const onClick = recorded.map.onClick as (e: unknown) => void;
+      await act(async () => onClick({ features: [featureOf(roads)], point: { x: 10, y: 10 }, lngLat: here }));
+      await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
+      expect(store.getState().map.popupInfo?.layerId).toBe("dataset-7");
+      cleanup();
+      // A park's hover popup shows; the click lands on a road.
+      const second = viewer({ layers: [parks, roads] });
+      const onMove = recorded.map.onMouseMove as (e: unknown) => void;
+      await act(async () => onMove({ features: [featureOf(parks)], point: { x: 10, y: 10 }, lngLat: here }));
+      await waitFor(() => expect(second.getState().map.popupInfo?.layerId).toBe("dataset-8"));
+      await act(async () =>
+        (recorded.map.onClick as (e: unknown) => void)({
+          features: [featureOf(roads)],
+          point: { x: 10, y: 10 },
+          lngLat: here,
+        })
+      );
+      await waitFor(() => expect(second.getState().map.popupInfo?.triggeredBy).toBe("click"));
+      expect(second.getState().map.popupInfo?.layerId).toBe("dataset-7");
+      cleanup();
+      // An open click popup still keeps clicks to its layer, as before: a click on another layer's feature does
+      // not open that layer's popup.
+      const third = viewer({ layers: [roads, paths] });
+      const clickOn = async (layer: ViewLayer) =>
+        act(async () =>
+          (recorded.map.onClick as (e: unknown) => void)({
+            features: [featureOf(layer)],
+            point: { x: 10, y: 10 },
+            lngLat: here,
+          })
+        );
+      await clickOn(roads);
+      await waitFor(() => expect(third.getState().map.popupInfo?.layerId).toBe("dataset-7"));
+      await clickOn(paths);
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(third.getState().map.popupInfo?.layerId).not.toBe("dataset-9");
+    } finally {
+      vi.mocked(topFeature).mockImplementation(actual.topFeature);
+    }
+  });
+
+  it("a feature's click popup stays while the pointer moves off and on, for click and click and hover", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/style/render/viewLayers")>(
+      "@/lib/style/render/viewLayers"
+    );
+    for (const trigger of ["click", "click_and_hover"] as const) {
+      const road = {
+        id: 7,
+        layer_id: "roads",
+        name: "Roads",
+        type: "feature",
+        visible: true,
+        style: {
+          id: "s9",
+          document: {
+            version: "1.0.0",
+            kind: "vector",
+            popup: { trigger, blocks: [{ type: "field_list", attributes: [{ field: "name" }] }] },
+          } as unknown as LayerStyle,
+        },
+      } as unknown as ViewLayer;
+      const feature = {
+        id: 1,
+        layer: { id: "7-line" },
+        properties: { name: "A" },
+        geometry: { type: "LineString" },
+      };
+      vi.mocked(topFeature).mockImplementation(((
+        _map: unknown,
+        features: Array<{ layer: { id: string } }> | undefined,
+        _layers: unknown,
+        accept: (layer: ViewLayer) => boolean
+      ) =>
+        features?.some((f) => f.layer.id === "7-line") && accept(road)
+          ? { feature, layer: road }
+          : undefined) as never);
+      try {
+        const store = viewer({ layers: [road] });
+        const onMouseMove = recorded.map.onMouseMove as (e: unknown) => void;
+        const onClick = recorded.map.onClick as (e: unknown) => void;
+        const over = { features: [feature], point: { x: 10, y: 10 }, lngLat: here };
+        const off = { features: [], point: { x: 90, y: 90 }, lngLat: { lng: 13.5, lat: 52.5 } };
+        await act(async () => onMouseMove(over));
+        await act(async () => onClick(over));
+        await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy, trigger).toBe("click"));
+        for (const e of [off, over, off]) {
+          await act(async () => (recorded.map.onMouseMove as (e: unknown) => void)(e));
+          await act(async () => new Promise((r) => setTimeout(r, 150)));
+          expect(store.getState().map.popupInfo?.triggeredBy, trigger).toBe("click");
+        }
+        await act(async () => (recorded.map.onMouseOut as (e: unknown) => void)({}));
+        expect(store.getState().map.popupInfo?.triggeredBy, trigger).toBe("click");
+        cleanup();
+      } finally {
+        vi.mocked(topFeature).mockImplementation(actual.topFeature);
+      }
+    }
+  });
+
   it("an image's click answer opens its popup though the mouse moved", async () => {
     const answers = heldAnswers();
     const store = viewer({ layers: [image] });
@@ -942,5 +1108,186 @@ describe("MapViewer raster popup", () => {
     await clickTheFile(store);
     expect(screen.getByTestId("map-layer-popup-active-feature-pulse")).toBeInTheDocument();
     expect(screen.queryByTestId("map-popup")).toBeNull();
+  });
+});
+
+describe("MapViewer: a click under a hover popup", () => {
+  const vector = (id: number, trigger: string, render?: object): ViewLayer =>
+    ({
+      id,
+      layer_id: `dataset-${id}`,
+      name: `Layer ${id}`,
+      type: "feature",
+      visible: true,
+      style: {
+        id: `s${id}`,
+        document: {
+          version: "1.0.0",
+          kind: "vector",
+          ...(render ? { render } : {}),
+          popup: { trigger, blocks: [{ type: "field_list", attributes: [{ field: "name" }] }] },
+        } as unknown as LayerStyle,
+      },
+    }) as unknown as ViewLayer;
+  const featureOf = (layer: ViewLayer) => ({
+    id: Number(layer.id) * 10,
+    layer: { id: `${layer.id}-fill` },
+    properties: { name: String(layer.name) },
+    geometry: { type: "Polygon" },
+  });
+  /** A pointer event over the features of `layers` (top first). */
+  const over = (...layers: ViewLayer[]) => ({
+    features: layers.map(featureOf),
+    point: { x: 10, y: 10 },
+    lngLat: here,
+  });
+  const moveOver = (...layers: ViewLayer[]) =>
+    act(async () => (recorded.map.onMouseMove as (e: unknown) => void)(over(...layers)));
+  const clickOn = (...layers: ViewLayer[]) =>
+    act(async () => (recorded.map.onClick as (e: unknown) => void)(over(...layers)));
+  /** Runs `run` with `stack` (top first) as the layers the map finds features of. */
+  const withStack = async (stack: ViewLayer[], run: () => Promise<void>) => {
+    const actual = await vi.importActual<typeof import("@/lib/style/render/viewLayers")>(
+      "@/lib/style/render/viewLayers"
+    );
+    vi.mocked(topFeature).mockImplementation(((
+      _map: unknown,
+      features: Array<{ layer: { id: string } }> | undefined,
+      _layers: unknown,
+      accept: (layer: ViewLayer) => boolean
+    ) => {
+      for (const layer of stack) {
+        const feature = features?.find((f) => f.layer.id === `${layer.id}-fill`);
+        if (feature && accept(layer)) return { feature, layer };
+      }
+      return undefined;
+    }) as never);
+    try {
+      await run();
+    } finally {
+      vi.mocked(topFeature).mockImplementation(actual.topFeature);
+    }
+  };
+  const popupOf = (store: ReturnType<typeof viewer>) => store.getState().map.popupInfo;
+
+  it("pins the popup being read: its layer's feature comes before a layer drawn above it", async () => {
+    // Roads drawn above districts; both open on click and on hover.
+    const roads = vector(7, "click_and_hover");
+    const districts = vector(8, "click_and_hover");
+    await withStack([roads, districts], async () => {
+      const store = viewer({ layers: [roads, districts] });
+      await moveOver(districts);
+      await waitFor(() => expect(popupOf(store)?.layerId).toBe("dataset-8"));
+      // The pointer moves on within the district, onto a road crossing it: the hover popup stays the district's.
+      await moveOver(roads, districts);
+      expect(popupOf(store)).toMatchObject({ layerId: "dataset-8", triggeredBy: "hover" });
+      await clickOn(roads, districts);
+      await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("click"));
+      expect(popupOf(store)?.layerId).toBe("dataset-8");
+      expect(store.getState().map.highlightedFeature?.id).toBe(80);
+      cleanup();
+      // Without a district under the click, the topmost layer's popup opens.
+      const second = viewer({ layers: [roads, districts] });
+      await moveOver(districts);
+      await waitFor(() => expect(popupOf(second)?.layerId).toBe("dataset-8"));
+      await clickOn(roads);
+      await waitFor(() => expect(popupOf(second)?.triggeredBy).toBe("click"));
+      expect(popupOf(second)?.layerId).toBe("dataset-7");
+      cleanup();
+      // Without a hover popup, the topmost layer's.
+      const third = viewer({ layers: [roads, districts] });
+      await clickOn(roads, districts);
+      await waitFor(() => expect(popupOf(third)?.triggeredBy).toBe("click"));
+      expect(popupOf(third)?.layerId).toBe("dataset-7");
+    });
+  });
+
+  it("a hover popup of a layer that opens on hover only gives way to the clicked feature's popup", async () => {
+    const parks = vector(8, "hover");
+    const roads = vector(7, "click_and_hover");
+    await withStack([parks, roads], async () => {
+      const store = viewer({ layers: [parks, roads] });
+      await moveOver(parks, roads);
+      await waitFor(() => expect(popupOf(store)?.layerId).toBe("dataset-8"));
+      await clickOn(parks, roads);
+      await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("click"));
+      expect(popupOf(store)?.layerId).toBe("dataset-7");
+    });
+  });
+
+  it("pins a file's hover popup where the file has a value, though a feature that opens on click lies above", async () => {
+    const roads = vector(7, "click");
+    const terrain = demWith({ popup: { trigger: "click_and_hover" } });
+    await withStack([roads], async () => {
+      const store = viewer({ layers: [roads, terrain] });
+      await moveOver(roads);
+      await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("hover"));
+      expect(popupOf(store)?.layerId).toBe(String(terrain.layer_id));
+      await clickOn(roads);
+      await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("click"));
+      expect(popupOf(store)?.layerId).toBe(String(terrain.layer_id));
+      await waitFor(() => expect(popupText()).toContain("39.165"));
+      expect(store.getState().map.highlightedFeature).toBeUndefined();
+      cleanup();
+      // Without a value of the file under the click, the feature's popup opens.
+      const second = viewer({ layers: [roads, terrain] });
+      await moveOver(roads);
+      await waitFor(() => expect(popupOf(second)?.triggeredBy).toBe("hover"));
+      vi.mocked(tileValueAt).mockResolvedValue(null);
+      await clickOn(roads);
+      await waitFor(() => expect(popupOf(second)?.triggeredBy).toBe("click"));
+      expect(popupOf(second)?.layerId).toBe("dataset-7");
+      expect(second.getState().map.highlightedFeature?.id).toBe(70);
+    });
+  });
+
+  it("pins the hover popup of the file below a file that opens on click", async () => {
+    const slope: ViewLayer = { ...demWith({ popup: { trigger: "click" } }), id: 3, layer_id: "slope" };
+    const terrain = demWith({ popup: { trigger: "click_and_hover" } });
+    const store = viewer({ layers: [slope, terrain] });
+    await move();
+    await waitFor(() => expect(popupOf(store)?.layerId).toBe(String(terrain.layer_id)));
+    await click();
+    await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("click"));
+    expect(popupOf(store)?.layerId).toBe(String(terrain.layer_id));
+    cleanup();
+    // Without a value of that file under the click, the topmost file with one.
+    const second = viewer({ layers: [slope, terrain] });
+    await move();
+    await waitFor(() => expect(popupOf(second)?.layerId).toBe(String(terrain.layer_id)));
+    vi.mocked(tileValueAt).mockImplementation(async (_values, tiles) =>
+      tiles.includes("slope") ? 12 : null
+    );
+    await click();
+    await waitFor(() => expect(popupOf(second)?.triggeredBy).toBe("click"));
+    expect(popupOf(second)?.layerId).toBe("slope");
+  });
+
+  it("the clicked feature is the highlighted one once its late popup opens, though the mouse moved meanwhile", async () => {
+    // Stops drawn as clusters open on click, their properties come from geoapi; parks below open on hover.
+    const stops = vector(7, "click", { type: "cluster" });
+    const parks = vector(8, "hover");
+    const answers: Array<(feature: unknown) => void> = [];
+    vi.mocked(getFeature).mockImplementationOnce(
+      () => new Promise((resolve) => answers.push(resolve as never))
+    );
+    await withStack([stops, parks], async () => {
+      const store = viewer({ layers: [stops, parks] });
+      await moveOver(stops, parks);
+      await waitFor(() => expect(popupOf(store)?.layerId).toBe("dataset-8"));
+      await clickOn(stops, parks);
+      expect(store.getState().map.highlightedFeature?.id).toBe(70);
+      // The mouse moves a pixel before geoapi answers.
+      await moveOver(stops, parks);
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      await act(async () => answers.forEach((give) => give({ properties: { name: "Stop from geoapi" } })));
+      await waitFor(() => expect(popupOf(store)?.triggeredBy).toBe("click"));
+      expect(popupOf(store)?.layerId).toBe("dataset-7");
+      expect(store.getState().map.highlightedFeature?.id).toBe(70);
+      // A later move leaves the click's popup and its feature as they are.
+      await moveOver(parks);
+      expect(popupOf(store)).toMatchObject({ layerId: "dataset-7", triggeredBy: "click" });
+      expect(store.getState().map.highlightedFeature?.id).toBe(70);
+    });
   });
 });

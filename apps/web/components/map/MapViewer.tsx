@@ -351,9 +351,11 @@ const MapViewer: React.FC<MapProps> = ({
   const hoverShownRef = useRef(0);
   /** A click's read is on its way: hovering opens no popup over the one it is about to open. */
   const clickPendingRef = useRef(false);
-  /** The files as drawn (an open style panel's document); while a popup is open, only its layer. */
-  const rasterLayers = (): ViewLayer[] => {
-    const activeLayerId = popupInfo?.layerId;
+  /** The files as drawn (an open style panel's document); while a popup is open, only its layer. A click passes
+   * `clicking`: only a click's popup restricts it, so a hover popup (of any layer) does not keep it from opening the
+   * popup of the file under it (a hover popup's own file is asked first, `handleMapClick`). */
+  const rasterLayers = (clicking = false): ViewLayer[] => {
+    const activeLayerId = clicking && popupInfo?.triggeredBy === "hover" ? undefined : popupInfo?.layerId;
     return (layers ?? [])
       .filter((layer) => !activeLayerId || datasetOf(layer) === activeLayerId)
       .map((layer) => liveLayer(layer, editing));
@@ -421,10 +423,15 @@ const MapViewer: React.FC<MapProps> = ({
         onClose: handlePopoverClose,
       }),
     );
-  /** A click on the files: false when none opens a popup on click. Where none has a value, the popup closes. */
-  const openRasterPopup = (lngLat: { lng: number; lat: number }): boolean => {
+  /** A click on the files: false when none opens a popup on click. Where none has a value, the popup closes. With
+   * `only` (an open hover popup's own file) that file alone is asked, and without a value of it `otherwise` runs. */
+  const openRasterPopup = (
+    lngLat: { lng: number; lat: number },
+    only?: ViewLayer,
+    otherwise?: () => void,
+  ): boolean => {
     const map = mapRef?.current?.getMap();
-    const candidates = map ? rasterPopupLayers(rasterLayers(), "click") : [];
+    const candidates = map ? rasterPopupLayers(only ? [only] : rasterLayers(true), "click") : [];
     if (!map || !candidates.length) return false;
     const read = ++clickReadRef.current;
     clickPendingRef.current = true;
@@ -440,6 +447,7 @@ const MapViewer: React.FC<MapProps> = ({
         if (read !== clickReadRef.current) return;
         clickPendingRef.current = false;
         if (found) show(found.layer, found.record);
+        else if (otherwise) otherwise();
         else dispatch(setPopupInfo(undefined));
       });
     return true;
@@ -646,65 +654,86 @@ const MapViewer: React.FC<MapProps> = ({
       return;
     }
 
-    // Track whether the popup block already highlighted a feature
-    let didHighlight = false;
+    const opensOnClick = (layer: ViewLayer) => {
+      const trigger = triggerOf(layer);
+      return trigger === "click" || trigger === "click_and_hover";
+    };
+    // A click under a hover popup pins the popup being read: where that popup's own layer opens on click too and
+    // has a feature under the click (a file: a value), its popup opens, before a layer drawn above it.
+    const hoveredId = isGetInfoActive && popupInfo?.triggeredBy === "hover" ? popupInfo.projectLayerId : undefined;
+    const ofHovered = (layer: ViewLayer) => hoveredId !== undefined && String(layer.id) === hoveredId;
 
-    if (map && features && features.length > 0 && isGetInfoActive) {
-      // The topmost feature whose layer opens its popup on click. Once a popup is open for one layer, a click on
-      // another layer's feature does not replace it (the user closes it first); the same layer may update.
-      const activeLayerId = popupInfo?.layerId;
-      const hit = topFeature(map, features, layers, (layer) => {
-        const trigger = triggerOf(layer);
-        if (trigger !== "click" && trigger !== "click_and_hover") return false;
-        return !activeLayerId || datasetOf(layer) === activeLayerId;
-      });
-      // A click always supersedes any hover-driven popup state.
-      hoverPopupKeyRef.current = undefined;
-
-      if (hit && isHexagon(hit.feature)) {
-        openHexagonPopup(hit.layer, hit.feature, e.lngLat, "click");
-      } else if (hit) {
-        const { feature: interactiveFeature, layer: interactiveLayer } = hit;
-        dispatch(setHighlightedFeature(interactiveFeature));
-        didHighlight = true;
-
-        let lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-        if (interactiveFeature.geometry.type === "Point" && interactiveFeature.geometry.coordinates) {
-          lngLat = [interactiveFeature.geometry.coordinates[0], interactiveFeature.geometry.coordinates[1]];
-        }
-
-        void featureProperties(interactiveLayer, interactiveFeature, getFeature).then((full) => {
-          if (click !== clickSeqRef.current) return;
-          const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(full);
-          dispatch(
-            setPopupInfo({
-              lngLat,
-              properties: primitiveProperties,
-              jsonProperties: jsonProperties,
-              // Full unfiltered feature properties — snapshotted here so the
-              // new MapFeaturePopover doesn't read live from highlightedFeature
-              // (which mutates on unrelated UI events like changing the
-              // selected layer in the Layers panel).
-              featureProperties: full,
-              triggeredBy: "click",
-              title: interactiveLayer.name ?? "",
-              // queryables expects the dataset id, not the project layer id.
-              layerId: datasetOf(interactiveLayer),
-              projectLayerId: interactiveLayer.id.toString(),
-              onClose: handlePopoverClose,
-            })
+    /** Opens the popup of what is under the click; whether it highlighted a feature. */
+    const openTopmost = (): boolean => {
+      if (map && features && features.length > 0 && isGetInfoActive) {
+        // The topmost feature whose layer opens its popup on click. Once a click's popup is open for one layer, a
+        // click on another layer's feature does not replace it (the user closes it first); the same layer may update.
+        // A hover popup restricts nothing: after its own layer, a click opens the popup of what is under it.
+        const activeLayerId = popupInfo?.triggeredBy === "click" ? popupInfo.layerId : undefined;
+        const hit =
+          (hoveredId !== undefined
+            ? topFeature(map, features, layers, (layer) => ofHovered(layer) && opensOnClick(layer))
+            : undefined) ??
+          topFeature(
+            map,
+            features,
+            layers,
+            (layer) => opensOnClick(layer) && (!activeLayerId || datasetOf(layer) === activeLayerId),
           );
-        });
-      } else {
+        // A click always supersedes any hover-driven popup state.
+        hoverPopupKeyRef.current = undefined;
+
+        if (hit && isHexagon(hit.feature)) {
+          openHexagonPopup(hit.layer, hit.feature, e.lngLat, "click");
+          return false;
+        }
+        if (hit) {
+          const { feature: interactiveFeature, layer: interactiveLayer } = hit;
+          dispatch(setHighlightedFeature(interactiveFeature));
+
+          let lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+          if (interactiveFeature.geometry.type === "Point" && interactiveFeature.geometry.coordinates) {
+            lngLat = [interactiveFeature.geometry.coordinates[0], interactiveFeature.geometry.coordinates[1]];
+          }
+
+          void featureProperties(interactiveLayer, interactiveFeature, getFeature).then((full) => {
+            if (click !== clickSeqRef.current) return;
+            // A pointer move while a clustered layer's properties were on their way may have shown another layer's
+            // hover popup and its feature again: the popup that opens now is this feature's.
+            hoverPopupKeyRef.current = undefined;
+            dispatch(setHighlightedFeature(interactiveFeature));
+            const { properties: primitiveProperties, jsonProperties } = splitPopupProperties(full);
+            dispatch(
+              setPopupInfo({
+                lngLat,
+                properties: primitiveProperties,
+                jsonProperties: jsonProperties,
+                // Full unfiltered feature properties — snapshotted here so the
+                // new MapFeaturePopover doesn't read live from highlightedFeature
+                // (which mutates on unrelated UI events like changing the
+                // selected layer in the Layers panel).
+                featureProperties: full,
+                triggeredBy: "click",
+                title: interactiveLayer.name ?? "",
+                // queryables expects the dataset id, not the project layer id.
+                layerId: datasetOf(interactiveLayer),
+                projectLayerId: interactiveLayer.id.toString(),
+                onClose: handlePopoverClose,
+              }),
+            );
+          });
+          return true;
+        }
         // No interactive features were found in the click stack.
         dispatch(setHighlightedFeature(undefined));
         if (!openRasterPopup(e.lngLat)) dispatch(setPopupInfo(undefined));
+        return false;
       }
-    } else {
       // No features clicked or get info tool is not active.
       dispatch(setHighlightedFeature(undefined));
       if (!(map && isGetInfoActive && openRasterPopup(e.lngLat))) dispatch(setPopupInfo(undefined));
-    }
+      return false;
+    };
 
     // Click-to-filter: dispatch clicked feature independently of popup interaction settings.
     // This finds the topmost feature from ANY layer (regardless of interaction type).
@@ -717,7 +746,9 @@ const MapViewer: React.FC<MapProps> = ({
             () => true,
           )
         : undefined;
-    if (filterHit) {
+    /** Highlights the feature a click filters by, unless the popup block already highlighted one (`didHighlight`). */
+    const highlightFiltered = (didHighlight: boolean) => {
+      if (!filterHit) return;
       // Only highlight if the popup block didn't already handle it — and
       // only when this layer's popup enables the active-feature highlight.
       // Otherwise click-to-filter would recolor the feature even for layers
@@ -727,6 +758,15 @@ const MapViewer: React.FC<MapProps> = ({
       if (!didHighlight && cfg && layerHighlightsActiveFeature(cfg.enabled, cfg.highlight_active_feature)) {
         dispatch(setHighlightedFeature(filterHit.feature));
       }
+    };
+
+    // The hover popup's own file is read first; without a value of it under the click, what is under the click.
+    const hoveredFile = map && hoveredId !== undefined ? rasterLayers(true).find(ofHovered) : undefined;
+    const asksHoveredFile =
+      !!hoveredFile && openRasterPopup(e.lngLat, hoveredFile, () => highlightFiltered(openTopmost()));
+    if (!asksHoveredFile) highlightFiltered(openTopmost());
+
+    if (filterHit) {
       void featureProperties(filterHit.layer, filterHit.feature, getFeature).then((properties) => {
         if (click !== clickSeqRef.current) return;
         dispatch(
