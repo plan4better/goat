@@ -1,8 +1,8 @@
 // The palette picker (prototype 5.2, redrawn on the design canvas): GOAT's catalogue by kind as plain strips in two
-// columns (in classes when `steps` is given), the hovered or chosen palette's name in one line above them, Reverse
-// as a toggle, and "Make my own palette": the colors as chips to pick, reorder and remove, each edited with the
-// panel's color picker. Reverse lives only here, for every editor that opens the picker.
-import { Box, Button, ButtonBase, Chip, Divider, IconButton, Tooltip, Typography } from "@mui/material";
+// columns (in classes when `steps` is given), the hovered or chosen palette's name in one line above them, an inline
+// palette as "Yours", and Reverse as a toggle. Reverse lives only here, for every editor that opens the picker; a
+// palette's own colors are edited in the list under its Palette row (`PaletteColors`).
+import { Box, ButtonBase, Chip, IconButton, Tooltip, Typography } from "@mui/material";
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,16 +11,9 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { paletteColors } from "@/lib/style/palettes";
 
-import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
-import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
-
 export type PaletteKind = "sequential" | "diverging" | "qualitative";
 
 export { paletteColors };
-
-/** The fewest and most colors of a palette made by hand. */
-const MIN_COLORS = 2;
-const MAX_COLORS = 9;
 
 export interface PalettePickerProps {
   value: string | string[];
@@ -29,7 +22,6 @@ export interface PalettePickerProps {
   onReverse?: (reverse: boolean) => void;
   steps?: number;
   kinds: PaletteKind[];
-  allowCustom?: boolean;
 }
 
 /** A strip of `colors`: blended, or in equal blocks for classes. */
@@ -87,19 +79,10 @@ function Strip({
   );
 }
 
-export function PalettePicker({
-  value,
-  reverse,
-  onChange,
-  onReverse,
-  steps,
-  kinds,
-  allowCustom = true,
-}: PalettePickerProps) {
+export function PalettePicker({ value, reverse, onChange, onReverse, steps, kinds }: PalettePickerProps) {
   const { t } = useTranslation("common");
   const [kind, setKind] = useState<PaletteKind | "all">("all");
   const [hover, setHover] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
   const shown = useMemo(
     () =>
       Object.entries(PALETTES).filter(
@@ -108,21 +91,6 @@ export function PalettePicker({
     [kinds, kind]
   );
   const stepped = steps !== undefined;
-
-  if (editing) {
-    const colors = ordered(paletteColors(value, Array.isArray(value) ? undefined : (steps ?? 5)), reverse);
-    return (
-      <PaletteEditor
-        initial={colors.length >= MIN_COLORS ? colors.slice(0, MAX_COLORS) : ["#ffffff", "#000000"]}
-        onApply={(colors) => {
-          onChange(colors);
-          if (reverse) onReverse?.(false);
-          setEditing(false);
-        }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
 
   const custom = Array.isArray(value) ? value : undefined;
   const named = (id: string) => {
@@ -238,163 +206,6 @@ export function PalettePicker({
             />
           </Fragment>
         ))}
-      </Box>
-      {allowCustom && (
-        <>
-          <Divider sx={{ mt: 2, mb: 1 }} />
-          <AddButton onClick={() => setEditing(true)} sx={{ ml: 2 }}>
-            {t("style_editor.make_my_own_palette")}
-          </AddButton>
-        </>
-      )}
-    </Box>
-  );
-}
-
-/** A palette made by hand: the colors as chips (pick one to edit it, drag to reorder, remove on hover), a new color
- * at the end, the panel's color picker for the chosen one. Reversing is the picker's Reverse, after Apply. */
-export function PaletteEditor({
-  initial,
-  onApply,
-  onCancel,
-}: {
-  initial: string[];
-  onApply: (colors: string[]) => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation("common");
-  const [colors, setColors] = useState(initial);
-  const [selected, setSelected] = useState(0);
-  const [dragged, setDragged] = useState<number | null>(null);
-  const at = Math.min(selected, colors.length - 1);
-
-  const remove = (i: number) => {
-    if (colors.length <= MIN_COLORS) return;
-    setColors(colors.filter((_, k) => k !== i));
-    setSelected(Math.max(0, at >= i ? at - 1 : at));
-  };
-  const move = (from: number, to: number) => {
-    if (from === to) return;
-    const next = [...colors];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    setColors(next);
-    setSelected(to);
-  };
-
-  return (
-    <Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, pt: 1 }}>
-        <IconButton size="small" aria-label={t("style_editor.back_to_palettes")} onClick={onCancel}>
-          <Icon iconName={ICON_NAME.CHEVRON_LEFT} sx={{ fontSize: 12 }} />
-        </IconButton>
-        <Typography variant="body2" fontWeight="bold" sx={{ flex: 1 }}>
-          {t("style_editor.my_colors")}
-        </Typography>
-      </Box>
-      <Box sx={{ px: 3, pt: 2 }}>
-        <Box
-          sx={{
-            height: 28,
-            borderRadius: 2,
-            background: stripBackground(colors, false),
-            boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
-          }}
-        />
-        <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2, pt: 3, pb: 1 }}>
-          {colors.map((color, i) => (
-            <Box
-              key={i}
-              draggable
-              onDragStart={() => setDragged(i)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragged !== null) move(dragged, i);
-                setDragged(null);
-              }}
-              sx={{ position: "relative", "&:hover .remove, &:focus-within .remove": { opacity: 1 } }}>
-              <ButtonBase
-                aria-label={t("style_editor.palette_color", { n: i + 1, hex: color })}
-                aria-pressed={i === at}
-                onClick={() => setSelected(i)}
-                sx={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 2,
-                  bgcolor: color,
-                  cursor: "grab",
-                  boxShadow: (theme) =>
-                    i === at
-                      ? `0 0 0 2px ${theme.palette.background.paper}, 0 0 0 4px ${theme.palette.primary.main}`
-                      : `inset 0 0 0 1px ${theme.palette.divider}`,
-                }}
-              />
-              {colors.length > MIN_COLORS && (
-                <IconButton
-                  className="remove"
-                  size="small"
-                  aria-label={t("style_editor.remove_color", { n: i + 1 })}
-                  onClick={() => remove(i)}
-                  sx={{
-                    position: "absolute",
-                    top: -8,
-                    right: -8,
-                    width: 18,
-                    height: 18,
-                    opacity: 0,
-                    bgcolor: "background.default",
-                    "&:hover": { bgcolor: "background.default" },
-                  }}>
-                  <Icon iconName={ICON_NAME.XCLOSE} sx={{ fontSize: 9 }} />
-                </IconButton>
-              )}
-            </Box>
-          ))}
-          {colors.length < MAX_COLORS && (
-            <Tooltip title={t("style_editor.add_color")}>
-              <ButtonBase
-                aria-label={t("style_editor.add_color")}
-                onClick={() => {
-                  setColors([...colors, colors[colors.length - 1]]);
-                  setSelected(colors.length);
-                }}
-                sx={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 2,
-                  border: "1.5px dashed",
-                  borderColor: "text.disabled",
-                  color: "text.secondary",
-                  "&:hover": { borderColor: "primary.main", color: "primary.main" },
-                }}>
-                <Icon iconName={ICON_NAME.PLUS} sx={{ fontSize: 12 }} />
-              </ButtonBase>
-            </Tooltip>
-          )}
-        </Box>
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ pb: 1 }}>
-          {t("style_editor.palette_edit_note")}
-        </Typography>
-      </Box>
-      <Divider sx={{ my: 1 }} />
-      <ColorPicker
-        value={colors[at]}
-        docColors={[]}
-        onChange={(hex) => setColors(colors.map((c, i) => (i === at ? hex : c)))}
-      />
-      {/* The map popovers' footer: text buttons, the confirming one in the primary color. */}
-      <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, px: 2, pt: 2 }}>
-        <Button variant="text" onClick={onCancel}>
-          <Typography variant="body2" fontWeight="bold">
-            {t("cancel")}
-          </Typography>
-        </Button>
-        <Button variant="text" color="primary" onClick={() => onApply(colors)}>
-          <Typography variant="body2" fontWeight="bold" color="inherit">
-            {t("apply")}
-          </Typography>
-        </Button>
       </Box>
     </Box>
   );

@@ -5,6 +5,7 @@
 import { Box } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
+import { paletteList } from "@/lib/style/editor/paletteList";
 import { type Path, setIn } from "@/lib/style/editor/store";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -16,6 +17,7 @@ import {
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
+import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
@@ -56,31 +58,67 @@ function RenderPalettePicker({ fallback, kinds = ["sequential"], onPick }: Rende
   );
 }
 
-/** The colors of a render (`render.palette`, `render.reverse`): the heatmap's density ramp, H3's cell values.
- * `onPick` runs after a palette is picked. */
+/** A continuous render's palette as its list edits it. An edit is a palette picked (`onPick` runs after it). */
+function useRenderPalette({
+  fallback,
+  onPick,
+}: Pick<RenderPaletteProps, "fallback" | "onPick">): PaletteSource {
+  const store = useEditor();
+  const value = useStyleValue<Palette | undefined>("render.palette") ?? fallback;
+  const reverse = useStyleValue<boolean | undefined>("render.reverse");
+  // H3 cell values have a range (written or computed): the rows name where their colors sit; a heatmap's density has
+  // none, its rows name their colors.
+  const domain = useStyleValue<unknown>("render.domain");
+  const computed = useStyleValue<unknown>("render.computed.domain");
+  const range = [domain, computed].find(
+    (d): d is [number, number] => Array.isArray(d) && d.length === 2 && d.every((v) => typeof v === "number")
+  );
+  return {
+    colors: paletteList(value, { reverse: reverse === true }),
+    ...(range ? { valueAt: (t: number) => range[0] + t * (range[1] - range[0]) } : {}),
+    write: (colors) => {
+      store.update(
+        (doc) => setIn(setIn(doc, "render.palette", colors), "render.reverse", undefined),
+        "render.palette"
+      );
+      onPick?.();
+    },
+  };
+}
+
+/** The colors of a render (`render.palette`, `render.reverse`): the heatmap's density ramp, H3's cell values, with
+ * the palette's colors as a list to edit under the row. `onPick` runs after a palette is picked. */
 export function RenderPaletteRow({ fallback, kinds, onPick }: RenderPaletteProps) {
   const { t } = useTranslation("common");
   const popover = usePopover();
   const value = useStyleValue<Palette | undefined>("render.palette") ?? fallback;
   const reverse = useStyleValue<boolean | undefined>("render.reverse");
-  const colors = paletteColors(value);
+  // A copy: an inline palette is the stored list itself.
+  const colors = [...paletteColors(value)];
   if (reverse) colors.reverse();
   const label = t("style_editor.colors");
+  const classified = isObject(useStyleValue<unknown>("render.classify"));
   return (
-    <NavRow
-      label={label}
-      value={Array.isArray(value) ? t("style_editor.palette_custom") : (PALETTES[value]?.name ?? value)}
-      swatch={{ background: `linear-gradient(90deg, ${colors.join(", ")})`, wide: true }}
-      onOpen={(anchor) =>
-        popover.open("picker", {
-          key: "render:palette",
-          title: label,
-          anchorTop: anchorTopOf(anchor),
-          anchorEl: anchor,
-          render: () => <RenderPalettePicker fallback={fallback} kinds={kinds} onPick={onPick} />,
-        })
-      }
-    />
+    <>
+      <NavRow
+        label={label}
+        value={Array.isArray(value) ? t("style_editor.palette_custom") : (PALETTES[value]?.name ?? value)}
+        swatch={{ background: `linear-gradient(90deg, ${colors.join(", ")})`, wide: true }}
+        onOpen={(anchor) =>
+          popover.open("picker", {
+            key: "render:palette",
+            title: label,
+            anchorTop: anchorTopOf(anchor),
+            anchorEl: anchor,
+            render: () => <RenderPalettePicker fallback={fallback} kinds={kinds} onPick={onPick} />,
+          })
+        }
+      />
+      {/* A continuous ramp's colors to edit; H3 classes are edited in their rows. */}
+      {!classified && (
+        <PaletteColors useSource={useRenderPalette} args={{ fallback, onPick }} pickerKey="render:palette" />
+      )}
+    </>
   );
 }
 

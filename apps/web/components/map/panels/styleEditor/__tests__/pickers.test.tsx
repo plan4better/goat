@@ -128,18 +128,13 @@ describe("pickers", () => {
     expect(screen.queryByRole("button", { name: "RdBu" })).toBeNull();
   });
 
-  it("my own palette: pick a color to change it, add and remove, then apply it", async () => {
+  it("an inline palette shows as yours; its colors are edited in the list under the Palette row, not here", async () => {
     const onChange = vi.fn();
     renderPanel(<PalettePicker value={["#000000", "#ffffff"]} onChange={onChange} kinds={["sequential"]} />);
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.make_my_own_palette" }));
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_color" }));
-    expect(screen.getAllByRole("button", { name: "style_editor.palette_color" })).toHaveLength(3);
-    const [first] = screen.getAllByRole("button", { name: "style_editor.palette_color" });
-    await userEvent.click(first);
-    await userEvent.click(screen.getByRole("button", { name: "#d7301f" }));
-    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.remove_color" })[1]);
-    await userEvent.click(screen.getByRole("button", { name: "apply" }));
-    expect(onChange).toHaveBeenCalledWith(["#d7301f", "#ffffff"]);
+    const mine = screen.getByRole("button", { name: "style_editor.my_colors" });
+    expect(mine.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "Blues" }));
+    expect(onChange).toHaveBeenCalledWith("colorbrewer:Blues");
   });
 
   const fields: FieldInfo[] = [

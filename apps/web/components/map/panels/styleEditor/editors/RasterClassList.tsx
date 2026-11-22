@@ -36,6 +36,7 @@ import {
   CATEGORY_GRAY,
   ClassGrid,
   ClassGridRow,
+  FOCUS_MARK,
 } from "@/components/map/panels/styleEditor/editors/ClassGrid";
 import {
   type RangeOptions,
@@ -199,6 +200,7 @@ function Swatch({ path, color, title }: { path: string; color: string; title: st
         border: 1,
         borderColor: "divider",
         background: color,
+        ...FOCUS_MARK,
       }}
     />
   );

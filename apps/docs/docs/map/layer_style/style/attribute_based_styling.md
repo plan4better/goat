@@ -178,7 +178,7 @@ The palette picker opens from <code>Palette</code> or <code>Colors</code>. It sh
 | <code>Diverging</code> |   | **For values around a midpoint**, such as positive and negative values. |
 | <code>Categories</code> | <img src={require('/img/map/styling/qualitative_palette.png').default} alt="Palettes for categories"/> | **For distinct categories** without an order or ranking. |
 
-To make your own palette, click <code>Make my own palette</code>. Click a color to change it, drag colors to reorder them, add or remove colors, and click <code>Apply</code>.
+A color by attribute (a continuous ramp) lists the palette's colors at the bottom of its editor as a class list (<code>Color</code> and <code>Value</code>): each row shows a color and the field value where it sits (the color's code while the values are not known yet); click its swatch to change it, point at a row (or reach it with the keyboard) for its plus, which adds a copy of its color after it (up to 12 colors), and its bin, which removes its color (while more than two are left), drag a row to move it (or move it one place with Alt and the up or down arrow while one of its controls has the focus), and <code>Add a color</code> adds one at the end. The first change turns the palette into your own colors (2 to 12; a reversed palette keeps the order it draws in), and picking a palette again replaces them. The same list is under <code>Colors</code> of a heatmap and of H3 hexagons without classes. Classes have no such list: their rows are the colors to edit, and <code>Palette</code> recolors them all.
 
 ## Rules {#rules}
 

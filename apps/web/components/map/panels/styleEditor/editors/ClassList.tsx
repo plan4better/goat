@@ -28,6 +28,7 @@ import {
   CATEGORY_GRAY,
   ClassGrid,
   ClassGridRow,
+  FOCUS_MARK,
 } from "@/components/map/panels/styleEditor/editors/ClassGrid";
 import { ClassValues } from "@/components/map/panels/styleEditor/editors/ClassValues";
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
@@ -183,6 +184,7 @@ function TargetValue({
           border: look.shape === "icon" ? 1 : 0,
           borderColor: "divider",
           background: typeof value === "string" ? undefined : HATCH,
+          ...FOCUS_MARK,
         }}>
         {/* The class's marker: its icon in its shape, or the icon alone. */}
         {typeof value === "string" &&
@@ -219,6 +221,7 @@ function TargetValue({
           borderColor: "divider",
           color: "text.primary",
           background: pattern === undefined ? HATCH : undefined,
+          ...FOCUS_MARK,
         }}>
         {pattern && pattern !== "none" && <PatternPicture kind={pattern} size={14} />}
       </ButtonBase>
@@ -245,6 +248,7 @@ function TargetValue({
           border: 1,
           borderColor: "divider",
           background: typeof value === "string" ? value : HATCH,
+          ...FOCUS_MARK,
         }}
       />
     );
@@ -359,6 +363,7 @@ function ClassRow({
               borderRadius: 1,
               justifyContent: "flex-start",
               "&:hover": { bgcolor: "action.hover" },
+              ...FOCUS_MARK,
             }}>
             <Typography
               variant="body2"

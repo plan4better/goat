@@ -6,11 +6,13 @@
 // The computed breaks come with the file's info from the raster service, so a method or count writes its classes at
 // once. What cells beyond the colors draw (Outside) applies to classes too: with values outside left out, the classes'
 // outer ends are a range to type. The range's ends and the class breaks stand on the histogram as handles to drag. A
+// continuous palette's colors are a list to edit at the bottom (`PaletteColors`); classes are edited in their rows.
 import { Box, Button } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { withStored } from "@/lib/style/editor/defaults";
+import { paletteList } from "@/lib/style/editor/paletteList";
 import {
   BREAK_METHODS,
   RANGED_METHODS,
@@ -42,6 +44,7 @@ import {
 } from "@/components/map/panels/styleEditor/context";
 import { paletteLabel } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
 import { Histogram, type HistogramHandle } from "@/components/map/panels/styleEditor/editors/Histogram";
+import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
 import {
   RasterClassList,
   paletteStrip,
@@ -418,6 +421,10 @@ export function RasterColorsEditor() {
               </Box>
             )}
             <OutsideRow />
+            {/* A continuous palette's colors to edit, at the bottom; classes are edited in their rows. */}
+            {!classify && (
+              <PaletteColors useSource={useRasterPalette} args={undefined} pickerKey="raster:palette" />
+            )}
             {classify && (
               <Box sx={{ py: 1 }}>
                 <RasterClassList kind="classes" />
@@ -464,6 +471,28 @@ function OutsideRow() {
       onChange={(v) => store.set("render.outside", v === "clamp" ? undefined : v)}
     />
   );
+}
+
+/** The palette of a continuous color range as its list edits it. An edit is a palette picked (`setRasterPalette`). */
+function useRasterPalette(): PaletteSource {
+  const store = useEditor();
+  const { raster } = useStyleData();
+  const value = useStyleValue<unknown>("render");
+  const unit = useStyleValue<unknown>("legend.unit");
+  const render: JsonObject = isObject(value) ? value : {};
+  const palette = (render.palette ?? DEFAULTS["continuous.palette"]) as string | string[];
+  // The rows name where their colors sit over the range the colors cover.
+  const [d0, d1] = rangeOf(render, raster?.info);
+  return {
+    colors: paletteList(palette, { reverse: render.reverse === true }),
+    valueAt: (t) => d0 + t * (d1 - d0),
+    ...(typeof unit === "string" && unit ? { unit } : {}),
+    write: (colors) =>
+      store.update(
+        (doc) => setRasterPalette(setRasterPalette(doc, "palette", colors), "reverse", undefined),
+        "render.palette"
+      ),
+  };
 }
 
 function RasterPalettePicker({ steps }: { steps?: number }) {

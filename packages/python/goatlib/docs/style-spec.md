@@ -69,7 +69,8 @@ The sample datasets:
     `colorbrewer:Purples`, `colorbrewer:RdBu`, `colorbrewer:Set2`, `carto:Bold`, `goat:green`, `goat:elevation`,
     and `uber:<name>` for the palettes GOAT offers today;
   - the catalogue (id, name, kind, number of steps, color-blind safe) is published as data;
-  - an inline list looks like `["#fef0d9", "#fc8d59", "#b30000"]`.
+  - an inline list looks like `["#fef0d9", "#fc8d59", "#b30000"]`; the panel's list of a continuous palette's colors writes one
+    on its first edit, in the order the colors draw (`reverse` folded in).
 - **Numbers** in labels, legends and popups use one `format` object (section 18) and the viewer's locale. A map
   document may fix the locale for public maps and print.
 - **Conditions** are CQL2-JSON. Rules compile to MapLibre and accept a subset (section 6); the map document's

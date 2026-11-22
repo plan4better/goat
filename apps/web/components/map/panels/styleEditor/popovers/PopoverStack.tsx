@@ -429,7 +429,8 @@ export function PopoverProvider({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // An Escape something under the popovers handled (a class row's drag it cancels) is not theirs.
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       const state = openRef.current;
       if (state.picker) close("picker");
       else if (state.levels.length) close(state.levels.length);

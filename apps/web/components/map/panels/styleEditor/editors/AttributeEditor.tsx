@@ -1,6 +1,7 @@
 "use client";
 
-// A value by attribute (spec 4.3): the field, then a palette over it (colors) or a range and a scale (numbers), and
+// A value by attribute (spec 4.3): the field, then a palette over it (colors, its colors as a list to edit at the
+// bottom) or a range and a scale (numbers), and
 // the values the server computed for the field. A field or scale change saves at once; the values follow with the
 // reply. "Fixed range" writes the domain as a clamp the server never replaces.
 import { Box, Typography } from "@mui/material";
@@ -11,16 +12,19 @@ import { domainPending } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { keyOf } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
+import { paletteList } from "@/lib/style/editor/paletteList";
 import { type Path, setIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { scaleValue } from "@/lib/style/legend";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import type { FieldProfile } from "@/components/map/panels/styleEditor/context";
 import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
+import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
 import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import {
@@ -63,6 +67,27 @@ function AttributePalettePicker({ path }: { path: Path }) {
       onReverse={(next) => store.set(`${path}.reverse`, next || undefined)}
     />
   );
+}
+
+/** A color by attribute's palette as its list edits it; an edit writes an inline palette, Reverse folded in. */
+function useAttributePalette(path: Path): PaletteSource {
+  const store = useEditor();
+  const value = useStyleValue<unknown>(path);
+  const form: JsonObject = isObject(value) ? value : {};
+  const palette = (form.palette ?? "goat:green") as string | string[];
+  // The rows name where their colors sit over the field's range, by the form's scale.
+  const computed =
+    isObject(form.computed) && Array.isArray(form.computed.domain) ? form.computed.domain : null;
+  const domain = (Array.isArray(form.domain) ? form.domain : computed) as [number, number] | null;
+  return {
+    colors: paletteList(palette, { reverse: form.reverse === true }),
+    ...(domain ? { valueAt: (t: number) => scaleValue(form, domain, t) } : {}),
+    write: (colors) =>
+      store.update(
+        (doc) => setIn(setIn(doc, `${path}.palette`, colors), `${path}.reverse`, undefined),
+        `${path}.palette`
+      ),
+  };
 }
 
 /** A value by attribute: a field with a palette (colors) or a range (numbers). */
@@ -130,7 +155,8 @@ export function AttributeEditor({ path }: { path: Path }) {
   const bounds = { ...fixedBounds, min: Math.min(0, fixedBounds.min) };
   const fixed = Array.isArray(form.domain);
   const palette = (form.palette ?? "goat:green") as string | string[];
-  const colors = paletteColors(palette);
+  // A copy: an inline palette is the stored list itself.
+  const colors = [...paletteColors(palette)];
   if (form.reverse === true) colors.reverse();
 
   return (
@@ -265,6 +291,10 @@ export function AttributeEditor({ path }: { path: Path }) {
             onChange={(v) => write({ domain: [domain?.[0] ?? v, v] })}
           />
         </Row>
+      )}
+      {/* The palette's colors to edit, at the bottom after the range. */}
+      {isColor && (
+        <PaletteColors useSource={useAttributePalette} args={path} pickerKey={`attr-palette:${path}`} />
       )}
       {issues.length > 0 && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1, px: 3, pt: 2 }}>

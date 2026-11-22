@@ -32,7 +32,7 @@ import {
 import { SLIDERS, withStored } from "@/lib/style/editor/defaults";
 import { targetsOf } from "@/lib/style/editor/forms";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
-import { getIn, setIn } from "@/lib/style/editor/store";
+import { type EditorStore, getIn, setIn } from "@/lib/style/editor/store";
 import { CAPABILITIES, defaultRange } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -101,6 +101,21 @@ function rangePresets(key: string): Array<[number, number]> {
   return presets.filter((p, i) => presets.findIndex((q) => q[0] === p[0] && q[1] === p[1]) === i);
 }
 
+/** Writes `classify[ci]`'s palette. A new palette takes every class: the server colors again the classes it fills,
+ * also a color picked by hand; the panel colors manual classes and categories picked by hand itself. */
+const classPaletteWriter =
+  (store: EditorStore, ci: number, target: string, steps: number) =>
+  (next: string | string[], reversed: boolean) =>
+    store.update((doc) => {
+      const path = `classify.${ci}`;
+      let out = setIn(doc, `${path}.palette`, next);
+      out = setIn(out, `${path}.reverse`, reversed || undefined);
+      const c = store.get(path);
+      if (isObject(c) && serverFillsClasses(c)) return clearClassValues(out, ci, target);
+      const colors = paletteColors(next, steps);
+      return recolorClasses(out, ci, target, reversed ? [...colors].reverse() : colors);
+    });
+
 function ClassPalettePicker({
   ci,
   steps,
@@ -116,17 +131,7 @@ function ClassPalettePicker({
   const path = `classify.${ci}`;
   const palette = useStyleValue<string | string[] | undefined>(`${path}.palette`);
   const reverse = useStyleValue<boolean | undefined>(`${path}.reverse`);
-  // A new palette takes every class: the server colors again the classes it fills, also a color picked by hand;
-  // the panel colors manual classes and categories picked by hand itself.
-  const write = (next: string | string[], reversed: boolean) =>
-    store.update((doc) => {
-      let out = setIn(doc, `${path}.palette`, next);
-      out = setIn(out, `${path}.reverse`, reversed || undefined);
-      const c = store.get(path);
-      if (isObject(c) && serverFillsClasses(c)) return clearClassValues(out, ci, target);
-      const colors = paletteColors(next, steps);
-      return recolorClasses(out, ci, target, reversed ? [...colors].reverse() : colors);
-    });
+  const write = classPaletteWriter(store, ci, target, steps);
   const current = palette ?? DEFAULT_PALETTE[categories ? "categories" : "numeric"];
   return (
     <PalettePicker
