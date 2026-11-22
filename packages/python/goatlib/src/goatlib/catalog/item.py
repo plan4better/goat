@@ -1,7 +1,9 @@
-"""What a catalog item says about the layer it becomes: its type, its geometry
-and its style. Pure, so the catalog service reads items the way promotion does
-without promotion's database drivers."""
+"""What a catalog item says about the layer it becomes: its type, its geometry,
+its style and where its files are in the catalog bucket. Pure, so the catalog
+service and geoapi read items the way promotion does without promotion's
+database drivers."""
 
+import posixpath
 from typing import Any
 
 from goatlib.style.migrate import context_for, stored_document
@@ -69,3 +71,35 @@ def item_style(document: Any, item: dict[str, Any]) -> dict[str, Any] | None:
     return stored_document(
         document, context_for(ltype, geometry, None), seed=str(item.get("id"))
     )
+
+
+def bucket_key_for(parquet_url: str, suffixes: tuple[str, ...] = (".parquet",)) -> str:
+    """The catalog-bucket key for an item's data asset.
+
+    The published href is relative to the item's place in the bucket's JSON
+    tree (``../../../data/<uuid>.parquet`` — contract C8), so only its
+    basename is meaningful here; the data prefix is fixed by the bucket
+    layout (contract §1). The asset must be of the layer's format: a parquet
+    for a vector or table item, a GeoTIFF (`RASTER_SUFFIXES`) for a raster.
+    """
+    name = posixpath.basename(parquet_url or "")
+    if not name.lower().endswith(suffixes):
+        raise ValueError(f"Not a {'/'.join(suffixes)} data asset: {parquet_url!r}")
+    return f"data/{name}"
+
+
+def published_tiles_keys(item: dict[str, Any]) -> tuple[str, str | None] | None:
+    """Bucket keys of the tiles goat-data built for this item (``assets.tiles``)
+    and of its polygon label points (``assets.tiles_anchor``), or None."""
+    assets = item.get("assets") or {}
+    tiles = (assets.get("tiles") or {}).get("href")
+    if not tiles:
+        return None
+    anchor = (assets.get("tiles_anchor") or {}).get("href")
+    try:
+        return (
+            bucket_key_for(tiles, (".pmtiles",)),
+            bucket_key_for(anchor, (".pmtiles",)) if anchor else None,
+        )
+    except ValueError:
+        return None

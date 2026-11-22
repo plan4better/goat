@@ -37,7 +37,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import posixpath
 import tempfile
 import uuid as uuid_module
 from datetime import datetime, timezone
@@ -47,7 +46,11 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 import duckdb
 from pydantic import Field
 
-from goatlib.catalog.item import RASTER_SUFFIXES
+from goatlib.catalog.item import (
+    RASTER_SUFFIXES,
+    bucket_key_for,
+    published_tiles_keys,
+)
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.spatial_order import hilbert_key
 from goatlib.tools.base import SimpleToolRunner
@@ -79,38 +82,6 @@ class CatalogMaterializeParams(ToolInputBase):
 
 #: The first bytes of a TIFF and a BigTIFF, in either byte order.
 TIFF_SIGNATURES = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
-
-
-def bucket_key_for(parquet_url: str, suffixes: tuple[str, ...] = (".parquet",)) -> str:
-    """The catalog-bucket key for an item's data asset.
-
-    The published href is relative to the item's place in the bucket's JSON
-    tree (``../../../data/<uuid>.parquet`` — contract C8), so only its
-    basename is meaningful here; the data prefix is fixed by the bucket
-    layout (contract §1). The asset must be of the layer's format: a parquet
-    for a vector or table item, a GeoTIFF (`RASTER_SUFFIXES`) for a raster.
-    """
-    name = posixpath.basename(parquet_url or "")
-    if not name.lower().endswith(suffixes):
-        raise ValueError(f"Not a {'/'.join(suffixes)} data asset: {parquet_url!r}")
-    return f"data/{name}"
-
-
-def published_tiles_keys(item: dict[str, Any]) -> tuple[str, str | None] | None:
-    """Bucket keys of the tiles goat-data built for this item (``assets.tiles``)
-    and of its polygon label points (``assets.tiles_anchor``), or None."""
-    assets = item.get("assets") or {}
-    tiles = (assets.get("tiles") or {}).get("href")
-    if not tiles:
-        return None
-    anchor = (assets.get("tiles_anchor") or {}).get("href")
-    try:
-        return (
-            bucket_key_for(tiles, (".pmtiles",)),
-            bucket_key_for(anchor, (".pmtiles",)) if anchor else None,
-        )
-    except ValueError:
-        return None
 
 
 def is_hilbert_sorted(
