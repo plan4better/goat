@@ -618,6 +618,18 @@ def test_a_version_6_plan_decodes_the_codes_inside_data_types(tmp_path: Path):
     assert green["allgemeinWert"] == "Parkanlage"
 
 
+def test_a_plan_without_a_coordinate_system_is_refused(tmp_path: Path):
+    """Geometry that states no `srsName` anywhere cannot be placed on a map:
+    the import says so, and writes no layer with raw geometry bytes."""
+    import re
+
+    plan = re.sub(r' srsName="[^"]*"', "", XPLAN_51)
+    assert "srsName" not in plan
+
+    with pytest.raises(ValueError, match="coordinate system"):
+        _extract(tmp_path, plan)
+
+
 def test_xplan_role_styles():
     from goatlib.tools.style import bundle_role_style
 
