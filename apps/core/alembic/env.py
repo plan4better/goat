@@ -75,6 +75,7 @@ def run_migrations_offline():
         literal_binds=True,
         compare_type=True,
         include_object=include_object,
+        transaction_per_migration=True,
     )
 
     with context.begin_transaction():
@@ -82,6 +83,9 @@ def run_migrations_offline():
 
 
 def do_run_migrations(connection):
+    # Each revision commits on its own, so the locks a schema revision takes
+    # on busy tables end with it and a data revision after it runs while the
+    # running release keeps reading those tables.
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -89,6 +93,7 @@ def do_run_migrations(connection):
         include_object=include_object,
         include_schemas=True,
         include_name=include_name,
+        transaction_per_migration=True,
     )
 
     with context.begin_transaction():

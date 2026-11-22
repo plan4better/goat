@@ -5,10 +5,10 @@ against tables it has just dropped.
 bodies that read them are replaced by `0005_home_templates`, the head of the
 chain, which is the first point where the schema those new bodies read
 (`layer.space_id`, `folder.parent_id`, the `restricted` columns,
-`customer.template`) exists. `env.py` runs the whole upgrade inside one
-transaction, so the two happen together as far as any other session is
-concerned — what must hold is that the install is in the chain, after the
-drop, and in the right file order.
+`customer.template`) exists. `env.py` commits each revision on its own, so a
+database that starts below 0005 runs without these tables between the two
+commits and is upgraded while nothing serves it — what must hold is that the
+install is in the chain, after the drop, and in the right file order.
 
 Imports the migration modules by path (alembic revision modules are not
 package-importable) rather than executing them against a database: the drop

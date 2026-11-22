@@ -15,6 +15,10 @@ run changes nothing. The `properties` columns are not touched (the previous
 release still reads them); the configs rewritten in place are kept in
 `style_migration_undo`, which `downgrade` restores.
 
+The columns it fills come from `0021_layer_styles`, committed before this revision
+starts, so the conversion takes row locks only and the previous release keeps
+reading the tables it rewrites.
+
 Revision ID: 0022_layer_styles_data
 Revises: 0021_layer_styles
 """
@@ -517,6 +521,8 @@ def _published_snapshots(conv: _Converter) -> None:
 def upgrade() -> None:
     from goatlib.style.fingerprint import advance_data_snapshots_sql
 
+    # `0021_layer_styles` adds this column, so the conversion below holds no
+    # table lock; the guard adds it where a database names 0021 without it.
     h.add_column_if_missing(
         "layer_project_group",
         sa.Column(
@@ -579,4 +585,3 @@ def downgrade() -> None:
     _exec(
         "UPDATE {S}.project_public SET config = config - 'map' - 'styles' WHERE config ? 'map'"
     )
-    h.drop_column_if_present("layer_project_group", "expanded", S)

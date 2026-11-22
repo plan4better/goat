@@ -9,6 +9,11 @@ revision (spec 13.1). `layer.data_snapshot` and the one-row
 with (spec 12). `project.scene` holds the project's 3D scene (3D spec 5.2); NULL
 means automatic.
 
+Every column the release adds to an existing table is added here, so the style
+conversion in `0022_layer_styles_data` runs after these changes are committed and
+holds no lock on `layer`, `layer_project`, `layer_project_group` or `project`
+that would stop the running release's reads.
+
 A fresh database gets the tables from the models (``init``), so every step checks
 the catalog first, like every revision since the squashed baseline.
 
@@ -37,6 +42,8 @@ branch_labels = None
 depends_on = None
 
 S = settings.SCHEMA
+#: How long a statement here waits for a table lock before the revision fails.
+LOCK_TIMEOUT = "5s"
 
 
 def _now() -> sa.Column:
@@ -49,6 +56,14 @@ def _now() -> sa.Column:
 
 
 def upgrade() -> None:
+    # The foreign keys of `layer_style` lock `layer` and `layer_project`
+    # against writes, each ADD COLUMN locks its table against every query.
+    # Waiting for such a lock behind a long transaction would queue every
+    # later query on the table behind this revision: fail instead, the
+    # operator runs the upgrade again. LOCAL ends with this revision's
+    # transaction and never outlives it on a pooled server connection.
+    op.execute(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'")
+
     if not h.table_exists("layer_style", S):
         op.create_table(
             "layer_style",
@@ -206,6 +221,13 @@ def upgrade() -> None:
         ),
         S,
     )
+    h.add_column_if_missing(
+        "layer_project_group",
+        sa.Column(
+            "expanded", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        S,
+    )
     h.add_column_if_missing("project", sa.Column("locale", sa.Text(), nullable=True), S)
     h.add_column_if_missing("project", sa.Column("scene", JSONB(), nullable=True), S)
     h.add_column_if_missing(
@@ -217,6 +239,7 @@ def downgrade() -> None:
     h.drop_column_if_present("layer", "data_snapshot", S)
     h.drop_column_if_present("project", "scene", S)
     h.drop_column_if_present("project", "locale", S)
+    h.drop_column_if_present("layer_project_group", "expanded", S)
     h.drop_column_if_present("layer_project_group", "visible", S)
     for column in ("legend_expanded", "time_value", "position", "visible"):
         h.drop_column_if_present("layer_project", column, S)

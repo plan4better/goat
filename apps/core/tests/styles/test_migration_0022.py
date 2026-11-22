@@ -7,6 +7,7 @@ world seeded with today's `properties` in every place that holds them.
 
 import copy
 import importlib.util
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -24,6 +25,7 @@ from core.db.models.template import Template, TemplatePayloadKind
 from core.db.models.workflow import Workflow
 from core.db.session import session_manager
 from core.services.map_document import map_for_project, published_styles_differ
+from sqlalchemy import event as sa_event
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.styles.conftest import StyleWorld
@@ -382,6 +384,40 @@ def test_the_revision_follows_0021() -> None:
         "0022_layer_styles_data",
         "0021_layer_styles",
     )
+
+
+@pytest.mark.asyncio
+async def test_upgrade_and_downgrade_leave_the_existing_tables_unaltered(
+    db_session: AsyncSession, style_world: StyleWorld
+) -> None:
+    """0021 makes every change to the existing tables, so this revision only
+    moves rows and takes no table lock that would stop the running release's
+    reads while it converts."""
+    await seed(db_session, style_world)
+    m = load()
+    m.S = S
+    locking: list[str] = []
+
+    def record(conn, cursor, statement, *args) -> None:  # noqa: ANN001
+        if re.match(
+            r"\s*(ALTER|LOCK|CREATE (UNIQUE )?INDEX|DROP INDEX)\b", statement, re.I
+        ):
+            locking.append(statement)
+
+    def step(sync_conn, name: str) -> None:  # noqa: ANN001
+        sa_event.listen(sync_conn, "before_cursor_execute", record)
+        try:
+            with Operations.context(MigrationContext.configure(sync_conn)):
+                getattr(m, name)()
+        finally:
+            sa_event.remove(sync_conn, "before_cursor_execute", record)
+
+    for name in ("upgrade", "downgrade"):
+        async with session_manager.connect() as conn:
+            await conn.run_sync(step, name)
+            await conn.commit()
+    await run("upgrade")
+    assert locking == []
 
 
 @pytest.mark.asyncio
