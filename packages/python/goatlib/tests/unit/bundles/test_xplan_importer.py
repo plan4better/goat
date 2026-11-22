@@ -515,6 +515,109 @@ def test_an_area_without_a_known_use_is_not_drawn_as_mixed_use():
     assert UNSTYLED_GREY not in LAND_USE_COLORS.values()
 
 
+_SCHEMA = """<schema xmlns="http://www.w3.org/2001/XMLSchema"
+  xmlns:xplan="http://www.xplanung.de/xplangml/6/0" xmlns:gml="http://www.opengis.net/gml/3.2">
+  <element name="XP_Objekt" type="xplan:XP_ObjektType" abstract="true"
+    substitutionGroup="gml:AbstractFeature"/>
+  <complexType name="XP_ObjektType"><complexContent><extension base="gml:AbstractFeatureType">
+    <sequence><element name="rechtscharakter" type="xplan:XP_Rechtscharakter"/></sequence>
+  </extension></complexContent></complexType>
+  <element name="BP_GruenFlaeche" type="xplan:BP_GruenFlaecheType"
+    substitutionGroup="xplan:XP_Objekt"/>
+  <complexType name="BP_GruenFlaecheType"><complexContent>
+    <extension base="xplan:XP_ObjektType"><sequence>
+      <element name="zweckbestimmung" type="xplan:BP_KomplexeZweckbestGruenPropertyType"/>
+      <element name="nutzungsform" type="xplan:XP_Nutzungsform"/>
+      <element name="hoehe" type="xplan:XP_HoehenangabePropertyType"/>
+      <element name="eigentuemer" type="xplan:XP_AkteurPropertyType"/>
+      <element name="nachbar" type="xplan:XP_AnliegerPropertyType"/>
+    </sequence></extension></complexContent></complexType>
+  <element name="BP_KomplexeZweckbestGruen" type="xplan:BP_KomplexeZweckbestGruenType"/>
+  <complexType name="BP_KomplexeZweckbestGruenType"><sequence>
+    <element name="allgemein" type="xplan:XP_ZweckbestimmungGruen"/>
+    <element name="status" type="xplan:XP_Rolle"/>
+    <element name="quelle" type="xplan:XP_QuellePropertyType"/>
+  </sequence></complexType>
+  <element name="XP_Quelle" type="xplan:XP_QuelleType"/>
+  <complexType name="XP_QuelleType"><sequence>
+    <element name="herkunft" type="xplan:XP_Rolle"/></sequence></complexType>
+  <complexType name="XP_QuellePropertyType"><sequence>
+    <element ref="xplan:XP_Quelle"/></sequence></complexType>
+  <complexType name="BP_KomplexeZweckbestGruenPropertyType"><sequence>
+    <element ref="xplan:BP_KomplexeZweckbestGruen"/></sequence></complexType>
+  <element name="XP_Hoehenangabe" type="xplan:XP_HoehenangabeType"/>
+  <complexType name="XP_HoehenangabeType"><sequence>
+    <element name="nutzungsform" type="xplan:XP_ArtHoehenbezug"/>
+  </sequence></complexType>
+  <complexType name="XP_HoehenangabePropertyType"><sequence>
+    <element ref="xplan:XP_Hoehenangabe"/></sequence></complexType>
+  <element name="XP_Akteur" type="xplan:XP_AkteurType"/>
+  <complexType name="XP_AkteurType"><sequence>
+    <element name="rolle" type="xplan:XP_Rolle"/>
+    <element name="status" type="string"/></sequence></complexType>
+  <complexType name="XP_AkteurPropertyType"><sequence>
+    <element ref="xplan:XP_Akteur"/></sequence></complexType>
+  <element name="XP_Anlieger" type="xplan:XP_AnliegerType"/>
+  <complexType name="XP_AnliegerType"><sequence>
+    <element name="rolle" type="xplan:XP_Nutzungsform"/></sequence></complexType>
+  <complexType name="XP_AnliegerPropertyType"><sequence>
+    <element ref="xplan:XP_Anlieger"/></sequence></complexType>
+</schema>
+"""
+
+
+def test_the_schema_holds_the_code_fields_of_a_class_data_types(tmp_path: Path):
+    """From XPlanGML 6 a green area states its purpose inside a data type
+    (`zweckbestimmung/BP_KomplexeZweckbestGruen/allgemein`). GDAL reads such a
+    field under its innermost name, so the class's code fields list it under
+    that name, also for a data type inside a data type. A name that is not
+    one field's alone is left out (the class itself has a field of that name,
+    or another of its data types has one, a code or not): a column of that
+    name may be either, and decoding never guesses."""
+    import zipfile
+
+    from goatlib.bundles.importers.xplan.generate_schema import classes
+
+    archive = tmp_path / "schema.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("XPlanGML.xsd", _SCHEMA)
+    lists = {
+        "XP_Rechtscharakter",
+        "XP_ZweckbestimmungGruen",
+        "XP_Nutzungsform",
+        "XP_ArtHoehenbezug",
+        "XP_Rolle",
+    }
+
+    with zipfile.ZipFile(archive) as z:
+        found = classes(z, lists)
+
+    # Only the feature class: the data types are no classes of a file.
+    assert set(found) == {"BP_GruenFlaeche"}
+    assert found["BP_GruenFlaeche"] == {
+        "rechtscharakter": "XP_Rechtscharakter",
+        "nutzungsform": "XP_Nutzungsform",
+        "allgemein": "XP_ZweckbestimmungGruen",
+        "herkunft": "XP_Rolle",
+    }
+
+
+def test_a_version_6_plan_decodes_the_codes_inside_data_types(tmp_path: Path):
+    plan = XPLAN_51.replace("xplangml/5/1", "xplangml/6/0").replace(
+        "<xplan:zweckbestimmung>1000</xplan:zweckbestimmung>"
+        "<xplan:zweckbestimmung>1200</xplan:zweckbestimmung>",
+        "<xplan:zweckbestimmung><xplan:BP_KomplexeZweckbestGruen>"
+        "<xplan:allgemein>1000</xplan:allgemein>"
+        "</xplan:BP_KomplexeZweckbestGruen></xplan:zweckbestimmung>",
+    )
+    assert "BP_KomplexeZweckbestGruen" in plan
+
+    green = _by_id(_extract(tmp_path, plan)["BP_GruenFlaeche"])["G1"]
+
+    assert green["allgemein"] == 1000
+    assert green["allgemeinWert"] == "Parkanlage"
+
+
 def test_xplan_role_styles():
     from goatlib.tools.style import bundle_role_style
 

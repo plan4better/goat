@@ -1,53 +1,96 @@
 {
 "classes": {
 "BP_AbgrabungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_AbstandsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_AbstandsMass": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_AbstandsMassTypen"
 },
 "BP_AbweichungVonBaugrenze": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_AbweichungVonUeberbaubererGrundstuecksFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_AnpflanzungBindungErhaltung": {
-"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
-"massnahme": "XP_ABEMassnahmenTypen",
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_AufschuettungsFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_AusgleichsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_AbweichungVonUeberbaubererGrundstuecksFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_AnpflanzungBindungErhaltung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"massnahme": "XP_ABEMassnahmenTypen",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_AufschuettungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_AusgleichsFlaeche": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "BP_AusgleichsMassnahme": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "BP_BauGrenze": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_BauLinie": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_BaugebietsTeilFlaeche": {
 "abweichungBauNVO": "XP_AbweichungBauNVOTypen",
@@ -58,107 +101,187 @@
 "bebauungVordereGrenze": "BP_GrenzBebauung",
 "bebauungsArt": "BP_BebauungsArt",
 "besondereArtDerBaulNutzung": "XP_BesondereArtDerBaulNutzung",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "dachform": "BP_Dachform",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "sondernutzung": "XP_Sondernutzungen",
+"typ": "XP_ExterneReferenzTyp",
 "wohnnutzungEGStrasse": "BP_Zulaessigkeit"
 },
 "BP_Bereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutung": "XP_BedeutungenBereich"
 },
 "BP_BereichOhneEinAusfahrtLinie": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_BereichOhneEinAusfahrtTypen"
 },
 "BP_BesondererNutzungszweckFlaeche": {
+"art": "XP_ExterneReferenzArt",
 "bauweise": "BP_Bauweise",
 "bebauungsArt": "BP_BebauungsArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "dachform": "BP_Dachform",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_BodenschaetzeFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_EinfahrtPunkt": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_EinfahrtTypen"
 },
 "BP_EinfahrtsbereichLinie": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_EinfahrtTypen"
 },
 "BP_EingriffsBereich": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_ErhaltungsBereichFlaeche": {
-"grund": "BP_ErhaltungsGrund",
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_FestsetzungNachLandesrecht": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_FirstRichtungsLinie": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_FoerderungsFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_FreiFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_GebaeudeFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_GemeinbedarfsFlaeche": {
-"bauweise": "BP_Bauweise",
-"bebauungsArt": "BP_BebauungsArt",
-"dachform": "BP_Dachform",
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_ErhaltungsBereichFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"grund": "BP_ErhaltungsGrund",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_FestsetzungNachLandesrecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_FirstRichtungsLinie": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_FoerderungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_FreiFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_GebaeudeFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_GemeinbedarfsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bauweise": "BP_Bauweise",
+"bebauungsArt": "BP_BebauungsArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"dachform": "BP_Dachform",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGemeinbedarf"
 },
 "BP_GemeinschaftsanlagenFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "BP_ZweckbestimmungGemeinschaftsanlagen"
 },
 "BP_GemeinschaftsanlagenZuordnung": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_GenerischesObjekt": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_GewaesserFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_GenerischesObjekt": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_GewaesserFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGewaesser"
 },
 "BP_GruenFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "nutzungsform": "XP_Nutzungsform",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGruen"
 },
 "BP_HoehenMass": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_Immissionsschutz": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "laermpegelbereich": "BP_Laermpegelbereich",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
@@ -166,114 +289,202 @@
 "typ": "BP_ImmissionsschutzTypen"
 },
 "BP_KennzeichnungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungKennzeichnung"
 },
 "BP_KleintierhaltungFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_Landwirtschaft": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_Landwirtschaft": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
 },
 "BP_LandwirtschaftsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
 },
 "BP_NebenanlagenAusschlussFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_NebenanlagenAusschlussTyp"
 },
 "BP_NebenanlagenFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "BP_ZweckbestimmungNebenanlagen"
 },
 "BP_NichtUeberbaubareGrundstuecksflaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_NutzungsartenGrenze": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_AbgrenzungenTypen"
 },
 "BP_PersGruppenBestimmteFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_Plan": {
+"art": "XP_ExterneReferenzArt",
 "planArt": "BP_PlanArt",
+"rechtscharakter": "XP_RechtscharakterPlanaenderung",
 "rechtsstand": "BP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "verfahren": "BP_Verfahren"
 },
 "BP_RegelungVergnuegungsstaetten": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zulaessigkeit": "BP_Zulaessigkeit"
 },
 "BP_RekultivierungsFlaeche": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_RichtungssektorGrenze": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_SchutzPflegeEntwicklungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_RichtungssektorGrenze": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_SchutzPflegeEntwicklungsFlaeche": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "BP_SchutzPflegeEntwicklungsMassnahme": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "BP_Sichtflaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_SpezielleBauweise": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_SpezielleBauweiseTypen"
 },
 "BP_SpielSportanlagenFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungSpielSportanlage"
 },
 "BP_StrassenVerkehrsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "nutzungsform": "XP_Nutzungsform",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_StrassenbegrenzungsLinie": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_Strassenkoerper": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_StrassenkoerperHerstellung"
 },
 "BP_TechnischeMassnahmenFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "BP_ZweckbestimmungenTMF"
 },
 "BP_TextAbschnitt": {
+"art": "XP_ExterneReferenzArt",
 "rechtscharakter": "BP_Rechtscharakter"
 },
 "BP_TextlicheFestsetzungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_UeberbaubareGrundstuecksFlaeche": {
 "bauweise": "BP_Bauweise",
@@ -281,337 +492,587 @@
 "bebauungSeitlicheGrenze": "BP_GrenzBebauung",
 "bebauungVordereGrenze": "BP_GrenzBebauung",
 "bebauungsArt": "BP_BebauungsArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "dachform": "BP_Dachform",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "wohnnutzungEGStrasse": "BP_Zulaessigkeit"
 },
 "BP_UnverbindlicheVormerkung": {
-"rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"BP_VerEntsorgung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"BP_VerEntsorgung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "BP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungVerEntsorgung"
 },
 "BP_Veraenderungssperre": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "verlaengerung": "XP_VerlaengerungVeraenderungssperre"
 },
 "BP_VerkehrsflaecheBesondererZweckbestimmung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "nutzungsform": "XP_Nutzungsform",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "BP_ZweckbestimmungStrassenverkehr"
 },
 "BP_WaldFlaeche": {
+"art": "XP_ExterneReferenzArt",
 "betreten": "XP_WaldbetretungTyp",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "eigentumsart": "XP_EigentumsartWald",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungWald"
 },
 "BP_WasserwirtschaftsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungWasserwirtschaft"
 },
 "BP_Wegerecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "BP_WegerechtTypen"
 },
 "BP_ZusatzkontingentLaerm": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "BP_ZusatzkontingentLaermFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "BP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "FP_Abgrabung": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_AnpassungKlimawandel": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_Aufschuettung": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_AusgleichsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_AnpassungKlimawandel": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_Aufschuettung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_AusgleichsFlaeche": {
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "FP_BebauungsFlaeche": {
 "allgArtDerBaulNutzung": "XP_AllgArtDerBaulNutzung",
+"art": "XP_ExterneReferenzArt",
 "besondereArtDerBaulNutzung": "XP_BesondereArtDerBaulNutzung",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
-"sonderNutzung": "XP_Sondernutzungen"
+"sonderNutzung": "XP_Sondernutzungen",
+"typ": "XP_ExterneReferenzTyp"
 },
 "FP_Bereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutung": "XP_BedeutungenBereich"
 },
 "FP_Bodenschaetze": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_Gemeinbedarf": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_Gemeinbedarf": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGemeinbedarf"
 },
 "FP_GenerischesObjekt": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_Gewaesser": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_Gewaesser": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGewaesser"
 },
 "FP_Gruen": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "nutzungsform": "XP_Nutzungsform",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungGruen"
 },
 "FP_KeineZentrAbwasserBeseitigungFlaeche": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_Kennzeichnung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_Kennzeichnung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungKennzeichnung"
 },
 "FP_Landwirtschaft": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
 },
 "FP_LandwirtschaftsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungLandwirtschaft"
 },
 "FP_NutzungsbeschraenkungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "FP_Plan": {
+"art": "XP_ExterneReferenzArt",
 "planArt": "FP_PlanArt",
+"rechtscharakter": "XP_RechtscharakterPlanaenderung",
 "rechtsstand": "FP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "verfahren": "FP_Verfahren"
 },
 "FP_PrivilegiertesVorhaben": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "FP_ZweckbestimmungPrivilegiertesVorhaben"
 },
 "FP_SchutzPflegeEntwicklung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"klassifizMassnahme": "XP_SPEMassnahmenTypen",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "FP_SpielSportanlage": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungSpielSportanlage"
 },
 "FP_Strassenverkehr": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "nutzungsform": "XP_Nutzungsform",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "FP_ZweckbestimmungStrassenverkehr"
 },
 "FP_TextAbschnitt": {
+"art": "XP_ExterneReferenzArt",
 "rechtscharakter": "FP_Rechtscharakter"
 },
 "FP_TextlicheDarstellungsFlaeche": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_UnverbindlicheVormerkung": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_VerEntsorgung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_UnverbindlicheVormerkung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_VerEntsorgung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungVerEntsorgung"
 },
 "FP_VorbehalteFlaeche": {
-"rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"FP_WaldFlaeche": {
-"betreten": "XP_WaldbetretungTyp",
-"eigentumsart": "XP_EigentumsartWald",
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"FP_WaldFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"betreten": "XP_WaldbetretungTyp",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"eigentumsart": "XP_EigentumsartWald",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "FP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungWald"
 },
 "FP_Wasserwirtschaft": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zweckbestimmung": "XP_ZweckbestimmungWasserwirtschaft"
 },
 "FP_ZentralerVersorgungsbereich": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "FP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_Abgrenzung": {
-"rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"LP_AllgGruenflaeche": {
-"rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"LP_AnpflanzungBindungErhaltung": {
-"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
-"massnahme": "XP_ABEMassnahmenTypen",
-"rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"LP_Ausgleich": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"LP_AllgGruenflaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"LP_AnpflanzungBindungErhaltung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"gegenstand": "XP_AnpflanzungBindungErhaltungsGegenstand",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"massnahme": "XP_ABEMassnahmenTypen",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"LP_Ausgleich": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "LP_Bereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutung": "XP_BedeutungenBereich"
 },
 "LP_Biotopverbundflaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_Bodenschutzrecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_BodenschutzrechtTypen"
 },
 "LP_ErholungFreizeit": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "funktion": "LP_ErholungFreizeitFunktionen",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_Forstrecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_ForstrechtTypen"
 },
 "LP_GenerischesObjekt": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_Landschaftsbild": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_NutzungsAusschluss": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_NutzungserfordernisRegelung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "regelung": "LP_Regelungen",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "LP_Plan": {
+"art": "XP_ExterneReferenzArt",
 "bundesland": "XP_Bundeslaender",
 "planArt": "LP_PlanArt",
-"rechtsstand": "LP_Rechtsstand"
+"rechtscharakter": "XP_RechtscharakterPlanaenderung",
+"rechtsstand": "LP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_PlanerischeVertiefung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_SchutzPflegeEntwicklung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "massnahme": "XP_SPEMassnahmenTypen",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "LP_SchutzobjektInternatRecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_InternatSchutzobjektTypen"
 },
 "LP_SonstigesRecht": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_SonstRechtTypen"
 },
 "LP_TextAbschnitt": {
+"art": "XP_ExterneReferenzArt",
 "rechtscharakter": "LP_Rechtscharakter"
 },
 "LP_TextlicheFestsetzungsFlaeche": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_WasserrechtGemeingebrEinschraenkungNaturschutz": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "LP_WasserrechtSchutzgebiet": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_WasserrechtSchutzgebietTypen"
 },
 "LP_WasserrechtSonstige": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand"
 },
 "LP_WasserrechtWirtschaftAbflussHochwSchutz": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "LP_WasserrechtWirtschaftAbflussHochwSchutzTypen"
 },
 "LP_ZuBegruenendeGrundstueckflaeche": {
-"rechtscharakter": "LP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"LP_Zwischennutzung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "LP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"LP_Zwischennutzung": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "LP_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "ziel": "XP_SPEZiele"
 },
 "RP_Achse": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_AchsenTypen"
 },
 "RP_Bereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutung": "XP_BedeutungenBereich"
 },
 "RP_Bodenschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_BodenschutzTypen"
 },
 "RP_Einzelhandel": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_EinzelhandelTypen"
 },
 "RP_Energieversorgung": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "primaerenergieTyp": "RP_PrimaerenergieTypen",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
@@ -620,275 +1081,400 @@
 },
 "RP_Entsorgung": {
 "abfallTyp": "RP_AbfallTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "typAE": "RP_AbfallentsorgungTypen",
 "typAW": "RP_AbwasserTypen"
 },
 "RP_Erholung": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
 "besondererTyp": "RP_BesondereTourismusErholungTypen",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "typErholung": "RP_ErholungTypen",
 "typTourismus": "RP_TourismusTypen"
 },
 "RP_ErneuerbareEnergie": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_ErneuerbareEnergieTypen"
 },
 "RP_Forstwirtschaft": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_ForstwirtschaftTypen"
 },
 "RP_Freiraum": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_Funktionszuweisung": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_FunktionszuweisungTypen"
 },
 "RP_GenerischesObjekt": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand"
 },
 "RP_Gewaesser": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_Grenze": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "spezifischerTyp": "RP_SpezifischeGrenzeTypen",
 "typ": "XP_GrenzeTypen"
 },
 "RP_GruenzugGruenzaesur": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_ZaesurTypen"
 },
 "RP_Hochwasserschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_HochwasserschutzTypen"
 },
 "RP_IndustrieGewerbe": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_IndustrieGewerbeTypen"
 },
 "RP_Klimaschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_KlimaschutzTypen"
 },
 "RP_Kommunikation": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_KommunikationTypen"
 },
 "RP_Kulturlandschaft": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_KulturlandschaftTypen"
 },
 "RP_LaermschutzBauschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_LaermschutzTypen"
 },
 "RP_Landwirtschaft": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_LandwirtschaftTypen"
 },
-"RP_Legendenobjekt": {},
+"RP_Legendenobjekt": {
+"art": "XP_ExterneReferenzArt"
+},
 "RP_Luftverkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "status": "RP_VerkehrStatus",
 "typ": "RP_LuftverkehrTypen"
 },
 "RP_NaturLandschaft": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_NaturLandschaftTypen"
 },
 "RP_NaturschutzrechtlichesSchutzgebiet": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "XP_KlassifizSchutzgebietNaturschutzrecht"
 },
 "RP_Plan": {
+"art": "XP_ExterneReferenzArt",
 "bundesland": "XP_Bundeslaender",
 "planArt": "RP_Art",
+"rechtscharakter": "XP_RechtscharakterPlanaenderung",
 "rechtsstand": "RP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "verfahren": "RP_Verfahren"
 },
 "RP_Planungsraum": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_RadwegWanderweg": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_RadwegWanderwegTypen"
 },
 "RP_Raumkategorie": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
 "besondererTyp": "RP_BesondereRaumkategorieTypen",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_RaumkategorieTypen"
 },
 "RP_Rohstoff": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
 "bergbauplanungTyp": "RP_BergbauplanungTypen",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "folgenutzung": "RP_BergbauFolgenutzung",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "rohstoffTyp": "RP_RohstoffTypen",
 "tiefe": "RP_BodenschatzTiefen",
+"typ": "XP_ExterneReferenzTyp",
 "zeitstufe": "RP_Zeitstufen"
 },
 "RP_Schienenverkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
 "besondererTyp": "RP_BesondererSchienenverkehrTypen",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "status": "RP_VerkehrStatus",
 "typ": "RP_SchienenverkehrTypen"
 },
 "RP_Siedlung": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_SonstVerkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "status": "RP_VerkehrStatus",
 "typ": "RP_SonstVerkehrTypen"
 },
 "RP_SonstigeInfrastruktur": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_SonstigerFreiraumschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_SonstigerSiedlungsbereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_SozialeInfrastruktur": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_SozialeInfrastrukturTypen"
 },
 "RP_Sperrgebiet": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_SperrgebietTypen"
 },
 "RP_Sportanlage": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_SportanlageTypen"
 },
 "RP_Strassenverkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
 "besondererTyp": "RP_BesondererStrassenverkehrTypen",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "status": "RP_VerkehrStatus",
 "typ": "RP_StrassenverkehrTypen"
 },
 "RP_TextAbschnitt": {
+"art": "XP_ExterneReferenzArt",
 "rechtscharakter": "RP_Rechtscharakter"
 },
 "RP_Verkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
-"status": "RP_VerkehrStatus"
+"status": "RP_VerkehrStatus",
+"typ": "XP_ExterneReferenzTyp"
 },
 "RP_Wasserschutz": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_WasserschutzTypen",
@@ -896,133 +1482,220 @@
 },
 "RP_Wasserverkehr": {
 "allgemeinerTyp": "RP_VerkehrTypen",
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "status": "RP_VerkehrStatus",
 "typ": "RP_WasserverkehrTypen"
 },
 "RP_Wasserwirtschaft": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_WasserwirtschaftTypen"
 },
 "RP_WohnenSiedlung": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "RP_WohnenSiedlungTypen"
 },
 "RP_ZentralerOrt": {
+"art": "XP_ExterneReferenzArt",
 "bedeutsamkeit": "RP_Bedeutsamkeit",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
 "gebietsTyp": "RP_GebietsTyp",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "RP_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "sonstigerTyp": "RP_ZentralerOrtSonstigeTypen",
 "typ": "RP_ZentralerOrtTypen"
 },
 "SO_Bauverbotszone": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizBauverbot",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtlicheGrundlage": "SO_RechtlicheGrundlageBauverbot",
 "rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "SO_Bereich": {
+"art": "XP_ExterneReferenzArt",
 "bedeutung": "XP_BedeutungenBereich"
 },
 "SO_Bodenschutzrecht": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizNachBodenschutzrecht",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Denkmalschutzrecht": {
-"artDerFestlegung": "SO_KlassifizNachDenkmalschutzrecht",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Forstrecht": {
-"artDerFestlegung": "XP_EigentumsartWald",
-"betreten": "XP_WaldbetretungTyp",
-"funktion": "XP_ZweckbestimmungWald",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Gebiet": {
-"gebietsArt": "SO_GebietsArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
-"rechtsstandGebiet": "SO_RechtsstandGebietTyp"
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Denkmalschutzrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "SO_KlassifizNachDenkmalschutzrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Forstrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "XP_EigentumsartWald",
+"betreten": "XP_WaldbetretungTyp",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"funktion": "XP_ZweckbestimmungWald",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Gebiet": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"gebietsArt": "SO_GebietsArt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"rechtsstandGebiet": "SO_RechtsstandGebietTyp",
+"typ": "XP_ExterneReferenzTyp"
 },
 "SO_Gewaesser": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizGewaesser",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "SO_Grenze": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
 "typ": "XP_GrenzeTypen"
 },
 "SO_Linienobjekt": {
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Luftverkehrsrecht": {
-"artDerFestlegung": "SO_KlassifizNachLuftverkehrsrecht",
-"laermschutzzone": "SO_LaermschutzzoneTypen",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Objekt": {
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_Plan": {},
-"SO_Schienenverkehrsrecht": {
-"artDerFestlegung": "SO_KlassifizNachSchienenverkehrsrecht",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_SchutzgebietNaturschutzrecht": {
-"artDerFestlegung": "XP_KlassifizSchutzgebietNaturschutzrecht",
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Luftverkehrsrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "SO_KlassifizNachLuftverkehrsrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"laermschutzzone": "SO_LaermschutzzoneTypen",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Objekt": {
+"art": "XP_ExterneReferenzArt",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Plan": {
+"art": "XP_ExterneReferenzArt",
+"rechtscharakter": "XP_RechtscharakterPlanaenderung",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_Schienenverkehrsrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "SO_KlassifizNachSchienenverkehrsrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_SchutzgebietNaturschutzrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "XP_KlassifizSchutzgebietNaturschutzrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zone": "SO_SchutzzonenNaturschutzrecht"
 },
 "SO_SchutzgebietSonstigesRecht": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizSchutzgebietSonstRecht",
-"rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
-},
-"SO_SchutzgebietWasserrecht": {
-"artDerFestlegung": "SO_KlassifizSchutzgebietWasserrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
 "rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
+},
+"SO_SchutzgebietWasserrecht": {
+"art": "XP_ExterneReferenzArt",
+"artDerFestlegung": "SO_KlassifizSchutzgebietWasserrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
+"rechtscharakter": "SO_Rechtscharakter",
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp",
 "zone": "SO_SchutzzonenWasserrecht"
 },
 "SO_SonstigesRecht": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizNachSonstigemRecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "SO_Strassenverkehrsrecht": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizNachStrassenverkehrsrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
 "SO_TextAbschnitt": {
+"art": "XP_ExterneReferenzArt",
 "rechtscharakter": "SO_Rechtscharakter"
 },
 "SO_Wasserrecht": {
+"art": "XP_ExterneReferenzArt",
 "artDerFestlegung": "SO_KlassifizNachWasserrecht",
+"bezugspunkt": "XP_ArtHoehenbezugspunkt",
+"hoehenbezug": "XP_ArtHoehenbezug",
 "rechtscharakter": "SO_Rechtscharakter",
-"rechtsstand": "XP_Rechtsstand"
+"rechtsstand": "XP_Rechtsstand",
+"typ": "XP_ExterneReferenzTyp"
 },
-"XP_BegruendungAbschnitt": {},
+"XP_BegruendungAbschnitt": {
+"art": "XP_ExterneReferenzArt"
+},
 "XP_FPO": {},
 "XP_LPO": {},
 "XP_LTO": {
@@ -1039,7 +1712,9 @@
 "vertikaleAusrichtung": "XP_VertikaleAusrichtung"
 },
 "XP_Praesentationsobjekt": {},
-"XP_Rasterdarstellung": {}
+"XP_Rasterdarstellung": {
+"art": "XP_ExterneReferenzArt"
+}
 },
 "lists": {
 "BP_AbgrenzungenTypen": {

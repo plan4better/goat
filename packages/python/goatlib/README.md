@@ -512,8 +512,9 @@ numbers.
 
 - What GOAT knows about the format is the XPlan schema
   (`bundles/importers/xplan/schema.py`), the counterpart of the GTFS importer's
-  `gtfs_schema.py`: per version, which fields of a class hold codes, from which
-  code list, and what each code means. A format needs as much schema as its
+  `gtfs_schema.py`: per version, which fields of a class hold codes (the ones
+  inside the data types it holds included, under the innermost name GDAL reads
+  them into), from which code list, and what each code means. A format needs as much schema as its
   files leave out: Overture's GeoParquet names its values in words, GTFS is
   untyped text, XPlan states only codes. At about 1,700 codes per version it
   is generated (`generate_schema.py`, into `versions/`) from the XLeitstelle's
