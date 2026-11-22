@@ -255,7 +255,9 @@ export async function generate() {
     "lib/style/generated/defaults.ts":
       constant("DEFAULTS", "Readonly<Record<string, unknown>>", defaults) +
       `\n/** From which zoom each H3 resolution draws under "auto" (goatlib AUTO_FROM_ZOOM); geoapi picks it per tile. */\n` +
-      `export const H3_AUTO_FROM_ZOOM: readonly (readonly [number, number])[] = ${JSON.stringify(schema["x-h3-auto"])};\n`,
+      `export const H3_AUTO_FROM_ZOOM: readonly (readonly [number, number])[] = ${JSON.stringify(schema["x-h3-auto"])};\n` +
+      `\n/** The raster renders whose style opens a popup on click without a \`popup\` key (goatlib RASTER_POPUP_ON_BY_DEFAULT): the color scales. An image opens none. */\n` +
+      `export const RASTER_POPUP_ON_BY_DEFAULT: readonly string[] = ${JSON.stringify(schema["x-raster-popup-on"])};\n`,
     "lib/style/generated/capabilities.ts": capabilitiesModule(schema),
     "lib/style/generated/scene.ts":
       `${BANNER}\nexport type SceneTone = "light" | "dark";\n\n` +

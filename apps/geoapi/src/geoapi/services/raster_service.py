@@ -10,10 +10,12 @@ A layer's file is always the layer row's own `url` (a raster layer with
 the catalog is the exception: the catalog bucket is private, so it is read from
 the file GOAT stores for the layer, named from the layer's id
 (`stored_raster_file`); it has no `url`. Statistics are kept per file version
-(the row's version and a remote file's validator) in process memory, every
-band's class breaks too, kept apart: only the info reads them, and the route
-computes them outside the layer's read slots (`band_samples`, `band_breaks`),
-so a tile never waits for them. Tiles are not kept here (no Redis): the browser
+(the row's version and a remote file's validator) in process memory, a band's
+class breaks too, kept apart and per band: only the info reads them, computed
+and answered for the band it is asked for alone (`band_sample`, `band_breaks`)
+outside the layer's read slots, so a tile never waits for them, an info never
+waits for bands nobody classifies, and an answer never depends on what a pod
+keeps. Tiles are not kept here (no Redis): the browser
 caches them under ETags made of the row's version and what the tile shows (the
 coloring token, or a value tile's band or formula and encoding), a tile whose
 address names the current values version for good.
@@ -60,6 +62,7 @@ from goatlib.raster.source import (
 from goatlib.raster.stats import (
     classified_sample,
     precomputed_breaks,
+    whole_number_values,
 )
 from goatlib.raster.token import Classes, Rgb
 from goatlib.raster.values import ENCODING_VERSION, ValueEncoding, value_encoding
@@ -76,8 +79,12 @@ ROW_TTL_S = 60
 STATS_TTL_S = 3600
 _MISSING = object()
 
-#: Every band's class breaks by its index: method, class count, inner breaks.
-BandBreaks = dict[int, dict[str, dict[str, list[float]]]]
+#: A band's class breaks: method, class count, inner breaks.
+Breaks = dict[str, dict[str, list[float]]]
+#: The class breaks of bands by their index.
+BandBreaks = dict[int, Breaks]
+#: A band formula's statistics and class breaks, as the info answers them.
+FormulaStats = tuple[BandStats, Breaks]
 
 #: How a value tile is read from cells that do not line up with its pixels.
 Resampling = Literal["nearest", "bilinear"]
@@ -119,11 +126,14 @@ class RasterService:
         self._bounds: TTLCache[str, tuple[float, float, float, float]] = TTLCache(
             1024, STATS_TTL_S
         )
-        self._breaks: TTLCache[str, BandBreaks] = TTLCache(256, STATS_TTL_S)
-        #: Breaks that could not all be computed, kept for goatlib's failure
-        #: memo (30 s): the next info answers them as they are (none for a
-        #: band that failed) instead of computing them again at once.
-        self._breaks_failed: TTLCache[str, BandBreaks] = TTLCache(256, FAILURE_TTL_S)
+        #: By file version (`_file`) and band.
+        self._breaks: TTLCache[tuple[str, int], Breaks] = TTLCache(1024, STATS_TTL_S)
+        #: Breaks that could not be computed, kept for goatlib's failure memo
+        #: (30 s): the next info answers none for the band instead of
+        #: computing them again at once.
+        self._breaks_failed: TTLCache[tuple[str, int], Breaks] = TTLCache(
+            1024, FAILURE_TTL_S
+        )
         self._lock = threading.Lock()
         self._gates: dict[str, threading.Lock] = {}
 
@@ -224,33 +234,33 @@ class RasterService:
         file = self._file(layer)
         return (file, *self.statistics(layer, file=file))
 
-    def kept_breaks(self, file: str) -> BandBreaks | None:
-        """The class breaks of the file version `file` (`described`), or those
-        of a computation that failed in the last 30 seconds; None when they
-        are to be computed."""
+    def kept_breaks(self, file: str, band: int) -> Breaks | None:
+        """The class breaks of `band` of the file version `file`
+        (`described`) where they are kept: computed, or failed in the last 30
+        seconds (none then); None for a band whose breaks are to be
+        computed."""
         with self._lock:
-            found: BandBreaks | None = self._breaks.get(file)
+            found: Breaks | None = self._breaks.get((file, band))
             if found is None:
-                found = self._breaks_failed.get(file)
+                found = self._breaks_failed.get((file, band))
         return found
 
-    def keep_breaks(self, file: str, breaks: BandBreaks, complete: bool) -> None:
-        """Keep the breaks computed for `file`: for an hour, as the statistics,
-        or for 30 seconds when some could not be computed."""
+    def keep_breaks(self, file: str, band: int, breaks: Breaks, complete: bool) -> None:
+        """Keep the breaks computed for a band of `file`: for an hour, as the
+        statistics, or for 30 seconds when they could not be computed."""
         with self._lock:
-            (self._breaks if complete else self._breaks_failed)[file] = breaks
+            (self._breaks if complete else self._breaks_failed)[(file, band)] = breaks
 
-    def band_samples(self, layer: RasterLayer) -> dict[int, NDArray[np.float64]]:
-        """What every band's class breaks are computed from: the values a style
-        check classifies (`classified_sample`), from one read of the file,
-        each band's drawn before the next band's values are read. A failed
-        read raises without marking the file failing: the breaks are optional,
-        the file's tiles do not fail for them."""
+    def band_sample(self, layer: RasterLayer, band: int) -> NDArray[np.float64]:
+        """What a band's class breaks are computed from: the values a style
+        check classifies (`classified_sample`), from a read of that band
+        alone. A failed read raises without marking the file failing: the
+        breaks are optional, the file's tiles do not fail for them."""
         with self._source(layer, remember_failures=False) as opened:
-            return {
-                band: classified_sample(values)
-                for band, values in opened.band_samples()
-            }
+            values: NDArray[np.float64] = classified_sample(
+                opened.sample(parse_formula(f"b{band}"))
+            )
+        return values
 
     def bounds(self, layer: RasterLayer) -> tuple[float, float, float, float]:
         """The file's west, south, east and north in degrees, from its header,
@@ -470,29 +480,25 @@ def valid_bounds(bounds: tuple[float, ...]) -> bool:
 
 
 def band_breaks(
-    layer: RasterLayer, samples: dict[int, NDArray[np.float64]]
-) -> tuple[BandBreaks, bool]:
-    """Every band's class breaks from its sample (`band_samples`,
-    `precomputed_breaks`), and whether all could be computed: a band whose
-    computation fails gets none, logged without the file's key."""
-    out: BandBreaks = {}
-    complete = True
-    for band, values in samples.items():
-        try:
-            out[band] = precomputed_breaks(values)
-        except Exception as error:
-            complete = False
-            out[band] = {}
-            address, text = logged(RasterService.failure_key(layer), error)
-            logger.warning(
-                "The class breaks of band %d of the raster file %s could not be "
-                "computed: %s: %s",
-                band,
-                address,
-                type(error).__name__,
-                text,
-            )
-    return out, complete
+    layer: RasterLayer, band: int, values: NDArray[np.float64], info: RasterInfo
+) -> tuple[Breaks, bool]:
+    """A band's class breaks from its sample (`band_sample`,
+    `precomputed_breaks`; whole numbers for a file of whole numbers,
+    `whole_number_values`), and whether they could be computed: a failed
+    computation gives none, logged without the file's key."""
+    try:
+        return precomputed_breaks(values, whole_number_values(info)), True
+    except Exception as error:
+        address, text = logged(RasterService.failure_key(layer), error)
+        logger.warning(
+            "The class breaks of band %d of the raster file %s could not be "
+            "computed: %s: %s",
+            band,
+            address,
+            type(error).__name__,
+            text,
+        )
+        return {}, False
 
 
 #: The most entries a color table is sent with: an 8 bit band's codes.
@@ -520,8 +526,26 @@ def palette(info: RasterInfo) -> dict[str, Any] | None:
     return {"band": band, "colors": colors}
 
 
+def _stats_json(b: BandStats) -> dict[str, Any]:
+    return {
+        "min": b.min,
+        "max": b.max,
+        "mean": b.mean,
+        "std": b.std,
+        "p2": b.p2,
+        "p98": b.p98,
+        "histogram": {"counts": b.histogram[0], "edges": b.histogram[1]},
+        "values": b.values,
+        "counts": b.counts,
+        "approximate": b.approximate,
+    }
+
+
 def info_json(
-    info: RasterInfo, stats: list[BandStats], breaks: BandBreaks
+    info: RasterInfo,
+    stats: list[BandStats],
+    breaks: BandBreaks,
+    formula: tuple[str, FormulaStats] | None = None,
 ) -> dict[str, Any]:
     return {
         "width": info.width,
@@ -546,17 +570,10 @@ def info_json(
         "bands": [
             {
                 "index": b.index,
-                "min": b.min,
-                "max": b.max,
-                "mean": b.mean,
-                "std": b.std,
-                "p2": b.p2,
-                "p98": b.p98,
-                "histogram": {"counts": b.histogram[0], "edges": b.histogram[1]},
-                "values": b.values,
-                "counts": b.counts,
-                "approximate": b.approximate,
-                "breaks": breaks.get(b.index, {}),
+                **_stats_json(b),
+                # Only for the band the info is asked for (`?band=`), kept or
+                # computed for it.
+                **({"breaks": breaks[b.index]} if b.index in breaks else {}),
             }
             for b in stats
         ],

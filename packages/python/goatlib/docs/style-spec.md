@@ -1745,7 +1745,8 @@ rasters and map services do not change.
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
-- **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more".
+- **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more";
+  the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more".
 - **Only what a swatch draws:** a classification shows in the legend when it sets what a swatch draws: the color,
   size, opacity, width, dash, shape, icon, icon color, hollow fill or pattern of a part, the arrows' color or the
   height. One that sets only a label's text, color or font, a marker's rotation, offset or anchor, a line's offset,
@@ -2571,7 +2572,8 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
   Blue" where the file marks them so, else "Color". `bands: "all"` adds every band's value; `styled`, the default,
   does not.
 - **Without a `popup` key** a color scale (`continuous`, `categorical`, `hillshade`) opens a popup on click and an
-  image none; map services have none (9.8).
+  image none; map services have none (9.8). goatlib's list (`RASTER_POPUP_ON_BY_DEFAULT`) is published in the JSON
+  Schema as `x-raster-popup-on`, which the web reads.
 - **Where the values come from:** hover reads `value` from the value tiles the map has loaded (9), so it sends no
   request and shows what the map draws. A click shows that value at once, then the exact value and every band from
   the raster service's point query; `band_<n>` is known on click only. An image whose pixels are its values hovers

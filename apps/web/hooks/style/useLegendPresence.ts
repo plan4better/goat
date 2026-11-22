@@ -6,15 +6,15 @@
 // the map drew in its view, which the map's renderer counts (`watchViewPresence`); with `all`, nothing, and the legend
 // lists every class. Until the counts arrive the legend waits (`PRESENCE_PENDING`: placeholder rows), so it never
 // lists every class first and then shrinks; a count that fails, or a layer the map does not count, lists every class.
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import useSWR from "swr";
 
 import { getFeatureCount, getUniqueValues } from "@/lib/api/processes";
 import { getHistogramStats } from "@/lib/api/projects";
-import { useLoadedRasterValues } from "@/lib/api/rasters";
+import { loadRasterValues, useLoadedRasterValues } from "@/lib/api/rasters";
 import type { Geometry } from "@/lib/style/compile/types";
-import type { JsonObject } from "@/lib/style/json";
-import { coverageUrl, layerFilter } from "@/lib/style/layerSource";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { coverageUrl, layerFilter, versionParam } from "@/lib/style/layerSource";
 import { type Legend, PRESENCE_PENDING, type Presence, buildLegend, legendClasses } from "@/lib/style/legend";
 import {
   type PresenceCount,
@@ -22,6 +22,7 @@ import {
   presenceFromCounts,
   presenceRequests,
 } from "@/lib/style/presence";
+import { rasterColorSpec } from "@/lib/style/raster/color";
 import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 import { subscribeViewPresence, viewCounted, viewPresence } from "@/lib/style/render/viewPresence";
 
@@ -178,15 +179,61 @@ export function useLegendsWaiting(): boolean {
  * (`buildLegend` reads those colors there). 12 before the map has said its zoom. */
 export const useLegendZoom = (): number => useAppSelector((state) => state.map.currentZoom ?? 12);
 
-/** A layer's legend (`buildLegend`) with the classes its `legend.classes` lists; null without a style or a legend. */
+/** Whether the description at `url` has answered (a description or none) since this component asked for it
+ * (`loadRasterValues`, the cache every map of the page shares); false without `url`. */
+function useRasterValuesAnswered(url: string | undefined): boolean {
+  const [answered, setAnswered] = useState<string>();
+  useEffect(() => {
+    if (!url) return;
+    let live = true;
+    const answer = loadRasterValues(url, () => {
+      if (live) setAnswered(url);
+    });
+    if (answer !== undefined) setAnswered(url);
+    return () => {
+      live = false;
+    };
+  }, [url]);
+  return url !== undefined && answered === url;
+}
+
+/** A layer's legend (`buildLegend`) with the classes its `legend.classes` lists; null without a style or a legend.
+ * `askValues` (the print's legends): a raster file's listed classes with an open outer end, whose values no map of
+ * the page has loaded, ask for them
+ * (the address the map asks, so one request) and hold the print until they answer, so a PDF never reads "under 49.4"
+ * for a class the band's minimum closes. */
 export function useLayerLegend(
   style: JsonObject | null | undefined,
-  ctx: { geometry?: Geometry; zoom: number; serviceLegendUrl?: string },
+  ctx: { geometry?: Geometry; zoom: number; serviceLegendUrl?: string; askValues?: boolean },
   layer: LegendLayer | undefined,
   scope: string | undefined
 ): Legend | null {
   const present = useLegendPresence(style, layer, scope);
-  const isWaiting = present === PRESENCE_PENDING;
+  // A raster file's classes read the minimum and maximum of the values the map loaded for it (asks nothing).
+  const query = style?.kind === "raster" && layer?.dataset ? valueQuery(style) : null;
+  const values = useLoadedRasterValues(
+    query && layer?.dataset ? valuesUrl(coverageUrl(layer.dataset), query) : undefined
+  );
+  const classed =
+    !!query && !!style && isObject(style.render) && rasterColorSpec(style.render)?.kind === "classes";
+  // Only a legend that lists classes with an open outer end reads the values: not a hidden one, not the name only,
+  // nor one whose listed outer ends are written (values outside left out, each end with its bound or the color range).
+  const { geometry, zoom, serviceLegendUrl, askValues } = ctx;
+  const opensEnds = useMemo(() => {
+    if (!askValues || !classed || values || !style) return false;
+    const section = buildLegend(style, { geometry, zoom, serviceLegendUrl })?.sections.find(
+      (s) => s.kind === "entries" && s.id === "raster"
+    );
+    if (section?.kind !== "entries") return false;
+    // An end the map draws open: the outer classes with the end colors outside, else an end without a bound.
+    return section.entries.some((e) => e.range && (e.range.from === undefined || e.range.to === undefined));
+  }, [askValues, classed, values, style, geometry, zoom, serviceLegendUrl]);
+  const asked =
+    opensEnds && query && layer?.dataset
+      ? valuesUrl(coverageUrl(layer.dataset), query, versionParam(layer.version))
+      : undefined;
+  const answered = useRasterValuesAnswered(asked);
+  const isWaiting = present === PRESENCE_PENDING || (asked !== undefined && !answered);
   useEffect(() => {
     if (!isWaiting) return;
     const token = Symbol("legend");
@@ -197,12 +244,6 @@ export function useLayerLegend(
       waitingListeners.forEach((listener) => listener());
     };
   }, [isWaiting]);
-  const { geometry, zoom, serviceLegendUrl } = ctx;
-  // A raster file's classes read the minimum and maximum of the values the map loaded for it (asks nothing).
-  const query = style?.kind === "raster" && layer?.dataset ? valueQuery(style) : null;
-  const values = useLoadedRasterValues(
-    query && layer?.dataset ? valuesUrl(coverageUrl(layer.dataset), query) : undefined
-  );
   const valueRange = values?.range;
   return useMemo(
     () => (style ? buildLegend(style, { geometry, zoom, serviceLegendUrl, present, valueRange }) : null),

@@ -38,7 +38,9 @@ from goatlib.raster.formula import Formula, FormulaError, parse_formula
 from goatlib.raster.source import (
     TILE_SIZE,
     BandError,
+    RasterInfo,
     RasterUnavailableError,
+    check_bands,
     logged,
     recent_failure,
     remember_failure,
@@ -50,6 +52,7 @@ from geoapi.dependencies import normalize_layer_id
 from geoapi.deps.authz import require_layer_read
 from geoapi.services.raster_service import (
     BandBreaks,
+    Breaks,
     RasterLayer,
     Resampling,
     band_breaks,
@@ -90,9 +93,10 @@ _slots: LRUCache[tuple[int, str], asyncio.Semaphore] = LRUCache(4096)
 #: Class breaks are classified on threads of their own, after the read slot
 #: is released: tiles never wait for them.
 BREAKS_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="breaks")
-#: The class breaks being computed, by event loop and file version: the infos
-#: of a cold layer wait for one computation, without a read slot or a thread.
-_breaks_runs: dict[tuple[int, str], asyncio.Future[BandBreaks]] = {}
+#: The class breaks being computed, by event loop, file version and band: the
+#: infos of a cold band wait for one computation, without a read slot or a
+#: thread.
+_breaks_runs: dict[tuple[int, str, int], asyncio.Future[Breaks]] = {}
 #: A tile read taking longer answers 504. GDAL's timeouts bound each request a
 #: read sends, not the read.
 TILE_DEADLINE_S = 10.0
@@ -105,6 +109,18 @@ _BUSY = "The raster readers are busy."
 
 BandQuery = Annotated[
     int | None, Query(ge=1, le=1024, description="The band, from 1 (default 1)")
+]
+BreaksBandQuery = Annotated[
+    int | None,
+    Query(
+        ge=1,
+        le=1024,
+        description=(
+            "The band whose class breaks the info answers (`breaks` of that "
+            "band alone), computed once per file version; without it no band "
+            "carries breaks"
+        ),
+    ),
 ]
 FormulaQuery = Annotated[
     str | None,
@@ -400,52 +416,65 @@ def _sized(tilesize: int) -> tuple[int, ...]:
 )
 async def raster_info(
     collection_id: Annotated[str, Path(alias="collectionId")],
+    band: BreaksBandQuery = None,
 ) -> dict[str, Any]:
     layer = await _layer(collection_id)
     file, info, stats = await _read(layer, raster_service.described)
-    return info_json(info, stats, await _breaks(layer, file))
+    breaks: BandBreaks = {}
+    if band is not None:
+        with _answers():
+            check_bands(info, [band])
+        kept = raster_service.kept_breaks(file, band)
+        breaks[band] = (
+            kept if kept is not None else await _breaks(layer, file, info, band)
+        )
+    described = None
+    return info_json(info, stats, breaks, described)
 
 
-async def _breaks(layer: RasterLayer, file: str) -> BandBreaks:
-    """Every band's class breaks of the file version `file`: kept, or computed
-    once while every info asking meanwhile waits for that computation without
-    a read slot. Never fails: an info without breaks still answers."""
-    kept = raster_service.kept_breaks(file)
-    if kept is not None:
-        return kept
-    key = (id(asyncio.get_running_loop()), file)
+async def _breaks(layer: RasterLayer, file: str, info: RasterInfo, band: int) -> Breaks:
+    """A band's class breaks of the file version `file`, computed once while
+    every info asking for them meanwhile waits for that computation without a
+    read slot. Never fails: an info without breaks still answers."""
+    key = (id(asyncio.get_running_loop()), file, band)
     run = _breaks_runs.get(key)
     if run is None:
-        run = _breaks_runs[key] = asyncio.ensure_future(_compute_breaks(layer, file))
+        run = _breaks_runs[key] = asyncio.ensure_future(
+            _compute_breaks(layer, file, info, band)
+        )
         run.add_done_callback(lambda _: _breaks_runs.pop(key, None))
     # A caller that goes away leaves the computation to the others.
     return await asyncio.shield(run)
 
 
-async def _compute_breaks(layer: RasterLayer, file: str) -> BandBreaks:
-    """Reads every band's sample in one of the layer's read slots, then
-    classifies them after releasing it; a failed read gives no breaks and is
+async def _compute_breaks(
+    layer: RasterLayer, file: str, info: RasterInfo, band: int
+) -> Breaks:
+    """Reads the band's sample in one of the layer's read slots, then
+    classifies it after releasing it; a failed read gives no breaks and is
     remembered for 30 seconds, for the breaks only."""
     loop = asyncio.get_running_loop()
     try:
         async with _slot(layer.id):
-            samples = await loop.run_in_executor(
-                RASTER_EXECUTOR, raster_service.band_samples, layer
+            values = await loop.run_in_executor(
+                RASTER_EXECUTOR, raster_service.band_sample, layer, band
             )
     except Exception as error:
         address, text = logged(raster_service.failure_key(layer), error)
         logger.warning(
-            "The class breaks of the raster file %s were not computed: %s: %s",
+            "The class breaks of band %d of the raster file %s were not "
+            "computed: %s: %s",
+            band,
             address,
             type(error).__name__,
             text,
         )
-        raster_service.keep_breaks(file, {}, complete=False)
+        raster_service.keep_breaks(file, band, {}, complete=False)
         return {}
     breaks, complete = await loop.run_in_executor(
-        BREAKS_EXECUTOR, band_breaks, layer, samples
+        BREAKS_EXECUTOR, band_breaks, layer, band, values, info
     )
-    raster_service.keep_breaks(file, breaks, complete)
+    raster_service.keep_breaks(file, band, breaks, complete)
     return breaks
 
 

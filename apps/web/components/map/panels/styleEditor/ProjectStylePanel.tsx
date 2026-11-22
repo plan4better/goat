@@ -4,7 +4,7 @@
 // the map draws the edit at once and a save outlives the panel. It opens at once with the map request's document;
 // the opening check (core recomputes a style whose data changed and answers its issues) arrives in the background.
 import type { Map as MaplibreMap } from "maplibre-gl";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useSyncExternalStore } from "react";
 import { useMap } from "react-map-gl/maplibre";
 
 import { useProjectMap } from "@/lib/api/map";
@@ -12,6 +12,7 @@ import type { Geometry } from "@/lib/style/compile/types";
 import { useStyleStores } from "@/lib/style/editor/StyleStores";
 import type { EditorStore } from "@/lib/style/editor/store";
 import { sourceOf } from "@/lib/style/layerSource";
+import { breaksBandOf } from "@/lib/style/raster/metadata";
 import { createCoreTransport } from "@/lib/style/transports/core";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
@@ -23,6 +24,8 @@ import { useStyleData } from "@/hooks/style/useStyleData";
 import { type EditorLayer, StyleEditor } from "@/components/map/panels/styleEditor/StyleEditor";
 import { StyleSections } from "@/components/map/panels/styleEditor/StyleSections";
 import { MapStateProvider, type Position } from "@/components/map/panels/styleEditor/mapState";
+
+const noSubscribe = () => () => undefined;
 
 const geometryOf = (type: string | null | undefined): Geometry | undefined => {
   const g = type?.toLowerCase();
@@ -74,7 +77,11 @@ export function ProjectStylePanel({
   const geometry = geometryOf(layer.feature_layer_geometry_type);
   const kind: EditorLayer["kind"] =
     layer.type !== "raster" ? "vector" : source?.kind === "cog" ? "raster" : "service";
-  const dataset = useStyleData({ id: layer.layer_id, name: layer.name, geometry, source });
+  // A raster file's info carries the statistics and class breaks of the band or band formula the style colors as edited
+  // now (the stored document's until the store is there, so the info is asked once).
+  const readBand = () => breaksBandOf(store?.document ?? layer.style?.document);
+  const breaksBand = useSyncExternalStore(store?.subscribe ?? noSubscribe, readBand, readBand);
+  const dataset = useStyleData({ id: layer.layer_id, name: layer.name, geometry, source, breaksBand });
   // The legend preview's counts follow the layer's filter and data, not every change of the layer object.
   const { id, layer_id: datasetId, dataset_updated_at: version } = layer;
   const cql = layer.query?.cql;

@@ -29,7 +29,8 @@ vi.mock("@/lib/style/transports/core", () => ({
   },
 }));
 vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
-vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
+const { styleData } = vi.hoisted(() => ({ styleData: vi.fn() }));
+vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: styleData }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
 
 const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
@@ -51,14 +52,14 @@ function Registry() {
   return null;
 }
 
-function renderProjectPanel() {
+function renderProjectPanel(shown: MapLayer = layer) {
   const store = configureStore({ reducer: { map: mapReducer, layers: layerReducer } });
   return renderWithProviders(
     <Provider store={store}>
       <SWRConfig value={{ provider: () => new Map() }}>
         <StyleStoresProvider>
           <Registry />
-          <ProjectStylePanel projectId="p1" layer={layer} />
+          <ProjectStylePanel projectId="p1" layer={shown} />
         </StyleStoresProvider>
       </SWRConfig>
     </Provider>
@@ -67,6 +68,7 @@ function renderProjectPanel() {
 
 describe("the style panel on the project page", () => {
   beforeEach(() => {
+    styleData.mockImplementation(() => EMPTY_DATA);
     transports.length = 0;
     loadAnswer = new Promise(() => undefined);
     saveAnswer = async (body) => ({ ok: true, document: body.document, revision: 2, issues: [] });
@@ -122,4 +124,37 @@ describe("the style panel on the project page", () => {
       timeout: 3000,
     });
   });
+  it("a raster file's info is asked for the class breaks of the band the edited style colors", async () => {
+    const dem = {
+      ...layer,
+      id: 6,
+      layer_id: "dataset-6",
+      type: "raster",
+      data_type: "cog",
+      url: "https://files.example/dem.tif",
+      feature_layer_geometry_type: null,
+      style: {
+        ...layer.style,
+        id: "s6",
+        document: {
+          version: "1.0.0",
+          kind: "raster",
+          render: { type: "continuous", palette: "goat:elevation", band: 2 },
+        } as LayerStyle,
+      },
+    } as unknown as MapLayer;
+    renderProjectPanel(dem);
+    await waitFor(() =>
+      expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ id: "dataset-6", breaksBand: 2 }))
+    );
+    // The band changed in the panel: the info is asked for the new band's breaks.
+    const store = registry?.get({ projectId: "p1", layerProjectId: 6, styleId: "s6" });
+    act(() => store?.set("render.band", 3));
+    await waitFor(() =>
+      expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ breaksBand: 3 }))
+    );
+    // The edit's save is answered while the page is there.
+    await waitFor(() => expect(store?.saver.pending).toBe(false), { timeout: 3000 });
+  });
+
 });

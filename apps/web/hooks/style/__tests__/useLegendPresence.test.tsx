@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getFeatureCount, getUniqueValues } from "@/lib/api/processes";
 import { getHistogramStats } from "@/lib/api/projects";
-import { useLoadedRasterValues } from "@/lib/api/rasters";
+import { loadRasterValues, useLoadedRasterValues } from "@/lib/api/rasters";
 import { makeStore } from "@/lib/store";
 import { setActiveRightPanel, setCurrentZoom } from "@/lib/store/map/slice";
 import type { JsonObject } from "@/lib/style/json";
@@ -36,9 +36,11 @@ vi.mock("@/lib/api/projects", async (importOriginal) => ({
 vi.mock("@/lib/api/rasters", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/rasters")>()),
   useLoadedRasterValues: vi.fn(() => undefined),
+  loadRasterValues: vi.fn(() => undefined),
 }));
 
 const loaded = vi.mocked(useLoadedRasterValues);
+const loadValues = vi.mocked(loadRasterValues);
 const uniqueValues = vi.mocked(getUniqueValues);
 const featureCount = vi.mocked(getFeatureCount);
 const histogram = vi.mocked(getHistogramStats);
@@ -253,6 +255,132 @@ describe("useLayerLegend of a raster file", () => {
       }
     );
     expect(before.result.current?.sections[0]).not.toHaveProperty("domain");
+  });
+
+  it("a print legend asks for the values itself and holds the print until they answer", () => {
+    const dem: JsonObject = {
+      version: "1.0.0",
+      kind: "raster",
+      render: {
+        type: "continuous",
+        palette: "colorbrewer:BuGn",
+        domain: [32, 119],
+        classify: { method: "manual", classes: [{ to: 60 }, { from: 60, to: 90 }, { from: 90 }] },
+      },
+    };
+    const range = { range: [-38.94, 189.14], integer: false, version: "1", encoding: {} } as never;
+    let answer: (() => void) | undefined;
+    let has: unknown = undefined;
+    loaded.mockImplementation(() => has as never);
+    loadValues.mockImplementation((_url: string, onLoad: () => void) => {
+      answer = onLoad;
+      return undefined;
+    });
+    const dataset = { key: "9", dataset: "dem-1" };
+    const printed = () =>
+      renderHook(
+        () => ({
+          legend: useLayerLegend(dem, { zoom: 10, askValues: true }, dataset, "print:m1"),
+          waiting: useLegendsWaiting(),
+        }),
+        { wrapper }
+      );
+    const view = printed();
+    // No map on the page loaded them: the legend asks for the description the map would load, and the page waits.
+    expect(view.result.current.waiting).toBe(true);
+    expect(loadValues).toHaveBeenCalledTimes(1);
+    expect(loadValues.mock.calls[0][0]).toContain("/collections/dem-1/coverage/tiles/WebMercatorQuad?band=1");
+    has = range;
+    act(() => answer?.());
+    expect(view.result.current.waiting).toBe(false);
+    expect(view.result.current.legend?.sections[0]).toMatchObject({ domain: [-38.94, 189.14] });
+    view.unmount();
+    // A description that failed does not hold the print: the bounds alone.
+    has = undefined;
+    loadValues.mockClear();
+    const failed = printed();
+    expect(failed.result.current.waiting).toBe(true);
+    act(() => answer?.());
+    expect(failed.result.current.waiting).toBe(false);
+    expect(failed.result.current.legend?.sections[0]).not.toHaveProperty("domain");
+    failed.unmount();
+    // The layer list asks nothing and holds nothing.
+    loadValues.mockClear();
+    const listed = renderHook(
+      () => ({
+        legend: useLayerLegend(dem, { zoom: 10 }, dataset, "map"),
+        waiting: useLegendsWaiting(),
+      }),
+      { wrapper }
+    );
+    expect(listed.result.current.waiting).toBe(false);
+    expect(loadValues).not.toHaveBeenCalled();
+    listed.unmount();
+  });
+
+  it("a print legend asks nothing where no listed class has an open outer end", () => {
+    const render = {
+      type: "continuous",
+      palette: "colorbrewer:BuGn",
+      domain: [32, 119],
+      classify: { method: "manual", classes: [{ to: 60 }, { from: 60, to: 90 }, { from: 90 }] },
+    };
+    const dem = (more: object): JsonObject => ({ version: "1.0.0", kind: "raster", render, ...more });
+    loaded.mockReturnValue(undefined);
+    const printed = (style: JsonObject) =>
+      renderHook(
+        () => ({
+          legend: useLayerLegend(style, { zoom: 10, askValues: true }, { key: "9", dataset: "dem-1" }, "print:m1"),
+          waiting: useLegendsWaiting(),
+        }),
+        { wrapper }
+      );
+    const cases: Record<string, JsonObject> = {
+      "a hidden legend": dem({ legend: { show: false } }),
+      // Values outside left out, both outer ends written: the legend reads them as they are.
+      "both outer ends written": dem({
+        render: {
+          ...render,
+          outside: "hide",
+          classify: {
+            method: "manual",
+            classes: [{ from: 20, to: 60 }, { from: 60, to: 90 }, { from: 90, to: 140 }],
+          },
+        },
+      }),
+      // The outer classes left out of the legend.
+      "outer classes not listed": dem({
+        render: {
+          ...render,
+          classify: {
+            method: "manual",
+            classes: [{ to: 60, legend: false }, { from: 60, to: 90 }, { from: 90, legend: false }],
+          },
+        },
+      }),
+    };
+    for (const [name, style] of Object.entries(cases)) {
+      loadValues.mockClear();
+      const view = printed(style);
+      expect({ name, waiting: view.result.current.waiting }).toEqual({ name, waiting: false });
+      expect({ name, asked: loadValues.mock.calls.length }).toEqual({ name, asked: 0 });
+      view.unmount();
+    }
+    // Values outside left out with an outer end open: the values close it.
+    loadValues.mockClear();
+    const open = printed(
+      dem({
+        render: {
+          ...render,
+          domain: undefined,
+          outside: "hide",
+          classify: { method: "manual", classes: [{ from: 20, to: 60 }, { from: 60, to: 90 }, { from: 90 }] },
+        },
+      })
+    );
+    expect(open.result.current.waiting).toBe(true);
+    expect(loadValues).toHaveBeenCalledTimes(1);
+    open.unmount();
   });
 });
 

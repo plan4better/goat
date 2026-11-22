@@ -46,13 +46,19 @@ describe("the layer's position", () => {
   it("raster layers have the Position row", async () => {
     for (const service of [false, true]) {
       const onPosition = vi.fn();
+      // A file's style draws an image; a map service's style has no render.
+      const document = (
+        service
+          ? { version: "1.0.0", kind: "raster" }
+          : { version: "1.0.0", kind: "raster", render: { type: "image" } }
+      ) as LayerStyle;
       const { unmount } = renderPanel(
         <MapStateProvider value={{ position: "top", onPosition }}>
           <PopoverProvider>
             <RasterLayerSection service={service} />
           </PopoverProvider>
         </MapStateProvider>,
-        { document: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle }
+        { document }
       );
       await choose("position", "style_editor.position_top", "style_editor.position_below_labels");
       expect(onPosition).toHaveBeenCalledWith("below_labels");

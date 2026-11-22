@@ -8,6 +8,8 @@ import {
   bandFactsOf,
   bandHistogram,
   bandLabel,
+  bandRange,
+  breaksBandOf,
   codeShare,
   rangeShare,
   rasterInfoOf,
@@ -185,6 +187,41 @@ describe("raster facts from the raster service", () => {
     expect(bandBreaks(info, 1, "natural_breaks", 3)).toBeUndefined();
     expect(bandBreaks(info, 2, "quantile", 3)).toBeUndefined();
     expect(bandBreaks(undefined, 1, "quantile", 3)).toBeUndefined();
+  });
+
+  it("the info is asked for the band or formula a color range or a hillshade reads, and for none otherwise", () => {
+    const raster = (render?: object) => ({ version: "1.0.0", kind: "raster", ...(render ? { render } : {}) });
+    expect(breaksBandOf(raster({ type: "continuous", palette: "goat:elevation", band: 3 }))).toBe(3);
+    expect(breaksBandOf(raster({ type: "continuous", palette: "goat:elevation" }))).toBe(1);
+    // Images and categories have no classes to compute.
+    for (const type of ["image", "categorical"])
+      expect(breaksBandOf(raster({ type, band: 2 })), type).toBeUndefined();
+    expect(breaksBandOf(raster())).toBeUndefined();
+    expect(breaksBandOf({ version: "1.0.0", kind: "vector" })).toBeUndefined();
+    expect(breaksBandOf(undefined)).toBeUndefined();
+  });
+
+  it("a hillshade's info is asked for its band or formula: its colors classify it, a formula's values come only so", () => {
+    const shaded = (render: object) => ({ version: "1.0.0", kind: "raster", render: { type: "hillshade", ...render } });
+    const classify = { method: "quantile", count: 5 };
+    expect(breaksBandOf(shaded({ band: 2, palette: "goat:elevation", classify }))).toBe(2);
+    expect(breaksBandOf(shaded({ palette: "goat:elevation" }))).toBe(1);
+    // Shading alone: its band, so turning its colors on finds the breaks there.
+    expect(breaksBandOf(shaded({}))).toBe(1);
+    expect(breaksBandOf(shaded({ band: 3 }))).toBe(3);
+  });
+
+  it("an info carries breaks for the band it was asked for only: another band has none", () => {
+    const info = rasterInfoOf({
+      ...INFO,
+      count: 2,
+      bands: [band(1), band(2, { breaks: { quantile: { "3": [150, 300] } } })],
+    });
+    expect(bandBreaks(info, 2, "quantile", 3)).toEqual([150, 300]);
+    expect(bandBreaks(info, 1, "quantile", 3)).toBeUndefined();
+    // Its statistics are there all the same.
+    expect(bandRange(info, 1)).toEqual([100, 400]);
+    expect(sampleOf(info, 1)).toEqual({ min: 106.4, max: 393.2, values: [] });
   });
 
   it("a class's share splits each bin by the part of it the class covers", () => {

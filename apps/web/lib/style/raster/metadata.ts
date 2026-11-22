@@ -35,8 +35,10 @@ export interface RasterInfoResponse {
     approximate: boolean;
     /** The cells holding each of `values`, in the same order; null where `values` is. */
     counts?: number[] | null;
-    /** Inner class breaks by method and class count ("3" to "12"), over the same sample a style check classifies;
-     * a list can be shorter than count - 1, or empty; `{}` for a band without values. */
+    /** Inner class breaks by method and class count ("3" to "13"), over the same sample a style check classifies;
+     * a list can be shorter than count - 1, or empty; `{}` for a band without values. Only for the band the info is
+     * asked for (`rasterInfoUrl`'s band): every other band has none, and an info asked without a band has none at
+     * all. */
     breaks?: BandBreaks;
   }>;
 }
@@ -262,6 +264,20 @@ export function bandBreaks(
   return info?.stats.find((b) => b.index === band)?.breaks?.[method]?.[String(count)];
 }
 
+/** The band or band formula the info is asked for: geoapi answers class breaks only for the band asked (`?band=`), and
+ * a formula's statistics and breaks only for the formula asked (`?formula=`, its expression). It is the band a color
+ * range or a hillshade reads (1 without one), or its formula: a hillshade's colors classify it as a color range's do,
+ * and a formula's range and histogram come no other way. Undefined for renders without classes to compute (an image,
+ * categories), so their info never waits for breaks. A switch to a color range or a hillshade asks again. */
+export function breaksBandOf(style: unknown): number | string | undefined {
+  if (typeof style !== "object" || style === null) return undefined;
+  const { kind, render } = style as { kind?: unknown; render?: unknown };
+  if (kind !== "raster" || typeof render !== "object" || render === null) return undefined;
+  const { type, band = 1 } = render as { type?: unknown; band?: unknown };
+  if (type !== "continuous" && type !== "hillshade") return undefined;
+  if (typeof band === "number") return band;
+}
+
 const binTotal = (bins: HistogramBin[]) => bins.reduce((sum, bin) => sum + bin.count, 0);
 
 /** The share (0 to 1) of a band's cells in the class from `from` up to `to` (from inclusive, an open end unbounded):
@@ -336,10 +352,10 @@ export interface ValueSample {
 
 const MAX_VALUES = 32;
 
-/** A band's values as the panel starts a range from them: its 2nd to 98th percentile (outliers left out) and its
- * distinct values; null when the band has no values. */
-export function sampleOf(info: RasterInfo | undefined, band: number): ValueSample | null {
-  const stats = info?.stats.find((b) => b.index === band);
+/** A band's (or band formula's, `statsOf`) values as the panel starts a range from them: its 2nd to 98th percentile
+ * (outliers left out) and its distinct values; null when the band has no values. */
+export function sampleOf(info: RasterInfo | undefined, band: number | string): ValueSample | null {
+  const stats = statsOf(info, band);
   if (!stats || stats.p2 === null || stats.p98 === null) return null;
   return { min: stats.p2, max: stats.p98, values: (stats.values ?? []).slice(0, MAX_VALUES) };
 }

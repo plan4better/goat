@@ -179,14 +179,6 @@ class FakeSource:
 
         return np.array([1.0, 3.0])
 
-    def band_samples(self) -> Iterator[tuple[int, Any]]:
-        """Every band's values from one read, a band at a time: here each
-        band's `sample`."""
-        from goatlib.raster.formula import parse_formula
-
-        for band in range(1, self.info().count + 1):
-            yield band, self.sample(parse_formula(f"b{band}"))
-
 
 @pytest.fixture
 def client(test_client: TestClient) -> Iterator[TestClient]:
@@ -328,9 +320,9 @@ def test_info_lists_the_bands_statistics(client: TestClient) -> None:
 
 
 def test_info_carries_breaks_computed_once(client: TestClient) -> None:
-    """Every band's class breaks for each method and count, computed once per
-    values version with the statistics, so the panel switches methods without
-    a request."""
+    """The class breaks of the band asked for, for each method and count,
+    computed once per values version and band, so the panel switches methods
+    without a request."""
     import numpy as np
     from goatlib.raster.stats import BREAK_COUNTS, BREAK_METHODS
 
@@ -345,7 +337,8 @@ def test_info_carries_breaks_computed_once(client: TestClient) -> None:
         ) as precomputed,
     ):
         bodies = [
-            client.get(f"/collections/{LAYER}/raster/info").json() for _ in range(2)
+            client.get(f"/collections/{LAYER}/raster/info?band=1").json()
+            for _ in range(2)
         ]
     precomputed.assert_called_once()
     assert bodies[0] == bodies[1]
@@ -356,6 +349,105 @@ def test_info_carries_breaks_computed_once(client: TestClient) -> None:
     # 1 to 100 in three geometric classes: the ratio is 100 ** (1 / 3).
     assert band["breaks"]["geometric_interval"]["3"] == [4.64158883361, 21.5443469003]
     assert list(band["breaks"]["natural_breaks"])[-1] == "13"
+
+
+def test_info_answers_breaks_only_for_the_band_asked_for(
+    client: TestClient,
+) -> None:
+    """A file with three bands: the info computes the breaks of the band it is
+    asked for (`band`) from that band's values alone, once per values version
+    and band, and answers that band's only. Without a band, or for a formula,
+    no band carries breaks, kept or not: an answer never depends on what a pod
+    keeps, and a cold info never waits for bands nobody classifies."""
+    import numpy as np
+
+    three = dataclasses.replace(INFO, count=3, bits=(32, 32, 32))
+    read: list[str] = []
+
+    def sample(self: FakeSource, formula: Any) -> Any:
+        read.append(formula.expression)
+        return np.arange(1.0, 101.0) * formula.bands[-1]
+
+    def breaks_of(body: dict[str, Any]) -> list[Any]:
+        return [b.get("breaks", {}).get("quantile", {}).get("4") for b in body["bands"]]
+
+    info = f"/collections/{LAYER}/raster/info"
+    with (
+        patch.object(FakeSource, "info", lambda self: three),
+        patch.object(
+            FakeSource,
+            "statistics",
+            lambda self: [dataclasses.replace(STATS[0], index=i) for i in (1, 2, 3)],
+        ),
+        patch.object(FakeSource, "sample", sample),
+    ):
+        plain = client.get(info).json()
+        assert read == [] and all("breaks" not in b for b in plain["bands"])
+        second = client.get(f"{info}?band=2").json()
+        assert read == ["b2"]
+        assert breaks_of(second) == [None, [51.5, 101.0, 150.5], None]
+        assert "breaks" not in second["bands"][0] and "breaks" not in second["bands"][2]
+        assert client.get(f"{info}?band=2").json() == second and read == ["b2"]
+        first = client.get(f"{info}?band=1").json()
+        assert read == ["b2", "b1"]
+        assert breaks_of(first) == [[25.75, 50.5, 75.25], None, None]
+        assert "breaks" not in first["bands"][1]
+        # Kept breaks are answered for their band alone, and without a read.
+        assert client.get(info).json() == plain
+        assert client.get(f"{info}?band=2").json() == second
+
+
+async def test_concurrent_cold_infos_of_one_band_compute_its_breaks_once(
+    test_client: TestClient,
+) -> None:
+    """Infos asking for a cold band at the same time wait for one read of its
+    values and one classification, and all answer its breaks."""
+    import asyncio
+    import time
+
+    import httpx
+    import numpy as np
+
+    from geoapi.main import app
+
+    read: list[str] = []
+
+    class Slow(FakeSource):
+        def sample(self, formula: Any) -> Any:
+            read.append(formula.expression)
+            time.sleep(0.2)
+            return np.arange(1.0, 101.0)
+
+    rs.raster_service.clear()
+    info = f"/collections/{LAYER}/raster/info?band=1"
+    with (
+        patch.object(rs, "RasterSource", Slow),
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=ROW)),
+        patch.object(rs, "remote_validator", return_value=None),
+        patch.object(
+            rs, "precomputed_breaks", wraps=rs.precomputed_breaks
+        ) as precomputed,
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            answers = await asyncio.gather(*(http.get(info) for _ in range(6)))
+    assert read == ["b1"]
+    precomputed.assert_called_once()
+    assert {r.status_code for r in answers} == {200}
+    assert all(
+        r.json()["bands"][0]["breaks"]["quantile"]["4"] == [25.75, 50.5, 75.25]
+        for r in answers
+    )
+
+
+def test_info_refuses_a_band_without_values(client: TestClient) -> None:
+    """A band the file does not hold as values is refused in validation's
+    words, as the tile routes refuse it; nothing is read for its breaks."""
+    reads = []
+    with patch.object(FakeSource, "sample", lambda self, f: reads.append(f) or None):
+        r = client.get(f"/collections/{LAYER}/raster/info?band=2")
+    assert r.status_code == 400 and r.json()["detail"] == "The raster has 1 band."
+    assert reads == []
 
 
 def test_info_has_no_geometric_intervals_for_a_band_reaching_zero(
@@ -373,6 +465,31 @@ def test_info_has_no_geometric_intervals_for_a_band_reaching_zero(
     assert len(band["breaks"]["quantile"]["5"]) == 4
 
 
+def test_a_whole_number_bands_breaks_in_the_info_are_whole_numbers(
+    client: TestClient,
+) -> None:
+    """An 8 bit file (neither scaled nor offset): every method's breaks are
+    whole numbers, as the style check writes them."""
+    import dataclasses
+
+    import numpy as np
+    from goatlib.raster.stats import precomputed_breaks
+
+    values = np.random.default_rng(3).gamma(2.0, 30.0, 5_000).round().clip(7, 255)
+    byte = dataclasses.replace(INFO, dtype="uint8")
+    with (
+        patch.object(FakeSource, "sample", lambda self, formula: values),
+        patch.object(FakeSource, "info", lambda self: byte),
+    ):
+        [band] = client.get(f"/collections/{LAYER}/raster/info?band=1").json()["bands"]
+    for method, by_count in band["breaks"].items():
+        for breaks in by_count.values():
+            assert all(float(b).is_integer() for b in breaks), method
+    assert band["breaks"]["geometric_interval"]["5"] == list(
+        precomputed_breaks(values, whole=True)["geometric_interval"]["5"]
+    )
+
+
 def test_info_breaks_are_those_a_style_check_writes(client: TestClient) -> None:
     """A band with more values than are classified: the info's breaks for a
     method and count are the class bounds the style check (processes) writes
@@ -382,7 +499,7 @@ def test_info_breaks_are_those_a_style_check_writes(client: TestClient) -> None:
 
     values = np.random.default_rng(5).gamma(2.0, 50.0, PRECOMPUTE_SAMPLE * 3)
     with patch.object(FakeSource, "sample", lambda self, formula: values):
-        [band] = client.get(f"/collections/{LAYER}/raster/info").json()["bands"]
+        [band] = client.get(f"/collections/{LAYER}/raster/info?band=1").json()["bands"]
         for method in ("quantile", "natural_breaks"):
             style = {
                 "version": "1.0.0",
@@ -413,7 +530,7 @@ def test_a_failed_breaks_computation_still_answers_the_statistics(
 
     calls = []
 
-    def failing(values: Any) -> Any:
+    def failing(values: Any, *rest: Any) -> Any:
         calls.append(values.size)
         raise RuntimeError("could not classify https://cdn.example/dem.tif?sig=abc")
 
@@ -422,7 +539,9 @@ def test_a_failed_breaks_computation_still_answers_the_statistics(
         patch.object(rs, "precomputed_breaks", failing),
         caplog.at_level("WARNING"),
     ):
-        answers = [client.get(f"/collections/{LAYER}/raster/info") for _ in range(2)]
+        answers = [
+            client.get(f"/collections/{LAYER}/raster/info?band=1") for _ in range(2)
+        ]
     for r in answers:
         assert r.status_code == 200
         [band] = r.json()["bands"]
@@ -438,11 +557,11 @@ def test_a_failed_read_for_the_breaks_does_not_mark_the_file_failing(
 ) -> None:
     from goatlib.raster.source import recent_failure
 
-    def unreadable(self: FakeSource) -> Any:
+    def unreadable(self: FakeSource, formula: Any) -> Any:
         raise RasterUnavailableError("The file's host did not answer in time.")
 
-    with patch.object(FakeSource, "band_samples", unreadable):
-        r = client.get(f"/collections/{LAYER}/raster/info")
+    with patch.object(FakeSource, "sample", unreadable):
+        r = client.get(f"/collections/{LAYER}/raster/info?band=1")
     assert r.status_code == 200 and r.json()["bands"][0]["breaks"] == {}
     # The statistics read remembers a failing file, the breaks read does not.
     assert FakeSource.remembering == [True, False]
@@ -459,7 +578,10 @@ def test_a_band_whose_breaks_fail_leaves_the_others_theirs(client: TestClient) -
     two = dataclasses.replace(INFO, count=2, bits=(32, 32))
     huge = np.concatenate([np.linspace(0, 1000, 5000), [1.7976931348623157e308] * 10])
 
+    read: list[str] = []
+
     def sample(self: FakeSource, formula: Any) -> Any:
+        read.append(formula.expression)
         return huge if formula.expression == "b2" else np.arange(1.0, 101.0)
 
     with (
@@ -471,10 +593,16 @@ def test_a_band_whose_breaks_fail_leaves_the_others_theirs(client: TestClient) -
         ),
         patch.object(FakeSource, "sample", sample),
     ):
-        r = client.get(f"/collections/{LAYER}/raster/info")
-    assert r.status_code == 200
-    first, second = [b["breaks"] for b in r.json()["bands"]]
-    assert first["quantile"]["4"] == [25.75, 50.5, 75.25] and second == {}
+        failed = client.get(f"/collections/{LAYER}/raster/info?band=2")
+        r = client.get(f"/collections/{LAYER}/raster/info?band=1")
+        again = client.get(f"/collections/{LAYER}/raster/info?band=2")
+    assert failed.status_code == 200 and r.status_code == 200
+    assert [b.get("breaks") for b in failed.json()["bands"]] == [None, {}]
+    first, second = r.json()["bands"]
+    assert first["breaks"]["quantile"]["4"] == [25.75, 50.5, 75.25]
+    assert "breaks" not in second
+    # The failed band's empty breaks are kept for 30 seconds, as the others' for an hour.
+    assert again.json() == failed.json() and read == ["b2", "b1"]
 
 
 def test_an_info_looks_up_the_values_version_once(client: TestClient) -> None:
@@ -504,7 +632,7 @@ async def test_tiles_never_wait_for_the_breaks(
 
     from geoapi.main import app
 
-    def slow_breaks(values: Any) -> Any:
+    def slow_breaks(values: Any, *rest: Any) -> Any:
         time.sleep(BREAKS_S)
         return {}
 
@@ -528,7 +656,7 @@ async def test_tiles_never_wait_for_the_breaks(
         async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
             # The statistics are warm: only the breaks are cold.
             await http.get(tile.format(x=0))
-            info = f"/collections/{LAYER}/raster/info"
+            info = f"/collections/{LAYER}/raster/info?band=1"
             cold = [asyncio.create_task(http.get(info)) for _ in range(infos)]
             await asyncio.sleep(0.1)
             started = time.monotonic()
@@ -592,7 +720,7 @@ def test_an_orthophoto_with_an_alpha_band_is_described_and_drawn(
     image = encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
     rs.raster_service.clear()
     with patch.object(rs.raster_service, "layer", AsyncMock(return_value=layer)):
-        info = test_client.get(f"/collections/{LAYER}/raster/info")
+        info = test_client.get(f"/collections/{LAYER}/raster/info?band=1")
         colored = test_client.get(
             f"/collections/{LAYER}/raster/tiles/{tile.z}/{tile.x}/{tile.y}.webp"
             f"?style={image}"
@@ -666,34 +794,6 @@ def test_an_orthophotos_tiles_take_its_value_bands_only(
         assert r.status_code == 400, r.request.url
         assert r.json()["detail"] == "The raster has 3 bands."
     assert [r.status_code for r in drawn] == [200] * 9
-
-
-def test_the_breaks_read_holds_one_bands_values_at_a_time(client: TestClient) -> None:
-    """Each band's sample is drawn before the next band's float64 values are
-    read: a file with many bands never holds them all at once."""
-    import tracemalloc
-
-    import numpy as np
-    from goatlib.raster.stats import PRECOMPUTE_SAMPLE
-
-    cells = 1_000_000
-
-    def lazily(self: FakeSource) -> Iterator[tuple[int, Any]]:
-        for band in range(1, 9):
-            yield band, np.random.default_rng(band).random(cells)
-
-    with patch.object(FakeSource, "band_samples", lazily):
-        tracemalloc.start()
-        try:
-            samples = rs.raster_service.band_samples(ROW)
-            peak = tracemalloc.get_traced_memory()[1]
-        finally:
-            tracemalloc.stop()
-    assert sorted(samples) == list(range(1, 9))
-    assert {v.size for v in samples.values()} == {PRECOMPUTE_SAMPLE}
-    # A band or two's values and the work to draw from them (about 29 MiB),
-    # not all eight bands' (61 MiB before any draw).
-    assert peak < 5 * cells * 8, peak
 
 
 def test_info_counts_the_cells_of_each_code(client: TestClient) -> None:
@@ -1545,12 +1645,13 @@ def test_a_replaced_remote_file_gets_fresh_statistics(client: TestClient) -> Non
         patch.object(FakeSource, "sample", sample),
     ):
         for _ in range(2):
-            assert client.get(f"/collections/{LAYER}/raster/info").status_code == 200
+            info = client.get(f"/collections/{LAYER}/raster/info?band=1")
+            assert info.status_code == 200
             assert client.get(f"{COVERAGE}?formula=b1*2").status_code == 200
         assert reads == {"statistics": 1, "b1*2": 1, "b1": 1}
         # The same address answers another validator: another file.
         host["validator"] = '"b"'
-        client.get(f"/collections/{LAYER}/raster/info")
+        client.get(f"/collections/{LAYER}/raster/info?band=1")
         client.get(f"{COVERAGE}?formula=b1*2")
     assert reads == {"statistics": 2, "b1*2": 2, "b1": 2}
 
@@ -1574,7 +1675,7 @@ def test_a_failing_file_answers_at_once_without_waiting_for_a_read_slot(
                 IMAGE_TILESET,
                 VALUE_TILE,
                 TOKEN_TILE,
-                f"/collections/{LAYER}/raster/info",
+                f"/collections/{LAYER}/raster/info?band=1",
                 f"/collections/{LAYER}/raster/bounds",
                 f"/collections/{LAYER}/raster/point?lon=11.55&lat=48.15",
             )
@@ -1810,7 +1911,7 @@ READING_ROUTES = [
     IMAGE_TILESET,
     VALUE_TILE,
     TOKEN_TILE,
-    f"/collections/{LAYER}/raster/info",
+    f"/collections/{LAYER}/raster/info?band=1",
     f"/collections/{LAYER}/raster/bounds",
     f"/collections/{LAYER}/raster/point?lon=11.55&lat=48.15",
 ]

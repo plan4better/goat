@@ -361,7 +361,10 @@ stack, so validation runs in core too.
   range (the last holding its end), and the cells beyond are transparent.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
-  statistics, so a style panel switches methods without asking. They are the
+  statistics for the band it is asked for alone (none without one), or for a
+  band formula with its
+  statistics (`formula_statistics`, over the formula's values from the same
+  overview), so a style panel switches methods without asking. They are the
   vector classes' breaks: one call of the shared classifier per method gives
   every count, exactly as asking for each count alone does
   (`calculate_class_breaks_by_count`: one quantile query, one Fisher-Jenks run),

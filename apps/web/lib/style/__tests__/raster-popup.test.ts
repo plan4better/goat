@@ -7,13 +7,13 @@ import { commonT } from "@/i18n/__tests__/commonI18n";
 
 import { fetchRasterPoint, loadedRasterTileset, loadedRasterValues } from "@/lib/api/rasters";
 import { equalIntervalClasses } from "@/lib/style/editor/raster";
+import { RASTER_POPUP_ON_BY_DEFAULT } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { coverageUrl } from "@/lib/style/layerSource";
 import { cellSource, infoSourceOf } from "@/lib/style/popup/infoSources";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 import { type RasterInfo, bandFactsOf, imageBands, rasterInfoOf } from "@/lib/style/raster/metadata";
 import {
-  RASTER_POPUP_ON_BY_DEFAULT,
   imagePixels,
   namedRasterSpec,
   pixelValueBands,
@@ -103,7 +103,7 @@ beforeEach(() => {
 
 describe("when a raster popup opens", () => {
   it("a new raster style opens popups on click for colour scales, not for images", () => {
-    // Spec 9.7: the same list as goatlib's `default_raster_popup`.
+    // Spec 9.7: goatlib's list (`RASTER_POPUP_ON_BY_DEFAULT`, generated from the schema's `x-raster-popup-on`).
     expect(RASTER_POPUP_ON_BY_DEFAULT).toEqual(["continuous", "categorical", "hillshade"]);
     for (const type of RASTER_POPUP_ON_BY_DEFAULT) {
       const layer = cog(1, { version: "1.0.0", kind: "raster", render: { type } });
@@ -1123,12 +1123,14 @@ describe("where a raster popup's values come from", () => {
       const { map } = mapDrawing(layer, values);
       vi.mocked(loadedRasterValues).mockReturnValue(values);
       vi.mocked(tileValueAt).mockResolvedValueOnce(value);
-      vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [value], styled: null });
+      // Only a click asks the raster service: a hover leaves no answer queued for a later click.
+      if (trigger === "click")
+        vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [value], styled: null });
       const record = await cellSource.at(layer, here, { map, trigger, t: en, locale: "en" } as never);
       return record?.values.class;
     };
     expect(await classOf(render, 12, "hover")).toBe("-38.94 to 49.4 m");
-    expect(await classOf(render, 200, "hover")).toBe("101.6 to 189.14 m");
+    expect(await classOf(render, 150, "hover")).toBe("101.6 to 189.14 m");
     // A click's exact value from geoapi is named the same.
     expect(await classOf(render, 12, "click")).toBe("-38.94 to 49.4 m");
     // Values outside left out: the classes end at the colour range, which names them, and a cell beyond it is not
@@ -1169,6 +1171,55 @@ describe("where a raster popup's values come from", () => {
     expect(
       (preview.blocks[0] as { attributes: Array<{ name: string }> }).attributes.map((a) => a.name)
     ).toEqual(["value"]);
+  });
+
+  it("a cell beyond the band's minimum or maximum widens its own open class to its value", async () => {
+    // The band's minimum and maximum come from an overview: a few cells lie beyond them. The popup names such a cell's
+    // open first or last class from its own value; every other cell, the legend and the panel keep the band's.
+    const en = commonT("en");
+    // No answer of the raster service left over from another test.
+    vi.mocked(fetchRasterPoint).mockReset();
+    const render = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [32, 119],
+      classify: { method: "equal_interval", count: 5, classes: equalIntervalClasses([32, 119], 5) },
+    };
+    const classOf = async (
+      r: object,
+      value: number,
+      trigger: "hover" | "click",
+      range: [number, number] | null = [-38.94, 189.14]
+    ) => {
+      const values: RasterValues = { ...VALUES, range };
+      const layer = cog(1, { version: "1.0.0", kind: "raster", render: r, legend: { unit: "m" } });
+      const { map } = mapDrawing(layer, values);
+      vi.mocked(loadedRasterValues).mockReturnValue(values);
+      vi.mocked(tileValueAt).mockResolvedValueOnce(value);
+      // Only a click asks the raster service: a hover leaves no answer queued for a later click.
+      if (trigger === "click")
+        vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [value], styled: null });
+      const record = await cellSource.at(layer, here, { map, trigger, t: en, locale: "en" } as never);
+      return record?.values.class;
+    };
+    expect(await classOf(render, -41, "hover")).toBe("-41 to 49.4 m");
+    expect(await classOf(render, -41, "click")).toBe("-41 to 49.4 m");
+    expect(await classOf(render, 200.5, "hover")).toBe("101.6 to 200.5 m");
+    // Inside the band's range, and in a closed class, as before.
+    expect(await classOf(render, -38.94, "hover")).toBe("-38.94 to 49.4 m");
+    expect(await classOf(render, 12, "hover")).toBe("-38.94 to 49.4 m");
+    expect(await classOf(render, 50, "hover")).toBe("49.4 to 66.8 m");
+    // A class the user named keeps its name.
+    const named = {
+      ...render,
+      classify: {
+        ...render.classify,
+        classes: render.classify.classes.map((c, i) => (i === 0 ? { ...c, name: "Tief" } : c)),
+      },
+    };
+    expect(await classOf(named, -41, "hover")).toBe("Tief");
+    // Without a known range the open end reads by its bound alone, which is true of the cell.
+    expect(await classOf(render, -41, "hover", null)).toBe("Under 49.4 m");
   });
 
   it("a cell's class is its name, the legend's text for it, or Other", async () => {

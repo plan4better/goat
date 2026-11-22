@@ -1,11 +1,17 @@
 // geoapi's raster service: a raster file's info with its band statistics, the cell values at a point, and the
 // descriptions of its value tiles and colored tiles.
-import { useMemo, useSyncExternalStore } from "react";
-import useSWR from "swr";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import useSWR, { preload } from "swr";
 
 import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
 import { GEOAPI_BASE_URL } from "@/lib/constants";
-import { type RasterInfo, type RasterInfoResponse, rasterInfoOf } from "@/lib/style/raster/metadata";
+import {
+  type RasterInfo,
+  type RasterInfoResponse,
+  type ValueSample,
+  rasterInfoOf,
+  sampleOf,
+} from "@/lib/style/raster/metadata";
 import {
   type RasterTileset,
   type RasterValues,
@@ -24,18 +30,40 @@ export function rasterErrorOf(error: unknown): RasterError | undefined {
   return (error as { status?: number }).status === 422 ? "refused" : "unavailable";
 }
 
+/** The address of a raster dataset's info; with `band`, the info computes that band's class breaks and carries them
+ * (no other band's; without a band, none); with a band formula's expression, that formula's statistics and breaks
+ * (`formula`). */
+export const rasterInfoUrl = (datasetId: string, band?: number | string): string =>
+  `${rasterUrl(datasetId)}/info${
+    band === undefined
+      ? ""
+      : typeof band === "string"
+        ? `?formula=${encodeURIComponent(band)}`
+        : `?band=${band}`
+  }`;
+
 /** A raster dataset's bands, no data, color table and band statistics; undefined until read, with the reason when
- * the service could not read the file. */
-export function useRasterInfo(datasetId?: string): { info?: RasterInfo; error?: RasterError } {
+ * the service could not read the file. `band`: the band whose class breaks the info carries, or the band formula whose
+ * statistics and breaks it carries (`breaksBandOf`); while another band's info is asked for, the file's last info
+ * stays (never another file's), so the rows that need it do not wait again. That info has the breaks of the band it
+ * was asked for only: the new band's (or formula's) arrive with its own info. */
+export function useRasterInfo(
+  datasetId?: string,
+  band?: number | string
+): { info?: RasterInfo; error?: RasterError } {
   const { data, error } = useSWR<RasterInfoResponse>(
-    datasetId ? `${rasterUrl(datasetId)}/info` : null,
+    datasetId ? rasterInfoUrl(datasetId, band) : null,
     fetcher,
     {
       revalidateOnFocus: false,
       errorRetryCount: 2,
     }
   );
-  const info = useMemo(() => (data ? rasterInfoOf(data) : undefined), [data]);
+  const [last, setLast] = useState<{ datasetId: string; data: RasterInfoResponse }>();
+  if (data && datasetId && (last?.data !== data || last.datasetId !== datasetId))
+    setLast({ datasetId, data });
+  const shown = data ?? (last?.datasetId === datasetId ? last?.data : undefined);
+  const info = useMemo(() => (shown ? rasterInfoOf(shown) : undefined), [shown]);
   return { info, error: rasterErrorOf(error) };
 }
 
@@ -178,4 +206,17 @@ export function loadRasterValues(url: string, onLoad: () => void): Description |
   if (!entry.loading && Date.now() >= entry.due) askValues(url, entry);
   if (entry.loading || entry.values === null) entry.waiting.add(onLoad);
   return entry.values;
+}
+
+/** A band formula's values as the panel starts a range from them (`sampleOf`: its 2nd to 98th percentile), from the
+ * info asked for the formula; the request is shared with the panel's info (`useRasterInfo` with the expression), which
+ * then has the formula's histogram and breaks too. Null where geoapi gives none (a refused formula, a file that cannot
+ * be read). */
+export async function loadFormulaSample(datasetId: string, expression: string): Promise<ValueSample | null> {
+  try {
+    const json = (await preload(rasterInfoUrl(datasetId, expression), fetcher)) as RasterInfoResponse;
+    return sampleOf(rasterInfoOf(json), expression);
+  } catch {
+    return null;
+  }
 }

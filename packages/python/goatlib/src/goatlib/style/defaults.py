@@ -123,16 +123,11 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "legend.classes": "filter",
 }
 
-#: The raster renders whose popup is on without a `popup` key (spec 9.7): the
-#: colour scales, whose cell values the map's tiles hold. Images, and so map
-#: services, have none.
+#: The raster renders whose popup is on without a `popup` key, on click (spec
+#: 9.7): the colour scales, whose cell values the map's tiles hold. Images, and
+#: so map services, have none. The web reads this list from the schema
+#: (`x-raster-popup-on`).
 RASTER_POPUP_ON_BY_DEFAULT = ("continuous", "categorical", "hillshade")
-
-
-def default_raster_popup(render_type: str) -> dict[str, Any] | None:
-    """What a raster style without a `popup` key opens: a popup on click for a
-    colour scale, None (no popup) for an image."""
-    return {"trigger": "click"} if render_type in RASTER_POPUP_ON_BY_DEFAULT else None
 
 
 #: Today's look for new layers: a color from the Spectral palette, picked by the

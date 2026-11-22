@@ -225,6 +225,30 @@ def test_a_bands_histogram_has_fifty_bins(cog_server: str) -> None:
     assert len(counts) == 50 and len(edges) == 51
 
 
+def test_a_band_of_one_large_value_has_statistics(tmp_path) -> None:  # noqa: ANN001
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+
+    path = tmp_path / "constant.tif"
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=64,
+        height=64,
+        count=1,
+        dtype="float64",
+        crs="EPSG:4326",
+        transform=from_bounds(11.5, 48.1, 11.6, 48.2, 64, 64),
+    ) as dst:
+        dst.write(np.full((1, 64, 64), 1e16, "float64"))
+    with RasterSource(None, stored_file=path) as src:
+        [band] = src.statistics()
+    assert band.min == band.max == 1e16
+    assert band.histogram == ([64 * 64], [1e16, 1e16])
+
+
 def test_a_band_is_classified_once_per_method(monkeypatch: pytest.MonkeyPatch) -> None:
     """One query (and one Fisher-Jenks run) per method gives every class count."""
     import numpy as np

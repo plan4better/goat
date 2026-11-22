@@ -100,6 +100,9 @@ export function useStyleData(layer: {
   name?: string;
   geometry?: Geometry;
   source?: StyleSourceInfo;
+  /** The band whose class breaks a raster file's info carries, or the band formula whose statistics and breaks it
+   * carries (`breaksBandOf` of the style as edited). */
+  breaksBand?: number | string;
 }): StyleData {
   const layerId = layer.id;
   const { source } = layer;
@@ -109,9 +112,10 @@ export function useStyleData(layer: {
   const { assets } = useAssets({ asset_type: assetTypeEnum.Enum.icon });
   const { feature } = useSampleFeature(vectorId, true);
   const { featureCount } = useFeatureCount(vectorId || undefined);
-  // A raster file is read by the raster service: the dataset's info and band statistics.
+  // A raster file is read by the raster service: the dataset's info and band statistics, with the class breaks of the
+  // band (or the statistics and breaks of the band formula) the style reads.
   const rasterDataset = source?.kind === "cog" ? layerId : undefined;
-  const { info: rasterInfo, error: rasterError } = useRasterInfo(rasterDataset);
+  const { info: rasterInfo, error: rasterError } = useRasterInfo(rasterDataset, layer.breaksBand);
   const raster = useMemo(
     () =>
       rasterDataset

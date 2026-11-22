@@ -166,14 +166,13 @@ def test_raster_render_defaults_follow_the_reference() -> None:
 
 
 def test_image_render_popup_is_off_by_default() -> None:
-    from goatlib.style.defaults import RASTER_POPUP_ON_BY_DEFAULT, default_raster_popup
+    from goatlib.style import defaults
 
     # Spec 9.7: colour scales open a popup on click, images (and so map services) none.
-    assert RASTER_POPUP_ON_BY_DEFAULT == ("continuous", "categorical", "hillshade")
-    assert default_raster_popup("image") is None
-    for render_type in ("continuous", "categorical", "hillshade"):
-        assert default_raster_popup(render_type) == {"trigger": "click"}
-    first = default_raster_popup("continuous")
-    assert first is not None
-    first["trigger"] = "hover"
-    assert default_raster_popup("continuous") == {"trigger": "click"}
+    assert defaults.RASTER_POPUP_ON_BY_DEFAULT == (
+        "continuous",
+        "categorical",
+        "hillshade",
+    )
+    # One rule: the list, which the web reads through the schema (`x-raster-popup-on`).
+    assert not hasattr(defaults, "default_raster_popup")

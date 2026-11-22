@@ -1300,21 +1300,17 @@ export function labelRange(
 
 /** A class's range as legend text (spec 7.2): "2,800 to 3,600"; an open first or last class "800 to 2,800" and
  * "6,300 to 9,000" with the data's minimum and maximum (`labelRange`), else "under 2,800" and "6,300 and more"; a
- * single class the data's range, or its one value. */
+ * single class the data's range, or its one value. The unit goes with the last number: "under 49.4 m",
+ * "101.6 m and more". */
 export function rangeText(range: { from?: number; to?: number }, opts: RangeOptions): string {
   const n = rangeNumber(opts);
   const { from, to } = labelRange(range, opts);
-  const text =
-    from !== undefined && to !== undefined
-      ? from === to
-        ? n(from)
-        : `${n(from)} ${opts.words.to} ${n(to)}`
-      : to !== undefined
-        ? `${opts.words.under} ${n(to)}`
-        : from !== undefined
-          ? `${n(from)} ${opts.words.andMore}`
-          : "";
-  return opts.unit ? `${text} ${opts.unit}` : text;
+  const unit = opts.unit ? ` ${opts.unit}` : "";
+  if (from !== undefined && to !== undefined)
+    return from === to ? `${n(from)}${unit}` : `${n(from)} ${opts.words.to} ${n(to)}${unit}`;
+  if (to !== undefined) return `${opts.words.under} ${n(to)}${unit}`;
+  if (from !== undefined) return `${n(from)}${unit} ${opts.words.andMore}`;
+  return "";
 }
 
 /** A category's values as legend text: "100, 50 pixels", numbers with the classification's unit after them as

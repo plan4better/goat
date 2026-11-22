@@ -25,9 +25,10 @@ def json_schema() -> dict[str, Any]:
     targets (`x-default-ranges`) and the icon groups (`x-icon-groups`) for editors; the
     zoom from which each H3 resolution draws under "auto" (`x-h3-auto`) for the
     compiler; what missing scene keys mean (`x-scene-auto` by basemap tone,
-    `x-scene-defaults`); the root is a layer style."""
+    `x-scene-defaults`); the raster renders whose popup is on without a `popup`
+    key (`x-raster-popup-on`); the root is a layer style."""
     from goatlib.style.colors import DEFAULT_RANGES
-    from goatlib.style.defaults import REFERENCE_DEFAULTS
+    from goatlib.style.defaults import RASTER_POPUP_ON_BY_DEFAULT, REFERENCE_DEFAULTS
     from goatlib.style.h3 import AUTO_FROM_ZOOM
     from goatlib.style.models.layer import LayerStyle
     from goatlib.style.models.map_document import MapDocument
@@ -73,6 +74,7 @@ def json_schema() -> dict[str, Any]:
         "x-h3-auto": [list(pair) for pair in AUTO_FROM_ZOOM],
         "x-scene-auto": SCENE_AUTO,
         "x-scene-defaults": SCENE_DEFAULTS,
+        "x-raster-popup-on": list(RASTER_POPUP_ON_BY_DEFAULT),
     }
 
 

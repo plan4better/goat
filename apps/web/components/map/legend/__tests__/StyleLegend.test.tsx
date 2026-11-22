@@ -164,7 +164,7 @@ describe("StyleLegend", () => {
     const withUnit = { ...COLOR, unit: "km²", format: { decimals: 1 } };
     render(<StyleLegend legend={twoBlocks([withUnit])} variant="tree" />);
     expect(screen.getByText("under 10.0 km²")).toBeInTheDocument();
-    expect(screen.getByText("10.0 and more km²")).toBeInTheDocument();
+    expect(screen.getByText("10.0 km² and more")).toBeInTheDocument();
   });
 
   it("numeric categories read with their classification's unit, beside a second classification", () => {

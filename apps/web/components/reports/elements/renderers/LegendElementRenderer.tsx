@@ -329,13 +329,15 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
   const style = (layer.style?.document ?? null) as JsonObject | null;
   const type = layer.feature_layer_geometry_type?.toLowerCase();
   const geometry = type && GEOMETRIES.has(type) ? (type as Geometry) : undefined;
-  // The classes its `legend.classes` lists: those the layer's filter keeps, or those in the connected map's extent.
+  // The classes its `legend.classes` lists: those the layer's filter keeps, or those in the connected map's extent. A
+  // raster file's classes ask for the values that close them where no map of the page loaded them (`askValues`).
   const legend = useLayerLegend(
     style,
     {
       geometry,
       zoom,
       serviceLegendUrl: (layer.other_properties as { legend_urls?: string[] } | null)?.legend_urls?.[0],
+      askValues: true,
     },
     legendLayerOf(layer),
     scope

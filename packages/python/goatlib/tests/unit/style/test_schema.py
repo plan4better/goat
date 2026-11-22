@@ -80,3 +80,12 @@ def test_schema_carries_scene_tables() -> None:
         "buildings.opacity": 0.6,
         "storey_height": 3,
     }
+
+
+def test_schema_carries_the_raster_renders_whose_popup_is_on() -> None:
+    """The one list of raster renders that open a popup without a `popup` key
+    (spec 9.7); the web reads it from the generated sources."""
+    from goatlib.style.defaults import RASTER_POPUP_ON_BY_DEFAULT
+
+    assert json_schema()["x-raster-popup-on"] == list(RASTER_POPUP_ON_BY_DEFAULT)
+    assert RASTER_POPUP_ON_BY_DEFAULT == ("continuous", "categorical", "hillshade")

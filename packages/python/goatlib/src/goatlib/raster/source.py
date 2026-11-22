@@ -39,7 +39,7 @@ from rio_tiler.utils import non_alpha_indexes
 
 from goatlib.io.remote_source.url_guard import assert_public_http_url
 from goatlib.raster.color import Coloring, bands_needed, colorize
-from goatlib.raster.formula import Formula, parse_formula
+from goatlib.raster.formula import Formula
 from goatlib.raster.values import ValueEncoding
 from goatlib.utils.layer_address import text_without_keys, without_key
 
@@ -401,10 +401,22 @@ class PointValues:
     formula: float | None = None
 
 
+def _histogram(values: np.ndarray) -> tuple[list[int], list[float]]:
+    """The counts of `HISTOGRAM_BINS` bins over the values' range and the
+    bins' edges. Values whose range floats cannot split into that many finite
+    bins (one large value, neighbouring floats, or a span beyond the largest
+    float) get one bin of them all, from the minimum to the maximum."""
+    try:
+        counts, edges = np.histogram(values, bins=HISTOGRAM_BINS)
+    except ValueError:
+        return [int(values.size)], [float(values.min()), float(values.max())]
+    return [int(c) for c in counts], [float(e) for e in edges]
+
+
 def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
     if values.size == 0:
         return BandStats(index, None, None, None, None, None, None, ([], []), None)
-    counts, edges = np.histogram(values, bins=HISTOGRAM_BINS)
+    histogram = _histogram(values)
     distinct = cells = None
     if integer:
         unique, held = np.unique(values, return_counts=True)
@@ -420,7 +432,7 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
         std=float(values.std()),
         p2=float(p2),
         p98=float(p98),
-        histogram=([int(c) for c in counts], [float(e) for e in edges]),
+        histogram=histogram,
         values=distinct,
         counts=cells,
     )
@@ -667,19 +679,6 @@ class RasterSource:
             invalid |= np.ma.getmaskarray(a)
         values = formula.evaluate({i: np.ma.getdata(a) for i, a in arrays.items()})
         return values[~invalid & np.isfinite(values)].astype("float64")
-
-    def band_samples(self) -> Iterator[tuple[int, np.ndarray]]:
-        """Every value band's index and valid values (`_value_bands`) over one
-        read of an overview at most 1024 px wide: for each band exactly what
-        `sample` gives its formula (`b2`, evaluated as a formula is, in
-        float32), in the same order. A band at a time, so a caller can reduce
-        each (draw its sample) before the next band's float64 values exist."""
-        image = self._overview(None)
-        for k, index in enumerate(_value_bands(image.band_names)):
-            band = image.array[k]
-            values = parse_formula(f"b{index}").evaluate({index: np.ma.getdata(band)})
-            valid = ~np.ma.getmaskarray(band) & np.isfinite(values)
-            yield index, values[valid].astype("float64")
 
     def tile(
         self,

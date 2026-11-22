@@ -299,14 +299,24 @@ describe("syncMapLayers", () => {
         tiles: "https://wms.example/service?LAYERS=aerial&BBOX={bbox-epsg-3857}",
       },
     };
+    // A map service below the labels: between the roads and the labels.
+    const labelled: RenderLayer = {
+      ...service,
+      key: "4",
+      entry: { position: "below_labels" },
+      source: { ...service.source, id: "src-4" } as RenderLayer["source"],
+    };
     const map = orderedMap(basemap);
     // The value tiles' description loads after the first draw: the layer draws nothing until then.
-    const state = syncMapLayers(map, null, [polygon("0"), image, relief, service], { locale: "en", anchors });
+    const state = syncMapLayers(map, null, [polygon("0"), image, relief, service, labelled], {
+      locale: "en",
+      anchors,
+    });
     expect(map.order.some((id) => id.startsWith("2-"))).toBe(false);
     syncMapLayers(
       map,
       state,
-      [polygon("0"), image, { ...relief, source: { ...reliefSource, values } }, service],
+      [polygon("0"), image, { ...relief, source: { ...reliefSource, values } }, service, labelled],
       { locale: "en", anchors }
     );
     const at = (id: string) => map.order.indexOf(id);
@@ -318,6 +328,8 @@ describe("syncMapLayers", () => {
     }
     expect(at("3-raster")).toBeGreaterThan(at("base-bg"));
     expect(at("3-raster")).toBeLessThan(at("base-road"));
+    expect(at("4-raster")).toBeGreaterThan(at("base-road"));
+    expect(at("4-raster")).toBeLessThan(at("base-label"));
     expect(at("0-fill")).toBeGreaterThan(at("base-label"));
   });
 

@@ -13401,5 +13401,10 @@
   "terrain.exaggeration": 1,
   "buildings.opacity": 0.6,
   "storey_height": 3
- }
+ },
+ "x-raster-popup-on": [
+  "continuous",
+  "categorical",
+  "hillshade"
+ ]
 }

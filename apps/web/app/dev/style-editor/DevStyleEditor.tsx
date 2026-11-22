@@ -16,6 +16,7 @@ import type { CompileInput, Geometry } from "@/lib/style/compile/types";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SourceLayer, compileSourceFor, sourceOf } from "@/lib/style/layerSource";
+import { breaksBandOf } from "@/lib/style/raster/metadata";
 import { withTileParams } from "@/lib/style/render/apply";
 import { rasterValuesOver } from "@/lib/style/render/rasterValues";
 import { useLivePreview } from "@/lib/style/render/useLivePreview";
@@ -225,7 +226,6 @@ function DevEditor({
   const name = dataset.name ?? layerId;
   const source = useMemo(() => sourceOf(dataset as SourceLayer), [dataset]);
   const kind: LayerKind = !source ? "vector" : source.kind === "cog" ? "raster" : "service";
-  const data = useStyleData({ id: layerId, name, geometry, source });
   const [store] = useState(() => {
     const document = parseDoc(initialDoc, kind);
     const saver = new StyleSaver({
@@ -242,6 +242,11 @@ function DevEditor({
     });
     return new EditorStore({ saver });
   });
+  // A raster file's info carries the statistics and class breaks of the band or band formula the style colors as
+  // edited now.
+  const readBand = () => breaksBandOf(store.document);
+  const breaksBand = useSyncExternalStore(store.subscribe, readBand, readBand);
+  const data = useStyleData({ id: layerId, name, geometry, source, breaksBand });
   // The route owns its store: leaving the page sends what is pending (the panel only shows the store).
   useEffect(() => {
     const unbind = bindPageLifecycle(store.saver);

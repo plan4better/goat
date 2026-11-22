@@ -36,13 +36,13 @@ vi.mock("@/lib/api/layers", () => ({
   getLayerUniqueValues: (...args: unknown[]) => getLayerUniqueValues(...(args as [])),
   getLayerClassBreaks: (...args: unknown[]) => getLayerClassBreaks(...(args as [])),
 }));
-const useRasterInfo = vi.fn((datasetId?: string) => ({
+const useRasterInfo = vi.fn((datasetId?: string, _band?: number) => ({
   info: datasetId
     ? { bands: 1, bits: [32], noData: -9999, colorTable: false, integer: false, stats: [] }
     : undefined,
 }));
 vi.mock("@/lib/api/rasters", () => ({
-  useRasterInfo: (datasetId?: string) => useRasterInfo(datasetId),
+  useRasterInfo: (datasetId?: string, band?: number) => useRasterInfo(datasetId, band),
 }));
 vi.mock("@/lib/api/assets", () => ({
   useAssets: () => ({ assets: [{ id: "u1", url: "https://assets.example/u1.png", file_name: "u1.png" }] }),
@@ -117,8 +117,15 @@ describe("useStyleData", () => {
     );
     expect(result.current.raster?.dataset).toBe("layer-r");
     await waitFor(() => expect(result.current.raster?.info?.bands).toBe(1));
-    expect(useRasterInfo).toHaveBeenCalledWith("layer-r");
+    expect(useRasterInfo).toHaveBeenCalledWith("layer-r", undefined);
     expect(result.current.service).toBeUndefined();
+  });
+
+  it("the info is asked for the breaks of the band the style colors", () => {
+    renderHook(() =>
+      useStyleData({ id: "layer-r", source: { kind: "cog", url: "https://x/dem.tif" }, breaksBand: 3 })
+    );
+    expect(useRasterInfo).toHaveBeenLastCalledWith("layer-r", 3);
   });
 
   it("a raster file's fields are its cell's: the value, its class and every band", async () => {

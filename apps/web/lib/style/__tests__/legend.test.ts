@@ -1050,7 +1050,7 @@ describe("rangeText", () => {
     expect(rangeText({ from: 2800, to: 3600 }, { locale: "en-US", words: WORDS })).toBe("2,800 to 3,600");
     expect(rangeText({ to: 2800 }, { locale: "en-US", words: WORDS })).toBe("under 2,800");
     expect(rangeText({ from: 6300 }, { locale: "en-US", words: WORDS, unit: "inhabitants" })).toBe(
-      "6,300 and more inhabitants"
+      "6,300 inhabitants and more"
     );
     expect(
       rangeText(
@@ -1058,6 +1058,19 @@ describe("rangeText", () => {
         { locale: "de-DE", words: { ...WORDS, to: "bis" }, format: { decimals: 1 } }
       )
     ).toBe("1,3 bis 2,5");
+  });
+
+  it("an open end's unit goes with its number, in both languages", () => {
+    const en = { locale: "en-US", words: WORDS, unit: "m" };
+    const de = { locale: "de-DE", words: { under: "unter", to: "bis", andMore: "und mehr" }, unit: "m" };
+    expect(rangeText({ to: 49.4 }, en)).toBe("under 49.4 m");
+    expect(rangeText({ from: 101.6 }, en)).toBe("101.6 m and more");
+    expect(rangeText({ from: 49.4, to: 101.6 }, en)).toBe("49.4 to 101.6 m");
+    expect(rangeText({ to: 49.4 }, de)).toBe("unter 49,4 m");
+    expect(rangeText({ from: 101.6 }, de)).toBe("101,6 m und mehr");
+    expect(rangeText({ from: 49.4, to: 101.6 }, de)).toBe("49,4 bis 101,6 m");
+    // With a prefix and suffix of the number format, the unit after them.
+    expect(rangeText({ from: 5 }, { ...en, unit: "%", format: { prefix: "~" } })).toBe("~5 % and more");
   });
 });
 
@@ -1398,7 +1411,7 @@ describe("raster legends", () => {
     expect([clamped[0], clamped[4]]).toEqual(["-38.94 to 49.4 m", "101.6 to 189.14 m"]);
     // The band's range not known: never the colour range; the bounds alone.
     const unknown = labels(legendOf(render));
-    expect([unknown[0], unknown[4]]).toEqual(["under 49.4 m", "101.6 and more m"]);
+    expect([unknown[0], unknown[4]]).toEqual(["under 49.4 m", "101.6 m and more"]);
     // The range the check computed where the band's is not known, the band's over it; categories read none.
     const quantiles = {
       type: "continuous",

@@ -7,6 +7,7 @@ import type { TFunction } from "i18next";
 
 import { loadedRasterTileset, loadedRasterValues } from "@/lib/api/rasters";
 import { browserStops } from "@/lib/style/compile/rasters";
+import { RASTER_POPUP_ON_BY_DEFAULT } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type SourceLayer, coverageUrl, imageTilesetUrl, sourceOf } from "@/lib/style/layerSource";
@@ -32,10 +33,6 @@ import {
   valuesUrl,
 } from "@/lib/style/raster/values";
 import type { PopupProperties } from "@/lib/validations/layer";
-
-/** The renders whose style opens a popup on click without a `popup` key (goatlib `RASTER_POPUP_ON_BY_DEFAULT`): the
- * color scales. An image opens none. */
-export const RASTER_POPUP_ON_BY_DEFAULT = ["continuous", "categorical", "hillshade"] as const;
 
 export interface PopupRaster extends SourceLayer {
   visible?: boolean;
@@ -85,8 +82,7 @@ export function rasterPopupRuleOf(style: JsonObject): RasterPopupRule | undefine
   const popup = style.popup;
   const type = renderOf(style).type;
   if (popup === false || (isObject(popup) && popup.enabled === false)) return undefined;
-  if (!isObject(popup) && !(RASTER_POPUP_ON_BY_DEFAULT as readonly unknown[]).includes(type))
-    return undefined;
+  if (!isObject(popup) && !RASTER_POPUP_ON_BY_DEFAULT.includes(type as string)) return undefined;
   const record = isObject(popup) ? popup : {};
   const trigger: RasterTrigger =
     record.trigger === "hover" || record.trigger === "click_and_hover" ? record.trigger : "click";
@@ -299,10 +295,36 @@ const ownedNames = new WeakMap<NamedRasterColorSpec, Set<string>>();
  * where none is drawn (no classes, a hidden class, no data). */
 export function rasterClassOf(style: JsonObject, value: number, texts: RasterTexts = {}): string | undefined {
   const named = namedRasterSpec(style, texts);
-  const found = named ? rasterClassAt(named, value) : null;
-  if (found === null) return undefined;
+  const ends = endsOf(style, texts);
+  const found = named ? rasterClassAt(named, value, ends) : null;
+  if (!named || found === null) return undefined;
   if (found === "other") return texts.t ? texts.t("style_editor.other") : "Other";
-  return found.name;
+  return reachingName(style, named, found, value, ends, texts) ?? found.name;
+}
+
+/** The name of a cell's open first or last class when the cell lies beyond the band's minimum or maximum that close
+ * it (`ends`): the statistics come from an overview, so a few cells lie beyond them, and the class's range then reaches
+ * the cell's own value ("-41 to 49.4 m"). Undefined for any other cell, a class the user named, colorings whose cells
+ * outside are left out, and without `ends` (the bound alone, "Under 49.4 m", is true of the cell). Only the popup,
+ * which names one cell: the legend and the panel keep the band's ends. */
+function reachingName(
+  style: JsonObject,
+  named: NamedRasterColorSpec,
+  found: { name?: string },
+  value: number,
+  ends: [number, number] | undefined,
+  texts: RasterTexts
+): string | undefined {
+  if (!ends || named.kind !== "classes" || named.outside === "hide" || !found.name) return undefined;
+  if (ownedNames.get(named)?.has(found.name)) return undefined;
+  const first = named.classes[0];
+  const last = named.classes[named.classes.length - 1];
+  const below = value < ends[0] && first.from === undefined && found.name === first.name;
+  const above = value > ends[1] && last.to === undefined && found.name === last.name;
+  if (!below && !above) return undefined;
+  const own = below ? first : last;
+  const domain: [number, number] = [Math.min(ends[0], value), Math.max(ends[1], value)];
+  return rangeText({ from: own.from, to: own.to }, { ...rangeOptions(style, texts), domain });
 }
 
 /** Whether the map draws a cell of `value` (the raster service colors it the same, goatlib.raster.color): not in a
@@ -507,7 +529,7 @@ export function rasterPopupProperties(
 
 /** Whether a raster style opens a popup without a `popup` key: a color scale does, an image not. */
 export const rasterPopupOnByDefault = (style: JsonObject): boolean =>
-  (RASTER_POPUP_ON_BY_DEFAULT as readonly unknown[]).includes(renderOf(style).type);
+  RASTER_POPUP_ON_BY_DEFAULT.includes(renderOf(style).type as string);
 
 /** A raster style's `popup` as written, from `popup` without the keys a popup of the render's default leaves out: an
  * image's popup, off without the key, stays written while it is on. */

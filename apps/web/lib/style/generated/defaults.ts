@@ -124,3 +124,6 @@ export const H3_AUTO_FROM_ZOOM: readonly (readonly [number, number])[] = [
   [13, 9],
   [14, 10],
 ];
+
+/** The raster renders whose style opens a popup on click without a `popup` key (goatlib RASTER_POPUP_ON_BY_DEFAULT): the color scales. An image opens none. */
+export const RASTER_POPUP_ON_BY_DEFAULT: readonly string[] = ["continuous", "categorical", "hillshade"];
