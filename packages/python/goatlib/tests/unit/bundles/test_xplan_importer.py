@@ -395,6 +395,45 @@ def test_nothing_readable_fails(tmp_path: Path):
         XPlanImporter().extract_layers(str(source), str(workdir))
 
 
+def test_content_of_another_format_is_not_read(tmp_path: Path):
+    """A plan is read by the GML driver alone. A file of another format that
+    declares the XPlan namespace is sniffed as a plan, and then refused: it is
+    not read through that other format's driver."""
+    other = tmp_path / "other.csv"
+    other.write_text("a\n1\n")
+    source = tmp_path / "plan.gml"
+    source.write_text(
+        '<OGRVRTDataSource xmlns:xplan="http://www.xplanung.de/xplangml/5/1" '
+        'xmlns:gml="http://www.opengis.net/gml/3.2">'
+        f'<OGRVRTLayer name="BP_Plan"><SrcDataSource>{other}</SrcDataSource>'
+        "</OGRVRTLayer></OGRVRTDataSource>"
+    )
+    importer = XPlanImporter()
+
+    assert importer.matches_source(str(source))
+    assert importer.validate(str(source)).valid is False
+    work = tmp_path / "work"
+    work.mkdir()
+    with pytest.raises(ValueError):
+        importer.extract_layers(str(source), str(work))
+    assert not list(work.glob("*.parquet")) and not list(work.glob("*.gpkg"))
+
+
+def test_a_plan_is_read_without_a_second_gdal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The plan is read by the GDAL in DuckDB's spatial extension."""
+    monkeypatch.setitem(sys.modules, "pyogrio", None)
+    source = tmp_path / "plan.gml"
+    source.write_text(XPLAN_51)
+    work = tmp_path / "work"
+    work.mkdir()
+
+    layers = XPlanImporter().extract_layers(str(source), str(work))
+
+    assert {layer.role for layer in layers} >= {"BP_Plan", "BP_BaugebietsTeilFlaeche"}
+
+
 def test_xplan_role_styles():
     from goatlib.tools.style import bundle_role_style
 

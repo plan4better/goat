@@ -16,6 +16,7 @@ import boto3
 import duckdb
 
 from goatlib.io.formats import ALL_EXTS, FileFormat
+from goatlib.io.gml import NotGmlError, gml_classes
 from goatlib.io.utils import detect_path_type
 
 logger = logging.getLogger(__name__)
@@ -136,27 +137,18 @@ def _discover_gpkg_layers(gpkg: Path) -> list[str]:
 
 
 def _discover_gml_layers(gml: Path) -> list[str]:
-    """The GML's feature classes as virtual paths 'file::class'.
+    """The GML's feature classes as virtual paths 'file::class'; the file
+    alone when it is no GML that can be read (its conversion then says so).
 
-    `ST_Read_Meta` takes no open options, so it writes GDAL's `.gfs` schema
-    cache beside the file; one it created is removed again.
+    Not from `ST_Read_Meta`, which names no drivers: `io/gml.py` lists them
+    with the GML driver alone.
     """
-    gfs = gml.with_suffix(".gfs")
-    existed = gfs.exists()
     try:
-        with duckdb.connect(database=":memory:") as con:
-            con.execute("INSTALL spatial; LOAD spatial;")
-            result = con.execute("SELECT * FROM ST_Read_Meta(?)", [str(gml)]).fetchone()
-    except Exception as e:
-        logger.warning("Failed to introspect GML classes for %s: %s", gml, e)
+        classes = gml_classes(gml)
+    except NotGmlError as e:
+        logger.warning("No GML classes in %s: %s", gml, e)
         return [str(gml)]
-    finally:
-        if not existed:
-            gfs.unlink(missing_ok=True)
-    layers = result[3] if result and len(result) >= 4 else None
-    if not isinstance(layers, list) or not layers:
-        return [str(gml)]
-    return [f"{gml}::{layer['name']}" for layer in layers]
+    return [f"{gml}::{name}" for name in classes]
 
 
 def _discover_from_dir(directory: Path) -> Iterator[Path]:

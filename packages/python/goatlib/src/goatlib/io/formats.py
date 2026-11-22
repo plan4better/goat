@@ -84,12 +84,10 @@ READ_DRIVERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     }
 )
 
-#: GDAL open options a read of the suffix always passes. GDAL's GML driver
-#: caches its guess at a file's schema in a `.gfs` beside it; a stale one breaks
-#: later reads of the same name, so no read of an upload writes one.
-READ_OPEN_OPTIONS: Mapping[str, tuple[str, ...]] = MappingProxyType(
-    {FileFormat.GML: ("WRITE_GFS=NO",)}
-)
+#: Read through `io/gml.py` alone, which names the drivers above itself: a GML
+#: has several classes, is read from a directory of its own and its first read
+#: runs in a process of its own. No plain `ST_Read` is built for it.
+OWN_READER_EXTS: FrozenSet[str] = frozenset({FileFormat.GML})
 
 #: Read without GDAL: text tables (the delimiter sniffed, so `.dsv` too) and
 #: parquet by DuckDB's own readers, archives by unpacking their members.
@@ -121,11 +119,9 @@ def allowed_drivers_sql(suffix: str) -> str:
     drivers = READ_DRIVERS.get(suffix)
     if not drivers:
         raise _unsupported(suffix)
-    sql = "allowed_drivers=ARRAY[{}]".format(", ".join(map(sql_literal, drivers)))
-    options = READ_OPEN_OPTIONS.get(suffix)
-    if options:
-        sql += ", open_options=ARRAY[{}]".format(", ".join(map(sql_literal, options)))
-    return sql
+    if suffix in OWN_READER_EXTS:
+        raise ValueError("A GML file is read by goatlib.io.gml, not by a plain read")
+    return "allowed_drivers=ARRAY[{}]".format(", ".join(map(sql_literal, drivers)))
 
 
 def refuse_unsupported_format(name: str) -> None:

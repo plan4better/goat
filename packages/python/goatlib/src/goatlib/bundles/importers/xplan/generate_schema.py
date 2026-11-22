@@ -11,8 +11,8 @@ short forms (`GML_Dictionaries_<v>_Kuerzel.zip`) and the XML schema. It writes
 code fields (field to code list), per code list each code's name and short
 form (`MI`, `MU`).
 
-The tables come from the standard's own publication on purpose: xPlanBox ships
-the same lists under the AGPL, GOAT is GPL.
+The tables come from the standard's own publication on purpose: an open source
+XPlan server ships the same lists under the AGPL, GOAT is GPL.
 """
 
 import io

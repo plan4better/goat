@@ -15,9 +15,10 @@ from goatlib.bundles.importers.base import (
 )
 from goatlib.bundles.importers.xplan.schema import version_from_namespace
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.sql import sql_literal
 from goatlib.models.bundle import BundleTypeName
 
-# duckdb, pyarrow, pyogrio and shapely (io.curves) are loaded only when a plan
+# duckdb, pyarrow and shapely (io.gml, io.curves) are loaded only when a plan
 # is read: core imports the importers but installs goatlib without them.
 if TYPE_CHECKING:
     import duckdb
@@ -53,10 +54,6 @@ PRESENTATION_CLASSES = frozenset(
 #: Role of the plan's text clauses, of whichever classes they come.
 TEXT_ROLE = "text"
 
-#: GDAL's GML driver: no `.gfs` schema cache beside the upload (a stale one
-#: breaks later reads), and no fetching of the schema a file points at.
-OPEN_OPTIONS = {"WRITE_GFS": "NO", "DOWNLOAD_SCHEMA": "NO"}
-
 _FAMILIES = {
     "POINT": "point",
     "MULTIPOINT": "point",
@@ -79,17 +76,14 @@ def xplan_namespace(path: str | Path) -> str | None:
 
 
 def _classes(path: str) -> list[str]:
-    """The file's object classes. `list_layers` takes no open options, so it
-    writes GDAL's `.gfs` cache; one it created is removed again."""
-    import pyogrio
+    """The file's object classes, as GDAL's GML driver reads them (`io/gml.py`).
 
-    gfs = Path(path).with_suffix(".gfs")
-    existed = gfs.exists()
-    try:
-        return [name for name, _ in pyogrio.list_layers(path)]
-    finally:
-        if not existed:
-            gfs.unlink(missing_ok=True)
+    Raises:
+        ValueError: the file is no GML that can be read
+    """
+    from goatlib.io.gml import gml_classes
+
+    return gml_classes(path)
 
 
 _XLINK = b'xmlns:xlink="http://www.w3.org/1999/xlink"'
@@ -163,37 +157,25 @@ class XPlanImporter(BundleImporter):
         return ValidationResult(valid=True, detected_roles=sorted(classes))
 
     @staticmethod
-    def _read(source_path: str) -> dict[str, tuple["pa.Table", str | None]]:
+    def _read(
+        con: "duckdb.DuckDBPyConnection", source_path: str
+    ) -> dict[str, tuple["pa.Table", str | None]]:
         """Every class's objects, arcs straightened into a `_wkb` column.
 
-        Returns class to (table, CRS of its geometry or None). Links between
-        objects (`xlink:href`) are XML attributes, which GDAL keeps as
-        `<field>_href` columns only when told to; the setting is process wide,
-        so it is set for these reads alone.
+        Returns class to (table, CRS of its geometry or None). Read by
+        `io/gml.py` with the GML driver alone; links between objects
+        (`xlink:href`) are XML attributes, kept as `<field>_href` columns.
         """
-        import pyarrow as pa
-        import pyogrio
-
-        from goatlib.io.curves import linear_wkb
+        from goatlib.io.gml import GmlFile
 
         tables: dict[str, tuple["pa.Table", str | None]] = {}
-        pyogrio.set_gdal_config_options({"GML_ATTRIBUTES_TO_OGR_FIELDS": "YES"})
-        try:
-            for cls in _classes(source_path):
+        with GmlFile(source_path, links=True) as gml:
+            for cls in gml.classes:
                 if cls in PRESENTATION_CLASSES:
                     continue
-                meta, table = pyogrio.read_arrow(source_path, layer=cls, **OPEN_OPTIONS)
+                table, crs = gml.read(con, cls)
                 if table.num_rows == 0:
                     continue
-                geometry = meta.get("geometry_name") or "wkb_geometry"
-                has_geometry = geometry in table.column_names
-                # A class with several geometry properties repeats the others
-                # as raw binary columns, which nothing reads.
-                binary = [
-                    f.name
-                    for f in table.schema
-                    if pa.types.is_binary(f.type) and f.name != geometry
-                ]
                 # A file declaring xlink on each link (WFS downloads) gets a
                 # `<field>_xlink` column per link holding only the namespace.
                 noise = [
@@ -201,15 +183,7 @@ class XPlanImporter(BundleImporter):
                     for c in table.column_names
                     if c in _BOUNDS_COLUMNS or c.endswith("_xlink")
                 ]
-                table = table.drop_columns(binary + noise)
-                if has_geometry:
-                    wkb = [linear_wkb(v) for v in table.column(geometry).to_pylist()]
-                    table = table.drop_columns([geometry]).append_column(
-                        "_wkb", pa.array(wkb, type=pa.binary())
-                    )
-                tables[cls] = (table, meta.get("crs") if has_geometry else None)
-        finally:
-            pyogrio.set_gdal_config_options({"GML_ATTRIBUTES_TO_OGR_FIELDS": None})
+                tables[cls] = (table.drop_columns(noise), crs)
         return tables
 
     @staticmethod
@@ -233,13 +207,21 @@ class XPlanImporter(BundleImporter):
         version = version_from_namespace(xplan_namespace(source_path) or "")
         copy = out / "source.gml"
         copy_with_root_xlink(source_path, copy)
-        read = decorate(self._read(str(copy)), version)
+        read = decorate(self._read(con, str(copy)), version)
+        # Class to (table, CRS); the CRS is None for a class without geometry.
         tables: dict[str, tuple[str, str | None]] = {}
         for i, (cls, (arrow, crs)) in enumerate(read.items()):
             source, name = f"src_{i}", f"t_{i}"
+            has_geometry = "_wkb" in arrow.column_names
+            if has_geometry and crs is None:
+                raise ValueError(
+                    f"The geometry of {cls} states no coordinate system (srsName)."
+                )
             con.register(source, arrow)
             geometry_sql = (
-                " EXCLUDE (_wkb), ST_GeomFromWKB(_wkb) AS geometry" if crs else ""
+                " EXCLUDE (_wkb), ST_GeomFromWKB(_wkb) AS geometry"
+                if has_geometry
+                else ""
             )
             con.execute(f"CREATE TABLE {name} AS SELECT *{geometry_sql} FROM {source}")
             con.unregister(source)
@@ -297,7 +279,7 @@ class XPlanImporter(BundleImporter):
                 path = out / f"{i}_{family}.gpkg"
                 con.execute(
                     f"COPY (SELECT * FROM {table} WHERE {where}) TO '{path}' "
-                    f"(FORMAT GDAL, DRIVER 'GPKG', SRS '{crs}')"
+                    f"(FORMAT GDAL, DRIVER 'GPKG', SRS {sql_literal(crs)})"
                 )
                 layers.append(
                     ExtractedLayer(
