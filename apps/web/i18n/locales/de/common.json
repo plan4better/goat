@@ -3973,6 +3973,7 @@
     "resampling_linear_sub": "Mischt benachbarte Zellen",
     "resampling_nearest": "Scharf",
     "resampling_nearest_sub": "Zellen bleiben scharfe Quadrate",
+    "resampling_codes": "Zellwerte werden nie gemischt, daher bleiben die Zellen scharf.",
     "adjustments": "Anpassungen",
     "brightness": "Helligkeit",
     "contrast": "Kontrast",

@@ -3973,6 +3973,7 @@
     "resampling_linear_sub": "Blends neighboring cells",
     "resampling_nearest": "Nearest",
     "resampling_nearest_sub": "Keeps the cells as sharp squares",
+    "resampling_codes": "Cell values never blend, so the cells stay sharp.",
     "adjustments": "Adjustments",
     "brightness": "Brightness",
     "contrast": "Contrast",

@@ -157,7 +157,8 @@ describe("value tiles", () => {
     ).toEqual({ formula: "(b4 - b1) / (b4 + b1)", resampling: "nearest" });
     const categories = { type: "categorical", classes: [{ value: 1, color: "#4a90c2" }] };
     expect(query({ render: categories })).toEqual({ band: 1, resampling: "nearest" });
-    expect(query({ resampling: "linear", render: categories })).toEqual({ band: 1, resampling: "bilinear" });
+    // Codes never blend: categories read nearest whatever the style says.
+    expect(query({ resampling: "linear", render: categories })).toEqual({ band: 1, resampling: "nearest" });
     expect(query({ resampling: "linear", render: { type: "continuous" } })).toEqual({
       band: 1,
       resampling: "bilinear",
@@ -172,6 +173,49 @@ describe("value tiles", () => {
       band: 1,
       resampling: "nearest",
     });
+    // An image drawn with its file's color table reads the codes of the band the table colors, nearest, once the
+    // file's band facts tell the table; without them, none.
+    const table = {
+      count: 2,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: true,
+      palette: { band: 2, colors: { 0: "#ffffff" } },
+    };
+    const image = { version: "1.0.0", kind: "raster", resampling: "linear", render: { type: "image" } };
+    expect(valueQuery(image, table)).toEqual({ band: 2, resampling: "nearest" });
+    expect(valueQuery(image)).toBeNull();
+    expect(valueQuery({ ...image, render: { type: "image", bands: [1, 2, 2] } }, table)).toBeNull();
+    expect(valueQuery(image, { ...table, palette: undefined })).toBeNull();
+    expect(valueQuery(image, { ...table, scaled: true })).toBeNull();
+    // An adjustment stored as null is none (the schema allows it); one by zoom keeps the colored tiles.
+    expect(valueQuery({ ...image, brightness: null, hue: null }, table)).toEqual({
+      band: 2,
+      resampling: "nearest",
+    });
+    expect(
+      valueQuery(
+        {
+          ...image,
+          brightness: {
+            zoom: [
+              [0, 0],
+              [9, 0.2],
+            ],
+          },
+        },
+        table
+      )
+    ).toBeNull();
+    // Categories without classes draw the file as stored: its table's codes too.
+    const stored = { version: "1.0.0", kind: "raster", render: { type: "categorical", classes: [] } };
+    // The table colors band 2: an empty list there reads its codes; one on another band does not.
+    expect(valueQuery({ ...stored, render: { ...stored.render, band: 2 } }, table)).toEqual({
+      band: 2,
+      resampling: "nearest",
+    });
+    expect(valueQuery(stored, table)).toBeNull();
+    expect(valueQuery(stored)).toBeNull();
   });
 
   it("draws color scales crisp and images and shading alone smooth, unless the style says otherwise", () => {
@@ -184,6 +228,11 @@ describe("value tiles", () => {
     expect(of({})).toBe("linear");
     expect(of({ resampling: "linear", render: { type: "continuous" } })).toBe("linear");
     expect(of({ resampling: "nearest", render: { type: "image" } })).toBe("nearest");
+    // Codes never blend: categories, and an image drawn with its file's color table, stay crisp.
+    expect(of({ resampling: "linear", render: { type: "categorical" } })).toBe("nearest");
+    const table = { count: 1, colorTable: true, palette: { band: 1, colors: { 0: "#ffffff" } } };
+    expect(resamplingOf({ resampling: "linear", render: { type: "image" } }, table)).toBe("nearest");
+    expect(resamplingOf({ render: { type: "image" } }, table)).toBe("nearest");
   });
 
   it("names the tileset description and the tiles of a band or formula, 512 px wide", () => {
@@ -293,13 +342,12 @@ describe("value tiles", () => {
       colorInterp: ["palette"],
       palette: { band: 1, colors: { 3: "#ff0000", 7: "#008000" } },
     });
-    // An entry drawn fully transparent is never read: it is left out. Entries that differ in alpha alone keep the
-    // same color.
+    // An entry drawn fully transparent is never drawn: it is left out. One drawn partly transparent keeps its alpha.
     expect(
       bands({
-        palette: { band: 1, colors: { "3": [0, 0, 0, 255], "5": [0, 0, 0, 0], "6": [255, 0, 0, 128] } },
+        palette: { band: 1, colors: { "3": [0, 0, 0, 255], "5": [0, 0, 0, 0], "6": [255, 0, 0, 102] } },
       })?.palette
-    ).toEqual({ band: 1, colors: { 3: "#000000", 6: "#ff0000" } });
+    ).toEqual({ band: 1, colors: { 3: "#000000", 6: "#ff0000" }, alphas: { 6: 0.4 } });
     // No color table, a table too long to send, an older geoapi or another shape: no palette.
     for (const palette of [null, undefined, { band: "1", colors: {} }, { band: 1, colors: { x: [1, 2, 3] } }])
       expect(bands({ palette }), JSON.stringify(palette)).not.toHaveProperty("palette");

@@ -1,9 +1,10 @@
 // Where a popup's values come from (spec 7.4, 9.7). A raster file's popup reads the cell under the pointer: while
 // hovering from the value tiles the map has loaded, so it sends no request and shows what the map draws; on a click
-// that value at once, then the exact value and every band from the raster service's point query. An image whose
-// pixels are its values (`imagePixels`: 8 bit bands drawn as they are, or codes its color table gives colors of
-// their own) answers the same way from its colored tiles. Other images, and a color scale the raster service colors,
-// never answer a hover, and a click asks the point query only. Vector features keep their own path in the map (the
+// that value at once, then the exact value and every band from the raster service's point query. An image drawn with
+// its file's color table is drawn from its table band's value tiles, so it answers the same way with each cell's code.
+// An image whose pixels are its values (`imagePixels`: 8 bit bands drawn as they are) answers from its colored tiles.
+// Other images, and a color scale the raster service colors, never answer a hover, and a click asks the point query
+// only. Vector features keep their own path in the map (the
 // feature under the pointer, its highlight, clusters and hexagons); map services have no popup yet (spec 9.8).
 import type { TFunction } from "i18next";
 
@@ -13,7 +14,6 @@ import { coverageUrl, imageTilesetUrl } from "@/lib/style/layerSource";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 import { type RasterInfo, valueBands } from "@/lib/style/raster/metadata";
 import {
-  type ImagePixels,
   type PopupRaster,
   type RasterPopupRule,
   bandText,
@@ -38,6 +38,7 @@ import {
 } from "@/lib/style/raster/tileValues";
 import { rasterToken } from "@/lib/style/raster/token";
 import {
+  type BandFacts,
   type RasterValues,
   tilesetUrl,
   valueQuery,
@@ -86,18 +87,20 @@ const num = (v: unknown): v is number => typeof v === "number" && Number.isFinit
 const datasetOf = (layer: PopupRaster) => String(layer.layer_id ?? layer.id);
 
 /** The value tiles the map draws for a layer: their description and URL template (the source's own). "service" where
- * the map draws none but the raster service answers a click (an image, colors the service paints); null where no
- * value is known (a value render whose description has not loaded or failed: the map draws nothing). */
+ * the map draws none but the raster service answers a click (an image, colors the service paints, an image drawn with
+ * its color table whose values failed, which the map draws from its colored tiles); null where no value is known (a
+ * value render whose description has not loaded or failed, a color table image whose values load: the map draws
+ * nothing). */
 function valueTilesOf(
   layer: PopupRaster,
   style: JsonObject,
   map: InfoMap
 ): { values: RasterValues; template: string } | "service" | null {
-  const query = valueQuery(style);
+  const query = valueQuery(style, tableFactsOf(layer, style));
   if (!query) return "service";
   const coverage = coverageUrl(datasetOf(layer));
   const values = loadedRasterValues(valuesUrl(coverage, query));
-  if (!values) return null;
+  if (!values) return !valueQuery(style) && coloredSourceOf(layer, map) ? "service" : null;
   const template = valueTilesUrl(coverage, query, values);
   // The layer's value source (compile/rasters.ts: `src-<key>`, or `src-<key>-values` beside image tiles): only tiles
   // the map loads are read, so a hover sends no request.
@@ -118,16 +121,24 @@ function coloredSourceOf(layer: PopupRaster, map: InfoMap): MapRasterSource | un
 const factsOf = (layer: PopupRaster) =>
   loadedRasterTileset(tilesetUrl(imageTilesetUrl(datasetOf(layer))))?.bands;
 
+/** The band facts (`factsOf`) of an image or categories, which tell whether it is drawn from value tiles with its
+ * color table (`tableColorSpec`: an image, or categories without classes); none for other renders, which read values by
+ * their style alone. */
+const tableFactsOf = (layer: PopupRaster, style: JsonObject) => {
+  const type = renderOf(style).type;
+  return type === "image" || type === undefined || type === "categorical" ? factsOf(layer) : undefined;
+};
+
 /** An image whose colored tiles' pixels are its values (`imagePixels`, with the band facts of the description the map
- * loaded): what they are and the tiles' source; null for anything else. */
+ * loaded): the bands they are and the tiles' source; null for anything else. */
 function pixelsOf(
   layer: PopupRaster,
   style: JsonObject,
   map: InfoMap
-): { pixels: ImagePixels; source: MapRasterSource } | null {
+): { pixels: { kind: "bands"; bands: [number, number, number] }; source: MapRasterSource } | null {
   const pixels = imagePixels(style, factsOf(layer));
-  const source = pixels ? coloredSourceOf(layer, map) : undefined;
-  return pixels && source ? { pixels, source } : null;
+  const source = pixels?.kind === "bands" ? coloredSourceOf(layer, map) : undefined;
+  return pixels?.kind === "bands" && source ? { pixels, source } : null;
 }
 
 /** A tile's value at the precision of its codes: `base + q * step` carries float noise past the step. */
@@ -139,22 +150,27 @@ function atStep(value: number, values: RasterValues): number {
 }
 
 /** The values description the map loaded for a layer's style (its band's or formula's range names the open classes);
- * undefined for an image or before it loaded. */
+ * undefined for an image (but one drawn with its color table, `tableFactsOf`) or before it loaded. */
 function describedOf(layer: PopupRaster, style: JsonObject): RasterValues | undefined {
-  const query = valueQuery(style);
+  const query = valueQuery(style, tableFactsOf(layer, style));
   return query ? loadedRasterValues(valuesUrl(coverageUrl(datasetOf(layer)), query)) : undefined;
 }
 
 /** The record of a cell's value: the value and its class (its open ends named by the range of `described`, the values
- * the map loaded); null for no value, the style's no data and a cell the map does not draw (`rasterDraws`: a hidden
- * class, a value in no category, beyond a range left out), as no popup opens over a feature its style hides. */
+ * the map loaded), and where it is drawn with its color table (`facts`, its band facts) the code as its band too;
+ * null for no value, the style's no data and a cell the map does not draw (`rasterDraws`: a hidden class, a value in
+ * no category, beyond a range left out, a code the table has no entry for), as no popup opens over a feature its style
+ * hides. */
 function valueRecord(
   style: JsonObject,
   value: number | null | undefined,
   ctx: InfoContext,
-  described: RasterValues | undefined
+  described: RasterValues | undefined,
+  facts?: BandFacts
 ): Record<string, unknown> | null {
-  if (!num(value) || isStyleNoData(style, value) || !rasterDraws(style, value, described)) return null;
+  if (!num(value) || isStyleNoData(style, value) || !rasterDraws(style, value, described, facts)) return null;
+  const band = imagePixels(style, facts)?.kind === "palette" ? facts?.palette?.band : undefined;
+  if (band !== undefined) return { value, [`band_${band}`]: value };
   const name = rasterClassOf(style, value, { t: ctx.t, locale: ctx.locale, described });
   return name === undefined ? { value } : { value, class: name };
 }
@@ -176,7 +192,9 @@ async function pointRecord(
   if (!point) return null;
   const image = render.type === "image" || render.type === undefined;
   const styled = image ? null : formula ? point.styled : point.values[(num(band) ? band : 1) - 1];
-  const record = image ? {} : valueRecord(style, styled, ctx, describedOf(layer, style));
+  const record = image
+    ? {}
+    : valueRecord(style, styled, ctx, describedOf(layer, style), tableFactsOf(layer, style));
   // A styled value the map does not draw there (the style's no data, a hidden class): no popup.
   if (record === null && num(styled)) return null;
   const out: Record<string, unknown> = record ?? {};
@@ -216,8 +234,7 @@ export const cellSource: InfoSource = {
       // Nothing drawn there (no data, outside the file): no popup, no request.
       if (rgba === null) return null;
       shown = read && rgba ? pixelValuesAt(read.pixels, rgba) : null;
-      // Without pixels to read, a pixel this browser could not read, or a color that no entry or two entries of the
-      // color table have (or that is not opaque): the service answers a click.
+      // Without pixels to read, or a pixel this browser could not read: the service answers a click.
       if (!shown) {
         if (ctx.trigger === "hover") return null;
         const exact = await pointRecord(layer, style, lngLat, ctx);
@@ -230,7 +247,13 @@ export const cellSource: InfoSource = {
         lngLat,
         tileUnder(ctx.map, valueTileOptions(tiles.values), lngLat)
       );
-      shown = valueRecord(style, code === null ? null : atStep(code, tiles.values), ctx, tiles.values);
+      shown = valueRecord(
+        style,
+        code === null ? null : atStep(code, tiles.values),
+        ctx,
+        tiles.values,
+        tableFactsOf(layer, style)
+      );
     }
     if (!shown) return null;
     const first: InfoRecord = { values: shown, exact: false };

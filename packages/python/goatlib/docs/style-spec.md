@@ -2203,7 +2203,9 @@ and there is no feature limit.
 **Top-level keys:**
 
 - `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `nearest`
-  for continuous, categorical and hillshade colors, `linear` for images and shading), `render`, `legend`, `popup`;
+  for continuous, categorical and hillshade colors, `linear` for images and shading; codes never blend, so
+  `categorical` and an image drawn with its file's color table draw `nearest` whatever it says), `render`, `legend`,
+  `popup`;
 - for `image` also the adjustments `brightness`, `contrast`, `saturation` (-1 to 1, default 0) and `hue` (degrees).
 
 **Render types:** `image`, `continuous`, `categorical`, `hillshade`. Every type takes:
@@ -2213,9 +2215,10 @@ and there is no feature limit.
 - `band`, except `image`.
 
 The raster service (geoapi) reads the cells and MapLibre colors them: `continuous`, `categorical` with classes and
-`hillshade` draw value tiles, so a color edit loads no tiles and a new band, formula or `resampling` does. The service
-colors `image`, colors over float cells of an unknown range, and colorings past 4096 stops whose token fits in a URL
-(else not supported). Screen and print look the same. Map services (9.8) draw as sent, adjustments as MapLibre paint.
+`hillshade` draw value tiles, so a color edit loads no tiles and a new band, formula or `resampling` does; so does an
+image drawn with its file's color table (9.1). The service colors other images, colors over float cells of an unknown
+range, and colorings past 4096 stops whose token fits in a URL (else not supported). Screen and print look the same.
+Map services (9.8) draw as sent, adjustments as MapLibre paint.
 
 ### 9.1 Image
 
@@ -2252,6 +2255,13 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
   the file's color table; else the bands the file marks red, green and blue (its color interpretation), in that order,
   where it marks all three; else its first three bands of values (an alpha band holds none). A single-band raster
   without a color table is drawn in grey from its lowest to its highest value.
+- **An image drawn with its file's color table** (no `bands`, values not scaled, a table of at most 256 entries) is
+  drawn from the value tiles of the band the table colors, read `nearest`: each entry's code in its color (an entry
+  drawn partly transparent with its alpha), codes without an entry, entries drawn fully transparent, the file's and
+  the style's no data transparent. It draws the picture the service would, and the map holds every cell's code (9.7),
+  also where entries share a color. The adjustments go onto the table's colors with the formulas of MapLibre's raster
+  layer (hue, saturation, contrast, brightness), so it looks as the image would; adjustments that vary by zoom cannot
+  be colors of codes, so such a style draws the service's colored tiles, as other images do.
 - `brightness` b compiles to MapLibre as `raster-brightness-min = max(0, b)` and `raster-brightness-max = min(1, 1 + b)`;
   `contrast`, `saturation` and `hue` map one to one to `raster-contrast`, `raster-saturation`, `raster-hue-rotate`.
 
@@ -2425,6 +2435,10 @@ again, as it is their `domain`.
 
 ### 9.5 Categories
 
+Categories never blend codes: they draw `nearest` whatever `resampling` says, from value tiles read `nearest` and from
+the service's colored tiles, whose cells it always reads nearest. Categories without classes draw the file as stored:
+with a color table, as an image drawn with it (9.1), without the adjustments.
+
 > "Land cover classes with my names and colors, wetland hidden, values without a class in grey."
 
 <!-- check: landcover -->
@@ -2558,14 +2572,11 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
   the raster service's point query; `band_<n>` is known on click only. An image whose pixels are its values hovers
   the same way, reading the bands it draws from the pixels of the colored tiles the map has loaded: unsigned 8 bit
   bands without a scale or offset, drawn as they are (the three it draws by default without a color table, 9.1, or
-  three chosen in `bands`). An image drawn with its file's color table hovers the code whose color the pixel has, as
-  `value` and `band_<n>`, where only one entry of the table has that color: the raster service's description of the
-  colored tiles gives every entry's color from the file's header, so the map tells that before any hover, also for a
-  code no statistics met. Entries drawn fully transparent do not count; two that differ in alpha alone share a color.
-  Over a color two entries share, or none has, and over a pixel that is not opaque (its color read back may round onto
-  another entry's), a hover shows nothing and a click asks the point query. Other images, and a color scale the raster
-  service colors (9), have no values on the map: they never open on hover, and a click shows the exact values from
-  the point query only.
+  three chosen in `bands`). An image drawn with its file's color table is drawn from value tiles (9.1), so it hovers
+  each cell's code, as `value` and `band_<n>`, on every color, also where entries of the table share one; the default
+  content shows the code with its entry's color. A code the table has no entry for draws nothing and opens no popup.
+  Other images, and a color scale the raster service colors (9), have no values on the map: they never open on hover,
+  and a click shows the exact values from the point query only.
 - **Pointer:** while the popup is on, whatever opens it, the pointer shows over what it shows: a cell with a value, or a
   pixel the map paints of an image. A hover popup hides while the map moves and reads afresh on the next pointer
   move.
@@ -3238,7 +3249,7 @@ are part of the format: an output that breaks one of them draws something else t
 | H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value; with `extrude`, one `fill-extrusion` layer instead (no outline), height `base` + scaled value x `tallest`, one expression per computed resolution chosen with `match` on the tile's resolution |
 | polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity; no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
 | map document `scene` and `view` | not layers: root `projection` (`globe` as a zoom expression from `vertical-perspective` at 8 to `mercator` at 9), `terrain` (a `raster-dem` source of the deployment's Terrarium tiles), `sky` and `light` (a set light's position from `global-state`; a missing one is a `viewport` light), a terrain hillshade layer and the building layer `goat-buildings` (`buildings.opacity` is its `fill-extrusion-opacity` and that of the basemap's own 3D building layers); every hillshade's illumination reads the light from `global-state`. `maxPitch` 85 in 3D, 0 in 2D |
-| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity in the alpha of its colors. A hillshade's source raises a low relief: its four factors times k, the largest power of two that keeps the band's range (the description's `range`, its minimum to maximum) within 1000, at most 16, and 1 for an unknown range; the colors' stop values on that source times k too. MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so without it the slopes of flat terrain are lost; a power of two keeps every decoded value exact, the tile addresses and the values read for popups keep the file's encoding. `image`, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
+| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity in the alpha of its colors. A hillshade's source raises a low relief: its four factors times k, the largest power of two that keeps the band's range (the description's `range`, its minimum to maximum) within 1000, at most 16, and 1 for an unknown range; the colors' stop values on that source times k too. MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so without it the slopes of flat terrain are lost; a power of two keeps every decoded value exact, the tile addresses and the values read for popups keep the file's encoding. An image drawn with its file's color table (9.1): the value tiles of the table's band read `nearest` under a `color-relief` layer whose stops are the table's colors with the adjustments applied, `resampling: nearest`, the layer opacity as `color-relief-opacity`; it waits for the colored tiles' description, whose band facts give the table, then for the values'. Other images, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
 | map service | `raster` source with the service's tile URL (WMS `GetMap` with `{bbox-epsg-3857}` and `STYLES` = `service_style`; WMTS with `Style`; XYZ as given) and a `raster` layer with `raster-opacity`, the adjustments as in 9.1 and `raster-resampling` |
 
 > "Cycle routes with a white edge, width by zoom, shifted 2 px, an arrow in the middle; planned routes dashed, faded,
@@ -3614,7 +3625,7 @@ part overrides.
 
 | Key | Values and defaults |
 |---|---|
-| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` (on click for `continuous`, `categorical` and `hillshade`, none for `image`) |
+| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone; categorical and an image drawn with its file's color table always `nearest`), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` (on click for `continuous`, `categorical` and `hillshade`, none for `image`) |
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |

@@ -12,7 +12,7 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 import { type SourceLayer, coverageUrl, imageTilesetUrl, sourceOf } from "@/lib/style/layerSource";
 import { rangeText, valuesText } from "@/lib/style/legend";
 import { fromPopupConfig, toPopupConfig } from "@/lib/style/popup";
-import { classEnds, rasterColorSpec } from "@/lib/style/raster/color";
+import { classEnds, rasterColorSpec, tableColorSpec } from "@/lib/style/raster/color";
 import {
   type RasterInfo,
   bandFactsOf,
@@ -24,7 +24,6 @@ import {
 import { type NamedRasterColorSpec, rasterClassAt } from "@/lib/style/raster/tileValues";
 import {
   type BandFacts,
-  type Palette,
   type RasterValues,
   type ReliefStop,
   reliefColorAt,
@@ -63,7 +62,8 @@ export interface RasterTexts {
   names?: string[];
   /** The value tiles' description the map loaded: the cell's color is the one its relief stops give. */
   described?: RasterValues;
-  /** The colored tiles' band facts the map loaded: an image's pixels may be its values (`imagePixels`). */
+  /** The colored tiles' band facts the map loaded: an image's pixels may be its values, or its codes are drawn from
+   * value tiles with its color table (`imagePixels`). */
   facts?: BandFacts;
 }
 
@@ -79,8 +79,8 @@ export const opensOn = (trigger: RasterTrigger | undefined, on: "click" | "hover
   trigger === on || trigger === "click_and_hover";
 
 /** A raster style's popup rule; undefined when it opens none: switched off, or an image without a `popup` key. A hover
- * opens it only where the map has the values to read: its value tiles, or an image's pixels that are its values
- * (`imagePixels`); the data tell that, not the style. */
+ * opens it only where the map has the values to read: its value tiles (an image drawn with its color table too), or
+ * an image's pixels that are its values (`imagePixels`); the data tell that, not the style. */
 export function rasterPopupRuleOf(style: JsonObject): RasterPopupRule | undefined {
   const popup = style.popup;
   const type = renderOf(style).type;
@@ -121,40 +121,23 @@ export function pixelValueBands(
     : null;
 }
 
-/** What an image's drawn pixels are (spec 9.7): the values of 8 bit bands drawn as they are, red, green and blue
- * (`pixelValueBands`); or, drawn with the file's color table, the code of the band it colors (`codes`: each color's
- * code, null for a color two entries share). Null where they are colors only: a hover reads nothing there. */
+/** What a hover over an image reads (spec 9.7): the values of 8 bit bands drawn as they are, red, green and blue, from
+ * its pixels (`pixelValueBands`); or, drawn with the file's color table, the code of the band the table colors, from
+ * the value tiles the map draws it from (`tableColorSpec`), every code whatever its color, and the table's `colors`.
+ * Null where its pixels are colors only: a hover reads nothing there. */
 export type ImagePixels =
   | { kind: "bands"; bands: [number, number, number] }
-  | { kind: "palette"; bands: [number]; colors: Record<number, string>; codes: Map<string, number | null> };
+  | { kind: "palette"; bands: [number]; colors: Record<number, string> };
 
-/** Each color of a color table and its code: null where two entries share it, even entries that differ in alpha alone
- * (the map's pixel read gives no alpha), so a pixel never shows another entry's code. The table is the file's whole
- * one, so a code no statistics met counts too. Null where no color is one entry's: nothing to hover. Kept per palette:
- * read on every move. */
-const inverses = new WeakMap<Palette, Map<string, number | null> | null>();
-
-function codesOf(palette: Palette): Map<string, number | null> | null {
-  if (inverses.has(palette)) return inverses.get(palette)!;
-  const codes = new Map<string, number | null>();
-  for (const [code, color] of Object.entries(palette.colors)) {
-    const key = color.toLowerCase();
-    codes.set(key, codes.has(key) ? null : Number(code));
-  }
-  const found = [...codes.values()].some((code) => code !== null) ? codes : null;
-  inverses.set(palette, found);
-  return found;
-}
-
-/** What an image's pixels are (`ImagePixels`), from the file's band facts; the one rule the map and the style panel
- * follow for a hover over an image. */
+/** What a hover over an image reads (`ImagePixels`), from the file's band facts; the one rule the map and the style
+ * panel follow for a hover over an image. */
 export function imagePixels(style: JsonObject, facts: Partial<BandFacts> | undefined): ImagePixels | null {
   const bands = pixelValueBands(style, facts);
   if (bands) return { kind: "bands", bands };
-  const render = renderOf(style);
-  if (!isImage(render) || choosesBands(render) || !facts?.colorTable || !facts.palette) return null;
-  const codes = codesOf(facts.palette);
-  return codes ? { kind: "palette", bands: [facts.palette.band], colors: facts.palette.colors, codes } : null;
+  const table = tableColorSpec(style, facts);
+  return table && facts?.palette
+    ? { kind: "palette", bands: [facts.palette.band], colors: facts.palette.colors }
+    : null;
 }
 
 const hexOf = (rgb: readonly number[]) =>
@@ -163,15 +146,12 @@ const hexOf = (rgb: readonly number[]) =>
     .map((v) => Math.round(v).toString(16).padStart(2, "0"))
     .join("")}`;
 
-/** The values a drawn pixel of red, green, blue and alpha `rgba` holds: its bands' values, or its code as the value and
- * as its band; null for a color no entry or two entries of the table have, and for a pixel that is not opaque (its
- * color read through a canvas may round onto another entry's). */
-export function pixelValuesAt(pixels: ImagePixels, rgba: readonly number[]): Record<string, number> | null {
-  if (pixels.kind === "bands")
-    return Object.fromEntries(pixels.bands.map((band, i) => [`band_${band}`, rgba[i]]));
-  if (rgba[3] !== 255) return null;
-  const code = pixels.codes.get(hexOf(rgba));
-  return code === undefined || code === null ? null : { value: code, [`band_${pixels.bands[0]}`]: code };
+/** The values a drawn pixel of red, green, blue (and alpha) `rgba` holds: the bands it draws, by band. */
+export function pixelValuesAt(
+  pixels: Extract<ImagePixels, { kind: "bands" }>,
+  rgba: readonly number[]
+): Record<string, number> {
+  return Object.fromEntries(pixels.bands.map((band, i) => [`band_${band}`, rgba[i]]));
 }
 
 /** The band an image colors with its file's color table: its code is the cell's `value`. Null for anything else. */
@@ -302,12 +282,19 @@ export function rasterClassOf(style: JsonObject, value: number, texts: RasterTex
 }
 
 /** Whether the map draws a cell of `value` (the raster service colors it the same, goatlib.raster.color): not in a
- * hidden class or category, nor a value in no category without a color for the rest, nor beyond a color range or
- * stops whose outside cells are left out (`outside: "hide"`; a range not yet known spreads over the values the map
- * loaded, `described`). A hillshade draws its shading under any color; an image is drawn as it is. */
-export function rasterDraws(style: JsonObject, value: number, described?: RasterValues): boolean {
+ * hidden class or category, nor a value in no category without a color for the rest, nor beyond a color range, stops
+ * or classes whose outside cells are left out (`outside: "hide"`; a range not yet known spreads over the values the map
+ * loaded, `described`), nor, for an image drawn with its file's color table (`facts`, the file's band facts), a code
+ * without an entry or the style's no data. A hillshade draws its shading under any color; another image is drawn as it
+ * is. */
+export function rasterDraws(
+  style: JsonObject,
+  value: number,
+  described?: RasterValues,
+  facts?: Partial<BandFacts>
+): boolean {
   const render = renderOf(style);
-  const spec = render.type === "hillshade" ? null : rasterColorSpec(render);
+  const spec = tableColorSpec(style, facts) ?? (render.type === "hillshade" ? null : rasterColorSpec(render));
   if (!spec || spec.kind === "rgb") return true;
   if (spec.kind === "classes" || spec.kind === "categories")
     return rasterClassAt(spec, value, described?.range) !== null;
@@ -345,16 +332,26 @@ function classPalette(
 
 /** The relief stops the map colors a style's value tiles with (compile/rasters.ts), kept per render and description:
  * the popup reads them on every pointer move. */
-const stopsKept = new WeakMap<JsonObject, { values: RasterValues; stops: ReliefStop[] | null }>();
+const stopsKept = new WeakMap<
+  JsonObject,
+  { values: RasterValues; facts?: Partial<BandFacts>; stops: ReliefStop[] | null }
+>();
 
-/** The color the map draws a cell of `value` in, from the relief stops it draws with; null where it draws none (shading
- * alone, colors the raster service paints, no description loaded). */
-function cellColor(style: JsonObject, value: number, described: RasterValues | undefined): string | null {
+/** The color the map draws a cell of `value` in, from the relief stops it draws with (categories without classes: the
+ * file's color table, `tableColorSpec` with its band facts `facts`); null where it draws none (shading alone, colors
+ * the raster service paints, no description loaded). */
+function cellColor(
+  style: JsonObject,
+  value: number,
+  described: RasterValues | undefined,
+  facts?: Partial<BandFacts>
+): string | null {
   if (!described) return null;
   const render = renderOf(style);
   let kept = stopsKept.get(render);
-  if (!kept || kept.values !== described) {
-    kept = { values: described, stops: browserStops(rasterColorSpec(render), described) };
+  if (!kept || kept.values !== described || kept.facts !== facts) {
+    const spec = tableColorSpec(style, facts) ?? rasterColorSpec(render);
+    kept = { values: described, facts, stops: browserStops(spec, described) };
     stopsKept.set(render, kept);
   }
   return kept.stops ? reliefColorAt(kept.stops, described, value) : null;
@@ -435,7 +432,10 @@ function defaultBlocks(
   }
   const legend = isObject(style.legend) ? style.legend : {};
   const unit = text(legend.unit);
-  const swatch = values && num(values.value) ? cellColor(style, values.value, texts.described) : null;
+  const swatch =
+    values && num(values.value)
+      ? cellColor(style, values.value, texts.described, texts.facts ?? bandFactsOf(texts.info))
+      : null;
   const value: JsonObject = {
     field: "value",
     label: valueLabel(style, texts),
@@ -511,9 +511,13 @@ export function rasterPopupConfig(
   // Without the file's info, the band names of the description the map loaded: its value tiles', else (an image) its
   // colored tiles'.
   const dataset = String(layer.layer_id ?? layer.id);
-  const query = valueQuery(style);
+  // The band facts of an image or categories, which tell whether it is drawn from value tiles with its color table.
+  const facts =
+    isImage(renderOf(style)) || renderOf(style).type === "categorical"
+      ? loadedRasterTileset(tilesetUrl(imageTilesetUrl(dataset)))?.bands
+      : undefined;
+  const query = valueQuery(style, facts);
   const described = query ? loadedRasterValues(valuesUrl(coverageUrl(dataset), query)) : undefined;
-  const facts = query ? undefined : loadedRasterTileset(tilesetUrl(imageTilesetUrl(dataset)))?.bands;
   const names = texts.info || texts.names ? undefined : (described?.names ?? facts?.names);
   return rasterPopupProperties(style, rule, values, {
     ...texts,

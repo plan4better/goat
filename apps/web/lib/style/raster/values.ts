@@ -8,6 +8,7 @@ import {
   classReach,
   rasterColorSpec,
   rgbOf,
+  tableColorSpec,
 } from "@/lib/style/raster/color";
 import { colorInterpOf, fileName, paletteOf } from "@/lib/style/raster/metadata";
 
@@ -21,10 +22,12 @@ export const TILE_SIZE = 512;
 export const MAX_RELIEF_STOPS = 4096;
 
 /** The colors of the file's color table (geoapi `palette`): the band the table colors and each entry's color
- * ("#rrggbb", without its alpha), the entries drawn fully transparent left out. */
+ * ("#rrggbb", without its alpha), the entries drawn fully transparent left out; the alpha (0 to 1) of those drawn
+ * partly transparent. */
 export interface Palette {
   band: number;
   colors: Record<number, string>;
+  alphas?: Record<number, number>;
 }
 
 /** What tells whether a raster image's tile pixels are its bands' values (`imagePixels`): the file's band count
@@ -41,7 +44,8 @@ export interface BandFacts {
   /** Each band's color interpretation, in band order (GDAL's names: "red", "green", "blue", "alpha", "palette",
    * ...): an image draws the bands marked red, green and blue (`imageBands`). */
   colorInterp?: string[];
-  /** With a color table: its entries' colors, which tell a drawn pixel's code where only one entry has its color. */
+  /** With a color table: its entries' colors, which an image drawn with the table colors its table band's value tiles
+   * in (`tableColorSpec`). */
   palette?: Palette;
 }
 
@@ -83,17 +87,30 @@ export type ReliefStop = [q: number, color: string];
 
 const num = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-/** How a raster style draws its cells past their resolution (spec 9): the style's `resampling`, else crisp cells for a
- * color scale (continuous, categorical, a hillshade's colors) and smooth ones for images and shading alone. */
-export function resamplingOf(style: JsonObject): "linear" | "nearest" {
+/** Whether a raster style draws codes, which never blend (spec 9): categories, and an image drawn with its file's color
+ * table (`tableColorSpec`, which needs the file's band facts). Their cells stay crisp whatever `resampling` says. */
+export function drawsCodes(style: JsonObject, facts?: Partial<BandFacts>): boolean {
+  const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
+  return render.type === "categorical" || tableColorSpec(style, facts) !== null;
+}
+
+/** How a raster style draws its cells past their resolution (spec 9): crisp where it draws codes (`drawsCodes`, with the
+ * file's band facts `facts`); else the style's `resampling`, else crisp cells for a color scale (continuous, a
+ * hillshade's colors) and smooth ones for images and shading alone. */
+export function resamplingOf(style: JsonObject, facts?: Partial<BandFacts>): "linear" | "nearest" {
+  if (drawsCodes(style, facts)) return "nearest";
   if (style.resampling === "nearest" || style.resampling === "linear") return style.resampling;
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
-  if (render.type === "continuous" || render.type === "categorical") return "nearest";
+  if (render.type === "continuous") return "nearest";
   return render.type === "hillshade" && rasterColorSpec(render) !== null ? "nearest" : "linear";
 }
 
-/** The values a raster style colors in the browser; null for images (categories without classes too). */
-export function valueQuery(style: JsonObject): ValueQuery | null {
+/** The values a raster style colors in the browser; null for images (categories without classes too), but an image
+ * drawn with its file's color table, which reads its table band's codes (`tableColorSpec`, with the file's band facts
+ * `facts`: without them none). */
+export function valueQuery(style: JsonObject, facts?: Partial<BandFacts>): ValueQuery | null {
+  const table = tableColorSpec(style, facts);
+  if (table) return { band: table.band as number, resampling: "nearest" };
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
   if (render.type !== "continuous" && render.type !== "categorical" && render.type !== "hillshade")
     return null;
@@ -241,7 +258,7 @@ type Knot = [q: number, color: Rgba];
 
 const CLEAR: Rgba = [0, 0, 0, 0];
 
-const fill = (color: string | null): Rgba => (color === null ? CLEAR : [...rgbOf(color), 1]);
+const fill = (color: string | null, alpha = 1): Rgba => (color === null ? CLEAR : [...rgbOf(color), alpha]);
 
 /** Rounds as goatlib's encoder rounds a value to its code (numpy's rint: halves to even). */
 const rint = (x: number): number => {
@@ -417,7 +434,7 @@ export function reliefStops(
     // A category holds the values that round to it (none round to a fraction); the first of the same value wins.
     for (const k of [...spec.classes].reverse())
       if (Number.isInteger(k.value))
-        paint(knots, first(k.value - 0.5), first(k.value + 0.5) - 1, fill(k.color));
+        paint(knots, first(k.value - 0.5), first(k.value + 0.5) - 1, fill(k.color, k.alpha));
   }
   // The style's no-data values, with the service's tolerance.
   for (const x of spec.noData) {

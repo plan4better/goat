@@ -503,11 +503,11 @@ def palette(info: RasterInfo) -> dict[str, Any] | None:
     """What an image drawn with the file's color table (goatlib `_image`)
     shows, from the header: the band the table colors (`image_bands`) and every
     entry's color (RGBA; goatlib draws an entry without alpha opaque, a value
-    the table does not list transparent). A map reads a drawn pixel's code from
-    its color where exactly one entry it can draw has that color (spec 9.7),
-    so a code no statistics met is never mistaken for another. None without a
-    color table, for stored values that are scaled (no codes of the table), and
-    for a table longer than an 8 bit band's."""
+    the table does not list transparent). A map draws such an image from that
+    band's value tiles in these colors, so it holds every cell's code, also
+    where entries share a color (spec 9.1, 9.7). None without a color table,
+    for stored values that are scaled (no codes of the table), and for a table
+    longer than an 8 bit band's."""
     table = info.color_table
     if not table or len(table) > MAX_PALETTE or info.scaled or not info.value_bands:
         return None

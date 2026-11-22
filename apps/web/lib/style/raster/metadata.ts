@@ -99,11 +99,16 @@ export function bandLabel(info: Pick<RasterInfo, "names"> | undefined, band: num
   return info?.names?.[band - 1] || t("style_editor.band_n", { n: band });
 }
 
+/** The band facts of each info read, one object per info: the popup's color cache keys on them (raster/popup.ts). */
+const factsKept = new WeakMap<RasterInfo, BandFacts>();
+
 /** The facts that tell whether an image's pixels are its values (`imagePixels`), from the file's info; undefined
- * where the info does not tell its data type or scaling. */
+ * where the info does not tell its data type or scaling. The same object for the same info. */
 export function bandFactsOf(info: RasterInfo | undefined): BandFacts | undefined {
   if (!info || info.dtype === undefined || info.scaled === undefined) return undefined;
-  return {
+  const kept = factsKept.get(info);
+  if (kept) return kept;
+  const facts: BandFacts = {
     count: info.bands,
     dtype: info.dtype,
     scaled: info.scaled,
@@ -112,6 +117,8 @@ export function bandFactsOf(info: RasterInfo | undefined): BandFacts | undefined
     ...(info.colorInterp ? { colorInterp: info.colorInterp } : {}),
     ...(info.palette ? { palette: info.palette } : {}),
   };
+  factsKept.set(info, facts);
+  return facts;
 }
 
 const RGB = ["red", "green", "blue"] as const;
@@ -147,12 +154,14 @@ export const colorInterpOf = (json: unknown): string[] | undefined =>
   Array.isArray(json) && json.every((c) => typeof c === "string") ? (json as string[]) : undefined;
 
 /** The colors of a color table's entries as geoapi tells them (`palette`: RGBA by code), without the entries drawn
- * fully transparent (never read); undefined without a table, or of another shape. */
+ * fully transparent (never drawn), the alpha of those drawn partly transparent apart; undefined without a table, or
+ * of another shape. */
 export function paletteOf(json: unknown): Palette | undefined {
   if (!json || typeof json !== "object") return undefined;
   const { band, colors } = json as { band?: unknown; colors?: unknown };
   if (!Number.isInteger(band) || !colors || typeof colors !== "object") return undefined;
   const out: Record<number, string> = {};
+  const alphas: Record<number, number> = {};
   for (const [code, rgba] of Object.entries(colors)) {
     const valid =
       /^\d+$/.test(code) &&
@@ -161,10 +170,12 @@ export function paletteOf(json: unknown): Palette | undefined {
       rgba.slice(0, 3).every((v) => Number.isInteger(v) && v >= 0 && v <= 255);
     if (!valid) return undefined;
     // An entry without alpha is drawn opaque (goatlib `_table`).
-    if (rgba[3] === 0) continue;
+    const alpha = typeof rgba[3] === "number" ? rgba[3] : 255;
+    if (alpha === 0) continue;
     out[Number(code)] = hex(rgba as number[]);
+    if (alpha < 255) alphas[Number(code)] = Number((alpha / 255).toFixed(4));
   }
-  return { band: band as number, colors: out };
+  return { band: band as number, colors: out, ...(Object.keys(alphas).length ? { alphas } : {}) };
 }
 
 /** The file's bands of values, by index: those with statistics. An alpha band (an orthophoto's transparency) is none,

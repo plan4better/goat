@@ -1,17 +1,20 @@
 // Raster files (spec 9) drawn from geoapi. Continuous, classified and categorical renders color the cells' values in
 // the browser: value tiles as a `raster-dem` source with their custom encoding, colored by `color-relief`, so a color
-// edit is a paint change. Hillshade shades the same values. Images, and a coloring needing more stops than
-// color-relief takes, draw image tiles that geoapi colors, with the coloring in the tile URL as a token.
+// edit is a paint change. Hillshade shades the same values. An image drawn with its file's color table colors its
+// table band's codes the same way, in the table's colors, so the map holds every cell's code. Other images, and a
+// coloring needing more stops than color-relief takes, draw image tiles that geoapi colors, with the coloring in the
+// tile URL as a token.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
-import { imagePaint, zoomRange } from "@/lib/style/compile/services";
+import { imageAdjustment, imagePaint, zoomRange } from "@/lib/style/compile/services";
 import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type RasterColorSpec, rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
+import { type RasterColorSpec, rasterColorSpec, rgbOf, tableColorSpec } from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
 import {
+  type BandFacts,
   type RasterValues,
   type ReliefStop,
   TILE_SIZE,
@@ -123,11 +126,25 @@ export function browserStops(spec: RasterColorSpec | null, values: RasterValues)
 }
 
 /** Whether a raster style draws value tiles once their description (`values`) is loaded: colors the browser paints,
- * or a hillshade's shading. Where it does not, nothing on the map holds the cells' values. */
-export function drawsValueTiles(style: JsonObject, values: RasterValues): boolean {
+ * or a hillshade's shading; for an image drawn with its file's color table, with the file's band facts (`facts`).
+ * Where it does not, nothing on the map holds the cells' values. */
+export function drawsValueTiles(
+  style: JsonObject,
+  values: RasterValues,
+  facts?: Partial<BandFacts>
+): boolean {
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
-  if (!valueQuery(style)) return false;
-  return render.type === "hillshade" || browserStops(rasterColorSpec(render), values) !== null;
+  if (!valueQuery(style, facts)) return false;
+  const spec = tableColorSpec(style, facts) ?? rasterColorSpec(render);
+  return render.type === "hillshade" || browserStops(spec, values) !== null;
+}
+
+/** An image's coloring by its file's color table (`tableColorSpec`) with the style's adjustments on its colors, as
+ * MapLibre's raster layer would show the image (`imageAdjustment`). */
+function adjusted<S extends { classes: Array<{ color: string | null }> }>(spec: S, style: JsonObject): S {
+  const adjust = imageAdjustment(style);
+  if (!adjust) return spec;
+  return { ...spec, classes: spec.classes.map((c) => ({ ...c, color: c.color && adjust(c.color) })) };
 }
 
 /** The layers of a raster file style; its sources and colorings go into `out`. */
@@ -138,16 +155,23 @@ export function rasterLayers(
   out: CompiledLayer
 ): LayerSpecification[] {
   const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
-  const spec = rasterColorSpec(render);
-  const query = valueQuery(style);
-  const values = query ? source.values : undefined;
+  // An image drawn with its file's color table colors its table band's values in the table's colors, once the colored
+  // tiles' description has told the table; where those values failed (null), the colored tiles draw it, as any image.
+  const facts = source.values === null ? undefined : source.image?.bands;
+  const table = tableColorSpec(style, facts);
+  // The adjustments are an image's (categories without classes have none, as `imagePaint` gives them none).
+  const image = render.type === "image" || render.type === undefined;
+  const spec = table ? (image ? adjusted(table, style) : table) : rasterColorSpec(render);
+  const query = valueQuery(style, facts);
+  const values = query ? (source.values ?? undefined) : undefined;
   // A render of values draws once their description is loaded, an image whose source names the colored tiles'
   // description once that has answered (null: there is none); until then nothing, and nothing is missing.
   if (query ? !values : source.tileset !== undefined && source.image === undefined) return [];
   // A hillshade alone still draws from values of an unknown range (flat, as their span is).
   const stops = values ? browserStops(spec, values) : null;
-  // Images, colors over an unknown range and a coloring with more stops than color-relief takes draw image tiles.
-  const token = spec && !stops ? rasterToken(spec) : null;
+  // Images, colors over an unknown range and a coloring with more stops than color-relief takes draw image tiles; an
+  // image's own coloring, never its table's classes.
+  const token = spec && !stops ? rasterToken(table ? rasterColorSpec(render)! : spec) : null;
   // A coloring too long for a URL (hundreds of categories past the stop limit) is not sent (spec 19: raster_service).
   if (token && token.length > MAX_TOKEN_LENGTH) {
     out.unsupported.push("raster_service");
@@ -176,7 +200,7 @@ export function rasterLayers(
       ...(bounds ? { bounds } : {}),
     };
     const paint = imagePaint(style, render.type === "image" || render.type === undefined);
-    if (resamplingOf(style) === "nearest") paint["raster-resampling"] = "nearest";
+    if (resamplingOf(style, facts) === "nearest") paint["raster-resampling"] = "nearest";
     layers.push({
       id: `${id}-raster`,
       type: "raster",
@@ -195,7 +219,7 @@ export function rasterLayers(
     const paint: Record<string, unknown> = { "color-relief-color": reliefColor(stops, values, k) };
     const opacity = toProperty(fromForm(style.opacity, "number", 1));
     if (opacity !== 1) paint["color-relief-opacity"] = opacity;
-    if (resamplingOf(style) === "nearest") paint.resampling = "nearest";
+    if (resamplingOf(style, facts) === "nearest") paint.resampling = "nearest";
     layers.push({
       id: `${id}-relief`,
       type: "color-relief",

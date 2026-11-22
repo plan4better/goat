@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { compileLayer } from "@/lib/style/compile";
+import { imageAdjustment } from "@/lib/style/compile/services";
 import type { CompileInput } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import type { JsonObject } from "@/lib/style/json";
 import { type RasterColorSpec, rasterColorSpec } from "@/lib/style/raster/color";
 import { rasterToken } from "@/lib/style/raster/token";
 import {
@@ -10,6 +12,7 @@ import {
   type RasterValues,
   type ReliefStop,
   reliefColor,
+  reliefColorAt,
   reliefStops,
   valueTilesUrl,
   verticalScale,
@@ -321,11 +324,13 @@ describe("raster files colored in the browser over value tiles", () => {
         "nearest",
       ]);
       valid(crisp);
+      // Codes never blend: categories draw nearest whatever the style says.
       const smooth = compile({ resampling: "linear", render });
+      const blends = render.type !== "categorical";
       expect([render, paintOf(smooth, "9-relief").resampling, queryOf(smooth).get("resampling")]).toEqual([
         render,
-        undefined,
-        "bilinear",
+        blends ? undefined : "nearest",
+        blends ? "bilinear" : "nearest",
       ]);
     }
     // Images and shading alone stay smooth.
@@ -642,5 +647,221 @@ describe("raster files colored in the browser over value tiles", () => {
     );
     expect(fewer.unsupported).toEqual([]);
     expect(fewer.layers.map((l) => l.id)).toEqual(["9-relief"]);
+  });
+});
+
+/** The value tiles' description of an unsigned 8 bit band: its codes are the values plus one, code 0 no data. */
+const UINT8: RasterValues = {
+  encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+  range: [0, 205],
+  integer: true,
+  version: "7-e3",
+  maxzoom: 12,
+};
+/** The colored tiles' description of a road map with a color table on band 1: codes 0 and 1 white, 2 and 98 grey, 7
+ * green, 9 blue at half alpha; the other codes have no entry (an entry drawn fully transparent is none either). */
+const TABLE_IMAGE: RasterTileset = {
+  version: "7-e3",
+  maxzoom: 12,
+  bounds: BOUNDS,
+  bands: {
+    count: 1,
+    dtype: "uint8",
+    scaled: false,
+    colorTable: true,
+    colorInterp: ["palette"],
+    palette: {
+      band: 1,
+      colors: { 0: "#ffffff", 1: "#ffffff", 2: "#7f7f7f", 98: "#7f7f7f", 7: "#008000", 9: "#0000ff" },
+      alphas: { 9: 0.5 },
+    },
+  },
+};
+const TABLE_SOURCE = { ...SOURCE, tileset: `${ROOT}/tiles`, image: TABLE_IMAGE, values: UINT8 };
+
+/** The color-relief stops a compiled layer draws with, as codes of `values`. */
+function reliefOf(out: ReturnType<typeof compileLayer>, values: RasterValues = UINT8): ReliefStop[] {
+  const expression = paintOf(out, "9-relief")["color-relief-color"] as unknown[];
+  const pairs: ReliefStop[] = [];
+  for (let i = 3; i < expression.length; i += 2)
+    pairs.push([
+      ((expression[i] as number) + values.encoding.baseShift) / values.encoding.blueFactor,
+      expression[i + 1] as string,
+    ]);
+  return pairs;
+}
+/** The color a compiled layer draws a value in: "#rrggbb", or null for none. */
+const drawnAt = (out: ReturnType<typeof compileLayer>, value: number) =>
+  reliefColorAt(reliefOf(out), UINT8, value);
+
+describe("an image drawn with its file's color table", () => {
+  it("draws its table band's value tiles in the table's colors, nearest, with the layer's opacity", () => {
+    const out = compile({ opacity: 0.7, resampling: "linear", render: { type: "image" } }, TABLE_SOURCE);
+    expect(out.sources).toEqual({
+      s: {
+        type: "raster-dem",
+        tiles: [valueTilesUrl(COVERAGE, { band: 1, resampling: "nearest" }, UINT8)],
+        tileSize: 512,
+        encoding: "custom",
+        ...UINT8.encoding,
+        maxzoom: 12,
+      },
+    });
+    expect(out.layers.map((l) => l.type)).toEqual(["color-relief"]);
+    // Codes never blend: nearest, whatever the style says.
+    expect(paintOf(out, "9-relief")).toMatchObject({ resampling: "nearest", "color-relief-opacity": 0.7 });
+    // Every code in its entry's color, shared colors too; codes without an entry and no data draw nothing.
+    expect([0, 1, 2, 98, 7, 9].map((v) => drawnAt(out, v))).toEqual([
+      "#ffffff",
+      "#ffffff",
+      "#7f7f7f",
+      "#7f7f7f",
+      "#008000",
+      "#0000ff",
+    ]);
+    for (const v of [3, 8, 10, 50, 97, 99, 205]) expect(drawnAt(out, v), String(v)).toBeNull();
+    expect(reliefOf(out)[0]).toEqual([0, "rgba(0, 0, 0, 0)"]);
+    // An entry drawn partly transparent keeps its alpha.
+    expect(reliefOf(out).find(([q]) => q === 10)?.[1]).toBe("rgba(0, 0, 255, 0.5)");
+    expect(out.unsupported).toEqual([]);
+    valid(out);
+  });
+
+  it("leaves the style's no data out, and draws the colored tiles where its values failed or bands are chosen", () => {
+    const hidden = compile({ render: { type: "image", no_data: { values: [7] } } }, TABLE_SOURCE);
+    expect(drawnAt(hidden, 7)).toBeNull();
+    expect(drawnAt(hidden, 9)).toBe("#0000ff");
+    // Values that failed (null): the colored tiles, as any image, with the image's own coloring in the token.
+    const failed = compile({ render: { type: "image" } }, { ...TABLE_SOURCE, values: null });
+    expect(failed.layers.map((l) => l.type)).toEqual(["raster"]);
+    expect(coloringOf(failed)).toEqual({ v: 1, kind: "rgb", bands: null, noData: [] });
+    // Chosen bands are drawn as they are.
+    const chosen = compile({ render: { type: "image", bands: [1, 1, 1] } }, TABLE_SOURCE);
+    expect(chosen.layers.map((l) => l.type)).toEqual(["raster"]);
+    expect(coloringOf(chosen)).toMatchObject({ kind: "rgb", bands: [1, 1, 1] });
+    // Its values not loaded yet: nothing, and nothing missing.
+    const loading = compile({ render: { type: "image" } }, { ...TABLE_SOURCE, values: undefined });
+    expect([loading.sources, loading.layers, loading.unsupported]).toEqual([{}, [], []]);
+  });
+
+  it("applies the adjustments to the table's colors, as MapLibre's raster shader would", () => {
+    const style = { brightness: 0.2, contrast: -0.5, saturation: 0.5, hue: 30, render: { type: "image" } };
+    const out = compile(style, TABLE_SOURCE);
+    const adjust = imageAdjustment(style)!;
+    expect(drawnAt(out, 7)).toBe(adjust("#008000"));
+    expect(drawnAt(out, 0)).toBe(adjust("#ffffff"));
+    expect(adjust("#008000")).not.toBe("#008000");
+    // No raster paint: the colors carry the adjustments.
+    expect(Object.keys(paintOf(out, "9-relief")).sort()).toEqual(["color-relief-color", "resampling"]);
+    // Adjustments by zoom cannot be colors of a relief: the colored tiles draw, with the adjustments as paint.
+    const byZoom = compile(
+      {
+        brightness: {
+          zoom: [
+            [8, 0],
+            [14, 0.3],
+          ],
+        },
+        render: { type: "image" },
+      },
+      TABLE_SOURCE
+    );
+    expect(byZoom.layers.map((l) => l.type)).toEqual(["raster"]);
+    expect((byZoom.layers[0].paint as Record<string, unknown>)["raster-brightness-min"]).toEqual(
+      expect.arrayContaining(["interpolate"])
+    );
+    valid(byZoom);
+  });
+
+  it("categories without classes draw the file as stored: from values in its table's colors, as the image", () => {
+    for (const render of [{ type: "categorical" }, { type: "categorical", band: 1, classes: [] }]) {
+      const out = compile({ resampling: "linear", brightness: 0.4, render }, TABLE_SOURCE);
+      expect([render, out.layers.map((l) => l.type)]).toEqual([render, ["color-relief"]]);
+      expect(queryOf(out).get("band")).toBe("1");
+      expect(paintOf(out, "9-relief").resampling).toBe("nearest");
+      // Adjustments belong to images: the table's own colors.
+      expect([0, 1, 2, 7].map((v) => drawnAt(out, v))).toEqual(["#ffffff", "#ffffff", "#7f7f7f", "#008000"]);
+      expect(drawnAt(out, 3)).toBeNull();
+      valid(out);
+    }
+    // On another band than the table's: geoapi's colored tiles of that band, as before.
+    const other = compile({ render: { type: "categorical", band: 2, classes: [] } }, TABLE_SOURCE);
+    expect(other.layers.map((l) => l.type)).toEqual(["raster"]);
+    expect(coloringOf(other)).toMatchObject({ kind: "rgb", bands: null });
+    // With classes: the classes.
+    const classed = compile(
+      { render: { type: "categorical", classes: [{ value: 7, color: "#ff0000" }] } },
+      TABLE_SOURCE
+    );
+    expect(drawnAt(classed, 7)).toBe("#ff0000");
+    expect(drawnAt(classed, 0)).toBeNull();
+  });
+
+  it("categories draw nearest from their colored tiles too, whatever the style says", () => {
+    const render = { type: "categorical", classes: [{ value: 200, color: "#4a90c2" }] };
+    stopLimit.reached = true;
+    try {
+      const out = compile({ resampling: "linear", render });
+      expect(out.layers.map((l) => l.type)).toEqual(["raster"]);
+      expect(out.layers[0].paint).toMatchObject({ "raster-resampling": "nearest" });
+    } finally {
+      stopLimit.reached = false;
+    }
+    // Without classes (the file as stored) too.
+    expect(compile({ resampling: "linear", render: { type: "categorical" } }).layers[0].paint).toEqual({
+      "raster-resampling": "nearest",
+    });
+  });
+});
+
+describe("the image adjustments on colors", () => {
+  // MapLibre's raster.fragment.glsl, with the uniforms of raster_program.ts, on a color in 0..1:
+  //   spin:       rgb = (dot(rgb, w.xyz), dot(rgb, w.zxy), dot(rgb, w.yzx)), w = ((2c + 1) / 3, (-sqrt(3) s - c + 1) / 3,
+  //               (sqrt(3) s - c + 1) / 3) for the hue's angle (s, c its sine and cosine)
+  //   saturation: rgb += (average of the color before the spin - rgb) * (s > 0 ? 1 - 1 / (1.001 - s) : -s)
+  //   contrast:   rgb = (rgb - 0.5) * (c > 0 ? 1 / (1 - c) : 1 + c) + 0.5
+  //   brightness: rgb = mix(min, max, rgb), min = max(0, b), max = min(1, 1 + b) (spec 9.1)
+  // and the framebuffer clamps the result to 0..1. Each case below is worked out by hand from those lines.
+  const cases: Array<[JsonObject, string, string]> = [
+    // Half a turn: red's weights are -1/3, 2/3, 2/3; the negative red clamps to 0.
+    [{ hue: 180 }, "#ff0000", "#00aaaa"],
+    // Contrast -0.5 halves the distance to 0.5: 100 / 510 + 0.25 of 255 is 113.75.
+    [{ contrast: -0.5 }, "#646464", "#727272"],
+    // Saturation -1: every channel the average.
+    [{ saturation: -1 }, "#ff0000", "#555555"],
+    // Saturation 0.5 pushes each channel away from the average by 0.996.
+    [{ saturation: 0.5 }, "#80a060", "#80c040"],
+    // Brightness 0.2: from 0.2 to 1.
+    [{ brightness: 0.2 }, "#000000", "#333333"],
+    [{ brightness: 0.2 }, "#808080", "#999999"],
+    [{ brightness: 0.2 }, "#ffffff", "#ffffff"],
+    // Contrast pushes past 1 (1.304) before brightness halves it (0.652): clamped once, at the end, not between.
+    [{ contrast: 0.5, brightness: -0.5 }, "#e6e6e6", "#a6a6a6"],
+    // The slider ends: full contrast with full brightness (one flat color), never a color MapLibre cannot read.
+    [{ contrast: 1, brightness: 1 }, "#123456", "#ffffff"],
+    [{ contrast: 1, brightness: -1 }, "#123456", "#000000"],
+    [{ contrast: 1 }, "#7f7f7f", "#000000"],
+  ];
+  it.each(cases)("%j turns %s into %s", (adjustments, color, want) => {
+    expect(imageAdjustment(adjustments)!(color)).toBe(want);
+  });
+
+  it("is none without adjustments", () => {
+    expect(imageAdjustment({})).toBeNull();
+    expect(imageAdjustment({ brightness: 0, contrast: 0, saturation: 0, hue: 0 })).toBeNull();
+    expect(imageAdjustment({ brightness: null, contrast: null })).toBeNull();
+  });
+
+  it("the slider ends compile to colors MapLibre takes", () => {
+    for (const adjustments of [
+      { contrast: 1, brightness: 1 },
+      { contrast: 1, brightness: -1 },
+      { contrast: -1, saturation: 1, hue: 180 },
+    ]) {
+      const out = compile({ ...adjustments, render: { type: "image" } }, TABLE_SOURCE);
+      expect(out.layers.map((l) => l.type)).toEqual(["color-relief"]);
+      expect(JSON.stringify(out.layers)).not.toContain("NaN");
+      valid(out);
+    }
   });
 });

@@ -21,6 +21,13 @@ checks need to know about them to tiles.json.
   service encodes its tiles. MapLibre stretches a tile's picture over the tile,
   so each pixel is drawn as a cell many pixels wide: the browser's resampling
   shows at the cells' edges.
+- paletted-values.webp, paletted-image.webp: a one band 8 bit file with a color
+  table (`PALETTED_TABLE`), its codes in blocks as the cases' samples, the
+  file's no data around them: its value tile (band 1, read nearest) and the tile
+  the service colors it in as an image (`RasterSource.tile` with the file's
+  table). tiles.json `paletted` holds the value tile's encoding, each block's
+  code and the table as geoapi sends it (`palette`), so the lab draws the image
+  from its values as the web does and compares it with the service's picture.
 
 Run from the repository root, then format tiles.json as the web app does:
     uv run --no-sync python apps/web/lib/style/__tests__/lab/fixtures/raster/make_tiles.py
@@ -39,7 +46,7 @@ import numpy as np
 import rasterio
 from goatlib.raster.formula import Formula, parse_formula
 from goatlib.raster.source import RasterSource, encode_tile
-from goatlib.raster.token import decode_token
+from goatlib.raster.token import Rgb, decode_token
 from goatlib.raster.values import ValueEncoding, value_encoding
 from rasterio.transform import from_bounds
 
@@ -64,6 +71,21 @@ BLOCK = 32
 #: too.
 LARGE: Final = 512
 LARGE_CASES = ("categories",)
+#: A road map's color table, as a real one's: codes 0 and 1 share white, 2 and
+#: 98 grey. 3 has no entry set: a TIFF's table holds all 256 entries of an 8 bit
+#: band, those not set black, and no alpha. Its codes fill a block each
+#: (`PALETTED_CODES`), its no data the rest.
+PALETTED_TABLE = {
+    0: (255, 255, 255, 255),
+    1: (255, 255, 255, 255),
+    2: (127, 127, 127, 255),
+    98: (127, 127, 127, 255),
+    7: (0, 128, 0, 255),
+    9: (0, 0, 255, 255),
+    40: (230, 120, 20, 255),
+}
+PALETTED_CODES = [0, 1, 2, 98, 7, 9, 3, 40]
+PALETTED_NO_DATA = 255
 #: The cells' colors, row by row from the top.
 CELLS = [
     ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3"],
@@ -79,8 +101,14 @@ def cone() -> np.ndarray:
     return np.clip(HEIGHT * (1 - r / RADIUS), 0, None).astype("float32")
 
 
-def write_file(path: Path, data: np.ndarray, no_data: float | None) -> None:
-    """Bands (count x SIZE x SIZE) as a file that covers TILE exactly."""
+def write_file(
+    path: Path,
+    data: np.ndarray,
+    no_data: float | None,
+    colormap: dict[int, tuple[int, int, int, int]] | None = None,
+) -> None:
+    """Bands (count x SIZE x SIZE) as a file that covers TILE exactly, with
+    `colormap` as its first band's color table."""
     with rasterio.open(
         path,
         "w",
@@ -92,8 +120,11 @@ def write_file(path: Path, data: np.ndarray, no_data: float | None) -> None:
         crs="EPSG:3857",
         transform=from_bounds(*TMS.xy_bounds(TILE), SIZE, SIZE),
         nodata=no_data,
+        **({"photometric": "palette"} if colormap else {}),
     ) as out:
         out.write(data)
+        if colormap:
+            out.write_colormap(1, colormap)
 
 
 def case_bands(case: dict[str, Any]) -> tuple[np.ndarray, float | None]:
@@ -216,6 +247,42 @@ def case_tiles(
     return out
 
 
+def paletted_tiles(tmp: Path) -> tuple[bytes, bytes, dict[str, Any]]:
+    """The paletted file's value tile (band 1, nearest), the tile the service
+    colors it in as an image, and what tiles.json holds about them."""
+    path = tmp / "paletted.tif"
+    data = np.full((1, SIZE, SIZE), PALETTED_NO_DATA, "uint8")
+    for k, code in enumerate(PALETTED_CODES):
+        row, col = (k // 8) * BLOCK, (k % 8) * BLOCK
+        data[0, row : row + BLOCK, col : col + BLOCK] = code
+    write_file(path, data, PALETTED_NO_DATA, PALETTED_TABLE)
+    values, encoding = value_tile(path, parse_formula("b1"), "nearest")
+    with RasterSource(None, stored_file=path) as source:
+        image = source.tile(TILE.z, TILE.x, TILE.y, Rgb(v=1, noData=[], kind="rgb"))
+        table = source.info().color_table or {}
+    if image is None:
+        raise RuntimeError("The paletted file gave no image tile.")
+    q = codes(values)
+    return (
+        values,
+        image,
+        {
+            "encoding": encoding.factors(),
+            "range": list(encoding.range) if encoding.range else None,
+            "integer": encoding.integer,
+            "codes": [int(q[block_center(k)]) for k in range(len(PALETTED_CODES))],
+            # As geoapi's `palette` (raster_service.palette): every entry's RGBA.
+            "palette": {
+                "band": 1,
+                "colors": {
+                    str(code): list((tuple(color) + (255,) * 4)[:4])
+                    for code, color in table.items()
+                },
+            },
+        },
+    )
+
+
 def cells_tile() -> bytes:
     rgba = np.zeros((len(CELLS), len(CELLS[0]), 4), dtype="uint8")
     for i, line in enumerate(CELLS):
@@ -231,6 +298,7 @@ def main() -> None:
         cases = case_tiles(Path(tmp))
         large_cone, large_cone_encoding = cone_tile(Path(tmp), LARGE)
         large_cases = case_tiles(Path(tmp), LARGE, LARGE_CASES)
+        paletted_values, paletted_image, paletted = paletted_tiles(Path(tmp))
     # A 512 px tile holds the same values in the same encoding: the lab reads the
     # 256 px tiles' facts for it.
     if large_cone_encoding != cone_encoding:
@@ -245,6 +313,8 @@ def main() -> None:
     for case_id, (tile, _) in large_cases.items():
         (HERE / f"values-{LARGE}-{case_id}.webp").write_bytes(tile)
     (HERE / "cells.webp").write_bytes(cells_tile())
+    (HERE / "paletted-values.webp").write_bytes(paletted_values)
+    (HERE / "paletted-image.webp").write_bytes(paletted_image)
     facts = {
         "cone": {
             "encoding": cone_encoding.factors(),
@@ -256,6 +326,7 @@ def main() -> None:
         "cells": CELLS,
         "values": {case_id: about for case_id, (_, about) in cases.items()},
         "large": {"size": LARGE, "values": list(LARGE_CASES)},
+        "paletted": paletted,
     }
     (HERE / "tiles.json").write_text(json.dumps(facts, indent=2) + "\n")
 

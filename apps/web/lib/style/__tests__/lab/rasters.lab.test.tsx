@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompileInput } from "@/lib/style/compile/types";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { JsonObject } from "@/lib/style/json";
+import { paletteOf } from "@/lib/style/raster/metadata";
 import {
   type TileValueDeps,
   browserReaders,
@@ -16,7 +17,7 @@ import {
   tileValueAt,
   valueTileOptions,
 } from "@/lib/style/raster/tileValues";
-import { type RasterValues, valueTilesUrl } from "@/lib/style/raster/values";
+import { type RasterTileset, type RasterValues, valueTilesUrl } from "@/lib/style/raster/values";
 
 import contract from "../../../../../../packages/python/goatlib/tests/unit/style/fixtures/raster_color_cases.json";
 import { type Rgb, WHITE, blank, distance, over, readRect } from "./checks";
@@ -447,6 +448,88 @@ describe("values read from value tiles", () => {
       .coveringTiles(valueTileOptions(values))
       .map(({ canonical: { z, x, y } }) => `${z}/${x}/${y}`);
     expect(new Set(flat)).not.toEqual(drawn);
+  });
+});
+
+describe("an image drawn with its file's color table", () => {
+  // The paletted fixture (make_tiles.py): one 8 bit band whose codes fill blocks as the value cases' samples, its
+  // color table's colors shared by some codes, its no data around the blocks.
+  const { codes, palette, ...about } = tiles.paletted as unknown as Omit<
+    RasterValues,
+    "version" | "maxzoom"
+  > & {
+    codes: number[];
+    palette: unknown;
+  };
+  /** The colored tiles' description geoapi gives for the file: its band facts with the table. */
+  const IMAGE: RasterTileset = {
+    version: "lab",
+    maxzoom: 22,
+    bands: {
+      count: 1,
+      dtype: "uint8",
+      scaled: false,
+      colorTable: true,
+      colorInterp: ["palette"],
+      palette: paletteOf(palette),
+    },
+  };
+  /** The raster service's picture of the file, drawn as an image (crisp, so a block's middle is its own color). */
+  const served = (id: string, style: JsonObject) =>
+    raster(
+      id,
+      { ...style, resampling: "nearest", render: { type: "image" } },
+      { ...SOURCE, tiles: `${location.origin}/lab-raster/paletted-image/{z}/{x}/{y}.webp` }
+    );
+  /** The same file as the map draws it: its value tiles in the table's colors. */
+  const fromValues = (id: string, style: JsonObject) =>
+    raster(
+      id,
+      { ...style, render: { type: "image" } },
+      {
+        ...SOURCE,
+        // The image tiles' route has no such fixture: a picture drawn from image tiles fails to load.
+        tiles: `${location.origin}/lab-raster/none/{z}/{x}/{y}.webp`,
+        coverage: `${location.origin}/lab-raster/paletted-values`,
+        image: IMAGE,
+        values: described(about),
+      }
+    );
+  /** The pixel in the middle of each code's block, and of the no data beside the last one. */
+  const blocks = (s: Scene): Rgb[] => {
+    const [x, y] = origin(s);
+    const scale = tileSize(s, SOURCE.id) / VALUE_TILE_SIZE;
+    return [...codes, 0].map((_, k) =>
+      pixel(s, [
+        x + ((k % BLOCKS_PER_ROW) + 0.5) * BLOCK * scale,
+        y + (Math.floor(k / BLOCKS_PER_ROW) + 0.5) * BLOCK * scale,
+      ])
+    );
+  };
+
+  it.each([
+    ["as stored", {}],
+    [
+      "with adjustments and opacity",
+      { brightness: 0.1, contrast: 0.25, saturation: -0.4, hue: 40, opacity: 0.7 },
+    ],
+  ] as Array<[string, JsonObject]>)("%s: draws the pixels of the service's picture", async (name, style) => {
+    const id = name.replace(/\W+/g, "-");
+    const picture = blocks(await scene(served(`paletted-served-${id}`, style)));
+    const s = await scene(fromValues(`paletted-values-${id}`, style));
+    expect(s.compiled?.layers.map((l) => l.type)).toEqual(["color-relief"]);
+    expect(blank(s)).toBe(false);
+    const drawn = blocks(s);
+    const wrong = drawn.flatMap((d, k) =>
+      near(d, picture[k])
+        ? []
+        : [
+            `block ${k} (value ${k < codes.length ? codes[k] - about.encoding.baseShift : "none"}): drawn ${d}, service ${picture[k]}`,
+          ]
+    );
+    expect(wrong).toEqual([]);
+    // The blocks tell their colors apart: grey, green and black are not the ground.
+    expect(drawn.filter((d) => !near(d, WHITE)).length).toBeGreaterThanOrEqual(4);
   });
 });
 

@@ -316,8 +316,8 @@ describe("raster popup", () => {
     expect(await showOnOptions()).toHaveLength(2);
   });
 
-  it("an image drawn with its color table offers hover where no two codes in use share a color", async () => {
-    // The info's palette: the code of each color the map draws (spec 9.7).
+  it("an image drawn with its color table offers hover, also where codes share a color", async () => {
+    // The map draws its codes (value tiles) in the table's colors, so it reads every cell's code (spec 9.7).
     const table = {
       bands: 1,
       bits: [8],
@@ -333,7 +333,15 @@ describe("raster popup", () => {
     expect(await showOnOptions()).toHaveLength(4);
     view.unmount();
     const shared = { ...table, palette: { band: 1, colors: { 3: "#ff0000", 7: "#ff0000" } } };
-    setup({ render: { type: "image" }, popup: {} }, { raster: { dataset: "d1", info: shared } });
+    const sharing = setup(
+      { render: { type: "image" }, popup: {} },
+      { raster: { dataset: "d1", info: shared } }
+    );
+    expect(await showOnOptions()).toHaveLength(4);
+    sharing.unmount();
+    // A table geoapi does not describe (over 256 entries): click only.
+    const { palette: _palette, ...undescribed } = table;
+    setup({ render: { type: "image" }, popup: {} }, { raster: { dataset: "d1", info: undescribed } });
     expect(await showOnOptions()).toHaveLength(2);
   });
 

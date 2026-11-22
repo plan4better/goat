@@ -1,8 +1,9 @@
 // The values a raster layer colors in the browser (spec 9): its source gets the description of the value tiles its
 // style reads (band or formula, resampling), which the compiler needs for the tile URL and the stops. An image render's
-// source gets the colored tiles' description instead: the file's bounds, native zoom and version. The renderer loads
-// each description once; a description that changes while a band or formula is edited is asked for after a quiet
-// moment, and the layer keeps its last drawing until it has loaded.
+// source gets the colored tiles' description instead: the file's bounds, native zoom, version and band facts; where
+// those name a color table, the image draws its table band's value tiles, so its source gets their description next,
+// in the same pass. The renderer loads each description once; a description that changes while a band or formula is
+// edited is asked for after a quiet moment, and the layer keeps its last drawing until it has loaded.
 import type { JsonObject } from "@/lib/style/json";
 import {
   type RasterTileset,
@@ -18,21 +19,25 @@ import type { RenderLayer } from "@/lib/style/render/mapLayers";
  * none. */
 export type ValuesAnswer = RasterValues | RasterTileset | null | undefined;
 
-/** The description a layer's style reads: its value tiles', else (an image) its colored tiles'; null for other layers
- * and a source that has its description (or the answer that there is none) or names none. */
+/** The description a layer's style reads next: its value tiles', else (an image) its colored tiles', and for an image
+ * drawn with its file's color table, once those have told the table, its table band's value tiles' (`valueQuery` with
+ * the band facts). Null for other layers and a source that has what it reads (or the answer that there is none) or
+ * names none. */
 function descriptionOf(layer: RenderLayer): { url: string; values: boolean } | null {
   const source = layer.source;
-  if (source.type !== "raster" || source.values || source.image !== undefined) return null;
+  if (source.type !== "raster" || source.values !== undefined) return null;
   const style = layer.style as unknown as JsonObject;
   if (style.kind !== "raster") return null;
-  const query = valueQuery(style);
+  const query = valueQuery(style, source.image?.bands);
   if (query) return { url: valuesUrl(source.coverage, query, source.version), values: true };
+  if (source.image !== undefined) return null;
   return source.tileset ? { url: tilesetUrl(source.tileset, source.version), values: false } : null;
 }
 
 /** The layers with the descriptions their raster styles read; pending while a visible layer's description loads (a
- * hidden one does not hold print and thumbnails). Both draw once their description has loaded (`rasterLayers`). A
- * value render whose description failed draws nothing, an image draws as before (its source gets `image: null`);
+ * hidden one does not hold print and thumbnails). Both draw once their description has loaded (`rasterLayers`); an
+ * image drawn with its file's color table once its values' has too. A value render whose description failed draws
+ * nothing, an image draws as before (its source gets `image: null`, or `values: null` where its table's values failed);
  * neither is pending then. Other layers are returned as they are. */
 export function withRasterValues(
   layers: RenderLayer[],
@@ -40,13 +45,27 @@ export function withRasterValues(
 ): { layers: RenderLayer[]; pending: boolean } {
   let pending = false;
   const out = layers.map((layer) => {
-    const described = descriptionOf(layer);
-    if (described === null || layer.source.type !== "raster") return layer;
-    const answer = load(described.url, layer);
-    if (answer === undefined && layer.entry.visible !== false) pending = true;
-    if (!described.values)
-      return answer === undefined ? layer : { ...layer, source: { ...layer.source, image: answer } };
-    return answer && "encoding" in answer ? { ...layer, source: { ...layer.source, values: answer } } : layer;
+    let current = layer;
+    // At most twice: an image's colored tiles' description, then its table band's values.
+    for (let described = descriptionOf(current); described; described = descriptionOf(current)) {
+      const source = current.source;
+      if (source.type !== "raster") break;
+      const answer = load(described.url, current);
+      if (answer === undefined) {
+        if (current.entry.visible !== false) pending = true;
+        break;
+      }
+      if (!described.values) {
+        current = { ...current, source: { ...source, image: answer } };
+        continue;
+      }
+      if (answer && "encoding" in answer) current = { ...current, source: { ...source, values: answer } };
+      // The style alone reads no values: an image whose table's values failed draws its colored tiles.
+      else if (!valueQuery(current.style as unknown as JsonObject))
+        current = { ...current, source: { ...source, values: null } };
+      break;
+    }
+    return current;
   });
   return { layers: out, pending };
 }
@@ -78,9 +97,10 @@ export function rasterValuesOver(
     quiet.delete(key);
   };
 
-  const ask = (url: string, layer: RenderLayer): ValuesAnswer => {
+  /** `now`: no quiet moment (the second description of one pass: an image's values after its colored tiles'). */
+  const ask = (url: string, layer: RenderLayer, now = false): ValuesAnswer => {
     const last = wanted.get(layer.key);
-    if (last && last.url !== url && !asked.has(url)) {
+    if (!now && last && last.url !== url && !asked.has(url)) {
       if (quiet.get(layer.key)?.url !== url) {
         stopQuiet(layer.key);
         const timer = setTimeout(() => {
@@ -108,7 +128,7 @@ export function rasterValuesOver(
       }
       const answers = new Map<string, ValuesAnswer>();
       const result = withRasterValues(layers, (url, layer) => {
-        const values = ask(url, layer);
+        const values = ask(url, layer, answers.has(layer.key));
         answers.set(layer.key, values);
         return values;
       });

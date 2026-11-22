@@ -215,11 +215,11 @@ describe("an image's pixels as its values", () => {
     expect(imageBands([3, 2, 1], undefined)).toEqual([3, 2, 1]);
   });
 
-  it("an image drawn with its color table hovers the code of a color only one table entry has", () => {
+  it("an image drawn with its color table reads its codes from value tiles, every color, shared ones too", () => {
     const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
     // A road map's table, as DSK250's: three pairs of codes share a color (0 and 1 white, 2 and 98 grey, 15 and 59
-    // red); every other color is one code's. The table is the file's whole one: 59 may be a code the statistics'
-    // overview never met, and still its color is known to be shared.
+    // red). The map draws the band's codes (value tiles) in these colors, so it knows each cell's code whatever its
+    // color: no color is looked up.
     const table = {
       0: "#ffffff",
       1: "#ffffff",
@@ -228,29 +228,13 @@ describe("an image's pixels as its values", () => {
       15: "#ff0000",
       59: "#ff0000",
       18: "#00ff00",
-      72: "#0000ff",
     };
     const roadMap = { ...facts, palette: { band: 1, colors: table } };
-    const pixels = imagePixels(image(), roadMap);
-    expect(pixels).toEqual(expect.objectContaining({ kind: "palette", bands: [1] }));
-    // A color one entry has tells its code, as the value and as its band.
-    expect(pixelValuesAt(pixels!, [0, 255, 0, 255])).toEqual({ value: 18, band_1: 18 });
-    expect(pixelValuesAt(pixels!, [0, 0, 255, 255])).toEqual({ value: 72, band_1: 72 });
-    // A pixel read with partial alpha: a canvas readback can round its color onto another entry's unique one, so it
-    // gives no answer (a click asks geoapi).
-    expect(pixelValuesAt(pixels!, [0, 255, 0, 128])).toBeNull();
-    // A color two entries share: no answer, never one of the two (a click asks geoapi).
-    for (const rgb of [
-      [255, 255, 255, 255],
-      [127, 127, 127, 255],
-      [255, 0, 0, 255],
-    ])
-      expect(pixelValuesAt(pixels!, rgb), String(rgb)).toBeNull();
-    // A color no entry has: none.
-    expect(pixelValuesAt(pixels!, [1, 2, 3, 255])).toBeNull();
-    // Every color shared, no table (a 16 bit one, an older geoapi) or an empty one: nothing to hover, click only.
+    expect(imagePixels(image(), roadMap)).toEqual({ kind: "palette", bands: [1], colors: table });
+    // Every color shared: still every code.
     const shared = { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 7: "#ff0000" } } };
-    expect(imagePixels(image(), shared)).toBeNull();
+    expect(imagePixels(image(), shared)).toEqual(expect.objectContaining({ kind: "palette", bands: [1] }));
+    // No table geoapi describes (a 16 bit one over 256 entries, an older geoapi) or an empty one: nothing to hover.
     expect(imagePixels(image(), facts)).toBeNull();
     expect(imagePixels(image(), { ...facts, palette: { band: 1, colors: {} } })).toBeNull();
     // Chosen bands are drawn as they are, not with the table; a colour scale is no image.
@@ -258,10 +242,14 @@ describe("an image's pixels as its values", () => {
       expect.objectContaining({ kind: "bands", bands: [1, 1, 1] })
     );
     expect(imagePixels(ELEVATION, roadMap)).toBeNull();
-    // 8 bit bands drawn as they are: their values, by band.
+    // 8 bit bands drawn as they are: their values, by band, from the pixels.
     const rgb = imagePixels(image(), { count: 3, dtype: "uint8", scaled: false, colorTable: false });
     expect(rgb).toEqual(expect.objectContaining({ kind: "bands", bands: [1, 2, 3] }));
-    expect(pixelValuesAt(rgb!, [142, 143, 138, 255])).toEqual({ band_1: 142, band_2: 143, band_3: 138 });
+    expect(pixelValuesAt(rgb as never, [142, 143, 138, 255])).toEqual({
+      band_1: 142,
+      band_2: 143,
+      band_3: 138,
+    });
   });
 });
 
@@ -845,7 +833,73 @@ describe("where a raster popup's values come from", () => {
     });
   });
 
-  it("an image drawn with its color table hovers the code of the pixel's color; a click asks geoapi", async () => {
+  it("an image drawn with its color table hovers each cell's own code from its value tiles, shared colors too", async () => {
+    const paletted = cog(1, {
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "image", no_data: { values: [98] } },
+      popup: { trigger: "click_and_hover" },
+    });
+    const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
+    // 0 and 1 share white, 2 and 98 grey; 3 has no entry.
+    const colors = { 0: "#ffffff", 1: "#ffffff", 2: "#7f7f7f", 98: "#7f7f7f", 7: "#008000" };
+    vi.mocked(loadedRasterTileset).mockReturnValue({
+      version: "v1",
+      bands: { ...facts, palette: { band: 1, colors } },
+    });
+    // Its table band's value tiles, read nearest, as the map draws them.
+    const values: RasterValues = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 205],
+      integer: true,
+      version: "v1",
+      maxzoom: 12,
+    };
+    const template = valueTilesUrl(coverageUrl("d1"), { band: 1, resampling: "nearest" }, values);
+    vi.mocked(loadedRasterValues).mockImplementation((url) =>
+      url.includes("band=1&resampling=nearest") ? values : undefined
+    );
+    const map = {
+      ...mapDrawing(cog(9, ELEVATION)).map,
+      getSource: (id: string) => (id === "src-1" ? { type: "raster-dem", tiles: [template] } : undefined),
+    };
+    // White: 0 and 1 each answer their own code, read from the tile, no request, no pixel read.
+    for (const code of [0, 1]) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toEqual({
+        values: { value: code, band_1: code },
+        exact: false,
+      });
+    }
+    expect(vi.mocked(tileValueAt).mock.calls[0].slice(0, 3)).toEqual([values, template, here]);
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+    expect(tilePixelAt).not.toHaveBeenCalled();
+    // A click shows the code at once, then geoapi's exact value.
+    vi.mocked(tileValueAt).mockResolvedValue(2);
+    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [2], styled: null });
+    const first = vi.fn();
+    expect(await cellSource.at(paletted, here, ctx(map, "click", first))).toEqual({
+      values: { value: 2, band_1: 2 },
+      exact: true,
+    });
+    expect(first).toHaveBeenCalledWith({ values: { value: 2, band_1: 2 }, exact: false });
+    // A code the table has no entry for, and the style's no data, are drawn transparent: no popup, no request.
+    vi.mocked(fetchRasterPoint).mockClear();
+    for (const code of [3, 98]) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      expect(await cellSource.at(paletted, here, ctx(map, "hover")), String(code)).toBeNull();
+      expect(await cellSource.at(paletted, here, ctx(map, "click")), String(code)).toBeNull();
+    }
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+    // The default content: the code under the band's label, with its entry's color.
+    expect(layerPopup(paletted, { value: 1, band_1: 1 })?.blocks[0]).toEqual(
+      expect.objectContaining({
+        attributes: [expect.objectContaining({ name: "band_1", swatch: "#ffffff" })],
+      })
+    );
+  });
+
+  it("a color table image whose values failed: no hover, a click asks the point query; nothing while they load", async () => {
     const paletted = cog(1, {
       version: "1.0.0",
       kind: "raster",
@@ -855,8 +909,9 @@ describe("where a raster popup's values come from", () => {
     const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
     vi.mocked(loadedRasterTileset).mockReturnValue({
       version: "v1",
-      bands: { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 7: "#008000" } } },
+      bands: { ...facts, palette: { band: 1, colors: { 0: "#ffffff", 1: "#ffffff", 7: "#008000" } } },
     });
+    // No values description loaded (it failed): the map draws the colored tiles instead.
     const colored = {
       type: "raster",
       tiles: ["https://geoapi.test/collections/d1/raster/tiles/{z}/{x}/{y}.webp?style=t&v=v1"],
@@ -864,75 +919,61 @@ describe("where a raster popup's values come from", () => {
       minzoom: 0,
       maxzoom: 14,
     };
-    const map = {
+    const drawing = {
       ...mapDrawing(cog(9, ELEVATION)).map,
       getSource: (id: string) => (id === "src-1" ? colored : undefined),
     };
-    vi.mocked(tilePixelAt).mockResolvedValue([0, 128, 0, 255]);
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toEqual({
-      values: { value: 7, band_1: 7 },
-      exact: false,
-    });
+    expect(await cellSource.at(paletted, here, ctx(drawing, "hover"))).toBeNull();
     expect(fetchRasterPoint).not.toHaveBeenCalled();
-    // A click shows the code at once, then geoapi's exact value.
-    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [7], styled: null });
-    const first = vi.fn();
-    expect(await cellSource.at(paletted, here, ctx(map, "click", first))).toEqual({
-      values: { value: 7, band_1: 7 },
-      exact: true,
-    });
-    expect(first).toHaveBeenCalledWith({ values: { value: 7, band_1: 7 }, exact: false });
-    // A color no code in use has: no hover; a click asks geoapi.
-    vi.mocked(tilePixelAt).mockResolvedValue([1, 2, 3, 255]);
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toBeNull();
-    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [12], styled: null });
-    expect(await cellSource.at(paletted, here, ctx(map, "click"))).toEqual({
-      values: { value: 12, band_1: 12 },
-      exact: true,
-    });
-    // A color two table entries share (7 and 59, a code the statistics may never have met): no hover answer, a
-    // click asks geoapi; the other colors still hover.
-    vi.mocked(loadedRasterTileset).mockReturnValue({
-      version: "v1",
-      bands: { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 7: "#008000", 59: "#008000" } } },
-    });
-    vi.mocked(fetchRasterPoint).mockClear();
-    vi.mocked(tilePixelAt).mockResolvedValue([0, 128, 0, 255]);
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toBeNull();
-    expect(fetchRasterPoint).not.toHaveBeenCalled();
-    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [59], styled: null });
-    expect(await cellSource.at(paletted, here, ctx(map, "click"))).toEqual({
-      values: { value: 59, band_1: 59 },
-      exact: true,
-    });
-    vi.mocked(tilePixelAt).mockResolvedValue([255, 0, 0, 255]);
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toEqual({
-      values: { value: 3, band_1: 3 },
-      exact: false,
-    });
-    // The same color read with partial alpha: no hover answer, a click asks geoapi.
-    vi.mocked(tilePixelAt).mockResolvedValue([255, 0, 0, 200]);
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toBeNull();
-    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [3], styled: null });
-    expect(await cellSource.at(paletted, here, ctx(map, "click"))).toEqual({
-      values: { value: 3, band_1: 3 },
-      exact: true,
-    });
-    // Every color shared: no hover read at all, a click asks geoapi.
-    vi.mocked(loadedRasterTileset).mockReturnValue({
-      version: "v1",
-      bands: { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 7: "#ff0000" } } },
-    });
-    vi.mocked(tilePixelAt).mockClear();
-    vi.mocked(fetchRasterPoint).mockClear();
-    expect(await cellSource.at(paletted, here, ctx(map, "hover"))).toBeNull();
     expect(tilePixelAt).not.toHaveBeenCalled();
-    expect(fetchRasterPoint).not.toHaveBeenCalled();
-    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [3], styled: null });
-    expect(await cellSource.at(paletted, here, ctx(map, "click"))).toEqual({
-      values: { value: 3, band_1: 3 },
+    vi.mocked(fetchRasterPoint).mockResolvedValueOnce({ values: [1], styled: null });
+    expect(await cellSource.at(paletted, here, ctx(drawing, "click"))).toEqual({
+      values: { value: 1, band_1: 1 },
       exact: true,
     });
+    // The pointer as for an image whose popup opens on click: where the colored tiles paint.
+    vi.mocked(tilePixelAt).mockResolvedValue([255, 255, 255, 255]);
+    expect(await cellSource.paints(paletted, here, ctx(drawing, "click"))).toBe(true);
+    // While the values load the map draws nothing: no popup, no request.
+    vi.mocked(fetchRasterPoint).mockClear();
+    const loading = { ...drawing, getSource: () => undefined };
+    expect(await cellSource.at(paletted, here, ctx(loading, "click"))).toBeNull();
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+  });
+
+  it("categories without classes draw the file as stored: its color table's codes from value tiles", async () => {
+    const stored = cog(1, { version: "1.0.0", kind: "raster", render: { type: "categorical", classes: [] } });
+    const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
+    vi.mocked(loadedRasterTileset).mockReturnValue({
+      version: "v1",
+      bands: { ...facts, palette: { band: 1, colors: { 0: "#ffffff", 1: "#ffffff", 7: "#008000" } } },
+    });
+    const values: RasterValues = {
+      encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+      range: [0, 205],
+      integer: true,
+      version: "v1",
+      maxzoom: 12,
+    };
+    const template = valueTilesUrl(coverageUrl("d1"), { band: 1, resampling: "nearest" }, values);
+    vi.mocked(loadedRasterValues).mockImplementation((url) =>
+      url.includes("band=1&resampling=nearest") ? values : undefined
+    );
+    const map = {
+      ...mapDrawing(cog(9, ELEVATION)).map,
+      getSource: (id: string) => (id === "src-1" ? { type: "raster-dem", tiles: [template] } : undefined),
+    };
+    vi.mocked(tileValueAt).mockResolvedValue(0);
+    const read = await cellSource.at(stored, here, ctx(map, "hover"));
+    expect(read).toEqual({ values: { value: 0, band_1: 0 }, exact: false });
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+    // The default content: the value with its entry's color.
+    expect(layerPopup(stored, read!.values)?.blocks[0]).toEqual(
+      expect.objectContaining({ attributes: [expect.objectContaining({ name: "value", swatch: "#ffffff" })] })
+    );
+    // A code without an entry: nothing drawn, no popup.
+    vi.mocked(tileValueAt).mockResolvedValue(3);
+    expect(await cellSource.at(stored, here, ctx(map, "hover"))).toBeNull();
   });
 
   it("an image's hover gives no answer until its description tells the bands it draws", async () => {

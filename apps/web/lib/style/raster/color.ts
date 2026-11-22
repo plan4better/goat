@@ -4,6 +4,7 @@
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteColors, paletteSteps } from "@/lib/style/palettes";
+import type { BandFacts } from "@/lib/style/raster/values";
 
 type Outside = "clamp" | "hide";
 /** A band number, or a band formula's expression. */
@@ -44,7 +45,8 @@ export type RasterColorSpec =
       kind: "categories";
       band: Band;
       noData: number[];
-      classes: Array<{ value: number; color: string | null }>;
+      /** `alpha` (0 to 1): an entry of the file's color table drawn partly transparent (`tableColorSpec`). */
+      classes: Array<{ value: number; color: string | null; alpha?: number }>;
       other: string | null;
     }
   /** bands null: the file as it is (its color table, bands 1 to 3, or one band in grey from its minimum to maximum). */
@@ -240,4 +242,43 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
     domain,
     outside,
   };
+}
+
+/** The image adjustments (spec 9.1), which MapLibre applies to an image's colors. */
+const ADJUSTMENT_KEYS = ["brightness", "contrast", "saturation", "hue"] as const;
+
+/** The coloring of an image drawn with its file's color table (spec 9.1) as the map draws it: the codes of the band the
+ * table colors, read from value tiles nearest, each entry's code in its color (an entry drawn partly transparent with
+ * its alpha), codes without an entry, and entries drawn fully transparent, left out (geoapi leaves those out of
+ * `palette`), and the style's no data too. Drawn so, the map holds every cell's code, also where entries share a
+ * color. The colors are the table's own: an image's adjustments go onto them where they are drawn
+ * (compile/rasters.ts). Categories without classes draw the file as stored (`rasterColorSpec`), so the same where
+ * their band is the one the table colors.
+ * Null for anything else: other renders, chosen bands, a file without a table or with one geoapi does not describe
+ * (scaled values, over 256 entries), before the file's band facts are known (`facts`: the colored tiles' description's,
+ * or the info's), and an image's adjustments that vary by zoom, which a color cannot follow (null is none): those
+ * images draw the raster service's colored tiles. */
+export function tableColorSpec(
+  style: JsonObject,
+  facts: Partial<BandFacts> | undefined
+): Extract<RasterColorSpec, { kind: "categories" }> | null {
+  const render: JsonObject = isObject(style.render) ? style.render : { type: "image" };
+  const image = render.type === "image" || render.type === undefined;
+  if (!image && !(render.type === "categorical" && rasterColorSpec(render)?.kind === "rgb")) return null;
+  const palette = facts?.colorTable && facts.scaled !== true ? facts.palette : undefined;
+  if (!palette || !Object.keys(palette.colors).length) return null;
+  if (Array.isArray(render.bands) && render.bands.filter(num).length === 3) return null;
+  // Categories read their own band: the table's codes only where that is the band the table colors (geoapi draws any
+  // other band through the table from its colored tiles).
+  if (!image && (render.band ?? 1) !== palette.band) return null;
+  if (image && ADJUSTMENT_KEYS.some((key) => style[key] != null && !num(style[key]))) return null;
+  const noData =
+    isObject(render.no_data) && Array.isArray(render.no_data.values) ? render.no_data.values.filter(num) : [];
+  const classes = Object.entries(palette.colors)
+    .map(([code, color]) => {
+      const alpha = palette.alphas?.[Number(code)];
+      return { value: Number(code), color, ...(alpha !== undefined ? { alpha } : {}) };
+    })
+    .sort((a, b) => a.value - b.value);
+  return { kind: "categories", band: palette.band, noData, classes, other: null };
 }

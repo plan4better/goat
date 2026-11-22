@@ -207,7 +207,8 @@ const fakeMap = {
   getSource: (id: string) => {
     const layer = drawn.find((l) => id === `src-${l.id}`);
     if (!layer) return undefined;
-    const query = valueQuery(layer.style!.document as never);
+    // An image drawn with its color table draws its table band's value tiles (the band facts the map loaded).
+    const query = valueQuery(layer.style!.document as never, vi.mocked(loadedRasterTileset)("")?.bands);
     return query
       ? { type: "raster-dem", tiles: [valueTilesUrl(coverageUrl(String(layer.layer_id)), query, VALUES)] }
       : // An image's colored tiles.
@@ -639,14 +640,14 @@ describe("MapViewer raster popup", () => {
     expect(recorded.requests).toEqual([]);
   });
 
-  it("a hover over an image drawn with its color table shows the pixel's code and its color", async () => {
-    // One 8 bit band colored by the file's table, whose codes in use each have their own color.
+  it("a hover over an image drawn with its color table shows the cell's code and its color", async () => {
+    // One 8 bit band colored by the file's table: the map draws its codes (value tiles) in the table's colors.
     const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
     vi.mocked(loadedRasterTileset).mockReturnValue({
       version: "v1",
       bands: { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 17: "#008000" } } },
     });
-    vi.mocked(tilePixelAt).mockResolvedValue([0, 128, 0, 255]);
+    vi.mocked(tileValueAt).mockResolvedValue(17);
     const roadMap: ViewLayer = {
       ...image,
       style: { id: "s6", document: { ...image.style!.document, popup: { trigger: "hover" } } as LayerStyle },
@@ -654,19 +655,21 @@ describe("MapViewer raster popup", () => {
     const store = viewer({ layers: [roadMap] });
     await move();
     await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover"));
-    expect(screen.getByTestId("popup-swatch").closest("tr")?.textContent).toContain("17");
+    const swatch = screen.getByTestId("popup-swatch");
+    expect(swatch.closest("tr")?.textContent).toContain("17");
+    expect(swatch).toHaveStyle({ backgroundColor: "#008000" });
     expect(canvas.style.cursor).toBe("pointer");
     expect(fetchRasterPoint).not.toHaveBeenCalled();
+    expect(tilePixelAt).not.toHaveBeenCalled();
     expect(recorded.requests).toEqual([]);
   });
 
-  it("over a color two entries of the color table share, the image's popup opens on click only", async () => {
+  it("over a color two entries of the color table share, the hover answers each cell's own code", async () => {
     const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
     vi.mocked(loadedRasterTileset).mockReturnValue({
       version: "v1",
       bands: { ...facts, palette: { band: 1, colors: { 3: "#ff0000", 17: "#ff0000", 20: "#008000" } } },
     });
-    vi.mocked(tilePixelAt).mockResolvedValue([255, 0, 0, 255]);
     const roadMap: ViewLayer = {
       ...image,
       style: {
@@ -674,15 +677,21 @@ describe("MapViewer raster popup", () => {
         document: { ...image.style!.document, popup: { trigger: "click_and_hover" } } as LayerStyle,
       },
     };
-    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [17], styled: null });
     const store = viewer({ layers: [roadMap] });
-    await move();
-    await waitFor(() => expect(canvas.style.cursor).toBe("pointer"));
-    expect(store.getState().map.popupInfo).toBeUndefined();
-    await click();
-    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
-    expect(fetchRasterPoint).toHaveBeenCalledTimes(1);
-    expect(popupText()).toContain("17");
+    for (const [code, lng] of [
+      [17, 13.4],
+      [3, 13.41],
+    ] as const) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      await move({ lng, lat: 52.52 });
+      await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover"));
+      await waitFor(() =>
+        expect(screen.getByTestId("popup-swatch").closest("tr")?.textContent).toContain(String(code))
+      );
+      expect(canvas.style.cursor).toBe("pointer");
+    }
+    expect(fetchRasterPoint).not.toHaveBeenCalled();
+    expect(recorded.requests).toEqual([]);
   });
 
   it("no pointer over an image that only hovers but cannot be read on hover", async () => {
@@ -733,6 +742,49 @@ describe("MapViewer raster popup", () => {
     expect(popupText()).toContain("Band 2");
     expect(store.getState().map.popupInfo?.triggeredBy).toBe("click");
     expect(store.getState().map.popupInfo?.lngLat).toEqual([here.lng, here.lat]);
+  });
+
+  it("a click on a hovered image pins its popup: it stays while the mouse moves on, leaves the map or the map moves", async () => {
+    const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
+    vi.mocked(loadedRasterTileset).mockReturnValue({
+      version: "v1",
+      bands: {
+        ...facts,
+        palette: { band: 1, colors: { 3: "#ff0000", 17: "#008000", 0: "#ffffff", 1: "#ffffff" } },
+      },
+    });
+    vi.mocked(tileValueAt).mockResolvedValue(17);
+    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [17], styled: null });
+    const roadMap: ViewLayer = {
+      ...image,
+      style: {
+        id: "s10",
+        document: { ...image.style!.document, popup: { trigger: "click_and_hover" } } as LayerStyle,
+      },
+    };
+    const store = viewer({ layers: [roadMap] });
+    await move();
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover"));
+    await click();
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
+    const placed = store.getState().map.popupInfo?.lngLat;
+    for (const [code, lng] of [
+      [17, 13.41],
+      [1, 13.42],
+      [3, 13.43],
+      [null, 13.44],
+    ] as const) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      await move({ lng, lat: 52.52 });
+      await act(async () => new Promise((r) => setTimeout(r, 150)));
+      expect(store.getState().map.popupInfo?.triggeredBy, String(lng)).toBe("click");
+      expect(store.getState().map.popupInfo?.lngLat).toEqual(placed);
+    }
+    // The pointer leaves the map and comes back: still the click's.
+    await act(async () => (recorded.map.onMouseOut as (e: unknown) => void)({}));
+    await act(async () => (recorded.map.onMoveStart as (e: unknown) => void)({}));
+    await act(async () => (recorded.map.onMoveEnd as (e: unknown) => void)({}));
+    expect(store.getState().map.popupInfo?.triggeredBy).toBe("click");
   });
 
   it("a click opens the popup of the file below while another file's hover popup shows", async () => {
@@ -834,6 +886,80 @@ describe("MapViewer raster popup", () => {
       expect(third.getState().map.popupInfo?.layerId).not.toBe("dataset-9");
     } finally {
       vi.mocked(topFeature).mockImplementation(actual.topFeature);
+    }
+  });
+
+  it("a click-only image keeps its click popup while the mouse moves", async () => {
+    const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
+    vi.mocked(loadedRasterTileset).mockReturnValue({
+      version: "v1",
+      bands: {
+        ...facts,
+        palette: { band: 1, colors: { 3: "#ff0000", 17: "#008000", 0: "#ffffff", 1: "#ffffff" } },
+      },
+    });
+    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [1], styled: null });
+    const roadMap: ViewLayer = {
+      ...image,
+      style: { id: "s11", document: { ...image.style!.document, popup: { trigger: "click" } } as LayerStyle },
+    };
+    const store = viewer({ layers: [roadMap] });
+    vi.mocked(tileValueAt).mockResolvedValue(1);
+    await move({ lng: 13.401, lat: 52.52 });
+    await click({ lng: 13.401, lat: 52.52 });
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
+    for (const [code, lng] of [
+      [0, 13.402],
+      [17, 13.403],
+      [null, 13.404],
+    ] as const) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      await move({ lng, lat: 52.52 });
+      await act(async () => new Promise((r) => setTimeout(r, 150)));
+      expect(store.getState().map.popupInfo?.triggeredBy, String(lng)).toBe("click");
+    }
+    await act(async () => (recorded.map.onMouseOut as (e: unknown) => void)({}));
+    expect(store.getState().map.popupInfo?.triggeredBy).toBe("click");
+  });
+
+  it("a click on a color two table entries share, after the hover popup moved there, pins that cell's popup", async () => {
+    const facts = { count: 1, dtype: "uint8", scaled: false, colorTable: true, colorInterp: ["palette"] };
+    vi.mocked(loadedRasterTileset).mockReturnValue({
+      version: "v1",
+      bands: {
+        ...facts,
+        palette: { band: 1, colors: { 3: "#ff0000", 17: "#008000", 0: "#ffffff", 1: "#ffffff" } },
+      },
+    });
+    vi.mocked(fetchRasterPoint).mockResolvedValue({ values: [1], styled: null });
+    const roadMap: ViewLayer = {
+      ...image,
+      style: {
+        id: "s10",
+        document: { ...image.style!.document, popup: { trigger: "click_and_hover" } } as LayerStyle,
+      },
+    };
+    const store = viewer({ layers: [roadMap] });
+    vi.mocked(tileValueAt).mockResolvedValue(17);
+    await move({ lng: 13.4, lat: 52.52 });
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover"));
+    // White, which codes 0 and 1 share: the hover popup moves there with the cell's own code.
+    vi.mocked(tileValueAt).mockResolvedValue(1);
+    await move({ lng: 13.401, lat: 52.52 });
+    await waitFor(() => expect(store.getState().map.popupInfo?.lngLat).toEqual([13.401, 52.52]));
+    expect(store.getState().map.popupInfo?.triggeredBy).toBe("hover");
+    await click({ lng: 13.401, lat: 52.52 });
+    await waitFor(() => expect(store.getState().map.popupInfo?.triggeredBy).toBe("click"));
+    expect(popupText()).toContain("1");
+    for (const [code, lng] of [
+      [0, 13.402],
+      [17, 13.403],
+      [1, 13.404],
+    ] as const) {
+      vi.mocked(tileValueAt).mockResolvedValue(code);
+      await move({ lng, lat: 52.52 });
+      await act(async () => new Promise((r) => setTimeout(r, 150)));
+      expect(store.getState().map.popupInfo?.triggeredBy, String(lng)).toBe("click");
     }
   });
 

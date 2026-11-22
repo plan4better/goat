@@ -163,9 +163,9 @@ function usePopupConfig() {
 }
 
 /** Whether a raster file's popup can open on hover: the map has its values to read (spec 9.7), on its value tiles or
- * in an image's pixels that are its values (`imagePixels`: 8 bit bands drawn as they are, or codes whose colors tell
- * them apart); not for other images or colors the raster service paints. Before the values' description has loaded,
- * as for any color scale. */
+ * where an image's hover reads them (`imagePixels`: 8 bit bands drawn as they are, or the codes of an image drawn from
+ * value tiles with its color table); not for other images or colors the raster service paints. Before the values'
+ * description has loaded, as for any color scale. */
 function useRasterHover(): boolean {
   const store = useEditor();
   const { raster } = useStyleData();

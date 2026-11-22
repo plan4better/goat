@@ -94,6 +94,8 @@ describe("raster facts from the raster service", () => {
       colorInterp: ["palette"],
       palette: { band: 1, colors: { 1: "#ff0000", 3: "#0000ff" } },
     });
+    // One object per info: the popup's color cache keys on it, in the panel as on the map.
+    expect(bandFactsOf(info)).toBe(bandFactsOf(info));
     // An older geoapi tells neither.
     expect(bandFactsOf(rasterInfoOf({ ...INFO, dtype: "uint8" }))).toEqual({
       count: 1,

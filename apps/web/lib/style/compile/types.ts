@@ -37,7 +37,8 @@ export type CompileSource =
       version?: string;
       /** West, south, east and north in degrees: the map asks only for the tiles that touch them. */
       bounds?: [number, number, number, number];
-      values?: RasterValues;
+      /** Null: an image drawn with its file's color table whose values failed (it draws the colored tiles instead). */
+      values?: RasterValues | null;
       /** The colored tiles' description once answered: the file's bounds, native zoom and version, or null when there
        * is none (the image draws with the layer's own bounds). */
       image?: RasterTileset | null;

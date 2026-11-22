@@ -23,7 +23,7 @@ from goatlib.raster.source import (
 from goatlib.raster.token import decode_token, encode_token
 from goatlib.raster.values import value_encoding
 
-from .conftest import BOUNDS, SIZE
+from .conftest import BOUNDS, SIZE, _write_cog
 
 LOCAL = ("127.0.0.1",)
 TMS = morecantile.tms.get("WebMercatorQuad")
@@ -163,6 +163,45 @@ def test_an_image_without_bands_draws_the_color_table(cog_server: str) -> None:
         rgba = _png(src.tile(*_tile_at(*left, 13), image))
     row, col = _pixel_of(*left, 13)
     assert rgba[row, col].tolist() == [255, 0, 0, 255]
+
+
+def test_categories_and_a_color_table_never_blend_codes_in_a_magnified_tile(
+    tmp_path: Path,
+) -> None:
+    """Codes read nearest whatever a style's `resampling` says (spec 9.5): the
+    token carries none. Codes 1 and 5 side by side, a tile far past the file's
+    cells (each about 36 pixels wide) across their edge: their two colors only,
+    in categories and in the file's own table alike; codes read bilinear would
+    give 2 to 4 there, the other color and the table's other entries."""
+    path = tmp_path / "codes.tif"
+    codes = np.where(np.mgrid[0:SIZE, 0:SIZE][1] < SIZE // 4, 1, 5).astype("uint8")
+    table = {code: (0, 0, 255, 255) for code in range(2, 5)}
+    table.update({1: (255, 0, 0, 255), 5: (0, 255, 0, 255)})
+    _write_cog(path, codes[None], nodata=0, colormap=table)
+    categories = decode_token(
+        encode_token(
+            {
+                "v": 1,
+                "kind": "categories",
+                "band": 1,
+                "noData": [],
+                "classes": [
+                    {"value": 1, "color": "#ff0000"},
+                    {"value": 5, "color": "#00ff00"},
+                ],
+                "other": "#0000ff",
+            }
+        )
+    )
+    image = decode_token(
+        encode_token({"v": 1, "kind": "rgb", "bands": None, "noData": []})
+    )
+    edge = (BOUNDS[0] + (BOUNDS[2] - BOUNDS[0]) / 4, CENTER[1])
+    with RasterSource(None, stored_file=path) as src:
+        for coloring in (categories, image):
+            rgba = _png(src.tile(*_tile_at(*edge, 18), coloring))
+            colors = {tuple(c) for c in rgba.reshape(-1, 4).tolist()}
+            assert colors == {(255, 0, 0, 255), (0, 255, 0, 255)}, coloring.kind
 
 
 def test_statistics_come_from_an_overview_and_list_the_codes_of_a_whole_number_band(

@@ -180,6 +180,80 @@ describe("withRasterValues for images", () => {
   });
 });
 
+/** A colored tiles' description of a file with a color table on band 1 (geoapi's `palette`). */
+const PALETTED: RasterTileset = {
+  ...IMAGE,
+  bands: {
+    count: 1,
+    dtype: "uint8",
+    scaled: false,
+    colorTable: true,
+    colorInterp: ["palette"],
+    palette: { band: 1, colors: { 0: "#ffffff", 1: "#ffffff", 7: "#008000" } },
+  },
+};
+/** The address of its table band's value tiles: band 1, read nearest. */
+const TABLE_VALUES_URL = url("band=1&resampling=nearest");
+/** What a compiled layer draws. */
+const drawnBy = (layer: RenderLayer) =>
+  compileLayer({ id: layer.key, style: layer.style, source: layer.source }).layers.map((l) => l.type);
+
+describe("withRasterValues for an image drawn with its color table", () => {
+  it("asks for its table band's values once the colored tiles' description names the table, in the same pass", () => {
+    const asked: string[] = [];
+    const { layers, pending } = withRasterValues([image("p")], (address) => {
+      asked.push(address);
+      return address.startsWith(TILESET) ? PALETTED : VALUES;
+    });
+    expect(asked).toEqual([TILESET_URL, TABLE_VALUES_URL]);
+    expect(pending).toBe(false);
+    expect(imageIn(layers[0])).toEqual(PALETTED);
+    expect(valuesIn(layers[0])).toEqual(VALUES);
+    // Drawn from the value tiles in the table's colors: no image tiles.
+    expect(drawnBy(layers[0])).toEqual(["color-relief"]);
+  });
+
+  it("is pending and draws nothing while its values load; a hidden one does not hold print", () => {
+    const layer = image("p");
+    const loading = withRasterValues([layer], (address) =>
+      address.startsWith(TILESET) ? PALETTED : undefined
+    );
+    expect(loading.pending).toBe(true);
+    expect(drawnBy(loading.layers[0])).toEqual([]);
+    const hidden = { ...layer, entry: { visible: false } };
+    expect(
+      withRasterValues([hidden], (address) => (address.startsWith(TILESET) ? PALETTED : undefined)).pending
+    ).toBe(false);
+  });
+
+  it("whose values failed draws the colored tiles, as any image", () => {
+    const { layers, pending } = withRasterValues([image("p")], (address) =>
+      address.startsWith(TILESET) ? PALETTED : null
+    );
+    expect(pending).toBe(false);
+    expect(valuesIn(layers[0])).toBeNull();
+    expect(drawnBy(layers[0])).toEqual(["raster"]);
+    expect(imageSourceOf(layers[0])?.tiles[0]).toContain(`&v=${PALETTED.version}&`);
+  });
+
+  it("chosen bands and a table geoapi does not describe draw the colored tiles and read no values", () => {
+    const asked: string[] = [];
+    const load = (address: string) => {
+      asked.push(address);
+      return address.startsWith(TILESET) ? PALETTED : VALUES;
+    };
+    const chosen = withRasterValues([image("c", { type: "image", bands: [1, 1, 1] })], load);
+    expect(drawnBy(chosen.layers[0])).toEqual(["raster"]);
+    const plain: RasterTileset = { ...PALETTED, bands: { ...PALETTED.bands!, palette: undefined } };
+    const described = withRasterValues([image("n")], (address) => {
+      asked.push(address);
+      return address.startsWith(TILESET) ? plain : VALUES;
+    });
+    expect(drawnBy(described.layers[0])).toEqual(["raster"]);
+    expect(asked).toEqual([TILESET_URL, TILESET_URL]);
+  });
+});
+
 describe("rasterValuesOver", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -281,6 +355,26 @@ describe("rasterValuesOver", () => {
     const loaded = values.attach([switched]).layers[0];
     expect(loaded.style).toBe(switched.style);
     expect(valuesIn(loaded)).toEqual(VALUES);
+  });
+
+  it("an image drawn with its color table asks for its values right after its colored tiles' description, no quiet moment", () => {
+    const { known, load, redraw, values } = setup();
+    const layer = image("1");
+    expect(values.attach([layer]).pending).toBe(true);
+    known.set(TILESET_URL, PALETTED as never);
+    const loading = values.attach([layer]);
+    expect(asked(load)).toEqual([TILESET_URL, TILESET_URL, TABLE_VALUES_URL]);
+    expect(loading.pending).toBe(true);
+    known.set(TABLE_VALUES_URL, VALUES);
+    const loaded = values.attach([layer]);
+    expect(loaded.pending).toBe(false);
+    expect(valuesIn(loaded.layers[0])).toEqual(VALUES);
+    expect(drawnBy(loaded.layers[0])).toEqual(["color-relief"]);
+    // Drawn again (an opacity edit): both known, nothing waits.
+    const again = values.attach([image("1", { type: "image" })]);
+    expect(again.pending).toBe(false);
+    vi.advanceTimersByTime(RASTER_QUIET_MS);
+    expect(redraw).not.toHaveBeenCalled();
   });
 
   it("forgets a layer that left: no redraw for it, and a new one asks at once", () => {

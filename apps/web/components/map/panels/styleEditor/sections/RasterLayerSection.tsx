@@ -13,8 +13,8 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { fetchRasterPoint } from "@/lib/api/rasters";
 import { noDataApplies } from "@/lib/style/editor/raster";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { shortNumber } from "@/lib/style/raster/metadata";
-import { resamplingOf } from "@/lib/style/raster/values";
+import { bandFactsOf, shortNumber } from "@/lib/style/raster/metadata";
+import { drawsCodes, resamplingOf } from "@/lib/style/raster/values";
 
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 import {
@@ -163,7 +163,14 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
   );
   // The render's own default: crisp cells for color scales, smooth images and shading (spec 9).
   const fallback = useStyleSelector((doc) => resamplingOf({ render: doc.render }));
-  const current = resampling === "nearest" || resampling === "linear" ? resampling : fallback;
+  // Codes never blend: categories and an image drawn with its file's color table stay crisp whatever is set.
+  const facts = bandFactsOf(raster?.info);
+  const codes = useStyleSelector((doc) => drawsCodes(doc as unknown as JsonObject, facts));
+  const current = codes
+    ? "nearest"
+    : resampling === "nearest" || resampling === "linear"
+      ? resampling
+      : fallback;
   const label = t("style_editor.resampling");
   return (
     <PanelSection title={t("style_editor.section_layer")}>
@@ -176,6 +183,8 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
           label: t(`style_editor.resampling_${v}`),
           sub: t(`style_editor.resampling_${v}_sub`),
         }))}
+        disabled={codes}
+        note={codes ? t("style_editor.resampling_codes") : undefined}
         onChange={(v) => store.set("resampling", v === fallback ? undefined : v)}
       />
       {type === "image" && <AdjustmentsRow />}
