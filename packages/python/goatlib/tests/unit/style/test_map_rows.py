@@ -7,6 +7,7 @@ from goatlib.style.map_rows import (
     LayerRow,
     build_map_document,
     drawn_layers,
+    json_bytes,
     map_view,
 )
 
@@ -107,3 +108,9 @@ def test_map_document_is_stamped(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert build(None)["version"] == "1.0.0"
     assert build("de")["version"] == "1.2.0"
+
+
+def test_sizes_count_compact_utf8_json() -> None:
+    assert json_bytes({"a": [1, 2]}) == len('{"a":[1,2]}')
+    assert json_bytes("ä") == 4  # the quotes and two bytes
+    assert json_bytes("\ud800") == 5

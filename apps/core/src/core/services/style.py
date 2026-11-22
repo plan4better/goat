@@ -5,6 +5,11 @@ later. A save merges the incoming document onto the stored one (spec 13.1), has 
 checked (processes' `style-check` when the style reads the layer's data, goatlib's
 `validate` otherwise), and stores it with ONE conditional statement: core runs every
 statement on its own, so that statement is what makes a save atomic.
+
+A style document larger than MAX_DOCUMENT_BYTES is refused before anything reads
+it. goatlib's work on a whole document runs in a worker thread, so one large
+style does not hold up the requests of everyone else; the session and every
+statement stay on the event loop.
 """
 
 import json
@@ -29,7 +34,7 @@ from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import fingerprint, is_stale, layer_fingerprint
 from goatlib.style.ids import assign_ids, existing_ids
 from goatlib.style.issues import Issue
-from goatlib.style.map_rows import MAX_STYLES
+from goatlib.style.map_rows import MAX_DOCUMENT_BYTES, MAX_STYLES, json_bytes
 from goatlib.style.merge import apply, diff, keep_current_where_errors
 from goatlib.style.migrate import context_for, migrate_style
 from goatlib.style.parse import blocking, check_version
@@ -39,6 +44,7 @@ from goatlib.style.validate import validate
 from goatlib.style.version import stamp
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 #: Revisions kept per named style, only to merge saves based on an older one (13.1).
 KEPT_REVISIONS = 20
@@ -133,6 +139,14 @@ def _check_error(error: StyleCheckUnavailable) -> StyleSaveError:
             return StyleSaveError(401, "unauthorized", str(error))
         return StyleSaveError(422, "check_failed", str(error))
     return StyleSaveError(503, "check_unavailable", str(error))
+
+
+def check_size(document: Any) -> None:
+    """422 `document_too_large` for a style document above MAX_DOCUMENT_BYTES of
+    compact UTF-8 JSON (spec 10): the first thing every route that takes a
+    document does, so nothing reads or stores a larger one."""
+    if json_bytes(document) > MAX_DOCUMENT_BYTES:
+        raise StyleSaveError(422, "document_too_large")
 
 
 def incoming_document(document: dict[str, Any], ctx: DataContext) -> dict[str, Any]:
@@ -231,7 +245,7 @@ async def check_document(
     goatlib checks it alone. Raises StyleCheckUnavailable when processes cannot
     answer."""
     ctx = stored.context(document)
-    if not ctx.is_service and (referenced_fields(document) or needed_stats(document)):
+    if not ctx.is_service and await run_in_threadpool(_reads_data, document):
         result = await style_check(
             layer_id=stored.dataset_id,
             document=document,
@@ -244,7 +258,12 @@ async def check_document(
         return result["document"], [
             Issue.model_validate(i) for i in result.get("issues", [])
         ]
-    return document, validate(document, ctx)
+    return document, await run_in_threadpool(validate, document, ctx)
+
+
+def _reads_data(document: dict[str, Any]) -> bool:
+    """Whether checking the document needs the layer's data (processes)."""
+    return bool(referenced_fields(document) or needed_stats(document))
 
 
 async def _base_document(
@@ -264,7 +283,43 @@ async def _base_document(
     ).scalar_one_or_none()
     if document is None:
         raise StyleSaveError(409, "base_too_old")
-    return upgrade(document, stored.context(document)).document
+    return (
+        await run_in_threadpool(upgrade, document, stored.context(document))
+    ).document
+
+
+def _as_read(
+    stored: StoredStyle, check: bool
+) -> tuple[DataContext, dict[str, Any], bool, bool]:
+    """The stored document as a reader gets it, whether it is stale, and whether
+    the read computes it again."""
+    ctx = stored.context(stored.document)
+    document = upgrade(stored.document, ctx).document
+    if ctx.is_service:
+        return ctx, document, False, False
+    stale = is_stale(document, stored.fingerprint)
+    return ctx, document, stale, stale or (check and facts_missing(document))
+
+
+def _recomputed(
+    stored: StoredStyle, document: dict[str, Any]
+) -> tuple[dict[str, Any], bool, bool, bool]:
+    """What processes computed, stamped; whether it is still stale, equal to the
+    stored document, or differs from it only in its stamps."""
+    recomputed = stamp(document)
+    equal = recomputed == stored.document
+    return (
+        recomputed,
+        is_stale(recomputed, stored.fingerprint),
+        equal,
+        not equal and same_ignoring_stamps(recomputed, stored.document),
+    )
+
+
+def _current(stored: StoredStyle) -> tuple[dict[str, Any], bool]:
+    """A stored style as a reader gets it, and whether it is stale."""
+    current = upgrade(stored.document, stored.context(stored.document)).document
+    return current, is_stale(current, stored.fingerprint)
 
 
 async def read_style(
@@ -280,19 +335,19 @@ async def read_style(
     (`damaged` ones included) answered and nothing stored, unless it lacks what
     its data holds beside the classes, which is computed and stored then. When processes cannot
     answer, or could not compute it, the style comes back marked `stale`."""
-    ctx = stored.context(stored.document)
-    document = upgrade(stored.document, ctx).document
-    if ctx.is_service:
-        # Nothing to compute, and processes would read a map service as a raster file.
-        return stored.read(
-            document, validate(document, ctx, stored=True) if check else None
-        )
-    stale = is_stale(document, stored.fingerprint)
     # The panel opening asks processes anyway: a style that does not yet say what
     # its data holds beside the classes (`computed.no_data`, `computed.other`; one
     # from before these were recorded, or converted from the old format) gets that
     # then, and it is stored. Reading a style for a map never computes for it.
-    refresh = stale or (check and facts_missing(document))
+    ctx, document, stale, refresh = await run_in_threadpool(_as_read, stored, check)
+    if ctx.is_service:
+        # Nothing to compute, and processes would read a map service as a raster file.
+        return stored.read(
+            document,
+            await run_in_threadpool(validate, document, ctx, stored=True)
+            if check
+            else None,
+        )
     if not refresh and not check:
         return stored.read(document)
     try:
@@ -310,11 +365,12 @@ async def read_style(
     issues = [Issue.model_validate(i) for i in result.get("issues", [])]
     if not refresh:
         return stored.read(document, issues)
-    recomputed = stamp(result["document"])
-    still_stale = is_stale(recomputed, stored.fingerprint)
-    if recomputed == stored.document:
+    recomputed, still_stale, equal, stamps_only = await run_in_threadpool(
+        _recomputed, stored, result["document"]
+    )
+    if equal:
         return stored.read(recomputed, issues, stale=still_stale)
-    if same_ignoring_stamps(recomputed, stored.document):
+    if stamps_only:
         # Only the stamps move: the revision stays, so no save in flight is told to merge.
         row = (
             await session.execute(
@@ -346,8 +402,8 @@ async def read_style(
         )
     # Another writer got in first: what it stored is the answer.
     fresh = await read_stored(session, stored.id)
-    current = upgrade(fresh.document, fresh.context(fresh.document)).document
-    return fresh.read(current, stale=is_stale(current, fresh.fingerprint))
+    current, current_stale = await run_in_threadpool(_current, fresh)
+    return fresh.read(current, stale=current_stale)
 
 
 async def write_document(
@@ -411,41 +467,28 @@ async def save_style(
     newer GOAT Style minor or major version is refused whole. The stored document
     carries the lowest version that covers it (spec 14). Raises StyleSaveError: 422
     `newer_version` (or `unknown_version`) with its issue, 409 `base_too_old`, 503
-    `check_unavailable`, 503 `save_conflict` after three lost races."""
+    `check_unavailable`, 503 `save_conflict` after three lost races; 422
+    `document_too_large` before anything else."""
+    check_size(document)
     for _ in range(SAVE_TRIES):
         stored = await read_stored(session, style_id)
-        incoming = incoming_document(document, stored.context(document))
-        if stored.named:
-            base = await _base_document(session, stored, base_rev)
-            # goatlib's merge() without dropping the changes: they say which paths
-            # an error may take back.
-            reserved = existing_ids(base) | existing_ids(stored.document)
-            changes = diff(base, assign_ids(incoming, reserved=reserved))
-            candidate, refused = apply(stored.document, changes)
-            changes = [c for c in changes if c not in refused]
-        else:
-            # A dataset default is replaced whole; what differs from the stored
-            # document is what an error may take back, as for a named style.
-            candidate = assign_ids(incoming, reserved=existing_ids(stored.document))
-            changes = diff(stored.document, candidate)
-        candidate = assign_ids(candidate)
-        if same_ignoring_stamps(candidate, stored.document):
+        incoming = await run_in_threadpool(
+            incoming_document, document, stored.context(document)
+        )
+        base = await _base_document(session, stored, base_rev) if stored.named else None
+        candidate, changes, unchanged = await run_in_threadpool(
+            _candidate, stored, base, incoming
+        )
+        if unchanged:
             return stored.read(
-                issues=validate(stored.document, stored.context(stored.document))
+                issues=await run_in_threadpool(
+                    validate, stored.document, stored.context(stored.document)
+                )
             )
         try:
             checked, issues = await check_document(stored, candidate, access_token)
             if changes:
-                current_issues = validate(
-                    stored.document, stored.context(stored.document)
-                )
-                kept = keep_current_where_errors(
-                    stored.document,
-                    checked,
-                    issues,
-                    changes,
-                    current_issues=current_issues,
-                )
+                kept = await run_in_threadpool(_kept, stored, checked, issues, changes)
                 if kept != checked:
                     # The reply still carries the errors that were not saved (13.1).
                     refused_errors = [i for i in issues if i.level == "error"]
@@ -456,10 +499,8 @@ async def save_style(
                     ]
         except StyleCheckUnavailable as error:
             raise _check_error(error) from error
-        checked = stamp(checked)
-        if not diff(stored.document, checked) and not is_stale(
-            stored.document, stored.fingerprint
-        ):
+        checked, unchanged = await run_in_threadpool(_to_store, stored, checked)
+        if unchanged:
             # Every change was refused (or checked away): the stored values stay,
             # and so does the revision. A recompute of the same data is not a
             # change either; its last digits can differ from the stored ones.
@@ -476,6 +517,55 @@ async def save_style(
             issues=issues_json(issues),
         )
     raise StyleSaveError(503, "save_conflict")
+
+
+def _candidate(
+    stored: StoredStyle, base: dict[str, Any] | None, incoming: dict[str, Any]
+) -> tuple[dict[str, Any], list[Any], bool]:
+    """Step 1 of a save (spec 13.1): the candidate, the changes an error may take
+    back, and whether the candidate is the stored document but for its stamps.
+    `base` is the base revision's document of a named style, None for a dataset
+    default."""
+    if base is not None:
+        # goatlib's merge() without dropping the changes: they say which paths
+        # an error may take back.
+        reserved = existing_ids(base) | existing_ids(stored.document)
+        changes = diff(base, assign_ids(incoming, reserved=reserved))
+        candidate, refused = apply(stored.document, changes)
+        changes = [c for c in changes if c not in refused]
+    else:
+        # A dataset default is replaced whole; what differs from the stored
+        # document is what an error may take back, as for a named style.
+        candidate = assign_ids(incoming, reserved=existing_ids(stored.document))
+        changes = diff(stored.document, candidate)
+    candidate = assign_ids(candidate)
+    return candidate, changes, same_ignoring_stamps(candidate, stored.document)
+
+
+def _kept(
+    stored: StoredStyle,
+    checked: dict[str, Any],
+    issues: list[Issue],
+    changes: list[Any],
+) -> dict[str, Any]:
+    """The checked candidate with the stored value kept on every changed path
+    that has an error (spec 13.1)."""
+    current_issues = validate(stored.document, stored.context(stored.document))
+    return keep_current_where_errors(
+        stored.document, checked, issues, changes, current_issues=current_issues
+    )
+
+
+def _to_store(
+    stored: StoredStyle, checked: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    """The checked document as it is stored, and whether storing it changes
+    nothing: no value differs and the stored computed values are current."""
+    checked = stamp(checked)
+    unchanged = not diff(stored.document, checked) and not is_stale(
+        stored.document, stored.fingerprint
+    )
+    return checked, unchanged
 
 
 async def read_named(
@@ -553,7 +643,7 @@ async def create_style(
         ).scalar_one_or_none()
         if document is None:
             document = default_style(context, seed=str(layer_id))
-    document = stamp(upgrade(document, context).document)
+    document = await run_in_threadpool(_stamped, document, context)
     row = (
         await session.execute(
             text(
@@ -594,6 +684,11 @@ async def create_style(
     return StyleRead(
         id=row.id, name=name, position=row.position, revision=1, document=document
     )
+
+
+def _stamped(document: dict[str, Any], ctx: DataContext) -> dict[str, Any]:
+    """A stored document, read and stamped as a new style stores it."""
+    return stamp(upgrade(document, ctx).document)
 
 
 async def update_style(
@@ -683,17 +778,28 @@ async def check_style(
     stored: StoredStyle, document: dict[str, Any] | None, access_token: str
 ) -> tuple[dict[str, Any], list[Issue]]:
     """The save's checks without storing (spec 13.1): the stored
-    document, or the one given, with its issues and computed values."""
-    candidate = stored.document if document is None else document
-    # A given document is checked as it would be written, not brought inside the bounds.
-    upgraded = upgrade(
-        candidate, stored.context(candidate), strict=document is not None
-    )
-    candidate = assign_ids(upgraded.document)
+    document, or the one given, with its issues and computed values; 422
+    `document_too_large` for a given one above the limit, before anything else."""
+    if document is not None:
+        check_size(document)
+    candidate = await run_in_threadpool(_checked_form, stored, document)
     try:
         return await check_document(stored, candidate, access_token)
     except StyleCheckUnavailable as error:
         raise _check_error(error) from error
+
+
+def _checked_form(
+    stored: StoredStyle, document: dict[str, Any] | None
+) -> dict[str, Any]:
+    """The document a check looks at: the stored one, or the one given, read and
+    with ids. A given document is checked as it would be written, not brought
+    inside the bounds."""
+    candidate = stored.document if document is None else document
+    upgraded = upgrade(
+        candidate, stored.context(candidate), strict=document is not None
+    )
+    return assign_ids(upgraded.document)
 
 
 async def read_default(session: AsyncSession, layer_id: UUID) -> StoredStyle:
@@ -714,12 +820,14 @@ async def write_default(
 ) -> StyleRead:
     """Replaces the dataset's default style whole (no base revision, no merge).
     403 `read_only` for a catalog layer: the catalog owns its style; 422
-    `newer_version` before the dataset gets a row."""
+    `newer_version` (and 422 `document_too_large`, first of all) before the
+    dataset gets a row."""
+    check_size(document)
     facts = await _layer_facts(session, layer_id)
     if facts.catalog_external_uid is not None:
         raise StyleSaveError(403, "read_only")
     context = layer_context(facts.layer_type, facts.geometry, facts.data_type)
-    incoming_document(document, context)
+    await run_in_threadpool(incoming_document, document, context)
     style_id = await _default_id(session, layer_id)
     if style_id is None:
         # The row starts as goatlib's default, then the save below replaces it.

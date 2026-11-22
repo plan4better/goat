@@ -4,6 +4,7 @@ Pure: core assembles the live map request, publishing and the data migration
 with it; the thumbnail task draws a project in the same order.
 """
 
+import json
 from typing import Any, NamedTuple
 from uuid import UUID
 
@@ -12,6 +13,19 @@ from goatlib.style.version import SPEC_VERSION, stamp
 
 #: Named styles per project layer (spec 10).
 MAX_STYLES = 10
+#: A style document's size as compact UTF-8 JSON (spec 10); a larger one is
+#: refused before anything reads it. It bounds every list in the document.
+MAX_DOCUMENT_BYTES = 1_000_000
+#: The size of a project layer's time position and of a project's scene, as
+#: compact UTF-8 JSON (spec 10).
+MAX_MAP_VALUE_BYTES = 64_000
+
+
+def json_bytes(value: Any) -> int:
+    """The size of `value` as compact UTF-8 JSON, as the size limits count it."""
+    text = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    # A lone surrogate (`"\ud800"` in a request) is counted, not refused here.
+    return len(text.encode("utf-8", errors="surrogatepass"))
 
 
 def map_view(

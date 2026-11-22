@@ -724,3 +724,78 @@ def test_a_field_the_data_no_longer_has_is_stamped_so_the_style_is_not_stale() -
     }
     assert notes == []
     assert not is_stale(out, "ducklake:2")
+
+
+def test_computed_classes_take_the_first_free_ids_of_the_document() -> None:
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"marker": {"color": "#999999"}},
+        "classify": [
+            {"id": "d", "field": "density", "method": "quantile", "count": 5},
+            {
+                "id": "t",
+                "field": "type",
+                "method": "categories",
+                "count": 3,
+                "classes": [{"id": "c2", "values": ["school"]}],
+            },
+        ],
+        "rules": [{"id": "c4", "filter": ["==", ["get", "type"], "park"]}],
+    }
+    out, _ = apply_computed(
+        doc,
+        {
+            ("breaks", "density", "quantile", "5"): STATS[KEY],
+            ("top", "type", "3"): [("school", 9), ("park", 5), ("pool", 2)],
+        },
+        geometry="point",
+        fingerprint="f",
+        at="t",
+    )
+    numeric, categories = out["classify"]
+    assert [k["id"] for k in numeric["classes"]] == ["c1", "c3", "c5", "c6", "c7"]
+    assert [(k["id"], k["values"]) for k in categories["classes"]] == [
+        ("c2", ["school"]),
+        ("c8", ["park"]),
+        ("c9", ["pool"]),
+    ]
+
+
+class _CountingSet(set):
+    """A set that counts its membership checks."""
+
+    checks = 0
+
+    def __contains__(self, item: object) -> bool:
+        type(self).checks += 1
+        return super().__contains__(item)
+
+
+def test_ids_for_thousands_of_computed_classes_check_each_number_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from goatlib.style import compute as compute_module
+
+    real = compute_module.existing_ids
+    monkeypatch.setattr(
+        compute_module, "existing_ids", lambda node: _CountingSet(real(node))
+    )
+    fields, n = 20, 200
+    breaks = Breaks(tuple(range(1, n)), 0, n, False)
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#cccccc"}},
+        "classify": [
+            {"id": f"k{i}", "field": f"f{i}", "method": "quantile", "count": n}
+            for i in range(fields)
+        ],
+    }
+    stats = {("breaks", f"f{i}", "quantile", str(n)): breaks for i in range(fields)}
+    _CountingSet.checks = 0
+    out, _ = apply_computed(doc, stats, geometry="polygon", fingerprint="f", at="t")
+    ids = [k["id"] for c in out["classify"] for k in c["classes"]]
+    assert ids == [f"c{i}" for i in range(1, fields * n + 1)]
+    # One check per id given out, not one per id below it in the document.
+    assert _CountingSet.checks < 2 * fields * n

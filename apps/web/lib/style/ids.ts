@@ -3,11 +3,16 @@ import { type JsonObject, clone, isObject } from "@/lib/style/json";
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-/** The first of `prefix1`, `prefix2`, ... not in `taken`, which it is added to. */
-export function freshId(prefix: string, taken: Set<string>): string {
-  let n = 1;
+/**
+ * The first of `prefix1`, `prefix2`, ... not in `taken`, which it is added to. `counters` holds, per prefix, the
+ * number the search starts at, for a caller that takes many ids from one `taken` set that only grows: every number
+ * below it is taken already, so each number is looked at once in all.
+ */
+export function freshId(prefix: string, taken: Set<string>, counters?: Map<string, number>): string {
+  let n = counters?.get(prefix) ?? 1;
   while (taken.has(`${prefix}${n}`)) n += 1;
   taken.add(`${prefix}${n}`);
+  counters?.set(prefix, n + 1);
   return `${prefix}${n}`;
 }
 
@@ -37,9 +42,10 @@ export function assignIds<T = any>(doc: T, reserved: Iterable<string> = []): T {
   const out = clone(doc);
   if (!isObject(out)) return out;
   const taken = new Set([...existingIds(out), ...reserved]);
+  const counters = new Map<string, number>();
   const fill = (items: unknown, prefix: string) => {
     for (const item of list(items)) {
-      if (isObject(item) && typeof item.id !== "string") item.id = freshId(prefix, taken);
+      if (isObject(item) && typeof item.id !== "string") item.id = freshId(prefix, taken, counters);
     }
   };
   for (const c of list(out.classify)) {
@@ -50,7 +56,7 @@ export function assignIds<T = any>(doc: T, reserved: Iterable<string> = []): T {
         c.id = field;
         taken.add(field);
       } else {
-        c.id = freshId("k", taken);
+        c.id = freshId("k", taken, counters);
       }
     }
     fill(c.classes, "c");
@@ -68,10 +74,11 @@ export function assignIds<T = any>(doc: T, reserved: Iterable<string> = []): T {
 export function withRuleIds<T = any>(doc: T): T {
   if (!isObject(doc) || !list(doc.rules).some((r) => isObject(r) && typeof r.id !== "string")) return doc;
   const taken = existingIds(doc);
+  const counters = new Map<string, number>();
   return {
     ...doc,
     rules: list(doc.rules).map((r) =>
-      isObject(r) && typeof r.id !== "string" ? { ...r, id: freshId("r", taken) } : r
+      isObject(r) && typeof r.id !== "string" ? { ...r, id: freshId("r", taken, counters) } : r
     ),
   } as T;
 }

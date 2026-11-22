@@ -39,7 +39,14 @@ from goatlib.style.fingerprint import (
     layer_fingerprint,
 )
 from goatlib.style.issues import Issue
-from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document, map_view
+from goatlib.style.map_rows import (
+    MAX_MAP_VALUE_BYTES,
+    GroupRow,
+    LayerRow,
+    build_map_document,
+    json_bytes,
+    map_view,
+)
 from goatlib.style.merge import diff
 from goatlib.style.parse import as_read
 from goatlib.style.scene import extrudes
@@ -280,9 +287,12 @@ async def checked_scene(
     """The scene a project update stores (3D spec 6): null or `{}` is NULL
     (automatic); otherwise goatlib checks the whole scene against the project's
     extruded layers and the deployment's sources, and an error answers 422
-    `invalid_scene` with the issues. Warnings are not returned."""
+    `invalid_scene` with the issues. Warnings are not returned. A scene above
+    MAX_MAP_VALUE_BYTES answers 422 `scene_too_large` before anything reads it."""
     if not scene:
         return None
+    if json_bytes(scene) > MAX_MAP_VALUE_BYTES:
+        raise HTTPException(status_code=422, detail={"code": "scene_too_large"})
     context = MapContext(
         layers={},
         extruded=await extruded_layers(session, project_id),

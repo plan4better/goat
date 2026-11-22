@@ -22,6 +22,7 @@ from fastapi import (
     Response,
     status,
 )
+from goatlib.style.map_rows import MAX_MAP_VALUE_BYTES, json_bytes
 from pydantic import UUID4
 
 from core.core import authz
@@ -349,9 +350,12 @@ async def write_layer_state(
     session: AsyncSession = Depends(get_db),
     user_id: UUID = Depends(get_user_id),
 ) -> Response:
-    """A project layer's map state: shown, active style, position, time, legend."""
+    """A project layer's map state: shown, active style, position, time, legend.
+    A time position above MAX_MAP_VALUE_BYTES answers 422 `time_value_too_large`."""
     await project_layer(session, project_id, layer_project_id, user_id)
     async with answering():
+        if json_bytes(body.time_value) > MAX_MAP_VALUE_BYTES:
+            raise StyleSaveError(422, "time_value_too_large")
         await write_layer_map_state(
             session, layer_project_id=layer_project_id, state=body
         )

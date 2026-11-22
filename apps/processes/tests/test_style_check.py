@@ -432,3 +432,83 @@ def test_the_check_opens_a_catalog_rasters_copy_as_a_file(tmp_path) -> None:
             raster_file=RasterFile(stored_file=copy),
         )
     assert opened == [(None, {"stored_file": copy})]
+
+
+def _document_of(size: int) -> dict[str, Any]:
+    """A document of exactly `size` bytes of compact UTF-8 JSON."""
+    from goatlib.style.map_rows import json_bytes
+
+    doc: dict[str, Any] = {"version": "1.0.0", "kind": "vector", "name": ""}
+    doc["name"] = "x" * (size - json_bytes(doc))
+    assert json_bytes(doc) == size
+    return doc
+
+
+def _post_signed_in(document: dict[str, Any]) -> tuple[Any, list, list]:
+    """The route's answer for a signed-in caller, the access checks it asked for
+    and the checks it ran."""
+    from processes.deps.auth import get_optional_user_id
+    from processes.routers import processes as router
+
+    allowed: list[Any] = []
+    checked: list[Any] = []
+
+    async def ensure_allowed(*args: Any) -> None:
+        allowed.append(args)
+
+    def style_check(**kw: Any) -> dict[str, Any]:
+        checked.append(kw)
+        return {
+            "document": kw["document"],
+            "issues": [],
+            "feature_count": None,
+            "fields": [],
+        }
+
+    app.dependency_overrides[get_optional_user_id] = lambda: LAYER
+    try:
+        with (
+            patch.object(router, "ensure_allowed", ensure_allowed),
+            patch.object(router.analytics_service, "style_check", style_check),
+        ):
+            response = TestClient(app).post(
+                "/processes/style-check/execution",
+                json={"inputs": {"collection": LAYER, "document": document}},
+            )
+    finally:
+        app.dependency_overrides.pop(get_optional_user_id, None)
+    return response, allowed, checked
+
+
+def test_a_document_over_the_size_limit_is_refused_before_any_work() -> None:
+    from goatlib.style.map_rows import MAX_DOCUMENT_BYTES
+
+    response, allowed, checked = _post_signed_in(_document_of(MAX_DOCUMENT_BYTES + 1))
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["title"] == "Invalid parameter"
+    assert "document" in detail["detail"]
+    assert allowed == [] and checked == []
+
+
+def test_a_document_at_the_size_limit_is_checked() -> None:
+    from goatlib.style.map_rows import MAX_DOCUMENT_BYTES
+
+    response, allowed, checked = _post_signed_in(_document_of(MAX_DOCUMENT_BYTES))
+    assert response.status_code == 200, response.text
+    assert len(allowed) == 1 and len(checked) == 1
+
+
+def test_a_document_over_the_size_limit_without_a_token_is_still_401() -> None:
+    from goatlib.style.map_rows import MAX_DOCUMENT_BYTES
+
+    response = TestClient(app).post(
+        "/processes/style-check/execution",
+        json={
+            "inputs": {
+                "collection": LAYER,
+                "document": _document_of(MAX_DOCUMENT_BYTES + 1),
+            }
+        },
+    )
+    assert response.status_code == 401

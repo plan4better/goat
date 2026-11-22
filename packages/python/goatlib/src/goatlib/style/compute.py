@@ -543,10 +543,15 @@ def _ours(
     return ours
 
 
-def _with_ids(classes: list[dict[str, Any]], ids: set[str]) -> None:
+def _with_ids(
+    classes: list[dict[str, Any]], ids: set[str], counters: dict[str, int]
+) -> None:
+    """An id for every class without one. `ids` (every id of the document) only
+    grows during a run, so one `counters` per run lets `fresh_id` look at each
+    number once."""
     for k in classes:
         if not isinstance(k.get("id"), str):
-            k["id"] = fresh_id("c", ids)
+            k["id"] = fresh_id("c", ids, counters)
 
 
 def _generated(target: str | None, written: dict[str, Any]) -> dict[str, Any] | None:
@@ -554,7 +559,11 @@ def _generated(target: str | None, written: dict[str, Any]) -> dict[str, Any] | 
 
 
 def _numeric(
-    c: dict[str, Any], b: Breaks, geometry: str | None, ids: set[str]
+    c: dict[str, Any],
+    b: Breaks,
+    geometry: str | None,
+    ids: set[str],
+    counters: dict[str, int],
 ) -> dict[str, Any] | None:
     """Bounds by position while the number of classes stays; otherwise new classes.
     The server's values follow the palette or range by position. Returns what it
@@ -565,7 +574,7 @@ def _numeric(
         classes = existing
     else:
         classes = [{} for _ in range(n)]
-    _with_ids(classes, ids)
+    _with_ids(classes, ids, counters)
     target, values = _target_values(c, geometry, n)
     ours = _ours(classes, c, target)
     written: dict[str, Any] = {}
@@ -584,7 +593,11 @@ def _numeric(
 
 
 def _categories(
-    c: dict[str, Any], top: list[tuple[Any, int]], geometry: str | None, ids: set[str]
+    c: dict[str, Any],
+    top: list[tuple[Any, int]],
+    geometry: str | None,
+    ids: set[str],
+    counters: dict[str, int],
 ) -> dict[str, Any] | None:
     """The most frequent values as classes. A class keeps everything it carries
     while one of its values is still among them; the others go, and values no class
@@ -603,7 +616,7 @@ def _categories(
     held = {as_text(v) for k in kept for v in as_list(k.get("values"))}
     new = [{"values": [v]} for v in values if as_text(v) not in held]
     classes = kept + new
-    _with_ids(classes, ids)
+    _with_ids(classes, ids, counters)
     c["classes"] = classes
     target, generated = _target_values(c, geometry, len(classes))
     ours = _ours(classes, c, target)
@@ -679,6 +692,7 @@ def apply_computed(
     if out.get("kind") == "raster":
         return out, _apply_raster(out, stats, stamp)
     ids = existing_ids(out)
+    counters: dict[str, int] = {}
     for ci, c in _classifications(out):
         if (range_key := _manual_range_key(c)) is not None:
             # Manual classes stay as they are: only the field's minimum and maximum.
@@ -704,13 +718,13 @@ def apply_computed(
         # class are open, and their labels read the data's ends.
         domain: Any = None
         if isinstance(breaks, Breaks) and breaks.min is not None:
-            generated = _numeric(c, breaks, geometry, ids)
+            generated = _numeric(c, breaks, geometry, ids, counters)
             domain = [breaks.min, breaks.max]
             fewer = _fewer_classes(c, breaks, to_pointer(["classify", item_key(c, ci)]))
             if fewer is not None:
                 notes.append(fewer)
         elif isinstance(top, list) and any(v is not None for v, _ in top):
-            generated = _categories(c, top, geometry, ids)
+            generated = _categories(c, top, geometry, ids, counters)
         else:
             # No values, or a field the data no longer has or holds in another
             # type (left out of the statistics; the checks report it): the
@@ -837,7 +851,7 @@ def _apply_raster(
         return notes
     breaks = stats.get(breaks_key)
     if isinstance(breaks, Breaks) and breaks.min is not None:
-        generated = _raster_classes(c, render, breaks, existing_ids(doc))
+        generated = _raster_classes(c, render, breaks, existing_ids(doc), {})
         fewer = _fewer_classes(c, breaks, "/render/classify")
         if fewer is not None:
             notes.append(fewer)
@@ -851,7 +865,11 @@ def _apply_raster(
 
 
 def _raster_classes(
-    c: dict[str, Any], render: dict[str, Any], b: Breaks, ids: set[str]
+    c: dict[str, Any],
+    render: dict[str, Any],
+    b: Breaks,
+    ids: set[str],
+    counters: dict[str, int],
 ) -> dict[str, Any] | None:
     """Raster classes by position (as `_numeric` for vectors) with their color."""
     n = len(b.breaks) + 1
@@ -860,7 +878,7 @@ def _raster_classes(
         classes = existing
     else:
         classes = [{} for _ in range(n)]
-    _with_ids(classes, ids)
+    _with_ids(classes, ids, counters)
     own = c.get("palette") is not None
     palette = c.get("palette") if own else _raster_palette(render)
     reverse = (c.get("reverse") if own else render.get("reverse")) is True

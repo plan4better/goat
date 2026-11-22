@@ -2681,6 +2681,11 @@ carry a project's map state.
 
 <!-- check: map -->
 ```json
+**Sizes.** A style document is at most 1 MB (1,000,000 bytes) as compact UTF-8 JSON; a project layer's time position
+and a project's scene are at most 64,000 bytes each. core refuses a larger one before anything reads it, stores
+nothing and answers 422 with the code `document_too_large` (on a style save, a dataset default write and a check),
+`time_value_too_large` or `scene_too_large`. The limit bounds every list of the document as well.
+
 {
   "version": "1.0.0",
   "basemap": { "id": "light" },
@@ -3088,8 +3093,8 @@ panel until it is.
 `{ "base_rev": 41, "document": { ... } }`.
 
 - One save is in flight at a time; changes made meanwhile go into the next one.
-- A save is a whole document (a few KB), so sending it again is harmless: a document equal to the stored one is not
-  written again, and the reply carries the current revision. No request ids are needed.
+- A save is a whole document (a few KB, at most 1 MB: section 10), so sending it again is harmless: a document equal
+  to the stored one is not written again, and the reply carries the current revision. No request ids are needed.
 
 **The server** (core):
 

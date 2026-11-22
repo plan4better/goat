@@ -23,6 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from goatlib.style.map_rows import MAX_DOCUMENT_BYTES, json_bytes
 from goatlib.tools.registry import TOOL_REGISTRY
 from goatlib.utils.credentials import redact_credentials
 from goatlib.workflows.run_errors import error_message, step_errors
@@ -646,6 +647,21 @@ def _require_whole_numbers(inputs: dict[str, Any]) -> None:
         )
 
 
+def _require_document_size(inputs: dict[str, Any]) -> None:
+    """A style document above MAX_DOCUMENT_BYTES of compact UTF-8 JSON (the
+    limit core applies to every document it takes) is refused before any work."""
+    if json_bytes(inputs.get("document")) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": OGC_EXCEPTION_INVALID_PARAMETER,
+                "title": "Invalid parameter",
+                "status": 422,
+                "detail": f"document is larger than {MAX_DOCUMENT_BYTES} bytes",
+            },
+        )
+
+
 @router.post(
     "/processes/{process_id}/execution",
     summary="Execute a process",
@@ -742,6 +758,8 @@ async def execute_process(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         _require_whole_numbers(execute_request.inputs)
+        if process_id == "style-check":
+            _require_document_size(execute_request.inputs)
         # Every layer the query reads must be readable by the caller (a
         # layer of a published project is readable by anyone).
         await ensure_allowed(
