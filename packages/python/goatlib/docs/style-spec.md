@@ -67,8 +67,10 @@ The sample datasets:
 - **Palettes** are a catalogue id or an inline list of 2 to 12 colors:
   - catalogue ids are always namespaced: `d3:viridis`, `d3:magma`, `colorbrewer:OrRd`, `colorbrewer:YlGnBu`,
     `colorbrewer:Purples`, `colorbrewer:RdBu`, `colorbrewer:Set2`, `carto:Bold`, `goat:green`, `goat:elevation`,
-    and `uber:<name>` for the palettes GOAT offers today;
-  - the catalogue (id, name, kind, number of steps, color-blind safe) is published as data;
+    `d3:cividis`, `d3:inferno`, `d3:plasma`, `goat:terrain`, `goat:hypsometric`, `goat:ndvi` and `uber:<name>`, as
+    examples of the palettes GOAT offers today;
+  - the catalogue (id, name, kind, number of steps, color-blind safe, and the `group` the palette picker shows it in:
+    `science` for the perceptual, elevation and vegetation ramps) is published as data;
   - an inline list looks like `["#fef0d9", "#fc8d59", "#b30000"]`; the panel's list of a continuous palette's colors writes one
     on its first edit, in the order the colors draw (`reverse` folded in).
 - **Numbers** in labels, legends and popups use one `format` object (section 18) and the viewer's locale. A map
@@ -1705,8 +1707,11 @@ For labels, label `priority` decides placement and order together.
 
 ### 7.2 Legend
 
-`legend` takes `show` (default true), `title` (default: the layer name), `caption`, for vector layers `classes`,
-and for rasters `unit`, `min_label`, `max_label`. `"legend": false` is short for `{ "show": false }`.
+`legend` takes `show` (default true), `title` (default: the layer name), `caption`, `display`, for vector layers
+`classes`, and for rasters `unit`, `min_label`, `max_label`. `"legend": false` is short for `{ "show": false }`.
+`display` is `standard` (default: the entries below) or `name_only`: the layer shows in the legend with its name (and
+the swatch of its look where the layer list has one) and no entries, for a hillshade, an aerial photo or a long
+category list. A `title` set with `name_only` shows under the layer's name as the legend's heading.
 Classifications, classes and rules take `legend: false` to leave themselves out.
 
 `classes` says which classes of the classifications the legend lists, wherever it shows (the layer list, the style
@@ -3246,7 +3251,7 @@ are part of the format: an output that breaks one of them draws something else t
 | `label` on polygons | `symbol` layer on geoapi's label anchors (`default_anchor`), placed as on points: `auto` with a marker `text-variable-anchor-offset` around it, without one on the anchor; a side `text-anchor` and `text-offset`; `inside` on the anchor |
 | `label` on lines | `line`: `symbol-placement: line`, `spacing` = `symbol-spacing`; `auto`, `center` and the sides: the decoration center points, placed as on points (`text-variable-anchor-offset` for `auto` with a marker, `text-anchor` and `text-offset` for a side); on a GeoJSON source `symbol-placement: line-center`, a side with `text-rotation-alignment: viewport` |
 | label text | `concat` of literal text and one formatted value per placeholder; `lines` become `format` sections; `max_width` px / size = `text-max-width` in ems; `transform` = `text-transform`, `letter_spacing` = `text-letter-spacing`, `line_height` = `text-line-height` (both in ems already), `padding` = `text-padding` |
-| numbers | `number-format` with `locale` from `["global-state", "locale"]`; `decimals: 0` rounds first (MapLibre ignores a 0); `thousands_separator: false` uses `to-string` of the rounded value; `abbreviate` and `always_show_sign` are `case` expressions. The map compiles without field types, so there a placeholder is formatted as a number when its value is one (`["typeof", ["get", f]]`) and as text otherwise; with field types (the style panel), by the field's type |
+| numbers | `number-format` with `locale` from `["global-state", "locale"]`; `decimals: 0` rounds first (MapLibre ignores a 0); `thousands_separator: false` uses `to-string` of the rounded value; `abbreviate` and `always_show_sign` are `case` expressions; `percent` formats the value times 100, with no decimals when `decimals` is `auto`, and adds a plain percent sign (with a number of decimals and `thousands_separator: false`, the whole part is written with `to-string` and the decimals with `number-format`). The map compiles without field types, so there a placeholder is formatted as a number when its value is one (`["typeof", ["get", f]]`) and as text otherwise; with field types (the style panel), by the field's type |
 | `font.weight`, `font.style` | `text-font`, one Noto Sans stack per weight and style (fonts: section 15): `Noto Sans Light`, `Regular`, `Medium`, `Bold`, and `Noto Sans Light Italic`, `Italic`, `Medium Italic`, `Bold Italic`; a single font each, as a static glyph host serves no combined stack; both by zoom, per class and per line (a line's `font` as a `format` section's `text-font`) |
 | value by zoom | `interpolate` or `step` on `["zoom"]` at the top level; derived values (casing width, opacity products) are computed at every stop of the union of stop zooms |
 | value by attribute | `interpolate` over `["to-number", ["get", f]]` inside `case` with `has`, falling back to `no_data`; `sqrt` and `log` scales transform the input and the domain |
@@ -3596,7 +3601,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | by attribute, colors | `field`, `palette` (catalogue id or inline list), `reverse`, `domain`, `no_data`, `title` |
 | by attribute, numbers | `field`, `range: [min, max]`, `scale` (`linear` default, `sqrt`, `log`), `domain`, `no_data`, `title` |
 | raw field value | `{ "field" }` alone: the value as it is (degrees, hex colors) |
-| format | `decimals` (`auto` default, or 0 to 10), `thousands_separator` (default true), `abbreviate` (default false), `always_show_sign` (default false), `prefix`, `suffix` |
+| format | `decimals` (`auto` default, or 0 to 10), `thousands_separator` (default true), `abbreviate` (default false), `always_show_sign` (default false), `percent` (default false: the value as a percent of 1, 0.73 reads 73 % with the reader's language's percent sign in the popup, the legend and the panel, while a map label appends a plain "%" (section 16); `decimals` count after the percent, `auto` meaning none, `abbreviate` does not apply), `prefix`, `suffix` |
 
 ### 18.4 Classification
 

@@ -19,7 +19,7 @@ import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { informative } from "@/lib/style/legend";
+import { informative, titleOnly } from "@/lib/style/legend";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
@@ -86,12 +86,18 @@ const ActiveLayerLegend = ({
           collapseAfter={10}
         />
       ) : (
-        <Stack direction="row" alignItems="center" spacing={1}>
-          {layerSwatchIcon(layer, zoom)}
-          <Typography variant="body2" color="text.secondary">
-            {layer.name}
-          </Typography>
-        </Stack>
+        <>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            {layerSwatchIcon(layer, zoom)}
+            <Typography variant="body2" color="text.secondary">
+              {layer.name}
+            </Typography>
+          </Stack>
+          {/* A legend of the name only: its own title under the name. */}
+          {legend && titleOnly(legend) && (
+            <StyleLegend legend={{ ...legend, caption: undefined }} variant="tree" />
+          )}
+        </>
       )}
     </Box>
   );

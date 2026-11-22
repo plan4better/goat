@@ -63,7 +63,7 @@ export function FieldFormatPopover({
   onClose,
   sampleValue,
 }: FieldFormatPopoverProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const cfg: AttributeFormatConfig = config ?? {};
 
@@ -93,7 +93,7 @@ export function FieldFormatPopover({
   ];
 
   const renderPreview = (v: number) => {
-    let s = formatFieldValue(v, "number", cfg);
+    let s = formatFieldValue(v, "number", cfg, i18n.language);
     if (prefix || suffix) s = `${prefix ?? ""}${s}${suffix ?? ""}`;
     return s;
   };
@@ -186,6 +186,12 @@ export function FieldFormatPopover({
                       label={t("always_show_sign")}
                       checked={cfg.always_show_sign ?? false}
                       onChange={(v) => update({ always_show_sign: v || undefined })}
+                    />
+                    {/* A share of 1 as a percent: 0.73 reads 73 %, in the reader's language. */}
+                    <ToggleRow
+                      label={t("show_as_percent")}
+                      checked={cfg.percent ?? false}
+                      onChange={(v) => update({ percent: v || undefined })}
                     />
                   </Stack>
 

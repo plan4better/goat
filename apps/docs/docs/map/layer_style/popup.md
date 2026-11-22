@@ -31,7 +31,7 @@ sidebar_position: 4
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">For a <code>Field list</code> block, choose <code>Table</code> or <code>List</code> as <code>Layout</code>, click <code>Add attribute</code> to choose the fields to show (or <code>Add all fields</code>), and optionally set <code>Show first</code> to the number of fields shown at once; the other fields show with a "See more" button.</div>
+  <div class="content">For a <code>Field list</code> block, choose <code>Table</code> or <code>List</code> as <code>Layout</code>, click <code>Add attribute</code> to choose the fields to show (or <code>Add all fields</code>), and optionally set <code>Show first</code> to the number of fields shown at once; the other fields show with a "See more" button. The <code>123</code> button beside a number field sets how it reads: decimals, thousands separator, abbreviation, sign, <code>Show as percent</code> (0.73 reads 73%, in the reader's language), prefix and suffix.</div>
 </div>
 
 <div class="step">

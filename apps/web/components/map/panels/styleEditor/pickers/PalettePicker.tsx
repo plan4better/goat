@@ -83,13 +83,19 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
   const { t } = useTranslation("common");
   const [kind, setKind] = useState<PaletteKind | "all">("all");
   const [hover, setHover] = useState<string | null>(null);
-  const shown = useMemo(
-    () =>
-      Object.entries(PALETTES).filter(
-        ([, p]) => kinds.includes(p.kind) && (kind === "all" || p.kind === kind)
-      ),
-    [kinds, kind]
-  );
+  // All palettes: a group of the catalogue (the science ramps) first, under its own heading; a kind lists every
+  // palette of it in the catalogue's order.
+  const shown = useMemo(() => {
+    const fitting = Object.entries(PALETTES).filter(
+      ([, p]) => kinds.includes(p.kind) && (kind === "all" || p.kind === kind)
+    );
+    return kind === "all"
+      ? [...fitting.filter(([, p]) => p.group), ...fitting.filter(([, p]) => !p.group)]
+      : fitting;
+  }, [kinds, kind]);
+  /** The heading over a palette in All palettes: its group's, else its kind's, where it starts a run of them. */
+  const sectionOf = (p: (typeof PALETTES)[string]) =>
+    p.group ? `style_editor.palette_group_${p.group}` : `style_editor.palette_kind_${p.kind}`;
   const stepped = steps !== undefined;
 
   const custom = Array.isArray(value) ? value : undefined;
@@ -194,8 +200,8 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
         {shown.map(([id, palette], i) => (
           <Fragment key={id}>
             {kind === "all" &&
-              (i === 0 || shown[i - 1][1].kind !== palette.kind) &&
-              heading(t(`style_editor.palette_kind_${palette.kind}`))}
+              (i === 0 || sectionOf(shown[i - 1][1]) !== sectionOf(palette)) &&
+              heading(t(sectionOf(palette)))}
             <Strip
               name={palette.name}
               colors={ordered(paletteColors(id, steps), reverse)}

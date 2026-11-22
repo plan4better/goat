@@ -16,7 +16,7 @@ sidebar_position: 5
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Use the <code>Show</code> switch to <strong>show or hide the legend</strong>: <code>In the layer list</code> or <code>Hidden</code>.</div>
+  <div class="content">Use the <code>Show</code> switch to <strong>show or hide the legend</strong>: <code>In the layer list</code> or <code>Hidden</code>. Under <code>Display</code>, <code>Standard</code> shows the layer's colors, classes or symbols, and <code>Name only</code> shows the layer's name without entries, for example for a hillshade, an aerial photo or a long list of categories. With a <code>Title</code> of its own, <code>Name only</code> shows that title under the layer's name, in the layer list, a dashboard's <code>Layers</code> widget and a print layout.</div>
 </div>
 
 <div class="step">

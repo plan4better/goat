@@ -64,7 +64,7 @@ The row in the section then shows the field and the size, for example <code>Name
 
 ## Numbers
 
-When the text shows a number field, <code>Numbers</code> opens the <code>Number format</code>: <code>Decimals</code>, <code>Thousands</code> (a thousands separator), <code>Abbreviate</code> (12.3k instead of 12,345), <code>Sign</code> (always + or -), <code>Prefix</code> and <code>Suffix</code>, such as € or km². It applies to every number in the label, and <code>As in the dataset</code> keeps the dataset's own format. When a template holds several number fields, each one can get its own format (<code>Numbers in</code> the field).
+When the text shows a number field, <code>Numbers</code> opens the <code>Number format</code>: <code>Decimals</code>, <code>Thousands</code> (a thousands separator), <code>Abbreviate</code> (12.3k instead of 12,345), <code>Sign</code> (always + or -), <code>Percent</code> (a share of 1 as a percent: 0.73 reads 73%), <code>Prefix</code> and <code>Suffix</code>, such as € or km². It applies to every number in the label, and <code>As in the dataset</code> keeps the dataset's own format. When a template holds several number fields, each one can get its own format (<code>Numbers in</code> the field).
 
 ## Position
 

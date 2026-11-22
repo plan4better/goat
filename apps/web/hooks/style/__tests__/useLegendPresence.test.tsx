@@ -336,6 +336,7 @@ describe("useLayerLegend of a raster file", () => {
         { wrapper }
       );
     const cases: Record<string, JsonObject> = {
+      "the name only": dem({ legend: { display: "name_only" } }),
       "a hidden legend": dem({ legend: { show: false } }),
       // Values outside left out, both outer ends written: the legend reads them as they are.
       "both outer ends written": dem({

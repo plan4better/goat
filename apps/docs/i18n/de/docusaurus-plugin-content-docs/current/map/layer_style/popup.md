@@ -31,7 +31,7 @@ sidebar_position: 4
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Wählen Sie für einen <code>Feldliste</code>-Block unter <code>Layout</code> <code>Tabelle</code> oder <code>Liste</code>, klicken Sie auf <code>Attribut hinzufügen</code>, um die anzuzeigenden Felder auszuwählen (oder <code>Fügen Sie alle Felder hinzu</code>), und legen Sie optional unter <code>Zuerst zeigen</code> fest, wie viele Felder auf einmal erscheinen; die übrigen Felder zeigt ein "Mehr anzeigen"-Button.</div>
+  <div class="content">Wählen Sie für einen <code>Feldliste</code>-Block unter <code>Layout</code> <code>Tabelle</code> oder <code>Liste</code>, klicken Sie auf <code>Attribut hinzufügen</code>, um die anzuzeigenden Felder auszuwählen (oder <code>Fügen Sie alle Felder hinzu</code>), und legen Sie optional unter <code>Zuerst zeigen</code> fest, wie viele Felder auf einmal erscheinen; die übrigen Felder zeigt ein "Mehr anzeigen"-Button. Der Button <code>123</code> neben einem Zahlenfeld legt fest, wie es erscheint: Dezimalstellen, Tausendertrennzeichen, Abkürzung, Vorzeichen, <code>Als Prozent anzeigen</code> (0,73 wird zu 73 %, in der Sprache des Lesers), Präfix und Suffix.</div>
 </div>
 
 <div class="step">

@@ -75,6 +75,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "format.thousands_separator": True,
     "format.abbreviate": False,
     "format.always_show_sign": False,
+    "format.percent": False,
     "zoom.interpolate": "linear",
     "zoom.base": 1.6,
     "heatmap.radius": 26,
@@ -121,6 +122,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "popup.header": "standard",
     "popup.highlight_active_feature": True,
     "legend.classes": "filter",
+    "legend.display": "standard",
 }
 
 #: The raster renders whose popup is on without a `popup` key, on click (spec

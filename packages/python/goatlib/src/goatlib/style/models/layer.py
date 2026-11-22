@@ -23,6 +23,8 @@ class Legend(StyleModel):
     #: The classes the legend lists (spec 7.2): every class, those with features
     #: under the layer's saved filter, or those drawn in the map's view.
     classes: Literal["all", "filter", "view"] | None = None
+    #: What the legend shows (spec 7.2): the layer's entries, or its name alone.
+    display: Literal["standard", "name_only"] | None = None
 
 
 class OrderByField(StyleModel):

@@ -169,6 +169,57 @@ def test_legend_classes_shown_is_for_vector_layers() -> None:
     assert _issues_at(doc, "/legend/classes") == ["unknown_key"]
 
 
+@pytest.mark.parametrize("kind", ["vector", "raster"])
+@pytest.mark.parametrize("display", ["standard", "name_only"])
+def test_legend_display_takes_standard_or_the_name_only(
+    kind: str, display: str
+) -> None:
+    doc = {"version": "1.0.0", "kind": kind, "legend": {"display": display}}
+    assert codes_of(parse_for_write(doc)) == []
+
+
+@pytest.mark.parametrize("display", ["name", "Name only", True])
+def test_legend_display_refuses_other_values(display: object) -> None:
+    doc = {"version": "1.0.0", "kind": "vector", "legend": {"display": display}}
+    assert _issues_at(doc, "/legend/display") == ["invalid_value"]
+
+
+def test_legend_display_defaults_to_standard() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["legend.display"] == "standard"
+
+
+def test_a_number_format_can_read_as_a_percent() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    popup = {
+        "blocks": [
+            {
+                "type": "field_list",
+                "attributes": [
+                    {"field": "share", "format": {"percent": True, "decimals": 1}}
+                ],
+            }
+        ]
+    }
+    doc = {"version": "1.0.0", "kind": "vector", "popup": popup}
+    assert codes_of(parse_for_write(doc)) == []
+    raster = {"version": "1.0.0", "kind": "raster", "popup": popup}
+    assert codes_of(parse_for_write(raster)) == []
+    bad = {
+        **popup,
+        "blocks": [
+            {
+                **popup["blocks"][0],
+                "attributes": [{"field": "share", "format": {"percent": "yes"}}],
+            }
+        ],
+    }
+    assert set(codes_of(parse_for_write({**doc, "popup": bad}))) == {"invalid_value"}
+    assert REFERENCE_DEFAULTS["format.percent"] is False
+
+
 def test_legend_classes_shown_defaults_to_filter() -> None:
     from goatlib.style.defaults import REFERENCE_DEFAULTS
 

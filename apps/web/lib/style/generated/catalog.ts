@@ -6,6 +6,8 @@ export interface CataloguePalette {
   kind: "sequential" | "diverging" | "qualitative";
   colors: readonly string[];
   variants?: Readonly<Record<number, readonly string[]>>;
+  /** Shown together in the picker (`science`: perceptual, elevation and vegetation ramps). */
+  group?: string;
 }
 
 export const PALETTES: Readonly<Record<string, CataloguePalette>> = {
@@ -1800,16 +1802,76 @@ export const PALETTES: Readonly<Record<string, CataloguePalette>> = {
     name: "Viridis",
     kind: "sequential",
     colors: ["#440154", "#443983", "#31688e", "#21918c", "#35b779", "#90d743", "#fde725"],
+    group: "science",
   },
   "goat:elevation": {
     name: "Elevation",
     kind: "sequential",
     colors: ["#2f6b3a", "#5f9e4d", "#a8c66c", "#e8dc8f", "#c9a36b", "#8f6b4c", "#f2f2f2"],
+    group: "science",
   },
   "d3:magma": {
     name: "Magma",
     kind: "sequential",
     colors: ["#000004", "#2c115f", "#721f81", "#b73779", "#f1605d", "#feb078", "#fcfdbf"],
+    group: "science",
+  },
+  "d3:cividis": {
+    name: "Cividis",
+    kind: "sequential",
+    colors: ["#00224e", "#2a3f6d", "#575d6d", "#7d7c78", "#a59c74", "#d2c060", "#fee838"],
+    group: "science",
+  },
+  "d3:inferno": {
+    name: "Inferno",
+    kind: "sequential",
+    colors: ["#000004", "#320a5e", "#781c6d", "#bc3754", "#ed6925", "#fbb61a", "#fcffa4"],
+    group: "science",
+  },
+  "d3:plasma": {
+    name: "Plasma",
+    kind: "sequential",
+    colors: ["#0d0887", "#5c01a6", "#9c179e", "#cc4778", "#ed7953", "#fdb42f", "#f0f921"],
+    group: "science",
+  },
+  "goat:terrain": {
+    name: "Terrain",
+    kind: "sequential",
+    colors: [
+      "#333399",
+      "#0888ee",
+      "#01cc66",
+      "#81e680",
+      "#fefe98",
+      "#beac76",
+      "#815e56",
+      "#c1b0ac",
+      "#ffffff",
+    ],
+    group: "science",
+  },
+  "goat:hypsometric": {
+    name: "Hypsometric tints",
+    kind: "sequential",
+    colors: [
+      "#acd0a5",
+      "#a8c68f",
+      "#d1d7ab",
+      "#efebc0",
+      "#ded6a3",
+      "#cab982",
+      "#b9985a",
+      "#ac9a7c",
+      "#cac3b8",
+      "#f5f4f2",
+    ],
+    group: "science",
+  },
+  "goat:ndvi": {
+    name: "NDVI",
+    kind: "sequential",
+    colors: ["#ce7e45", "#f1b555", "#99b718", "#66a000", "#3e8601", "#056201", "#023b01", "#011d01"],
+    group: "science",
   },
   "carto:Bold": {
     name: "Bold (categories)",

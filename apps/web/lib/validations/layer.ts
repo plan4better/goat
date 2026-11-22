@@ -133,6 +133,8 @@ export const attributeFormatConfig = z.object({
   thousands_separator: z.boolean().optional(),
   abbreviate: z.boolean().optional(),
   always_show_sign: z.boolean().optional(),
+  /** The value as a percent of 1 (0.73 reads 73 %). */
+  percent: z.boolean().optional(),
 });
 
 export const attributeSchema = z.object({

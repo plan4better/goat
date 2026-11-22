@@ -38,6 +38,17 @@ export function templateField(template: string): string | null {
 /** A number as the label shows it: the twin of the compiler's formatNumber expression. */
 export function formatNumberText(n: number, format: NumberFormatSpec, locale: string): string {
   const decimals = format.decimals ?? "auto";
+  if (format.percent) {
+    // A percent of 1 in the reader's language ("73 %" in German), its decimals after the percent; never abbreviated.
+    const percent = new Intl.NumberFormat(locale, {
+      style: "percent",
+      useGrouping: format.thousands_separator !== false,
+      ...(typeof decimals === "number"
+        ? { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
+        : {}),
+    }).format(n);
+    return `${format.prefix ?? ""}${format.always_show_sign && n > 0 ? "+" : ""}${percent}${format.suffix ?? ""}`;
+  }
   let text: string;
   if (format.thousands_separator === false) {
     text = String(typeof decimals === "number" ? Math.round(n * 10 ** decimals) / 10 ** decimals : n);

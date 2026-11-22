@@ -16,7 +16,7 @@ sidebar_position: 5
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Mit dem Schalter <code>Anzeigen</code> <strong>blenden Sie die Legende ein oder aus</strong>: <code>In der Layerliste</code> oder <code>Ausgeblendet</code>.</div>
+  <div class="content">Mit dem Schalter <code>Anzeigen</code> <strong>blenden Sie die Legende ein oder aus</strong>: <code>In der Layerliste</code> oder <code>Ausgeblendet</code>. Unter <code>Darstellung</code> zeigt <code>Standard</code> die Farben, Klassen oder Symbole des Layers und <code>Nur Name</code> den Namen des Layers ohne Einträge, etwa für eine Schummerung, ein Luftbild oder eine lange Liste von Kategorien. Mit einem eigenen <code>Titel</code> zeigt <code>Nur Name</code> diesen Titel unter dem Namen des Layers, in der Layerliste, im <code>Layer</code>-Widget eines Dashboards und in einem Drucklayout.</div>
 </div>
 
 <div class="step">

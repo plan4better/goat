@@ -4266,6 +4266,22 @@
      ],
      "default": null,
      "title": "Classes"
+    },
+    "display": {
+     "anyOf": [
+      {
+       "enum": [
+        "standard",
+        "name_only"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Display"
     }
    },
    "title": "Legend",
@@ -5229,6 +5245,11 @@
      "title": "Always Show Sign",
      "type": "boolean"
     },
+    "percent": {
+     "default": false,
+     "title": "Percent",
+     "type": "boolean"
+    },
     "prefix": {
      "anyOf": [
       {
@@ -5764,6 +5785,22 @@
      ],
      "default": null,
      "title": "Max Label"
+    },
+    "display": {
+     "anyOf": [
+      {
+       "enum": [
+        "standard",
+        "name_only"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Display"
     }
    },
    "title": "RasterLegend",
@@ -9089,10 +9126,16 @@
       "colorbrewer:YlGnBu",
       "colorbrewer:YlOrBr",
       "colorbrewer:YlOrRd",
+      "d3:cividis",
+      "d3:inferno",
       "d3:magma",
+      "d3:plasma",
       "d3:viridis",
       "goat:elevation",
       "goat:green",
+      "goat:hypsometric",
+      "goat:ndvi",
+      "goat:terrain",
       "uber:global_warming",
       "uber:global_warming_3",
       "uber:global_warming_4",
@@ -12961,6 +13004,7 @@
   "format.thousands_separator": true,
   "format.abbreviate": false,
   "format.always_show_sign": false,
+  "format.percent": false,
   "zoom.interpolate": "linear",
   "zoom.base": 1.6,
   "heatmap.radius": 26,
@@ -13010,7 +13054,8 @@
   "popup.anchor": "top_right",
   "popup.header": "standard",
   "popup.highlight_active_feature": true,
-  "legend.classes": "filter"
+  "legend.classes": "filter",
+  "legend.display": "standard"
  },
  "x-per-layer": [
   "arrows.direction",

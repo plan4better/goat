@@ -64,7 +64,7 @@ Die Zeile im Abschnitt zeigt dann das Feld und die Größe, zum Beispiel <code>N
 
 ## Zahlen
 
-Zeigt der Text ein Zahlenfeld, öffnet <code>Zahlen</code> das <code>Zahlenformat</code>: <code>Dezimalstellen</code>, <code>Tausender</code> (ein Tausendertrennzeichen), <code>Abkürzen</code> (12,3k statt 12.345), <code>Vorzeichen</code> (immer + oder -), <code>Präfix</code> und <code>Suffix</code>, etwa € oder km². Es gilt für jede Zahl in der Beschriftung; <code>Wie im Datensatz</code> behält das Format des Datensatzes. Enthält eine Vorlage mehrere Zahlenfelder, kann jedes ein eigenes Format erhalten (<code>Zahlen in</code> dem Feld).
+Zeigt der Text ein Zahlenfeld, öffnet <code>Zahlen</code> das <code>Zahlenformat</code>: <code>Dezimalstellen</code>, <code>Tausender</code> (ein Tausendertrennzeichen), <code>Abkürzen</code> (12,3k statt 12.345), <code>Vorzeichen</code> (immer + oder -), <code>Prozent</code> (ein Anteil von 1 als Prozent: 0,73 wird zu 73 %), <code>Präfix</code> und <code>Suffix</code>, etwa € oder km². Es gilt für jede Zahl in der Beschriftung; <code>Wie im Datensatz</code> behält das Format des Datensatzes. Enthält eine Vorlage mehrere Zahlenfelder, kann jedes ein eigenes Format erhalten (<code>Zahlen in</code> dem Feld).
 
 ## Platzierung {#position}
 

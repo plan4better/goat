@@ -220,6 +220,38 @@ describe("LayerGroupSwitcher", () => {
     expect(screen.queryByText("Soil 13")).toBeNull();
   });
 
+  it("a legend of the name only shows its own title, and nothing more than the name without one", () => {
+    const nameOnly = (legend: object) => ({
+      document: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        classify: [
+          {
+            id: "zone",
+            field: "zone",
+            method: "categories",
+            classes: [{ id: "a", values: ["park"], fill: { color: "#2166ac" } }],
+          },
+        ],
+        legend: { display: "name_only", ...legend },
+      },
+    });
+    (layers[2] as { style: object }).style = nameOnly({ title: "Land use 2024" });
+    const titled = renderSwitcher();
+    // The name beside the layer's swatch as before, the title under it.
+    expect(screen.getAllByText("2018")).toHaveLength(2);
+    expect(screen.getByText("Land use 2024")).toBeInTheDocument();
+    expect(screen.queryByText("park")).toBeNull();
+    titled.unmount();
+
+    (layers[2] as { style: object }).style = nameOnly({});
+    renderSwitcher();
+    // once on the chip, once beside the layer's swatch
+    expect(screen.getAllByText("2018")).toHaveLength(2);
+    expect(screen.queryByTestId("legend-preview")).toBeNull();
+  });
+
   it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {
     // A fill color by zoom: at 12.6 the map blends 30% of the way, at 13 half of the way.
     const document = {

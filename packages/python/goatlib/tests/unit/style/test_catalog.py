@@ -2,6 +2,15 @@ import re
 
 from goatlib.style.catalog import icon_names, palette_colors, palettes
 
+RASTER_RAMPS = [
+    "d3:cividis",
+    "d3:inferno",
+    "d3:plasma",
+    "goat:terrain",
+    "goat:hypsometric",
+    "goat:ndvi",
+]
+
 SPEC_PALETTES = [
     "d3:viridis",
     "d3:magma",
@@ -23,6 +32,35 @@ def test_the_spec_palettes_exist_with_hex_colors() -> None:
     assert all(
         re.fullmatch(r"#[0-9a-f]{6}", c, re.I) for p in cat.values() for c in p.colors
     )
+
+
+def test_the_raster_ramps_carry_their_published_colors() -> None:
+    cat = palettes()
+    # matplotlib's perceptual maps, seven even samples as viridis and magma.
+    assert cat["d3:cividis"].colors == (
+        "#00224e",
+        "#2a3f6d",
+        "#575d6d",
+        "#7d7c78",
+        "#a59c74",
+        "#d2c060",
+        "#fee838",
+    )
+    assert cat["d3:inferno"].colors[0] == "#000004"
+    assert cat["d3:inferno"].colors[-1] == "#fcffa4"
+    assert cat["d3:plasma"].colors[0] == "#0d0887"
+    assert cat["d3:plasma"].colors[-1] == "#f0f921"
+    # matplotlib's terrain, sea blue to snow; Wikipedia's hypsometric tints (GMT),
+    # lowland green to summit white; Earth Engine's NDVI, bare soil to dense green.
+    assert cat["goat:terrain"].colors[0] == "#333399"
+    assert cat["goat:terrain"].colors[-1] == "#ffffff"
+    assert cat["goat:hypsometric"].colors[0] == "#acd0a5"
+    assert cat["goat:hypsometric"].colors[-1] == "#f5f4f2"
+    assert cat["goat:ndvi"].colors[0] == "#ce7e45"
+    assert all(cat[p].kind == "sequential" for p in RASTER_RAMPS)
+    # One group in the picker with the other scientific and elevation ramps.
+    science = {pid for pid, p in cat.items() if p.group == "science"}
+    assert science == {*RASTER_RAMPS, "d3:viridis", "d3:magma", "goat:elevation"}
 
 
 def test_palette_colors() -> None:

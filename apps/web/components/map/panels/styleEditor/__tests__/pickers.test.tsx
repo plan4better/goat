@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -126,6 +126,38 @@ describe("pickers", () => {
     await userEvent.click(screen.getByRole("button", { name: "style_editor.reverse" }));
     expect(onReverse).toHaveBeenCalledWith(true);
     expect(screen.queryByRole("button", { name: "RdBu" })).toBeNull();
+  });
+
+  it("the science ramps come first in All palettes, under their heading; a kind lists them in their place", async () => {
+    renderPanel(
+      <PalettePicker value="goat:elevation" onChange={vi.fn()} kinds={["sequential", "diverging"]} />
+    );
+    const strips = () =>
+      screen.getAllByRole("button").filter((b) => b.hasAttribute("aria-pressed") && b.getAttribute("title"));
+    const headings = () =>
+      // The grid's headings, not the name line above it.
+      within(strips()[0].parentElement as HTMLElement)
+        .getAllByText(/^style_editor\.palette_(group|kind)_/)
+        .map((el) => el.textContent);
+    expect(headings()[0]).toBe("style_editor.palette_group_science");
+    expect(
+      strips()
+        .slice(0, 9)
+        .map((b) => b.getAttribute("aria-label"))
+    ).toEqual([
+      "Viridis",
+      "Elevation",
+      "Magma",
+      "Cividis",
+      "Inferno",
+      "Plasma",
+      "Terrain",
+      "Hypsometric tints",
+      "NDVI",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.palette_kind_sequential" }));
+    expect(screen.queryByText("style_editor.palette_group_science")).toBeNull();
+    expect(strips()[0].getAttribute("aria-label")).toBe("BuGn");
   });
 
   it("an inline palette shows as yours; its colors are edited in the list under the Palette row, not here", async () => {

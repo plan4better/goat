@@ -83,6 +83,26 @@ describe("the print legend", () => {
     expect(screen.queryByText("Hidden")).toBeNull();
   });
 
+  it("a legend of the name only shows the layer's name, its swatch and its own title, and no entries", () => {
+    const nameOnly = (legend: object) =>
+      ({ ...CLASSES, legend: { display: "name_only", ...legend } }) as LayerStyle;
+    const { container } = render(
+      <LegendElementRenderer
+        element={legendElement()}
+        projectLayers={[
+          layer(5, "Districts", nameOnly({ title: "Inhabitants 2024" })),
+          layer(6, "Parks", nameOnly({})),
+        ]}
+      />
+    );
+    expect(screen.getByText("Districts")).toBeInTheDocument();
+    expect(screen.getByText("Inhabitants 2024")).toBeInTheDocument();
+    expect(screen.getByText("Parks")).toBeInTheDocument();
+    expect(within(container).queryAllByText(/under|to|and more/)).toEqual([]);
+    // Each layer's swatch stands beside its name.
+    expect(container.querySelectorAll("svg")).toHaveLength(2);
+  });
+
   it("a connected locked map's legend shows its frozen documents", () => {
     const map: ReportElement = {
       id: "map-1",

@@ -775,6 +775,11 @@ function heightSection(style: JsonObject, geometry: Geometry): LegendSection | n
 export const informative = (legend: Legend | null | undefined): boolean =>
   !!legend?.sections.some((section) => section.kind !== "entries" || section.id !== "base");
 
+/** Whether a legend of the layer's name only (spec 7.2 `display`) has a title of its own: where a row shows the layer's
+ * name (the layer list, the layer widget, print), that title stands under it as the legend's heading, without entries. */
+export const titleOnly = (legend: Legend | null | undefined): boolean =>
+  !!legend?.title && legend.sections.length === 0;
+
 /** Whether a class is listed (spec 7.2), whatever a count finds: not when it draws nothing on the map. */
 export function classListed(style: JsonObject, c: JsonObject, k: JsonObject): boolean {
   // A class hidden with the eye draws nothing on the map, so the legend leaves it out too.
@@ -832,6 +837,13 @@ export function buildLegend(
 ): Legend | null {
   const legend = style.legend;
   if (legend === false || (isObject(legend) && legend.show === false)) return null;
+  // The layer's name alone (spec 7.2 `display`): its title and caption, no entries.
+  if (isObject(legend) && legend.display === "name_only")
+    return {
+      ...(typeof legend.title === "string" ? { title: legend.title } : {}),
+      ...(typeof legend.caption === "string" ? { caption: legend.caption } : {}),
+      sections: [],
+    };
   if (style.kind === "raster") {
     const sections = rasterSections(style, ctx.serviceLegendUrl, ctx.valueRange);
     if (!sections.length) return null;

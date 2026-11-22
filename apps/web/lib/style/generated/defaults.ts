@@ -63,6 +63,7 @@ export const DEFAULTS: Readonly<Record<string, unknown>> = {
   "format.thousands_separator": true,
   "format.abbreviate": false,
   "format.always_show_sign": false,
+  "format.percent": false,
   "zoom.interpolate": "linear",
   "zoom.base": 1.6,
   "heatmap.radius": 26,
@@ -113,6 +114,7 @@ export const DEFAULTS: Readonly<Record<string, unknown>> = {
   "popup.header": "standard",
   "popup.highlight_active_feature": true,
   "legend.classes": "filter",
+  "legend.display": "standard",
 };
 
 /** From which zoom each H3 resolution draws under "auto" (goatlib AUTO_FROM_ZOOM); geoapi picks it per tile. */

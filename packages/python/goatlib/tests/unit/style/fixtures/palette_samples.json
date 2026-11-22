@@ -1778,5 +1778,59 @@
       "#f84300",
       "#00ff00"
     ]
+  },
+  {
+    "palette": "d3:cividis",
+    "count": 5,
+    "colors": ["#00224e", "#434e6d", "#7d7c78", "#bcae6b", "#fee838"]
+  },
+  {
+    "palette": "d3:inferno",
+    "count": 9,
+    "colors": [
+      "#000004",
+      "#280c47",
+      "#571266",
+      "#8a2267",
+      "#bc3754",
+      "#e15d35",
+      "#f59121",
+      "#fec846",
+      "#fcffa4"
+    ]
+  },
+  {
+    "palette": "d3:plasma",
+    "count": 4,
+    "colors": ["#0d0887", "#9c179e", "#ed7953", "#f0f921"]
+  },
+  {
+    "palette": "goat:terrain",
+    "count": 6,
+    "colors": ["#333399", "#40b1a0", "#9deb85", "#cbbc7d", "#9b7e77", "#ffffff"]
+  },
+  {
+    "palette": "goat:hypsometric",
+    "count": 13,
+    "colors": [
+      "#acd0a5",
+      "#a9c894",
+      "#bdcf9d",
+      "#d8dcb0",
+      "#efebc0",
+      "#e2dbaa",
+      "#d4c792",
+      "#c6b178",
+      "#b9985a",
+      "#b09974",
+      "#bbae9a",
+      "#d5cfc6",
+      "#f5f4f2"
+    ]
+  },
+  {
+    "palette": "goat:ndvi",
+    "count": 5,
+    "colors": ["#ce7e45", "#b0b72c", "#529301", "#045802", "#011d01"]
   }
 ]

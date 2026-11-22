@@ -448,6 +448,7 @@ export interface NumberFormat {
   thousands_separator?: boolean;
   abbreviate?: boolean;
   always_show_sign?: boolean;
+  percent?: boolean;
   prefix?: string | null;
   suffix?: string | null;
 }
@@ -806,6 +807,7 @@ export interface Legend {
   title?: string | null;
   caption?: string | null;
   classes?: ("all" | "filter" | "view") | null;
+  display?: ("standard" | "name_only") | null;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -1256,6 +1258,7 @@ export interface RasterLegend {
   unit?: string | null;
   min_label?: string | null;
   max_label?: string | null;
+  display?: ("standard" | "name_only") | null;
 }
 /**
  * A raster's popup (the specification's section 9.7): a vector popup over the
@@ -1493,10 +1496,16 @@ export interface Catalog {
     | "colorbrewer:YlGnBu"
     | "colorbrewer:YlOrBr"
     | "colorbrewer:YlOrRd"
+    | "d3:cividis"
+    | "d3:inferno"
     | "d3:magma"
+    | "d3:plasma"
     | "d3:viridis"
     | "goat:elevation"
     | "goat:green"
+    | "goat:hypsometric"
+    | "goat:ndvi"
+    | "goat:terrain"
     | "uber:global_warming"
     | "uber:global_warming_3"
     | "uber:global_warming_4"

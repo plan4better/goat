@@ -1,7 +1,7 @@
 "use client";
 
 // The number format of a label (level 2; spec 18.3, prototype 4.12): decimals, thousands separator, abbreviation,
-// sign, prefix and suffix. Only what differs from the defaults is written; an empty format removes the key, so the
+// sign, percent, prefix and suffix. Only what differs from the defaults is written; an empty format removes the key, so the
 // field's own format from the dataset applies again.
 import { Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
@@ -22,6 +22,7 @@ const DEFAULT_FORMAT: Required<Omit<NumberFormatSpec, "prefix" | "suffix">> = {
   thousands_separator: true,
   abbreviate: false,
   always_show_sign: false,
+  percent: false,
 };
 
 /** The format without the keys at their defaults; undefined when nothing is left. */
@@ -68,6 +69,12 @@ export function NumberFormatEditor({ path }: { path: Path }) {
         note={t("style_editor.note_sign")}
         on={format.always_show_sign === true}
         onToggle={() => write({ always_show_sign: format.always_show_sign !== true })}
+      />
+      <SwitchRow
+        label={t("style_editor.percent")}
+        note={t("style_editor.note_percent")}
+        on={format.percent === true}
+        onToggle={() => write({ percent: format.percent !== true })}
       />
       <TextRow
         label={t("style_editor.prefix")}

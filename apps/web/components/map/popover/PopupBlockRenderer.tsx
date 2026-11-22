@@ -264,7 +264,7 @@ function FieldListBlock({
         value = joined;
       } else if (isNumber && hasFormatConfig && raw != null && raw !== "" && !Number.isNaN(Number(raw))) {
         // Composable number config takes precedence over the legacy enum.
-        value = formatFieldValue(Number(raw), "number", attr.format_config!);
+        value = formatFieldValue(Number(raw), "number", attr.format_config!, lang);
       } else if (isNumber && attr.format && raw != null && raw !== "" && !Number.isNaN(Number(raw))) {
         value = formatNumber(Number(raw), attr.format, lang ?? "en");
       } else {

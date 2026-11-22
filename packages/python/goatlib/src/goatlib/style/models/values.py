@@ -328,5 +328,7 @@ class NumberFormat(StyleModel):
     thousands_separator: bool = True
     abbreviate: bool = False
     always_show_sign: bool = False
+    #: The value as a percent of 1 (0.73 reads 73 %), in the reader's language.
+    percent: bool = False
     prefix: str | None = None
     suffix: str | None = None

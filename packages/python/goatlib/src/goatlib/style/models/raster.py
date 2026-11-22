@@ -161,6 +161,8 @@ class RasterLegend(StyleModel):
     unit: str | None = None
     min_label: str | None = None
     max_label: str | None = None
+    #: What the legend shows (spec 7.2): the colors, or the layer's name alone.
+    display: Literal["standard", "name_only"] | None = None
 
 
 LayerOpacityValue = value_type(

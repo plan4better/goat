@@ -90,6 +90,21 @@ describe("StyleLegend", () => {
     expect(screen.getByText("Class 13")).toBeDefined();
   });
 
+  it("a legend of the name only draws its title alone under the layer's row", () => {
+    const legend = legendOf(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#cccccc" } },
+        legend: { display: "name_only", title: "Land use 2024" },
+      },
+      "polygon"
+    );
+    const { container } = render(<StyleLegend legend={legend} variant="tree" />);
+    expect(screen.getByText("Land use 2024")).toBeDefined();
+    expect(container.querySelector("svg")).toBeNull();
+  });
+
   const twoBlocks = (classify: object[]) =>
     legendOf(
       { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#e01903" } }, classify },

@@ -24,6 +24,8 @@ export interface NumberFormatSpec {
   thousands_separator?: boolean;
   abbreviate?: boolean;
   always_show_sign?: boolean;
+  /** The value as a percent of 1: 0.73 reads 73 %. */
+  percent?: boolean;
   prefix?: string;
   suffix?: string;
 }
@@ -39,20 +41,47 @@ function formatted(x: Expr, decimals: number | "auto"): Expr {
   return ["number-format", x, { locale: LOCALE, ...digits(decimals) }];
 }
 
+/** `x` with exactly `decimals` decimals (1 or more) and no thousands separator, which number-format always writes:
+ * the sign, the whole part as it is, and the decimals from number-format, so the decimal mark is the locale's. */
+function ungrouped(x: Expr, decimals: number): Expr {
+  const scale = 10 ** decimals;
+  const scaled: Expr = ["round", ["*", x, scale]];
+  const part: Expr = [
+    "number-format",
+    ["/", ["%", ["abs", scaled], scale], scale],
+    { locale: LOCALE, ...digits(decimals) },
+  ];
+  return [
+    "concat",
+    ["case", ["<", scaled, 0], "-", ""],
+    ["to-string", ["floor", ["/", ["abs", scaled], scale]]],
+    // Less the 0 before the decimal mark.
+    ["slice", part, 1],
+  ];
+}
+
 /** A number as a label shows it (spec 16 "numbers", 18.3). */
 export function formatNumber(x: Expr, format: NumberFormatSpec = {}): Expr {
+  // A percent: the value times 100 with the percent sign after it (MapLibre's number-format has no percent style), never
+  // abbreviated; the sign still reads the value. Automatic decimals show none, as a percent reads everywhere else, and
+  // a number of decimals shows in full.
   const decimals = format.decimals ?? "auto";
+  const places = format.percent && decimals === "auto" ? 0 : decimals;
+  const value: Expr = format.percent ? ["*", x, 100] : x;
   let text: Expr;
-  if (format.thousands_separator === false) {
-    const scale = typeof decimals === "number" ? 10 ** decimals : null;
+  if (format.percent && format.thousands_separator === false && typeof places === "number" && places > 0) {
+    text = ungrouped(value, places);
+  } else if (format.thousands_separator === false) {
+    const scale = typeof places === "number" ? 10 ** places : null;
     text = [
       "to-string",
-      scale === null ? x : scale === 1 ? ["round", x] : ["/", ["round", ["*", x, scale]], scale],
+      scale === null ? value : scale === 1 ? ["round", value] : ["/", ["round", ["*", value, scale]], scale],
     ];
   } else {
-    text = formatted(x, decimals);
+    text = formatted(value, places);
   }
-  if (format.abbreviate) {
+  if (format.percent) text = ["concat", text, "%"];
+  else if (format.abbreviate) {
     const short = (n: number) => ["number-format", ["/", x, n], { locale: LOCALE, ...digits(1) }];
     text = [
       "case",

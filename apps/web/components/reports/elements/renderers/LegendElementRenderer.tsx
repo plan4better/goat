@@ -8,7 +8,7 @@ import { DEFAULT_FONT_FAMILY, LEGEND_TYPOGRAPHY_DEFAULTS } from "@/lib/constants
 import { mapElementLayers } from "@/lib/print/mapElements";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type Legend, baseSwatch, informative } from "@/lib/style/legend";
+import { type Legend, baseSwatch, informative, titleOnly } from "@/lib/style/legend";
 import { printScope } from "@/lib/style/render/viewPresence";
 import { cleanEditedText } from "@/lib/utils/editableText";
 import type { ReportElement } from "@/lib/validations/reportLayout";
@@ -393,7 +393,8 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
         />
       )}
 
-      {legend && detailed && (
+      {/* A legend of the name only draws its own title alone. */}
+      {legend && (detailed || titleOnly(legend)) && (
         <StyleLegend
           legend={{ ...legend, caption: undefined }}
           variant="tree"

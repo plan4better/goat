@@ -37,7 +37,7 @@ import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { baseSwatch, buildLegend, informative, legendDependsOnZoom } from "@/lib/style/legend";
+import { baseSwatch, buildLegend, informative, legendDependsOnZoom, titleOnly } from "@/lib/style/legend";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { TimeStep } from "@/lib/style/time";
 import { isBundleMemberLayer, isEditableBundleMember } from "@/lib/utils/bundleEditable";
@@ -151,7 +151,8 @@ export const AddLayerButton = ({
 };
 
 /** A layer's legend under its row, with the classes its `legend.classes` lists (spec 7.2): those the layer's filter
- * keeps, or those in the map's view. A note once none of its classes is left. */
+ * keeps, or those in the map's view. A note once none of its classes is left. A legend of the name only draws its own
+ * title alone. */
 const TreeLayerLegend = ({
   style,
   geometry,
@@ -168,7 +169,7 @@ const TreeLayerLegend = ({
   hideHeading?: boolean;
 }) => {
   const legend = useLayerLegend(style, { geometry, zoom, serviceLegendUrl }, layer, MAP_SCOPE);
-  return legend && informative(legend) ? (
+  return legend && (informative(legend) || titleOnly(legend)) ? (
     // The caption goes into the row's caption slot instead.
     <StyleLegend
       legend={{ ...legend, caption: undefined }}
@@ -1397,7 +1398,7 @@ export const ProjectLayerTree = ({
             />
           ) : undefined,
         legendContent:
-          style && legend && informative(legend) ? (
+          style && legend && (informative(legend) || titleOnly(legend)) ? (
             <TreeLayerLegend
               style={style}
               geometry={geometry}

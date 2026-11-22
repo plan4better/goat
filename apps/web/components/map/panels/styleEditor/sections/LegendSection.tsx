@@ -1,6 +1,7 @@
 "use client";
 
-// Legend (prototype 2.8): shown or hidden, its title and what it contains; its editor shows the legend as it will look.
+// Legend (prototype 2.8): shown or hidden, its entries or the layer's name only, its title and what it contains; its
+// editor shows the legend as it will look.
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
@@ -23,7 +24,13 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { NavRow, PanelSection, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
+import {
+  ChoiceRow,
+  NavRow,
+  PanelSection,
+  SwitchRow,
+  TextRow,
+} from "@/components/map/panels/styleEditor/rows";
 
 /** What a raster's legend shows for a ramp (a palette over a range, or own colors at values) as the legend writes its
  * ends: "Color ramp, 32 to 119 m", an end label in place of its number; undefined for anything else. */
@@ -84,6 +91,17 @@ export function LegendSection() {
             return setIn(doc, "legend", Object.keys(base).length ? base : undefined);
           }, "legend.show")
         }
+      />
+      {/* The entries, or the layer's name alone (a hillshade, an aerial photo, a long category list). */}
+      <ChoiceRow<string>
+        label={t("style_editor.legend_display")}
+        value={isObject(legend) && legend.display === "name_only" ? "name_only" : "standard"}
+        options={["standard", "name_only"].map((v) => ({
+          value: v,
+          label: t(`style_editor.legend_display_${v}`),
+          sub: t(`style_editor.legend_display_${v}_sub`),
+        }))}
+        onChange={(v) => setLegendKey(store, "display", v === "name_only" ? v : undefined)}
       />
       <TextRow
         label={t("style_editor.legend_title")}

@@ -226,7 +226,13 @@ export async function generate() {
   const catalog = Object.fromEntries(
     palettes.map((p) => [
       p.id,
-      { name: p.name, kind: p.kind, colors: p.colors, ...(p.variants ? { variants: p.variants } : {}) },
+      {
+        name: p.name,
+        kind: p.kind,
+        colors: p.colors,
+        ...(p.variants ? { variants: p.variants } : {}),
+        ...(p.group ? { group: p.group } : {}),
+      },
     ])
   );
 
@@ -234,7 +240,8 @@ export async function generate() {
     "lib/style/generated/types.ts": types,
     "lib/style/generated/catalog.ts":
       `${BANNER}\nexport interface CataloguePalette {\n  name: string;\n  kind: "sequential" | "diverging" | "qualitative";\n` +
-      `  colors: readonly string[];\n  variants?: Readonly<Record<number, readonly string[]>>;\n}\n\n` +
+      `  colors: readonly string[];\n  variants?: Readonly<Record<number, readonly string[]>>;\n` +
+      `  /** Shown together in the picker (\`science\`: perceptual, elevation and vegetation ramps). */\n  group?: string;\n}\n\n` +
       `export const PALETTES: Readonly<Record<string, CataloguePalette>> = ${JSON.stringify(catalog, null, 2)};\n\n` +
       `export const ICON_NAMES: readonly string[] = ${JSON.stringify(icons, null, 2)};\n\n` +
       `export const ICON_GROUPS: readonly { id: string; labelKey: string; icons: readonly string[] }[] = ${JSON.stringify(

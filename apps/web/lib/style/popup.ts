@@ -6,7 +6,13 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, deepEqual, isObject } from "@/lib/style/json";
 import { type PopupProperties, popupBlock, popupProperties } from "@/lib/validations/layer";
 
-const NUMBER_OPTIONS = ["decimals", "thousands_separator", "abbreviate", "always_show_sign"] as const;
+const NUMBER_OPTIONS = [
+  "decimals",
+  "thousands_separator",
+  "abbreviate",
+  "always_show_sign",
+  "percent",
+] as const;
 
 /** A UUID derived from a block's own id: today's blocks are keyed by UUIDs, GOAT Style ids are any text. */
 export function stableId(text: string): string {

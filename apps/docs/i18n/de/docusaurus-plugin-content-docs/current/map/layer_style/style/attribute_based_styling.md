@@ -170,7 +170,7 @@ Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Fü
 
 ## Farbpaletten {#color-palettes}
 
-Die Palettenauswahl öffnet sich über <code>Palette</code> oder <code>Farben</code>. Sie zeigt die Paletten von GOAT nach Art (<code>Alle</code>, <code>Sequenziell</code>, <code>Divergierend</code> und <code>Kategorien</code>), die Paletten, die dieser Stil verwendet (<code>Verwendet</code>), und Ihre eigenen (<code>Eigene</code>). <code>Umkehren</code> dreht die Farben um.
+Die Palettenauswahl öffnet sich über <code>Palette</code> oder <code>Farben</code>. Sie zeigt die Paletten von GOAT nach Art (<code>Alle</code>, <code>Sequenziell</code>, <code>Divergierend</code> und <code>Kategorien</code>), die Paletten, die dieser Stil verwendet (<code>Verwendet</code>), und Ihre eigenen (<code>Eigene</code>). Unter <code>Alle</code> steht <code>Wissenschaft und Gelände</code> zuerst: die wahrnehmungsgleichen Verläufe Viridis, Magma, Cividis, Inferno und Plasma sowie Verläufe für Höhen und Vegetation (Elevation, Terrain, Hypsometric tints, NDVI), für Raster wie für Zahlenfelder. <code>Umkehren</code> dreht die Farben um.
 
 | Art | Beispiel | Beschreibung |
 | :-: | -------- | ------------ |

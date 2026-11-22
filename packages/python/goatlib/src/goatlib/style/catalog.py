@@ -6,6 +6,15 @@ library (the icons of `apps/web/public/assets/icons/maki`), `emoji` the emoji by
 their code points (`emoji:1f525`, images in `apps/web/public/assets/icons/emoji`,
 built by `apps/web/scripts/build-emoji.mjs`). Uploaded icons are `asset:<id>` and
 belong to no library.
+
+Where the ramps for rasters (and anything else colored by a number) come from: the
+`d3:` maps (viridis, magma, cividis, inferno, plasma) are matplotlib's colormaps
+(matplotlib 3.9, the source of d3-scale-chromatic's), seven even samples;
+`goat:terrain` is matplotlib's `terrain`, nine even samples; `goat:hypsometric` is
+Wikipedia's hypsometric tints for topographic maps (WikiProject Maps conventions,
+taken from GMT), every other land step from lowland to summits; `goat:ndvi` is
+Earth Engine's MODIS NDVI palette (MOD13Q1 example) without its white, every other
+color from bare soil to dense green.
 """
 
 import json
@@ -26,6 +35,9 @@ class Palette:
     #: A scheme per class count where the source has one (ColorBrewer); `colors`
     #: is the longest.
     variants: Mapping[int, tuple[str, ...]]
+    #: A group the picker shows together (`science`: perceptual, elevation and
+    #: vegetation ramps), else none.
+    group: str | None = None
 
 
 def _read(name: str) -> Any:
@@ -48,6 +60,7 @@ def palettes() -> Mapping[str, Palette]:
             variants=MappingProxyType(
                 {int(n): tuple(c) for n, c in p.get("variants", {}).items()}
             ),
+            group=p.get("group"),
         )
         for p in _read("palettes.json")
     }
