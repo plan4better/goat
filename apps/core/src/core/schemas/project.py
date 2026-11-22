@@ -28,6 +28,7 @@ from core.schemas.layer import (
     RasterRead,
     TableRead,
 )
+from core.schemas.properties_refused import RefusesProperties
 from core.schemas.style import StyleRead
 from core.utils import optional
 
@@ -379,15 +380,15 @@ class IFeatureStreetNetworkProjectRead(
     )
 
 
-class IFeatureStandardProjectUpdate(IFeatureBaseProject):
+class IFeatureStandardProjectUpdate(RefusesProperties, IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
 
 
-class IFeatureStreetNetworkProjectUpdate(IFeatureBaseProject):
+class IFeatureStreetNetworkProjectUpdate(RefusesProperties, IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
 
 
-class IFeatureToolProjectUpdate(IFeatureBaseProject):
+class IFeatureToolProjectUpdate(RefusesProperties, IFeatureBaseProject):
     name: str | None = Field(None, description="Layer name")
 
 
@@ -428,7 +429,7 @@ class IRasterProjectRead(LayerProjectIds, RasterRead):
 
 
 @optional
-class IRasterProjectUpdate(BaseModel):
+class IRasterProjectUpdate(RefusesProperties):
     name: str | None = Field(None, description="Layer name", max_length=255)
     group: str | None = Field(None, description="Layer group name", max_length=255)
     other_properties: ExternalServiceOtherProperties | None = Field(
@@ -584,7 +585,7 @@ class ProjectPublicRead(BaseModel):
 
 
 # WRITE Model (PUT) - for the bulk update
-class LayerTreeItem(BaseModel):
+class LayerTreeItem(RefusesProperties):
     """One item of the layer tree: its place, and the map state the tree shows
     (spec 10). `visible` on groups and layers, `expanded` on groups,
     `legend_expanded` on layers; what is left out stays as it is."""
@@ -603,22 +604,24 @@ class LayerTreeUpdate(BaseModel):
 
 
 # --- Schemas for Group CRUD (Renamed) ---
-class ILayerProjectGroupCreate(BaseModel):
+class ILayerProjectGroupCreate(RefusesProperties):
     # The column is unbounded `text`, so nothing else stops a group name of any
     # size — 5,000 characters was accepted and stored.
     name: str = Field(..., max_length=255)
     parent_id: Optional[int] = None
 
 
-class ILayerProjectGroupUpdate(BaseModel):
+class ILayerProjectGroupUpdate(RefusesProperties):
     name: Optional[str] = Field(None, max_length=255)
     parent_id: Optional[int] = None
 
 
-class ILayerProjectGroupRead(ILayerProjectGroupCreate):
-    # Unbounded on read, though it inherits a bounded field: a group named
-    # before the limit existed must still be readable.
+class ILayerProjectGroupRead(BaseModel):
+    # Not a subclass of the create model: it is built from rows, which keep a
+    # `properties` column. Unbounded on read: a group named before the limit
+    # existed must still be readable.
     name: str
+    parent_id: Optional[int] = None
     id: int
     project_id: UUID4
     order: int

@@ -4,6 +4,7 @@ state goes through its columns (spec 10 and 17)."""
 import pytest
 from core.core.config import settings
 from core.db.models._link_model import LayerProjectGroup
+from core.schemas.properties_refused import PROPERTIES_REFUSED
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,22 +27,25 @@ async def link_row(db: AsyncSession, lp: int):
 
 
 @pytest.mark.asyncio
-async def test_a_payload_with_properties_is_accepted_and_stores_nothing_of_it(
+async def test_a_payload_with_properties_is_refused_and_stores_nothing(
     client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
 ) -> None:
     world = api_style_world
+    before = await link_row(db_session, world.layer_project_id)
     response = await client.put(
         f"{API}/project/{world.project_id}/layer/{world.layer_project_id}",
         json={"name": "Renamed", "properties": {"color": [1, 2, 3]}},
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == PROPERTIES_REFUSED
     row = await link_row(db_session, world.layer_project_id)
-    assert row.name == "Renamed"
-    assert row.properties in (None, {})
+    assert row.name == before.name
+    assert row.properties == before.properties
     dataset = await client.put(
         f"{API}/layer/{world.layer_id}", json={"properties": {"color": [1, 2, 3]}}
     )
-    assert dataset.status_code == 200, dataset.text
+    assert dataset.status_code == 422, dataset.text
+    assert dataset.json()["detail"] == PROPERTIES_REFUSED
     stored = (
         await db_session.execute(
             text(f"SELECT properties FROM {S}.layer WHERE id = :l"),

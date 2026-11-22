@@ -26,6 +26,7 @@ from core.db.models.layer import (
     RasterDataType,
     check_layer_url,
 )
+from core.schemas.properties_refused import RefusesProperties
 from core.utils import optional
 
 
@@ -195,7 +196,7 @@ class FeatureReadBaseAttributes(
     size: int | None = Field(None, description="Size of the layer in bytes")
 
 
-class FeatureUpdateBase(LayerBase, GeospatialAttributes):
+class FeatureUpdateBase(RefusesProperties, LayerBase, GeospatialAttributes):
     """Base model for feature layer updates. A layer's style is its default style
     row (`PUT /layer/{id}/style`), never part of these."""
 
@@ -296,7 +297,9 @@ imagery_layer_attributes_example = {
 }
 
 
-class IRasterCreate(LayerBase, GeospatialAttributes, RasterAttributesBase):
+class IRasterCreate(
+    RefusesProperties, LayerBase, GeospatialAttributes, RasterAttributesBase
+):
     """Model to create a raster layer."""
 
     pass
@@ -325,7 +328,7 @@ class IRasterLayerRead(RasterRead):
 
 
 @optional
-class IRasterUpdate(LayerBase, GeospatialAttributes):
+class IRasterUpdate(RefusesProperties, LayerBase, GeospatialAttributes):
     """Model to update a raster layer."""
 
     url: str | None = Field(None, description="Layer URL")
