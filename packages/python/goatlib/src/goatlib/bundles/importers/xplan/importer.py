@@ -7,8 +7,6 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, List
 
-import duckdb
-
 from goatlib.bundles.importers.base import (
     BundleImporter,
     ExtractedLayer,
@@ -17,12 +15,12 @@ from goatlib.bundles.importers.base import (
 )
 from goatlib.bundles.importers.xplan.schema import version_from_namespace
 from goatlib.io.config import parquet_copy_options
-from goatlib.io.curves import linear_wkb
 from goatlib.models.bundle import BundleTypeName
 
-# pyarrow and pyogrio are loaded only when a plan is read: core imports the
-# importers but installs goatlib without them.
+# duckdb, pyarrow, pyogrio and shapely (io.curves) are loaded only when a plan
+# is read: core imports the importers but installs goatlib without them.
 if TYPE_CHECKING:
+    import duckdb
     import pyarrow as pa
 
 logger = logging.getLogger(__name__)
@@ -176,6 +174,8 @@ class XPlanImporter(BundleImporter):
         import pyarrow as pa
         import pyogrio
 
+        from goatlib.io.curves import linear_wkb
+
         tables: dict[str, tuple["pa.Table", str | None]] = {}
         pyogrio.set_gdal_config_options({"GML_ATTRIBUTES_TO_OGR_FIELDS": "YES"})
         try:
@@ -213,7 +213,7 @@ class XPlanImporter(BundleImporter):
         return tables
 
     @staticmethod
-    def _lists_to_text(con: duckdb.DuckDBPyConnection, table: str) -> None:
+    def _lists_to_text(con: "duckdb.DuckDBPyConnection", table: str) -> None:
         """Multi-valued fields as one text value each: GeoPackage stores no lists."""
         for column, column_type, *_ in con.execute(f"DESCRIBE {table}").fetchall():
             if column_type.endswith("[]"):
@@ -223,6 +223,8 @@ class XPlanImporter(BundleImporter):
                 )
 
     def extract_layers(self, source_path: str, workdir: str) -> List[ExtractedLayer]:
+        import duckdb
+
         from goatlib.bundles.importers.xplan.decode import decorate
 
         out = Path(workdir)

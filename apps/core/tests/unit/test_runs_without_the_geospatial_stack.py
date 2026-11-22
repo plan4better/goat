@@ -60,6 +60,7 @@ def test_the_importer_registry_loads(
 
     assert registry.get_importer("street_network") is not None
     assert registry.get_importer("pt_network_gtfs") is not None
+    assert registry.get_importer("xplan") is not None
     # The converters and S3 discovery need pyproj and boto3, which neither
     # core's nor geoapi's image installs.
     for heavy in ("goatlib.io.converter", "goatlib.io.ingest", "goatlib.io.discover"):
