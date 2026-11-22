@@ -32,7 +32,7 @@ The sidebar narrows the list, in this order:
 - **Show my favourites**: only the datasets you have starred
 - **Location**: `Set spatial filter` restricts the catalog to datasets covering an area, described in one of [three ways](#spatial-filter)
 - **Data Category**: the dataset's theme, such as transportation, environment, people, land use or hazards. The sidebar shows every category the catalog currently holds
-- **Data type**: whether the dataset is a feature layer, a table, a raster or a bundle
+- **Data type**: whether the dataset is a feature layer, a table, a raster, a map service (WMS or WMTS) or a bundle
 - **Geometry**: the kind of shape its features have
 - **Publisher**: who distributes the dataset
 - **License**: the terms it is published under
@@ -82,6 +82,8 @@ Click a dataset to open it. The **Summary** tab carries the publisher's descript
 
 Where the dataset has rows to show, a **Data** tab holds a sample of them alongside the columns and their types.
 
+The map on the page shows the area the dataset covers. A map service is drawn live from its publisher's server. When you are signed in, the map also draws the dataset's own data before you add it: a feature dataset in full and in its style where map tiles are published for it, and a raster in its colours. Without a sign-in, the map shows the outline and, for a feature dataset, a sample of its features.
+
 A dataset made of several layers is marked `Bundle` and lists **Layers in this bundle**; opening one shows which bundle it belongs to. See [Dataset Types](../data/dataset_types.md#datasets-made-of-several-layers) for what that means.
 
 ## Adding catalog data to a project
@@ -107,6 +109,8 @@ Datasets are added to a project from inside that project, so the `+ Add layer` d
 <p></p>
 
 The first time a catalog dataset is added, GOAT prepares a copy of it for your project. The layer shows `Preparing data …` while that runs and becomes available when it finishes.
+
+A map service (WMS or WMTS) is not copied. GOAT adds it as a link to the publisher's server, the same layer you get from [Fetch / Connect data](content#connecting-to-an-external-source), so it is available at once and is always drawn as the publisher currently serves it.
 
 :::info Catalog layers are read-only
 A layer added from the catalog is marked `Catalog · read-only`. You can style, filter, analyse and download it like any other layer, but its rows and columns cannot be edited, because the data belongs to the publisher and stays as they released it.
