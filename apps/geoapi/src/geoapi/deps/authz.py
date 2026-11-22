@@ -29,6 +29,10 @@ check is a round trip. A short in-process TTL cache below bounds that cost:
 one map pan (~50 tile requests) costs one ``customer.can`` query per
 (layer, user) instead of fifty. The trade-off is that a revoked share can
 still read for up to ``READ_AUTHZ_CACHE_TTL_SECONDS`` after being revoked.
+
+A catalog item that is not a layer yet (collection id ``catalog:<item id>``,
+``geoapi.services.catalog_items``) has no row for ``customer.can``. Its one
+rule is ``catalog_read_allowed``, enforced always: never in shadow mode.
 """
 
 import logging
@@ -41,6 +45,7 @@ from fastapi import Depends, HTTPException, Path, Query, status
 from geoapi.config import settings
 from geoapi.dependencies import normalize_layer_id
 from geoapi.deps.auth import get_optional_user_id
+from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.layer_service import layer_service
 
 logger = logging.getLogger("geoapi.read_authz")
@@ -84,6 +89,19 @@ def _cache_set(key: tuple[str, UUID | None], allowed: bool) -> None:
     _read_authz_cache[key] = (allowed, _now() + READ_AUTHZ_CACHE_TTL_SECONDS)
 
 
+def catalog_read_allowed(item_id: str, user_id: UUID | None) -> bool:
+    """Whether the data of a catalog item that is not a layer yet may be read:
+    its tiles and its raster previews.
+
+    The one place that decides. Today: signed-in users, whatever the item.
+    Search and discovery are public and do not come here (the catalog service
+    answers them, without data). A public read-only catalog later is a change
+    of this function alone, for example "also without a sign-in when the
+    item's licence allows it", not of the routes.
+    """
+    return user_id is not None
+
+
 async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> None:
     """Shared verdict: cache -> `customer.can` -> raise (enforced) or log (shadow).
 
@@ -92,7 +110,19 @@ async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> None:
     it is treated as allowed, matching shadow mode's "never blocks" contract;
     when enforcement is on, it is treated as a denial — fail closed, since a
     read the rule engine could not evaluate must not be served.
+
+    A catalog item is no layer: `catalog_read_allowed` decides, and a refusal
+    is a 401 whatever `ENFORCE_READ_AUTHZ` says.
     """
+    item_id = catalog_item_id(collection_id)
+    if item_id is not None:
+        if not catalog_read_allowed(item_id, user_id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sign in to read catalog data",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return
     layer_id = normalize_layer_id(collection_id)
     key = (layer_id, user_id)
     allowed = _cache_get(key)

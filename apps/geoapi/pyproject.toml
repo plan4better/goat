@@ -18,6 +18,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "requests>=2.25.0",
     "pmtiles>=3.5.0",
+    "boto3>=1.35.0",
     "redis>=5.0.0",
     "shapely>=2.0.0",
     "pyproj>=3.6.0",

@@ -9,7 +9,10 @@ A layer's file is always the layer row's own `url` (a raster layer with
 `data_type = 'cog'`), never an address from a request. A raster promoted from
 the catalog is the exception: the catalog bucket is private, so it is read from
 the file GOAT stores for the layer, named from the layer's id
-(`stored_raster_file`); it has no `url`. Statistics are kept per file version
+(`stored_raster_file`); it has no `url`. A catalog raster that is not a layer
+yet (`catalog_item`, the collection `catalog:<item id>`) is read from the
+bucket itself, through an address signed for the item's own file
+(`geoapi.services.catalog_items`). Statistics are kept per file version
 (the row's version and a remote file's validator) in process memory, a band's
 class breaks too, kept apart and per band: only the info reads them, computed
 and answered for the band it is asked for alone (`band_sample`, `band_breaks`)
@@ -25,6 +28,7 @@ reader takes it: the info lists statistics and breaks for the other bands only,
 while its `count` is the file's band count.
 """
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -34,6 +38,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Concatenate, Literal, ParamSpec
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import numpy as np
@@ -71,6 +76,11 @@ from goatlib.utils.layer import stored_raster_file
 from numpy.typing import NDArray
 
 from geoapi.config import settings
+from geoapi.services.catalog_items import (
+    CATALOG_EXECUTOR,
+    COLLECTION_PREFIX,
+    catalog_items,
+)
 from geoapi.services.layer_service import layer_service
 
 logger = logging.getLogger(__name__)
@@ -113,6 +123,9 @@ class RasterLayer:
     version: str
     #: The file GOAT stores for the layer (a catalog raster), read instead.
     stored_file: Path | None = None
+    #: The catalog bucket's host, for an item read from it: GOAT's own
+    #: storage, which the URL guard lets through wherever it is.
+    own_host: str | None = None
 
 
 class RasterService:
@@ -186,12 +199,42 @@ class RasterService:
         self._rows[layer_id] = found
         return found
 
+    async def catalog_item(self, item_id: str) -> RasterLayer | None:
+        """The raster of a catalog item that is not a layer yet, or None for
+        an item that is no raster; kept for a minute like a layer's row. Its
+        version is its object's ETag, so a file goat-data replaced under the
+        same name gets new tile addresses. 404 for an item the mirror does not
+        hold or a file the bucket does not."""
+        key = f"{COLLECTION_PREFIX}{item_id}"
+        if key in self._rows:
+            return self._rows[key]
+        found = await asyncio.get_running_loop().run_in_executor(
+            CATALOG_EXECUTOR, self._catalog_item, key, item_id
+        )
+        self._rows[key] = found
+        return found
+
+    @staticmethod
+    def _catalog_item(key: str, item_id: str) -> RasterLayer | None:
+        item = catalog_items.item(item_id)
+        if item.raster_key is None:
+            return None
+        address, etag = catalog_items.raster_address(item.raster_key)
+        version = hashlib.sha256(etag.encode()).hexdigest()[:12]
+        return RasterLayer(key, address, version, own_host=urlsplit(address).hostname)
+
+    @staticmethod
+    def _private_hosts(layer: RasterLayer) -> tuple[str, ...]:
+        """The hosts the URL guard lets through for the layer's file."""
+        own = (layer.own_host,) if layer.own_host else ()
+        return (*settings.raster_private_hosts, *own)
+
     def _source(
         self, layer: RasterLayer, remember_failures: bool = True
     ) -> RasterSource:
         return RasterSource(
             layer.external_url,
-            settings.raster_private_hosts,
+            self._private_hosts(layer),
             stored_file=layer.stored_file,
             remember_failures=remember_failures,
         )
@@ -427,7 +470,7 @@ class RasterService:
         if layer.stored_file is None and layer.external_url:
             try:
                 validator = remote_validator(
-                    layer.external_url, settings.raster_private_hosts
+                    layer.external_url, self._private_hosts(layer)
                 )
             except RasterUnavailableError as error:
                 remember_failure(key, str(error))

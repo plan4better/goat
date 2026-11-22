@@ -950,6 +950,7 @@ version = "2.0.0"
 source = { editable = "apps/geoapi" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "boto3" },
     { name = "cachetools" },
     { name = "duckdb" },
     { name = "fastapi", extra = ["standard-no-fastapi-cloud-cli"] },
@@ -981,6 +982,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
+    { name = "boto3", specifier = ">=1.35.0" },
     { name = "cachetools" },
     { name = "duckdb", specifier = ">=1.5.4" },
     { name = "fastapi", extras = ["standard-no-fastapi-cloud-cli"], specifier = ">=0.115.0" },

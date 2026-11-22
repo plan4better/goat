@@ -1,7 +1,9 @@
 """Raster file routes (style spec 9): value tiles (the cells' values for the
 browser to color) and colored tiles, each with their description, the file's
 bounds, statistics and point values. Every route reads the layer row's own
-file and answers only callers who may read the layer.
+file and answers only callers who may read the layer. The same routes answer
+for a catalog raster that is not a layer yet, under the collection id
+`catalog:<item id>` (`geoapi.services.catalog_items`).
 
 Tiles are read for each request, never kept in Redis: the browser caches them,
 a tile read with content for good when its address names the layer's values
@@ -50,6 +52,7 @@ from goatlib.raster.values import ENCODING_VERSION, MAX_Q, ValueEncoding
 
 from geoapi.dependencies import normalize_layer_id
 from geoapi.deps.authz import require_layer_read
+from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.raster_service import (
     BandBreaks,
     Breaks,
@@ -170,6 +173,14 @@ def _slot(layer_id: str) -> asyncio.Semaphore:
 
 
 async def _layer(collection_id: str, fresh: bool = False) -> RasterLayer:
+    """The raster file a collection id names: a layer's, or that of a catalog
+    item that is not a layer yet (`catalog:<item id>`)."""
+    item_id = catalog_item_id(collection_id)
+    if item_id is not None:
+        item = await raster_service.catalog_item(item_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Not a raster catalog item")
+        return item
     try:
         layer_id = normalize_layer_id(collection_id)
     except HTTPException:

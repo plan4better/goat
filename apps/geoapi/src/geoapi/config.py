@@ -109,6 +109,31 @@ class Settings(BaseSettings):
     S3_REGION_NAME: str = os.getenv("S3_REGION", "us-east-1")
     S3_BUCKET_NAME: Optional[str] = os.getenv("S3_BUCKET_NAME")
 
+    # Previews of catalog items that are not layers yet
+    # (services/catalog_items.py): the item's row in the catalog mirror, and
+    # its tiles or GeoTIFF in the private catalog bucket. The same settings
+    # core, processes and the catalog service read, each S3 value falling back
+    # to its S3_* counterpart. Without a bucket there are no previews.
+    CATALOG_DATA_DIR: str = os.getenv(
+        "CATALOG_DATA_DIR",
+        os.path.join(os.getenv("DATA_DIR", "/app/data"), "catalog"),
+    )
+    CATALOG_S3_BUCKET: Optional[str] = os.getenv("CATALOG_S3_BUCKET") or None
+    CATALOG_S3_ENDPOINT_URL: Optional[str] = (
+        os.getenv("CATALOG_S3_ENDPOINT_URL") or os.getenv("S3_ENDPOINT_URL") or None
+    )
+    CATALOG_S3_ACCESS_KEY_ID: Optional[str] = (
+        os.getenv("CATALOG_S3_ACCESS_KEY_ID") or os.getenv("S3_ACCESS_KEY_ID") or None
+    )
+    CATALOG_S3_SECRET_ACCESS_KEY: Optional[str] = (
+        os.getenv("CATALOG_S3_SECRET_ACCESS_KEY")
+        or os.getenv("S3_SECRET_ACCESS_KEY")
+        or None
+    )
+    CATALOG_S3_REGION: Optional[str] = (
+        os.getenv("CATALOG_S3_REGION") or os.getenv("S3_REGION") or None
+    )
+
     # Hidden fields - columns to exclude from API responses (tiles and features)
     # These are internal/structural columns that shouldn't be exposed to clients
     # Can be overridden via GEOAPI_HIDDEN_FIELDS env var, comma-separated
