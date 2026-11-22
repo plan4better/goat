@@ -139,6 +139,30 @@ def test_not_equal_keeps_the_features_without_a_value() -> None:
     assert [i.code for i in validate(cql, context())] == []
 
 
+def test_empty_tests_on_text_take_the_empty_text_too() -> None:
+    """As the filter panel writes them: a text is empty without a value or as
+    the empty text. Other kinds have no empty value besides none."""
+    prop = {"property": "string"}
+    empty = {"op": "isNull", "args": [prop]}
+    assert write({"field": "string", "op": "is_null"}) == {
+        "op": "or",
+        "args": [empty, {"op": "=", "args": [prop, ""]}],
+    }
+    assert write({"field": "string", "op": "is_not_null"}) == {
+        "op": "and",
+        "args": [{"op": "not", "args": [empty]}, {"op": "<>", "args": [prop, ""]}],
+    }
+    number = {"op": "isNull", "args": [{"property": "integer"}]}
+    assert write({"field": "integer", "op": "is_null"}) == number
+    assert write({"field": "integer", "op": "is_not_null"}) == {
+        "op": "not",
+        "args": [number],
+    }
+    for op in ("is_null", "is_not_null"):
+        cql = write({"field": "string", "op": op})
+        assert [i.code for i in validate(cql, context())] == []
+
+
 def test_not_equal_to_the_empty_text_reads_not_empty() -> None:
     """`x <> ''` asks for a value, so it takes no empty alternative."""
     assert write({"field": "string", "op": "!=", "value": ""}) == {

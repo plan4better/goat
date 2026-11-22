@@ -250,6 +250,15 @@ features pass.
   it passes on (resolved at its entry, `cql_filter_query`), which so stays one
   filter all day. A filter saved before kept a date and a note in `query.ui`;
   the panel reads it as the row and writes `daysAgo` on the next save.
+- **Saved negations were converted once, not reinterpreted** (`convert.py`).
+  The panel writes every negation with the empty value as an alternative (and
+  "is empty" on text with the empty text), while `normalize` keeps evaluating a
+  `!=` or a bare `isNull` as written, since other clients still send them. Core's
+  data migration `0023_filter_empty_values` rewrote the stored filters into the
+  panel's form with `convert_query`, so a saved row filters the same before and
+  after the panel saves it again. It follows the web's reader and writer, which
+  a fixture shared with the web's tests (`filter_conversions.json`) holds to the
+  same answers.
 - **A tool or an export applies a filter in full or not at all**
   (`checked_cql_filter` in `storage/query_builder.py`). `build_cql_filter`
   drops a filter it cannot read, which on the map shows every feature; a tool

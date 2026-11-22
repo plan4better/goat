@@ -249,11 +249,17 @@ def _condition(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any
                 f"{condition.op} takes no value (field {condition.field!r})."
             )
         expression: dict[str, Any] = {"op": "isNull", "args": [prop]}
-        return (
-            expression
-            if condition.op == "is_null"
-            else {"op": "not", "args": [expression]}
-        )
+        filled: dict[str, Any] = {"op": "not", "args": [expression]}
+        if kind == "string":
+            # A text is empty without a value or as the empty text, as the
+            # web's filter panel writes both tests.
+            if condition.op == "is_null":
+                return {
+                    "op": "or",
+                    "args": [expression, {"op": "=", "args": [prop, ""]}],
+                }
+            return {"op": "and", "args": [filled, {"op": "<>", "args": [prop, ""]}]}
+        return expression if condition.op == "is_null" else filled
     if condition.value is None:
         raise InputInvalid(
             f"Operator {condition.op!r} on {condition.field!r} needs a value."

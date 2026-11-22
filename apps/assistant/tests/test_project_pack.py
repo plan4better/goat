@@ -329,7 +329,13 @@ async def test_count_sends_the_layer_and_a_checked_filter() -> None:
                 ],
             },
             {"op": ">", "args": [{"property": "laenge"}, 2]},
-            {"op": "isNull", "args": [{"property": "separation"}]},
+            {
+                "op": "or",
+                "args": [
+                    {"op": "isNull", "args": [{"property": "separation"}]},
+                    {"op": "=", "args": [{"property": "separation"}, ""]},
+                ],
+            },
         ],
     }
 
@@ -489,7 +495,16 @@ async def test_not_null_and_any_compile() -> None:
     assert json.loads(processes.bodies()[0]["inputs"]["filter"]) == {
         "op": "or",
         "args": [
-            {"op": "not", "args": [{"op": "isNull", "args": [{"property": "notiz"}]}]},
+            {
+                "op": "and",
+                "args": [
+                    {
+                        "op": "not",
+                        "args": [{"op": "isNull", "args": [{"property": "notiz"}]}],
+                    },
+                    {"op": "<>", "args": [{"property": "notiz"}, ""]},
+                ],
+            },
             {"op": "like", "args": [{"property": "art"}, "Rad%"]},
         ],
     }
