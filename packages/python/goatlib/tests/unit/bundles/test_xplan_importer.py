@@ -477,6 +477,62 @@ def test_an_archive_larger_than_the_upload_limit_is_refused(
     assert list(unpacked.iterdir()) == []
 
 
+#: A published plan, unchanged (source and licence: tests/data/xplan/README.md).
+REAL_PLAN = (
+    Path(__file__).parents[2] / "data" / "xplan" / "bplan_39_6_aenderung_5-3.gml"
+)
+
+
+def test_a_published_plan_imports(tmp_path: Path):
+    """A development plan as a state's plan server hands it out (XPlanGML 5.3
+    in a WFS collection): every object of the file arrives, with what the
+    file states about it in words."""
+    text = REAL_PLAN.read_text(encoding="utf-8")
+    importer = XPlanImporter()
+    assert infer_bundle_type(REAL_PLAN.name, str(REAL_PLAN)) == BundleTypeName.xplan
+    validation = importer.validate(str(REAL_PLAN))
+    assert validation.valid, validation.errors
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    layers = {
+        layer.role: layer
+        for layer in importer.extract_layers(str(REAL_PLAN), str(workdir))
+    }
+    classes = (
+        "BP_Plan",
+        "BP_Bereich",
+        "BP_BaugebietsTeilFlaeche",
+        "BP_BauGrenze",
+        "BP_UeberbaubareGrundstuecksFlaeche",
+    )
+    # The label placements (XP_PPO) are not plan data; the clauses are one table.
+    assert set(layers) == {*classes, "text"}
+    for cls in classes:
+        assert len(_rows(layers[cls])) == text.count(f"<xplan:{cls} "), cls
+    assert len(_rows(layers["text"])) == text.count("<xplan:BP_TextAbschnitt ") == 7
+
+    (area,) = _rows(layers["BP_BaugebietsTeilFlaeche"])
+    # The file states 1500, 2000, 0.6 and 2.
+    assert area["besondereArtDerBaulNutzungWert"] == "Mischgebiet"
+    # Names are the code lists' own, which the standard spells without umlauts.
+    assert area["allgArtDerBaulNutzungWert"] == "Gemischte Bauflaeche"
+    assert area["xpPlanName"] == "Bebauungsplan Nr. 39, 6. Änderung"
+    # A municipality key is a code: its leading zero stays, and the blank the
+    # file has after it does not (a key is compared and joined on).
+    assert area["xpAgs"] == "01062061"
+    (buildable,) = _rows(layers["BP_UeberbaubareGrundstuecksFlaeche"])
+    assert buildable["GRZ"] == pytest.approx(0.6)
+    assert buildable["Z"] == 2
+    assert buildable["bauweiseWert"] == "Offene Bauweise"
+    assert layers["BP_BauGrenze"].geometry_type == "line"
+    # Nothing is written beside the plan.
+    assert sorted(p.name for p in REAL_PLAN.parent.iterdir()) == [
+        "README.md",
+        REAL_PLAN.name,
+    ]
+
+
 def test_root_xlink_in_single_quotes(tmp_path: Path):
     source = _write(
         tmp_path,
