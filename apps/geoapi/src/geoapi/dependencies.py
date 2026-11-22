@@ -377,10 +377,18 @@ def reject_unknown_fields(
 
 # What `_filter_problem` found for the filters last seen, by digest: a screen
 # of tiles brings the same filter once per tile, and reading a large area
-# takes a while on the event loop, the only thread that comes here.
+# takes a while. The check runs in a worker thread; requests that bring a
+# filter while it is checked wait for that check (`_filter_problems_running`).
 _FILTER_PROBLEMS_MAX = 256
+# The longest filter text that is parsed at all; a longer one is refused by its
+# length, before any parse. The web stops a filter at
+# `goatlib.filter.limits.MAX_LENGTH` characters of URL, and the text is never
+# longer than its URL form, so this lies well above anything it sends, and
+# above one area at the points ceiling (`REQUEST_MAX_POINTS`).
+_FILTER_TEXT_MAX = 1_000_000
 _EMPTY_OBJECT = re.compile(r"\s*\{\s*\}\s*")
 _filter_problems: OrderedDict[bytes, Optional[str]] = OrderedDict()
+_filter_problems_running: dict[bytes, "asyncio.Future[Optional[str]]"] = {}
 
 
 def _filter_problem(text: str, lang: str) -> Optional[str]:
@@ -415,6 +423,32 @@ def _filter_problem(text: str, lang: str) -> Optional[str]:
     return " ".join(i.message for i in issues) or None
 
 
+async def _check_filter_once(key: bytes, text: str, lang: str) -> Optional[str]:
+    """`_filter_problem` in a worker thread, its verdict kept by `key`."""
+    problem = await asyncio.to_thread(_filter_problem, text, lang)
+    _filter_problems[key] = problem
+    while len(_filter_problems) > _FILTER_PROBLEMS_MAX:
+        _filter_problems.popitem(last=False)
+    return problem
+
+
+async def _checked_filter(text: str, lang: str) -> Optional[str]:
+    """Why a filter is refused, from the kept verdicts or checked once:
+    requests with the same filter that arrive while it is checked wait for
+    that check instead of parsing it again."""
+    key = hashlib.sha1(f"{lang}\n{text}".encode()).digest()
+    if key in _filter_problems:
+        _filter_problems.move_to_end(key)
+        return _filter_problems[key]
+    running = _filter_problems_running.get(key)
+    if running is None:
+        running = asyncio.ensure_future(_check_filter_once(key, text, lang))
+        _filter_problems_running[key] = running
+        running.add_done_callback(lambda _: _filter_problems_running.pop(key, None))
+    # A request that is cancelled leaves the check to the others
+    return await asyncio.shield(running)
+
+
 async def cql_filter_query(
     filter: Annotated[
         Optional[str],
@@ -433,7 +467,8 @@ async def cql_filter_query(
 
     Every client filter enters here, so one over a request ceiling
     (`goatlib.filter.limits.REQUEST_MAX_*`) or one that does not parse is
-    answered 400 here (`_filter_problem`) and never reaches the query builder.
+    answered 400 here (`_filter_problem`) and never reaches the query builder;
+    a text longer than `_FILTER_TEXT_MAX` is answered 400 before any parse.
     The ceilings lie well above the save limits: a filter saved over one still
     filters. The text is passed on as it was sent (the tile cache keys on it),
     except for a filter with a relative day ("in the last n days",
@@ -445,6 +480,11 @@ async def cql_filter_query(
     """
     if filter is None or not filter.strip():
         return None
+    if len(filter) > _FILTER_TEXT_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The filter is longer than {_FILTER_TEXT_MAX} characters.",
+        )
 
     lang = filter_lang or "cql2-json"  # Default to cql2-json
     if lang not in ("cql2-json", "cql2-text"):
@@ -452,14 +492,7 @@ async def cql_filter_query(
     if lang == "cql2-json" and _EMPTY_OBJECT.fullmatch(filter):
         return None
 
-    key = hashlib.sha1(f"{lang}\n{filter}".encode()).digest()
-    if key in _filter_problems:
-        _filter_problems.move_to_end(key)
-        problem = _filter_problems[key]
-    else:
-        problem = _filter_problems[key] = _filter_problem(filter, lang)
-        while len(_filter_problems) > _FILTER_PROBLEMS_MAX:
-            _filter_problems.popitem(last=False)
+    problem = await _checked_filter(filter, lang)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
     if lang == "cql2-json" and DAYS_AGO in filter:

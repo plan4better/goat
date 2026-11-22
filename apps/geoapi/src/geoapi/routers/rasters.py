@@ -7,7 +7,8 @@ for a catalog raster that is not a layer yet, under the collection id
 
 Tiles are read for each request, never kept in Redis: the browser caches them,
 a tile read with content for good when its address names the layer's values
-version (its address then fixes its pixels). A tile whose caller has gone is
+version (its address then fixes its pixels) and it was read with a sign-in or
+anyone may read the layer (`_tile_cache`). A tile whose caller has gone is
 not read, and a read past `TILE_DEADLINE_S` answers 504 and marks the file as
 failing."""
 
@@ -51,7 +52,7 @@ from goatlib.raster.token import Rgb, TokenError, decode_token
 from goatlib.raster.values import ENCODING_VERSION, MAX_Q, ValueEncoding
 
 from geoapi.dependencies import normalize_layer_id
-from geoapi.deps.authz import require_layer_read
+from geoapi.deps.authz import read_by_anyone, require_layer_read
 from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.raster_service import (
     BandBreaks,
@@ -325,8 +326,8 @@ def _audience(request: Request) -> str:
     """Who may keep an answer: one read with a sign-in may be of a layer not
     everyone may read, which no shared cache may keep (`private`); one read
     without is `public`. The web sends no token with tile requests, so while
-    `ENFORCE_READ_AUTHZ` is off every map tile is public, a private layer's
-    included: enforce it before a shared cache serves them."""
+    `ENFORCE_READ_AUTHZ` is off a private layer's tiles are public too:
+    `_tile_cache` keeps those an hour only."""
     return "private" if request.headers.get("authorization") else "public"
 
 
@@ -335,10 +336,15 @@ def _tile_cache(request: Request, current: bool, follows: bool) -> str:
     the layer's holds the current file: no cache keeps it. One of a file its
     version does not follow (a remote file whose host gives no validator) is
     kept an hour, any other for good; by the browser only when read with a
-    sign-in (`_audience`)."""
+    sign-in (`_audience`). Read without a sign-in, a tile is kept for good
+    only when anyone may read its layer (`read_by_anyone`, the verdict of the
+    read check): a layer of no published project, served while
+    `ENFORCE_READ_AUTHZ` is off, is kept an hour whatever its version."""
     if not current:
         return STALE_TILE_CACHE
-    return f"{_audience(request)}, {FOREVER if follows else AN_HOUR}"
+    audience = _audience(request)
+    forever = follows and (audience == "private" or read_by_anyone(request))
+    return f"{audience}, {FOREVER if forever else AN_HOUR}"
 
 
 def _description_cache(request: Request) -> str:
@@ -384,7 +390,12 @@ async def _versioned_tile(
     current, follows, content = answer
     if v != current:
         return _tile(content, etag, STALE_TILE_CACHE, STALE_TILE_CACHE)
-    return _tile(content, etag, _tile_cache(request, True, follows))
+    return _tile(
+        content,
+        etag,
+        _tile_cache(request, True, follows),
+        f"{_audience(request)}, {AN_HOUR}",
+    )
 
 
 def _tileset(

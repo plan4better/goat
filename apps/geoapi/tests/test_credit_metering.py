@@ -273,3 +273,123 @@ def test_metering_counts_with_the_tile_cache_switched_off(monkeypatch):
     monkeypatch.setattr(tile_cache, "_redis_client", sentinel)
     assert tile_cache.get_redis_client() is None
     assert cm._redis() is sentinel
+
+
+def _counting(monkeypatch, recorder):
+    async def _resolve(cid):
+        return ("org1", "own1")
+
+    async def _over(o):
+        return False
+
+    def _record(*args):
+        recorder.append(args)
+
+    monkeypatch.setattr(cm, "_resolve_layer_org", _resolve)
+    monkeypatch.setattr(cm, "_is_over_budget", _over)
+    monkeypatch.setattr(cm, "_record", _record)
+
+
+def test_a_streamed_answer_without_a_length_is_counted_by_its_bytes(monkeypatch):
+    from starlette.responses import StreamingResponse
+
+    rec = []
+    _counting(monkeypatch, rec)
+    app = FastAPI()
+    app.add_middleware(cm.CreditMeteringMiddleware)
+
+    @app.get("/collections/{cid}/items")
+    def items(cid: str):
+        return StreamingResponse(iter([b"x" * 70, b"y" * 30, b"z" * 5]))
+
+    r = TestClient(app).get(f"/collections/{LYR}/items")
+    assert r.status_code == 200 and "content-length" not in r.headers
+    assert rec == [("org1", "own1", LYR, "features", 105, True)]
+
+
+def test_a_client_that_leaves_midway_is_counted_for_what_was_sent(monkeypatch):
+    """Recorded once when the answer ends, also when it ends early: what was
+    sent by then is counted, a send that fails is not."""
+    import asyncio
+
+    rec = []
+    _counting(monkeypatch, rec)
+
+    async def inner(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"a" * 40, "more_body": True})
+        await send({"type": "http.response.body", "body": b"b" * 60, "more_body": True})
+
+    bodies = []
+
+    async def send(message):
+        if message["type"] == "http.response.body":
+            if bodies:
+                raise OSError("client gone")
+            bodies.append(message)
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": f"/collections/{LYR}/tiles/WebMercatorQuad/1/2/3",
+        "headers": [],
+    }
+    try:
+        asyncio.run(cm.CreditMeteringMiddleware(inner)(scope, receive, send))
+    except OSError:
+        pass
+    assert rec == [("org1", "own1", LYR, "tiles", 40, True)]
+
+
+def _stack(monkeypatch, recorder, body_of):
+    """geoapi's middleware stack around two routes: the meter outermost,
+    compression inside it, the timeout innermost (main.py's order)."""
+    from geoapi.main import GZipExceptParquet, TimeoutMiddleware
+
+    _counting(monkeypatch, recorder)
+    app = FastAPI()
+
+    @app.get("/collections/{cid}/tiles/{z}/{x}/{y}")
+    def tile(cid: str, z: int, x: int, y: int):
+        return Response(content=body_of["webp"], media_type="image/webp")
+
+    @app.get("/collections/{cid}/items")
+    def items(cid: str):
+        return Response(content=body_of["json"], media_type="application/json")
+
+    app.add_middleware(TimeoutMiddleware)
+    app.add_middleware(GZipExceptParquet, minimum_size=1000, compresslevel=6)
+    app.add_middleware(cm.CreditMeteringMiddleware)
+    return app
+
+
+def test_an_image_is_not_compressed_and_is_counted(monkeypatch):
+    import os
+
+    rec = []
+    webp = b"RIFF" + os.urandom(20_000)
+    client = TestClient(_stack(monkeypatch, rec, {"webp": webp, "json": b"{}"}))
+    r = client.get(
+        f"/collections/{LYR}/tiles/1/2/3", headers={"Accept-Encoding": "gzip"}
+    )
+    assert r.status_code == 200 and r.content == webp
+    assert "content-encoding" not in r.headers
+    assert r.headers["content-length"] == str(len(webp))
+    assert rec == [("org1", "own1", LYR, "tiles", len(webp), True)]
+
+
+def test_a_compressed_answer_is_counted_by_the_bytes_sent(monkeypatch):
+    import json
+
+    rec = []
+    body = json.dumps([{"name": "feature", "n": i} for i in range(500)]).encode()
+    client = TestClient(_stack(monkeypatch, rec, {"webp": b"", "json": body}))
+    r = client.get(f"/collections/{LYR}/items", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and r.content == body
+    assert r.headers["content-encoding"] == "gzip"
+    sent = r.num_bytes_downloaded
+    assert 0 < sent < len(body)
+    assert rec == [("org1", "own1", LYR, "features", sent, True)]

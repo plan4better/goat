@@ -4,7 +4,8 @@
 // The tile under a place is the one of the map's covering tiles that holds it (`tileUnder`), picked as MapLibre picks
 // the tiles of the value source, so a tilted map, terrain and the globe read the tile of the zoom drawn there. A read
 // asks the browser's cache for it under the URL and the Accept header of the map's own request: tiles name their
-// version and are kept for good, so a tile the map loaded is read from the cache. A tile geoapi let no cache keep
+// version, and a tile read without a sign-in (as the map reads them) is kept for good for a layer anyone may read and
+// an hour otherwise, so a tile the map loaded is read from the cache. A tile geoapi let no cache keep
 // (`no-store`, as one of another version) is asked for once more.
 import { type RasterColorSpec, classReach } from "@/lib/style/raster/color";
 import { type RasterValues, TILE_SIZE } from "@/lib/style/raster/values";

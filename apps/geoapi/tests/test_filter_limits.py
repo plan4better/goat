@@ -305,3 +305,81 @@ def test_the_routes_answer_400_to_a_filter_that_does_not_parse(
     response = test_client.get(path.format(id=layer), params=params | query_filter)
     assert response.status_code == 400, response.text
     assert response.json()["detail"].startswith("The filter is not valid ")
+
+
+@pytest.mark.parametrize("lang", ["cql2-json", "cql2-text"])
+def test_a_filter_text_over_the_length_bound_is_400_without_a_parse(
+    lang: str,
+) -> None:
+    """A text longer than any filter the web sends is refused by its length:
+    nothing parses it, and its verdict is not kept."""
+    from unittest.mock import patch
+
+    import geoapi.dependencies as dependencies
+
+    dependencies._filter_problems.clear()
+    text = "a" * (dependencies._FILTER_TEXT_MAX + 1)
+    with patch.object(dependencies, "_filter_problem") as checked:
+        with pytest.raises(HTTPException) as caught:
+            query(text, lang)
+    assert caught.value.status_code == 400
+    checked.assert_not_called()
+    assert not dependencies._filter_problems
+
+
+def test_the_length_bound_lies_above_what_the_web_sends() -> None:
+    """The web stops a filter at `limits.MAX_LENGTH` URL characters, and a
+    filter's text is never longer than its URL form."""
+    import geoapi.dependencies as dependencies
+
+    assert dependencies._FILTER_TEXT_MAX > limits.MAX_LENGTH
+
+
+def test_a_filter_is_checked_off_the_event_loop() -> None:
+    """The parse runs in a worker thread, so other requests are served
+    meanwhile."""
+    import threading
+    from unittest.mock import patch
+
+    import geoapi.dependencies as dependencies
+
+    dependencies._filter_problems.clear()
+    loop_thread = threading.get_ident()
+    threads: list[int] = []
+    check = dependencies._filter_problem
+
+    def recorded(text: str, lang: str) -> str | None:
+        threads.append(threading.get_ident())
+        return check(text, lang)
+
+    with patch.object(dependencies, "_filter_problem", recorded):
+        assert query(conditions(2)) is not None
+    assert threads and loop_thread not in threads
+
+
+def test_requests_with_one_filter_at_once_share_one_check() -> None:
+    """A screen of tiles brings the same filter at once: the first request's
+    check answers them all."""
+    from unittest.mock import patch
+
+    import geoapi.dependencies as dependencies
+
+    dependencies._filter_problems.clear()
+    text = json.dumps(conditions(3))
+    calls: list[str] = []
+    check = dependencies._filter_problem
+
+    def counted(text: str, lang: str) -> str | None:
+        calls.append(text)
+        return check(text, lang)
+
+    async def screen() -> list[Any]:
+        return await asyncio.gather(
+            *(cql_filter_query(filter=text, filter_lang=None) for _ in range(8))
+        )
+
+    with patch.object(dependencies, "_filter_problem", counted):
+        answers = asyncio.run(screen())
+    assert answers == [{"filter": text, "lang": "cql2-json"}] * 8
+    assert len(calls) == 1
+    assert not dependencies._filter_problems_running

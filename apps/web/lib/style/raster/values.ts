@@ -53,7 +53,7 @@ export interface BandFacts {
  * only this, the value tiles' their values too. */
 export interface RasterTileset {
   /** The layer's values version: changes with the file and the encoding, never with the style. Tile URLs that name it
-   * are kept by caches for good. */
+   * are kept by caches for good when read with a sign-in or for a layer anyone may read, an hour otherwise. */
   version: string;
   /** The native zoom of `TILE_SIZE` tiles: past it the map magnifies the deepest tiles. */
   maxzoom?: number;

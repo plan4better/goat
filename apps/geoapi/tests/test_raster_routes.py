@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -78,7 +79,8 @@ CURRENT = f"v1-{ENCODING_VERSION}"
 #: A value tile's address names its encoding (code q is base + q * step).
 VALUE_TILE = f"{COVERAGE}/12/1420/2178?f=webp&band=1&base=-1.5&step=0.25&v={CURRENT}"
 #: What a value tile of the current version may be kept for: its address fixes
-#: it. Shared caches may keep it only when it was read without signing in.
+#: it. Shared caches may keep it only when it was read without signing in, of
+#: a layer anyone may read (conftest's read rule allows every read).
 FOREVER = "public, max-age=31536000, immutable"
 FOREVER_PRIVATE = "private, max-age=31536000, immutable"
 #: A value tile of a remote file whose host gives no validator: its version
@@ -1911,6 +1913,158 @@ def test_a_signed_in_viewers_tile_is_kept_by_their_browser_only(
     anonymous = client.get(tile)
     assert anonymous.status_code == 200
     assert anonymous.headers["cache-control"] == FOREVER
+
+
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_signed_in_viewers_empty_tile_is_kept_by_their_browser_only(
+    client: TestClient, validated: str, kind: str
+) -> None:
+    """A tile without content read with a sign-in has the audience of the
+    tile with content of the same request, kept an hour."""
+    empty = EMPTY[kind].replace(CURRENT, validated)
+    signed_in = client.get(empty, headers=SIGNED_IN)
+    assert signed_in.status_code == 204
+    assert signed_in.headers["cache-control"] == AN_HOUR_PRIVATE
+    anonymous = client.get(empty)
+    assert anonymous.status_code == 204
+    assert anonymous.headers["cache-control"] == AN_HOUR
+
+
+#: The user a signed-in request's token names.
+VIEWER = UUID("33333333-3333-3333-3333-333333333333")
+
+
+@pytest.fixture
+def rule(client: TestClient) -> Iterator[AsyncMock]:
+    """The read rule (`user_can_read_layer`), set by each test: a fresh verdict
+    cache, and `SIGNED_IN` decoded to `VIEWER`."""
+    from geoapi.deps import authz
+
+    check = AsyncMock(return_value=True)
+    authz._read_authz_cache.clear()
+    with (
+        patch("geoapi.deps.authz.layer_service.user_can_read_layer", check),
+        patch("geoapi.deps.auth.decode_token", return_value={"sub": str(VIEWER)}),
+    ):
+        yield check
+    authz._read_authz_cache.clear()
+
+
+def _only_the_viewer(layer_id: str, user_id: UUID | None) -> bool:
+    """A layer of no published project, shared with `VIEWER`."""
+    return user_id == VIEWER
+
+
+@pytest.mark.parametrize("enforced", [False, True])
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_tile_of_a_layer_anyone_may_read_is_kept_forever_without_a_sign_in(
+    client: TestClient, validated: str, rule: AsyncMock, kind: str, enforced: bool
+) -> None:
+    """A layer of a published project is readable by anyone: its current tile
+    read without a sign-in is kept for good by any cache."""
+    tile = TILES[kind].replace(CURRENT, validated)
+    with patch("geoapi.deps.authz.settings.ENFORCE_READ_AUTHZ", enforced):
+        r = client.get(tile)
+        assert r.status_code == 200 and r.headers["cache-control"] == FOREVER
+        again = client.get(tile, headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304 and again.headers["cache-control"] == FOREVER
+    rule.assert_awaited_with(str(UUID(LAYER)), None)
+
+
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_tile_of_a_layer_not_everyone_may_read_is_kept_an_hour_without_a_sign_in(
+    client: TestClient, validated: str, rule: AsyncMock, kind: str
+) -> None:
+    """With read authorization not enforced, a layer of no published project
+    is served without a sign-in too, but only for an hour, whatever its
+    version: a cache keeps it no longer once the rule is enforced."""
+    rule.side_effect = _only_the_viewer
+    tile = TILES[kind].replace(CURRENT, validated)
+    with patch("geoapi.deps.authz.settings.ENFORCE_READ_AUTHZ", False):
+        r = client.get(tile)
+        assert r.status_code == 200 and r.headers["cache-control"] == AN_HOUR
+        again = client.get(tile, headers={"If-None-Match": r.headers["etag"]})
+        assert again.status_code == 304 and again.headers["cache-control"] == AN_HOUR
+        empty = client.get(EMPTY[kind].replace(CURRENT, validated))
+        assert empty.status_code == 204 and empty.headers["cache-control"] == AN_HOUR
+        # Read with the viewer's sign-in: their browser keeps it for good.
+        signed_in = client.get(tile, headers=SIGNED_IN)
+        assert signed_in.headers["cache-control"] == FOREVER_PRIVATE
+
+
+@pytest.mark.parametrize("enforced", [False, True])
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_signed_in_viewers_tile_of_a_private_layer_is_kept_by_their_browser(
+    client: TestClient, validated: str, rule: AsyncMock, kind: str, enforced: bool
+) -> None:
+    rule.side_effect = _only_the_viewer
+    tile = TILES[kind].replace(CURRENT, validated)
+    with patch("geoapi.deps.authz.settings.ENFORCE_READ_AUTHZ", enforced):
+        r = client.get(tile, headers=SIGNED_IN)
+        assert r.status_code == 200 and r.headers["cache-control"] == FOREVER_PRIVATE
+        again = client.get(
+            tile, headers={**SIGNED_IN, "If-None-Match": r.headers["etag"]}
+        )
+        assert again.status_code == 304
+        assert again.headers["cache-control"] == FOREVER_PRIVATE
+        # Without the sign-in: refused when enforced, else kept an hour.
+        anonymous = client.get(tile)
+    if enforced:
+        assert anonymous.status_code == 403
+        assert "cache-control" not in anonymous.headers
+    else:
+        assert anonymous.headers["cache-control"] == AN_HOUR
+
+
+@pytest.mark.parametrize("enforced", [False, True])
+@pytest.mark.parametrize("private", [True, False])
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_a_tile_of_another_version_is_never_kept_whoever_may_read_it(
+    client: TestClient,
+    validated: str,
+    rule: AsyncMock,
+    kind: str,
+    private: bool,
+    enforced: bool,
+) -> None:
+    if private:
+        rule.side_effect = _only_the_viewer
+    stale = TILES[kind].replace(CURRENT, "v0")
+    with patch("geoapi.deps.authz.settings.ENFORCE_READ_AUTHZ", enforced):
+        for headers in ({}, SIGNED_IN):
+            r = client.get(stale, headers=headers)
+            if enforced and private and not headers:
+                assert r.status_code == 403
+                continue
+            assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+
+
+def test_a_screen_of_tiles_asks_the_rule_once(
+    client: TestClient, validated: str, rule: AsyncMock
+) -> None:
+    """The cache decision takes the verdict the read check already has: a
+    screen of tiles costs one question to the database, not one per tile."""
+    from geoapi.deps import authz
+
+    rule.side_effect = _only_the_viewer
+    for x in range(1420, 1430):
+        tile = VALUE_TILE.replace("1420", str(x)).replace(CURRENT, validated)
+        assert client.get(tile).headers["cache-control"] == AN_HOUR
+    rule.assert_awaited_once_with(str(UUID(LAYER)), None)
+    authz.layer_service.is_layer_in_public_project.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["values", "image"])
+def test_without_sign_ins_every_current_tile_is_kept_forever(
+    client: TestClient, validated: str, rule: AsyncMock, kind: str
+) -> None:
+    """With `AUTH` off nothing is private: every reader is the one local user,
+    and a current tile is kept for good, as anyone's."""
+    rule.side_effect = _only_the_viewer
+    tile = TILES[kind].replace(CURRENT, validated)
+    with patch("geoapi.deps.authz.settings.AUTH", False):
+        r = client.get(tile)
+    assert r.status_code == 200 and r.headers["cache-control"] == FOREVER
 
 
 @pytest.mark.parametrize("kind", ["values", "image"])
