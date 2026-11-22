@@ -116,7 +116,7 @@ export interface BundleTypeDef {
   /** Short format label for the "supported formats" hint. */
   uploadHint: string;
   /** Whether an uploaded file is this bundle type. May read the file: an XPlan
-   *  plan is a `.gml` like any other, and only its content tells. */
+   *  plan is a `.gml` or a `.zip` like any other, and only its content tells. */
   matches: (file: File) => boolean | Promise<boolean>;
   /** Whether the upload must name a street network bundle to link. Follows the
    *  type's own required dependency: a GTFS feed's stop-to-street linkage is
@@ -187,6 +187,44 @@ export const sniffXPlan = async (file: File): Promise<{ isXPlan: boolean; planNa
   }
 };
 
+/** How much of the end of a ZIP is read for its directory: a plan's archive holds a handful of members. */
+const ZIP_DIRECTORY_BYTES = 262144;
+const ZIP_END_OF_DIRECTORY = 0x06054b50;
+const ZIP_DIRECTORY_ENTRY = 0x02014b50;
+
+/** The names of a ZIP archive's members, from the directory at its end: no member is read or unpacked. Empty for a
+ *  file that is no ZIP, that cannot be read, or whose directory is larger than what is read here. */
+export const zipMemberNames = async (file: File): Promise<string[]> => {
+  let tail: DataView;
+  try {
+    tail = new DataView(await file.slice(Math.max(0, file.size - ZIP_DIRECTORY_BYTES)).arrayBuffer());
+  } catch {
+    return [];
+  }
+  // The record that ends the directory, searched from the end: a comment may follow it.
+  let end = tail.byteLength - 22;
+  while (end >= 0 && tail.getUint32(end, true) !== ZIP_END_OF_DIRECTORY) end -= 1;
+  if (end < 0) return [];
+  const names: string[] = [];
+  const decoder = new TextDecoder();
+  // The directory's place in the file, as a place in what was read.
+  let at = tail.getUint32(end + 16, true) - (file.size - tail.byteLength);
+  for (let n = tail.getUint16(end + 10, true); n > 0 && at >= 0 && at + 46 <= end; n -= 1) {
+    if (tail.getUint32(at, true) !== ZIP_DIRECTORY_ENTRY) break;
+    const nameLength = tail.getUint16(at + 28, true);
+    names.push(decoder.decode(new Uint8Array(tail.buffer, tail.byteOffset + at + 46, nameLength)));
+    at += 46 + nameLength + tail.getUint16(at + 30, true) + tail.getUint16(at + 32, true);
+  }
+  return names;
+};
+
+/** The plan in a plan's archive (XPlanArchiv). Same rule as the backend's `XPlanImporter.matches_source`. */
+const XPLAN_ARCHIVE_PLAN = "xplan.gml";
+
+/** Whether a ZIP is a plan's archive: it holds the plan as `xplan.gml`. Its content is the backend's to check. */
+const isXPlanArchive = async (file: File): Promise<boolean> =>
+  (await zipMemberNames(file)).some((name) => name.split("/").pop()?.toLowerCase() === XPLAN_ARCHIVE_PLAN);
+
 export const BUNDLE_TYPES: BundleTypeDef[] = [
   {
     type: "pt_network_gtfs",
@@ -217,9 +255,13 @@ export const BUNDLE_TYPES: BundleTypeDef[] = [
   {
     type: "xplan",
     labelKey: "xplan",
-    uploadHint: "XPlanGML (.gml)",
+    uploadHint: "XPlanGML (.gml, .zip)",
     uploadNoteKey: "bundle_upload_note_xplan",
-    matches: async (file) => file.name.toLowerCase().endsWith(".gml") && (await sniffXPlan(file)).isXPlan,
+    matches: async (file) => {
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".zip")) return isXPlanArchive(file);
+      return name.endsWith(".gml") && (await sniffXPlan(file)).isXPlan;
+    },
   },
 ];
 
