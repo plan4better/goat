@@ -434,6 +434,51 @@ def test_a_plan_is_read_without_a_second_gdal(
     assert {layer.role for layer in layers} >= {"BP_Plan", "BP_BaugebietsTeilFlaeche"}
 
 
+def _extract(tmp_path: Path, content: str) -> dict:
+    source = _write(tmp_path, "plan.gml", content)
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    return {
+        layer.role: layer
+        for layer in XPlanImporter().extract_layers(str(source), str(workdir))
+    }
+
+
+def test_a_plan_of_several_municipalities_lists_their_keys(tmp_path: Path):
+    """A plan may lie in several municipalities: every object names all of
+    their keys, as the other fields with several values do."""
+    second = (
+        "<xplan:gemeinde><xplan:XP_Gemeinde><xplan:ags>05315000</xplan:ags>"
+        "</xplan:XP_Gemeinde></xplan:gemeinde><xplan:planArt>"
+    )
+    layers = _extract(tmp_path, XPLAN_51.replace("<xplan:planArt>", second, 1))
+
+    for role in ("BP_Plan", "BP_BaugebietsTeilFlaeche", "text"):
+        assert {row["xpAgs"] for row in _rows(layers[role])} == {"05314000; 05315000"}
+
+
+@pytest.mark.parametrize("version", ["4/1", "6/2", "7/0"])
+def test_a_version_without_code_lists_is_refused(tmp_path: Path, version: str):
+    """GOAT decodes a plan with the code lists of its version. A version it
+    has none for would import with every code left a number and a style
+    reading fields the layers do not have, so it is refused, naming the
+    versions that are read."""
+    source = _write(
+        tmp_path, "plan.gml", XPLAN_51.replace("xplangml/5/1", f"xplangml/{version}")
+    )
+    importer = XPlanImporter()
+
+    result = importer.validate(str(source))
+
+    assert result.valid is False
+    assert version.replace("/", ".") in result.errors[0]
+    assert "5.0" in result.errors[0] and "6.1" in result.errors[0]
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    with pytest.raises(ValueError):
+        importer.extract_layers(str(source), str(workdir))
+
+
 def test_xplan_role_styles():
     from goatlib.tools.style import bundle_role_style
 

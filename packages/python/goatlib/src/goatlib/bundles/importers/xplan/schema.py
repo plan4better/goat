@@ -26,10 +26,21 @@ def version_from_namespace(ns: str) -> str | None:
     return f"{match.group(1)}.{match.group(2)}" if match else None
 
 
+def unsupported(version: str | None) -> str | None:
+    """Why a file of this version is not read, None for a version GOAT has the
+    code lists of."""
+    if version in SUPPORTED_VERSIONS:
+        return None
+    return (
+        f"XPlanGML {version or 'of an unknown version'} is not supported. "
+        f"GOAT reads the versions {SUPPORTED_VERSIONS[0]} to {SUPPORTED_VERSIONS[-1]}."
+    )
+
+
 @cache
 def _table(version: str) -> dict | None:
     path = DATA / f"xplangml_{version.replace('.', '_')}.json"
-    return json.loads(path.read_text()) if path.exists() else None
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
 def classes(version: str) -> set[str]:

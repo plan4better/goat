@@ -11,9 +11,13 @@ from goatlib.bundles.importers.base import (
     BundleImporter,
     ExtractedLayer,
     ValidationResult,
+    bound_duckdb,
     register_importer,
 )
-from goatlib.bundles.importers.xplan.schema import version_from_namespace
+from goatlib.bundles.importers.xplan.schema import (
+    unsupported,
+    version_from_namespace,
+)
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.sql import sql_literal
 from goatlib.models.bundle import BundleTypeName
@@ -135,8 +139,13 @@ class XPlanImporter(BundleImporter):
         return xplan_namespace(source_path) is not None
 
     def validate(self, source_path: str) -> ValidationResult:
-        if xplan_namespace(source_path) is None:
+        namespace = xplan_namespace(source_path)
+        if namespace is None:
             return ValidationResult(valid=False, errors=["The file is not XPlanGML."])
+        # Decoding and the styles need the version's code lists.
+        refusal = unsupported(version_from_namespace(namespace))
+        if refusal:
+            return ValidationResult(valid=False, errors=[refusal])
         # A file without a plan object (one class from an XPlan WFS) still
         # imports; its plan columns stay empty.
         try:
@@ -199,12 +208,30 @@ class XPlanImporter(BundleImporter):
     def extract_layers(self, source_path: str, workdir: str) -> List[ExtractedLayer]:
         import duckdb
 
+        version = version_from_namespace(xplan_namespace(source_path) or "")
+        refusal = unsupported(version)
+        if refusal:
+            raise ValueError(refusal)
+        # Bounded, spilling into the work directory: see bound_duckdb.
+        con = bound_duckdb(duckdb.connect(), workdir)
+        try:
+            con.execute("INSTALL spatial; LOAD spatial;")
+            layers = self._layers(con, source_path, Path(workdir), version)
+        finally:
+            con.close()
+        if not layers:
+            raise ValueError("The file holds no plan objects GOAT can read.")
+        return layers
+
+    def _layers(
+        self,
+        con: "duckdb.DuckDBPyConnection",
+        source_path: str,
+        out: Path,
+        version: str | None,
+    ) -> List[ExtractedLayer]:
         from goatlib.bundles.importers.xplan.decode import decorate
 
-        out = Path(workdir)
-        con = duckdb.connect()
-        con.execute("INSTALL spatial; LOAD spatial;")
-        version = version_from_namespace(xplan_namespace(source_path) or "")
         copy = out / "source.gml"
         copy_with_root_xlink(source_path, copy)
         read = decorate(self._read(con, str(copy)), version)
@@ -290,9 +317,6 @@ class XPlanImporter(BundleImporter):
                         file_path=str(path),
                     )
                 )
-        con.close()
-        if not layers:
-            raise ValueError("The file holds no plan objects GOAT can read.")
         return layers
 
 

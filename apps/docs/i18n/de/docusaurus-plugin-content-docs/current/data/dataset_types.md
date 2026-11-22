@@ -73,7 +73,7 @@ Der Plan wird zu einem Layer je Art von Planobjekt, die er enthält, benannt nac
 - **Jedes Objekt nennt seinen Plan.** Felder wie `xpPlanName`, `xpRechtsstand` und `xpAgs` zeigen, aus welchem Plan ein Objekt stammt und in welchem Stand dieser Plan ist.
 - **Der Plan sieht aus wie ein Plan.** Baugebiete sind nach Art der Nutzung eingefärbt und Baugrenzen als blau gestrichelte Linien gezeichnet, nach den Planzeichen der PlanZV.
 
-GOAT importiert einen Plan so, wie er ist, und prüft ihn nicht gegen die XPlanung-Regeln; dafür gibt es den Validator der XLeitstelle.
+GOAT liest XPlanGML in den Versionen 5.0 bis 6.1; ein Plan einer anderen Version wird mit einer Meldung abgelehnt, die diese Versionen nennt. GOAT importiert einen Plan so, wie er ist, und prüft ihn nicht gegen die XPlanung-Regeln; dafür gibt es den Validator der XLeitstelle.
 
 ## Datensätze aus mehreren Layern
 

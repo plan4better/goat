@@ -96,6 +96,16 @@ def _label(version: str | None, cls: str, table: pa.Table) -> list[str | None]:
     return labels
 
 
+def _text(value: object) -> str | None:
+    """A plan field as text; one with several values (the keys of a plan
+    lying in several municipalities) joined like every other list."""
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return "; ".join(str(v) for v in value if v is not None) or None
+    return str(value)
+
+
 def _with(table: pa.Table, name: str, values: list) -> pa.Table:
     return table.append_column(name, pa.array(values, type=pa.string()))
 
@@ -201,8 +211,6 @@ def decorate(
             ]
         values = [plans.get(owner, no_plan) for owner in owners]
         for n, column in enumerate(XPLAN_PLAN_COLUMNS):
-            table = _with(
-                table, column, [None if v[n] is None else str(v[n]) for v in values]
-            )
+            table = _with(table, column, [_text(v[n]) for v in values])
         out[cls] = (table, crs)
     return out

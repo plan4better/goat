@@ -73,7 +73,7 @@ The plan becomes one layer for each kind of plan object it contains, named after
 - **Every object names its plan.** Fields such as `xpPlanName`, `xpRechtsstand` and `xpAgs` tell which plan an object comes from and what state that plan is in.
 - **The plan looks like a plan.** Building areas are coloured by their type of use and building limits are drawn as dashed blue lines, following the German planning symbols (PlanZV).
 
-GOAT imports a plan as it is and does not check it against the XPlanung rules; use the XLeitstelle's validator for that.
+GOAT reads XPlanGML versions 5.0 to 6.1; a plan of another version is refused with a message naming them. GOAT imports a plan as it is and does not check it against the XPlanung rules; use the XLeitstelle's validator for that.
 
 ## Datasets made of several layers
 

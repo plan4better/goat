@@ -158,7 +158,10 @@ def main() -> None:
             "lists": lists,
         }
         path = OUT / f"xplangml_{version.replace('.', '_')}.json"
-        path.write_text(json.dumps(table, ensure_ascii=False, sort_keys=True, indent=0))
+        path.write_text(
+            json.dumps(table, ensure_ascii=False, sort_keys=True, indent=0),
+            encoding="utf-8",
+        )
         codes = sum(len(v) for v in lists.values())
         print(
             f"{version}: {len(table['classes'])} classes, {len(lists)} lists, {codes} codes"
