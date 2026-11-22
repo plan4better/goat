@@ -37,6 +37,7 @@ from geoapi.models import (
     TileMatrixSetsResponse,
     TileSet,
 )
+from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.layer_service import layer_service
 from geoapi.services.tile_service import FilteredTile, tile_service
 
@@ -280,6 +281,35 @@ def _pmtiles_tile_response(
     )
 
 
+#: How long a browser keeps a tile of a catalog item's published tiles:
+#: goat-data replaces the file under the same name, so not for long.
+CATALOG_TILE_MAX_AGE_S = 300
+
+
+async def _catalog_tile_response(
+    request: Request, item_id: str, z: int, x: int, y: int
+) -> Response:
+    """A tile of a catalog item that is not a layer yet (the collection
+    `catalog:<item id>`), from the tiles goat-data published for it. No
+    filter, label points or dynamic tiles: a preview draws the stored tiles.
+    Read with a sign-in, it is no shared cache's to keep."""
+    tile_data, is_gzip = await tile_service.get_catalog_tile(item_id, z, x, y)
+    audience = "private" if request.headers.get("authorization") else "public"
+    headers = {
+        "Cache-Control": f"{audience}, max-age={CATALOG_TILE_MAX_AGE_S}",
+        "X-Tile-Source": "catalog-pmtiles",
+    }
+    if not tile_data:
+        return Response(status_code=204, headers=headers)
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+    return Response(
+        content=tile_data,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers=headers,
+    )
+
+
 def _filtered_tile_response(
     filtered: FilteredTile, request_id: str, start_time: float
 ) -> Response:
@@ -372,6 +402,9 @@ async def get_tile(
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Get a vector tile for the specified collection and tile coordinates."""
+    item_id = catalog_item_id(collection_id)
+    if item_id is not None:
+        return await _catalog_tile_response(request, item_id, z, x, y)
     kinds = decoration_kinds(decoration)
     decoration = ",".join(kinds) if kinds else None
     request_id = str(uuid.uuid4())[:8]

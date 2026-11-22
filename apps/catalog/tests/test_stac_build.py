@@ -44,6 +44,24 @@ class TestRecordToItem:
         assert item["type"] == "Feature"
         assert item["stac_version"] == STAC_VERSION
 
+    def test_an_item_says_that_it_has_published_tiles_not_where(self) -> None:
+        """The tile file stays private and has no route here: geoapi reads it
+        for a preview. The served item only says that it exists, so a client
+        knows whether to ask."""
+        doc = _row0_document()
+        doc["assets"] = {
+            **doc.get("assets", {}),
+            "tiles": {"href": "../../../data/a.pmtiles", "roles": ["tiles"]},
+        }
+        item = record_to_item(
+            doc, stac_base=STAC_BASE, assets_base="https://api.example/assets"
+        )
+        assert item["properties"]["goat:tiles"] is True
+        assert "tiles" not in item["assets"]
+        assert "a.pmtiles" not in str(item)
+        plain = record_to_item(_row0_document(), stac_base=STAC_BASE)
+        assert "goat:tiles" not in plain["properties"]
+
     def test_omits_collection_when_unresolved(self) -> None:
         """A standalone item with no real collection (no explicit
         ``collection_id`` and no stashed ``goat:row_collection``) must never

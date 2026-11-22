@@ -24,6 +24,47 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].ports[0].containerPort
           value: 8000
+  - it: gets the catalog bucket, which it reads catalog previews from
+    set:
+      catalog.s3.bucket: goat-catalog
+      catalog.s3.endpointUrl: https://s3.example.com
+      catalog.s3.existingSecret: catalog-s3
+    template: geoapi/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_BUCKET
+            value: goat-catalog
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_ENDPOINT_URL
+            value: https://s3.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: catalog-s3
+                key: access_key
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: catalog-s3
+                key: secret_key
+  - it: has no catalog bucket settings without a catalog bucket
+    template: geoapi/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CATALOG_S3_BUCKET
+          any: true
   - it: not rendered when geoapi.enabled false
     set:
       geoapi.enabled: false

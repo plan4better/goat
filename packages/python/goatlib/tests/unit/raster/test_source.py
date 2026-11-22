@@ -475,6 +475,22 @@ def test_a_replaced_remote_file_is_read_anew_once_its_address_is_checked_again(
     assert values() == {2.0}
 
 
+def test_the_cache_cleared_is_rasterios_when_another_gdal_is_loaded() -> None:
+    """A package with a GDAL of its own in the process (pyogrio, geopandas'
+    file reader) is not the one rasterio reads through: its cache is never the
+    one cleared, whichever of the two was loaded first."""
+    import goatlib.raster.source as source
+
+    pyogrio = pytest.importorskip("pyogrio")
+    pyogrio.list_drivers()
+    own = Path(rasterio.__file__).parent.parent / "rasterio.libs"
+    if not own.is_dir():
+        pytest.skip("rasterio runs on the system's GDAL here")
+    found = source._rasterio_libgdal()
+    assert found
+    assert all(Path(path).parent == own for path in found)
+
+
 @pytest.mark.parametrize("found", ["nothing", "another library"])
 def test_a_read_cache_that_cannot_be_cleared_is_said_once(
     found: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

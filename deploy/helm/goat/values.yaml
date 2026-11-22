@@ -754,11 +754,14 @@ catalog:
     existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
 
 
-  # Data previews (GET /stac/items/{id}/preview) and assets (thumbnails,
+  # Data previews (GET /stac/items/{id}/preview, for signed-in users) and assets (thumbnails,
   # styles) are the only routes that read the catalog bucket rather than the
   # local mirror. Leave `bucket` unset and those routes answer 404 — by
   # design: an endpoint this deployment does not offer simply is not there.
-  # The rest of the STAC API is unaffected. processes and the print, tools and
+  # The rest of the STAC API is unaffected. geoapi gets the same settings: it
+  # reads a dataset's published tiles and its raster from the bucket for the
+  # catalog page's previews, for signed-in users (unset: no such previews, the
+  # page draws the sample). processes and the print, tools and
   # workflows workers get the same settings: goat-data publishes the
   # OpenStreetMap and Overture mirror for Add layer › Connect service into this
   # bucket (mirror/osm, mirror/overture). Unset, those two panes find no data.

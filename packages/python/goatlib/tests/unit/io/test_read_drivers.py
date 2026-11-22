@@ -406,6 +406,227 @@ def test_gpkg_layers_are_still_listed():
     ]
 
 
+TWO_CLASS_GML = """<?xml version="1.0" encoding="UTF-8"?>
+<t:Collection xmlns:t="http://example.org/t" xmlns:gml="http://www.opengis.net/gml/3.2"
+  gml:id="c">
+  <gml:featureMember>
+    <t:A gml:id="a1"><t:name>one</t:name>
+      <t:geom><gml:Point gml:id="p1" srsName="EPSG:25832"><gml:pos>1 2</gml:pos></gml:Point></t:geom>
+    </t:A>
+  </gml:featureMember>
+  <gml:featureMember>
+    <t:B gml:id="b1"><t:kind>x</t:kind>
+      <t:geom><gml:Point gml:id="p2" srsName="EPSG:25832"><gml:pos>3 4</gml:pos></gml:Point></t:geom>
+    </t:B>
+  </gml:featureMember>
+</t:Collection>
+"""
+
+
+def test_gml_classes_are_listed(tmp_path: Path):
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+
+    assert discover.discover_inputs(str(source)) == [f"{source}::A", f"{source}::B"]
+
+
+def test_gml_writes_no_gfs(tmp_path: Path):
+    """GDAL caches its guess at a GML's schema in a `.gfs` beside the file; a
+    stale one breaks later reads, so no read of an upload may leave one."""
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+
+    report = convert_all(str(source), tmp_path / "out")
+
+    assert len(report.outputs) == 2
+    assert not (tmp_path / "two.gfs").exists()
+
+
+ARC_GML = """<?xml version="1.0" encoding="UTF-8"?>
+<t:Collection xmlns:t="http://example.org/t" xmlns:gml="http://www.opengis.net/gml/3.2"
+  gml:id="c">
+  <gml:featureMember>
+    <t:Parcel gml:id="a1"><t:name>rounded</t:name>
+      <t:geom><gml:Polygon gml:id="g1" srsName="EPSG:25832"><gml:exterior><gml:Ring>
+        <gml:curveMember><gml:Curve gml:id="c1"><gml:segments>
+          <gml:LineStringSegment><gml:posList>0 0 10 0</gml:posList></gml:LineStringSegment>
+          <gml:Arc><gml:posList>10 0 15 5 10 10</gml:posList></gml:Arc>
+          <gml:LineStringSegment><gml:posList>10 10 0 10 0 0</gml:posList></gml:LineStringSegment>
+        </gml:segments></gml:Curve></gml:curveMember>
+      </gml:Ring></gml:exterior></gml:Polygon></t:geom>
+    </t:Parcel>
+  </gml:featureMember>
+</t:Collection>
+"""
+
+
+def test_gml_arcs_are_converted(tmp_path: Path):
+    """Cadastre and planning GML draw arcs, which GDAL reads as curves DuckDB
+    rejects; the arcs become straight segments instead of the class failing."""
+    source = tmp_path / "parcels.gml"
+    source.write_text(ARC_GML)
+
+    report = convert_all(str(source), tmp_path / "out")
+
+    assert report.failures == []
+    assert len(report.outputs) == 1
+    assert not (tmp_path / "parcels.gfs").exists()
+
+
+def _other_formats_named_gml(tmp_path: Path) -> dict[str, str]:
+    """Content of other formats under a `.gml` name. The last is a GDAL
+    virtual data source, which names a second file to read; it also declares
+    the GML namespace, so the GML driver's own check takes the file too."""
+    other = tmp_path / "other.csv"
+    other.write_text("a\n1\n")
+    return {
+        "kml": KML_DOCUMENT,
+        "geojson": _feature_collection(a=1),
+        "virtual": (
+            '<OGRVRTDataSource xmlns:gml="http://www.opengis.net/gml/3.2">'
+            f'<OGRVRTLayer name="other"><SrcDataSource>{other}</SrcDataSource>'
+            "</OGRVRTLayer></OGRVRTDataSource>"
+        ),
+    }
+
+
+@pytest.mark.parametrize("content", ["kml", "geojson", "virtual"])
+def test_content_of_another_format_named_gml_is_not_read(tmp_path: Path, content: str):
+    """A `.gml` is opened by the GML driver alone, wherever one is read: its
+    classes are not listed and nothing is converted from it."""
+    source = tmp_path / "data.gml"
+    source.write_text(_other_formats_named_gml(tmp_path)[content])
+
+    assert discover.discover_inputs(str(source)) == [str(source)]
+    with pytest.raises(ValueError):
+        IOConverter().to_parquet(str(source), tmp_path / "out.parquet")
+    report = convert_all(str(source), tmp_path / "out")
+    assert report.outputs == [] and len(report.failures) == 1
+    assert not list(tmp_path.glob("*.gfs"))
+
+
+def test_gml_classes_are_listed_by_the_gml_driver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """`ST_Read_Meta` names no drivers, so a GML's classes are not asked from
+    it: they come from a read that names the GML driver."""
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+
+    def connect(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("ST_Read_Meta must not run on a GML file")
+
+    monkeypatch.setattr(discover, "duckdb", SimpleNamespace(connect=connect))
+
+    assert discover.discover_inputs(str(source)) == [f"{source}::A", f"{source}::B"]
+
+
+def test_a_schema_file_beside_a_gml_is_not_used(tmp_path: Path):
+    """GDAL reads a `.gfs` it finds beside a GML as that file's schema. One
+    beside an upload is the uploader's, so a GML is read from a directory of
+    its own, and the file beside it is left as it was."""
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+    planted = (
+        "<GMLFeatureClassList><GMLFeatureClass><Name>Planted</Name>"
+        "<ElementPath>A</ElementPath></GMLFeatureClass></GMLFeatureClassList>"
+    )
+    (tmp_path / "two.gfs").write_text(planted)
+
+    assert discover.discover_inputs(str(source)) == [f"{source}::A", f"{source}::B"]
+    report = convert_all(str(source), tmp_path / "out")
+    assert sorted(Path(o.path).stem for o in report.outputs) == ["two_A", "two_B"]
+    assert (tmp_path / "two.gfs").read_text() == planted
+
+
+def test_a_gml_without_features_is_refused_not_read(tmp_path: Path):
+    """An empty collection (a WFS answer without matches) has no class to
+    read: a refusal that says so."""
+    source = tmp_path / "empty.gml"
+    source.write_text(
+        '<?xml version="1.0"?><t:Collection xmlns:t="http://example.org/t" '
+        'xmlns:gml="http://www.opengis.net/gml/3.2"></t:Collection>'
+    )
+
+    assert discover.discover_inputs(str(source)) == [str(source)]
+    with pytest.raises(ValueError, match="GML"):
+        IOConverter().to_parquet(str(source), tmp_path / "out.parquet")
+
+
+CODES_GML = """<?xml version="1.0" encoding="UTF-8"?>
+<t:Collection xmlns:t="http://example.org/t" xmlns:gml="http://www.opengis.net/gml/3.2"
+  gml:id="c">
+  <gml:featureMember>
+    <t:Place gml:id="a1"><t:key>01067</t:key><t:count>12</t:count>
+      <t:region>010620061061</t:region><t:people>3000000000</t:people>
+      <t:part>007</t:part><t:part>12</t:part><t:size>3</t:size><t:size>4</t:size>
+    </t:Place>
+  </gml:featureMember>
+  <gml:featureMember>
+    <t:Place gml:id="a2"><t:key>80331</t:key><t:count>7</t:count>
+      <t:region>091620000000</t:region><t:people>12</t:people>
+      <t:part>1</t:part><t:size>5</t:size>
+    </t:Place>
+  </gml:featureMember>
+</t:Collection>
+"""
+
+
+def test_a_gml_number_with_a_leading_zero_stays_text(tmp_path: Path):
+    """A municipality key or a postal code is digits with a leading zero: read
+    as a number it would lose the zero. A field with such a value is text;
+    the other number fields stay numbers."""
+    source = tmp_path / "codes.gml"
+    source.write_text(CODES_GML)
+    out = tmp_path / "out.parquet"
+
+    IOConverter().to_parquet(str(source), out)
+
+    con = duckdb.connect()
+    types = {
+        column: column_type
+        for column, column_type, *_ in con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{out}')"
+        ).fetchall()
+    }
+    rows = con.execute(
+        f'SELECT "key", "count", part, size FROM read_parquet(\'{out}\') ORDER BY gml_id'
+    ).fetchall()
+    assert (types["key"], types["count"]) == ("VARCHAR", "INTEGER")
+    # Also where the digits only fit a 64 bit number.
+    assert (types["region"], types["people"]) == ("VARCHAR", "BIGINT")
+    assert con.execute(
+        f"SELECT region, people FROM read_parquet('{out}') ORDER BY gml_id"
+    ).fetchall() == [("010620061061", 3000000000), ("091620000000", 12)]
+    # Repeated fields become one text value (GeoPackage stores no lists).
+    assert rows == [("01067", 12, "007; 12", "3; 4"), ("80331", 7, "1", "5")]
+
+
+def test_no_plain_read_is_built_for_a_gml(tmp_path: Path):
+    """A GML is read by `io/gml.py` alone (its classes, a directory of its
+    own, a first read in its own process): the argument list of a plain
+    `ST_Read`, as the other formats get it, is not made for one."""
+    from goatlib.io.formats import allowed_drivers_sql
+
+    with pytest.raises(ValueError, match="GML"):
+        allowed_drivers_sql(".gml")
+    source = tmp_path / "two.gml"
+    source.write_text(TWO_CLASS_GML)
+    with pytest.raises(ValueError, match="GML"):
+        get_metadata(duckdb.connect(), str(source))
+
+
+def test_no_gml_reader_brings_a_gdal_of_its_own():
+    """GML is read by the GDAL in DuckDB's spatial extension, as every other
+    vector format: no second GDAL is loaded for it."""
+    import goatlib
+
+    root = Path(goatlib.__file__).parent
+    readers = [root / "io", root / "bundles" / "importers" / "xplan"]
+    for path in (f for folder in readers for f in folder.rglob("*.py")):
+        assert "pyogrio" not in path.read_text(), path
+
+
 # Content that is not a GeoTIFF (only the faked `osgeo.gdal` sees it).
 NOT_A_GEOTIFF = "not a GeoTIFF"
 

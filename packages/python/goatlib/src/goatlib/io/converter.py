@@ -15,6 +15,7 @@ from pyproj import CRS
 from pyproj.exceptions import CRSError
 
 from goatlib.config import settings
+from goatlib.io.config import parquet_copy_options
 from goatlib.io.formats import (
     ALL_EXTS,
     FileFormat,
@@ -152,6 +153,22 @@ class IOConverter:
                     )
                 finally:
                     shutil.rmtree(sanitized.parent, ignore_errors=True)
+
+            # GML with arcs: GDAL reads them as curves, which DuckDB rejects,
+            # so convert a copy with straight segments.
+            straightened = self._gml_with_straight_segments(src_info)
+            if straightened:
+                try:
+                    return self.to_parquet(
+                        str(straightened),
+                        out,
+                        geometry_col=geometry_col,
+                        target_crs=target_crs,
+                        column_mapping=column_mapping,
+                        timeout=timeout,
+                    )
+                finally:
+                    shutil.rmtree(straightened.parent, ignore_errors=True)
 
             # Handle archive formats
             if self._is_archive_format(src_info):
@@ -293,6 +310,57 @@ class IOConverter:
                     f"[{min_x:.2f}, {min_y:.2f}, {max_x:.2f}, {max_y:.2f}]). Fix the "
                     f'file\'s "crs" entry or export it as WGS84 (EPSG:4326).'
                 )
+        return dest
+
+    def _gml_with_straight_segments(self: Self, src_info: SourceInfo) -> Path | None:
+        """A GeoPackage copy of a GML class with every arc straightened, or None
+        for any other source.
+
+        Read by `io/gml.py`: with the GML driver alone, and with the geometry
+        as WKB, since GDAL hands arcs over as curves DuckDB cannot parse.
+
+        Raises:
+            ValueError: the file is no GML that can be read
+        """
+        path = Path(src_info.path)
+        if path.suffix.lower() != FileFormat.GML.value:
+            return None
+        from goatlib.io.gml import WKB_COLUMN, GmlFile
+
+        with GmlFile(path) as gml:
+            table, crs = gml.read(self.con, src_info.layer_name)
+        name = src_info.layer_name or path.stem
+        has_geometry = WKB_COLUMN in table.column_names
+        tmp_dir = Path(tempfile.mkdtemp(prefix="goatlib_gml_"))
+        self.con.register("_gml_source", table)
+        try:
+            # GeoPackage stores no lists: a repeated field becomes "a; b".
+            columns = [
+                f"array_to_string({sql_identifier(c)}, '; ') AS {sql_identifier(c)}"
+                if t.endswith("[]")
+                else sql_identifier(c)
+                for c, t, *_ in self.con.execute("DESCRIBE _gml_source").fetchall()
+                if c != WKB_COLUMN
+            ]
+            if has_geometry:
+                dest = tmp_dir / f"{name}.gpkg"
+                srs = f", SRS {sql_literal(crs)}" if crs else ""
+                select = ", ".join(columns + [f"ST_GeomFromWKB({WKB_COLUMN}) AS geom"])
+                self.con.execute(
+                    f"COPY (SELECT {select} FROM _gml_source) TO {sql_literal(str(dest))} "
+                    f"(FORMAT GDAL, DRIVER 'GPKG'{srs})"
+                )
+            else:
+                dest = tmp_dir / f"{name}.parquet"
+                self.con.execute(
+                    f"COPY (SELECT {', '.join(columns)} FROM _gml_source) "
+                    f"TO {sql_literal(str(dest))} {parquet_copy_options()}"
+                )
+        except BaseException:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
+        finally:
+            self.con.unregister("_gml_source")
         return dest
 
     def _is_archive_format(self: Self, src_info: SourceInfo) -> bool:

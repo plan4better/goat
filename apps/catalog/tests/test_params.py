@@ -116,6 +116,23 @@ class TestSharedSurface:
         }
         assert totals["total_count"] == search.json()["numberMatched"]
 
+    def test_values_ticked_in_one_facet_are_either(self, client: TestClient) -> None:
+        """The web repeats the parameter per ticked value; it means the same OR
+        as the comma form, not only the last value."""
+
+        def matched(params: dict[str, str] | list[tuple[str, str]]) -> int:
+            resp = client.get("/stac/collections", params=params)
+            assert resp.status_code == 200
+            return resp.json()["numberMatched"]
+
+        line = matched({"geometry_type": "line"})
+        point = matched({"geometry_type": "point"})
+        either = matched({"geometry_type": "line,point"})
+        assert either > max(line, point)
+        assert (
+            matched([("geometry_type", "line"), ("geometry_type", "point")]) == either
+        )
+
     def test_year_filter_is_typed_at_the_edge(self, client: TestClient) -> None:
         assert client.get("/stac/search", params={"year": 2026}).status_code == 200
         bad = client.get("/stac/search", params={"year": "not-a-year"})

@@ -6,18 +6,23 @@ from the mirror and flattening it onto layer columns.
 """
 
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
 from goatlib.catalog.promote import (
     CatalogItemNotFoundError,
     _jsonable,
+    catalog_default_style,
+    is_wms,
     layer_type,
     published_style,
     read_item,
     read_items,
     resolve_item_ids,
     style_key_for,
+    wms_layer,
+    wmts_layer,
 )
 
 
@@ -49,7 +54,13 @@ def mirror(tmp_path: Path) -> Path:
                  'de', '1', '../../../data/item-3.parquet',
                  'feature', 'polygon', NULL,
                  NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                 [], NULL)
+                 [], NULL),
+                ('item-4', 'dataset-4', 'Mountainbike Vorarlberg', NULL,
+                 'CC-BY-4.0', 'leisure', NULL, [],
+                 'de', '1', NULL,
+                 'wms', NULL, NULL,
+                 NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                 [{{'rel': 'wms', 'href': 'https://vogis.cnv.at/geoserver/ows'}}], NULL)
             ) AS t(
                 id, collection, title, description, license, category, publisher,
                 keywords, language_code, version, parquet_url,
@@ -116,6 +127,66 @@ def test_layer_type_of_a_bundle_member_with_a_geotiff_is_a_raster() -> None:
         "table",
         None,
     )
+
+
+def test_layer_type_wms_is_a_raster(mirror: Path) -> None:
+    assert layer_type(read_item(mirror, "item-4")) == ("raster", None)
+    link = [{"rel": "wms", "href": "https://g/ows", "title": "a"}]
+    # A bundle member inherits `bundle`; its own link still says it is a WMS.
+    member = {"goat:layerType": "bundle", "links": link}
+    assert is_wms(member) and layer_type(member) == ("raster", None)
+    # A vector layer that also offers a WMS view stays a feature.
+    vector = {**member, "goat:geometryType": "polygon"}
+    assert not is_wms(vector) and layer_type(vector) == ("feature", "polygon")
+
+
+def test_wms_layer_builds_the_connect_data_shape() -> None:
+    href = "https://h/ows?map=/a.map"
+    item = {
+        "links": [
+            {"rel": "wms", "href": href, "title": "a"},
+            {"rel": "wms", "href": href, "title": "b"},
+            {"rel": "wms", "href": "https://other/wms", "title": "c"},
+        ]
+    }
+    out = wms_layer(item)
+    assert out["url"] == (
+        "https://h/ows?map=/a.map&bbox={bbox-epsg-3857}&service=WMS&REQUEST=GetMap"
+        "&layers=a,b&FORMAT=image/png&TRANSPARENT=true&WIDTH=256&HEIGHT=256"
+        "&SRS=EPSG:3857&CRS=EPSG:3857&VERSION=1.3.0&STYLES=,&DPI=90"
+        "&MAP_RESOLUTION=90&FORMAT_OPTIONS=dpi:90"
+    )
+    assert out["other_properties"]["layers"] == ["a", "b"]
+    assert out["other_properties"]["legend_urls"][0] == (
+        "https://h/ows?map=/a.map&service=WMS&REQUEST=GetLegendGraphic&layer=a"
+        "&FORMAT=image/png&TRANSPARENT=true&VERSION=1.3.0&STYLE=default"
+        "&SLD_VERSION=1.1.0"
+    )
+    # goat-data names several layers of one link in its title, comma-separated.
+    several = wms_layer(
+        {"links": [{"rel": "wms", "href": "https://g/ows", "title": "a, b"}]}
+    )
+    assert several["other_properties"]["layers"] == ["a", "b"]
+    assert len(several["other_properties"]["legend_urls"]) == 2
+    assert "&layers=a,b&" in several["url"] and "&STYLES=,&" in several["url"]
+    with pytest.raises(ValueError):
+        wms_layer({"links": [{"rel": "via", "href": "https://x"}]})
+
+
+def test_wmts_is_a_link_to_its_tile_address() -> None:
+    caps = {"rel": "wmts", "href": "https://h/WMTSCapabilities.xml", "title": "ortho"}
+    xyz = {"rel": "xyz", "href": "https://h/ortho/{z}/{y}/{x}.png"}
+    item = {"goat:layerType": "wmts", "links": [caps, xyz]}
+    assert layer_type(item) == ("raster", None)
+    assert wmts_layer(item) == {
+        "url": "https://h/ortho/{z}/{y}/{x}.png",
+        "other_properties": {"layers": ["ortho"]},
+    }
+    # The server draws it: GOAT Style's map-service default, no published style.
+    assert catalog_default_style(item, seed="s")["kind"] == "raster"
+    # Without a tile address there is nothing to draw: refused, never copied.
+    with pytest.raises(ValueError):
+        wmts_layer({"goat:layerType": "wmts", "links": [caps]})
 
 
 def test_bucket_key_resolves_relative_hrefs() -> None:
@@ -253,3 +324,55 @@ def test_snapshot_dates_are_absent_rather_than_invented(mirror: Path) -> None:
 
     assert snap["updated"] is None
     assert snap["created"] is None
+
+
+class _RecordingConnection:
+    """A connection that records whether each statement ran in a transaction."""
+
+    def __init__(self, existing: dict[str, Any]) -> None:
+        self.existing = existing
+        self.open = False
+        self.statements: list[bool] = []
+
+    async def fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
+        return self.existing
+
+    async def execute(self, sql: str, *args: Any) -> None:
+        self.statements.append(self.open)
+
+    def transaction(self) -> "_RecordingConnection":
+        return self
+
+    async def __aenter__(self) -> None:
+        self.open = True
+
+    async def __aexit__(self, *args: Any) -> None:
+        self.open = False
+
+
+async def test_a_layer_made_a_link_layer_gets_its_style_in_the_same_transaction() -> (
+    None
+):
+    """A map service promoted before it was a link is repaired on its next
+    add: the row and its default style change together, or a failure between
+    the two would leave a ready layer without a style that no later add
+    repairs."""
+    from goatlib.catalog.promote import promote
+
+    item = {
+        "id": "wms-1",
+        "version": "1",
+        "title": "Radwege",
+        "goat:layerType": "wms",
+        "links": [{"rel": "wms", "href": "https://g/ows", "title": "a"}],
+    }
+    conn = _RecordingConnection(
+        {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "data_type": None,
+            "status": "failed",
+        }
+    )
+    result = await promote(conn, "wms-1", mirror_items_path="unused", item=item)  # type: ignore[arg-type]
+    assert result["created"] is False and result["materialize"] is False
+    assert conn.statements == [True, True]

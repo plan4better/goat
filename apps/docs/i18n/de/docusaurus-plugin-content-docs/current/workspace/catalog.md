@@ -32,7 +32,7 @@ Die Seitenleiste schränkt die Liste ein, in dieser Reihenfolge:
 - **Meine Favoriten anzeigen**: nur die Datensätze, die Sie mit einem Stern gespeichert haben
 - **Ort**: `Räumlichen Filter setzen` schränkt den Katalog auf Datensätze ein, die ein Gebiet abdecken, beschrieben auf [drei Wegen](#raeumlicher-filter)
 - **Kategorie**: das Thema des Datensatzes, etwa Verkehr, Umwelt, Bevölkerung oder Landnutzung. Die Seitenleiste zeigt alle Kategorien, die der Katalog derzeit enthält
-- **Datenart**: ob der Datensatz ein Feature-Layer, eine Tabelle, ein Raster oder ein Datenpaket ist
+- **Datenart**: ob der Datensatz ein Feature-Layer, eine Tabelle, ein Raster, ein Kartendienst (WMS oder WMTS) oder ein Datenpaket ist
 - **Geometrie**: welche Art von Form seine Objekte haben
 - **Datengeber**: wer den Datensatz bereitstellt
 - **Lizenz**: zu welchen Bedingungen er veröffentlicht ist
@@ -80,7 +80,9 @@ Klicken Sie auf einen Datensatz, um ihn zu öffnen. Der Reiter **Zusammenfassung
 - **Zuletzt aktualisiert**
 - **Datengeber**, mit Kontaktdaten und einem Link zu seinen eigenen Metadaten, sofern vorhanden
 
-Wenn der Datensatz Zeilen zum Anzeigen hat, enthält ein Reiter **Daten** eine Auswahl davon sowie die Spalten und ihre Typen.
+Wenn der Datensatz Zeilen zum Anzeigen hat, enthält ein Reiter **Daten** die Spalten und ihre Typen und, wenn Sie angemeldet sind, eine Auswahl der Zeilen.
+
+Die Karte auf der Seite zeigt das Gebiet, das der Datensatz abdeckt. Ein Kartendienst wird live vom Server des Herausgebers gezeichnet. Wenn Sie angemeldet sind, zeichnet die Karte außerdem die Daten des Datensatzes, bevor Sie ihn hinzufügen: einen Feature-Datensatz vollständig und in seinem Stil, sofern Kartenkacheln für ihn veröffentlicht sind, und ein Raster in seinen Farben. Sind für einen Feature-Datensatz keine Kartenkacheln veröffentlicht, zeichnet die Karte eine Auswahl seiner Features. Ohne Anmeldung zeigt die Karte nur den Umriss, darunter die Zeile `Anmelden, um die Daten zu sehen`.
 
 Ein Datensatz aus mehreren Layern ist als `Datenpaket` gekennzeichnet und listet die **Layer in diesem Datenpaket**. Öffnen Sie einen davon, sehen Sie, zu welchem Datenpaket er gehört. Siehe [Datensatz-Typen](../data/dataset_types.md#datensätze-aus-mehreren-layern).
 
@@ -107,6 +109,8 @@ Datensätze werden aus einem Projekt heraus hinzugefügt, der Dialog `+ Layer hi
 <p></p>
 
 Wird ein Katalog-Datensatz zum ersten Mal hinzugefügt, bereitet GOAT eine Kopie davon für Ihr Projekt vor. Der Layer zeigt währenddessen `Daten werden vorbereitet …` und steht zur Verfügung, sobald das abgeschlossen ist.
+
+Ein Kartendienst (WMS oder WMTS) wird nicht kopiert. GOAT fügt ihn als Verknüpfung zum Server des Herausgebers hinzu, als denselben Layer wie über [Daten abrufen / verbinden](content#eine-externe-quelle-verbinden). Er steht daher sofort zur Verfügung und wird immer so gezeichnet, wie der Herausgeber ihn gerade bereitstellt.
 
 :::info Katalog-Layer sind schreibgeschützt
 Ein aus dem Katalog hinzugefügter Layer ist mit `Katalog · schreibgeschützt` gekennzeichnet. Sie können ihn wie jeden anderen Layer gestalten, filtern, analysieren und herunterladen, seine Zeilen und Spalten lassen sich jedoch nicht bearbeiten, denn die Daten gehören dem Datengeber und bleiben so, wie er sie veröffentlicht hat.

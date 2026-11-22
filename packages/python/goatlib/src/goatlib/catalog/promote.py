@@ -20,7 +20,8 @@ the same item conflicts on the index; the loser reads the winner's row.
 
 Data is NOT copied here. The layer row is created with materialize status
 ``pending`` and the caller enqueues the materialize job; the layer becomes
-drawable when that finishes.
+drawable when that finishes. A WMS or WMTS item has no data to copy: it becomes
+the same link layer Connect data makes, born ``ready``.
 """
 
 from __future__ import annotations
@@ -35,11 +36,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import asyncpg
 import duckdb
 
-from goatlib.catalog.item import item_style, layer_type
+from goatlib.catalog.item import is_wms, is_wmts, item_style, layer_type
 from goatlib.style.compute import stamp_computed
 from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import fingerprint
@@ -204,6 +206,91 @@ def resolve_item_ids(
     return resolved
 
 
+def wmts_layer(item: dict[str, Any]) -> dict[str, Any]:
+    """The ``url`` and ``other_properties`` of a WMTS item's link layer.
+
+    The tile address is the item's ``rel="xyz"`` link: goat-data reads the
+    capabilities and picks the web-mercator grid, which the mirror's links
+    could not otherwise carry. Same shape as Connect data's WMTS layer.
+    """
+    links = [link for link in item.get("links") or [] if isinstance(link, dict)]
+    tiles = next(
+        (
+            link["href"]
+            for link in links
+            if link.get("rel") == "xyz" and link.get("href")
+        ),
+        None,
+    )
+    if not tiles:
+        raise ValueError(f"WMTS item {item.get('id')} has no tile address (rel=xyz)")
+    name = next(
+        (link.get("title") for link in links if link.get("rel") == "wmts"), None
+    )
+    return {"url": tiles, "other_properties": {"layers": [name] if name else []}}
+
+
+def service_layer(item: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """``(data_type, link layer)`` for a WMS or WMTS item, None for data to copy."""
+    if is_wms(item):
+        return "wms", wms_layer(item)
+    if is_wmts(item):
+        return "wmts", wmts_layer(item)
+    return None
+
+
+def wms_layer(item: dict[str, Any]) -> dict[str, Any]:
+    """The ``url`` and ``other_properties`` of a WMS item's link layer.
+
+    The same strings the web's Connect data writes (``generateWmsUrl`` and
+    ``generateLayerGetLegendGraphicUrl``), so a catalog WMS and a connected one
+    draw alike. Layers are the titles of the item's ``rel="wms"`` links on the
+    first link's server.
+    """
+    links = [
+        link
+        for link in item.get("links") or []
+        if isinstance(link, dict) and link.get("rel") == "wms" and link.get("href")
+    ]
+    if not links:
+        raise ValueError(f"WMS item {item.get('id')} has no rel=wms link")
+    href = links[0]["href"]
+    # goat-data names several layers of one link in its title, comma-separated:
+    # the mirror keeps no `wms:layers`.
+    layers = [
+        name.strip()
+        for link in links
+        if link["href"] == href and link.get("title")
+        for name in link["title"].split(",")
+        if name.strip()
+    ]
+    if not layers:
+        raise ValueError(f"WMS item {item.get('id')} names no layer")
+    # goat-data publishes the clean server address; its own parameters (a
+    # `map=`) go in front of the request, as Connect data's `wmsTileTemplate`.
+    path, _, query = href.partition("?")
+    prefix = f"{path}?" + (f"{query}&" if query else "")
+    # Encoded: a name with `&`, `#` or a space would cut the request short.
+    names = [quote(layer, safe=":") for layer in layers]
+    url = (
+        f"{prefix}bbox={{bbox-epsg-3857}}&service=WMS&REQUEST=GetMap"
+        f"&layers={','.join(names)}&FORMAT=image/png&TRANSPARENT=true"
+        "&WIDTH=256&HEIGHT=256&SRS=EPSG:3857&CRS=EPSG:3857&VERSION=1.3.0"
+        f"&STYLES={','.join('' for _ in layers)}&DPI=90&MAP_RESOLUTION=90"
+        "&FORMAT_OPTIONS=dpi:90"
+    )
+    legend_urls = [
+        f"{prefix}service=WMS&REQUEST=GetLegendGraphic&layer={name}"
+        "&FORMAT=image/png&TRANSPARENT=true&VERSION=1.3.0&STYLE=default"
+        "&SLD_VERSION=1.1.0"
+        for name in names
+    ]
+    return {
+        "url": url,
+        "other_properties": {"layers": layers, "legend_urls": legend_urls},
+    }
+
+
 def _jsonable(item: dict[str, Any]) -> dict[str, Any]:
     """The item with every value JSON-serialisable (timestamps to ISO)."""
 
@@ -309,6 +396,10 @@ def catalog_default_style(
     ltype, geom_type = layer_type(item)
     if ltype == "table":
         return None
+    service = "wms" if is_wms(item) else "wmts" if is_wmts(item) else None
+    if service:
+        # The server draws it; no published style applies to a map service.
+        return default_style(context_for(ltype, geom_type, service), seed=seed)
     document = item_style(published_style(item, read_object=read_object), item)
     if document is None:
         return default_style(context_for(ltype, geom_type, None), seed=seed)
@@ -343,11 +434,15 @@ async def promote(
     Race-safe via the partial unique index on
     ``(catalog_external_uid, catalog_version)``: the INSERT is
     ``ON CONFLICT DO NOTHING``, and when it inserts no row the winner's is
-    read back. Returns ``{"layer_id", "created", "parquet_url"}``.
+    read back. Returns ``{"layer_id", "created", "parquet_url", "materialize"}``;
+    ``materialize`` is False for a WMS or WMTS link layer, which has nothing to copy.
     """
     if item is None:
         item = read_item(mirror_items_path, item_id)
     version = str(item.get("version") or "")
+    # Built before any write: an unusable link fails here, not halfway through.
+    service = service_layer(item)
+    data_type, wms = service if service else (None, None)
 
     # UPDATE, not SELECT: touching updated_at moves a reused layer out of the
     # catalog-GC grace window, so re-adding a long-unreferenced layer can't be
@@ -356,16 +451,52 @@ async def promote(
         f"""
         UPDATE {schema}.layer SET updated_at = NOW()
         WHERE catalog_external_uid = $1 AND catalog_version = $2
-        RETURNING id
+        RETURNING id, data_type,
+            other_properties->'catalog_materialize'->>'status' AS status
         """,
         item_id,
         version,
     )
     if existing:
+        if wms and (
+            existing["data_type"] != data_type or existing["status"] != "ready"
+        ):
+            # Promoted before WMS was a link (as a table waiting for a copy that
+            # cannot come), or failed by a copy job it never needed: made the
+            # link layer it should have been.
+            # One transaction: the row and its style change together.
+            async with conn.transaction():
+                await conn.execute(
+                    f"""
+                    UPDATE {schema}.layer SET
+                        type = 'raster', feature_layer_type = NULL,
+                        feature_layer_geometry_type = NULL,
+                        url = $2, data_type = $4,
+                        other_properties = other_properties || $3::jsonb
+                    WHERE id = $1
+                    """,
+                    existing["id"],
+                    wms["url"],
+                    json.dumps(
+                        {
+                            **wms["other_properties"],
+                            "catalog_materialize": {
+                                "status": "ready",
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        }
+                    ),
+                    data_type,
+                )
+                # A table had no style row; the link layer gets its service default.
+                style = catalog_default_style(item, seed=str(existing["id"]))
+                if style is not None:
+                    await insert_dataset_default(conn, schema, existing["id"], style)
         return {
             "layer_id": str(existing["id"]),
             "created": False,
             "parquet_url": item.get("parquet_url"),
+            "materialize": wms is None,
         }
 
     ltype, geom_type = layer_type(item)
@@ -376,8 +507,9 @@ async def promote(
     style = catalog_default_style(item, seed=str(new_id))
     name = (item.get("title") or "").strip() or item_id
     other_properties = {
+        **(wms["other_properties"] if wms else {}),
         "catalog_materialize": {
-            "status": "pending",
+            "status": "ready" if wms else "pending",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         },
         "catalog_item": _jsonable(item),
@@ -396,6 +528,7 @@ async def promote(
                 feature_layer_type, feature_layer_geometry_type, extent,
                 other_properties,
                 public_read, catalog_external_uid, catalog_version,
+                url, data_type,
                 created_at, updated_at
             ) VALUES (
                 $1, $2, $3, $4,
@@ -406,6 +539,7 @@ async def promote(
                 END,
                 $11::jsonb,
                 FALSE, $12, $13,
+                $14, $15,
                 NOW(), NOW()
             )
             ON CONFLICT (catalog_external_uid, catalog_version)
@@ -426,6 +560,8 @@ async def promote(
             json.dumps(other_properties),
             item_id,
             version,
+            wms["url"] if wms else None,
+            data_type,
         )
         if inserted is not None and style is not None:
             await insert_dataset_default(conn, schema, new_id, style)
@@ -452,10 +588,12 @@ async def promote(
             "layer_id": str(winner["id"]),
             "created": False,
             "parquet_url": item.get("parquet_url"),
+            "materialize": wms is None,
         }
 
     return {
         "layer_id": str(new_id),
         "created": True,
         "parquet_url": item.get("parquet_url"),
+        "materialize": wms is None,
     }

@@ -499,6 +499,51 @@ every trip without a usable one, a line through its stops
 Explorer's snapshot gives those trips the same line as their shape. Like any
 derived member it is never written back to the feed.
 
+## XPlan bundles are decoded at import
+
+An XPlanGML file states codes and links, not meanings: `besondereArtDerBaulNutzung
+= 1500`, `refTextInhalt = #GML_...`. The meanings are in the standard's code
+lists. The XPlan importer (`bundles/importers/xplan/`) writes them into the
+data, a `<field>Wert` column per code field, the linked clause text in
+`refTextInhaltWert` and the plan's details on every object, because the AI
+assistant, filters and exports read columns and never the map style. Decoding
+only in the style, as plan viewers commonly do, would leave all of them with
+numbers.
+
+- What GOAT knows about the format is the XPlan schema
+  (`bundles/importers/xplan/schema.py`), the counterpart of the GTFS importer's
+  `gtfs_schema.py`: per version, which fields of a class hold codes (the ones
+  inside the data types it holds included, under the innermost name GDAL reads
+  them into), from which code list, and what each code means. A format needs as much schema as its
+  files leave out: Overture's GeoParquet names its values in words, GTFS is
+  untyped text, XPlan states only codes. At about 1,700 codes per version it
+  is generated (`generate_schema.py`, into `versions/`) from the XLeitstelle's
+  own publication, not fetched at import: the worker may have no internet and
+  the decoding must not depend on a website. The same lists ship with an open
+  source XPlan server, but under the AGPL. A code the version's list does not hold stays without a name.
+- One member layer per XPlan class, as every XPlan tool cuts a plan. The plan
+  is a bundle because its layers only make sense together, not because a tool
+  needs a particular member, so the `xplan` type declares no roles: a plan holds
+  whichever of the standard's classes it uses, and each member's role is its
+  class name, which is what its style is looked up by.
+- The file is read by `io/gml.py`, as a plain `.gml` upload is (see "A file is
+  read as the format it is named" below). Plans draw arcs,
+  which GDAL hands over as curve geometries DuckDB does not parse, so the
+  geometry is read as WKB and `io/curves.py` straightens it. Links between
+  objects are read only with `GML_ATTRIBUTES_TO_OGR_FIELDS`, and for some WFS
+  downloads only when the root declares the xlink namespace
+  (`copy_with_root_xlink`).
+- A `.gml` is XPlan by its content (the namespace declared on the root), not
+  its name; the web app reads the same 64 KB to route the upload.
+- A plan also comes as its archive (XPlanArchiv): a ZIP holding the plan as
+  `xplan.gml`, its documents and raster sheets beside it. An archive is one by
+  that member in its directory, which core and the web app can tell without
+  unpacking anything. The importer has no unpacking of its own: the archive
+  goes through the dataset upload's `extract_zip_safely` (`io/discover.py`),
+  so one limit on the unpacked size and one refusal of members outside the
+  archive hold for both, and what was unpacked is removed after the read.
+  Only the plan is imported; the files beside it are not.
+
 ## GOAT's public transport network is cut like an upload
 
 GOAT's default public transport network is one GTFS feed combining several
@@ -751,6 +796,20 @@ drivers listed before it imports. `ST_Read_Meta` takes no driver list, so a
 user file's schema and CRS come from a `DESCRIBE` of its reader; only a
 GeoPackage's layers are listed with it, and only once the file has the SQLite
 header (`io/discover.py`).
+
+GML has a reader of its own for that reason (`io/gml.py`), and no plain
+`ST_Read` is built for it (`allowed_drivers_sql` refuses the suffix):
+
+- Its classes come from the schema file (`.gfs`) the GML driver writes on the
+  first read, not from `ST_Read_Meta`.
+- That first read runs in a process of its own: DuckDB's reader ends the
+  process on a GML without any feature class instead of raising, and only the
+  read tells whether a file has one.
+- A file is read through a link in a directory of its own, where the schema
+  file is written. GDAL takes a `.gfs` or `.xsd` beside a GML as its schema,
+  and one beside an upload is the uploader's.
+- A field GDAL types a whole number stays text when a value has a leading zero
+  (a municipality key, a postal code): the GDAL in DuckDB would drop the zero.
 
 A file's name (an archive member's is the uploader's own text), its layer and
 its column names are data, never SQL: each is a bound parameter where DuckDB

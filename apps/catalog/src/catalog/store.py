@@ -202,7 +202,12 @@ class CatalogStore:
         needlessly break cache hits when a pod restarts or a second pod
         answers. Read in chunks and computed once per load, never per request.
         """
+        from catalog.services import stac_build
+
         digest = hashlib.sha256()
+        # The documents are built from these files by this code: a change in
+        # what it serves (DOCUMENT_VERSION) is a change in what is served.
+        digest.update(f"documents:{stac_build.DOCUMENT_VERSION}".encode())
         for path in (
             self._settings.items_path,
             self._settings.collections_path,

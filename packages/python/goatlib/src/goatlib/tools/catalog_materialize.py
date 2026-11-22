@@ -37,7 +37,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import posixpath
 import tempfile
 import uuid as uuid_module
 from datetime import datetime, timezone
@@ -47,7 +46,11 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 import duckdb
 from pydantic import Field
 
-from goatlib.catalog.item import RASTER_SUFFIXES
+from goatlib.catalog.item import (
+    RASTER_SUFFIXES,
+    bucket_key_for,
+    published_tiles_keys,
+)
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.spatial_order import hilbert_key
 from goatlib.tools.base import SimpleToolRunner
@@ -81,19 +84,23 @@ class CatalogMaterializeParams(ToolInputBase):
 TIFF_SIGNATURES = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 
-def bucket_key_for(parquet_url: str, suffixes: tuple[str, ...] = (".parquet",)) -> str:
-    """The catalog-bucket key for an item's data asset.
-
-    The published href is relative to the item's place in the bucket's JSON
-    tree (``../../../data/<uuid>.parquet`` — contract C8), so only its
-    basename is meaningful here; the data prefix is fixed by the bucket
-    layout (contract §1). The asset must be of the layer's format: a parquet
-    for a vector or table item, a GeoTIFF (`RASTER_SUFFIXES`) for a raster.
-    """
-    name = posixpath.basename(parquet_url or "")
-    if not name.lower().endswith(suffixes):
-        raise ValueError(f"Not a {'/'.join(suffixes)} data asset: {parquet_url!r}")
-    return f"data/{name}"
+def is_hilbert_sorted(
+    con: duckdb.DuckDBPyConnection, parquet_path: Path, geometry_column: str
+) -> bool:
+    """Whether the rows are in the order GOAT stores a layer's rows in
+    (``hilbert_key``: Hilbert order within the layer's extent, rows without a
+    location last)."""
+    source = f"read_parquet('{parquet_path}')"
+    key = hilbert_key('"' + geometry_column.replace('"', '""') + '"', source)
+    (out_of_order,) = con.execute(
+        f"""SELECT count(*) FROM (
+                SELECT k, lag(k) OVER (ORDER BY file_row_number) AS prev
+                FROM (SELECT coalesce(({key})::BIGINT, 4294967296) AS k,
+                             file_row_number
+                      FROM read_parquet('{parquet_path}', file_row_number = true)))
+            WHERE k < prev"""
+    ).fetchone()
+    return out_of_order == 0
 
 
 def catalog_layers_dir() -> Path:
@@ -343,11 +350,16 @@ class CatalogMaterializeRunner(SimpleToolRunner):
         return out_path
 
     def _materialize_vector(
-        self: Self, layer_id: str, parquet_url: str
-    ) -> tuple[Path, int, tuple[float, float, float, float] | None, str | None]:
+        self: Self, layer_id: str, parquet_url: str, keep_sorted: bool = False
+    ) -> tuple[Path, int, tuple[float, float, float, float] | None, str | None, bool]:
         """Bucket parquet → Hilbert-ordered local GeoParquet + PMTiles.
 
-        Returns (path, feature_count, bounds, geometry_column).
+        With ``keep_sorted`` (goat-data published tiles for it), a file already
+        in Hilbert order keeps its row order (rewritten with GOAT's parquet
+        settings): those tiles number features by row, and sorting again may
+        reorder rows with equal keys.
+
+        Returns (path, feature_count, bounds, geometry_column, kept_order).
         """
         bucket = os.environ.get("CATALOG_S3_BUCKET", "")
         if not bucket:
@@ -368,7 +380,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 logger.info("Keeping the materialized file %s", out_path)
                 geom_col = parquet_geometry_column(con, out_path)
                 count, bounds = _feature_count_and_bounds(con, out_path, geom_col)
-                return out_path, count, bounds, geom_col
+                return out_path, count, bounds, geom_col, False
             with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
                 src = Path(tmp) / "source.parquet"
                 self._catalog_s3().download_file(bucket, key, str(src))
@@ -385,7 +397,10 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 geom_col_sql = geom_col.replace('"', '""') if geom_col else None
 
                 staged = Path(tmp) / "staged.parquet"
-                if geom_col_sql:
+                kept_order = bool(
+                    keep_sorted and geom_col and is_hilbert_sorted(con, src, geom_col)
+                )
+                if geom_col_sql and not kept_order:
                     source = f"read_parquet('{src}')"
                     order = hilbert_key(f'"{geom_col_sql}"', source)
                     con.execute(f"""
@@ -393,6 +408,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                         TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
                 else:
+                    # In the file's own order: DuckDB keeps it on a plain copy.
                     con.execute(f"""
                         COPY (SELECT * FROM read_parquet('{src}'))
                         TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
@@ -404,9 +420,59 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 # TemporaryDirectory to clean up, never a half-written target.
                 os.replace(staged, out_path)
 
-            return out_path, feature_count, bounds, geom_col
+            return out_path, feature_count, bounds, geom_col, kept_order
         finally:
             con.close()
+
+    def _use_published_tiles(
+        self: Self, layer_id: str, keys: tuple[str, str | None], polygon: bool
+    ) -> bool:
+        """Copy goat-data's tiles where GOAT's own build puts them, when
+        ``sync_pmtiles`` would count them in sync (``stale_reason``: built by
+        manby with the current recipe of their kind, from no snapshot); False,
+        leaving nothing behind, when they cannot be used and the job should
+        build them.
+
+        A polygon needs its label points too: without them it is built whole.
+        """
+        from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
+
+        if not (self.settings and self.settings.pmtiles_enabled):
+            return False
+        main_key, anchor_key = keys
+        if polygon and not anchor_key:
+            return False
+        generator = PMTilesGenerator(
+            tiles_data_dir=catalog_tiles_dir(), config=PMTilesConfig()
+        )
+        targets = [(main_key, generator.get_pmtiles_path(layer_id))]
+        if anchor_key:
+            targets.append((anchor_key, generator.get_anchor_pmtiles_path(layer_id)))
+        bucket = os.environ.get("CATALOG_S3_BUCKET", "")
+        parts: list[Path] = []
+        try:
+            s3 = self._catalog_s3()
+            for key, target in targets:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                part = target.with_name(target.name + ".part")
+                parts.append(part)
+                s3.download_file(bucket, key, str(part))
+                # A catalog layer's parquet has no snapshot, as sync_pmtiles
+                # judges its tiles.
+                stale = generator.stale_reason(part, None)
+                if stale is not None:
+                    logger.info("Published tiles %s are not used: %s", key, stale)
+                    return False
+            # Written after the parquet: sync_pmtiles counts older tiles stale.
+            for (_, target), part in zip(targets, parts):
+                os.replace(part, target)
+            return True
+        except Exception as e:  # noqa: BLE001 - the job builds them instead
+            logger.warning("Published tiles for %s not used: %s", layer_id, e)
+            return False
+        finally:
+            for part in parts:
+                part.unlink(missing_ok=True)
 
     def _generate_catalog_pmtiles(
         self: Self, layer_id: str, parquet_path: Path, geom_col: str
@@ -488,9 +554,12 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                     else [],
                 }
 
+            published = published_tiles_keys(item)
             try:
-                out_path, count, bounds, geom_col = self._materialize_vector(
-                    params.layer_id, parquet_url
+                out_path, count, bounds, geom_col, kept_order = (
+                    self._materialize_vector(
+                        params.layer_id, parquet_url, keep_sorted=published is not None
+                    )
                 )
                 # Ready the moment the DATA is on disk: geoapi serves tiles
                 # dynamically until the PMTiles cache exists, so a big layer
@@ -505,7 +574,27 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 raise
 
             tiles_error: str | None = None
-            if geom_col:
+            tiles_source: str | None = None
+            if (
+                geom_col
+                and published
+                and kept_order
+                and self._use_published_tiles(
+                    params.layer_id,
+                    published,
+                    layer.get("feature_layer_geometry_type") == "polygon",
+                )
+            ):
+                tiles_source = "published"
+                loop.run_until_complete(
+                    self._set_status(
+                        params.layer_id,
+                        "ready",
+                        {"feature_count": count, "tiles": tiles_source},
+                    )
+                )
+            elif geom_col:
+                tiles_source = "built"
                 try:
                     self._generate_catalog_pmtiles(params.layer_id, out_path, geom_col)
                 except Exception as e:  # noqa: BLE001 - data is served either way
@@ -527,6 +616,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 "path": str(out_path),
                 "feature_count": count,
                 "geometry_column": geom_col,
+                "tiles": tiles_source,
                 "wm_labels": [params.triggered_by_email]
                 if params.triggered_by_email
                 else [],

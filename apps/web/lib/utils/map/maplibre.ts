@@ -1,6 +1,7 @@
 import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
-import { addProtocol, getVersion, setWorkerUrl } from "maplibre-gl";
+import { type RequestParameters, addProtocol, getVersion, setWorkerUrl } from "maplibre-gl";
 
+import { catalogPreviewRequest } from "@/lib/catalog/preview";
 import { ownGlyphsRequest } from "@/lib/utils/map/glyphs";
 
 // Setup shared by every map. A component that renders a react-map-gl <Map>
@@ -21,12 +22,21 @@ setWorkerUrl(`/vendor/maplibre/maplibre-gl-worker.mjs?v=${getVersion()}`);
 addProtocol("cog", cogProtocol);
 
 /**
+ * Every map's `transformRequest`: GOAT's own label fonts come from the app
+ * (glyphs.ts), and the requests of a catalog item's preview carry the sign-in
+ * the catalog page set (lib/catalog/preview.ts). Anything else is left as it is.
+ */
+export function mapRequest(url: string, resourceType?: string): RequestParameters | undefined {
+  return catalogPreviewRequest(url) ?? ownGlyphsRequest(url, resourceType);
+}
+
+/**
  * Options every map passes. `zoomLevelsToOverscale: undefined` keeps vector
  * tiles overscaled past their maxzoom, as before MapLibre 6; its default
  * slices them instead, which moves labels and changes what a click hits.
- * `transformRequest` loads GOAT's own label fonts from the app (glyphs.ts).
+ * `transformRequest` is `mapRequest`.
  */
 export const MAPLIBRE_MAP_OPTIONS = {
   zoomLevelsToOverscale: undefined,
-  transformRequest: ownGlyphsRequest,
+  transformRequest: mapRequest,
 } as const;

@@ -106,7 +106,7 @@ def test_a_materialized_catalog_layer_is_stored_in_spatial_order(
     monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path / "catalog" / "layers"))
     monkeypatch.setenv("CATALOG_S3_BUCKET", "catalog")
 
-    out, count, _, _ = _materialize_runner(scattered, [])._materialize_vector(
+    out, count, _, _, _ = _materialize_runner(scattered, [])._materialize_vector(
         LAYER_ID, "../../../data/item.parquet"
     )
 
@@ -136,7 +136,7 @@ def test_a_rerun_keeps_the_file_it_wrote_before(
     before = existing.read_bytes()
     downloads: list[str] = []
 
-    out, count, bounds, geometry = _materialize_runner(
+    out, count, bounds, geometry, _ = _materialize_runner(
         scattered, downloads
     )._materialize_vector(LAYER_ID, "../../../data/item.parquet")
 

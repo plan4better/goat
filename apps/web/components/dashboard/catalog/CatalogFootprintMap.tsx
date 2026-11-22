@@ -6,8 +6,14 @@ import { useTranslation } from "react-i18next";
 import type { MapGeoJSONFeature, MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
-import { useCatalogPreview, useCatalogStyle } from "@/lib/api/catalog";
-import { CATALOG_SAMPLE_KEY, catalogSampleLayer } from "@/lib/catalog/style";
+import { useCatalogStyle } from "@/lib/api/catalog";
+import { catalogRasterSource, catalogServiceTiles, catalogTilesUrl } from "@/lib/catalog/kind";
+import {
+  CATALOG_SAMPLE_KEY,
+  catalogRasterLayer,
+  catalogSampleLayer,
+  catalogTilesLayer,
+} from "@/lib/catalog/style";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import type { Geometry } from "@/lib/style/compile/types";
 import { buildLegend } from "@/lib/style/legend";
@@ -19,6 +25,8 @@ import type { CatalogItem } from "@/lib/validations/catalog";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
+import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
+import { useCatalogSample } from "@/hooks/catalog/useCatalogSample";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
 import DetailMapLegend from "@/components/dashboard/common/DetailMapLegend";
@@ -53,7 +61,15 @@ const CatalogFootprintMap = ({
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const basemapStyle = useCatalogBasemapStyle();
-  const { preview, isLoading } = useCatalogPreview(item.id);
+  /** A WMS or WMTS item has no sample: the service draws itself, live. */
+  const wmsTiles = catalogServiceTiles(item);
+  /** The item's own data is read from geoapi, which answers it to signed-in users only. */
+  const signedIn = useCatalogPreviewAccess();
+  /** A raster is drawn from geoapi's raster tiles; it has no sample. */
+  const rasterSource = useMemo(() => (signedIn ? catalogRasterSource(item) : null), [item, signedIn]);
+  const { preview, isLoading } = useCatalogSample(item);
+  /** goat-data's tiles: the whole layer at every zoom, where the sample shows a slice. */
+  const tilesUrl = signedIn ? catalogTilesUrl(item) : null;
 
   const footprint = useMemo<GeoJSON.FeatureCollection | null>(() => {
     if (!item.geometry) return null;
@@ -76,10 +92,16 @@ const CatalogFootprintMap = ({
 
   // Only worth fetching a style when there is data to draw with it.
   const styleHref = item.assets?.style?.href;
-  const { style, isLoading: styleLoading } = useCatalogStyle(styleHref, !!sample);
+  const { style, isLoading: styleLoading } = useCatalogStyle(
+    styleHref,
+    !!sample || !!tilesUrl || !!rasterSource
+  );
   const geometryType = item.properties["goat:geometryType"] ?? undefined;
   /** The dataset's own rendering, and some of its data to draw with it. */
-  const styledSample = !!catalogSampleLayer(style, geometryType, sample);
+  const styledSample =
+    !!catalogRasterLayer(style, rasterSource) ||
+    !!catalogTilesLayer(style, geometryType, tilesUrl) ||
+    !!catalogSampleLayer(style, geometryType, sample);
   /** The style is still on its way, so nothing is drawn with the right paint yet.
    *
    * Without this the sample renders twice: once in the plain footprint colour
@@ -140,9 +162,14 @@ const CatalogFootprintMap = ({
   /** The sample drawn with the dataset's style, its active feature marked by the renderer. */
   const activeId = typeof active?.feature.id === "number" ? active.feature.id : undefined;
   const sampleLayer = useMemo(
-    () => catalogSampleLayer(style, geometryType, sample, activeId),
-    [style, geometryType, sample, activeId]
+    () =>
+      catalogRasterLayer(style, rasterSource) ??
+      catalogTilesLayer(style, geometryType, tilesUrl, activeId) ??
+      catalogSampleLayer(style, geometryType, sample, activeId),
+    [style, geometryType, tilesUrl, rasterSource, sample, activeId]
   );
+  /** Drawn from the published tiles rather than from the sample. */
+  const fromTiles = sampleLayer?.source.type === "tiles";
   const legend = useMemo(
     () =>
       sampleLayer
@@ -179,7 +206,7 @@ const CatalogFootprintMap = ({
   });
 
   const onMapClick = (event: MapLayerMouseEvent) => {
-    if (!sample) return;
+    if (!sample && !fromTiles) return;
     const hit = featureAt(event);
     // A click on the basemap unpins. Same gesture, both directions -- which is
     // what lets the panel do without a close control.
@@ -187,7 +214,7 @@ const CatalogFootprintMap = ({
   };
 
   const onMapMouseMove = (event: MapLayerMouseEvent) => {
-    if (!sample) return;
+    if (!sample && !fromTiles) return;
     const hit = featureAt(event);
     setHovering(!!hit);
     // A pinned panel is the reader's, not the cursor's.
@@ -248,13 +275,14 @@ const CatalogFootprintMap = ({
     // The sample's own extent, not the item's. A sample can sit in a corner of
     // its dataset, so framing the dataset draws the preview as a speck in an
     // empty map; the outline above is what keeps the dataset's size legible.
-    const box = (shown ? (bboxOf(shown) as number[]) : null) ?? item.bbox;
+    // With published tiles the whole dataset is drawn, so it is framed whole.
+    const box = (!tilesUrl && !rasterSource && shown ? (bboxOf(shown) as number[]) : null) ?? item.bbox;
     if (!box || box.length < 4) return { longitude: 10, latitude: 51, zoom: 3 };
     return {
       bounds: [box[0], box[1], box[2], box[3]] as [number, number, number, number],
       fitBoundsOptions: { padding: 40 },
     };
-  }, [item.bbox, shown]);
+  }, [item.bbox, shown, tilesUrl, rasterSource]);
 
   if (!shown) {
     return <Alert severity="info">{t("catalog_no_geometry")}</Alert>;
@@ -300,6 +328,12 @@ const CatalogFootprintMap = ({
               pale casing under a dark dash, so the outline reads over whatever
               the basemap puts beneath it — light terrain, dark water, imagery —
               without having to pick a colour that wins against all of them. */}
+          {wmsTiles && (
+            <Source id="catalog-wms" type="raster" tiles={[wmsTiles]} tileSize={256}>
+              <MapLayer id="catalog-wms" type="raster" />
+            </Source>
+          )}
+
           {extentOutline && (
             <Source id="catalog-extent" type="geojson" data={extentOutline}>
               <MapLayer
@@ -404,7 +438,7 @@ const CatalogFootprintMap = ({
         {/* What the map is showing, in the one corner the legend and the credit
             strip leave free. The dashed outline says the same thing spatially;
             this puts a number on it. */}
-        {!!sample && !!preview && (
+        {!!sample && !!preview && !fromTiles && (
           <Paper
             elevation={0}
             sx={{
@@ -420,8 +454,7 @@ const CatalogFootprintMap = ({
               pointerEvents: "none",
             }}>
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-              {typeof preview["goat:total"] === "number" &&
-              preview["goat:total"] > sample.features.length
+              {typeof preview["goat:total"] === "number" && preview["goat:total"] > sample.features.length
                 ? t("catalog_preview_sample_of", {
                     shown: sample.features.length,
                     total: preview["goat:total"],

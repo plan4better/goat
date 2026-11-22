@@ -42,6 +42,7 @@ from typing import Any, Callable, Literal, NamedTuple, Optional, TypeVar
 
 import manby
 from cachetools import LRUCache, TTLCache
+from fastapi import HTTPException
 from goatlib.storage import build_filters
 from goatlib.style.h3 import auto_resolution, cell_values_sql, tile_margin_degrees
 from pmtiles.reader import MmapSource
@@ -56,6 +57,7 @@ from pmtiles.tile import (
 from geoapi.config import settings
 from geoapi.dependencies import LayerInfo
 from geoapi.ducklake_pool import ducklake_pool
+from geoapi.services.catalog_items import CATALOG_EXECUTOR, Replaced, catalog_items
 from geoapi.services.tile_filter import (
     OVERZOOM_BUFFER,
     PreparedFilter,
@@ -870,6 +872,14 @@ class TileService:
         # One temp tree search at a time per process: concurrent tile
         # requests wait for the first verdict instead of each walking the tree.
         self._temp_search_lock = asyncio.Lock()
+        # Readers of catalog items' published tile files, by bucket key: each
+        # keeps its file's header and directories (see get_catalog_tile). For
+        # a minute: goat-data replaces a file under the same name, and a file
+        # that fits in its head is answered without a read that would tell.
+        self._catalog_readers: TTLCache[str, CachedPMTilesReader] = TTLCache(
+            maxsize=_PMTILES_READER_CACHE_MAX_SIZE, ttl=60
+        )
+        self._catalog_readers_lock = threading.Lock()
         # Request filters prepared for a layer's stored tiles, by layer id,
         # tiles version and request digest; None where DuckDB answers (tiles
         # manby did not build, a filter manby cannot express). Parsing and
@@ -1271,6 +1281,86 @@ class TileService:
             elapsed_ms,
         )
         return (tile_data, is_gzip, "pmtiles")
+
+    def forget_catalog_tiles(self) -> None:
+        """Drop the readers of catalog items' tile files."""
+        with self._catalog_readers_lock:
+            self._catalog_readers.clear()
+
+    def _catalog_reader(self, key: str, fresh: bool = False) -> CachedPMTilesReader:
+        """The reader of the tile file at `key` in the catalog bucket: kept,
+        or opened (its head read from the bucket) when `fresh`."""
+        with self._catalog_readers_lock:
+            reader = None if fresh else self._catalog_readers.get(key)
+        if reader is None:
+            get_bytes, _ = catalog_items.tiles_bytes(key)
+            reader = CachedPMTilesReader(get_bytes)
+            with self._catalog_readers_lock:
+                self._catalog_readers[key] = reader
+        return reader
+
+    def _catalog_stored_tile(
+        self, item_id: str, z: int, x: int, y: int
+    ) -> tuple[bytes, tuple[int, int, int], bool] | None:
+        """`_stored_tile` of a catalog item's published tiles, and whether it
+        is gzip compressed; in a worker thread. A reader holds one version of
+        its file (every range is read by that version's ETag): when goat-data
+        has put another file under the name, the file is opened again, once.
+
+        Raises:
+            HTTPException: 404 for an item without published tiles, 503 for a
+                file that keeps changing
+        """
+        key = catalog_items.item(item_id).tiles_key
+        if key is None:
+            raise HTTPException(
+                status_code=404, detail="The catalog item has no published tiles"
+            )
+        for fresh in (False, True):
+            try:
+                reader = self._catalog_reader(key, fresh)
+                header = reader.header()
+                found = _stored_tile(reader, header, z, x, y)
+            except Replaced:
+                continue
+            if found is None:
+                return None
+            tile, stored = found
+            compression = header.get("tile_compression")
+            is_gzip = compression == Compression.GZIP or tile[:2] == b"\x1f\x8b"
+            return tile, stored, is_gzip
+        raise HTTPException(
+            status_code=503, detail="The item's tiles are being replaced"
+        )
+
+    async def get_catalog_tile(
+        self, item_id: str, z: int, x: int, y: int
+    ) -> tuple[bytes, bool]:
+        """A tile of the tiles goat-data published for a catalog item that is
+        not a layer yet (`geoapi.services.catalog_items`), read from the
+        catalog bucket in ranges with the reader a layer's own tiles have: a
+        tile below the stored ones is cut from its stored parent.
+
+        Returns:
+            Tuple of (tile_data, is_gzip_compressed); no data for a tile
+            without content
+        """
+        if x >= 2**z or y >= 2**z:
+            return b"", False
+        loop = asyncio.get_running_loop()
+        found = await loop.run_in_executor(
+            CATALOG_EXECUTOR, self._catalog_stored_tile, item_id, z, x, y
+        )
+        if found is None:
+            return b"", False
+        tile, (parent_z, parent_x, parent_y), is_gzip = found
+        if parent_z == z:
+            return tile, is_gzip
+        cut = await self._overzoom_tile(
+            tile, parent_z, parent_x, parent_y, z, x, y, is_gzip
+        )
+        # manby overzoom outputs gzip-compressed tiles
+        return (cut, True) if cut else (b"", False)
 
     async def _get_tile_from_pmtiles_path(
         self, pmtiles_path: Path, z: int, x: int, y: int

@@ -201,6 +201,7 @@ async def add_catalog_items_to_project(
         promote,
         read_items,
         resolve_item_ids,
+        service_layer,
     )
     from starlette.concurrency import run_in_threadpool
 
@@ -246,6 +247,13 @@ async def add_catalog_items_to_project(
     refusal = catalog_batch_refusal(requested=len(item_ids), existing=existing_layers)
     if refusal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
+    # A WMS or WMTS whose link cannot be drawn is refused before anything is
+    # promoted, so a batch is added whole or not at all.
+    for catalog_id in item_ids:
+        try:
+            service_layer(items[catalog_id])
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     conn = await asyncpg.connect(
         dsn,
@@ -269,9 +277,12 @@ async def add_catalog_items_to_project(
             # again heals it. The rules live in `services.materialize_heal` —
             # including how old a `pending` or `running` has to be before it
             # counts as lost.
-            should_enqueue = result["created"]
+            # A WMS/WMTS has nothing to copy, new or healed: a raster with no
+            # file is what it is, not a lost copy.
+            copies_data = result.get("materialize", True)
+            should_enqueue = result["created"] and copies_data
             add_link = True
-            if not should_enqueue:
+            if not should_enqueue and copies_data:
                 row = await conn.fetchrow(
                     f"""
                     SELECT type, other_properties->'catalog_materialize' AS doc

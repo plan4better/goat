@@ -546,7 +546,9 @@ services:
     # Shares the data volume with the root-run Windmill workers.
     user: "0"
     environment:
-      <<: [*env-db, *env-s3, *env-auth, *env-service]
+      # The catalog bucket: the catalog page's previews of data that is not a
+      # layer yet (published tiles, rasters), for signed-in users.
+      <<: [*env-db, *env-s3, *env-catalog-s3, *env-auth, *env-service]
       ROOT_PATH: /geoapi
       REDIS_URL: redis://redis:6379/0
       # DuckDB spills to disk only at its own budget, so the budgets fit the
