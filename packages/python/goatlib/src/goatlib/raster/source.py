@@ -34,7 +34,7 @@ from rasterio.session import DummySession
 from rasterio.warp import transform_bounds
 from rasterio.windows import Window
 from rio_tiler.errors import RioTilerError, TileOutsideBounds
-from rio_tiler.io import Reader
+from rio_tiler.io import Reader as _RioReader
 from rio_tiler.utils import non_alpha_indexes
 
 from goatlib.io.remote_source.url_guard import assert_public_http_url
@@ -83,6 +83,30 @@ WEBP_EFFORT = 50
 #: How long a file that could not be read answers at once with the same error,
 #: so a slow or broken host does not hold a thread for every tile.
 FAILURE_TTL_S = 30
+
+
+#: The one GDAL driver a file opens with: GeoTIFF, which reads a COG too
+#: (GDAL's COG driver only writes).
+GEOTIFF_DRIVER: Final = "GTiff"
+
+
+class Reader(_RioReader):
+    """rio-tiler's reader of a file opened with the GeoTIFF driver only
+    (`GEOTIFF_DRIVER`), remote and stored files alike. GDAL would otherwise
+    pick the driver by the file's content, and some formats (VRT) open further
+    files their content names. A file of another format fails to open as one
+    GDAL cannot read. The dataset is closed with the reader."""
+
+    def __attrs_post_init__(self) -> None:
+        if not self.dataset:
+            self.dataset = self._ctx_stack.enter_context(
+                rasterio.open(self.input, driver=GEOTIFF_DRIVER)
+            )
+        try:
+            super().__attrs_post_init__()
+        except BaseException:
+            self._ctx_stack.close()
+            raise
 
 
 class RasterUnavailableError(RuntimeError):

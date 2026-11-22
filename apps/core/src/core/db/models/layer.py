@@ -7,6 +7,7 @@ from uuid import UUID
 
 from geoalchemy2 import Geometry, WKBElement
 from geoalchemy2.shape import to_shape
+from goatlib.io.remote_source.url_guard import assert_unambiguous_url
 from pydantic import (
     HttpUrl,
     computed_field,
@@ -91,8 +92,11 @@ def check_layer_url(value: object) -> str | None:
     `MAX_URL_LENGTH` characters, refused before anything is built from it. A
     tile address is checked as each address it stands for, up to the first one
     that is none: a list in the host reads as a port in the address itself, and
-    one in the scheme would change it. Raises ValueError, which a validator
-    answers as a validation error."""
+    one in the scheme would change it. Each address must also read the same to
+    every URL parser the servers use (`assert_unambiguous_url`: no backslash,
+    whitespace or control character inside it), as the servers check before
+    they fetch it. Raises ValueError, which a validator answers as a
+    validation error."""
     if value is None:
         return None
     if isinstance(value, HttpUrl):
@@ -103,6 +107,7 @@ def check_layer_url(value: object) -> str | None:
         raise ValueError(f"A layer's address has at most {MAX_URL_LENGTH} characters.")
     for address in tile_addresses(value):
         HttpUrl(address)
+        assert_unambiguous_url(address)
     return value
 
 

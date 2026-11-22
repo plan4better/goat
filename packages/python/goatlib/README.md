@@ -409,7 +409,14 @@ stack, so validation runs in core too.
   public addresses or are listed by the service (`private_hosts`); redirects
   answered to a HEAD request are followed hop by hop with the same check
   (`io/remote_source/url_guard.py`, shared with WFS imports), the result kept ten
-  minutes. The same HEAD gives the file's ETag or Last-Modified
+  minutes. The guard also refuses an address that its URL parser and the HTTP
+  client's (urllib3) would read with another scheme, host or port, and any
+  address with a backslash, whitespace or a control character inside it
+  (`assert_unambiguous_url`, which core's layer address check runs too, so such
+  an address is never stored). Remote and stored files open with GDAL's
+  GeoTIFF driver only (`GEOTIFF_DRIVER`, which reads COGs), never a driver GDAL
+  picks by the content: a file of another format under a `.tif` name is
+  unavailable like any file that cannot be read. The same HEAD gives the file's ETag or Last-Modified
   (`remote_validator`; none from a HEAD that fails, as a host that refuses HEAD
   may still send one), which geoapi adds to the value tiles' version, so a file
   replaced at the same address gets new tiles. GDAL keeps what it read of a

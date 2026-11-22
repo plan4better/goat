@@ -15,17 +15,49 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import unicodedata
 from collections.abc import Collection
 from urllib.parse import urlparse
+
+from urllib3.util import parse_url
 
 
 class UnsafeUrlError(ValueError):
     """The URL is not an http(s) address that resolves to public IPs only."""
 
 
+def _client_host(host: str | None) -> str | None:
+    """`urllib.parse`'s host as urllib3 writes it: an IPv6 address in brackets,
+    a zone id unquoted, a non-ASCII name in punycode."""
+    if host is None:
+        return None
+    return parse_url(f"http://[{host}]" if ":" in host else f"http://{host}").host
+
+
+def assert_unambiguous_url(url: str) -> None:
+    """Raise `UnsafeUrlError` unless `url`, without the whitespace around it,
+    reads the same to `urllib.parse` (this guard, GDAL) and to urllib3 (the
+    HTTP client): no backslash, whitespace or control character inside it, and
+    the same scheme, host and port for both. Resolves nothing."""
+    text = url.strip()
+    if any(c == "\\" or c.isspace() or unicodedata.category(c) == "Cc" for c in text):
+        raise UnsafeUrlError(
+            "The service address holds a backslash, a space or a control character"
+        )
+    try:
+        parsed = urlparse(text)
+        read = (parsed.scheme or None, _client_host(parsed.hostname), parsed.port)
+        client = parse_url(text)
+    except ValueError as exc:
+        raise UnsafeUrlError("The service address is not a valid URL") from exc
+    if read != (client.scheme, client.host, client.port):
+        raise UnsafeUrlError("The service address is not a valid URL")
+
+
 def assert_public_http_url(url: str, allowed_hosts: Collection[str] = ()) -> None:
-    """Raise `UnsafeUrlError` unless `url` is http(s) and resolves to public IPs
-    or its host is one of `allowed_hosts`."""
+    """Raise `UnsafeUrlError` unless `url` is http(s), reads the same to every
+    parser (`assert_unambiguous_url`) and resolves to public IPs or its host is
+    one of `allowed_hosts`."""
     try:
         parsed = urlparse(url.strip())
         port = parsed.port
@@ -37,6 +69,7 @@ def assert_public_http_url(url: str, allowed_hosts: Collection[str] = ()) -> Non
     host = parsed.hostname
     if not host:
         raise UnsafeUrlError("The service address has no host")
+    assert_unambiguous_url(url)
     if host.lower() in {h.strip().lower() for h in allowed_hosts}:
         return
 

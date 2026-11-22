@@ -220,3 +220,47 @@ def test_an_address_that_is_no_text_is_a_validation_error(url: object):
         IRasterCreate(
             name="Tiles", folder_id=uuid4(), type="raster", data_type="xyz", url=url
         )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://10.0.0.5:8080\\@tiles.example.org/x.tif",
+        "https://tiles.example.org/{z}/{x}/{y}.png\\@other.example",
+        "https://tiles.example.org/a b/{z}/{x}/{y}.png",
+        "https://tiles.example.org/a\tb/{z}/{x}/{y}.png",
+        "https://tiles.example.org/a\x00b/{z}/{x}/{y}.png",
+        "https://{s}.tiles.example.org\\@other.example/{z}/{x}/{y}.png",
+    ],
+)
+def test_an_address_every_parser_does_not_read_alike_is_refused(url: str):
+    """An address with a backslash, whitespace or a control character inside
+    it is never stored: the server's HTTP client and its URL parser could read
+    another host from it."""
+    from core.schemas.layer import IRasterCreate, IRasterUpdate
+
+    with pytest.raises(ValidationError):
+        IRasterUpdate(url=url)
+    for data_type in ("cog", "xyz"):
+        with pytest.raises(ValidationError):
+            IRasterCreate(
+                name="Tiles",
+                folder_id=uuid4(),
+                type="raster",
+                data_type=data_type,
+                url=url,
+            )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@data.example.org:8443/dem.tif?sig=a%20b",
+        "http://[2001:db8::1]:8080/dem.tif",
+        "https://data.example.org/wms?SERVICE=WMS&BBOX={bbox-epsg-3857}",
+    ],
+)
+def test_ordinary_raster_addresses_are_kept_as_typed(url: str):
+    from core.schemas.layer import IRasterUpdate
+
+    assert IRasterUpdate(url=url).url == url

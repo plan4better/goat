@@ -85,6 +85,24 @@ def test_only_http_addresses_of_public_hosts_open(url: str) -> None:
         resolve_address(url)
 
 
+def test_an_address_the_http_client_reads_another_way_is_refused_before_a_request(
+    cog_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The address check and the HEAD request read the same host: an address
+    with a backslash in it is refused, and no request is sent."""
+    import goatlib.raster.source as source
+
+    def must_not_ask(*args: object, **kwargs: object) -> object:
+        raise AssertionError("a HEAD request was sent")
+
+    monkeypatch.setattr(source.requests, "head", must_not_ask)
+    monkeypatch.setattr(source, "_addresses", {})
+    port = cog_server.rsplit(":", 1)[1]
+    for listed in ((), ("example.com",), LOCAL):
+        with pytest.raises(UnsafeUrlError):
+            resolve_address(f"http://127.0.0.1:{port}\\@example.com/x.tif", listed)
+
+
 def test_a_listed_private_host_opens_but_a_redirect_to_another_does_not(
     cog_server: str,
 ) -> None:
@@ -635,6 +653,70 @@ def test_a_stored_file_opens_only_when_named_as_one(cog_dir) -> None:  # noqa: A
 def test_a_missing_stored_file_is_unavailable(cog_dir) -> None:  # noqa: ANN001
     with pytest.raises(RasterUnavailableError):
         RasterSource(None, stored_file=cog_dir / "gone.tif").__enter__()
+
+
+def _vrt_named_tif(folder: Path, name: str, tmp_path: Path) -> Path:
+    """A GDAL VRT file under a `.tif` name whose one band reads the bytes of a
+    small file of its own."""
+    data = tmp_path / "bytes.bin"
+    data.write_bytes(b"0123456789")
+    vrt = folder / name
+    vrt.write_text(
+        '<VRTDataset rasterXSize="10" rasterYSize="1"><SRS>EPSG:4326</SRS>'
+        "<GeoTransform>11.5, 0.01, 0, 48.2, 0, -0.01</GeoTransform>"
+        '<VRTRasterBand dataType="Byte" band="1" subClass="VRTRawRasterBand">'
+        f'<SourceFilename relativetoVRT="0">{data}</SourceFilename>'
+        "<ImageOffset>0</ImageOffset><PixelOffset>1</PixelOffset>"
+        "<LineOffset>10</LineOffset></VRTRasterBand></VRTDataset>"
+    )
+    return vrt
+
+
+def test_a_file_that_is_not_a_geotiff_is_refused(
+    cog_dir: Path, cog_server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Remote and stored files open with the GeoTIFF driver only, whatever
+    another GDAL driver would make of their content: a file of another format
+    under a `.tif` name is unavailable, and remembered so."""
+    import goatlib.raster.source as source
+
+    monkeypatch.setattr(source, "_failures", {})
+    vrt = _vrt_named_tif(cog_dir, "vrt_named.tif", tmp_path)
+    url = f"{cog_server}/vrt_named.tif"
+    with pytest.raises(RasterUnavailableError) as failed:
+        with RasterSource(url, LOCAL) as src:
+            src.info()
+    assert str(failed.value) == "The file could not be read as a raster."
+    assert recent_failure(failure_key(url, None)) == str(failed.value)
+    with pytest.raises(RasterUnavailableError):
+        with RasterSource(None, stored_file=vrt) as src:
+            src.info()
+
+
+def test_a_plain_geotiff_and_a_cog_open_remote_and_stored(
+    cog_dir: Path, cog_server: str
+) -> None:
+    """A GeoTIFF without tiles or overviews opens as a COG does."""
+    plain = cog_dir / "plain_striped.tif"
+    with rasterio.open(
+        plain,
+        "w",
+        driver="GTiff",
+        width=64,
+        height=64,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=rasterio.transform.from_bounds(*BOUNDS, 64, 64),
+    ) as dst:
+        dst.write(np.full((1, 64, 64), 5, "uint8"))
+    for url in (f"{cog_server}/plain_striped.tif", f"{cog_server}/elevation.tif"):
+        with RasterSource(url, LOCAL) as src:
+            assert src.info().bounds == pytest.approx(BOUNDS, abs=1e-6)
+            assert src.reader.dataset.driver == "GTiff"
+    for stored in (plain, cog_dir / "elevation.tif"):
+        with RasterSource(None, stored_file=stored) as src:
+            assert src.info().bounds == pytest.approx(BOUNDS, abs=1e-6)
 
 
 def test_a_source_needs_a_stored_file_or_an_address() -> None:
