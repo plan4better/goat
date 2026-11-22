@@ -456,13 +456,15 @@ class CatalogMaterializeRunner(SimpleToolRunner):
     def _use_published_tiles(
         self: Self, layer_id: str, keys: tuple[str, str | None], polygon: bool
     ) -> bool:
-        """Copy goat-data's tiles where GOAT's own build puts them, when built
-        with this goatlib's recipe (``MANBY_MARKER``); False, leaving nothing
-        behind, when they cannot be used and the job should build them.
+        """Copy goat-data's tiles where GOAT's own build puts them, when
+        ``sync_pmtiles`` would count them in sync (``stale_reason``: built by
+        manby with the current recipe of their kind, from no snapshot); False,
+        leaving nothing behind, when they cannot be used and the job should
+        build them.
 
         A polygon needs its label points too: without them it is built whole.
         """
-        from goatlib.io.pmtiles import MANBY_MARKER, PMTilesConfig, PMTilesGenerator
+        from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
 
         if not (self.settings and self.settings.pmtiles_enabled):
             return False
@@ -484,9 +486,11 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 part = target.with_name(target.name + ".part")
                 parts.append(part)
                 s3.download_file(bucket, key, str(part))
-                marker = generator.read_marker(part)
-                if any(marker.get(k) != v for k, v in MANBY_MARKER.items()):
-                    logger.info("Published tiles %s are of another recipe", key)
+                # A catalog layer's parquet has no snapshot, as sync_pmtiles
+                # judges its tiles.
+                stale = generator.stale_reason(part, None)
+                if stale is not None:
+                    logger.info("Published tiles %s are not used: %s", key, stale)
                     return False
             # Written after the parquet: sync_pmtiles counts older tiles stale.
             for (_, target), part in zip(targets, parts):

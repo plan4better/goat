@@ -1,6 +1,8 @@
 """A materialize job that cannot even start must say so in the layer's status."""
 
+import json
 import shutil
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -408,12 +410,25 @@ def test_a_sorted_file_with_published_tiles_keeps_its_row_order(
         assert codecs == [("ZSTD",)]
 
 
+def _published_metadata(kind: str, recipe: int, **marker: object) -> dict:
+    """PMTiles metadata as goat-data's tiles carry it: the marker in the
+    description, the layer and its geometry type."""
+    anchors = kind == "label_anchors"
+    geometry = {"points": "Point", "lines": "LineString"}.get(kind, "Polygon")
+    return {
+        "description": json.dumps({"tiler": "manby", "recipe": recipe, **marker}),
+        "vector_layers": [{"id": "default_anchor" if anchors else "default"}],
+        "tilestats": {"layers": [{"geometry": geometry}]},
+    }
+
+
 def test_published_tiles_are_copied_only_when_usable(tmp_path, monkeypatch) -> None:
-    """Copied beside GOAT's own build when goat-data built them with this
-    recipe; otherwise nothing is left behind and the job builds them."""
+    """Copied beside GOAT's own build when sync_pmtiles would count them in
+    sync (manby, the current recipe of their kind, no snapshot); otherwise
+    nothing is left behind and the job builds them."""
     monkeypatch.setenv("CATALOG_TILES_DIR", str(tmp_path / "catalog" / "tiles"))
     monkeypatch.setenv("CATALOG_S3_BUCKET", "catalog")
-    from goatlib.io.pmtiles import MANBY_MARKER, PMTilesGenerator
+    from goatlib.io.pmtiles import MANBY_RECIPES, PMTilesGenerator
     from goatlib.utils.layer import catalog_tiles_dir
 
     item = {
@@ -438,17 +453,57 @@ def test_published_tiles_are_copied_only_when_usable(tmp_path, monkeypatch) -> N
             download_file=lambda _b, key, target: open(target, "wb").write(b"t")
         ),
     )
+    polygons, anchors, points = (
+        MANBY_RECIPES[kind] for kind in ("polygons", "label_anchors", "points")
+    )
+    current = _published_metadata("polygons", polygons)
+    current_anchors = _published_metadata("label_anchors", anchors)
 
-    for marker, polygon_keys, usable in (
-        (MANBY_MARKER, keys, True),
-        ({**MANBY_MARKER, "recipe": -1}, keys, False),  # an older recipe
-        (MANBY_MARKER, (keys[0], None), False),  # a polygon without its anchors
+    for tiles, label_points, polygon_keys, polygon, usable in (
+        (current, current_anchors, keys, True, True),
+        # Tiles of an older recipe, the polygons' or their label points'.
+        (
+            _published_metadata("polygons", polygons - 1),
+            current_anchors,
+            keys,
+            True,
+            False,
+        ),
+        (current, _published_metadata("label_anchors", anchors - 1), keys, True, False),
+        # A polygon without its label points.
+        (current, current_anchors, (keys[0], None), True, False),
+        # Point tiles: the current recipe, and the one before it.
+        (_published_metadata("points", points), None, (keys[0], None), False, True),
+        (
+            _published_metadata("points", points - 1),
+            None,
+            (keys[0], None),
+            False,
+            False,
+        ),
+        # Tiles of a snapshot are not a catalog file's: sync_pmtiles would rebuild them.
+        (
+            _published_metadata("polygons", polygons, snapshot_id=7),
+            current_anchors,
+            keys,
+            True,
+            False,
+        ),
+        # No marker at all (another tiler).
+        ({}, current_anchors, keys, True, False),
     ):
         for f in (main, anchor):
             f.unlink(missing_ok=True)
         monkeypatch.setattr(
-            PMTilesGenerator, "read_marker", lambda self, path, m=marker: dict(m)
+            PMTilesGenerator,
+            "_metadata",
+            staticmethod(
+                lambda path, t=tiles, a=label_points: (
+                    a if "_anchor" in Path(path).name else t
+                )
+            ),
         )
-        assert runner._use_published_tiles(layer_id, polygon_keys, True) is usable
-        assert main.exists() is usable and anchor.exists() is usable
+        assert runner._use_published_tiles(layer_id, polygon_keys, polygon) is usable
+        assert main.exists() is usable
+        assert anchor.exists() is (usable and polygon)
         assert not list(catalog_tiles_dir().glob("*.part"))
