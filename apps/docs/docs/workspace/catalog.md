@@ -80,9 +80,9 @@ Click a dataset to open it. The **Summary** tab carries the publisher's descript
 - **Last updated**
 - **Publisher**, with contact details and a link to their own metadata where those exist
 
-Where the dataset has rows to show, a **Data** tab holds a sample of them alongside the columns and their types.
+Where the dataset has rows to show, a **Data** tab holds the columns and their types, and when you are signed in a sample of the rows.
 
-The map on the page shows the area the dataset covers. A map service is drawn live from its publisher's server. When you are signed in, the map also draws the dataset's own data before you add it: a feature dataset in full and in its style where map tiles are published for it, and a raster in its colours. Without a sign-in, the map shows the outline and, for a feature dataset, a sample of its features.
+The map on the page shows the area the dataset covers. A map service is drawn live from its publisher's server. When you are signed in, the map also draws the dataset's own data before you add it: a feature dataset in full and in its style where map tiles are published for it, and a raster in its colours. Where no map tiles are published for a feature dataset, the map draws a sample of its features. Without a sign-in, the map shows the outline only, with the line `Sign in to see the data` under it.
 
 A dataset made of several layers is marked `Bundle` and lists **Layers in this bundle**; opening one shows which bundle it belongs to. See [Dataset Types](../data/dataset_types.md#datasets-made-of-several-layers) for what that means.
 

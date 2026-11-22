@@ -3000,6 +3000,7 @@
   "catalog_layers_in_bundle": "Layers in this bundle",
   "catalog_member_count": "{{count}} layers",
   "catalog_no_geometry": "This dataset has no spatial extent, so there is nothing to show on a map.",
+  "catalog_sign_in_to_see_data": "Sign in to see the data",
   "catalog_row_count_short": "{{count, number}} rows",
   "catalog_row_count_sampled": "{{shown, number}} of {{total, number}} rows",
   "catalog_preview_sample": "Preview",

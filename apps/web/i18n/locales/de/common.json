@@ -3000,6 +3000,7 @@
   "catalog_layers_in_bundle": "Layer in diesem Datenpaket",
   "catalog_member_count": "{{count}} Layer",
   "catalog_no_geometry": "Dieser Datensatz hat keine räumliche Ausdehnung und kann daher nicht auf einer Karte gezeigt werden.",
+  "catalog_sign_in_to_see_data": "Anmelden, um die Daten zu sehen",
   "catalog_row_count_short": "{{count, number}} Zeilen",
   "catalog_row_count_sampled": "{{shown, number}} von {{total, number}} Zeilen",
   "catalog_preview_sample": "Vorschau",

@@ -6,13 +6,14 @@ import { useTranslation } from "react-i18next";
 import { Provider } from "react-redux";
 
 import { useBundleLayers, useBundleMemberLayers } from "@/lib/api/bundles";
-import { useCatalogPreview, useCatalogResolve } from "@/lib/api/catalog";
+import { useCatalogResolve } from "@/lib/api/catalog";
 import { useDataset } from "@/lib/api/layers";
 import type { ResultItem } from "@/lib/assistant/items";
 import { makeStore } from "@/lib/store";
 import type { CatalogItem } from "@/lib/validations/catalog";
 import type { Layer } from "@/lib/validations/layer";
 
+import { useCatalogSample } from "@/hooks/catalog/useCatalogSample";
 import useFeaturePage from "@/hooks/useFeaturePage";
 
 import { useDockActions } from "@/components/assistant/DockActions";
@@ -56,7 +57,7 @@ function DatasetPreview({ datasetId }: { datasetId: string }) {
 /** A catalog table's first rows, from the catalog's preview sample. */
 function CatalogRows({ item }: { item: CatalogItem }) {
   const { t } = useTranslation("common");
-  const { preview, isLoading } = useCatalogPreview(item.id);
+  const { preview, isLoading } = useCatalogSample(item);
   if (isLoading) return <Loading />;
   const features = preview?.features ?? [];
   if (!features.length) {

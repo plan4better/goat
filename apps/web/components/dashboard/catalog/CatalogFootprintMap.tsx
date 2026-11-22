@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import type { MapGeoJSONFeature, MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
-import { useCatalogPreview, useCatalogStyle } from "@/lib/api/catalog";
-import { catalogKindOf, catalogRasterSource, catalogServiceTiles, catalogTilesUrl } from "@/lib/catalog/kind";
+import { useCatalogStyle } from "@/lib/api/catalog";
+import { catalogRasterSource, catalogServiceTiles, catalogTilesUrl } from "@/lib/catalog/kind";
 import {
   CATALOG_SAMPLE_KEY,
   catalogRasterLayer,
@@ -26,6 +26,7 @@ import type { PopupProperties } from "@/lib/validations/layer";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
+import { useCatalogSample } from "@/hooks/catalog/useCatalogSample";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
 import DetailMapLegend from "@/components/dashboard/common/DetailMapLegend";
@@ -65,9 +66,8 @@ const CatalogFootprintMap = ({
   /** The item's own data is read from geoapi, which answers it to signed-in users only. */
   const signedIn = useCatalogPreviewAccess();
   /** A raster is drawn from geoapi's raster tiles; it has no sample. */
-  const isRaster = catalogKindOf(item, true) === "raster";
   const rasterSource = useMemo(() => (signedIn ? catalogRasterSource(item) : null), [item, signedIn]);
-  const { preview, isLoading } = useCatalogPreview(item.id, !wmsTiles && !isRaster);
+  const { preview, isLoading } = useCatalogSample(item);
   /** goat-data's tiles: the whole layer at every zoom, where the sample shows a slice. */
   const tilesUrl = signedIn ? catalogTilesUrl(item) : null;
 
@@ -454,8 +454,7 @@ const CatalogFootprintMap = ({
               pointerEvents: "none",
             }}>
             <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-              {typeof preview["goat:total"] === "number" &&
-              preview["goat:total"] > sample.features.length
+              {typeof preview["goat:total"] === "number" && preview["goat:total"] > sample.features.length
                 ? t("catalog_preview_sample_of", {
                     shown: sample.features.length,
                     total: preview["goat:total"],
