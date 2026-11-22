@@ -63,7 +63,10 @@ The public URL must be a bare origin (no path). All services live under it:
 certificate into `./certs` and set `GOAT_CA_BUNDLE=/certs/<file>.pem` in `.env`.
 This also covers an SMTP relay whose certificate comes from that CA: GOAT and
 Keycloak verify the relay's certificate against the public CAs and this file.
-The assistant trusts `GOAT_CA_BUNDLE` like the other services.
+The assistant trusts `GOAT_CA_BUNDLE` like the other services. geoapi and
+processes trust it for raster files and S3 too: they start through
+`init/ca/ca-bundle.sh`, which writes the public CAs plus this file into one
+file and points `GDAL_CURL_CA_BUNDLE` and `AWS_CA_BUNDLE` at it.
 
 More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_hosting/docker_compose/https)
 
@@ -244,8 +247,28 @@ file. Fill it in once for layers added before (idempotent, `--dry-run` lists wha
 it would store):
 
 ```bash
-docker compose exec geoapi python -m geoapi.scripts.backfill_raster_extents
+docker compose run --rm --no-deps geoapi python -m geoapi.scripts.backfill_raster_extents
 ```
+
+That release also tiles point layers with a new recipe. Run the Windmill task
+`f/goat/tasks/sync_pmtiles` once, with `force` off, so existing point layers get
+the new tiles (see "Windmill" in the docs for how to reach it).
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that
+still runs the old version sends styles the old way, and core refuses those
+saves (422) until the tab is reloaded. API scripts that still send `properties`
+when they update a layer, a project layer or a layer group get the same answer,
+with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of",
+"does not contain the text" and the negated date conditions) into the form the
+filter panel writes now: they keep the features without a value, so a map with
+such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while
+the running release keeps serving. If a long-running transaction holds one of
+the tables, the migration stops after a few seconds with a lock timeout error
+and changes nothing more: run the upgrade again.
 
 More in the docs: [Operations → Upgrades](https://goat.plan4better.de/docs/self_hosting/docker_compose/operations#upgrade)
 

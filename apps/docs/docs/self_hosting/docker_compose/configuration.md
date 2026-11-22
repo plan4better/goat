@@ -29,7 +29,7 @@ Apply changes with `docker compose up -d`.
 | `GOAT_ACME_EMAIL` | empty | Optional contact for Let's Encrypt expiry notices (`auto` only) |
 | `GOAT_TRUSTED_PROXIES` | `private_ranges` | Addresses allowed to set `X-Forwarded-*` headers (your load balancer), as CIDRs separated by spaces |
 | `GOAT_ADMIN_ALLOW_CIDRS` | `0.0.0.0/0 ::/0` | Networks allowed to open the Keycloak admin console under `/keycloak/admin` |
-| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak, SMTP relay or the model server of the AI assistant; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
+| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak, SMTP relay, the model server of the AI assistant or a host of raster files; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
 | `GOAT_HTTP_PORT` | `80` | Port for HTTP; set by setup.sh from the URL or `--http-port` |
 | `GOAT_HTTPS_PORT` | `443` | Port for HTTPS; set by setup.sh from the URL |
 | `GOAT_HOSTNAME`, `GOAT_NETWORK_ALIAS`, `GOAT_SITE_ADDRESS`, `GOAT_HTTPS_PUBLISH`, `GOAT_KEYCLOAK_SSL_REQUIRED` | | Derived; set by setup.sh |
@@ -116,7 +116,7 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo server action that posts a message as the ticket participant |
 | `OTEL_ENABLED` | `false` | Export traces, metrics and logs through OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Your OpenTelemetry (OTLP) endpoint |
-| `RASTER_PRIVATE_HOSTS` | empty | Hosts geoapi and processes may read raster layers' COG files from although they resolve to a private, loopback or link-local address, comma-separated: an object store on your own network. Every other host must resolve to public addresses, so a layer cannot make GOAT read from inside your network. |
+| `RASTER_PRIVATE_HOSTS` | empty | Hosts geoapi and processes may read raster layers' COG files from although they resolve to a private, loopback or link-local address, comma-separated: an object store on your own network. Every other host must resolve to public addresses, so a layer cannot make GOAT read from inside your network. If such a host has a certificate from your company CA, set `GOAT_CA_BUNDLE` too. |
 | `TERRAIN_TILES_URL` | `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | Elevation tiles of the terrain in the map's 3D view (Terrarium-encoded, 512 px), from Mapterhorn by default. Viewers' browsers load them. Empty hides *Terrain*. See [3D view sources](./external_services.md#map-3d). |
 | `BUILDINGS_TILES_URL` | `https://tiles.openfreemap.org/planet` | TileJSON of a vector source in the OpenMapTiles schema for 3D buildings on basemaps without their own (raster, single color and custom basemaps), from OpenFreeMap by default. Viewers' browsers load it. Empty hides *3D buildings* on those basemaps. See [3D view sources](./external_services.md#map-3d). |
 | `GOAT_GEOAPI_URL` | *(commented out)*, `http://geoapi:8000` | Where core reaches geoapi: when a raster layer is added from a COG file or its file address changes, core asks geoapi for the file's bounds and stores them as the layer's extent. Change it only if geoapi runs outside the bundle. |

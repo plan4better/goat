@@ -562,8 +562,17 @@ services:
       # Raster layers are COG addresses read over HTTPS; hosts that resolve
       # to a private address are refused unless listed (see .env.example).
       RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
+      # Company CA for raster hosts and S3 (see init/ca/ca-bundle.sh)
+      GOAT_CA_BUNDLE: ${GOAT_CA_BUNDLE:-}
+    # The wrapper builds the CA file GDAL and boto3 trust, then runs the
+    # image's own command.
+    entrypoint: ["sh", "/init/ca-bundle.sh"]
+    command: ["fastapi", "run", "apps/geoapi/src/geoapi/main.py"]
     volumes:
       - goat-data:/app/data
+      - ./init/ca/ca-bundle.sh:/init/ca-bundle.sh:ro
+      - ./certs:/certs:ro
+      - caddy-data:/caddy-data:ro
     networks: [goat]
     healthcheck:
       <<: *healthcheck
@@ -602,8 +611,17 @@ services:
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
       # Reads raster files for style statistics, like geoapi.
       RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
+      # Company CA for raster hosts and S3 (see init/ca/ca-bundle.sh)
+      GOAT_CA_BUNDLE: ${GOAT_CA_BUNDLE:-}
+    # The wrapper builds the CA file GDAL and boto3 trust, then runs the
+    # image's own command.
+    entrypoint: ["sh", "/init/ca-bundle.sh"]
+    command: ["fastapi", "run", "apps/processes/src/processes/main.py"]
     volumes:
       - goat-data:/app/data
+      - ./init/ca/ca-bundle.sh:/init/ca-bundle.sh:ro
+      - ./certs:/certs:ro
+      - caddy-data:/caddy-data:ro
     networks: [goat]
     healthcheck:
       <<: *healthcheck

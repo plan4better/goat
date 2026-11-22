@@ -102,7 +102,9 @@ global:
   # public CAs: core for the SMTP relay (GOAT_CA_BUNDLE), web for Keycloak
   # (NODE_EXTRA_CA_CERTS), the assistant for model servers, GOAT's services
   # and Keycloak (GOAT_CA_BUNDLE), the Windmill print, tools and workflows
-  # workers for the pages and services they call (GOAT_CA_BUNDLE). Name a ConfigMap
+  # workers for the pages and services they call (GOAT_CA_BUNDLE), geoapi and
+  # processes for raster hosts and S3 (an init container writes the public
+  # CAs plus this one to one file, GDAL_CURL_CA_BUNDLE / AWS_CA_BUNDLE). Name a ConfigMap
   # or a Secret in the release namespace and the key holding the PEM; the
   # chart mounts it at /etc/goat/ca/ca.pem. Both empty = public CAs only.
   caBundle:

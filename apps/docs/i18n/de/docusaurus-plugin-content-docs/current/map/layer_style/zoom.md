@@ -65,3 +65,7 @@ Die Skalen von Teilen und Klassen schattieren den Bereich des Layers. Diese Bere
 :::tip Profi-Tipp
 Testen Sie Ihre Einstellungen, indem Sie hinein- und herauszoomen, um zu sehen, wie Layer bei verschiedenen Maßstäben erscheinen.
 :::
+
+:::info Verwandte Funktionen
+Erkunden Sie weitere Optionen für das [Layer-Styling](../../category/style) und kombinieren Sie sie mit [Filtern](../filter) für eine erweiterte Datendarstellung.
+:::

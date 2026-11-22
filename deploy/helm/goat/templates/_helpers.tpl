@@ -553,6 +553,7 @@ Params: values, root.
 `global.caBundle` names a ConfigMap or a Secret holding a PEM CA certificate.
 Mounted at /etc/goat/ca/ca.pem in core, web, the assistant and the Windmill
 print, tools and workflows workers; each points its own variable at that file.
+geoapi and processes get a file built from it (goat.caBundle.trustInit).
 */}}
 {{- define "goat.caBundle.enabled" -}}
 {{- $ca := .Values.global.caBundle | default dict -}}
@@ -586,6 +587,72 @@ print, tools and workflows workers; each points its own variable at that file.
 - name: goat-ca-bundle
   mountPath: /etc/goat/ca
   readOnly: true
+{{- end }}
+
+{{/*
+geoapi and processes read raster files over HTTPS with GDAL and S3 objects
+with boto3. Both trust one CA file, certifi's, not the system store, so a
+file with only the company CA would refuse every public host. An init
+container on the service's own image writes certifi's CAs plus
+/etc/goat/ca/ca.pem into an emptyDir, and GDAL_CURL_CA_BUNDLE and
+AWS_CA_BUNDLE point at it. They are container env, not set by a start
+script, so `kubectl exec` commands (the raster extent backfill) trust it too.
+*/}}
+{{- define "goat.caBundle.trustPath" -}}/etc/goat/ca-trust/ca-bundle.pem{{- end }}
+
+{{/* Params: root, values (the service's values block). */}}
+{{- define "goat.caBundle.trustInit" -}}
+{{- $v := .values -}}
+- name: ca-bundle
+  image: {{ include "goat.image" (dict "image" $v.image "global" .root.Values.global "root" .root) }}
+  imagePullPolicy: {{ $v.image.pullPolicy }}
+  {{- with $v.securityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      set -eu
+      if ! grep -q -- "-----BEGIN CERTIFICATE-----" /etc/goat/ca/ca.pem; then
+        echo "ca-bundle: no certificate found in global.caBundle" >&2
+        exit 1
+      fi
+      out={{ include "goat.caBundle.trustPath" .root }}
+      { cat "$(python -c 'import certifi; print(certifi.where())')"; echo; cat /etc/goat/ca/ca.pem; } > "$out"
+      echo "ca-bundle: wrote the public CAs and global.caBundle to $out"
+  {{- with $v.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  volumeMounts:
+    {{- include "goat.caBundle.mount" .root | nindent 4 }}
+    - name: goat-ca-trust
+      mountPath: /etc/goat/ca-trust
+{{- end }}
+
+{{- define "goat.caBundle.trustVolume" -}}
+- name: goat-ca-trust
+  emptyDir: {}
+{{- end }}
+
+{{- define "goat.caBundle.trustMount" -}}
+- name: goat-ca-trust
+  mountPath: /etc/goat/ca-trust
+  readOnly: true
+{{- end }}
+
+{{/* `env:` entries; a value in the service's config or extraEnv wins.
+     Params: root, values. */}}
+{{- define "goat.caBundle.trustEnv" -}}
+{{- if include "goat.caBundle.enabled" .root }}
+{{- range list "GDAL_CURL_CA_BUNDLE" "AWS_CA_BUNDLE" }}
+{{- if not (include "goat.env.userSet" (dict "values" $.values "key" .)) }}
+- name: {{ . }}
+  value: {{ include "goat.caBundle.trustPath" $.root | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

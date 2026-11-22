@@ -47,7 +47,7 @@ You can also point the chart at an existing PostgreSQL or Redis instead of the b
 
 Every service has memory requests and limits by default, and a CPU request without a limit. The chart README lists them; raise them under `<service>.resources` if a service needs more, for example geoapi on a large catalog, and set requests and limits together.
 
-Raster layers are COG files that geoapi and processes read over HTTPS where their address points, so both need outbound HTTPS to those hosts. A host that resolves to a private, loopback or link-local address is refused, so a layer cannot make GOAT read from inside the cluster. List the hosts that may anyway, such as an object store in the cluster that holds COGs, in `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS`). GDAL, which reads the files, resolves a host again when it reads and follows redirects, so also block outgoing traffic from geoapi and processes to private address ranges with a NetworkPolicy, except for the hosts you listed. When a raster layer is added from a COG file or its file address changes, core asks geoapi for the file's bounds and stores them as the layer's extent; the chart points core at its own geoapi. If geoapi runs outside the release, set `core.config.GOAT_GEOAPI_URL` to its in-cluster address.
+Raster layers are COG files that geoapi and processes read over HTTPS where their address points, so both need outbound HTTPS to those hosts. A host that resolves to a private, loopback or link-local address is refused, so a layer cannot make GOAT read from inside the cluster. List the hosts that may anyway, such as an object store in the cluster that holds COGs, in `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS`); if its certificate comes from a company CA, set `global.caBundle` too. GDAL, which reads the files, resolves a host again when it reads and follows redirects, so also block outgoing traffic from geoapi and processes to private address ranges with a NetworkPolicy, except for the hosts you listed. When a raster layer is added from a COG file or its file address changes, core asks geoapi for the file's bounds and stores them as the layer's extent; the chart points core at its own geoapi. If geoapi runs outside the release, set `core.config.GOAT_GEOAPI_URL` to its in-cluster address.
 
 ## What you have to set {#required-values}
 
@@ -85,7 +85,7 @@ If other applications use the same realm, their tokens also pass GOAT's signatur
 - **Keycloak** sends its own emails, such as password resets, with the SMTP settings of its realm. Configure the same server there.
 - **`global.auth.provisionInvitedUsers: true`** lets an invitation create the Keycloak account, and Keycloak emails a link to set the password. Use it when your realm has self-registration off. Core's Keycloak client then needs the realm-management roles `view-users` and `manage-users`.
 - **`global.auth.allowOrganizationCreation: false`** lets only accounts with the Keycloak realm role `superuser` create organizations; everyone else sees <code>Waiting for an invitation</code> until they are invited. This keeps people who sign in before their invitation from setting up an organization of their own, after which they could no longer be invited. Set up your organization, or give an account that role, before switching it off. A superuser can delete an organization that has at most one member and nothing in it with `DELETE /api/v2/organizations/{organization_id}/permanent`, so that its member can be invited; with Stripe billing on, cancel the Stripe customer named in the answer's `stripe_id` in Stripe.
-- **`global.caBundle`** names a ConfigMap or Secret with a company CA certificate, for an SMTP relay, a Keycloak or pages the print worker opens that use a certificate from a private CA. The chart mounts it into core, web, the assistant and the `print`, `tools` and `workflows` workers.
+- **`global.caBundle`** names a ConfigMap or Secret with a company CA certificate, for an SMTP relay, a Keycloak, pages the print worker opens or hosts of raster files and S3 that use a certificate from a private CA. The chart mounts it into core, web, the assistant and the `print`, `tools` and `workflows` workers. geoapi and processes read raster files with GDAL and S3 with boto3, which trust one CA file instead of the system store: an init container writes the public CAs plus yours into one file and the chart sets `GDAL_CURL_CA_BUNDLE` and `AWS_CA_BUNDLE` to it.
 
 ### Support tickets {#support}
 
@@ -148,6 +148,14 @@ From that release on, GOAT stores the extent of a raster layer added from a COG 
 ```bash
 kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
 ```
+
+The same release tiles point layers with a new recipe. In Windmill, run the task `f/goat/tasks/sync_pmtiles` once with `force` off (it runs on the `tools` worker): it rebuilds the tiles of existing point layers and leaves the layers whose tiles are current.
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that still runs the old version sends styles the old way, and core refuses those saves (422) until the tab is reloaded. API scripts that still send `properties` when they update a layer, a project layer or a layer group get the same answer, with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of", "does not contain the text" and the negated date conditions) into the form the filter panel writes now: they keep the features without a value, so a map with such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while the running release keeps serving. If a long-running transaction holds one of the tables, the migration stops after a few seconds with a lock timeout error and changes nothing more: run the upgrade again (run `helm upgrade` again).
 
 ## Further reading {#further-reading}
 

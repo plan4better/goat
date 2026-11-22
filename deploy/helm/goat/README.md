@@ -404,7 +404,7 @@ override the key names via the `existingSecretUserKey` /
 | `global.auth.allowOrganizationCreation` | bool | `true` | Who may create an organization (`ALLOW_ORGANIZATION_CREATION`): `true` anyone who signs in without one; `false` only accounts with the Keycloak realm role `superuser`, everyone else waits for an invitation. Set up your organization, or give an account that role, before switching it off. |
 | `global.auth.allowedClients` | list | `[]` | Keycloak clients whose tokens core, geoapi, processes, catalog and the assistant accept (`AUTH_ALLOWED_CLIENTS`, matched against the token's `azp`). For a realm shared with other applications; must include GOAT's own client (core refuses to start otherwise). Empty accepts every client of the realm (see "Authentication"). |
 | `global.rasterPrivateHosts` | list | `[]` | Hosts geoapi and processes may read raster layers' COGs from although they resolve to a private, loopback or link-local address (`RASTER_PRIVATE_HOSTS`, comma-separated), e.g. an object store in the cluster. Every other host must resolve to public addresses; both services need outbound HTTPS to the files. A service's own `config.RASTER_PRIVATE_HOSTS` wins. |
-| `global.caBundle.existingConfigMap` / `.existingSecret` / `.key` | string | `""` / `""` / `ca.crt` | A company CA certificate (PEM), mounted at `/etc/goat/ca/ca.pem` in core, web, the assistant and the print, tools and workflows workers (see "Email and a company CA"). |
+| `global.caBundle.existingConfigMap` / `.existingSecret` / `.key` | string | `""` / `""` / `ca.crt` | A company CA certificate (PEM), mounted at `/etc/goat/ca/ca.pem` in core, web, the assistant and the print, tools and workflows workers; geoapi and processes get one file of the public CAs plus this one for raster hosts and S3 (see "Email and a company CA"). |
 | `email.host` | string | `""` | SMTP server for GOAT's invitations; email is off while empty. |
 | `email.port` / `.security` | int / string | `587` / `starttls` | `security`: `starttls`, `ssl` or `none`. |
 | `email.user` / `.from` / `.fromName` | string | `""` / `""` / `GOAT` | Login, sender address (defaults to `user`; required for a relay without login) and sender name. |
@@ -606,8 +606,9 @@ for accounts created by `global.auth.provisionInvitedUsers` — with the SMTP
 settings of its realm (*Realm settings → Email*). Configure the same server
 there; the chart does not manage Keycloak.
 
-When the relay, Keycloak, the pages the print worker opens or a model server
-the assistant calls use a certificate from a private CA, put the CA certificate (PEM) into a ConfigMap
+When the relay, Keycloak, the pages the print worker opens, a model server
+the assistant calls, or a host geoapi and processes read raster files or S3
+objects from use a certificate from a private CA, put the CA certificate (PEM) into a ConfigMap
 or Secret and name it in `global.caBundle`:
 
 ```bash
@@ -624,7 +625,12 @@ global:
 The chart mounts it at `/etc/goat/ca/ca.pem` and sets `GOAT_CA_BUNDLE` in core,
 the assistant (model servers, GOAT's services, Keycloak) and the print, tools
 and workflows workers, and `NODE_EXTRA_CA_CERTS` in web.
-Each of them trusts it in addition to the public CAs. A variable you set
+Each of them trusts it in addition to the public CAs. geoapi and processes
+read raster files over HTTPS with GDAL and S3 objects with boto3, which trust
+one CA file instead of the system store: a `ca-bundle` init container on the
+service's own image writes the public CAs (certifi's, which they use
+otherwise) plus yours to `/etc/goat/ca-trust/ca-bundle.pem`, and the chart
+sets `GDAL_CURL_CA_BUNDLE` and `AWS_CA_BUNDLE` to it. A variable you set
 yourself in that service's `config` or `extraEnv` wins.
 
 ## Support tickets
@@ -1134,7 +1140,7 @@ below 3 for the workers: Windmill 1.607 workers stop at start with fewer.
 
 | Chart version | Adds | Notes |
 |---|---|---|
-| Unreleased | core's ConfigMap gets `DUCKLAKE_CATALOG_SCHEMA` from `ducklakeBootstrap.catalogSchema` (`core.config` wins): core reads DuckLake's change log when a map loads, to mark styles whose data changed. `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS` for geoapi and processes): geoapi serves raster layers' value tiles, colored tiles, statistics and point values from their COGs, and processes reads them for the style's computed values; both need outbound HTTPS to the files' hosts. core's ConfigMap gets `GOAT_GEOAPI_URL`, the in-chart geoapi service (`core.config` wins): core reads the bounds of a raster layer's COG there when the layer is added and stores them as its extent. `map.terrainTilesUrl` and `map.buildingsTilesUrl` (the 3D view's terrain and building overlay sources, Mapterhorn and OpenFreeMap by default; empty turns a source off): rendered into the web ConfigMap as `NEXT_PUBLIC_TERRAIN_TILES_URL` / `NEXT_PUBLIC_BUILDINGS_TILES_URL` and into core's as `TERRAIN_TILES_URL` / `BUILDINGS_TILES_URL` (a service's `config` wins). The GOAT Style release converts every layer style in core's migrate hook. processes' ConfigMap gets `CORE_URL`, the in-chart core service (`processes.config` wins): project export reads icons and images from core's public file route and project import uploads them through core with the user's token, so the tools worker must reach core and the image links' host. geoapi gets the catalog bucket (`CATALOG_S3_*` from `catalog.s3`, as processes): it reads the published tiles and rasters of catalog datasets for the catalog page's previews, for signed-in users | Back up the database first (see "Upgrading to the GOAT Style release") |
+| Unreleased | core's ConfigMap gets `DUCKLAKE_CATALOG_SCHEMA` from `ducklakeBootstrap.catalogSchema` (`core.config` wins): core reads DuckLake's change log when a map loads, to mark styles whose data changed. `global.rasterPrivateHosts` (`RASTER_PRIVATE_HOSTS` for geoapi and processes): geoapi serves raster layers' value tiles, colored tiles, statistics and point values from their COGs, and processes reads them for the style's computed values; both need outbound HTTPS to the files' hosts. core's ConfigMap gets `GOAT_GEOAPI_URL`, the in-chart geoapi service (`core.config` wins): core reads the bounds of a raster layer's COG there when the layer is added and stores them as its extent. `map.terrainTilesUrl` and `map.buildingsTilesUrl` (the 3D view's terrain and building overlay sources, Mapterhorn and OpenFreeMap by default; empty turns a source off): rendered into the web ConfigMap as `NEXT_PUBLIC_TERRAIN_TILES_URL` / `NEXT_PUBLIC_BUILDINGS_TILES_URL` and into core's as `TERRAIN_TILES_URL` / `BUILDINGS_TILES_URL` (a service's `config` wins). The GOAT Style release converts every layer style in core's migrate hook. processes' ConfigMap gets `CORE_URL`, the in-chart core service (`processes.config` wins): project export reads icons and images from core's public file route and project import uploads them through core with the user's token, so the tools worker must reach core and the image links' host. geoapi gets the catalog bucket (`CATALOG_S3_*` from `catalog.s3`, as processes): it reads the published tiles and rasters of catalog datasets for the catalog page's previews, for signed-in users. With `global.caBundle` set, geoapi and processes get a `ca-bundle` init container and `GDAL_CURL_CA_BUNDLE` / `AWS_CA_BUNDLE`, one file of the public CAs plus the company CA, so raster hosts and S3 endpoints signed by it are trusted (no values change) | Back up the database first (see "Upgrading to the GOAT Style release") |
 | `0.8.0` | GOAT v3.1.0: the `assistant` component (AI assistant and MCP endpoint, enabled, inert until a model is configured): GOAT's database role and Redis, `assistant.secretsKey` and `assistant.defaultConnection` from Secrets, the web client for long answers' logins, `web.publicUrls.assistant`, the `/mcp` Host allow-list from its ingress hosts, `assistant.mcp.auditRetentionDays`, `global.caBundle`, `/readyz` readiness, 30 s grace period; the assistant gets the resource defaults (256Mi / 100m, 1Gi limit), `global.auth.allowedClients` and `postgresql.external.transactionPooler`; `catalog.layersDir` / `catalog.tilesDir`, one place for where promoted catalog layers and their PMTiles live, rendered into geoapi, processes, core and the print, tools and workflows workers (before, only geoapi got them, from `geoapi.config`); `email.companyName` / `email.companyUrl` (`EMAIL_COMPANY_NAME` / `EMAIL_COMPANY_URL`): a footer line naming who runs GOAT, linked to its website (optional; empty keeps today's emails); `assistant.config.ASSISTANT_DEFAULT_HOSTED_IN` (where GOAT AI's model is hosted, shown with its answers; optional); processes gets the catalog bucket (`catalog.s3`, `CATALOG_S3_*`) and reads the OpenStreetMap and Overture mirror goat-data publishes there (`mirror/osm`, `mirror/overture`) for Add layer › Connect service | Tag `helm-0.8.0` only after the GOAT `v3.1.0` images of all services, the assistant included, are published, because `appVersion` is the default tag of every image. The catalog's `/mcp` is gone, and `catalog.config.CATALOG_ENABLE_MCP` / `CATALOG_MCP_ALLOWED_HOSTS` with it; the MCP URL is now the assistant's `/mcp`; see "Upgrading 0.7.0 → 0.8.0" |
 | `0.7.0` | GOAT v3.0.9 (Windmill 1.751). Memory requests and limits and CPU requests for every service, and geoapi's and processes' DuckDB budgets to fit them (see "Resource defaults"); `postgresql.cluster.resources`; geoapi and processes run as root, so their DuckLake init can create the catalog directory on a fresh RWX volume; `postgresql.external.ducklakeHost` and `ducklakePort` for DuckLake's catalog connections and `transactionPooler` for the services when `host` is a transaction pooler; `windmill.bootstrap.image` (GOAT's core image instead of `python:3.11-slim` from Docker Hub); `POSTGRES_*` keys in a service's `config` render once and win; `global.auth.allowOrganizationCreation` (`ALLOW_ORGANIZATION_CREATION`: false lets only superusers create organizations); `global.auth.allowedClients` (`AUTH_ALLOWED_CLIENTS` for core, geoapi, processes and catalog: only tokens issued to the listed Keycloak clients are accepted); Windmill's database pools: the server at most 10 connections, every worker 3 (`windmill.workers.databaseConnections`); core's migrate hook gets the Keycloak settings and `core.extraEnv` like the core Deployment (with auth on, GOAT v3.0.5+ failed at the hook); pods roll when their ConfigMap changes (`checksum/config`), so a settings-only upgrade takes effect without a manual restart; `garage` (optional bundled S3 store, as in the Docker Compose bundle; `goatlib.storage.garage_init` replaces the bundle's init script) | Pods now have memory limits, geoapi and processes get smaller DuckDB budgets (geoapi two pooled queries instead of four), and geoapi and processes run as root — see "Upgrading 0.6.0 → 0.7.0" |
 | `0.6.0` | `global.s3` (one S3 store for core, geoapi, processes and the workers, uploads and uploaded images); the print, tools and workflows workers get GOAT's database, DuckLake, S3, catalog bucket, `PRINT_BASE_URL` and Keycloak client, with `WHITELIST_ENVS` built by the chart, and job timeouts per worker (`JOB_DEFAULT_TIMEOUT`); the chart's own Redis on the official image instead of the Bitnami sub-chart; `email` (SMTP for invitations, password from a Secret, email branding) with `CLIENT_URL` / `API_URL` derived for the links in emails; `global.auth.provisionInvitedUsers`; `odoo` (Plan4Better's Odoo, optional: the shared connection and `odoo.support` for support tickets, API key from a Secret) and `web.supportEmail`; `global.caBundle` (company CA for core, web and the print, tools and workflows workers) | The S3 and assets placeholders are gone from `core`, `geoapi` and `processes`, and the workers' fixed `WHITELIST_ENVS` is replaced by a built one — see "Upgrading 0.5.1 → 0.6.0" |
@@ -1168,6 +1174,27 @@ once (only layers without an extent change, so running it again does no harm;
 ```bash
 kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
 ```
+
+The release also tiles point layers with a new recipe. Run the Windmill task
+`f/goat/tasks/sync_pmtiles` once with `force` off (it runs on the `tools`
+worker), so existing point layers get the new tiles; layers whose tiles are
+current are left as they are.
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that
+still runs the old version sends styles the old way, and core refuses those
+saves (422) until the tab is reloaded. API scripts that still send `properties`
+when they update a layer, a project layer or a layer group get the same answer,
+with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of",
+"does not contain the text" and the negated date conditions) into the form the
+filter panel writes now: they keep the features without a value, so a map with
+such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while
+the running release keeps serving. If a long-running transaction holds one of
+the tables, the migration stops after a few seconds with a lock timeout error
+and changes nothing more: run the upgrade again (run `helm upgrade` again).
 
 ### Upgrading 0.7.0 → 0.8.0
 

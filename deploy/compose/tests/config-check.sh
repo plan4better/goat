@@ -78,6 +78,16 @@ check_common() {
   # GOAT_CA_BUNDLE and the same folders it may point into.
   jq -e '.services as $s | $s.assistant.environment | has("GOAT_CA_BUNDLE") and .GOAT_CA_BUNDLE == $s.core.environment.GOAT_CA_BUNDLE' <<<"$json" >/dev/null || fail "assistant GOAT_CA_BUNDLE differs from core"
   jq -e '.services as $s | [$s.assistant.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $a | [$s.core.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $c | ($a | length) == 2 and $a == $c' <<<"$json" >/dev/null || fail "assistant mounts the CA folders unlike core"
+  # geoapi and processes (raster files over HTTPS, S3) get the same CA and
+  # folders, and start through init/ca/ca-bundle.sh, which builds the file
+  # GDAL and boto3 trust; the command is each image's own CMD.
+  for svc in geoapi processes; do
+    jq -e --arg s "$svc" '.services as $all | $all[$s].environment | has("GOAT_CA_BUNDLE") and .GOAT_CA_BUNDLE == $all.core.environment.GOAT_CA_BUNDLE' <<<"$json" >/dev/null || fail "$svc GOAT_CA_BUNDLE differs from core"
+    jq -e --arg s "$svc" '.services as $all | [$all[$s].volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $a | [$all.core.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $c | ($a | length) == 2 and $a == $c' <<<"$json" >/dev/null || fail "$svc mounts the CA folders unlike core"
+    jq -e --arg s "$svc" '.services[$s] | .entrypoint == ["sh", "/init/ca-bundle.sh"] and .command == ["fastapi", "run", "apps/\($s)/src/\($s)/main.py"]' <<<"$json" >/dev/null || fail "$svc does not start through the CA wrapper with its image's command"
+    jq -e --arg s "$svc" '[.services[$s].volumes[] | select(.target == "/init/ca-bundle.sh" and .read_only == true and (.source | endswith("/init/ca/ca-bundle.sh")))] | length == 1' <<<"$json" >/dev/null || fail "$svc lacks the CA wrapper mount"
+    jq -e --arg s "$svc" '.services[$s].environment | (has("GDAL_CURL_CA_BUNDLE") or has("AWS_CA_BUNDLE")) | not' <<<"$json" >/dev/null || fail "$svc sets GDAL_CURL_CA_BUNDLE or AWS_CA_BUNDLE itself (only the wrapper sets them, and never empty)"
+  done
   # DuckDB spills to disk only at its own budget, so geoapi's and processes'
   # budgets stay under 3/4 of their memory limits: geoapi's pool shares one
   # connection budgeted POOL_SIZE x MEMORY_LIMIT, plus its read and write
@@ -242,6 +252,32 @@ variant=internal-ca
 d=$(make_variant --public-url https://10.0.0.5:8443 --tls internal)
 j=$(render "$d"); check_common "$j"
 jq -e '.services.assistant.environment.GOAT_CA_BUNDLE == "/caddy-data/caddy/pki/authorities/local/root.crt"' <<<"$j" >/dev/null || fail "assistant must trust Caddy's root"
+jq -e '[.services | (.geoapi, .processes) | .environment.GOAT_CA_BUNDLE] | all(. == "/caddy-data/caddy/pki/authorities/local/root.crt")' <<<"$j" >/dev/null || fail "geoapi and processes must trust Caddy's root"
+
+# init/ca/ca-bundle.sh: without GOAT_CA_BUNDLE the command starts unchanged;
+# with it, GDAL_CURL_CA_BUNDLE and AWS_CA_BUNDLE name one file holding
+# certifi's CAs (here a stand-in) and then the company CA.
+variant=ca-bundle-script
+wrapper="$here/init/ca/ca-bundle.sh"
+t=$(mktemp -d)
+mkdir "$t/bin"
+printf -- '-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----' > "$t/certifi.pem"
+printf '#!/bin/sh\necho %s\n' "$t/certifi.pem" > "$t/bin/python"
+chmod +x "$t/bin/python"
+printf -- '-----BEGIN CERTIFICATE-----\ncompany\n-----END CERTIFICATE-----\n' > "$t/ca.pem"
+run_wrapper() { env -u GDAL_CURL_CA_BUNDLE -u AWS_CA_BUNDLE PATH="$t/bin:$PATH" TMPDIR="$t" "$@"; }
+out=$(run_wrapper GOAT_CA_BUNDLE= sh "$wrapper" env) || fail "wrapper fails without a CA"
+! grep -q '^GDAL_CURL_CA_BUNDLE=\|^AWS_CA_BUNDLE=' <<<"$out" || fail "wrapper sets a CA file without GOAT_CA_BUNDLE"
+out=$(run_wrapper GOAT_CA_BUNDLE="$t/ca.pem" sh "$wrapper" env) || fail "wrapper fails with a CA"
+bundle=$(sed -n 's/^GDAL_CURL_CA_BUNDLE=//p' <<<"$out")
+[ -n "$bundle" ] && grep -qx "AWS_CA_BUNDLE=$bundle" <<<"$out" || fail "GDAL_CURL_CA_BUNDLE and AWS_CA_BUNDLE must name the built file"
+[ "$(cat "$bundle")" = "$(cat "$t/certifi.pem"; echo; cat "$t/ca.pem")" ] || fail "built file is not certifi's CAs followed by the company CA"
+out=$(run_wrapper GOAT_CA_BUNDLE="$t/ca.pem" GDAL_CURL_CA_BUNDLE=/own.pem sh "$wrapper" env) || fail "wrapper fails with an own GDAL_CURL_CA_BUNDLE"
+grep -qx 'GDAL_CURL_CA_BUNDLE=/own.pem' <<<"$out" || fail "an own GDAL_CURL_CA_BUNDLE must win"
+if run_wrapper GOAT_CA_BUNDLE="$t/missing.pem" sh "$wrapper" true 2>/dev/null; then fail "wrapper starts with an unreadable GOAT_CA_BUNDLE"; fi
+printf 'no certificate\n' > "$t/empty.pem"
+if run_wrapper GOAT_CA_BUNDLE="$t/empty.pem" sh "$wrapper" true 2>/dev/null; then fail "wrapper starts without a certificate in GOAT_CA_BUNDLE"; fi
+rm -rf "$t"
 
 # The SSE route: flushed at once, and not inside the compressed web block.
 variant=caddy-assistant
