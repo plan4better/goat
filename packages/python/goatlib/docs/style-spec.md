@@ -2563,11 +2563,13 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
   field). Blocks and templates name them as fields (7.4), and the validator checks them against the file (`band_9` on
   a 3-band file is `unknown_field`).
 - **Without `blocks` or `html`** the popup shows `value` with the legend's `unit`, the cell's color as the map draws
-  it beside the value, and `class` as a badge; an image draws bands, not one value, so its `class` is empty, and so is
-  its `value` but for an image drawn with its color table, whose `value` is the code of the band the table colors. An
-  image shows the bands it draws, with the pixel's color where its pixels are its values: three bands in one row, named
-  by the bands' names where the file names them all, else "Red, Green, Blue" where the file marks them so, else
-  "Color". `bands: "all"` adds every band's value; `styled`, the default, does not.
+  it beside the value, and `class` as a row labelled "Class" ("Category" for categories) only where the class has a
+  name of its own (written in the style), not its range or its code, which the value says; an image draws bands, not
+  one value, so its `class` is empty, and so is its `value` but for an image drawn with its color table, whose `value`
+  is the code of the band the table colors. An image shows the bands it draws, with the pixel's color where its pixels
+  are its values: three bands in one row, named by the bands' names where the file names them all, else "Red, Green,
+  Blue" where the file marks them so, else "Color". `bands: "all"` adds every band's value; `styled`, the default,
+  does not.
 - **Without a `popup` key** a color scale (`continuous`, `categorical`, `hillshade`) opens a popup on click and an
   image none; map services have none (9.8).
 - **Where the values come from:** hover reads `value` from the value tiles the map has loaded (9), so it sends no

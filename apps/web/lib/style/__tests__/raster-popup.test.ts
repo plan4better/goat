@@ -15,6 +15,7 @@ import { type RasterInfo, bandFactsOf, imageBands, rasterInfoOf } from "@/lib/st
 import {
   RASTER_POPUP_ON_BY_DEFAULT,
   imagePixels,
+  namedRasterSpec,
   pixelValueBands,
   pixelValuesAt,
   rasterPopupLayers,
@@ -360,18 +361,17 @@ describe("a raster popup's fields and content", () => {
     });
     const popup = layerPopup(dem, { value: 46.2, class: "Wald" }, { t: de, info });
     expect(popup?.trigger).toBe("click");
+    // A class the user named: a labelled row below the value, as any field; no badge.
     expect(popup?.blocks).toEqual([
       expect.objectContaining({
         type: "fieldList",
-        attributes: [{ name: "value", label: "Höhe", type: "number", suffix: " m" }],
-      }),
-      expect.objectContaining({
-        type: "badge",
-        field: "class",
-        mode: "per_value",
-        palette: { Wald: "#2e7d32" },
+        attributes: [
+          { name: "value", label: "Höhe", type: "number", suffix: " m" },
+          { name: "class", label: de("style_editor.popup_class"), type: "string" },
+        ],
       }),
     ]);
+    expect(de("style_editor.popup_class")).toBe("Klasse");
     // A ramp without classes has no class to show.
     expect(layerPopup(cog(2, ELEVATION), { value: 250.5 }, { t: de })?.blocks).toEqual([
       expect.objectContaining({
@@ -1147,19 +1147,28 @@ describe("where a raster popup's values come from", () => {
       names: [""],
       stats: [{ index: 1, min: -38.94, max: 189.14, p2: 32, p98: 119, values: null }],
     };
-    const preview = rasterPopupProperties(
+    const named = namedRasterSpec(
       { version: "1.0.0", kind: "raster", render, legend: { unit: "m" } },
-      { trigger: "click", bands: "styled", popup: {} },
-      undefined,
       { t: en, locale: "en", info }
     );
-    expect(Object.keys((preview.blocks[1] as { palette: object }).palette)).toEqual([
+    expect((named as { classes: Array<{ name?: string }> }).classes.map((c) => c.name)).toEqual([
       "-38.94 to 49.4 m",
       "49.4 to 66.8 m",
       "66.8 to 84.2 m",
       "84.2 to 101.6 m",
       "101.6 to 189.14 m",
     ]);
+    // Names that are ranges are no class row in the default content.
+    const preview = rasterPopupProperties(
+      { version: "1.0.0", kind: "raster", render, legend: { unit: "m" } },
+      { trigger: "click", bands: "styled", popup: {} },
+      undefined,
+      { t: en, locale: "en", info }
+    );
+    expect(preview.blocks).toHaveLength(1);
+    expect(
+      (preview.blocks[0] as { attributes: Array<{ name: string }> }).attributes.map((a) => a.name)
+    ).toEqual(["value"]);
   });
 
   it("a cell's class is its name, the legend's text for it, or Other", async () => {
@@ -1198,12 +1207,73 @@ describe("where a raster popup's values come from", () => {
     expect(await at(9)).toEqual({ value: 9, class: de("style_editor.other") });
     // A hidden category: the map draws nothing there, no popup.
     expect(await at(6)).toBeUndefined();
-    // The default badge colors the cell's class.
-    expect(layerPopup(landCover, { value: 9, class: "Andere" }, { t: de })?.blocks[1]).toEqual(
-      expect.objectContaining({ type: "badge", palette: { Andere: "#cccccc" } })
-    );
-    expect(layerPopup(landCover, { value: 4, class: "4" }, { t: de })?.blocks[1]).toEqual(
-      expect.objectContaining({ type: "badge", palette: { "4": "#e6c35c" } })
-    );
+    // A category the user named shows as a labelled row; one named by its code, and "Other", show none (the value
+    // says it). No badge.
+    const rows = (values: Record<string, unknown>) =>
+      (layerPopup(landCover, values, { t: de })?.blocks ?? []).map((b) =>
+        (b as { type: string; attributes?: Array<{ name: string; label?: string }> }).type === "fieldList"
+          ? (b as { attributes: Array<{ name: string; label?: string }> }).attributes.map((a) => [
+              a.name,
+              a.label,
+            ])
+          : [(b as { type: string }).type]
+      );
+    expect(rows({ value: 3, class: "Wald" })).toEqual([
+      [
+        ["value", de("style_editor.band_n", { n: 1 })],
+        ["class", de("category")],
+      ],
+    ]);
+    expect(de("category")).toBe("Kategorie");
+    expect(rows({ value: 4, class: "4" })).toEqual([[["value", de("style_editor.band_n", { n: 1 })]]]);
+    expect(rows({ value: 9, class: "Andere" })).toEqual([[["value", de("style_editor.band_n", { n: 1 })]]]);
+  });
+
+  it("a class named by its range, a category named by its code: no class row; custom content keeps the class", () => {
+    const de = commonT("de");
+    // Classes without names: their names are their ranges, which the value says.
+    const ranges = cog(1, {
+      version: "1.0.0",
+      kind: "raster",
+      render: {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [0, 100],
+        classify: { method: "equal_interval", count: 2 },
+      },
+    });
+    const attributes = (layer: ReturnType<typeof cog>, values: Record<string, unknown>) =>
+      (layerPopup(layer, values, { t: de })?.blocks ?? []).flatMap(
+        (b) => (b as { attributes?: Array<{ name: string }> }).attributes?.map((a) => a.name) ?? [b.type]
+      );
+    expect(attributes(ranges, { value: 27.792, class: "0 bis 50" })).toEqual(["value"]);
+    // A category whose written name is its code: none either.
+    const codes = cog(2, {
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "categorical", classes: [{ value: 70, name: "70", color: "#7a3fa0" }] },
+    });
+    expect(attributes(codes, { value: 70, class: "70" })).toEqual(["value"]);
+    // Renamed: a labelled row.
+    const renamed = cog(3, {
+      version: "1.0.0",
+      kind: "raster",
+      render: { type: "categorical", classes: [{ value: 70, name: "Laubwald", color: "#7a3fa0" }] },
+    });
+    expect(attributes(renamed, { value: 70, class: "Laubwald" })).toEqual(["value", "class"]);
+    // The style panel's default content (no cell): the row where any class is named.
+    const panel = (layer: ReturnType<typeof cog>) =>
+      (
+        rasterPopupProperties(layer.style.document as never, rasterPopupOf(layer)!, undefined, { t: de })
+          .blocks as Array<{ type: string; attributes?: Array<{ name: string }> }>
+      ).flatMap((b) => b.attributes?.map((a) => a.name) ?? [b.type]);
+    expect(panel(renamed)).toEqual(["value", "class"]);
+    expect(panel(codes)).toEqual(["value"]);
+    // Content the user wrote still shows the class field.
+    const written = cog(4, {
+      ...ranges.style.document,
+      popup: { blocks: [{ type: "field_list", attributes: [{ field: "value" }, { field: "class" }] }] },
+    });
+    expect(attributes(written, { value: 27.792, class: "0 bis 50" })).toEqual(["value", "class"]);
   });
 });

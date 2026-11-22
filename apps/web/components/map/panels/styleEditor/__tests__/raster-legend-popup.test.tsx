@@ -447,15 +447,15 @@ describe("raster popup", () => {
       },
       popup: { bands: "all" },
     });
-    // The default content: the value (and every band) as a field list, the class as a badge.
+    // The default content: the value (and every band) and the named class, as a field list; no badge.
     const content = screen.getByText("style_editor.popup_content").parentElement as HTMLElement;
-    expect(content.textContent).toContain("field_list, badge_block");
+    expect(content.textContent).toContain("field_list");
+    expect(content.textContent).not.toContain("badge_block");
     await userEvent.click(within(content).getByRole("button"));
     const lists = screen.getAllByText("field_list");
     await userEvent.click(lists[lists.length - 1].closest("button") as HTMLElement);
-    // The field list offers the cell's fields.
-    await userEvent.click(screen.getByRole("button", { name: "add_attribute" }));
-    expect(screen.getByText("style_editor.popup_class")).toBeDefined();
+    // The field list holds the cell's fields: the value, the named class and every band.
+    expect(screen.getAllByDisplayValue("style_editor.popup_class").length).toBeGreaterThan(0);
     // A file has no features: no sample feature is asked for.
     expect(sampled.filter(Boolean)).toEqual([]);
     // An edit writes the content and keeps the choice of bands.

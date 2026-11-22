@@ -1,8 +1,8 @@
 // A raster file's popup (spec 9.7): the cell under the pointer, on click (a color scale's default), while hovering, or
 // both. Its fields are `value` (the band or formula the style colors), `class` (the class or category that value is
 // drawn in) and `band_1` to `band_<n>` (every band, on click). Its content is the popup of spec 7.4 over those
-// fields; without blocks it shows the value with the legend's unit and the class as a badge, an image the bands it
-// draws. Map services show none (their feature info comes later, spec 9.8).
+// fields; without blocks it shows the value with the legend's unit and a class with a name of its own, an image the
+// bands it draws. Map services show none (their feature info comes later, spec 9.8).
 import type { TFunction } from "i18next";
 
 import { loadedRasterTileset, loadedRasterValues } from "@/lib/api/rasters";
@@ -230,6 +230,21 @@ const named = new WeakMap<
 const endsOf = (style: JsonObject, texts: RasterTexts) =>
   classEnds(renderOf(style), { info: texts.info, range: texts.described?.range });
 
+/** How a raster style's class ranges read (`rangeText`): the reader's words and locale, the legend's unit. */
+function rangeOptions(style: JsonObject, texts: RasterTexts) {
+  const { t } = texts;
+  const legend = isObject(style.legend) ? style.legend : {};
+  return {
+    locale: texts.locale ?? "en",
+    words: {
+      under: t ? t("style_editor.range_under") : "Under",
+      to: t ? t("style_editor.range_to") : "to",
+      andMore: t ? t("style_editor.range_and_more") : "and more",
+    },
+    unit: text(legend.unit),
+  };
+}
+
 /** `ends`: what closes the open first and last class (`classEnds`). */
 function nameClasses(
   style: JsonObject,
@@ -239,37 +254,46 @@ function nameClasses(
   const render = renderOf(style);
   const spec = rasterColorSpec(render);
   if (!spec || (spec.kind !== "classes" && spec.kind !== "categories")) return null;
-  const { t } = texts;
-  const locale = texts.locale ?? "en";
-  const legend = isObject(style.legend) ? style.legend : {};
-  const unit = text(legend.unit);
+  const { locale, unit } = rangeOptions(style, texts);
   const objects = (v: unknown) => (Array.isArray(v) ? v.filter(isObject) : []);
+  // The names the user gave (or the file brought into the style), unless they only repeat the range or the code.
+  const owned = new Set<string>();
+  const own = (name: string | undefined, plain: string[]): string | undefined => {
+    if (!name || plain.includes(name)) return undefined;
+    owned.add(name);
+    return name;
+  };
   if (spec.kind === "classes") {
     const written = objects(isObject(render.classify) ? render.classify.classes : undefined);
-    const words = {
-      under: t ? t("style_editor.range_under") : "Under",
-      to: t ? t("style_editor.range_to") : "to",
-      andMore: t ? t("style_editor.range_and_more") : "and more",
-    };
-    return {
+    const options = rangeOptions(style, texts);
+    const classes = {
       ...spec,
-      classes: spec.classes.map((c, i) => ({
-        ...c,
-        name:
-          text(written[i]?.name) ??
-          rangeText({ from: c.from, to: c.to }, { locale, words, unit, ...(ends ? { domain: ends } : {}) }),
-      })),
+      classes: spec.classes.map((c, i) => {
+        const range = rangeText(
+          { from: c.from, to: c.to },
+          { ...options, ...(ends ? { domain: ends } : {}) }
+        );
+        return { ...c, name: own(text(written[i]?.name), [range]) ?? range };
+      }),
     };
+    ownedNames.set(classes, owned);
+    return classes;
   }
   const written = objects(render.classes).filter((c) => num(c.value));
-  return {
+  const categories = {
     ...spec,
-    classes: spec.classes.map((c, i) => ({
-      ...c,
-      name: text(written[i]?.name) ?? valuesText([c.value], { locale, unit }),
-    })),
+    classes: spec.classes.map((c, i) => {
+      const code = valuesText([c.value], { locale, unit });
+      const plain = [code, valuesText([c.value], { locale }), String(c.value)];
+      return { ...c, name: own(text(written[i]?.name), plain) ?? code };
+    }),
   };
+  ownedNames.set(categories, owned);
+  return categories;
 }
+
+/** The class and category names of a named coloring (`namedRasterSpec`) that the user gave, not its ranges or codes. */
+const ownedNames = new WeakMap<NamedRasterColorSpec, Set<string>>();
 
 /** The class of a value's cell: its name, "Other" for a value in no category drawn in the other color; undefined
  * where none is drawn (no classes, a hidden class, no data). */
@@ -309,25 +333,32 @@ export function rasterDraws(
   return value >= Math.min(d0, end) && value <= Math.max(d0, end);
 }
 
-/** The badge's colors: the cell's class in its color; without a cell (the style panel), every class. */
-function classPalette(
+/** The row of the cell's class (spec 9.7): only where its name is a real one, a class or category the user named (or
+ * a name the file brought), never its range, its code or "Other", which the value says already; without a cell (the
+ * style panel), where any class has one. Labelled "Class", for categories "Category". */
+function classRow(
   style: JsonObject,
   values: Record<string, unknown> | undefined,
   texts: RasterTexts
-): Record<string, string> | undefined {
+): JsonObject | null {
   const named = namedRasterSpec(style, texts);
-  if (!named || (named.kind !== "classes" && named.kind !== "categories")) return undefined;
+  if (!named || (named.kind !== "classes" && named.kind !== "categories")) return null;
+  const owned = ownedNames.get(named);
+  if (!owned?.size) return null;
   if (values) {
-    const name = values.class;
-    const found = typeof name === "string" && num(values.value) ? rasterClassAt(named, values.value) : null;
-    const color = found === "other" ? (named.kind === "categories" ? named.other : null) : found?.color;
-    return typeof name === "string" && color ? { [name]: color } : {};
+    const found = num(values.value) ? rasterClassAt(named, values.value, endsOf(style, texts)) : null;
+    if (!found || found === "other" || !found.name || !owned.has(found.name)) return null;
   }
-  const palette: Record<string, string> = {};
-  for (const c of named.classes) if (c.color !== null && c.name) palette[c.name] = c.color;
-  if (named.kind === "categories" && named.other !== null)
-    palette[texts.t ? texts.t("style_editor.other") : "Other"] = named.other;
-  return palette;
+  const { t } = texts;
+  const label =
+    named.kind === "categories"
+      ? t
+        ? t("category")
+        : "Category"
+      : t
+        ? t("style_editor.popup_class")
+        : "Class";
+  return { field: "class", label, type: "string" };
 }
 
 /** The relief stops the map colors a style's value tiles with (compile/rasters.ts), kept per render and description:
@@ -386,8 +417,9 @@ function colorLabel(bands: number[], facts: BandFacts | undefined, texts: Raster
   return t ? t("style_editor.color") : "Color";
 }
 
-/** The content of a popup without blocks: the value with the legend's unit (and every band for `bands: "all"`) and its
- * class as a badge; an image the bands it draws (or every band). Every band is the cell's, else the file's. */
+/** The content of a popup without blocks: the value with the legend's unit and its color, its class where the class
+ * has a name of its own (`classRow`), and every band for `bands: "all"`; an image the bands it draws (or every band).
+ * Every band is the cell's, else the file's. */
 function defaultBlocks(
   style: JsonObject,
   rule: RasterPopupRule,
@@ -444,12 +476,13 @@ function defaultBlocks(
     // The cell's color as the map draws it (the default content only: a block the user writes has none).
     ...(swatch ? { swatch } : {}),
   };
-  const blocks: JsonObject[] = [
-    { type: "field_list", attributes: [value, ...(rule.bands === "all" ? every.map(band) : [])] },
+  const named = classRow(style, values, texts);
+  return [
+    {
+      type: "field_list",
+      attributes: [value, ...(named ? [named] : []), ...(rule.bands === "all" ? every.map(band) : [])],
+    },
   ];
-  const palette = classPalette(style, values, texts);
-  if (palette) blocks.push({ type: "badge", field: "class", mode: "per_value", palette });
-  return blocks;
 }
 
 /** The type of each field the blocks name: the value and the bands are numbers, the class text. */
