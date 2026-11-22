@@ -65,7 +65,8 @@ export interface LayerMapState {
 export const projectMapUrl = (projectId: string) => `${PROJECTS_API_BASE_URL}/${projectId}/map`;
 
 /** Saves the project's scene (3D spec 5.2) through the project update: null resets it to automatic. A refused scene
- * (422 `invalid_scene`) stores nothing and answers the validator's issues; any other failure throws. */
+ * (422 `invalid_scene`) stores nothing and answers the validator's issues; a scene over its size limit (422
+ * `scene_too_large`) or a body over the cap (413) stores nothing either, without issues; any other failure throws. */
 export async function putScene(
   projectId: string,
   scene: Scene | null
@@ -75,17 +76,25 @@ export async function putScene(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ scene }),
   });
+  if (response.status === 413) return { stored: false, scene: null, issues: [] };
   if (response.status === 422) {
     const body = await response.json().catch(() => null);
     const detail = body?.detail;
     if (detail?.code === "invalid_scene")
       return { stored: false, scene: null, issues: (detail.issues ?? []) as StyleIssue[] };
+    if (detail?.code === "scene_too_large") return { stored: false, scene: null, issues: [] };
   }
   if (!response.ok) throw new Error(`Saving the scene failed (${response.status})`);
   // The project as stored; its `scene` key is left out when the scene is automatic.
   const project = await response.json().catch(() => ({}));
   return { stored: true, scene: (project?.scene as Scene | undefined) ?? null, issues: [] };
 }
+
+/** The map with the scene a save stored (null: automatic). */
+export const withSceneReply = (map: MapResponse, scene: Scene | null): MapResponse => ({
+  ...map,
+  map: { ...map.map, scene },
+});
 
 /** A fetcher that asks with the last ETag and keeps the last body on `304`. */
 export function createMapFetcher() {

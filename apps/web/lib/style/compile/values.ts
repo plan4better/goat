@@ -18,6 +18,12 @@ export const isZoomed = (value: Value): value is Zoomed => "stops" in value;
 
 const constant = (value: unknown): Expr => (Array.isArray(value) ? ["literal", value] : value);
 
+/**
+ * Whether a feature has a value in `field`. A property left out and one holding null are both no value: vector tiles
+ * leave NULLs out, GeoJSON sources keep them as null (MapLibre's `has` is true for those). 0, "" and false are values.
+ */
+export const hasValue = (field: string): Expr => ["!=", ["get", field], null];
+
 const domainOf = (form: Record<string, unknown>): [number, number] | null => {
   const domain = Array.isArray(form.domain)
     ? form.domain
@@ -43,16 +49,16 @@ function scaleOf(scale: unknown, field: string, number: Expr) {
   if (scale === "sqrt")
     return {
       input: ["sqrt", number] as Expr,
-      has: ["all", ["has", field], [">=", number, 0]] as Expr,
+      has: ["all", hasValue(field), [">=", number, 0]] as Expr,
       at: Math.sqrt,
     };
   if (scale === "log")
     return {
       input: ["ln", number] as Expr,
-      has: ["all", ["has", field], [">", number, 0]] as Expr,
+      has: ["all", hasValue(field), [">", number, 0]] as Expr,
       at: Math.log,
     };
-  return { input: number, has: ["has", field] as Expr, at: (x: number) => x };
+  return { input: number, has: hasValue(field), at: (x: number) => x };
 }
 
 /** A value form by attribute: a palette ramp (colors) or a range (numbers) over a scale, guarded for missing data. */
@@ -80,7 +86,7 @@ function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
       [d0, d1] = [d1, d0];
       colors.reverse();
     }
-    if (colors.length === 1 || flat()) return ["case", ["has", field], colors[0], noData];
+    if (colors.length === 1 || flat()) return ["case", hasValue(field), colors[0], noData];
     const [t0, t1] = [at(d0), at(d1)];
     const stops = colors.flatMap((c, i) => [t0 + (i * (t1 - t0)) / (colors.length - 1), c]);
     return ["case", has, ["interpolate-lab", ["linear"], input, ...stops], noData];
@@ -90,7 +96,7 @@ function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
     [d0, d1] = [d1, d0];
     range = [range[1], range[0]];
   }
-  if (flat()) return ["case", ["has", field], range[0], noData];
+  if (flat()) return ["case", hasValue(field), range[0], noData];
   return ["case", has, ["interpolate", ["linear"], input, at(d0), range[0], at(d1), range[1]], noData];
 }
 

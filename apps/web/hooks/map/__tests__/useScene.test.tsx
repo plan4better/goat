@@ -104,8 +104,14 @@ function fakeMap(
       const layer = layers.find((l) => l.id === id)!;
       layer.layout = { ...(layer.layout as object), [key]: value };
     },
-    getPaintProperty: (id: string, key: string) =>
-      (layers.find((l) => l.id === id)?.paint as Record<string, unknown> | undefined)?.[key],
+    getPaintProperty: (id: string, key: string) => {
+      const layer = layers.find((l) => l.id === id);
+      // MapLibre throws for a property of another layer type.
+      const type = String(layer?.type);
+      if (layer && (!key.startsWith(`${type}-`) || (type === "fill" && key.startsWith("fill-extrusion-"))))
+        throw new TypeError(`${key} is not a property of a ${type} layer`);
+      return (layer?.paint as Record<string, unknown> | undefined)?.[key];
+    },
     setPaintProperty: (id: string, key: string, value: unknown) => {
       record("setPaintProperty", id, key, value);
       const layer = layers.find((l) => l.id === id)!;
@@ -520,6 +526,82 @@ describe("useScene", () => {
     expect(opacity()).toBe(0.3);
     rerender(inputs({ basemap: own, mode: "2d", scene: { buildings: { opacity: 0.3 } } }));
     expect(opacity()).toBe(0.7);
+  });
+
+  describe("a style diff without a style.load", () => {
+    const grey: Basemap = { ...LIGHT, value: "basemap_de_gry", buildings: "own" };
+    const colour: Basemap = { ...LIGHT, value: "basemap_de_col", buildings: "own" };
+    const scene = { buildings: { opacity: 0.3 } };
+    const setup = () => {
+      const map = fakeMap();
+      const addOwn = (opacity: number, visibility: string) =>
+        map.addLayer({
+          id: "Gebaeude3D",
+          type: "fill-extrusion",
+          source: "openmaptiles",
+          layout: { visibility },
+          paint: { "fill-extrusion-opacity": opacity },
+        });
+      addOwn(0.9, "none");
+      const look = () => [
+        map.getPaintProperty("Gebaeude3D", "fill-extrusion-opacity"),
+        map.getLayoutProperty("Gebaeude3D", "visibility"),
+      ];
+      const hook = renderHook((props: UseSceneInputs) => useScene(map as unknown as MaplibreMap, props), {
+        initialProps: inputs({ basemap: grey, scene }),
+      });
+      expect(look()).toEqual([0.3, "visible"]);
+      /** The next style through a diff: only styledata fires. */
+      const diff = (add: () => void) =>
+        act(() => {
+          map.newStyle();
+          add();
+          map.fire("styledata");
+        });
+      return { map, addOwn, look, diff, rerender: hook.rerender };
+    };
+
+    it("to another basemap sharing a layer id gives the new basemap's own values back", () => {
+      const { addOwn, look, diff, rerender } = setup();
+      // The basemap input changes first: MapViewer's setStyle loads the new style before its diff lands.
+      rerender(inputs({ basemap: colour, scene }));
+      diff(() => addOwn(0.7, "visible"));
+      expect(look()).toEqual([0.3, "visible"]);
+      rerender(inputs({ basemap: colour, mode: "2d", scene }));
+      expect(look()).toEqual([0.7, "visible"]);
+    });
+
+    it("to another basemap whose layer of that id is of another type sets nothing of the old type on it", () => {
+      const { map, diff, rerender } = setup();
+      rerender(inputs({ basemap: colour, scene }));
+      const line = () =>
+        map.addLayer({
+          id: "Gebaeude3D",
+          type: "line",
+          source: "openmaptiles",
+          paint: { "line-opacity": 0.5 },
+        });
+      const before = map.calls.length;
+      diff(line);
+      rerender(inputs({ basemap: colour, mode: "2d", scene }));
+      expect(map.getLayer("Gebaeude3D")).toEqual({
+        id: "Gebaeude3D",
+        type: "line",
+        source: "openmaptiles",
+        paint: { "line-opacity": 0.5 },
+      });
+      expect(named(map.calls.slice(before), "setPaintProperty").filter((c) => c[1] === "Gebaeude3D")).toEqual(
+        []
+      );
+    });
+
+    it("on the same basemap with a new own value gives that value back", () => {
+      const { addOwn, look, diff, rerender } = setup();
+      diff(() => addOwn(0.7, "none"));
+      expect(look()).toEqual([0.3, "visible"]);
+      rerender(inputs({ basemap: grey, mode: "2d", scene }));
+      expect(look()).toEqual([0.7, "none"]);
+    });
   });
 
   it("a basemap's own buildings reach down to their footprints' tiles while shown, and get their own range back", () => {

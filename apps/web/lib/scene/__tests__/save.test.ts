@@ -86,6 +86,30 @@ describe("SceneSaver", () => {
 });
 
 describe("putScene", () => {
+  it.each([
+    ["a scene over its limit", 422, { detail: { code: "scene_too_large" } }],
+    ["a body over the cap", 413, { detail: { code: "body_too_large" } }],
+    ["a proxy's 413", 413, null],
+  ])(
+    "%s is a refusal: nothing stored, no issues, and the saver does not send it again",
+    async (_, status, body) => {
+      request.mockImplementation(
+        async () => new Response(body === null ? "" : JSON.stringify(body), { status: status as number })
+      );
+      await expect(putScene("p1", { buildings: false })).resolves.toEqual({
+        stored: false,
+        scene: null,
+        issues: [],
+      });
+      request.mockClear();
+      const saver = new SceneSaver({ document: { scene: {} }, put: (scene) => putScene("p1", scene) });
+      saver.edit({ scene: { buildings: false } });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(saver.pending).toBe(false);
+    }
+  );
+
   it("puts the scene on the project and reads a refusal's issues", async () => {
     request.mockResolvedValueOnce(new Response(JSON.stringify({ id: "p1", name: "P" }), { status: 200 }));
     await expect(putScene("p1", null)).resolves.toEqual({ stored: true, scene: null, issues: [] });

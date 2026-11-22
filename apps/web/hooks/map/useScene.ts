@@ -123,17 +123,50 @@ interface Applied {
 const terrainOn = (map: MaplibreMap, scene: CompiledScene): TerrainSpecification | null =>
   terrainAt(scene.terrain, map.getZoom(), projectionKind(scene.projection));
 
+type Recorded = Pick<Applied, "original" | "originalPaint" | "originalZoom">;
+
+/**
+ * The basemap's own values recorded before a style diff, each read again from the map where the map no longer shows
+ * what the scene left there: the diff set the new style's own value (another basemap's style can share layer ids). A
+ * value the map still shows as the scene left it keeps its record, so what the scene set is not taken for the
+ * basemap's own.
+ */
+function rereadAfterDiff(map: MaplibreMap, last: Applied): Recorded {
+  const { scene } = last;
+  const original = new Map(last.original);
+  for (const [id, own] of last.original) {
+    if (!map.getLayer(id)) continue;
+    const left = scene.show.includes(id) ? "visible" : own;
+    const now = (map.getLayoutProperty(id, "visibility") as string) ?? "visible";
+    if (now !== left) original.set(id, now);
+  }
+  const originalPaint = new Map<string, Record<string, unknown>>();
+  for (const [id, own] of last.originalPaint) {
+    const copy = { ...own };
+    originalPaint.set(id, copy);
+    if (!map.getLayer(id)) continue;
+    const set: Record<string, unknown> = scene.paint[id] ?? {};
+    for (const prop of propsOf(copy)) {
+      const left = prop in set ? set[prop] : copy[prop];
+      const now = map.getPaintProperty(id, prop);
+      if (!deepEqual(now, left)) copy[prop] = now;
+    }
+  }
+  const originalZoom = new Map<string, { minzoom?: number }>();
+  for (const [id, own] of last.originalZoom) {
+    const layer = map.getLayer(id);
+    const left = scene.zoom[id]?.minzoom ?? own.minzoom;
+    originalZoom.set(id, layer && (layer.minzoom ?? 0) !== (left ?? 0) ? { minzoom: layer.minzoom } : own);
+  }
+  return { original, originalPaint, originalZoom };
+}
+
 /**
  * Puts `next` on the map: everything when `prev` is null, else only what changed. `kept` is the basemap's own
- * visibility and paint recorded on the same style before (a full apply after a style diff), so what the scene set is
+ * visibility and paint recorded before (a full apply after a style diff, `rereadAfterDiff`), so what the scene set is
  * not taken for the basemap's own.
  */
-function applyScene(
-  map: MaplibreMap,
-  prev: Applied | null,
-  next: CompiledScene,
-  kept?: Pick<Applied, "original" | "originalPaint" | "originalZoom">
-): Applied {
+function applyScene(map: MaplibreMap, prev: Applied | null, next: CompiledScene, kept?: Recorded): Applied {
   const full = prev === null;
   const old = prev?.scene;
   const original = prev?.original ?? kept?.original ?? new Map<string, string>();
@@ -220,6 +253,8 @@ function applyScene(
 export function useScene(map: MaplibreMap | null, inputs: UseSceneInputs): CompiledScene | null {
   const [compiled, setCompiled] = useState<CompiledScene | null>(null);
   const applied = useRef<Applied | null>(null);
+  // The basemap whose style the basemap's own values were recorded on (`Applied.original` and the others).
+  const recordedOn = useRef<string | null>(null);
   // The inputs by value: a new object with the same content changes nothing.
   const key = JSON.stringify(inputs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,17 +291,19 @@ export function useScene(map: MaplibreMap | null, inputs: UseSceneInputs): Compi
         buildings: buildingsPlan(basemap, style, buildingsUrl, (id) => projectLayerOf(map, id) !== undefined),
       });
     };
-    // `full` applies everything again; "diff" keeps what was recorded of the basemap's own layers on this style.
+    const basemapKey = `${basemap.source}:${basemap.value}:${"url" in basemap ? basemap.url : ""}`;
+    // `full` applies everything again; "diff" keeps what was recorded of the basemap's own layers where the diff left
+    // the scene's values in place, and reads the others again. A diff to another basemap's style applies everything
+    // again: the records belong to the style it replaced, and the layers both share hold the new style's values.
     const apply = (full: boolean | "diff") => {
       try {
         const last = applied.current;
-        const next = compile(full === true ? undefined : (last ?? undefined));
-        applied.current = applyScene(
-          map,
-          full ? null : last,
-          next,
-          full === "diff" ? (last ?? undefined) : undefined
-        );
+        const mode = full === "diff" && recordedOn.current !== basemapKey ? true : full;
+        const recorded = mode === "diff" && last ? rereadAfterDiff(map, last) : (last ?? undefined);
+        const next = compile(mode === true ? undefined : recorded);
+        applied.current = applyScene(map, mode ? null : last, next, mode === "diff" ? recorded : undefined);
+        // An input change applied on the style still shown keeps the records of that style's basemap.
+        if (mode || !last) recordedOn.current = basemapKey;
         setCompiled(next);
       } catch (error) {
         // A new style still loading: the next style.load or styledata applies it.

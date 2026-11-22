@@ -3,9 +3,18 @@
 // order; the last one that sets the key wins. Visibility and the class and rule zooms go into the feature filter. A part
 // the layer switches off (`false` in the symbol) stays off in every record; its other keys still cascade (an outline in
 // the fill color takes the fill color a feature would have).
+import { classTexts } from "@/lib/style/categoryTexts";
 import { cqlToExpression } from "@/lib/style/compile/cql";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
-import { type Expr, type Kind, type Value, combine, fromForm, isZoomed } from "@/lib/style/compile/values";
+import {
+  type Expr,
+  type Kind,
+  type Value,
+  combine,
+  fromForm,
+  hasValue,
+  isZoomed,
+} from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { PROPERTY_KINDS } from "@/lib/style/generated/properties";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -61,9 +70,6 @@ function read(record: unknown, path: string, baseOff: boolean): unknown {
   return current === null ? undefined : current;
 }
 
-/** A value as categories compare it when the field is not text or whole numbers (spec 5.1): its text. */
-const asText = (value: unknown): string => String(value);
-
 /** A label of a whole-number field: a whole number, or nothing for a value no feature can have. */
 const wholeNumber = (value: unknown): number | undefined => {
   const n =
@@ -71,19 +77,34 @@ const wholeNumber = (value: unknown): number | undefined => {
   return Number.isInteger(n) ? n : undefined;
 };
 
+/** Each class's labels, in the field's type; a label two classes give stays with the first. */
+function ownLabels(classes: JsonObject[], label: (value: unknown) => string | number | undefined) {
+  const seen = new Set<string | number>();
+  return classes.map((k) =>
+    (Array.isArray(k.values) ? k.values : []).flatMap((v) => {
+      const l = label(v);
+      if (l === undefined || seen.has(l)) return [];
+      seen.add(l);
+      return [l];
+    })
+  );
+}
+
 /**
- * The match input and labels of a categories classification: text and whole-number fields match their own values,
- * the labels in the field's type; any other field, and one of unknown type (the map compiles without field types, and
- * converted styles hold a number field's values as text), compares as text, which matches both.
+ * The match input of a categories classification and each class's labels (none twice): text and whole-number fields
+ * match their own values, the labels in the field's type; any other field, and one of unknown type (the map compiles
+ * without field types, and converted styles hold a number field's values as text), compares as text, which matches
+ * both, a value that writes a number also in the number's own spelling (`classTexts`).
  */
-export function categoryInput(
+export function categoryLabels(
   field: string,
+  classes: JsonObject[],
   fields?: Record<string, FieldType>
-): { input: Expr; label: (value: unknown) => string | number | undefined } {
+): { input: Expr; labels: Array<Array<string | number>> } {
   const type = fields?.[field];
-  if (type === "string") return { input: ["get", field] as Expr, label: (v: unknown) => String(v) };
-  if (type === "integer") return { input: ["get", field] as Expr, label: wholeNumber };
-  return { input: ["to-string", ["get", field]] as Expr, label: (v: unknown) => asText(v) };
+  if (type === "string") return { input: ["get", field], labels: ownLabels(classes, (v) => String(v)) };
+  if (type === "integer") return { input: ["get", field], labels: ownLabels(classes, wholeNumber) };
+  return { input: ["to-string", ["get", field]], labels: classTexts(classes) };
 }
 
 const isNumeric = (c: JsonObject) => c.method !== "categories";
@@ -146,7 +167,7 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
           const [fallback, ...rest] = exprs;
           const outs = rest.slice(0, classes.length);
           // No classes yet (not computed): features without a value take No data, the others keep their value.
-          if (!classes.length) return ["case", ["has", field], fallback, rest[0]];
+          if (!classes.length) return ["case", hasValue(field), fallback, rest[0]];
           const steps: Expr[] = [];
           classes.forEach((k, i) => {
             if (i === 0) {
@@ -160,7 +181,7 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
           if (typeof last.to === "number" && last.to > lower(last)) steps.push(last.to, fallback);
           return [
             "case",
-            ["has", field],
+            hasValue(field),
             // One class without bounds (a field with a single value) has no stops to step through.
             steps.length === 1 ? steps[0] : ["step", ["to-number", ["get", field], 0], ...steps],
             rest[classes.length],
@@ -171,17 +192,13 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
       continue;
     }
     const classes = list(c.classes);
-    const { input, label } = categoryInput(field, ctx.fields);
-    const seen = new Set<string>();
+    const { input, labels: labelsOf } = categoryLabels(field, classes, ctx.fields);
     const branches: Array<{ labels: unknown[]; form: Value }> = [];
-    for (const k of classes) {
+    classes.forEach((k, i) => {
       const form = formOf(k);
-      const labels = (Array.isArray(k.values) ? k.values : [])
-        .map(label)
-        .filter((l) => l !== undefined && !seen.has(JSON.stringify(l)));
-      labels.forEach((l) => seen.add(JSON.stringify(l)));
+      const labels = labelsOf[i];
       if (form && labels.length) branches.push({ labels, form });
-    }
+    });
     const other = formOf(c.other);
     if (!branches.length && !other && !noData) continue;
     const prev = value;
@@ -195,10 +212,10 @@ export function cascade(style: JsonObject, path: string, ctx: CascadeContext = {
               ...branches.flatMap((b, i) => [b.labels.length === 1 ? b.labels[0] : b.labels, outs[i]]),
               otherExpr,
             ]
-          : ["case", ["has", field], otherExpr, fallback];
-        if (noData) return ["case", ["has", field], matched, noDataExpr];
+          : ["case", hasValue(field), otherExpr, fallback];
+        if (noData) return ["case", hasValue(field), matched, noDataExpr];
         // `other` takes values in no class; features without a value keep what they had (spec 5.1).
-        return other && branches.length ? ["case", ["has", field], matched, fallback] : matched;
+        return other && branches.length ? ["case", hasValue(field), matched, fallback] : matched;
       },
       opts
     );
@@ -259,7 +276,7 @@ interface Contributor {
 function classContributors(c: JsonObject, ctx: CascadeContext, pick: Pick): Contributor[] {
   const field = c.field as string;
   const out: Contributor[] = [];
-  const has: Expr = ["has", field];
+  const has = hasValue(field);
   if (isNumeric(c)) {
     const x: Expr = ["to-number", ["get", field], 0];
     for (const k of sortedClasses(c)) {
@@ -277,14 +294,12 @@ function classContributors(c: JsonObject, ctx: CascadeContext, pick: Pick): Cont
     }
   } else {
     const classes = list(c.classes);
-    const { input, label } = categoryInput(field, ctx.fields);
-    const labelsOf = (k: JsonObject) =>
-      (Array.isArray(k.values) ? k.values : []).map(label).filter((l) => l !== undefined);
-    const all: unknown[] = classes.flatMap(labelsOf);
-    for (const k of classes) {
+    const { input, labels: labelsOf } = categoryLabels(field, classes, ctx.fields);
+    const all: unknown[] = labelsOf.flat();
+    for (const [i, k] of classes.entries()) {
       const node = pick(k);
       if (!node || !showsDifferently(node)) continue;
-      const labels = labelsOf(k);
+      const labels = labelsOf[i];
       if (!labels.length) continue;
       const member: Expr =
         labels.length === 1 ? ["==", input, labels[0]] : ["in", input, ["literal", labels]];

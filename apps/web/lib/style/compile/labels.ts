@@ -13,6 +13,7 @@ import {
   combine,
   fold,
   fromForm,
+  hasValue,
   isZoomed,
   toProperty,
 } from "@/lib/style/compile/values";
@@ -163,7 +164,7 @@ function partExprs(parts: TemplatePart[], ctx: TextContext): Expr[] {
     const number = formatNumber(["to-number", ["get", part.field], 0], ctx.formatFor?.(part.field));
     // Without field types (the map compiles without them) each value is told apart while drawing.
     if (!known) return ["case", ["==", ["typeof", ["get", part.field]], "number"], number, text];
-    return ["case", ["has", part.field], number, ""];
+    return ["case", hasValue(part.field), number, ""];
   });
 }
 

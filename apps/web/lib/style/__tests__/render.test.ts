@@ -697,7 +697,7 @@ describe("heatmap weights over a single value", () => {
       kind: "vector",
       render: { type: "heatmap", weight: { field: "v", domain: [5, 5] } },
     });
-    expect(byId(out, "heatmap")?.paint["heatmap-weight"]).toEqual(["case", ["has", "v"], 1, 0]);
+    expect(byId(out, "heatmap")?.paint["heatmap-weight"]).toEqual(["case", ["!=", ["get", "v"], null], 1, 0]);
     expect(valid(out)).toEqual([]);
   });
 });

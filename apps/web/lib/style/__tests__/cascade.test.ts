@@ -66,7 +66,7 @@ describe("cascade", () => {
       toProperty(cascade(districts.doc, "fill.color", { fields: fieldTypes(districts.dataset) }))
     ).toEqual([
       "case",
-      ["has", "density"],
+      ["!=", ["get", "density"], null],
       [
         "step",
         ["to-number", ["get", "density"], 0],
@@ -100,7 +100,7 @@ describe("cascade", () => {
     });
     expect(toProperty(cascade(style, "fill.color", {}))).toEqual([
       "case",
-      ["has", "v"],
+      ["!=", ["get", "v"], null],
       ["step", ["to-number", ["get", "v"], 0], "#cccccc", 0, "#111111", 10, "#222222", 20, "#cccccc"],
       "#cccccc",
     ]);
@@ -184,7 +184,7 @@ describe("cascade", () => {
     ]);
   });
 
-  it("other replaces the fallback and no_data wraps a has check", () => {
+  it("other replaces the fallback and no_data wraps a value check", () => {
     const style = doc({
       classify: [
         {
@@ -198,7 +198,7 @@ describe("cascade", () => {
     });
     expect(toProperty(cascade(style, "fill.color", { fields: { type: "string" } }))).toEqual([
       "case",
-      ["has", "type"],
+      ["!=", ["get", "type"], null],
       ["match", ["get", "type"], "park", "#00ff00", "#999999"],
       "#ffffff",
     ]);
@@ -210,7 +210,7 @@ describe("cascade", () => {
     });
     expect(toProperty(cascade(style, "fill.color", { fields: { share: "number" } }))).toEqual([
       "case",
-      ["has", "share"],
+      ["!=", ["get", "share"], null],
       "#cccccc",
       "#ffffff",
     ]);
@@ -291,7 +291,7 @@ describe("cascade", () => {
     });
     expect(toProperty(cascade(style, "fill.color", { fields: { type: "string" } }))).toEqual([
       "case",
-      ["has", "type"],
+      ["!=", ["get", "type"], null],
       ["match", ["get", "type"], "park", "#00ff00", "#999999"],
       "#cccccc",
     ]);
@@ -372,7 +372,10 @@ describe("cqlToExpression", () => {
       ["get", "type"],
       ["literal", ["a", "b"]],
     ]);
-    expect(cqlToExpression({ op: "isNull", args: [{ property: "name" }] })).toEqual(["!", ["has", "name"]]);
+    expect(cqlToExpression({ op: "isNull", args: [{ property: "name" }] })).toEqual([
+      "!",
+      ["!=", ["get", "name"], null],
+    ]);
     expect(
       cqlToExpression({
         op: "and",
@@ -381,7 +384,7 @@ describe("cqlToExpression", () => {
           { op: "or", args: [{ op: "=", args: [{ property: "b" }, 1] }] },
         ],
       })
-    ).toEqual(["all", ["!", ["!", ["has", "a"]]], ["any", ["==", ["get", "b"], 1]]]);
+    ).toEqual(["all", ["!", ["!", ["!=", ["get", "a"], null]]], ["any", ["==", ["get", "b"], 1]]]);
   });
 
   it("order comparisons are false for features without the value, never an evaluation error", () => {

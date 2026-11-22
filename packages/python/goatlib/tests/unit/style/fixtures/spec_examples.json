@@ -3886,8 +3886,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "density"
+       "!=",
+       [
+        "get",
+        "density"
+       ],
+       null
       ],
       [
        "step",
@@ -3944,8 +3948,12 @@
       [
        "case",
        [
-        "has",
-        "area_km2"
+        "!=",
+        [
+         "get",
+         "area_km2"
+        ],
+        null
        ],
        [
         "number-format",

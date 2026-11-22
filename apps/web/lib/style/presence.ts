@@ -1,6 +1,7 @@
 // The classes a legend lists (spec 7.2 `legend.classes`): which classes of a layer's classifications have features,
 // counted from the features the map drew in its view (`view`), or from the server's counts under the layer's filter
 // (`filter`). Both read a feature's class with the legend's own classifier, so they agree with the map and the popup.
+import { mapNumberText } from "@/lib/style/categoryTexts";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
   type ClassIndex,
@@ -145,6 +146,10 @@ export type PresenceCount =
  * crosses a class bound: a bin with features marks the class its middle lies in. The minimum and the maximum are values
  * of the data, so they mark their classes too (the last bin also holds the maximum, which may lie in the next class
  * up; the bin then marks both, so a class is never left out wrongly).
+ *
+ * The server writes every value as the database's text ("3.0", "0.50" for numbers). A text that writes a number marks
+ * the class of the text itself and the class of the number's spelling the map reads (`mapNumberText`): the field may
+ * hold text or numbers, so both classes are listed; Other only where neither is a class.
  */
 export function presenceFromCounts(
   style: JsonObject,
@@ -157,14 +162,22 @@ export function presenceFromCounts(
     const classes = list(c.classes);
     const read = classifier(c);
     const found: ClassPresence = { classes: new Set(), other: false, no_data: count.missing > 0 };
+    const markClass = (index: number) => (found.classes as Set<string>).add(itemKey(classes[index], index));
     const mark = (value: unknown) => {
       const index = read(value);
-      if (typeof index === "number") (found.classes as Set<string>).add(itemKey(classes[index], index));
+      if (typeof index === "number") markClass(index);
       else found[index] = true;
+    };
+    const markText = (value: unknown) => {
+      const spelled = typeof value === "string" ? mapNumberText(value) : undefined;
+      const index = spelled !== undefined && spelled !== value ? read(spelled) : undefined;
+      if (typeof index !== "number") return mark(value);
+      markClass(index);
+      if (typeof read(value) === "number") mark(value);
     };
     if (count.kind === "values") {
       if (count.total > count.values.length) continue;
-      for (const { value, count: n } of count.values) if (n > 0) mark(value);
+      for (const { value, count: n } of count.values) if (n > 0) markText(value);
     } else {
       const bins = count.bins.filter((bin) => bin.count > 0);
       for (const { range } of bins) mark((range[0] + range[1]) / 2);

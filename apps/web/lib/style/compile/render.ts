@@ -3,7 +3,7 @@
 // from geoapi's hexagon tiles.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
-import { cascade, categoryInput, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
+import { cascade, categoryLabels, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS, TILE_MAXZOOM } from "@/lib/style/compile/constants";
 import { colorText, concat, numberText } from "@/lib/style/compile/imageNames";
 import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compile/labels";
@@ -16,6 +16,7 @@ import {
   type Value,
   combine,
   fromForm,
+  hasValue,
   isZoomed,
   substitute,
   toProperty,
@@ -53,7 +54,7 @@ export function heatmapLayer(ctx: PartContext, render: JsonObject): LayerSpecifi
       // a reversed domain weighs the other way round.
       paint["heatmap-weight"] =
         d0 === d1
-          ? ["case", ["has", weight.field], 1, 0]
+          ? ["case", hasValue(weight.field), 1, 0]
           : d0 < d1
             ? ["interpolate", ["linear"], x, d0, 0, d1, 1]
             : ["interpolate", ["linear"], x, d1, 1, d0, 0];
@@ -109,15 +110,12 @@ function markerCategories(style: JsonObject, fields?: Record<string, FieldType>)
     list(c.classes).some((k) => isObject(k.marker) && typeof k.marker[key] === "string");
   const c = classifications.find((c) => sets(c, "icon")) ?? classifications.find((c) => sets(c, "color"));
   if (!c) return null;
-  const { input, label } = categoryInput(c.field as string, fields);
-  const seen = new Set<string>();
+  const all = list(c.classes);
+  const { input, labels: labelsOf } = categoryLabels(c.field as string, all, fields);
   const classes: MarkerCategories["classes"] = [];
-  for (const k of list(c.classes)) {
+  for (const [i, k] of all.entries()) {
     if (classes.length === CLUSTER_CATEGORIES_MAX) break;
-    const labels = (Array.isArray(k.values) ? k.values : [])
-      .map(label)
-      .filter((l) => l !== undefined && !seen.has(JSON.stringify(l)));
-    labels.forEach((l) => seen.add(JSON.stringify(l)));
+    const labels = labelsOf[i];
     const marker = isObject(k.marker) ? k.marker : {};
     const icon = typeof marker.icon === "string" ? marker.icon : undefined;
     const color = typeof marker.color === "string" ? marker.color : undefined;
@@ -233,7 +231,7 @@ function valueAccumulators(render: JsonObject): Record<string, unknown> {
   const aggregate = aggregateOf(render);
   if (!aggregate) return {};
   const { op, field } = aggregate;
-  const has: Expr = ["has", field];
+  const has = hasValue(field);
   const x: Expr = ["to-number", ["get", field], 0];
   const value =
     op === "min" || op === "max"
@@ -267,10 +265,16 @@ function withValue(node: unknown, value: { get: Expr; has: Expr }): unknown {
     return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, withValue(v, value)]));
   }
   if (node[0] === "literal") return node;
-  if (node.length === 2 && node[1] === SHOWN) {
-    if (node[0] === "get") return value.get;
-    if (node[0] === "has") return value.has;
-  }
+  if (node.length === 2 && node[1] === SHOWN && node[0] === "get") return value.get;
+  // `hasValue` of the stand-in.
+  if (
+    node[0] === "!=" &&
+    node[2] === null &&
+    Array.isArray(node[1]) &&
+    node[1][0] === "get" &&
+    node[1][1] === SHOWN
+  )
+    return value.has;
   return node.map((item) => withValue(item, value));
 }
 

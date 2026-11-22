@@ -22,6 +22,7 @@ from goatlib.analysis.statistics import (
     calculate_histogram,
     calculate_unique_values,
 )
+from goatlib.storage.cql_evaluator import cql_to_where_clause
 
 
 @pytest.fixture
@@ -190,6 +191,45 @@ class TestUniqueValues:
 
         # Only B, C, D have values >= 30
         assert result.total == 3
+
+    def test_unique_values_of_a_float32_column_read_as_the_double_it_holds(
+        self, duckdb_connection
+    ):
+        """A 32-bit float's value is written as the double it holds (the number
+        a vector tile and the map read), not as the float's short text; a filter
+        on that text matches its rows. Other number columns keep their text."""
+        con = duckdb_connection
+        con.execute(
+            "CREATE TABLE floats (r REAL, f FLOAT4, d DOUBLE, n DECIMAL(10, 2))"
+        )
+        con.execute(
+            "INSERT INTO floats VALUES (30745.38, 0.3, 3.0, 0.50), (30745.38, 0.3, 0.5, 3.00)"
+        )
+
+        def texts(column: str) -> list[str]:
+            result = calculate_unique_values(con, "floats", column)
+            return sorted(v.value for v in result.values)
+
+        assert texts("r") == ["30745.380859375"]
+        assert texts("f") == ["0.30000001192092896"]
+        assert texts("d") == ["0.5", "3.0"]
+        assert texts("n") == ["0.50", "3.00"]
+
+        # A filter on the value as the value picker sends it (a number, bound
+        # as a parameter) and as a download writes it into the SQL.
+        (value,) = texts("r")
+        where, params = cql_to_where_clause(
+            {"op": "=", "args": [{"property": "r"}, float(value)]}, ["r"]
+        )
+        assert con.execute(
+            f"SELECT count(*) FROM floats WHERE {where}", params
+        ).fetchone() == (2,)
+        inlined = cql_to_where_clause(
+            {"op": "=", "args": [{"property": "r"}, float(value)]}, ["r"], inline=True
+        )
+        assert con.execute(
+            f"SELECT count(*) FROM floats WHERE {inlined}"
+        ).fetchone() == (2,)
 
 
 class TestClassBreaks:

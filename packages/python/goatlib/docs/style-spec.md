@@ -1011,7 +1011,7 @@ Choices (dash, line ends, corners, font, anchor, pattern) and icons only switch 
   - when it is absent, the server computes it from the data (`computed.domain`, section 12) and keeps it current;
   - values outside the domain take the end values.
 - **`sqrt`** makes areas proportional only when the domain and the range both start at 0, as in the schools example.
-- **`no_data`** is the value for features where the field is missing or not a number (default: the property's base
+- **`no_data`** is the value for features where the field is missing (left out or null) or not a number (default: the property's base
   value, that is its default from the reference).
 - **`title`** names the legend section (default: the field's display name).
 - **Field values used as they are:** without `palette` or `range` the field's value is used directly: degrees for
@@ -1136,7 +1136,9 @@ classification is one legend section.
   - `count` is only used when the server generates the classes: the panel or the AI writes `count` and no `classes`,
     and the server writes the `count` most frequent values as classes.
 - **Comparison:** values compare as text when the field is not a text or whole-number field (booleans, decimals):
-  `["true"]`, `["2.5"]`.
+  `["true"]`, `["2.5"]`. A class value that writes a number in another spelling than the one the map reads (`"3.0"`,
+  `"0.50"`, `"1e-05"`) also matches the number's own spelling (`to-string`: JavaScript's text of the number), unless
+  a class of the classification lists that spelling itself; a text field holding `"3.0"` still matches `"3.0"`.
 - **Names:** `name` is the legend text. The default is the values joined with ", ".
 
 > "One-way routes darker."
@@ -1594,7 +1596,7 @@ thresholds next to categories, empty values).
   compile to MapLibre filters and expressions.
 - **Missing values:** an order comparison (`<`, `>`, `<=`, `>=`) is false for a feature without the value (or with a
   value of another type); `=` and `<>` compare as MapLibre does, so a missing value is unequal to everything. `not`
-  negates the result: `not (traffic < 1500)` holds for routes without `traffic`. `isNull` tests for a missing value.
+  negates the result: `not (traffic < 1500)` holds for routes without `traffic`. `isNull` tests for a missing value: a property left out or holding null (0, an empty text and false are values).
 - **`like`** takes only contains (`%x%`), starts with (`x%`) and ends with (`%x`); other patterns and `_` are
   `like_pattern_unsupported`. Comparisons are case-sensitive.
 - **Type checks:** a comparison must fit the field type: `operator_type_mismatch` for `<` or `>` on a text field, and
@@ -2050,7 +2052,7 @@ cannot be clustered without cutting clusters at tile borders, so the browser loa
   `format`.
 - `value` (default `{ "op": "count" }`): what `value` is, the number of points or the `sum`, `mean`, `min` or `max` of
   a number field (`field`) over a cluster's points, computed in the browser with the clusters (the mean is the sum over
-  the points with a value). Clusters without a point with a value show no number and take a size or color's no-data
+  the points with a value; a point whose field is left out or null has none). Clusters without a point with a value show no number and take a size or color's no-data
   value. A size or color by a value from a field needs a `domain`: nothing computes the range of values the browser
   makes (`missing_required` otherwise). The panel starts it at the field's range, for a sum up to ten times its highest
   value. The field must exist and be a number field (`unknown_field`, `field_type_mismatch`).
@@ -2679,13 +2681,13 @@ The **map document** holds map state only: the basemap, the view, the layer tree
 active, its visibility, filter, time position and legend state. "Set as the dataset's default" and the catalog never
 carry a project's map state.
 
-<!-- check: map -->
-```json
 **Sizes.** A style document is at most 1 MB (1,000,000 bytes) as compact UTF-8 JSON; a project layer's time position
 and a project's scene are at most 64,000 bytes each. core refuses a larger one before anything reads it, stores
 nothing and answers 422 with the code `document_too_large` (on a style save, a dataset default write and a check),
 `time_value_too_large` or `scene_too_large`. The limit bounds every list of the document as well.
 
+<!-- check: map -->
+```json
 {
   "version": "1.0.0",
   "basemap": { "id": "light" },
@@ -3259,9 +3261,9 @@ are part of the format: an output that breaks one of them draws something else t
 | numbers | `number-format` with `locale` from `["global-state", "locale"]`; `decimals: 0` rounds first (MapLibre ignores a 0); `thousands_separator: false` uses `to-string` of the rounded value; `abbreviate` and `always_show_sign` are `case` expressions; `percent` formats the value times 100, with no decimals when `decimals` is `auto`, and adds a plain percent sign (with a number of decimals and `thousands_separator: false`, the whole part is written with `to-string` and the decimals with `number-format`). The map compiles without field types, so there a placeholder is formatted as a number when its value is one (`["typeof", ["get", f]]`) and as text otherwise; with field types (the style panel), by the field's type |
 | `font.weight`, `font.style` | `text-font`, one Noto Sans stack per weight and style (fonts: section 15): `Noto Sans Light`, `Regular`, `Medium`, `Bold`, and `Noto Sans Light Italic`, `Italic`, `Medium Italic`, `Bold Italic`; a single font each, as a static glyph host serves no combined stack; both by zoom, per class and per line (a line's `font` as a `format` section's `text-font`) |
 | value by zoom | `interpolate` or `step` on `["zoom"]` at the top level; derived values (casing width, opacity products) are computed at every stop of the union of stop zooms |
-| value by attribute | `interpolate` over `["to-number", ["get", f]]` inside `case` with `has`, falling back to `no_data`; `sqrt` and `log` scales transform the input and the domain |
-| categories | `match`; labels in the field's type for strings and integers, otherwise on `["to-string", ["get", f]]`; `other` is the fallback, `no_data` a `case` with `has` |
-| numeric classes | `step` over the guarded value; `no_data` a `case` with `has` |
+| value by attribute | `interpolate` over `["to-number", ["get", f]]` inside `case` on `["!=", ["get", f], null]` (a property left out and one holding null are both no value), falling back to `no_data`; `sqrt` and `log` scales transform the input and the domain |
+| categories | `match`; labels in the field's type for strings and integers, otherwise on `["to-string", ["get", f]]`, a label that writes a number also in its `to-string` spelling when no class lists it (no label twice); `other` is the fallback, `no_data` a `case` on the same value test |
+| numeric classes | `step` over the guarded value; `no_data` a `case` on the same value test |
 | rules | `case` branches, later rules first; `visible: false` goes into the filter |
 | class and rule zooms | the filter, `["zoom"]` compared with whole numbers |
 | layer and part zooms | the layer's `minzoom` and `maxzoom` |
@@ -3406,7 +3408,7 @@ compiles to:
     "source": "s414",
     "source-layer": "default",
     "paint": {
-      "fill-color": ["case", ["has", "density"], ["step", ["to-number", ["get", "density"], 0], "#fef0d9", 2800, "#fdcc8a", 3600, "#fc8d59", 4300, "#e34a33", 6300, "#b30000"], "#cccccc"],
+      "fill-color": ["case", ["!=", ["get", "density"], null], ["step", ["to-number", ["get", "density"], 0], "#fef0d9", 2800, "#fdcc8a", 3600, "#fc8d59", 4300, "#e34a33", 6300, "#b30000"], "#cccccc"],
       "fill-opacity": 0.8
     }
   },
@@ -3428,7 +3430,7 @@ compiles to:
         "concat",
         ["to-string", ["get", "name"]],
         "\n",
-        ["case", ["has", "area_km2"], ["number-format", ["to-number", ["get", "area_km2"], 0], { "locale": ["global-state", "locale"], "min-fraction-digits": 1, "max-fraction-digits": 1 }], ""],
+        ["case", ["!=", ["get", "area_km2"], null], ["number-format", ["to-number", ["get", "area_km2"], 0], { "locale": ["global-state", "locale"], "min-fraction-digits": 1, "max-fraction-digits": 1 }], ""],
         " km²"
       ],
       "text-size": 12,
@@ -3505,13 +3507,6 @@ wraps at 10 x its size, an absent cluster `min_points` is 3, a `max_zoom` of 0 i
 resampling is `nearest`. An empty zoom range (minimum not below maximum) drew nothing: it becomes `visible: false` in the map
 document. A `transparent` no-data color becomes `#00000000` on the classified key only.
 
-## 18. Reference
-
-The tables below are the contract. The goatlib Pydantic models (`style/models/`) are its source of truth: the JSON
-Schema and the web's types and defaults are generated from them, and these tables follow them. The defaults are published in the JSON Schema as `x-defaults` (goatlib
-`style/defaults.py`), except those that depend on the document: the pattern color is the fill color, arrows take the
-line color, the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker color on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
-Z by zoom, A by attribute, C by classes; section 4.5).
 The legacy popup `format` presets (today's `Intl.NumberFormat` options, in the reader's language) become these
 formats; each writes `thousands_separator`, and `decimals` where the preset fixes them (left out otherwise, so whole
 numbers keep none). An unknown preset is left out, reported. The attribute's own `prefix` goes before a currency
@@ -3530,6 +3525,13 @@ sign, as today.
 | `compact` | `abbreviate: true`, `thousands_separator: true` | **yes**: today's rounded short numbers to two digits (12K), `abbreviate` keeps one decimal |
 | `currency_usd`, `currency_eur` | `decimals: 2`, `thousands_separator: true`, `prefix: "$"` or `"€"` | **yes**: today's placed the sign by the reader's language (after the number in German) |
 
+## 18. Reference
+
+The tables below are the contract. The goatlib Pydantic models (`style/models/`) are its source of truth: the JSON
+Schema and the web's types and defaults are generated from them, and these tables follow them. The defaults are published in the JSON Schema as `x-defaults` (goatlib
+`style/defaults.py`), except those that depend on the document: the pattern color is the fill color, arrows take the
+line color, the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker color on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
+Z by zoom, A by attribute, C by classes; section 4.5).
 
 ### 18.1 Layer style
 

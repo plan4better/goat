@@ -74,13 +74,17 @@ export interface RasterPoint {
   styled: number | null;
 }
 
+/** A longitude between -180 and 180: a click on a world copy east or west of the first reads past them. */
+const wrapLongitude = (lng: number): number =>
+  lng >= -180 && lng <= 180 ? lng : ((((lng + 180) % 360) + 360) % 360) - 180;
+
 /** The cell values at a point; null when the service could not answer. */
 export async function fetchRasterPoint(
   datasetId: string,
   lngLat: { lng: number; lat: number },
   token?: string
 ): Promise<RasterPoint | null> {
-  const params = new URLSearchParams({ lon: String(lngLat.lng), lat: String(lngLat.lat) });
+  const params = new URLSearchParams({ lon: String(wrapLongitude(lngLat.lng)), lat: String(lngLat.lat) });
   if (token) params.set("style", token);
   try {
     const response = await apiRequestAuth(`${rasterUrl(datasetId)}/point?${params.toString()}`);

@@ -1,5 +1,5 @@
 // CQL2-JSON conditions of rules (spec 6, 18.6) as MapLibre expressions.
-import type { Expr } from "@/lib/style/compile/values";
+import { type Expr, hasValue } from "@/lib/style/compile/values";
 import { isObject } from "@/lib/style/json";
 
 const COMPARE: Record<string, string> = { "=": "==", "<>": "!=", "<": "<", ">": ">", "<=": "<=", ">=": ">=" };
@@ -33,7 +33,7 @@ export function cqlToExpression(when: unknown): Expr | null {
   }
   const field = property(args[0]);
   if (field === null) return null;
-  if (op === "isNull") return ["!", ["has", field]];
+  if (op === "isNull") return ["!", hasValue(field)];
   if (op === "in") return Array.isArray(args[1]) ? ["in", ["get", field], ["literal", args[1]]] : null;
   if (op === "like") return typeof args[1] === "string" ? like(field, args[1]) : null;
   if (typeof op === "string" && op in COMPARE) {

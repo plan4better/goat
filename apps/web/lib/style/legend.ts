@@ -1,5 +1,6 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
+import { classTexts } from "@/lib/style/categoryTexts";
 import { perLayer } from "@/lib/style/compile/cascade";
 import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
@@ -1192,20 +1193,18 @@ export function baseSwatch(style: JsonObject, ctx: { geometry: Geometry; zoom: n
 export type ClassIndex = number | "other" | "no_data";
 
 /**
- * Which class a value is in, as the map draws it: categories compare values as text (the first class that lists it),
- * a numeric class holds its `from` and the values below its `to` (a value at the last class's `to` keeps the base
- * look on the map, so it is in no class). Built once per classification: categories look the value up in a table of
- * their values, so reading many features costs one lookup each. The popup header and the legend's counts (spec 7.2
- * `legend.classes`) read classes with it.
+ * Which class a value is in, as the map draws it: categories compare values as text with the texts each class matches
+ * on the map (`classTexts`: a class value that writes a number also in the number's own spelling), a numeric class
+ * holds its `from` and the values below its `to` (a value at the last class's `to` keeps the base look on the map, so
+ * it is in no class). Built once per classification: categories look the value up in a table of their texts, so
+ * reading many features costs one lookup each. The popup header and the legend's counts (spec 7.2 `legend.classes`)
+ * read classes with it.
  */
 export function classifier(c: JsonObject): (value: unknown) => ClassIndex {
   const classes = list(c.classes);
   if (c.method === "categories") {
     const byText = new Map<string, number>();
-    classes.forEach((k, i) => {
-      for (const v of Array.isArray(k.values) ? k.values : [])
-        if (!byText.has(String(v))) byText.set(String(v), i);
-    });
+    classTexts(classes).forEach((texts, i) => texts.forEach((text) => byText.set(text, i)));
     return (value) =>
       value === null || value === undefined ? "no_data" : (byText.get(String(value)) ?? "other");
   }

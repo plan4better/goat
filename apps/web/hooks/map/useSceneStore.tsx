@@ -5,8 +5,9 @@
 // changes are saved to the project, a viewer's stay on screen. The page provides one store per project to the map
 // controls and the map.
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useSWRConfig } from "swr";
 
-import { putScene } from "@/lib/api/map";
+import { type MapResponse, projectMapUrl, putScene, withSceneReply } from "@/lib/api/map";
 import { LocalSaver, type SceneDocument, SceneSaver } from "@/lib/scene/save";
 import { type DocumentSaver, EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle, Scene } from "@/lib/style/generated/types";
@@ -16,14 +17,30 @@ export const sceneSaverOf = (store: EditorStore): SceneSaver | LocalSaver =>
   store.saver as unknown as SceneSaver | LocalSaver;
 
 /** One store per project (and per editing right), starting from the stored scene. */
-export function useSceneStore(projectId: string, initial: Scene | null | undefined, editable: boolean): EditorStore {
+export function useSceneStore(
+  projectId: string,
+  initial: Scene | null | undefined,
+  editable: boolean
+): EditorStore {
+  const { mutate } = useSWRConfig();
   const store = useMemo(() => {
     const document: SceneDocument = { scene: initial ?? {} };
-    const saver = editable
-      ? new SceneSaver({ document, put: (scene) => putScene(projectId, scene) })
-      : new LocalSaver(document);
+    // A stored scene goes into the map request's cache, so the store of a later open of the project starts from it.
+    const put = async (scene: Scene | null) => {
+      const reply = await putScene(projectId, scene);
+      if (reply.stored)
+        void mutate<MapResponse>(
+          projectMapUrl(projectId),
+          (map) => (map ? withSceneReply(map, reply.scene) : map),
+          { revalidate: false }
+        );
+      return reply;
+    };
+    const saver = editable ? new SceneSaver({ document, put }) : new LocalSaver(document);
     // The style editor's store over a document of another shape: rows read and write it by path.
-    return new EditorStore({ saver: saver as unknown as DocumentSaver<LayerStyle> }) as unknown as EditorStore;
+    return new EditorStore({
+      saver: saver as unknown as DocumentSaver<LayerStyle>,
+    }) as unknown as EditorStore;
     // A stored scene that arrives later does not replace the one being edited.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, editable]);

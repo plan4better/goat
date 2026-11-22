@@ -306,8 +306,12 @@
       [
        "case",
        [
-        "has",
-        "land_use"
+        "!=",
+        [
+         "get",
+         "land_use"
+        ],
+        null
        ],
        [
         "match",
@@ -1915,8 +1919,12 @@
        [
         "all",
         [
-         "has",
-         "population"
+         "!=",
+         [
+          "get",
+          "population"
+         ],
+         null
         ],
         [
          ">=",
@@ -2324,8 +2332,12 @@
        [
         "case",
         [
-         "has",
-         "area_km2"
+         "!=",
+         [
+          "get",
+          "area_km2"
+         ],
+         null
         ],
         [
          "number-format",
@@ -2453,8 +2465,12 @@
       [
        "case",
        [
-        "has",
-        "year"
+        "!=",
+        [
+         "get",
+         "year"
+        ],
+        null
        ],
        [
         "to-string",
@@ -2476,8 +2492,12 @@
       [
        "case",
        [
-        "has",
-        "vehicles"
+        "!=",
+        [
+         "get",
+         "vehicles"
+        ],
+        null
        ],
        [
         "case",
@@ -2706,8 +2726,12 @@
       [
        "case",
        [
-        "has",
-        "population"
+        "!=",
+        [
+         "get",
+         "population"
+        ],
+        null
        ],
        [
         "number-format",
@@ -4203,8 +4227,12 @@
        [
         "all",
         [
-         "has",
-         "pupils"
+         "!=",
+         [
+          "get",
+          "pupils"
+         ],
+         null
         ],
         [
          ">=",
@@ -4559,8 +4587,12 @@
     "source": "s",
     "source-layer": "default",
     "filter": [
-     "has",
-     "type"
+     "!=",
+     [
+      "get",
+      "type"
+     ],
+     null
     ],
     "paint": {
      "circle-radius": 8,
@@ -4598,8 +4630,12 @@
     "source": "s",
     "source-layer": "default",
     "filter": [
-     "has",
-     "type"
+     "!=",
+     [
+      "get",
+      "type"
+     ],
+     null
     ],
     "layout": {
      "icon-image": [
@@ -4630,8 +4666,12 @@
       [
        "case",
        [
-        "has",
-        "type"
+        "!=",
+        [
+         "get",
+         "type"
+        ],
+        null
        ],
        [
         "match",
@@ -4968,8 +5008,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "density"
+       "!=",
+       [
+        "get",
+        "density"
+       ],
+       null
       ],
       [
        "step",
@@ -5226,8 +5270,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "population"
+       "!=",
+       [
+        "get",
+        "population"
+       ],
+       null
       ],
       [
        "step",
@@ -5283,8 +5331,12 @@
       [
        "case",
        [
-        "has",
-        "population"
+        "!=",
+        [
+         "get",
+         "population"
+        ],
+        null
        ],
        [
         "step",
@@ -5361,8 +5413,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "population"
+       "!=",
+       [
+        "get",
+        "population"
+       ],
+       null
       ],
       [
        "step",
@@ -5502,8 +5558,12 @@
        [
         "case",
         [
-         "has",
-         "population"
+         "!=",
+         [
+          "get",
+          "population"
+         ],
+         null
         ],
         [
          "step",
@@ -5530,8 +5590,12 @@
       [
        "case",
        [
-        "has",
-        "population"
+        "!=",
+        [
+         "get",
+         "population"
+        ],
+        null
        ],
        [
         "step",
@@ -5557,8 +5621,12 @@
      "line-dasharray": [
       "case",
       [
-       "has",
-       "land_use"
+       "!=",
+       [
+        "get",
+        "land_use"
+       ],
+       null
       ],
       [
        "match",
@@ -5820,8 +5888,12 @@
      "circle-color": [
       "case",
       [
-       "has",
-       "type"
+       "!=",
+       [
+        "get",
+        "type"
+       ],
+       null
       ],
       [
        "match",
@@ -5947,8 +6019,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "land_use"
+       "!=",
+       [
+        "get",
+        "land_use"
+       ],
+       null
       ],
       [
        "match",
@@ -5965,8 +6041,12 @@
       [
        "case",
        [
-        "has",
-        "density"
+        "!=",
+        [
+         "get",
+         "density"
+        ],
+        null
        ],
        [
         "step",
@@ -6057,8 +6137,12 @@
       [
        "case",
        [
-        "has",
-        "density"
+        "!=",
+        [
+         "get",
+         "density"
+        ],
+        null
        ],
        [
         "step",
@@ -6203,8 +6287,12 @@
        [
         "!",
         [
-         "has",
-         "name"
+         "!=",
+         [
+          "get",
+          "name"
+         ],
+         null
         ]
        ],
        "#9aa3ad",
@@ -6308,8 +6396,12 @@
       [
        "!",
        [
-        "has",
-        "name"
+        "!=",
+        [
+         "get",
+         "name"
+        ],
+        null
        ]
       ],
       "#9aa3ad",
@@ -6980,8 +7072,12 @@
      "circle-color": [
       "case",
       [
-       "has",
-       "type"
+       "!=",
+       [
+        "get",
+        "type"
+       ],
+       null
       ],
       [
        "match",
@@ -7627,8 +7723,12 @@
        [
         "all",
         [
-         "has",
-         "point_count"
+         "!=",
+         [
+          "get",
+          "point_count"
+         ],
+         null
         ],
         [
          ">=",
@@ -7730,8 +7830,12 @@
      "text-field": [
       "case",
       [
-       "has",
-       "point_count"
+       "!=",
+       [
+        "get",
+        "point_count"
+       ],
+       null
       ],
       [
        "case",
@@ -8281,8 +8385,12 @@
      "text-field": [
       "case",
       [
-       "has",
-       "point_count"
+       "!=",
+       [
+        "get",
+        "point_count"
+       ],
+       null
       ],
       [
        "case",
@@ -8493,8 +8601,12 @@
       [
        "case",
        [
-        "has",
-        "pupils"
+        "!=",
+        [
+         "get",
+         "pupils"
+        ],
+        null
        ],
        [
         "to-number",
@@ -8512,8 +8624,12 @@
       [
        "case",
        [
-        "has",
-        "pupils"
+        "!=",
+        [
+         "get",
+         "pupils"
+        ],
+        null
        ],
        1,
        0
@@ -10828,8 +10944,12 @@
      "fill-color": [
       "case",
       [
-       "has",
-       "density"
+       "!=",
+       [
+        "get",
+        "density"
+       ],
+       null
       ],
       [
        "step",
@@ -10932,8 +11052,12 @@
       [
        "case",
        [
-        "has",
-        "area_km2"
+        "!=",
+        [
+         "get",
+         "area_km2"
+        ],
+        null
        ],
        [
         "number-format",

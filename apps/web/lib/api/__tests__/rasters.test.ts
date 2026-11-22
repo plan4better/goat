@@ -3,13 +3,20 @@ import { type ReactNode, createElement } from "react";
 import { SWRConfig } from "swr";
 import { describe, expect, it, vi } from "vitest";
 
-import { fetcher } from "@/lib/api/fetcher";
-import { loadFormulaSample, rasterErrorOf, rasterInfoUrl, useRasterInfo } from "@/lib/api/rasters";
+import { apiRequestAuth, fetcher } from "@/lib/api/fetcher";
+import {
+  fetchRasterPoint,
+  loadFormulaSample,
+  rasterErrorOf,
+  rasterInfoUrl,
+  useRasterInfo,
+} from "@/lib/api/rasters";
 import { bandBreaks } from "@/lib/style/raster/metadata";
 
 vi.mock("@/lib/api/fetcher", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/fetcher")>()),
   fetcher: vi.fn(),
+  apiRequestAuth: vi.fn(),
 }));
 
 describe("raster service errors", () => {
@@ -99,5 +106,24 @@ describe("a raster file's info", () => {
     // Refused (a formula the file cannot compute) or unreadable: none.
     vi.mocked(fetcher).mockRejectedValueOnce(Object.assign(new Error("400"), { status: 400 }));
     expect(await loadFormulaSample("d1", "b9 * 2")).toBeNull();
+  });
+});
+
+describe("a raster point", () => {
+  it("sends a click on a world copy with its longitude between -180 and 180", async () => {
+    vi.mocked(apiRequestAuth).mockImplementation(
+      async () => new Response(JSON.stringify({ values: [1], styled: null }), { status: 200 })
+    );
+    const asked = async (lng: number) => {
+      vi.mocked(apiRequestAuth).mockClear();
+      await fetchRasterPoint("d1", { lng, lat: 48.1 });
+      return new URL(String(vi.mocked(apiRequestAuth).mock.calls[0][0]), "http://x").searchParams.get("lon");
+    };
+    expect(await asked(11.5)).toBe("11.5");
+    expect(await asked(371.5)).toBe("11.5");
+    expect(await asked(-348.5)).toBe("11.5");
+    expect(await asked(180)).toBe("180");
+    expect(await asked(-180)).toBe("-180");
+    expect(Number(await asked(190))).toBeCloseTo(-170);
   });
 });

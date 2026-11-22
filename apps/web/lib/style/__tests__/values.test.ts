@@ -119,7 +119,7 @@ describe("value forms", () => {
       )
     ).toEqual([
       "case",
-      ["has", "density"],
+      ["!=", ["get", "density"], null],
       [
         "interpolate-lab",
         ["linear"],
@@ -143,7 +143,7 @@ describe("value forms", () => {
       )
     ).toEqual([
       "case",
-      ["has", "d"],
+      ["!=", ["get", "d"], null],
       ["interpolate-lab", ["linear"], ["to-number", ["get", "d"], 0], 0, "#000000", 1, "#ffffff"],
       "#ff0000",
     ]);
@@ -159,7 +159,7 @@ describe("value forms", () => {
     );
     expect(sqrt).toEqual([
       "case",
-      ["all", ["has", "d"], [">=", ["to-number", ["get", "d"], 0], 0]],
+      ["all", ["!=", ["get", "d"], null], [">=", ["to-number", ["get", "d"], 0], 0]],
       [
         "interpolate-lab",
         ["linear"],
@@ -183,7 +183,7 @@ describe("value forms", () => {
     );
     expect(log).toEqual([
       "case",
-      ["all", ["has", "d"], [">", ["to-number", ["get", "d"], 0], 0]],
+      ["all", ["!=", ["get", "d"], null], [">", ["to-number", ["get", "d"], 0], 0]],
       [
         "interpolate-lab",
         ["linear"],
@@ -202,7 +202,7 @@ describe("value forms", () => {
       toProperty(fromForm({ field: "pupils", range: [0, 20], scale: "sqrt", domain: [0, 1600] }, "number", 8))
     ).toEqual([
       "case",
-      ["all", ["has", "pupils"], [">=", ["to-number", ["get", "pupils"], 0], 0]],
+      ["all", ["!=", ["get", "pupils"], null], [">=", ["to-number", ["get", "pupils"], 0], 0]],
       ["interpolate", ["linear"], ["sqrt", ["to-number", ["get", "pupils"], 0]], 0, 0, 40, 20],
       8,
     ]);
@@ -216,13 +216,13 @@ describe("value forms", () => {
       )
     ).toEqual([
       "case",
-      ["all", ["has", "t"], [">", ["to-number", ["get", "t"], 0], 0]],
+      ["all", ["!=", ["get", "t"], null], [">", ["to-number", ["get", "t"], 0], 0]],
       ["interpolate", ["linear"], ["ln", ["to-number", ["get", "t"], 0]], 0, 1, Math.log(1000), 9],
       2,
     ]);
     expect(toProperty(fromForm({ field: "w", range: [1, 4], domain: [5, 5] }, "number", 2))).toEqual([
       "case",
-      ["has", "w"],
+      ["!=", ["get", "w"], null],
       1,
       2,
     ]);
@@ -475,7 +475,7 @@ describe("folding and degenerate domains", () => {
     );
     expect(property).toEqual([
       "case",
-      ["all", ["has", "v"], [">=", ["to-number", ["get", "v"], 0], 0]],
+      ["all", ["!=", ["get", "v"], null], [">=", ["to-number", ["get", "v"], 0], 0]],
       ["interpolate", ["linear"], ["sqrt", ["to-number", ["get", "v"], 0]], 0, 0, 10, 24],
       4,
     ]);
@@ -485,13 +485,13 @@ describe("folding and degenerate domains", () => {
   it("a log scale whose domain starts at 0 or below gives every feature the start value", () => {
     expect(
       toProperty(fromForm({ field: "v", range: [2, 8], scale: "log", domain: [0, 100] }, "number", 4))
-    ).toEqual(["case", ["has", "v"], 2, 4]);
+    ).toEqual(["case", ["!=", ["get", "v"], null], 2, 4]);
   });
 
   it("a reversed domain still compiles to ascending stops", () => {
     expect(toProperty(fromForm({ field: "v", range: [2, 8], domain: [100, 0] }, "number", 4))).toEqual([
       "case",
-      ["has", "v"],
+      ["!=", ["get", "v"], null],
       ["interpolate", ["linear"], ["to-number", ["get", "v"], 0], 0, 8, 100, 2],
       4,
     ]);
