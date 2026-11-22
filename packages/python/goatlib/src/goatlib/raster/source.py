@@ -234,19 +234,24 @@ def _resolved(url: str, private_hosts: Collection[str]) -> tuple[str, str | None
 
 
 def _rasterio_libgdal() -> list[str]:
-    """Where the GDAL rasterio runs on may be: the libgdal loaded in this
-    process, else the one rasterio's wheel bundles."""
+    """Where the GDAL rasterio runs on may be: the one rasterio's wheel
+    bundles, else (a rasterio built on the system's GDAL) the libgdal loaded
+    in this process. A wheel's own GDAL is taken alone: another package may
+    have loaded one of its own (pyogrio, geopandas' file reader), whose cache is not
+    rasterio's."""
     import rasterio
 
+    base = Path(rasterio.__file__).parent
+    bundled = [str(p) for p in sorted(base.parent.glob("rasterio.libs/libgdal*"))]
+    bundled += [str(p) for p in sorted(base.glob(".dylibs/libgdal*"))]
+    if bundled:
+        return bundled
     found: list[str] = []
     try:
         with open("/proc/self/maps") as maps:
             found += [line.split()[-1] for line in maps if "libgdal" in line]
     except OSError:
         pass
-    base = Path(rasterio.__file__).parent
-    found += [str(p) for p in sorted(base.parent.glob("rasterio.libs/libgdal*"))]
-    found += [str(p) for p in sorted(base.glob(".dylibs/libgdal*"))]
     return list(dict.fromkeys(found))
 
 
