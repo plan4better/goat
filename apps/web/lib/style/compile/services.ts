@@ -4,6 +4,7 @@ import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 import type { CompileSource } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { xyzTiles } from "@/lib/transformers/xyz";
 
 type ServiceSource = Extract<CompileSource, { type: "service" }>;
 
@@ -17,12 +18,15 @@ export function withServiceStyle(url: string, style: string, layers = 1): string
 }
 
 export function serviceSource(source: ServiceSource, style: JsonObject): SourceSpecification {
+  const tileSize = source.tileSize ?? 256;
+  // An XYZ template's subdomains and TMS rows, which MapLibre has no placeholders for.
+  if (source.service === "xyz") return { type: "raster", ...xyzTiles(source.tiles), tileSize };
   const render = isObject(style.render) ? style.render : {};
   const tiles =
     source.service === "wms" && typeof render.service_style === "string"
       ? withServiceStyle(source.tiles, render.service_style, source.layers)
       : source.tiles;
-  return { type: "raster", tiles: [tiles], tileSize: source.tileSize ?? 256 };
+  return { type: "raster", tiles: [tiles], tileSize };
 }
 
 /** The paint of a raster layer drawn as an image (spec 9.1): the layer opacity and, for images, the adjustments. Each

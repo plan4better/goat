@@ -73,7 +73,7 @@ You will meet the term while working: the upload dialog confirms that a recogniz
 Raster datasets can be uploaded directly as **COG (Cloud Optimized GeoTIFF)** files, or connected from external sources via **WMS** (Web Map Service), **WMTS** (Web Map Tile Service), **XYZ Tiles**, or a direct **COG URL** (.tif/.tiff link). They provide georeferenced map images, such as topographic maps, but on GOAT they’re static, so they don’t support analysis or editing.
 
 :::tip Note
-Raster styling depends on the external service (e.g., GeoServer). You can’t change the color scheme or feature representation in GOAT.
+In the style panel, a raster file is drawn with a color range, as categories, as a hillshade or as the image it stores, with adjustments for brightness, contrast, saturation and hue. A map service (WMS, WMTS or XYZ) sends finished pictures in its own colors, which GOAT adjusts the same way and, where the service offers several styles, switches between them. See [Raster layers and map services](../map/layer_style/style/styling.md#raster-layers-and-map-services).
 :::
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

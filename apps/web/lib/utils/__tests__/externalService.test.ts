@@ -46,6 +46,75 @@ describe("detectDirectService", () => {
     });
   });
 
+  it("takes a TMS template, whose rows count from the south, as an XYZ layer", () => {
+    const service = detectDirectService("https://tiles.example.org/tms/{z}/{x}/{-y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tiles.example.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://tiles.example.org/tms/{z}/{x}/{-y}.png",
+      tiles: ["https://tiles.example.org/tms/{z}/{x}/{y}.png"],
+      scheme: "tms",
+    });
+  });
+
+  it("draws a {s} template from the subdomains a, b and c, named after the host", () => {
+    const service = detectDirectService("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tile.openstreetmap.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      tiles: [
+        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      ],
+    });
+  });
+
+  it("draws a template from the subdomains it lists", () => {
+    const service = detectDirectService("https://{switch:1,2,4}.tiles.example.org/{z}/{x}/{-y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tiles.example.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://{switch:1,2,4}.tiles.example.org/{z}/{x}/{-y}.png",
+      tiles: [
+        "https://1.tiles.example.org/{z}/{x}/{y}.png",
+        "https://2.tiles.example.org/{z}/{x}/{y}.png",
+        "https://4.tiles.example.org/{z}/{x}/{y}.png",
+      ],
+      scheme: "tms",
+    });
+  });
+
+  it("names a template whose placeholder sits inside a host label after its first address", () => {
+    expect(detectDirectService("https://tiles{switch:0,1}.example.org/vt?x={x}&y={y}&z={z}")?.title).toBe(
+      "tiles0.example.org"
+    );
+    expect(detectDirectService("https://tile{s}.example.org/{z}/{x}/{y}.png")?.title).toBe(
+      "tilea.example.org"
+    );
+    expect(detectDirectService("https://{s}/{z}/{x}/{y}.png")?.title).toBe("a");
+    // A placeholder followed by no label is the host itself, not a label to drop.
+    expect(detectDirectService("https://{s}.:8080/{z}/{x}/{y}.png")?.title).toBe("a.");
+    expect(detectDirectService("https://{s}./{z}/{x}/{y}.png")?.title).toBe("a.");
+  });
+
+  it.each([
+    "https://{switch:a,evil.example/x?}.tile.example.org/{z}/{x}/{y}.png",
+    "https://{switch:a,b#c}.tile.example.org/{z}/{x}/{y}.png",
+    "https://{switch:}.tile.example.org/{z}/{x}/{y}.png",
+    "{switch:https,ftp}://tiles.example.org/{z}/{x}/{y}.png",
+  ])("refuses a subdomain list that is more than host labels: %s", (address) => {
+    expect(detectDirectService(address)).toBeNull();
+  });
+
+  it("reads subdomain placeholders in tile templates only, not in a file or WMTS address", () => {
+    expect(detectDirectService("https://{switch:a,b}.example.org/data/dgm1.tif")).toBeNull();
+    expect(
+      detectDirectService("https://{switch:a,b}.example.org/wmts/{TileMatrix}/{TileRow}/{TileCol}.png")
+    ).toBeNull();
+  });
+
   it("leaves a capabilities address to the fetch", () => {
     expect(detectDirectService(WMS_URL)).toBeNull();
   });
@@ -316,6 +385,15 @@ describe("direct services", () => {
         url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
         other_properties: {},
       },
+    });
+  });
+
+  it("stores a template with subdomains and TMS rows as it was typed", () => {
+    const url = "https://{switch:a,b}.tiles.example.org/{z}/{x}/{-y}.png";
+    const service = detectDirectService(url)!;
+    expect(buildLayerRequest(service, [], { name: "TMS", folderId: FOLDER })).toMatchObject({
+      kind: "raster",
+      payload: { data_type: "xyz", url, other_properties: {} },
     });
   });
 

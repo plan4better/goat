@@ -26,7 +26,12 @@ class UnsafeUrlError(ValueError):
 def assert_public_http_url(url: str, allowed_hosts: Collection[str] = ()) -> None:
     """Raise `UnsafeUrlError` unless `url` is http(s) and resolves to public IPs
     or its host is one of `allowed_hosts`."""
-    parsed = urlparse(url.strip())
+    try:
+        parsed = urlparse(url.strip())
+        port = parsed.port
+    except ValueError as exc:
+        # A port that is no number, such as a tile template's `{switch:a,b}`.
+        raise UnsafeUrlError("The service address is not a valid URL") from exc
     if parsed.scheme not in ("http", "https"):
         raise UnsafeUrlError("Only http and https service addresses can be used")
     host = parsed.hostname
@@ -36,7 +41,7 @@ def assert_public_http_url(url: str, allowed_hosts: Collection[str] = ()) -> Non
         return
 
     try:
-        infos = socket.getaddrinfo(host, parsed.port, proto=socket.IPPROTO_TCP)
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, UnicodeError) as exc:
         raise UnsafeUrlError(f"Could not resolve {host}") from exc
 

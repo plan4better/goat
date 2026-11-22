@@ -30,6 +30,8 @@ def test_public_https_url_passes(monkeypatch: pytest.MonkeyPatch) -> None:
         "ftp://geo.example/wfs",
         "/vsicurl/http://geo.example/wfs",
         "https:///no-host",
+        # A tile template's subdomain list reads as a port: refused, not a crash.
+        "https://{switch:a,b}.example.org/x.tif",
     ],
 )
 def test_non_http_or_hostless_urls_are_refused(url: str) -> None:

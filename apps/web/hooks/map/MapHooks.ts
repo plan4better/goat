@@ -7,6 +7,7 @@ import { DEFAULT_BASEMAP, GLYPHS_URL } from "@/lib/constants/basemaps";
 import { setActiveBasemap as setActiveBasemapAction } from "@/lib/store/map/slice";
 import type { Basemap, BuiltInBasemap } from "@/types/map/common";
 import { projectLayerOf } from "@/lib/style/render/mapLayers";
+import { xyzTiles } from "@/lib/transformers/xyz";
 import type { CustomBasemap } from "@/lib/validations/project";
 
 /** Adapts a custom basemap to the Basemap shape used by the selector. */
@@ -67,7 +68,7 @@ export function synthesizeMapStyle(
       sources: {
         "raster-source": {
           type: "raster",
-          tiles: [basemap.url],
+          ...xyzTiles(basemap.url),
           tileSize: 256,
           attribution: basemap.attribution ?? undefined,
         },

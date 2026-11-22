@@ -140,7 +140,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
   <TabItem value="XYZ" label="XYZ" className="tabItemBox">
     <div class="step">
-      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. The address is the layer, so there is no list to choose from &mdash; check the preview shows what you expect.</p></div>
+      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. For a service that counts its tile rows from the south (TMS), write <code>&#123;-y&#125;</code> instead of <code>&#123;y&#125;</code>; <code>&#123;s&#125;</code> spreads the requests over the subdomains a, b and c, and <code>&#123;switch:1,2,3&#125;</code> over the ones it names (16 at most). The address is the layer, so there is no list to choose from; check that the preview shows what you expect.</p></div>
     </div>
   </TabItem>
 

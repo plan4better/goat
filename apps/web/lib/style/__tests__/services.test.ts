@@ -57,6 +57,28 @@ describe("map services and rasters", () => {
     expect(out.layers[0].paint).toEqual({ "raster-opacity": 0.5, "raster-saturation": -0.6 });
   });
 
+  it("an XYZ layer with subdomains and TMS rows: one address per subdomain, rows counted from the south", () => {
+    const out = compile(example(2118), {
+      type: "service",
+      id: "s9",
+      service: "xyz",
+      tiles: "https://{s}.tiles.example/{z}/{x}/{-y}.png",
+    });
+    expect(out.sources).toEqual({
+      s9: {
+        type: "raster",
+        tiles: [
+          "https://a.tiles.example/{z}/{x}/{y}.png",
+          "https://b.tiles.example/{z}/{x}/{y}.png",
+          "https://c.tiles.example/{z}/{x}/{y}.png",
+        ],
+        scheme: "tms",
+        tileSize: 256,
+      },
+    });
+    expect(maplibreErrors(out.layers, out.sources)).toEqual([]);
+  });
+
   it("darker pictures and settings by zoom", () => {
     const xyz = {
       type: "service" as const,

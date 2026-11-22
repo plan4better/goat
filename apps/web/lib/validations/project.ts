@@ -3,6 +3,7 @@ import * as z from "zod";
 import { DEFAULT_WKT_EXTENT } from "@/lib/constants";
 import { basicLayout } from "@/lib/constants/dashboard-builder-template-layouts";
 import type { LayerStyle, MapDocument } from "@/lib/style/generated/types";
+import { xyzAddressesValid } from "@/lib/transformers/xyz";
 import {
   contentMetadataSchema,
   getContentQueryParamsSchema,
@@ -287,9 +288,11 @@ export const customBasemapSchema = z.discriminatedUnion("type", [
         message: "URL must start with http:// or https://",
       })
       .refine(
-        (s) => s.includes("{z}") && s.includes("{x}") && s.includes("{y}"),
-        { message: "URL must contain {z}, {x}, and {y} placeholders" }
-      ),
+        // `{-y}` counts the rows from the south (TMS).
+        (s) => s.includes("{z}") && s.includes("{x}") && (s.includes("{y}") || s.includes("{-y}")),
+        { message: "URL must contain {z}, {x} and {y} ({-y} for rows counted from the south)" }
+      )
+      .refine(xyzAddressesValid, { message: "Invalid url" }),
   }),
   baseCustomBasemapSchema.extend({
     type: z.literal("solid"),

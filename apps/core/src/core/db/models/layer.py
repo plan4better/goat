@@ -1,3 +1,5 @@
+import re
+from collections.abc import Iterator
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Union
@@ -41,6 +43,67 @@ if TYPE_CHECKING:
         BundleLayerLink,
         LayerProjectLink,
     )
+
+
+#: A tile address's own list of subdomains, as host labels: `{switch:a,b,c}`
+#: (JOSM's form). Anything else in the braces is no placeholder.
+TILE_SUBDOMAIN_LIST = re.compile(r"\{switch:([A-Za-z0-9-]+(?:,[A-Za-z0-9-]+)*)\}")
+
+#: The subdomains `{s}` stands for.
+TILE_DEFAULT_SUBDOMAINS = ("a", "b", "c")
+
+#: A subdomain placeholder that is the host's whole first label, with a label
+#: after it, as in `{s}.tile.openstreetmap.org`.
+TILE_LEADING_LABEL = re.compile(
+    rf"(?<=//)(?:\{{s\}}|{TILE_SUBDOMAIN_LIST.pattern})\.(?=[A-Za-z0-9])"
+)
+
+
+#: The most subdomains a `{switch:...}` list names.
+MAX_TILE_SUBDOMAINS = 16
+
+#: The longest address a layer has: the longest URL pydantic takes.
+MAX_URL_LENGTH = 2083
+
+
+def tile_addresses(url: str) -> Iterator[str]:
+    """The addresses a tile address stands for, one per subdomain, as the
+    browser draws it: `{s}` is a, b or c, a `{switch:...}` list names its own.
+    Each is built only when it is asked for; a list of more than
+    `MAX_TILE_SUBDOMAINS` subdomains raises ValueError before the first."""
+    listed = TILE_SUBDOMAIN_LIST.search(url)
+    if listed:
+        if listed[1].count(",") >= MAX_TILE_SUBDOMAINS:
+            raise ValueError(
+                f"A tile address lists at most {MAX_TILE_SUBDOMAINS} subdomains."
+            )
+        for entry in listed[1].split(","):
+            yield url.replace(listed[0], entry)
+    elif "{s}" in url:
+        for entry in TILE_DEFAULT_SUBDOMAINS:
+            yield url.replace("{s}", entry)
+    else:
+        yield url
+
+
+def check_layer_url(value: object) -> str | None:
+    """A layer's address as typed, checked as an http(s) URL: text of at most
+    `MAX_URL_LENGTH` characters, refused before anything is built from it. A
+    tile address is checked as each address it stands for, up to the first one
+    that is none: a list in the host reads as a port in the address itself, and
+    one in the scheme would change it. Raises ValueError, which a validator
+    answers as a validation error."""
+    if value is None:
+        return None
+    if isinstance(value, HttpUrl):
+        return str(value)
+    if not isinstance(value, str):
+        raise ValueError("A layer's address is text.")
+    if len(value) > MAX_URL_LENGTH:
+        raise ValueError(f"A layer's address has at most {MAX_URL_LENGTH} characters.")
+    for address in tile_addresses(value):
+        HttpUrl(address)
+    return value
 
 
 class FeatureType(str, Enum):
@@ -347,12 +410,7 @@ class Layer(LayerBase, GeospatialAttributes, DateTimeBase, table=True):
         Note: thumbnail_url is handled separately by ThumbnailUrlMixin
         in the schema layer, as it may be stored as an S3 key.
         """
-        if value is None:
-            return value
-        elif isinstance(value, HttpUrl):
-            return str(value)
-        assert HttpUrl(value)
-        return value
+        return check_layer_url(value)
 
     @computed_field
     def layer_id(self) -> UUID | None:

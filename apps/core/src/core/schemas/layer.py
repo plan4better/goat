@@ -24,6 +24,7 @@ from core.db.models.layer import (
     LayerBase,
     LayerType,
     RasterDataType,
+    check_layer_url,
 )
 from core.utils import optional
 
@@ -166,12 +167,7 @@ class ExternalServiceAttributesBase(BaseModel):
     def convert_httpurl_to_str(
         cls: type["ExternalServiceAttributesBase"], value: str | HttpUrl | None
     ) -> str | None:
-        if value is None:
-            return value
-        elif isinstance(value, HttpUrl):
-            return str(value)
-        assert HttpUrl(value)
-        return value
+        return check_layer_url(value)
 
 
 ################################################################################
@@ -342,12 +338,7 @@ class IRasterUpdate(LayerBase, GeospatialAttributes):
     def convert_httpurl_to_str(
         cls: type["IRasterUpdate"], value: str | HttpUrl | None
     ) -> str | None:
-        if value is None:
-            return value
-        elif isinstance(value, HttpUrl):
-            return str(value)
-        assert HttpUrl(value)
-        return value
+        return check_layer_url(value)
 
 
 imagery_layer_update_base_example = {

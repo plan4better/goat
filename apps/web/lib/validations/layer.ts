@@ -2,6 +2,7 @@ import { v4 } from "uuid";
 import * as z from "zod";
 
 import { DEFAULT_WKT_EXTENT } from "@/lib/constants";
+import { xyzAddressesValid } from "@/lib/transformers/xyz";
 import { formatNumberTypes } from "@/lib/validations/common";
 import {
   contentMetadataSchema,
@@ -365,13 +366,20 @@ export const createLayerFromDatasetSchema = createLayerBaseSchema.extend({
   sheet_name: z.string().optional(),
 });
 
-export const createRasterLayerSchema = createLayerBaseSchema.extend({
-  type: z.literal("raster"),
-  url: z.string().url(),
-  data_type: dataType,
-  extent: z.string().optional(),
-  other_properties: otherPropertiesSchmea,
-});
+export const createRasterLayerSchema = createLayerBaseSchema
+  .extend({
+    type: z.literal("raster"),
+    url: z.string(),
+    data_type: dataType,
+    extent: z.string().optional(),
+    other_properties: otherPropertiesSchmea,
+  })
+  // An XYZ template is checked as each address it stands for: its subdomain list (`{switch:a,b}`) reads as a port.
+  .refine(
+    ({ data_type, url }) =>
+      data_type === "xyz" ? xyzAddressesValid(url) : z.string().url().safeParse(url).success,
+    { message: "Invalid url", path: ["url"] }
+  );
 
 export const layerQueryables = z.object({
   title: z.string(),

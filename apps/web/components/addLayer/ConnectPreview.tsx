@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import type { MapRef } from "react-map-gl/maplibre";
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
-import type { LngLatBounds } from "@/lib/utils/externalService";
+import type { LngLatBounds, PreviewSource } from "@/lib/utils/externalService";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
@@ -27,7 +27,7 @@ const ConnectPreview = ({
   bounds,
   height,
 }: {
-  source: { kind: "tiles" | "cog"; url: string } | null;
+  source: PreviewSource | null;
   bounds?: LngLatBounds;
   /** Fills its container when omitted. */
   height?: number;
@@ -73,7 +73,12 @@ const ConnectPreview = ({
             id="connect-service-preview-source"
             type="raster"
             tileSize={256}
-            {...(source.kind === "cog" ? { url: source.url } : { tiles: [source.url] })}>
+            {...(source.kind === "cog"
+              ? { url: source.url }
+              : {
+                  tiles: source.tiles ?? [source.url],
+                  ...(source.scheme ? { scheme: source.scheme } : {}),
+                })}>
             <MapLayer id="connect-service-preview-layer" type="raster" />
           </Source>
         )}

@@ -4,6 +4,7 @@ import WMTSCapabilities from "ol/format/WMTSCapabilities";
 
 import { generateLayerGetLegendGraphicUrl, generateWmsUrl } from "@/lib/transformers/wms";
 import { convertWmtsToXYZUrl } from "@/lib/transformers/wmts";
+import { xyzAddressesValid, xyzHost, xyzTiles } from "@/lib/transformers/xyz";
 import WFSCapabilities from "@/lib/utils/parser/ol/format/WFSCapabilities";
 import type { CreateLayerFromDataset, CreateRasterLayer } from "@/lib/validations/layer";
 import { createLayerFromDatasetSchema, createRasterLayerSchema } from "@/lib/validations/layer";
@@ -127,16 +128,18 @@ const direct = (kind: ServiceKind, url: string, title: string): ConnectedService
  */
 export const detectDirectService = (address: string): ConnectedService | null => {
   const trimmed = address.trim();
+  // `new URL` escapes the braces, so the placeholders are looked for in the raw text.
+  const has = (token: string) => trimmed.includes(`{${token}}`);
+  // `{-y}` counts the rows from the south (TMS). A tile template is checked as the addresses
+  // it stands for: its subdomain list (`{switch:a,b}`) would read as a port.
+  if (has("z") && has("x") && (has("y") || has("-y")) && !has("TileRow") && !has("TileCol"))
+    return xyzAddressesValid(trimmed) ? direct("xyz", trimmed, xyzHost(trimmed)) : null;
   let url: URL;
   try {
     url = parseHttpUrl(trimmed);
   } catch {
     return null;
   }
-  // `new URL` escapes the braces, so the placeholders are looked for in the raw text.
-  const has = (token: string) => trimmed.includes(`{${token}}`);
-  if (has("z") && has("x") && has("y") && !has("TileRow") && !has("TileCol"))
-    return direct("xyz", trimmed, url.hostname);
   if (has("TileMatrix") && has("TileRow") && has("TileCol") && !has("Style") && !has("TileMatrixSet"))
     return direct("wmts", trimmed, url.hostname);
   if (/\.tiff?$/i.test(url.pathname)) return direct("cog", trimmed, fileStem(url));
@@ -515,15 +518,24 @@ const wmsTileUrl = (service: ConnectedService, layers: ServiceLayer[]) => {
 };
 
 /**
- * What the layer is drawn from: a tile template, a COG, or `null` where nothing can be
- * drawn yet — no layer picked, or WFS features that only exist once imported.
+ * What the layer is drawn from, with `url` what the layer stores: a tile template, a COG.
+ * An XYZ template is drawn from `tiles`, one address per subdomain, with `scheme` for rows
+ * counted from the south.
  */
-export const previewSource = (
-  service: ConnectedService,
-  ids: string[]
-): { kind: "tiles" | "cog"; url: string } | null => {
+export type PreviewSource = {
+  kind: "tiles" | "cog";
+  url: string;
+  tiles?: string[];
+  scheme?: "tms";
+};
+
+/**
+ * What the layer is drawn from, or `null` where nothing can be drawn yet — no layer
+ * picked, or WFS features that only exist once imported.
+ */
+export const previewSource = (service: ConnectedService, ids: string[]): PreviewSource | null => {
   if (service.kind === "cog") return { kind: "cog", url: `cog://${service.url}` };
-  if (service.kind === "xyz") return { kind: "tiles", url: service.url };
+  if (service.kind === "xyz") return { kind: "tiles", url: service.url, ...xyzTiles(service.url) };
   if (service.kind === "wmts" && isDirect(service))
     return { kind: "tiles", url: convertWmtsToXYZUrl(service.url) };
   const layers = pickedLayers(service, ids);

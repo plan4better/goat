@@ -141,7 +141,7 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 
   <TabItem value="XYZ" label="XYZ" className="tabItemBox">
     <div class="step">
-      <div class="content"><p>Ein <strong>XYZ-Kacheln</strong>-Layer ist jede Kachel-URL mit <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code>-Platzhaltern. Die Adresse ist der Layer, es gibt also keine Layerliste zur Auswahl &mdash; prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.</p></div>
+      <div class="content"><p>Ein <strong>XYZ-Kacheln</strong>-Layer ist jede Kachel-URL mit <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code>-Platzhaltern. Zählt ein Dienst seine Kachelzeilen von Süden (TMS), schreiben Sie <code>&#123;-y&#125;</code> statt <code>&#123;y&#125;</code>; <code>&#123;s&#125;</code> verteilt die Anfragen auf die Subdomains a, b und c, <code>&#123;switch:1,2,3&#125;</code> auf die genannten (höchstens 16). Die Adresse ist der Layer, es gibt also keine Layerliste zur Auswahl; prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.</p></div>
     </div>
   </TabItem>
 

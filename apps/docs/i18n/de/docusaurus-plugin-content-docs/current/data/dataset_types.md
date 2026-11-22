@@ -73,7 +73,7 @@ Der Begriff begegnet Ihnen bei der Arbeit: Der Upload-Dialog bestätigt, dass ei
 Raster-Datensätze können direkt als **COG (Cloud Optimized GeoTIFF)**-Dateien hochgeladen oder aus externen Quellen über **WMS** (Web Map Service), **WMTS** (Web Map Tile Service), **XYZ-Kacheln** oder eine direkte **COG-URL** (.tif/.tiff-Link) verbunden werden. Sie bieten georeferenzierte Kartenbilder, wie topografische Karten, aber auf GOAT sind sie statisch, daher unterstützen sie keine Analyse oder Bearbeitung.
 
 :::tip Hinweis
-Raster-Styling hängt vom externen Service ab (z.B. GeoServer). Sie können das Farbschema oder die Feature-Darstellung in GOAT nicht ändern.
+Im Stil-Panel stellen Sie eine Rasterdatei mit einer Farbskala, als Kategorien, als Schummerung oder als gespeichertes Bild dar, mit Anpassungen für Helligkeit, Kontrast, Sättigung und Farbton. Ein Kartendienst (WMS, WMTS oder XYZ) liefert fertige Bilder in seinen eigenen Farben, die GOAT ebenso anpasst und, wo der Dienst mehrere Stile anbietet, zwischen ihnen wechselt. Siehe [Raster-Layer und Kartendienste](../map/layer_style/style/styling.md#raster-layer-und-kartendienste).
 :::
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
