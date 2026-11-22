@@ -1348,7 +1348,7 @@ describe("raster legends", () => {
     expect(without?.sections[0]).not.toHaveProperty("unit");
   });
 
-  it("an open first or last raster class reads the band's minimum and maximum, whatever `outside` says", () => {
+  it("an open first or last raster class reads the band's minimum and maximum, or where values outside stop", () => {
     // Equal intervals 5 over the colour range [32, 119] of a band that holds -38.94 to 189.14: cells beyond the range
     // take the end classes, so the ends read the band's.
     const render = {
@@ -1376,15 +1376,26 @@ describe("raster legends", () => {
       "84.2 to 101.6 m",
       "101.6 to 189.14 m",
     ]);
-    // Classes draw every cell in the end classes whatever `outside` says: a stored "hide" reads the band's too.
+    // Values outside left out: the map draws the classes over the colour range only, and the ends read it.
     expect(labels(legendOf({ ...render, outside: "hide" }, band))).toEqual([
-      "-38.94 to 49.4 m",
+      "32 to 49.4 m",
       "49.4 to 66.8 m",
       "66.8 to 84.2 m",
       "84.2 to 101.6 m",
-      "101.6 to 189.14 m",
+      "101.6 to 119 m",
     ]);
-    expect(labels(legendOf({ ...render, outside: "hide" }))[0]).toBe("under 49.4 m");
+    expect(labels(legendOf({ ...render, outside: "hide" }))[0]).toBe("32 to 49.4 m");
+    // The classes' own outer ends come before the range; with the end colors they are open again.
+    const own = equalIntervalClasses([32, 119], 5).map((c, i, all) => ({
+      ...c,
+      ...(i === 0 ? { from: 40 } : {}),
+      ...(i === all.length - 1 ? { to: 110 } : {}),
+    }));
+    const ownEnds = { ...render, classify: { method: "manual", classes: own } };
+    const hidden = labels(legendOf({ ...ownEnds, outside: "hide" }, band));
+    expect([hidden[0], hidden[4]]).toEqual(["40 to 49.4 m", "101.6 to 110 m"]);
+    const clamped = labels(legendOf(ownEnds, band));
+    expect([clamped[0], clamped[4]]).toEqual(["-38.94 to 49.4 m", "101.6 to 189.14 m"]);
     // The band's range not known: never the colour range; the bounds alone.
     const unknown = labels(legendOf(render));
     expect([unknown[0], unknown[4]]).toEqual(["under 49.4 m", "101.6 and more m"]);

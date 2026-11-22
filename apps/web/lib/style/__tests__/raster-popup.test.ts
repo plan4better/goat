@@ -1066,7 +1066,7 @@ describe("where a raster popup's values come from", () => {
     expect((await cellSource.at(layer, here, ctx(served, "click")))?.values).toMatchObject({ value: 25 });
   });
 
-  it("an open class is named by the band's minimum and maximum, whatever `outside` says", async () => {
+  it("an open class is named by the band's minimum and maximum, or where values outside stop", async () => {
     const en = commonT("en");
     // Equal intervals 5 over the colour range [32, 119] of a band that holds -38.94 to 189.14 (the description's range,
     // the band's statistics).
@@ -1090,11 +1090,13 @@ describe("where a raster popup's values come from", () => {
     expect(await classOf(render, 200, "hover")).toBe("101.6 to 189.14 m");
     // A click's exact value from geoapi is named the same.
     expect(await classOf(render, 12, "click")).toBe("-38.94 to 49.4 m");
-    // Classes draw every cell in the end classes whatever `outside` says: a stored "hide" names them the same, and the
-    // cell beyond the colour range still opens its popup.
+    // Values outside left out: the classes end at the colour range, which names them, and a cell beyond it is not
+    // drawn, so it opens no popup (its end included: 119 is drawn).
     const hide = { ...render, outside: "hide" };
-    expect(await classOf(hide, 12, "hover")).toBe("-38.94 to 49.4 m");
-    expect(await classOf(hide, 200, "click")).toBe("101.6 to 189.14 m");
+    expect(await classOf(hide, 40, "hover")).toBe("32 to 49.4 m");
+    expect(await classOf(hide, 119, "hover")).toBe("101.6 to 119 m");
+    expect(await classOf(hide, 12, "hover")).toBeUndefined();
+    expect(await classOf(hide, 200, "click")).toBeUndefined();
     // The panel's preview names them from the file's statistics.
     const info: RasterInfo = {
       bands: 1,

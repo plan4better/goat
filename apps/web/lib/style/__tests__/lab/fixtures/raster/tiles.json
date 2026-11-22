@@ -128,6 +128,39 @@
       "integer": false,
       "codes": [262145, 2883585, 1572865, 0]
     },
+    "classes-hide": {
+      "encoding": {
+        "redFactor": 32.0,
+        "greenFactor": 0.125,
+        "blueFactor": 0.00048828125,
+        "baseShift": 101.10048828125
+      },
+      "range": [-1.0, 1000.0],
+      "integer": false,
+      "codes": [205006, 207054, 226510, 227534, 258254, 267470, 270542, 2255054, 0]
+    },
+    "classes-hide-own-ends": {
+      "encoding": {
+        "redFactor": 1.0,
+        "greenFactor": 0.00390625,
+        "blueFactor": 1.52587890625e-5,
+        "baseShift": -1.4999847412109375
+      },
+      "range": [4.0, 29.0],
+      "integer": false,
+      "codes": [163841, 229377, 884737, 1507329, 1605633, 1802241]
+    },
+    "classes-clamp-own-ends": {
+      "encoding": {
+        "redFactor": 32.0,
+        "greenFactor": 0.125,
+        "blueFactor": 0.00048828125,
+        "baseShift": 210.00048828125
+      },
+      "range": [-100.0, 1000.0],
+      "integer": false,
+      "codes": [225281, 438273, 460801, 483329, 2478081]
+    },
     "categories": {
       "encoding": {
         "redFactor": 65536.0,

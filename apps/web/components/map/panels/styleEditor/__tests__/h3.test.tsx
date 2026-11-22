@@ -81,12 +81,22 @@ describe("H3 hexagons", () => {
     expect(store.get("render.classify")).toBeUndefined();
   });
 
-  it("a stored count outside 2 to 12 shows as picked and stays", async () => {
+  it("geometric intervals are a method of the hexagons' classes too", async () => {
+    const { store } = setup();
+    await choose(
+      "style_editor.classes",
+      "style_editor.h3_continuous",
+      "style_editor.method_geometric_interval"
+    );
+    expect(store.get("render.classify")).toEqual({ method: "geometric_interval", count: 5 });
+  });
+
+  it("a stored count outside 2 to 13 shows as picked and stays", async () => {
     const { store } = setup({ type: "h3", classify: { method: "quantile", count: 20 } });
     await userEvent.click(within(rowOf("style_editor.count")).getByRole("combobox"));
     const options = within(screen.getByRole("listbox")).getAllByRole("option");
-    expect(options).toHaveLength(12);
-    expect(options[11].getAttribute("aria-selected")).toBe("true");
+    expect(options).toHaveLength(13);
+    expect(options[12].getAttribute("aria-selected")).toBe("true");
     expect(store.get("render.classify.count")).toBe(20);
   });
 

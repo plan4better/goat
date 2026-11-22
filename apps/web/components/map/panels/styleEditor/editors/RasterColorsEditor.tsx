@@ -1,9 +1,11 @@
 "use client";
 
 // The colors of a raster color range or hillshade (prototype 4.7; spec 9.2, 9.4): a palette over a written range,
-// continuous or in classes (equal intervals, quantiles, natural breaks, standard deviation, or breaks typed by hand)
-// on the class grid of a classification, over the band's histogram; or own colors at own values. The computed breaks
-// come with the file's info from the raster service, so a method or count writes its classes at once.
+// continuous or in classes (equal intervals, quantiles, natural breaks, standard deviation, geometric intervals, or
+// breaks typed by hand) on the class grid of a classification, over the band's histogram; or own colors at own values.
+// The computed breaks come with the file's info from the raster service, so a method or count writes its classes at
+// once. What cells beyond the colors draw (Outside) applies to classes too: with values outside left out, the classes'
+// outer ends are a range to type. The range's ends and the class breaks stand on the histogram as handles to drag. A
 import { Box, Button } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,16 +17,22 @@ import {
   RANGED_METHODS,
   breakCounts,
   equalClasses,
+  geometricRefused,
   rasterClassesRender,
+  setOuterEnd,
   setRasterPalette,
 } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
+import { plainNumber } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteColors, paletteSteps } from "@/lib/style/palettes";
+import { classEnds } from "@/lib/style/raster/color";
+import { bandOrFormula, formulaOf } from "@/lib/style/raster/formula";
 import { bandRange, seedDomain } from "@/lib/style/raster/metadata";
 
+import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
   useEditor,
   useRasterSample,
@@ -36,7 +44,6 @@ import { Histogram } from "@/components/map/panels/styleEditor/editors/Histogram
 import {
   RasterClassList,
   paletteStrip,
-  renderBand,
   renderColors,
   renderHistogram,
 } from "@/components/map/panels/styleEditor/editors/RasterClassList";
@@ -46,8 +53,18 @@ import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/pop
 import { ChoiceRow, NavRow, NumberInput, Row, SwitchRow } from "@/components/map/panels/styleEditor/rows";
 
 /** The ways a palette colors a range: blended, or in classes by a method. */
-const METHODS = ["continuous", "equal_interval", "quantile", "natural_breaks", "std_dev", "manual"];
+const METHODS = [
+  "continuous",
+  "equal_interval",
+  "quantile",
+  "natural_breaks",
+  "std_dev",
+  "geometric_interval",
+  "manual",
+];
 const CLASS_COUNT = 5;
+/** A histogram bar of values the map leaves out (beyond the classes or the range, with Outside Transparent). */
+const LEFT_OUT = "rgba(154, 163, 173, 0.35)";
 
 /** A method's line in the menu: the raster's words where a cell is not a feature, else the vectors'. */
 const methodSub = (method: string) =>
@@ -60,10 +77,8 @@ function rangeOf(render: JsonObject, info: Parameters<typeof bandRange>[0]): [nu
   const given = Array.isArray(render.domain) ? render.domain : null;
   const computed =
     isObject(render.computed) && Array.isArray(render.computed.domain) ? render.computed.domain : null;
-  const band = renderBand(render);
   return (
-    ((given ?? computed) as [number, number] | null) ??
-    (band !== undefined ? bandRange(info, band) : null) ?? [0, 1]
+    ((given ?? computed) as [number, number] | null) ?? bandRange(info, bandOrFormula(render.band)) ?? [0, 1]
   );
 }
 
@@ -79,6 +94,8 @@ export function RasterColorsEditor() {
   const info = raster?.info;
   const hillshade = render.type === "hillshade";
   const band = typeof render.band === "number" ? render.band : 1;
+  // What From the data and the shading's colors start from: the band's values, or a band formula's.
+  const sampled = formulaOf(render.band)?.expression ?? band;
   const stops = Array.isArray(render.stops) ? render.stops.filter(isObject) : null;
   const domain = rangeOf(render, info);
   const classify = isObject(render.classify) ? render.classify : null;
@@ -92,8 +109,20 @@ export function RasterColorsEditor() {
       : classes.length || CLASS_COUNT;
   const colored = !hillshade || render.palette !== undefined;
   // Only a continuous palette, equal intervals and manual breaks take a range; every other method classifies the
-  // band's values themselves.
+  // band's values themselves. With values outside left out, classes end at their outer ends (`classEnds`, the rule
+  // the map draws by): those are the range, typed as a whole. Equal intervals keep splitting their range instead.
   const ranged = RANGED_METHODS.includes(method);
+  const hide = render.outside === "hide";
+  const outer: [number, number] | null =
+    classify && hide && classes.length && method !== "equal_interval"
+      ? (classEnds(render, { info }) ?? domain)
+      : null;
+  const setEnd = (end: "from" | "to", v: number) =>
+    store.update((doc) => {
+      const now = getIn(doc, "render");
+      return setIn(doc, "render", setOuterEnd(isObject(now) ? now : render, end, v));
+    }, "render.classify");
+  const shown = outer ?? domain;
 
   /** The render with `range` written; equal intervals split it again, and from the data manual classes too. */
   const withRange = (doc: LayerStyle, range: [number, number], fromData = false): LayerStyle => {
@@ -206,8 +235,11 @@ export function RasterColorsEditor() {
     .filter((b): b is number => typeof b === "number");
   const ramp = paletteColors((render.palette ?? DEFAULTS["continuous.palette"]) as string | string[]);
   const ordered = render.reverse === true ? [...ramp].reverse() : ramp;
-  // Each bar in the color its middle draws in: its class's, or the ramp's at its place in the range.
+  // Each bar in the color its middle draws in: its class's, or the ramp's at its place in the range; a bar the map
+  // leaves out (values outside left out) stands back.
   const colorAt = (v: number) => {
+    const [lo, hi] = shown;
+    if (hide && (v < Math.min(lo, hi) || v > Math.max(lo, hi))) return LEFT_OUT;
     if (classify) return colors[breaks.filter((b) => v >= b).length] ?? colors[colors.length - 1];
     const [d0, d1] = domain;
     const at = d1 === d0 ? 0 : Math.min(1, Math.max(0, (v - d0) / (d1 - d0)));
@@ -246,14 +278,21 @@ export function RasterColorsEditor() {
               value={method}
               // A method the panel does not offer (heads and tails, from a style written elsewhere) shows while set.
               options={(METHODS.includes(method) ? METHODS : [...METHODS, method]).map((m) => {
-                // A method the raster service computed no breaks for on this band (a formula, a band of one value).
-                const missing = BREAK_METHODS.includes(m) && countsOf(m).length === 0;
+                // Geometric intervals need values above 0; a method the raster service computed no breaks for on this
+                // band (a formula, a band of one value) is not offered either.
+                const negative = m === "geometric_interval" && geometricRefused(info, render.band ?? 1);
+                const missing = negative || (BREAK_METHODS.includes(m) && countsOf(m).length === 0);
                 return {
                   value: m,
                   label: t(
                     m === "continuous" ? "style_editor.raster_method_continuous" : `style_editor.method_${m}`
                   ),
-                  sub: t(missing ? "style_editor.no_breaks_for_band" : methodSub(m)),
+                  // The band's own lowest value, as the range boxes write it, says why.
+                  sub: negative
+                    ? t("style_editor.geometric_band_below", {
+                        min: plainNumber(bandRange(info, sampled)?.[0] ?? 0, i18n.language),
+                      })
+                    : t(missing ? "style_editor.no_breaks_for_band" : methodSub(m)),
                   disabled: missing,
                 };
               })}
@@ -270,6 +309,7 @@ export function RasterColorsEditor() {
                 onChange={(n) => classesBy(method, n)}
               />
             )}
+            {classify && <ClassesNotes />}
             <NavRow
               label={t("style_editor.palette")}
               value={paletteLabel(
@@ -280,28 +320,41 @@ export function RasterColorsEditor() {
               swatch={{ background: paletteStrip(colors, stepped) ?? "transparent", wide: true }}
               onOpen={openPalette}
             />
+            {(ranged || outer) && (
+              <Row label={t("style_editor.range")}>
+                {/* With classes an end counts as a whole number typed (when its box is left, or on Enter): a digit on
+                    the way would split or bound the classes anew and drop what is set on them. A continuous palette's
+                    range is written as it is typed. */}
+                <Box sx={{ display: "flex", gap: 2, alignItems: "center", flex: 1, minWidth: 0 }}>
+                  <NumberInput
+                    value={shown[0]}
+                    ariaLabel={t("style_editor.range_lowest")}
+                    commitOnLeave={classify !== null}
+                    onChange={(v) =>
+                      outer
+                        ? setEnd("from", v)
+                        : store.update((doc) => withRange(doc, [v, domain[1]]), "render.domain")
+                    }
+                  />
+                  <NumberInput
+                    value={shown[1]}
+                    ariaLabel={t("style_editor.range_highest")}
+                    commitOnLeave={classify !== null}
+                    onChange={(v) =>
+                      outer
+                        ? setEnd("to", v)
+                        : store.update((doc) => withRange(doc, [domain[0], v]), "render.domain")
+                    }
+                  />
+                </Box>
+              </Row>
+            )}
             {ranged && (
-              <>
-                <Row label={t("style_editor.range")}>
-                  <Box sx={{ display: "flex", gap: 2, alignItems: "center", flex: 1, minWidth: 0 }}>
-                    <NumberInput
-                      value={domain[0]}
-                      ariaLabel={t("style_editor.range_lowest")}
-                      onChange={(v) => store.update((doc) => withRange(doc, [v, domain[1]]), "render.domain")}
-                    />
-                    <NumberInput
-                      value={domain[1]}
-                      ariaLabel={t("style_editor.range_highest")}
-                      onChange={(v) => store.update((doc) => withRange(doc, [domain[0], v]), "render.domain")}
-                    />
-                  </Box>
-                </Row>
-                <Row note={note ?? t("style_editor.range_from_data_note")}>
-                  <Button variant="text" size="small" color="inherit" onClick={() => void fromData()}>
-                    {t("style_editor.range_from_data")}
-                  </Button>
-                </Row>
-              </>
+              <Row note={note ?? t("style_editor.range_from_data_note")}>
+                <Button variant="text" size="small" color="inherit" onClick={() => void fromData()}>
+                  {t("style_editor.range_from_data")}
+                </Button>
+              </Row>
             )}
             {bins.length > 0 && (
               <Box sx={{ px: 3, py: 1 }}>
@@ -313,7 +366,7 @@ export function RasterColorsEditor() {
                 />
               </Box>
             )}
-            {!classify && <OutsideRow />}
+            <OutsideRow />
             {classify && (
               <Box sx={{ py: 1 }}>
                 <RasterClassList kind="classes" />
@@ -327,8 +380,23 @@ export function RasterColorsEditor() {
   );
 }
 
-/** What cells beyond a color range (its range, or its first and last stop) draw: the end colors, or nothing. Classes
- * have open ends, so they have no such row. */
+/** What the style check says about the classes (fewer than asked, and why). */
+function ClassesNotes() {
+  const issues = useIssueAt("render.classify").filter(
+    (issue) => !/^\/render\/classify\/classes\//.test(issue.path)
+  );
+  if (!issues.length) return null;
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1, px: 3, py: 1 }}>
+      {issues.map((issue, i) => (
+        <IssueNotice key={`${issue.code}-${i}`} issue={issue} />
+      ))}
+    </Box>
+  );
+}
+
+/** What cells beyond a color range (its range, its first and last stop, or its classes' outer ends) draw: the end
+ * colors, or nothing. */
 function OutsideRow() {
   const { t } = useTranslation("common");
   const store = useEditor();

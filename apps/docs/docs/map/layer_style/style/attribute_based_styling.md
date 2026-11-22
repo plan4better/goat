@@ -116,9 +116,10 @@ A value you change in a class row stays when the server computes the classes aga
 | <code>Natural breaks</code> | Breaks where the values jump (Jenks). | Values that form groups. |
 | <code>Standard deviation</code> | Classes around the mean ([Standard Deviation](https://www.plan4better.de/en/glossary/standard-deviation-classification)). | Showing how far features lie from the average; works best with normally distributed data. |
 | <code>Head/tail breaks</code> | For values where a few are very large. | Skewed data where the extremes matter. |
+| <code>Geometric intervals</code> | Classes that grow wider by the same factor. Only for fields whose values all lie above 0; otherwise the method is not available. | Values that grow by orders of magnitude, such as population or prices. |
 | <code>Manual breaks</code> | You type the lower bound of each class. | Thresholds of your own, the same across maps. |
 
-<code>Classes</code> sets how many: from <code>2 classes</code> to <code>12 classes</code> for numbers (5 by default), and <code>All values</code> or the most frequent ones (<code>Top 3</code> to <code>Top 12</code>) for categories.
+<code>Classes</code> sets how many: from <code>2 classes</code> to <code>13 classes</code> for numbers (5 by default), and <code>All values</code> (up to 256) or the most frequent ones (<code>Top 3</code> to <code>Top 12</code>) for categories.
 
 ### Several classifications
 

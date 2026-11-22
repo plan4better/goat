@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from goatlib.raster.formula import FormulaError, parse_formula
+from goatlib.raster.formula import FormulaError, parse_formula, single_band
 
 
 def _bands(**values: list[float]) -> dict[int, np.ndarray]:
@@ -59,3 +59,27 @@ def test_division_by_zero_and_invalid_values_are_no_data() -> None:
         _bands(b1=[0, 1, np.nan], b2=[0, -1, 1])
     )
     assert np.isnan(out).all()
+
+
+@pytest.mark.parametrize(
+    ("expression", "band"),
+    [
+        ("b2", 2),
+        (" b2 ", 2),
+        ("b02", 2),
+        ("b12", 12),
+        ("b2 + 0", None),
+        ("(b2)", None),
+        ("-b2", None),
+        ("b2 b3", None),
+        ("B2", None),
+        ("2", None),
+        ("", None),
+    ],
+)
+def test_a_formula_of_one_band_alone_is_that_band(
+    expression: str, band: int | None
+) -> None:
+    """Shared by the style check and geoapi's raster info, and as the style
+    panel takes it (`wholeBand`): only a band's name alone, however typed."""
+    assert single_band(expression) == band

@@ -69,7 +69,52 @@ describe("rasterColorSpec", () => {
         { from: 10, to: 20, color: null },
         { from: 20, color: "#123456" },
       ],
+      domain: null,
+      outside: "clamp",
     });
+    // Values outside left out: the classes carry their own outer ends and the range they end at otherwise; with the end
+    // colors, the outer ends are left out (the first and last class are open).
+    const ends = {
+      type: "continuous",
+      palette: ["#000000", "#ffffff"],
+      computed: { domain: [-5, 40] },
+      classify: {
+        method: "manual",
+        classes: [
+          { from: 2, to: 10 },
+          { from: 10, to: 30 },
+        ],
+      },
+    };
+    expect(rasterColorSpec({ ...ends, outside: "hide" })).toMatchObject({
+      classes: [
+        { from: 2, to: 10 },
+        { from: 10, to: 30 },
+      ],
+      domain: [-5, 40],
+      outside: "hide",
+    });
+    expect(rasterColorSpec(ends)).toMatchObject({
+      classes: [{ to: 10 }, { from: 10 }],
+      domain: null,
+      outside: "clamp",
+    });
+    // One computed class (geometric intervals over values at or below 0): drawn as that class, not as the ramp.
+    expect(
+      rasterColorSpec({
+        type: "continuous",
+        palette: ["#000000", "#ffffff"],
+        classify: { method: "geometric_interval", count: 5, classes: [{}], computed: { at: "t", data: "x" } },
+      })
+    ).toMatchObject({ kind: "classes", classes: [{ color: "#777777" }] });
+    // Classes listed by position the server stamped without bounds (a band without values): the ramp stands in.
+    expect(
+      rasterColorSpec({
+        type: "continuous",
+        palette: ["#000000", "#ffffff"],
+        classify: { method: "quantile", count: 3, classes: [{}, {}, {}], computed: { at: "t", data: "x" } },
+      })
+    ).toMatchObject({ kind: "ramp" });
     expect(rasterColorSpec({ type: "continuous", domain: [0, 1] })).toMatchObject({
       kind: "ramp",
       colors: expect.any(Array),

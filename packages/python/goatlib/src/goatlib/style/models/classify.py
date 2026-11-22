@@ -25,6 +25,7 @@ NUMERIC_METHODS = (
     "natural_breaks",
     "std_dev",
     "heads_and_tails",
+    "geometric_interval",
 )
 Method = Literal[
     "categories",
@@ -33,6 +34,7 @@ Method = Literal[
     "natural_breaks",
     "std_dev",
     "heads_and_tails",
+    "geometric_interval",
     "manual",
 ]
 NumericMethod = Literal[
@@ -41,6 +43,7 @@ NumericMethod = Literal[
     "natural_breaks",
     "std_dev",
     "heads_and_tails",
+    "geometric_interval",
     "manual",
 ]
 

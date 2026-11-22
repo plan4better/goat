@@ -32,7 +32,13 @@ export type RasterColorSpec =
       kind: "classes";
       band: Band;
       noData: number[];
+      /** With `clamp` the first and last class are open (their outer `from` and `to` are left out); with `hide` they
+       * end at their own `from` and `to`, else at `domain`, else at the band's minimum and maximum, the last one holding
+       * its end (`classReach`). */
       classes: Array<{ from?: number; to?: number; color: string | null }>;
+      /** null: the band's minimum and maximum; only `hide` reads it. */
+      domain: [number, number] | null;
+      outside: Outside;
     }
   | {
       kind: "categories";
@@ -84,18 +90,53 @@ export interface RasterDataRange {
   range?: readonly number[] | null;
 }
 
+/** A domain as its lowest and highest value (a reversed domain covers the same values). */
+const sorted = (d: unknown): [number, number] | undefined =>
+  Array.isArray(d) && d.length === 2 && d.every(num)
+    ? [Math.min(d[0], d[1]), Math.max(d[0], d[1])]
+    : undefined;
+
 /** The minimum and maximum that close a raster class list's open first and last class wherever their names show (the
- * legend, the popup's class, the panel's rows). Classes draw every cell beyond the color range in the first and last
- * class, whatever `outside` says, so the ends read the data's: the band's (`data`), else the range the check computed.
- * Undefined where none is known: the ends read by their bound alone ("Under 49.4", "101.6 and more"). */
+ * legend, the popup's class, the panel's rows), as the map draws them. With the end colors outside (`clamp`) the first
+ * and last class hold every cell beyond, so the ends read the data's: the band's (`data`), else the range the check
+ * computed. With `outside: "hide"` they read where the drawing stops: the first class's own `from` and the last
+ * class's own `to`, else the color range (`domain`, else the computed one), else the data's. Undefined where none is
+ * known: the ends read by their bound alone ("Under 49.4", "101.6 and more"). */
 export function classEnds(render: JsonObject, data: RasterDataRange = {}): [number, number] | undefined {
   const band = render.band ?? 1;
   const stats = num(band) ? data.info?.stats.find((b) => b.index === band) : undefined;
-  return (
-    span(stats ? [stats.min, stats.max] : undefined) ??
-    span(data.range) ??
-    span(isObject(render.computed) ? render.computed.domain : undefined)
-  );
+  const computed = isObject(render.computed) ? render.computed.domain : undefined;
+  const values = span(stats ? [stats.min, stats.max] : undefined) ?? span(data.range) ?? span(computed);
+  if (render.outside !== "hide") return values;
+  const range = sorted(render.domain) ?? sorted(computed) ?? values;
+  const written =
+    isObject(render.classify) && Array.isArray(render.classify.classes) ? render.classify.classes : [];
+  const classes = written.filter(isObject);
+  const first = classes[0]?.from;
+  const last = classes[classes.length - 1]?.to;
+  const lo = num(first) ? first : range?.[0];
+  const hi = num(last) ? last : range?.[1];
+  return lo !== undefined && hi !== undefined ? [lo, hi] : undefined;
+}
+
+/** Where each class of a coloring's classes starts and ends as the map draws them (goatlib.raster.color `_classes`):
+ * `[from, to)`; with `clamp` the first and last class are open; with `hide` they end at their own `from` and `to`, else
+ * at the coloring's domain, else at `range` (the band's minimum and maximum), and the last one holds its end
+ * (`closed`). An end that stays unknown is open. */
+export function classReach(
+  spec: { classes: Array<{ from?: number; to?: number }>; domain: [number, number] | null; outside: Outside },
+  range?: readonly number[] | null
+): Array<{ from?: number; to?: number; closed: boolean }> {
+  const hide = spec.outside === "hide";
+  const ends = sorted(spec.domain) ?? sorted(range);
+  const last = spec.classes.length - 1;
+  return spec.classes.map((c, i) => {
+    const outerFrom = i === 0;
+    const outerTo = i === last;
+    const from = outerFrom ? (hide ? (c.from ?? ends?.[0]) : undefined) : c.from;
+    const to = outerTo ? (hide ? (c.to ?? ends?.[1]) : undefined) : c.to;
+    return { from, to, closed: hide && outerTo && to !== undefined };
+  });
 }
 
 /** The color of each class of a raster classification (spec 9.4), hidden ones too: its own, else the color goatlib
@@ -164,19 +205,29 @@ export function rasterColorSpec(render: JsonObject): RasterColorSpec | null {
   const classify = isObject(render.classify) ? render.classify : null;
   const written = (classify && Array.isArray(classify.classes) ? classify.classes : []).filter(isObject);
   const manual = (classify?.method ?? "manual") === "manual";
-  // Computed classes draw once the server filled their bounds; until then the color range stands in.
-  const bounded = written.length > 0 && (manual || written.some((c) => num(c.from) || num(c.to)));
+  // Computed classes draw once the server filled their bounds, or computed a single class, which has none (geometric
+  // intervals over values at or below 0); until then the color range stands in.
+  const bounded =
+    written.length > 0 &&
+    (manual ||
+      (written.length === 1 && isObject(classify?.computed)) ||
+      written.some((c) => num(c.from) || num(c.to)));
   if (classify && bounded) {
     const colors = classColors(classify, palette, render.reverse);
+    const hide = outside === "hide";
+    const last = written.length - 1;
     return {
       kind: "classes",
       band,
       noData,
+      // With the end colors outside, the first and last class are open whatever ends they carry.
       classes: written.map((c, i) => ({
-        ...(num(c.from) ? { from: c.from } : {}),
-        ...(num(c.to) ? { to: c.to } : {}),
+        ...(num(c.from) && (i > 0 || hide) ? { from: c.from } : {}),
+        ...(num(c.to) && (i < last || hide) ? { to: c.to } : {}),
         color: c.visible === false ? null : colors[i],
       })),
+      domain: hide ? domain : null,
+      outside,
     };
   }
   const colors = paletteColors(palette);

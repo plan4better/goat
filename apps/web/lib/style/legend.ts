@@ -12,7 +12,7 @@ import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { PROPERTY_KINDS } from "@/lib/style/generated/properties";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
-import { classEnds, rasterColorSpec } from "@/lib/style/raster/color";
+import { classEnds, classReach, rasterColorSpec } from "@/lib/style/raster/color";
 
 type Part = Record<string, unknown>;
 
@@ -604,6 +604,9 @@ function rasterSections(
   }
   if (spec.kind === "classes") {
     const written = list(isObject(render.classify) ? render.classify.classes : undefined);
+    // Each class's values as the map draws them: with values outside left out, the first and last end where the
+    // drawing stops (`classReach`).
+    const reach = classReach(spec, valueRange);
     const entries = spec.classes.flatMap((c, i): LegendEntry[] =>
       c.color === null || written[i]?.legend === false
         ? []
@@ -612,15 +615,15 @@ function rasterSections(
               id: typeof written[i]?.id === "string" ? (written[i].id as string) : String(i),
               ...(typeof written[i]?.name === "string" ? { name: written[i].name as string } : {}),
               range: {
-                ...(c.from !== undefined ? { from: c.from } : {}),
-                ...(c.to !== undefined ? { to: c.to } : {}),
+                ...(reach[i].from !== undefined ? { from: reach[i].from } : {}),
+                ...(reach[i].to !== undefined ? { to: reach[i].to } : {}),
               },
               swatch: fill(c.color),
             },
           ]
     );
-    // The band's minimum and maximum close an open first or last class, as the data's do a classification's
-    // (`classEnds`).
+    // The band's minimum and maximum close an open first or last class, as the data's do a classification's; with
+    // values outside left out, where the drawing stops (`classEnds`).
     const domain = classEnds(render, { range: valueRange });
     return entries.length
       ? [{ kind: "entries", id: "raster", entries, ...(domain ? { domain } : {}), ...(unit ? { unit } : {}) }]

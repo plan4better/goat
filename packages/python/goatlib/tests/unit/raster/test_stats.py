@@ -112,6 +112,14 @@ def test_precomputed_breaks_cover_every_method_and_count() -> None:
 
     values = np.random.default_rng(7).normal(250, 50, 20_000)
     out = precomputed_breaks(values)
+    assert BREAK_METHODS == (
+        "quantile",
+        "natural_breaks",
+        "std_dev",
+        "geometric_interval",
+    )
+    # The other product's class counts: 3 to 13.
+    assert list(BREAK_COUNTS) == list(range(3, 14))
     assert tuple(out) == BREAK_METHODS
     for method, by_count in out.items():
         assert list(by_count) == [str(n) for n in BREAK_COUNTS]
@@ -123,6 +131,61 @@ def test_precomputed_breaks_cover_every_method_and_count() -> None:
                 assert 0 < len(breaks) <= int(count) - 1, count
             else:
                 assert len(breaks) == int(count) - 1, (method, count)
+
+
+def test_a_whole_number_bands_breaks_are_whole_numbers() -> None:
+    """An 8 bit band's classes break at whole numbers, so they read "28 to 84":
+    each break rounded half up, breaks that round together kept once."""
+    import math
+
+    import numpy as np
+    from goatlib.raster.stats import BREAK_COUNTS, BREAK_METHODS, precomputed_breaks
+    from goatlib.style.compute import stable
+
+    values = np.random.default_rng(4).gamma(2.0, 30.0, 20_000).round().clip(7, 255)
+    plain = precomputed_breaks(values)
+    whole = precomputed_breaks(values, whole=True)
+    assert tuple(whole) == BREAK_METHODS
+    lo, hi = values.min(), values.max()
+    for method in BREAK_METHODS:
+        for count in map(str, BREAK_COUNTS):
+            rounded = sorted(
+                {math.floor(stable(b) + 0.5) for b in plain[method][count]} - {lo, hi}
+            )
+            assert whole[method][count] == [b for b in rounded if lo < b < hi]
+            assert all(float(b).is_integer() for b in whole[method][count])
+    # A band of four codes: quantile breaks that round together give fewer classes.
+    codes = np.repeat([0.0, 1.0, 2.0, 3.0], 500)
+    assert precomputed_breaks(codes, whole=True)["quantile"]["7"] == [1, 2]
+
+
+def whole_number_values_of(dtype: str, scales: tuple = (1.0,), offsets: tuple = (0.0,)):
+    from types import SimpleNamespace
+
+    from goatlib.raster.stats import whole_number_values
+
+    info = SimpleNamespace(dtype=dtype, scales=scales, offsets=offsets)
+    info.scaled = any(s != 1 for s in scales) or any(o != 0 for o in offsets)
+    return whole_number_values(info)
+
+
+def test_whole_number_bands_are_integer_and_unscaled() -> None:
+    assert whole_number_values_of("uint8") is True
+    assert whole_number_values_of("int16") is True
+    assert whole_number_values_of("float32") is False
+    assert whole_number_values_of("uint16", scales=(0.01,)) is False
+    assert whole_number_values_of("int16", offsets=(-100.0,)) is False
+
+
+def test_a_band_with_values_at_or_below_zero_has_no_geometric_intervals() -> None:
+    import numpy as np
+    from goatlib.raster.stats import precomputed_breaks
+
+    for low in (0.0, -40.0):
+        values = np.concatenate([[low], np.random.default_rng(5).uniform(1, 900, 999)])
+        out = precomputed_breaks(values)
+        assert out["geometric_interval"] == {}
+        assert len(out["quantile"]["5"]) == 4
 
 
 def test_precomputed_breaks_are_empty_for_a_constant_or_empty_band() -> None:
@@ -143,9 +206,9 @@ def test_a_large_band_is_classified_from_a_fixed_sample(
     classified: list[int] = []
     real = stats._breaks_by
 
-    def spy(sample: np.ndarray, pairs: list[tuple[str, int]]) -> dict:
+    def spy(sample: np.ndarray, pairs: list[tuple[str, int]], *rest: bool) -> dict:
         classified.append(sample.size)
-        return real(sample, pairs)
+        return real(sample, pairs, *rest)
 
     monkeypatch.setattr(stats, "_breaks_by", spy)
     first = stats.precomputed_breaks(values)

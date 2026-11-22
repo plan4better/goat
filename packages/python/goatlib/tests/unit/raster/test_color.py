@@ -93,6 +93,62 @@ def test_classes_a_value_at_a_class_end_falls_in_the_next_and_a_hidden_class_is_
     assert paint(c, 99) == [0, 0, 255, 255]
 
 
+def classes(**extra: Any):
+    base = {
+        "kind": "classes",
+        "band": 1,
+        "classes": [
+            {"to": 10, "color": "#ff0000"},
+            {"from": 10, "to": 20, "color": "#00ff00"},
+            {"from": 20, "color": "#0000ff"},
+        ],
+    }
+    return coloring(**{**base, **extra})
+
+
+def test_classes_hide_the_cells_beyond_their_range_as_a_ramp_does() -> None:
+    """Open first and last classes end at the range (the domain, else the
+    band's): beyond it the end colors draw by default, nothing with hide. The
+    last class holds its end, as a ramp's range does."""
+    hide = classes(domain=[0, 30], outside="hide")
+    assert paint(hide, -1)[3] == 0
+    assert paint(hide, 0) == [255, 0, 0, 255]
+    assert paint(hide, 30) == [0, 0, 255, 255]
+    assert paint(hide, 30.5)[3] == 0
+    clamp = classes(domain=[0, 30], outside="clamp")
+    assert paint(clamp, -1) == [255, 0, 0, 255]
+    assert paint(clamp, 99) == [0, 0, 255, 255]
+    # Without a domain the band's range stands in, as for a ramp.
+    open_range = classes(outside="hide")
+    assert paint(open_range, 4, band_range=(5, 25))[3] == 0
+    assert paint(open_range, 25, band_range=(5, 25)) == [0, 0, 255, 255]
+    assert paint(open_range, 26, band_range=(5, 25))[3] == 0
+    # Neither known: nothing is cut.
+    assert paint(open_range, -500) == [255, 0, 0, 255]
+
+
+def test_classes_with_their_own_outer_ends_hide_beyond_them_or_take_the_end_colors() -> (
+    None
+):
+    own = [
+        {"from": 2, "to": 10, "color": "#ff0000"},
+        {"from": 10, "to": 20, "color": "#00ff00"},
+        {"from": 20, "to": 28, "color": "#0000ff"},
+    ]
+    hide = classes(classes=own, domain=[0, 30], outside="hide")
+    # The classes' own ends come before the range.
+    assert paint(hide, 1)[3] == 0
+    assert paint(hide, 2) == [255, 0, 0, 255]
+    assert paint(hide, 28) == [0, 0, 255, 255]
+    assert paint(hide, 29)[3] == 0
+    clamp = classes(classes=own, outside="clamp")
+    assert paint(clamp, 1) == [255, 0, 0, 255]
+    assert paint(clamp, 50) == [0, 0, 255, 255]
+    # A hidden end class stays hidden beyond its end too.
+    first_hidden = [{**own[0], "color": None}, *own[1:]]
+    assert paint(classes(classes=first_hidden), -9)[3] == 0
+
+
 def test_categories_by_rounded_value_hidden_ones_transparent_the_rest_in_the_other_color() -> (
     None
 ):

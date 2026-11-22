@@ -116,9 +116,10 @@ Einen Wert, den Sie in einer Klassenzeile ändern, behält die Klasse, auch wenn
 | <code>Natürliche Unterbrechungen</code> | Grenzen dort, wo die Werte springen (Jenks). | Werte, die Gruppen bilden. |
 | <code>Standardabweichung</code> | Klassen um den Mittelwert ([Standardabweichung](https://www.plan4better.de/de/glossar/standardabweichung-klassifizierung)). | Zeigen, wie weit Objekte vom Durchschnitt entfernt liegen; am besten bei normalverteilten Daten. |
 | <code>Head/Tail-Breaks</code> | Für Werte, bei denen wenige sehr groß sind. | Schiefe Daten, bei denen die Extreme zählen. |
+| <code>Geometrische Intervalle</code> | Klassen, die um denselben Faktor breiter werden. Nur für Felder, deren Werte alle über 0 liegen; sonst ist die Methode nicht verfügbar. | Werte, die über Größenordnungen wachsen, etwa Einwohnerzahlen oder Preise. |
 | <code>Manuelle Grenzen</code> | Sie geben die Untergrenze jeder Klasse ein. | Eigene Schwellenwerte, gleich über mehrere Karten. |
 
-<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>12 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> oder die häufigsten (<code>Top 3</code> bis <code>Top 12</code>) bei Kategorien.
+<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>13 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> (bis zu 256) oder die häufigsten (<code>Top 3</code> bis <code>Top 12</code>) bei Kategorien.
 
 ### Mehrere Klassifizierungen
 

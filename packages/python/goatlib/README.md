@@ -355,7 +355,10 @@ stack, so validation runs in core too.
 - **Colors match the browser's of before the service** (`color.py`): a ramp is a
   256-color lookup, stops blend or take the nearest, classes are `[from, to)`,
   categories match the rounded value; no data (the file's, with float32 rounding,
-  NaN, the style's values) is transparent.
+  NaN, the style's values) is transparent. `outside` works for classes as for a
+  ramp: with `clamp` the first and last class are open, with `hide` they end at
+  their own `from` and `to`, else at the token's `domain`, else at the band's
+  range (the last holding its end), and the cells beyond are transparent.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
   statistics, so a style panel switches methods without asking. They are the
@@ -366,15 +369,23 @@ stack, so validation runs in core too.
   every pod must give the same digits), from at most 100,000 of the overview's
   values drawn with a fixed seed (`classified_sample`). The style check
   classifies a band or formula with every method but equal intervals
-  (quantiles, natural breaks, standard deviation, heads and tails) over the same
-  sample of the whole band, whatever the style's `render.domain`, so the breaks a panel offers are the classes a
-  saved style gets; only equal intervals use the domain (they split it), and
-  without one read the ends of all the overview's values. A count's list can be
-  shorter than its count less one, or empty (equal breaks merge; standard
-  deviation leaves out breaks outside the data). geoapi reads every band's
-  values in one overview read (`RasterSource.band_samples`, the values `sample`
-  gives each band) with `remember_failures` off, so a failed read for the breaks
-  never marks the file failing for its tiles.
+  (quantiles, natural breaks, standard deviation, geometric intervals, heads
+  and tails) over the same sample of the whole band, whatever the style's
+  `render.domain`, so the breaks a panel offers are the classes a saved style
+  gets; only equal intervals use the domain (they split it), and without one
+  read the ends of all the overview's values. A count's list can be shorter
+  than its count less one, or empty (equal breaks merge; standard deviation
+  leaves out breaks outside the data). Counts run from 3 to 13; geometric
+  intervals need every value above 0, so a band reaching 0 or below has none
+  (`{}`). A file of whole numbers (`whole_number_values`: an integer type,
+  neither scaled nor offset) gets whole-number breaks for its bands, rounded
+  half up and kept once, in the info and the check alike; formulas keep theirs,
+  except a formula of one band alone (`b2`, ` b2 `, `b02`: `single_band` in
+  `formula.py`, which both take), which is that band. geoapi reads the band's
+  values alone
+  (`RasterSource.sample` of `b<n>`, as the check reads them) with
+  `remember_failures` off, so a failed read for the breaks never marks the
+  file failing for its tiles.
 - **An alpha band is the image's transparency, not a band of values**
   (`source.py`, `RasterInfo.value_bands`): rio-tiler reads it as the other
   bands' mask, so statistics, band samples, class breaks and point values cover

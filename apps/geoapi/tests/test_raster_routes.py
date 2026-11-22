@@ -225,6 +225,37 @@ def test_a_raster_layers_tile_is_colored_by_the_token(client: TestClient) -> Non
     assert FakeSource.tiles == [(12, 2178, 1420, "ramp", (100.0, 400.0))]
 
 
+@pytest.mark.parametrize(
+    ("outside", "domain", "band_range"),
+    [("hide", None, (100.0, 400.0)), ("hide", [0, 30], None), ("clamp", None, None)],
+)
+def test_classes_that_hide_values_outside_get_the_bands_range_without_a_domain(
+    client: TestClient,
+    outside: str,
+    domain: list[float] | None,
+    band_range: tuple[float, float] | None,
+) -> None:
+    """Classes whose outside cells are hidden end at their domain, else at the
+    band's range, as a ramp; with the end colors they need neither."""
+    token = encode_token(
+        {
+            "v": 1,
+            "kind": "classes",
+            "band": 1,
+            "noData": [],
+            "classes": [
+                {"to": 200, "color": "#000000"},
+                {"from": 200, "color": "#ffffff"},
+            ],
+            "domain": domain,
+            "outside": outside,
+        }
+    )
+    r = client.get(f"/collections/{LAYER}/raster/tiles/12/2178/1420.webp?style={token}")
+    assert r.status_code == 200
+    assert FakeSource.tiles == [(12, 2178, 1420, "classes", band_range)]
+
+
 def test_the_same_tile_again_is_not_modified(client: TestClient) -> None:
     etag = client.get(TOKEN_TILE).headers["etag"]
     again = client.get(TOKEN_TILE, headers={"If-None-Match": etag})
@@ -322,6 +353,24 @@ def test_info_carries_breaks_computed_once(client: TestClient) -> None:
     assert list(band["breaks"]) == list(BREAK_METHODS)
     assert list(band["breaks"]["quantile"]) == [str(n) for n in BREAK_COUNTS]
     assert band["breaks"]["quantile"]["4"] == [25.75, 50.5, 75.25]
+    # 1 to 100 in three geometric classes: the ratio is 100 ** (1 / 3).
+    assert band["breaks"]["geometric_interval"]["3"] == [4.64158883361, 21.5443469003]
+    assert list(band["breaks"]["natural_breaks"])[-1] == "13"
+
+
+def test_info_has_no_geometric_intervals_for_a_band_reaching_zero(
+    client: TestClient,
+) -> None:
+    """Geometric intervals need every value above 0: a band with negative
+    values (a terrain model below sea level) gets none, the other methods
+    theirs."""
+    import numpy as np
+
+    values = np.arange(-20, 81, dtype="float64")
+    with patch.object(FakeSource, "sample", lambda self, formula: values):
+        [band] = client.get(f"/collections/{LAYER}/raster/info?band=1").json()["bands"]
+    assert band["breaks"]["geometric_interval"] == {}
+    assert len(band["breaks"]["quantile"]["5"]) == 4
 
 
 def test_info_breaks_are_those_a_style_check_writes(client: TestClient) -> None:

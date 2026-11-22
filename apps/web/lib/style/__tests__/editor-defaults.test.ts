@@ -17,7 +17,7 @@ describe("menu numbers", () => {
     expect(withStored([2, 3, 5], Number.NaN)).toEqual([2, 3, 5]);
   });
 
-  it("class counts run from 2 to 12", () => {
-    expect(CLASS_COUNTS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  it("class counts run from 2 to 13", () => {
+    expect(CLASS_COUNTS).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 });

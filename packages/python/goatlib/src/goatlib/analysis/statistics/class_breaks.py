@@ -34,7 +34,7 @@ def calculate_class_breaks(
         table_name: Fully qualified table name (e.g., "lake.my_table")
         attribute: Numeric column name to classify
         method: Classification method (quantile, equal_interval, standard_deviation,
-            heads_and_tails, natural_breaks); the definitions are the GOAT Style
+            heads_and_tails, natural_breaks, geometric_interval); the definitions are the GOAT Style
             specification's (section 5.8)
         num_breaks: Number of classification breaks to calculate
         where_clause: SQL WHERE clause condition (default: "TRUE" for all rows)
@@ -129,6 +129,10 @@ def calculate_class_breaks_by_count(
     elif method == ClassBreakMethod.equal_interval:
         found = {
             n: _calculate_equal_interval_breaks(min_val, max_val, n) for n in counts
+        }
+    elif method == ClassBreakMethod.geometric_interval:
+        found = {
+            n: _calculate_geometric_interval_breaks(min_val, max_val, n) for n in counts
         }
     elif method == ClassBreakMethod.standard_deviation:
         found = {
@@ -230,6 +234,28 @@ def _calculate_equal_interval_breaks(
     interval = (max_val - min_val) / (num_breaks + 1)
     breaks = [min_val + interval * i for i in range(1, num_breaks + 1)]
     return [float(b) for b in breaks]
+
+
+def _calculate_geometric_interval_breaks(
+    min_val: float, max_val: float, num_breaks: int
+) -> list[float]:
+    """Calculate geometric interval breaks.
+
+    Returns num_breaks internal break points of num_breaks + 1 classes whose
+    widths grow by a constant ratio from the minimum: the breaks are
+    min x (max / min)^(k / classes). Needs every value above 0; with a value at
+    or below 0, or a single value, there are no breaks. Computed in log space,
+    so a tiny minimum under a large maximum cannot overflow; the ends are read
+    as floats (a DECIMAL column's are Decimal).
+
+    For example, with min=1, max=1000, num_breaks=2: breaks = [10, 100]
+    """
+    low, high = float(min_val), float(max_val)
+    if low <= 0 or low == high:
+        return []
+    classes = num_breaks + 1
+    start, end = math.log(low), math.log(high)
+    return [math.exp(start + (end - start) * k / classes) for k in range(1, classes)]
 
 
 def _calculate_std_dev_breaks(

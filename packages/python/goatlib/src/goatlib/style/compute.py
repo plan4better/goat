@@ -706,17 +706,9 @@ def apply_computed(
         if isinstance(breaks, Breaks) and breaks.min is not None:
             generated = _numeric(c, breaks, geometry, ids)
             domain = [breaks.min, breaks.max]
-            if breaks.merged:
-                n = len(breaks.breaks) + 1
-                got = "1 class" if n == 1 else f"{n} classes"
-                notes.append(
-                    make_issue(
-                        "classes_merged",
-                        to_pointer(["classify", item_key(c, ci)]),
-                        f"Equal breaks merged: {got} instead of "
-                        f"{_count(c) or DEFAULT_COUNT}.",
-                    )
-                )
+            fewer = _fewer_classes(c, breaks, to_pointer(["classify", item_key(c, ci)]))
+            if fewer is not None:
+                notes.append(fewer)
         elif isinstance(top, list) and any(v is not None for v, _ in top):
             generated = _categories(c, top, geometry, ids)
         else:
@@ -786,6 +778,25 @@ def _apply_h3(doc: dict[str, Any], stats: StatResults, stamp: dict[str, Any]) ->
     render["computed"] = {**stamp, "resolutions": resolutions}
 
 
+def _fewer_classes(c: dict[str, Any], b: Breaks, pointer: str) -> Issue | None:
+    """The note of numeric classes fewer than asked (5.8): geometric intervals
+    over values at or below 0 make one class, and equal breaks merge."""
+    asked = _count(c) or DEFAULT_COUNT
+    if c.get("method") == "geometric_interval" and b.min is not None and b.min <= 0:
+        return make_issue(
+            "classes_merged",
+            pointer,
+            f"Geometric intervals need values above 0: 1 class instead of {asked}.",
+        )
+    if not b.merged:
+        return None
+    n = len(b.breaks) + 1
+    got = "1 class" if n == 1 else f"{n} classes"
+    return make_issue(
+        "classes_merged", pointer, f"Equal breaks merged: {got} instead of {asked}."
+    )
+
+
 def _no_band_values(path: list[str]) -> Issue:
     return make_issue(
         "no_values", to_pointer(path), "The band has no values in this raster."
@@ -827,16 +838,9 @@ def _apply_raster(
     breaks = stats.get(breaks_key)
     if isinstance(breaks, Breaks) and breaks.min is not None:
         generated = _raster_classes(c, render, breaks, existing_ids(doc))
-        if breaks.merged:
-            n = len(breaks.breaks) + 1
-            got = "1 class" if n == 1 else f"{n} classes"
-            notes.append(
-                make_issue(
-                    "classes_merged",
-                    "/render/classify",
-                    f"Equal breaks merged: {got} instead of {_count(c) or DEFAULT_COUNT}.",
-                )
-            )
+        fewer = _fewer_classes(c, breaks, "/render/classify")
+        if fewer is not None:
+            notes.append(fewer)
     else:
         if isinstance(breaks, Breaks):
             notes.append(_no_band_values(["render", "classify"]))

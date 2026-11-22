@@ -430,7 +430,7 @@ describe("value tiles", () => {
   });
 
   it("covers every value case of the contract", () => {
-    expect(VALUE_CASES.length).toBe(12);
+    expect(VALUE_CASES.length).toBe(15);
   });
 
   it("places every contract case's colors on its codes", () => {
@@ -609,6 +609,33 @@ describe("value tiles", () => {
     expect(problem(stops, codeOf(values, 200), "#000000")).toBeNull();
     expect(problem(stops, codeOf(values, 600), "#ffffff")).toBeNull();
     expect(problem(stops, codeOf(values, 600.01), null)).toBeNull();
+  });
+
+  it("hides what lies beyond classes with values outside left out, the last class holding its end", () => {
+    const values = encoded(-(2 ** -14), 2 ** -14, [0, 1000]);
+    const render = {
+      type: "continuous",
+      palette: ["#ff0000", "#0000ff"],
+      outside: "hide",
+      classify: { method: "quantile", count: 2, classes: [{ to: 400 }, { from: 400 }] },
+      computed: { at: "t", data: "url:x", domain: [200, 600] },
+    };
+    const stops = reliefStops(coloring(render), values) as ReliefStop[];
+    expect(problem(stops, codeOf(values, 199.99), null)).toBeNull();
+    expect(problem(stops, codeOf(values, 200), "#ff0000")).toBeNull();
+    expect(problem(stops, codeOf(values, 600), "#0000ff")).toBeNull();
+    expect(problem(stops, codeOf(values, 600.01), null)).toBeNull();
+    // Without a range of the style's, the values' range (the band's) stands in, as for a ramp.
+    const { computed: _computed, ...open } = render;
+    const banded = encoded(-(2 ** -14), 2 ** -14, [100, 900]);
+    const openStops = reliefStops(coloring(open), banded) as ReliefStop[];
+    expect(problem(openStops, codeOf(banded, 99.99), null)).toBeNull();
+    expect(problem(openStops, codeOf(banded, 900), "#0000ff")).toBeNull();
+    // The end colors outside: every cell beyond takes the first or last class.
+    const { outside: _outside, ...clamped } = render;
+    const clampStops = reliefStops(coloring(clamped), values) as ReliefStop[];
+    expect(problem(clampStops, codeOf(values, 10), "#ff0000")).toBeNull();
+    expect(problem(clampStops, codeOf(values, 990), "#0000ff")).toBeNull();
   });
 
   it("gives up past 4096 stops", () => {

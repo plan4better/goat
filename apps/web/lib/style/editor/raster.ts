@@ -5,6 +5,7 @@ import { getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteSteps } from "@/lib/style/palettes";
+import { bandOrFormula } from "@/lib/style/raster/formula";
 import {
   type RasterInfo,
   type ValueSample,
@@ -91,7 +92,20 @@ export function equalClasses(domain: [number, number], count: number): Array<{ f
 export const RANGED_METHODS: readonly string[] = ["continuous", "equal_interval", "manual"];
 
 /** The methods whose breaks the raster service computes for each band (goatlib `BREAK_METHODS`). */
-export const BREAK_METHODS: readonly string[] = ["quantile", "natural_breaks", "std_dev"];
+export const BREAK_METHODS: readonly string[] = [
+  "quantile",
+  "natural_breaks",
+  "std_dev",
+  "geometric_interval",
+];
+
+/** Whether `band` rules geometric intervals out: they need every value above 0 (spec 5.8), and its statistics (a
+ * formula's, where the info was asked for it) say it reaches 0 or below. A band or formula whose statistics are not
+ * known yet has no precomputed breaks instead. */
+export function geometricRefused(info: RasterInfo | undefined, band: unknown): boolean {
+  const range = bandRange(info, bandOrFormula(band));
+  return range !== null && range[0] <= 0;
+}
 
 /** A number as a style check writes it: twelve significant digits (goatlib `stable`). */
 const stable = (x: number) => Number(x.toPrecision(12));
@@ -105,19 +119,34 @@ export function classesFromBreaks(breaks: number[]): Array<{ from?: number; to?:
 }
 
 /** `count` equal classes over a range as a style check computes them (goatlib `compute_raster_stats`), so the saved
- * classes are the ones the panel wrote: unrounded, to twelve digits. */
+ * classes are the ones the panel wrote: unrounded, to twelve digits; on a band of whole numbers (`whole`) each break
+ * rounded half up, breaks that round together kept once (fewer classes). */
 export function equalIntervalClasses(
   [d0, d1]: [number, number],
-  count: number
+  count: number,
+  whole = false
 ): Array<{ from?: number; to?: number }> {
-  const raw = Array.from({ length: count - 1 }, (_, i) => stable(d0 + ((i + 1) * (d1 - d0)) / count));
+  const raw = Array.from({ length: count - 1 }, (_, i) => {
+    const b = stable(d0 + ((i + 1) * (d1 - d0)) / count);
+    return whole ? Math.floor(b + 0.5) : b;
+  });
   const low = stable(d0);
   const high = stable(d1);
   return classesFromBreaks([...new Set(raw)].filter((b) => low < b && b < high).sort((a, b) => a - b));
 }
 
-/** The class counts `method` offers on `band`: those the raster service computed breaks for, none for a band formula;
- * 2 to 12 for equal intervals and manual breaks, which need no breaks. */
+/** Whether `band` holds whole numbers as it is read (goatlib `whole_number_values`): an integer data type, neither
+ * scaled nor offset, and a band rather than a formula (a formula of one band alone, `b2`, is that band). Its computed
+ * class breaks are whole numbers (spec 9.4). */
+export function wholeBand(info: RasterInfo | undefined, band: unknown): boolean {
+  const plain =
+    typeof band === "number" ||
+    (isObject(band) && typeof band.expression === "string" && /^b\d+$/.test(band.expression.trim()));
+  return plain && info?.integer === true && info.scaled !== true;
+}
+
+/** The class counts `method` offers on `band`: those the raster service computed breaks for (3 to 13; for a band
+ * formula, where the info was asked for it); 2 to 13 for equal intervals and manual breaks, which need no breaks. */
 export function breakCounts(info: RasterInfo | undefined, band: unknown, method: string): number[] {
   if (!BREAK_METHODS.includes(method)) return [...CLASS_COUNTS];
   if (typeof band !== "number") return [];
@@ -200,7 +229,12 @@ export function rasterClassesRender(
   }
   if (method === "equal_interval") {
     next.domain = range;
-    next.classify = { method, count, ...own, classes: settle(equalIntervalClasses(range, count)) };
+    next.classify = {
+      method,
+      count,
+      ...own,
+      classes: settle(equalIntervalClasses(range, count, wholeBand(info, render.band ?? 1))),
+    };
     return next;
   }
   const breaks =
@@ -215,6 +249,48 @@ export function rasterClassesRender(
     ...(breaks ? { classes: settle(classesFromBreaks(breaks)) } : {}),
   };
   return next;
+}
+
+/** The render with the first class's lower end (`from`) or the last class's upper end (`to`) typed by hand, as the
+ * panel offers them while values outside are left out (spec 9.4): the classes become manual and keep their inner breaks
+ * and what the author set on them, nothing is computed again. An end on the wrong side of its class's other bound
+ * changes nothing. */
+export function setOuterEnd(render: JsonObject, end: "from" | "to", value: number): JsonObject {
+  const old = classesOf(render);
+  if (!old.length) return render;
+  const last = old.length - 1;
+  const other = end === "from" ? old[0].to : old[last].from;
+  if (typeof other === "number" && (end === "from" ? value >= other : value <= other)) return render;
+  return asManual(render, (i) => ({
+    ...(end === "from" && i === 0 ? { from: value } : {}),
+    ...(end === "to" && i === last ? { to: value } : {}),
+  }));
+}
+
+const classesOf = (render: JsonObject): JsonObject[] => {
+  const classify = isObject(render.classify) ? render.classify : {};
+  return (Array.isArray(classify.classes) ? classify.classes : []).filter(isObject);
+};
+
+/** The render's classes as manual breaks, with the bounds `edit` gives class `i` in place of its own; their own
+ * settings kept, the server's colors and `computed` gone (the palette gives the same colors). */
+function asManual(render: JsonObject, edit: (i: number) => { from?: number; to?: number }): JsonObject {
+  const before = isObject(render.classify) ? render.classify : {};
+  const classes = classesOf(render).map((c, i) => ({
+    ...(typeof c.from === "number" ? { from: c.from } : {}),
+    ...(typeof c.to === "number" ? { to: c.to } : {}),
+    ...edit(i),
+    ...ownSettings(before, c),
+  }));
+  return {
+    ...render,
+    classify: {
+      method: "manual",
+      ...(before.palette !== undefined ? { palette: before.palette } : {}),
+      ...(before.reverse !== undefined ? { reverse: before.reverse } : {}),
+      classes,
+    },
+  };
 }
 
 /** Whether no-data values change the drawing (spec 9): not where the file draws itself, by its color table,

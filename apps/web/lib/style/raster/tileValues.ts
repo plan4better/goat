@@ -6,7 +6,7 @@
 // asks the browser's cache for it under the URL and the Accept header of the map's own request: tiles name their
 // version and are kept for good, so a tile the map loaded is read from the cache. A tile geoapi let no cache keep
 // (`no-store`, as one of another version) is asked for once more.
-import type { RasterColorSpec } from "@/lib/style/raster/color";
+import { type RasterColorSpec, classReach } from "@/lib/style/raster/color";
 import { type RasterValues, TILE_SIZE } from "@/lib/style/raster/values";
 
 /** How a tile is read. */
@@ -420,22 +420,29 @@ type Named<S> = S extends { classes: Array<infer C> }
 export type NamedRasterColorSpec = Named<RasterColorSpec>;
 
 /** The class or category a value is drawn in, as the raster service colors it (goatlib.raster.color `colorize`):
- * classes are [from, to) and the first that holds the value wins; a category holds the values that round to it.
- * "other" for a value in no category that the other color draws; null for a value drawn in no class (in none, in a
- * hidden one, or the style's no data) and for colorings without classes (ramps, stops, images). */
+ * classes are [from, to) and the first that holds the value wins, the first and last reaching as far as `outside` lets
+ * them (`classReach`; `range`, the band's minimum and maximum, where the coloring has no domain); a category holds the
+ * values that round to it. "other" for a value in no category that the other color draws; null for a value drawn in no
+ * class (in none, in a hidden one, beyond the classes with values outside left out, or the style's no data) and for
+ * colorings without classes (ramps, stops, images). */
 export function rasterClassAt(
   spec: NamedRasterColorSpec,
-  value: number
+  value: number,
+  range?: readonly number[] | null
 ): { name?: string; color: string } | "other" | null {
   if (!Number.isFinite(value) || (spec.kind !== "classes" && spec.kind !== "categories")) return null;
   // The style's no data, with the service's tolerance.
   if (spec.noData.some((x) => Math.abs(value - x) <= 1e-6 * Math.max(1, Math.abs(x)))) return null;
-  const found =
-    spec.kind === "classes"
-      ? spec.classes.find(
-          (k) => (k.from === undefined || value >= k.from) && (k.to === undefined || value < k.to)
-        )
-      : spec.classes.find((k) => k.value === Math.round(value));
+  let found: (typeof spec.classes)[number] | undefined;
+  if (spec.kind === "classes") {
+    const reach = classReach(spec, range);
+    found = spec.classes.find((_, i) => {
+      const { from, to, closed } = reach[i];
+      return (
+        (from === undefined || value >= from) && (to === undefined || (closed ? value <= to : value < to))
+      );
+    });
+  } else found = spec.classes.find((k) => k.value === Math.round(value));
   if (!found) return spec.kind === "categories" && spec.other !== null ? "other" : null;
   if (found.color === null) return null;
   return typeof found.name === "string" ? { name: found.name, color: found.color } : { color: found.color };

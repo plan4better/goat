@@ -833,6 +833,8 @@ describe("rasterClassAt", () => {
         { from: 15, to: 30, color: "#333333" },
         { from: 30, to: 40, color: null, name: "Verborgen" },
       ],
+      domain: null,
+      outside: "clamp",
     };
     // Classes are [from, to).
     expect(rasterClassAt(classes, 10)).toEqual({ name: "Mittel", color: "#222222" });
@@ -841,9 +843,25 @@ describe("rasterClassAt", () => {
     expect(rasterClassAt(classes, 17)).toEqual({ name: "Mittel", color: "#222222" });
     // A class without a name.
     expect(rasterClassAt(classes, 20)).toEqual({ color: "#333333" });
-    // A hidden class draws nothing, and a value past every class is in none.
+    // A hidden class draws nothing, also the values past it it holds as the last class.
     expect(rasterClassAt(classes, 35)).toBeNull();
     expect(rasterClassAt(classes, 40)).toBeNull();
+    // Values outside left out: the first and last class end at the domain, else at the band's range, the last holding
+    // its end; with the end colors they hold every value beyond.
+    const shown = {
+      ...classes,
+      classes: classes.classes.slice(0, 3).map((c) => ({ ...c, to: c.to === 30 ? undefined : c.to })),
+    };
+    expect(rasterClassAt(shown, 1000)).toEqual({ color: "#333333" });
+    const hidden: NamedRasterColorSpec = { ...shown, outside: "hide", domain: [-5, 50] };
+    expect(rasterClassAt(hidden, -5)).toEqual({ name: "Niedrig", color: "#111111" });
+    expect(rasterClassAt(hidden, -5.1)).toBeNull();
+    expect(rasterClassAt(hidden, 50)).toEqual({ color: "#333333" });
+    expect(rasterClassAt(hidden, 50.1)).toBeNull();
+    const banded: NamedRasterColorSpec = { ...hidden, domain: null };
+    expect(rasterClassAt(banded, 60, [0, 60])).toEqual({ color: "#333333" });
+    expect(rasterClassAt(banded, 61, [0, 60])).toBeNull();
+    expect(rasterClassAt(banded, 1e9)).toEqual({ color: "#333333" });
 
     const categories: NamedRasterColorSpec = {
       kind: "categories",

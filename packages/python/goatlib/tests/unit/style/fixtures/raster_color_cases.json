@@ -174,7 +174,7 @@
         }
       }
     },
-    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxMTExMTEiLCJ0byI6MjQwfSx7ImNvbG9yIjpudWxsLCJmcm9tIjoyNDAsInRvIjoyNzV9LHsiY29sb3IiOiIjMDAwMGFhIiwiZnJvbSI6Mjc1LCJ0byI6MzAwfSx7ImNvbG9yIjoiI2FhYWEwMCIsImZyb20iOjMwMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxMTExMTEiLCJ0byI6MjQwfSx7ImNvbG9yIjpudWxsLCJmcm9tIjoyNDAsInRvIjoyNzV9LHsiY29sb3IiOiIjMDAwMGFhIiwiZnJvbSI6Mjc1LCJ0byI6MzAwfSx7ImNvbG9yIjoiI2FhYWEwMCIsImZyb20iOjMwMH1dLCJkb21haW4iOm51bGwsImtpbmQiOiJjbGFzc2VzIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0",
     "samples": [
       { "value": 100, "color": "#111111" },
       { "value": 239.5, "color": "#111111" },
@@ -205,7 +205,7 @@
         }
       }
     },
-    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNlNmY2ZWYiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMxNDVjNDIiLCJmcm9tIjoyMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNlNmY2ZWYiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMxNDVjNDIiLCJmcm9tIjoyMH1dLCJkb21haW4iOm51bGwsImtpbmQiOiJjbGFzc2VzIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0",
     "samples": [
       { "value": -5, "color": "#e6f6ef" },
       { "value": 9.5, "color": "#e6f6ef" },
@@ -234,7 +234,7 @@
         }
       }
     },
-    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxNDVjNDIiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiNlNmY2ZWYiLCJmcm9tIjoyMH1dLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sInYiOjF9",
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiMxNDVjNDIiLCJ0byI6MTB9LHsiY29sb3IiOiIjNWZjYTliIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiNlNmY2ZWYiLCJmcm9tIjoyMH1dLCJkb21haW4iOm51bGwsImtpbmQiOiJjbGFzc2VzIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0",
     "samples": [
       { "value": 5, "color": "#145c42" },
       { "value": 15, "color": "#5fca9b" },
@@ -261,12 +261,98 @@
         }
       }
     },
-    "token": "eyJiYW5kIjoiYjIgLSBiMSIsImNsYXNzZXMiOlt7ImNvbG9yIjoiI2ZmMDAwMCIsInRvIjowfSx7ImNvbG9yIjoiIzAwZmYwMCIsImZyb20iOjB9XSwia2luZCI6ImNsYXNzZXMiLCJub0RhdGEiOltdLCJ2IjoxfQ",
+    "token": "eyJiYW5kIjoiYjIgLSBiMSIsImNsYXNzZXMiOlt7ImNvbG9yIjoiI2ZmMDAwMCIsInRvIjowfSx7ImNvbG9yIjoiIzAwZmYwMCIsImZyb20iOjB9XSwiZG9tYWluIjpudWxsLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJjbGFtcCIsInYiOjF9",
     "samples": [
       { "value": -5, "cells": [10, 5], "color": "#ff0000" },
       { "value": 5, "cells": [5, 10], "color": "#00ff00" },
       { "value": 0, "cells": [7, 7], "color": "#00ff00" },
       { "value": null, "cells": [-9999, 5], "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "classes-hide",
+    "about": "Computed classes with values outside transparent: the open first and last class end at the computed range, the last one holding its end.",
+    "style": {
+      "version": "1.0.0",
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": ["#aa0000", "#00aa00", "#0000aa"],
+        "outside": "hide",
+        "classify": {
+          "method": "quantile",
+          "count": 3,
+          "classes": [{ "to": 10 }, { "from": 10, "to": 20 }, { "from": 20 }]
+        },
+        "computed": { "domain": [0, 30], "at": "2026-11-21T10:00:00Z", "data": "url:raster-color-cases" }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNhYTAwMDAiLCJ0byI6MTB9LHsiY29sb3IiOiIjMDBhYTAwIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMwMDAwYWEiLCJmcm9tIjoyMH1dLCJkb21haW4iOlswLDMwXSwia2luZCI6ImNsYXNzZXMiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiaGlkZSIsInYiOjF9",
+    "samples": [
+      { "value": -1, "color": null },
+      { "value": 0, "color": "#aa0000" },
+      { "value": 9.5, "color": "#aa0000" },
+      { "value": 10, "color": "#00aa00" },
+      { "value": 25, "color": "#0000aa" },
+      { "value": 29.5, "color": "#0000aa" },
+      { "value": 31, "color": null },
+      { "value": 1000, "color": null },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "classes-hide-own-ends",
+    "about": "Manual classes with their own outer ends and values outside transparent: the ends come before the range.",
+    "style": {
+      "version": "1.0.0",
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": ["#aa0000", "#00aa00", "#0000aa"],
+        "domain": [0, 30],
+        "outside": "hide",
+        "classify": {
+          "method": "manual",
+          "classes": [{ "from": 5, "to": 10 }, { "from": 10, "to": 20 }, { "from": 20, "to": 25 }]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNhYTAwMDAiLCJmcm9tIjo1LCJ0byI6MTB9LHsiY29sb3IiOiIjMDBhYTAwIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMwMDAwYWEiLCJmcm9tIjoyMCwidG8iOjI1fV0sImRvbWFpbiI6WzAsMzBdLCJraW5kIjoiY2xhc3NlcyIsIm5vRGF0YSI6W10sIm91dHNpZGUiOiJoaWRlIiwidiI6MX0",
+    "samples": [
+      { "value": 4, "color": null },
+      { "value": 5, "color": "#aa0000" },
+      { "value": 15, "color": "#00aa00" },
+      { "value": 24.5, "color": "#0000aa" },
+      { "value": 26, "color": null },
+      { "value": 29, "color": null }
+    ]
+  },
+  {
+    "id": "classes-clamp-own-ends",
+    "about": "The same classes with the end colors outside: the first and last class are open, whatever ends they carry.",
+    "style": {
+      "version": "1.0.0",
+      "kind": "raster",
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": ["#aa0000", "#00aa00", "#0000aa"],
+        "domain": [0, 30],
+        "classify": {
+          "method": "manual",
+          "classes": [{ "from": 5, "to": 10 }, { "from": 10, "to": 20 }, { "from": 20, "to": 25 }]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNhYTAwMDAiLCJ0byI6MTB9LHsiY29sb3IiOiIjMDBhYTAwIiwiZnJvbSI6MTAsInRvIjoyMH0seyJjb2xvciI6IiMwMDAwYWEiLCJmcm9tIjoyMH1dLCJkb21haW4iOm51bGwsImtpbmQiOiJjbGFzc2VzIiwibm9EYXRhIjpbXSwib3V0c2lkZSI6ImNsYW1wIiwidiI6MX0",
+    "samples": [
+      { "value": -100, "color": "#aa0000" },
+      { "value": 4, "color": "#aa0000" },
+      { "value": 15, "color": "#00aa00" },
+      { "value": 26, "color": "#0000aa" },
+      { "value": 1000, "color": "#0000aa" }
     ]
   },
   {

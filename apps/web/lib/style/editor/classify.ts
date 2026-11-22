@@ -97,8 +97,9 @@ export const CATEGORY_COUNT = 8;
  * a categories classification asks for that many, so every value of a field with up to this many gets its class. */
 export const MAX_CLASS_COUNT = 100;
 export const CLASS_COUNT = 5;
-/** The class counts the panel's menus offer; a stored count outside them (spec: 1 to 100) is added (`withStored`). */
-export const CLASS_COUNTS: readonly number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+/** The class counts the panel's menus offer (up to 13, as the raster service computes breaks for); a stored count
+ * outside them (spec: 1 to 256) is added (`withStored`). */
+export const CLASS_COUNTS: readonly number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 
 const isMain = (key: string, geometry?: Geometry) =>
   geometry ? MAIN_COLOR[geometry] === key : Object.values(MAIN_COLOR).includes(key);
@@ -355,6 +356,7 @@ const NUMERIC_METHODS = new Set([
   "natural_breaks",
   "std_dev",
   "heads_and_tails",
+  "geometric_interval",
   "manual",
 ]);
 const family = (method: unknown) => (method === "categories" ? "categories" : "numeric");

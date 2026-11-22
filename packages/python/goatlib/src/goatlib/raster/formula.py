@@ -19,6 +19,7 @@ MAX_LENGTH = 500
 MAX_DEPTH = 32
 
 _TOKEN = re.compile(r"\s*(?:(b\d+)|(\d+(?:\.\d+)?)|([-+*/()]))")
+_BAND_ALONE = re.compile(r"b(\d+)")
 
 
 class FormulaError(ValueError):
@@ -164,6 +165,16 @@ class Formula:
             out = np.asarray(run(self.tree), dtype=dtype)
         out[~np.isfinite(out)] = np.nan
         return out
+
+
+def single_band(expression: str) -> int | None:
+    """The band a formula names alone (`b2`, ` b2 `, `b02`), else None. Such a
+    formula is that band (spec 9.4): its values are the band's as read, whole
+    numbers where the band holds them. Anything more (`(b2)`, `b2 + 0`) is a
+    formula. The style check, geoapi's raster info and the style panel
+    (`wholeBand`) take it the same way."""
+    found = _BAND_ALONE.fullmatch(expression.strip())
+    return int(found[1]) if found else None
 
 
 def parse_formula(expression: str, bands: int | None = None) -> Formula:

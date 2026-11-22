@@ -226,7 +226,7 @@ export function isStyleNoData(style: JsonObject, value: number): boolean {
  * without classes. */
 export function namedRasterSpec(style: JsonObject, texts: RasterTexts = {}): NamedRasterColorSpec | null {
   // Read on every pointer move: kept per document, language, locale and the ends of its open classes.
-  const ends = classEnds(renderOf(style), { info: texts.info, range: texts.described?.range });
+  const ends = endsOf(style, texts);
   const kept = named.get(style);
   if (
     kept &&
@@ -245,6 +245,10 @@ const named = new WeakMap<
   JsonObject,
   { t?: TFunction; locale?: string; ends?: [number, number]; spec: NamedRasterColorSpec | null }
 >();
+
+/** Where a style's classes end, from the file's statistics, else the values the map loaded (`classEnds`). */
+const endsOf = (style: JsonObject, texts: RasterTexts) =>
+  classEnds(renderOf(style), { info: texts.info, range: texts.described?.range });
 
 /** `ends`: what closes the open first and last class (`classEnds`). */
 function nameClasses(
@@ -305,7 +309,8 @@ export function rasterDraws(style: JsonObject, value: number, described?: Raster
   const render = renderOf(style);
   const spec = render.type === "hillshade" ? null : rasterColorSpec(render);
   if (!spec || spec.kind === "rgb") return true;
-  if (spec.kind === "classes" || spec.kind === "categories") return rasterClassAt(spec, value) !== null;
+  if (spec.kind === "classes" || spec.kind === "categories")
+    return rasterClassAt(spec, value, described?.range) !== null;
   if (spec.outside !== "hide") return true;
   if (spec.kind === "stops")
     return value >= spec.stops[0].value && value <= spec.stops[spec.stops.length - 1].value;

@@ -3,7 +3,12 @@
 // `raster-dem` source with the custom encoding under a `color-relief` layer. A color edit is a paint change; the tiles
 // stay. The coloring comes from `rasterColorSpec`, placed here on the codes as stops.
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type RasterColorSpec, rasterColorSpec, rgbOf } from "@/lib/style/raster/color";
+import {
+  type RasterColorSpec,
+  classReach,
+  rasterColorSpec,
+  rgbOf,
+} from "@/lib/style/raster/color";
 import { colorInterpOf, fileName, paletteOf } from "@/lib/style/raster/metadata";
 
 /** The largest code (24 bits). */
@@ -391,14 +396,18 @@ export function reliefStops(
       [1, CLEAR],
       [MAX_Q, CLEAR],
     ];
-    // Classes are [from, to); painted from the last, so the first that holds a value wins.
-    for (const k of [...spec.classes].reverse())
+    // Classes are [from, to), the first and last as far as `outside` lets them (`classReach`, a range not yet known
+    // spread over the values); painted from the last, so the first that holds a value wins.
+    const reach = classReach(spec, values.range);
+    for (let i = spec.classes.length - 1; i >= 0; i--) {
+      const { from, to, closed } = reach[i];
       paint(
         knots,
-        k.from !== undefined ? first(k.from) : 1,
-        k.to !== undefined ? first(k.to) - 1 : MAX_Q,
-        fill(k.color)
+        from !== undefined ? first(from) : 1,
+        to !== undefined ? (closed ? last(to) : first(to) - 1) : MAX_Q,
+        fill(spec.classes[i].color)
       );
+    }
   } else {
     const other = fill(spec.other);
     knots = [

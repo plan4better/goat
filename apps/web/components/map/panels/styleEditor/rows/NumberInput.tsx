@@ -2,9 +2,10 @@
 // report 0 to 1. Numbers show in the panel's language, as the summaries do ("1,5" in German), and a box takes the
 // language's decimal separator or a point. A box grows with its value, so long numbers are never cut; `plain` draws the number as text beside a
 // slider, as wide as its digits, a field on hover and focus. An optional number (`onClear`) may be emptied, its
-// placeholder saying what applies then.
+// placeholder saying what applies then. A box whose number takes effect only as a whole (`commitOnLeave`) reports it
+// when it is left or Enter is pressed, not while it is typed.
 import { Box, InputBase, Typography } from "@mui/material";
-import { type MouseEvent, memo, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { plainNumber } from "@/lib/style/editor/summaries";
@@ -36,6 +37,8 @@ export interface NumberInputProps {
   /** The number is optional: an emptied box reports this. */
   onClear?: () => void;
   onBlur?: () => void;
+  /** Report the number only when the box is left or Enter is pressed: a digit typed on the way is never sent. */
+  commitOnLeave?: boolean;
 }
 
 /** A press on the box around the field (its unit, its paddings) focuses the field with its number selected, ready to
@@ -86,6 +89,7 @@ export const NumberInput = memo(function NumberInput({
   onChange,
   onClear,
   onBlur,
+  commitOnLeave,
 }: NumberInputProps) {
   const { i18n } = useTranslation();
   const language = i18n.language;
@@ -102,6 +106,7 @@ export const NumberInput = memo(function NumberInput({
 
   const type = (text: string) => {
     setDraft(text);
+    if (commitOnLeave) return;
     if (text === "" && onClear) {
       sent.current = undefined;
       onClear();
@@ -114,9 +119,22 @@ export const NumberInput = memo(function NumberInput({
     onChange(next);
   };
   const leave = () => {
+    if (commitOnLeave) {
+      // The number as a whole; the box shows the value there is until the answer brings the new one (a refused number
+      // leaves it as it was).
+      const number = parseNumber(draft, language);
+      const next = number === undefined ? undefined : pct ? number / 100 : number;
+      if (next !== undefined && next !== value) onChange(next);
+    }
     setDraft(shown(value, language, pct));
     onBlur?.();
   };
+  // Enter takes the number as leaving the box does.
+  const enter = commitOnLeave
+    ? (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }
+    : undefined;
   const unitText = pct ? "%" : unit;
 
   if (plain)
@@ -167,6 +185,7 @@ export const NumberInput = memo(function NumberInput({
               inputProps={{
                 inputMode: "decimal",
                 "aria-label": ariaLabel,
+                onKeyDown: enter,
                 min,
                 max,
                 style: { width: "100%", padding: 0 },
@@ -197,6 +216,7 @@ export const NumberInput = memo(function NumberInput({
         inputProps={{
           inputMode: "decimal",
           "aria-label": ariaLabel,
+          onKeyDown: enter,
           min,
           max,
           style: { textAlign: "right" },

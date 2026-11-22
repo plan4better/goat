@@ -15,7 +15,7 @@ import { ClassificationEditor } from "@/components/map/panels/styleEditor/editor
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { SymbolSection } from "@/components/map/panels/styleEditor/sections/SymbolSection";
 
-import { choose, openGroup, renderPanel, renderWithProviders } from "./renderPanel";
+import { choose, i18n, openGroup, renderPanel, renderWithProviders } from "./renderPanel";
 
 type Unique = { value: string; count: number };
 /** What the unique values process answers: the most frequent values, and the matches of a search. */
@@ -190,12 +190,12 @@ describe("classification editor", () => {
     return { options, selected: options.findIndex((o) => o.getAttribute("aria-selected") === "true") };
   }
 
-  it("numeric classes offer 2 to 12; a stored count outside them shows and stays", async () => {
+  it("numeric classes offer 2 to 13; a stored count outside them shows and stays", async () => {
     const { store } = shell(doc([{ ...QUANTILE, count: 15 }]));
     const { options, selected } = await countMenu();
-    // 2 to 12, then the stored 15.
-    expect(options).toHaveLength(12);
-    expect(selected).toBe(11);
+    // 2 to 13, then the stored 15.
+    expect(options).toHaveLength(13);
+    expect(selected).toBe(12);
     expect(store.get("classify.0.count")).toBe(15);
     await userEvent.click(options[0]);
     expect(store.get("classify.0.count")).toBe(2);
@@ -204,20 +204,20 @@ describe("classification editor", () => {
   it("numeric classes show a stored 10 as picked", async () => {
     shell(doc([{ ...QUANTILE, count: 10 }]));
     const { options, selected } = await countMenu();
-    expect(options).toHaveLength(11);
+    expect(options).toHaveLength(12);
     expect(selected).toBe(8);
   });
 
-  it("numeric classes show a stored 100 as picked, not as All values", async () => {
-    const { store } = shell(doc([{ ...QUANTILE, count: 100 }]));
+  it("numeric classes show a stored 256 as picked, not as All values", async () => {
+    const { store } = shell(doc([{ ...QUANTILE, count: 256 }]));
     expect(within(rowOf("style_editor.classes")).getByRole("combobox").textContent).toBe(
       "style_editor.count_classes"
     );
     const { options, selected } = await countMenu();
-    // 2 to 12, then the stored 100.
-    expect(options).toHaveLength(12);
-    expect(selected).toBe(11);
-    expect(store.get("classify.0.count")).toBe(100);
+    // 2 to 13, then the stored 256.
+    expect(options).toHaveLength(13);
+    expect(selected).toBe(12);
+    expect(store.get("classify.0.count")).toBe(256);
   });
 
   it("categories show a stored top count the menu lacks as picked", async () => {
@@ -244,6 +244,43 @@ describe("classification editor", () => {
     expect(
       within(screen.getByRole("listbox")).getByText("style_editor.method_heads_and_tails")
     ).toBeDefined();
+  });
+
+  /** The field's profile: its minimum (and a maximum). */
+  const profiled = (min: number): Partial<StyleData> => {
+    const profile = { min, max: 9000 };
+    return { profiles: { get: () => profile, load: () => {}, subscribe: () => () => {} } };
+  };
+  const geometricOption = async () => {
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    return within(screen.getByRole("listbox"))
+      .getByText("style_editor.method_geometric_interval")
+      .closest("li") as HTMLElement;
+  };
+
+  it("Geometric intervals are offered for a field whose values lie above 0", async () => {
+    const { store } = shell(doc([QUANTILE]), { ci: 0 }, profiled(12));
+    const option = await geometricOption();
+    expect(option.getAttribute("aria-disabled")).toBeNull();
+    await userEvent.click(option);
+    expect(store.get("classify.0.method")).toBe("geometric_interval");
+  });
+
+  it("Geometric intervals are disabled with a note for a field reaching 0 or below", async () => {
+    shell(doc([QUANTILE]), { ci: 0 }, profiled(0));
+    const option = await geometricOption();
+    expect(option.getAttribute("aria-disabled")).toBe("true");
+    expect(within(option).getByText("style_editor.geometric_field_below")).toBeDefined();
+  });
+
+  it("the note names the field's lowest value", async () => {
+    i18n.addResource("en", "common", "style_editor.geometric_field_below", "down to {{min}}");
+    try {
+      shell(doc([QUANTILE]), { ci: 0 }, profiled(-12.5));
+      expect(within(await geometricOption()).getByText("down to -12.5")).toBeDefined();
+    } finally {
+      i18n.removeResourceBundle("en", "common");
+    }
   });
 
   it("a hand-picked class color keeps the palette", async () => {

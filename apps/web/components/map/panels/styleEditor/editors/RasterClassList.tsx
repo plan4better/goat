@@ -15,7 +15,7 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 import { coverageUrl } from "@/lib/style/layerSource";
 import { rangeText, valuesText } from "@/lib/style/legend";
 import { paletteColors } from "@/lib/style/palettes";
-import { classColors, classEnds } from "@/lib/style/raster/color";
+import { classColors, classEnds, classReach } from "@/lib/style/raster/color";
 import {
   type HistogramBin,
   type RasterInfo,
@@ -219,15 +219,29 @@ function ClassRows({
   const classes = classesOf(classify.classes);
   const manual = classify.method === "manual";
   const { colors } = renderColors(render);
+  // Each class's values as the map draws them (`classReach`): with the end colors outside, the first and last class
+  // hold every cell beyond, whatever ends they carry; with values outside left out, they end at their own ends, else at
+  // the range (`options.domain`, `classEnds`).
+  const reach = classReach(
+    {
+      classes: classes.map((c) => ({
+        ...(typeof c.from === "number" ? { from: c.from } : {}),
+        ...(typeof c.to === "number" ? { to: c.to } : {}),
+      })),
+      domain: null,
+      outside: render.outside === "hide" ? "hide" : "clamp",
+    },
+    options.domain
+  );
   // The bounds as their boxes show them (two decimals at most), one column wide enough for the longest.
   const reserve = columnChars(classes.slice(1).map((c) => c.from));
   return (
     <>
       {classes.map((c, i) => {
         const path = `render.classify.classes.${i}`;
-        const from = typeof c.from === "number" ? c.from : undefined;
-        const to = typeof c.to === "number" ? c.to : undefined;
+        const { from, to } = reach[i];
         const range = rangeText({ from, to }, options);
+        const share = shareText(rangeShare(bins, from, to), i18n.language);
         const name = typeof c.name === "string" ? c.name : "";
         const hidden = c.visible === false;
         return (
@@ -255,13 +269,13 @@ function ClassRows({
             label={
               <InputBase
                 value={name}
-                placeholder={manual && i > 0 ? rangeAfterBound(c, options, t) : range}
+                placeholder={manual && i > 0 ? rangeAfterBound({ from, to }, options, t) : range}
                 inputProps={{ "aria-label": t("style_editor.class_name") }}
                 onChange={(event) => store.set(`${path}.name`, event.target.value || undefined)}
                 sx={{ minWidth: 0, typography: "body2", "& input": { p: 0 } }}
               />
             }
-            count={shareText(rangeShare(bins, from, to), i18n.language)}
+            count={share}
           />
         );
       })}
@@ -335,8 +349,8 @@ export function RasterClassList({ kind }: { kind: "classes" | "categories" }) {
   const render: JsonObject = isObject(value) ? value : {};
   const info = raster?.info;
   const bins = renderHistogram(render, info);
-  // Open ends read the band's minimum and maximum (a formula's from the values the map loaded), as the legend and the
-  // popup write them (`classEnds`).
+  // Open ends read the band's minimum and maximum (a formula's from the values the map loaded), or with values outside
+  // left out where the drawing stops, as the legend and the popup write them (`classEnds`).
   const address = useStyleSelector((doc) => {
     const query = raster ? valueQuery(doc as unknown as JsonObject) : null;
     return raster && query ? valuesUrl(coverageUrl(raster.dataset), query) : undefined;

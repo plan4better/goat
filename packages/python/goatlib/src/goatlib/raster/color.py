@@ -3,7 +3,8 @@
 The semantics are the browser's before the service existed, vectorized: a ramp
 is a 256-color lookup interpolated in RGB between the palette's colors, stops
 blend linearly or take the nearest stop, classes are `[from, to)` with the first
-match winning, categories match the rounded value. No-data (the file's value
+match winning (the first and last class reach as far as `outside` lets them),
+categories match the rounded value. No-data (the file's value
 with its float32 rounding, NaN, masked cells and the style's values) is
 transparent. Opacity and image adjustments stay paint properties in the browser.
 """
@@ -125,14 +126,30 @@ def _stops(c: Stops, v: np.ndarray) -> Painted:
     return out, hidden
 
 
-def _classes(c: Classes, v: np.ndarray) -> Painted:
+def _classes(
+    c: Classes, v: np.ndarray, band_range: tuple[float, float] | None
+) -> Painted:
+    """Classes `[from, to)`, the first that holds a value winning. With `clamp`
+    the first and last class are open, so the cells beyond take their colors;
+    with `hide` they end at their own `from` and `to`, else at the range (the
+    domain, else the band's minimum and maximum, as a ramp's), the last one
+    holding its end, and the cells beyond are transparent."""
     out = np.zeros(v.shape + (3,), dtype="float64")
     hidden = np.ones(v.shape, dtype=bool)
     taken = np.zeros(v.shape, dtype=bool)
-    for k in c.classes:
-        lo = -np.inf if k.from_ is None else k.from_
-        hi = np.inf if k.to is None else k.to
-        match = ~taken & (v >= lo) & (v < hi)
+    hide = c.outside == "hide"
+    ends = c.domain or band_range
+    lowest, highest = (min(ends), max(ends)) if ends else (-np.inf, np.inf)
+    last = len(c.classes) - 1
+    for i, k in enumerate(c.classes):
+        lo = -np.inf if k.from_ is None or (i == 0 and not hide) else k.from_
+        hi = np.inf if k.to is None or (i == last and not hide) else k.to
+        if hide and i == 0 and k.from_ is None:
+            lo = lowest
+        if hide and i == last and k.to is None:
+            hi = highest
+        below = v <= hi if hide and i == last else v < hi
+        match = ~taken & (v >= lo) & below
         taken |= match
         if k.color is not None:
             out[match] = _rgb(k.color)
@@ -224,7 +241,7 @@ def colorize(
     elif isinstance(coloring, Stops):
         rgb, hidden = _stops(coloring, v)
     elif isinstance(coloring, Classes):
-        rgb, hidden = _classes(coloring, v)
+        rgb, hidden = _classes(coloring, v, band_range)
     else:
         rgb, hidden = _categories(coloring, v)
     return _rgba(rgb, hidden | bad)

@@ -2,6 +2,8 @@
 band's range and classes from the band's values, written like a vector style's."""
 
 import copy
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -27,6 +29,30 @@ def compute(doc: dict[str, Any], stats: dict) -> tuple[dict[str, Any], list]:
     )
     assert [i for i in validate(out, ELEVATION) if i.level == "error"] == []
     return out, notes
+
+
+def test_geometric_intervals_of_a_band_reaching_zero_make_one_class_and_say_why() -> (
+    None
+):
+    doc, notes = compute(
+        raster(
+            type="continuous",
+            palette="goat:elevation",
+            classify={"method": "geometric_interval", "count": 5},
+        ),
+        {
+            ("range", "b1"): (-3.0, 90.0),
+            ("breaks", "b1", "geometric_interval", "5"): Breaks((), -3.0, 90.0, False),
+        },
+    )
+    assert len(doc["render"]["classify"]["classes"]) == 1
+    assert [(n.code, n.path, n.message) for n in notes] == [
+        (
+            "classes_merged",
+            "/render/classify",
+            "Geometric intervals need values above 0: 1 class instead of 5.",
+        )
+    ]
 
 
 def test_a_palette_without_a_domain_needs_the_bands_range() -> None:
@@ -219,7 +245,7 @@ def test_a_raster_style_computed_from_another_file_is_stale() -> None:
     assert not is_stale(raster(type="image"), "url:abc")
 
 
-@pytest.mark.parametrize("method", ["quantile", "natural_breaks"])
+@pytest.mark.parametrize("method", ["quantile", "natural_breaks", "geometric_interval"])
 @pytest.mark.parametrize("band", [None, NDVI], ids=["band", "formula"])
 def test_precomputed_breaks_match_a_style_check(
     method: str, band: dict[str, str] | None
@@ -254,6 +280,109 @@ def test_precomputed_breaks_match_a_style_check(
     assert written == precomputed_breaks(values)[method]["5"]
 
 
+def _whole_file(values: Any, **info: Any) -> Any:
+    """A one-band file of whole numbers (uint8, neither scaled nor offset)."""
+    from types import SimpleNamespace
+
+    facts = {"count": 1, "value_bands": (1,), "dtype": "uint8", "scaled": False, **info}
+    return SimpleNamespace(
+        info=lambda: SimpleNamespace(**facts), sample=lambda formula: values
+    )
+
+
+def _bounds(file: Any, **render: Any) -> tuple[list[float], list[Any]]:
+    from goatlib.raster.stats import compute_raster_into
+
+    checked, notes = compute_raster_into(
+        file,
+        raster(type="continuous", palette="goat:elevation", **render),
+        fingerprint="u",
+    )
+    return [k["to"] for k in checked["render"]["classify"]["classes"][:-1]], notes
+
+
+@pytest.mark.parametrize(
+    "method", ["quantile", "natural_breaks", "std_dev", "geometric_interval"]
+)
+def test_a_whole_number_bands_classes_break_at_whole_numbers(method: str) -> None:
+    """The check writes the panel's precomputed breaks, whole numbers too."""
+    import numpy as np
+    from goatlib.raster.stats import precomputed_breaks
+
+    values = np.random.default_rng(9).gamma(2.0, 30.0, 50_000).round().clip(7, 255)
+    written, _ = _bounds(_whole_file(values), classify={"method": method, "count": 5})
+    assert written and all(float(b).is_integer() for b in written)
+    assert written == precomputed_breaks(values, whole=True)[method]["5"]
+
+
+def test_whole_number_breaks_that_round_together_merge_with_a_note() -> None:
+    import numpy as np
+
+    # Geometric breaks over 1 to 6 in 7 classes: 1.29, 1.67, 2.15, 2.78, 3.59, 4.63.
+    codes = np.repeat([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 300)
+    written, notes = _bounds(
+        _whole_file(codes), classify={"method": "geometric_interval", "count": 7}
+    )
+    assert written == [2, 3, 4, 5]
+    assert [(n.code, n.message) for n in notes] == [
+        ("classes_merged", "Equal breaks merged: 5 classes instead of 7.")
+    ]
+
+
+EQUAL_INTERVAL_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "equal_interval_cases.json").read_text()
+)
+
+
+@pytest.mark.parametrize("case", EQUAL_INTERVAL_CASES, ids=lambda c: c["about"])
+def test_equal_intervals_as_the_browser_writes_them(case: dict[str, Any]) -> None:
+    """Shared with the web (editor-raster.test.ts, `equalIntervalClasses`): the
+    check splits a range into the same classes the panel writes."""
+    import numpy as np
+
+    file = _whole_file(
+        np.arange(-10.0, 300.0), dtype="uint8" if case["whole"] else "float32"
+    )
+    written, _ = _bounds(
+        file,
+        domain=case["domain"],
+        classify={"method": "equal_interval", "count": case["count"]},
+    )
+    assert written == case["breaks"]
+
+
+@pytest.mark.parametrize("expression", ["b1", " b1 ", "b01"])
+def test_a_formula_of_one_band_alone_breaks_as_the_band(expression: str) -> None:
+    """However it is typed, a formula of one band alone is that band (spec
+    9.4): whole-number breaks on a file of whole numbers."""
+    import numpy as np
+
+    values = np.random.default_rng(9).gamma(2.0, 30.0, 50_000).round().clip(7, 255)
+    geometric = {"method": "geometric_interval", "count": 5}
+    band, _ = _bounds(_whole_file(values), classify=geometric)
+    written, _ = _bounds(
+        _whole_file(values),
+        classify=geometric,
+        band={"name": "Alone", "expression": expression},
+    )
+    assert written == band and all(float(b).is_integer() for b in written)
+
+
+def test_formulas_scaled_files_and_floats_keep_their_breaks() -> None:
+    import numpy as np
+
+    values = np.random.default_rng(9).gamma(2.0, 30.0, 50_000).round().clip(7, 255)
+    geometric = {"method": "geometric_interval", "count": 5}
+    formula = {"name": "Third", "expression": "b1 / 3"}
+    for file, extra in (
+        (_whole_file(values), {"band": formula}),
+        (_whole_file(values, scaled=True), {}),
+        (_whole_file(values, dtype="float32"), {}),
+    ):
+        written, _ = _bounds(file, classify=geometric, **extra)
+        assert not all(float(b).is_integer() for b in written), extra
+
+
 def _file(values: Any) -> Any:
     from types import SimpleNamespace
 
@@ -263,7 +392,9 @@ def _file(values: Any) -> Any:
     )
 
 
-@pytest.mark.parametrize("method", ["quantile", "natural_breaks", "std_dev"])
+@pytest.mark.parametrize(
+    "method", ["quantile", "natural_breaks", "std_dev", "geometric_interval"]
+)
 def test_a_domain_does_not_narrow_computed_classes(method: str) -> None:
     """Quantiles, natural breaks and standard deviation classify the whole band,
     as the panel's precomputed breaks do: a style with a domain is checked to

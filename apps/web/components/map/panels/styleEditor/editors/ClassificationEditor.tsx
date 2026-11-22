@@ -37,7 +37,12 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 
 import FieldKindIcon, { fieldIndicatorKind } from "@/components/common/FieldKindIcon";
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useFieldProfile,
+  useStyleData,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import { profileRange } from "@/components/map/panels/styleEditor/editors/AttributeEditor";
 import { ClassList } from "@/components/map/panels/styleEditor/editors/ClassList";
 import { VALUES_LIMIT } from "@/components/map/panels/styleEditor/editors/ClassValues";
@@ -59,6 +64,7 @@ const NUMERIC_METHODS = [
   "natural_breaks",
   "std_dev",
   "heads_and_tails",
+  "geometric_interval",
   "manual",
 ];
 /** Top counts of a categories classification, after All values. */
@@ -175,6 +181,8 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   const { data: uniqueValues } = useUniqueValues(categories ? layerId : undefined, field, {
     limit: VALUES_LIMIT,
   });
+  // Geometric intervals need every value above 0 (spec 5.8): the field's minimum, once its profile is known.
+  const profile = useFieldProfile(numericField ? field : undefined);
   // A classification removed while its editor is open (its property set back to one value): the editor closes.
   const gone = !isObject(value);
   useCloseWhenGone(gone);
@@ -346,11 +354,18 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
         <ChoiceRow<string>
           label={t("style_editor.method")}
           value={String(c.method)}
-          options={methods.map((m) => ({
-            value: m,
-            label: t(`style_editor.method_${m}`),
-            sub: t(`style_editor.method_${m}_sub`),
-          }))}
+          options={methods.map((m) => {
+            const negative = m === "geometric_interval" && profile?.min !== undefined && profile.min <= 0;
+            return {
+              value: m,
+              label: t(`style_editor.method_${m}`),
+              // The field's own lowest value says why.
+              sub: negative
+                ? t("style_editor.geometric_field_below", { min: number(profile?.min ?? 0) })
+                : t(`style_editor.method_${m}_sub`),
+              disabled: negative,
+            };
+          })}
           onChange={(m) => store.update((doc) => setMethod(doc, ci, m))}
         />
         {c.method !== "manual" && (

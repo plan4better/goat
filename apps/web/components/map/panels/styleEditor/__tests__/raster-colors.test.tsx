@@ -2,16 +2,17 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { equalIntervalClasses } from "@/lib/style/editor/raster";
+import { classesFromBreaks as classesOf, equalIntervalClasses } from "@/lib/style/editor/raster";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
 
+import { IssuesProvider } from "@/components/map/panels/styleEditor/IssueNotice";
 import { renderColors, shareText } from "@/components/map/panels/styleEditor/editors/RasterClassList";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 
-import { choose, renderPanel } from "./renderPanel";
+import { choose, i18n, renderPanel } from "./renderPanel";
 
 // The map's loaded description of a formula's values: its range is the formula's (0 to 50), which the panel has no
 // statistics for.
@@ -77,7 +78,7 @@ describe("raster colors", () => {
     expect(store.get("render.classify.classes.1.visible")).toBe(false);
   });
 
-  it("classes offer 2 to 12; a file with more classes shows its count", async () => {
+  it("classes offer 2 to 13; a file with more classes shows its count", async () => {
     const classes = Array.from({ length: 15 }, (_, i) => ({
       ...(i ? { from: i } : {}),
       ...(i < 14 ? { to: i + 1 } : {}),
@@ -91,8 +92,8 @@ describe("raster colors", () => {
     await openColors();
     await choose("style_editor.classes", "15", "2");
     expect(store.get("render.classify.classes")).toEqual([{ to: 7.5 }, { from: 7.5 }]);
-    await choose("style_editor.classes", "2", "12");
-    expect((store.get("render.classify.classes") as unknown[]).length).toBe(12);
+    await choose("style_editor.classes", "2", "13");
+    expect((store.get("render.classify.classes") as unknown[]).length).toBe(13);
   });
 
   it("a palette picked for classes takes every class, also a color picked by hand", async () => {
@@ -195,15 +196,16 @@ describe("raster colors", () => {
     );
   });
 
-  it("a palette in classes has no Outside row", async () => {
-    setup({
+  it("a palette in classes has an Outside row too", async () => {
+    const { store } = setup({
       type: "continuous",
       palette: "goat:elevation",
       domain: [0, 100],
       classify: { method: "manual", classes: [{ to: 50 }, { from: 50 }] },
     });
     await openColors();
-    expect(screen.queryByText("style_editor.outside")).toBeNull();
+    await choose("style_editor.outside", "style_editor.outside_clamp", "style_editor.outside_hide");
+    expect(store.get("render.outside")).toBe("hide");
   });
 
   it("hillshade colors start from the band's values; a band without values keeps them off and says so", async () => {
@@ -441,7 +443,7 @@ describe("raster classes and categories on the shared grid", () => {
     ]);
   });
 
-  it("open ends read the band's minimum and maximum over a narrower colour range, whatever `outside` says", async () => {
+  it("open ends read the band's minimum and maximum over a narrower colour range, or the range with values outside left out", async () => {
     const band: RasterInfo = {
       ...INFO,
       stats: [{ ...INFO.stats[0], min: -38.94, max: 189.14, p2: 32, p98: 119 }],
@@ -460,10 +462,10 @@ describe("raster classes and categories on the shared grid", () => {
     await openColors();
     expect(ends()).toEqual(["-38.94 style_editor.range_to 49.4", "101.6 style_editor.range_to 189.14"]);
     clamped.unmount();
-    // Classes draw every cell in the end classes: a stored "hide" reads the band's too.
+    // Values outside left out: the classes end at the colour range.
     setup({ ...render, outside: "hide" }, {}, band);
     await openColors();
-    expect(ends()).toEqual(["-38.94 style_editor.range_to 49.4", "101.6 style_editor.range_to 189.14"]);
+    expect(ends()).toEqual(["32 style_editor.range_to 49.4", "101.6 style_editor.range_to 119"]);
   });
 
   it("class colors, the strip and the bars take a classification's own palette, as the map draws them", async () => {
@@ -589,6 +591,249 @@ describe("raster classes and categories on the shared grid", () => {
     await userEvent.click(counts[0]);
     expect(store.get("render.classify.count")).toBe(3);
     expect(store.get("render.classify.classes")).toEqual([{ to: 33 }, { from: 33, to: 66 }, { from: 66 }]);
+  });
+
+  it("with values outside left out, the classes' outer ends are a range to type; typing one makes them manual", async () => {
+    // Without it, quantiles have no range of their own.
+    const clamped = setup(QUANTILES, {}, CLASSED);
+    await openColors();
+    expect(screen.queryByRole("textbox", { name: "style_editor.range_lowest" })).toBeNull();
+    clamped.unmount();
+    const { store } = setup({ ...QUANTILES, outside: "hide" }, {}, CLASSED);
+    await openColors();
+    const lowest = () =>
+      screen.getByRole("textbox", { name: "style_editor.range_lowest" }) as HTMLInputElement;
+    const highest = () =>
+      screen.getByRole("textbox", { name: "style_editor.range_highest" }) as HTMLInputElement;
+    // Open ends: the band's minimum and maximum.
+    expect([lowest().value, highest().value]).toEqual(["0", "100"]);
+    fireEvent.change(lowest(), { target: { value: "10" } });
+    fireEvent.blur(lowest());
+    expect(store.get("render.classify")).toEqual({
+      method: "manual",
+      classes: [
+        { from: 10, to: 20 },
+        { from: 20, to: 40 },
+        { from: 40, to: 60 },
+        { from: 60, to: 80 },
+        { from: 80 },
+      ],
+    });
+    fireEvent.change(highest(), { target: { value: "90" } });
+    fireEvent.blur(highest());
+    expect(store.get("render.classify.classes.4")).toEqual({ from: 80, to: 90 });
+    expect(store.get("render.domain")).toBeUndefined();
+    // The first class reads its own end; the bars beyond the ends stand back.
+    const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+    expect(names[0].placeholder).toBe("10 style_editor.range_to 20");
+    const bars = Array.from(document.querySelectorAll("svg rect")).map((r) => r.getAttribute("fill"));
+    expect(bars.slice(0, 5).every((fill) => fill === bars[49])).toBe(true);
+    expect(bars[5]).not.toBe(bars[0]);
+  });
+
+  it("an outer end is written when its box is left or Enter is pressed, never a digit typed on the way", async () => {
+    const { store } = setup({ ...QUANTILES, outside: "hide" }, {}, CLASSED);
+    await openColors();
+    const lowest = () =>
+      screen.getByRole("textbox", { name: "style_editor.range_lowest" }) as HTMLInputElement;
+    await userEvent.clear(lowest());
+    await userEvent.type(lowest(), "30");
+    // The 3 on the way to 30 lies below the first break (20) but is not written: the classes stay quantiles.
+    expect(store.get("render.classify.method")).toBe("quantile");
+    await userEvent.tab();
+    // 30 lies past the first break: refused, and the box shows the end there is.
+    expect(store.get("render.classify.method")).toBe("quantile");
+    expect(store.get("render.classify.classes.0")).toEqual({ to: 20 });
+    expect(lowest().value).toBe("0");
+    await userEvent.clear(lowest());
+    await userEvent.type(lowest(), "15{Enter}");
+    expect(store.get("render.classify.method")).toBe("manual");
+    expect(store.get("render.classify.classes.0")).toEqual({ from: 15, to: 20 });
+    expect(lowest().value).toBe("15");
+  });
+
+  it("equal intervals with values outside left out split the typed range again: it is their domain", async () => {
+    const { store } = setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [0, 100],
+        outside: "hide",
+        classify: { method: "equal_interval", count: 4, classes: equalIntervalClasses([0, 100], 4) },
+      },
+      {},
+      CLASSED
+    );
+    await openColors();
+    const lowest = screen.getByRole("textbox", { name: "style_editor.range_lowest" });
+    fireEvent.change(lowest, { target: { value: "20" } });
+    fireEvent.blur(lowest);
+    expect(store.get("render.domain")).toEqual([20, 100]);
+    expect(store.get("render.classify")).toEqual({
+      method: "equal_interval",
+      count: 4,
+      classes: equalIntervalClasses([20, 100], 4),
+    });
+  });
+
+  it("with classes the range is written when its box is left, never a digit typed on the way: the classes keep their names", async () => {
+    for (const method of ["equal_interval", "manual"]) {
+      const classes = equalIntervalClasses([100, 255], 5).map((c, i) => ({ ...c, name: `Class ${i + 1}` }));
+      const view = setup({
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [100, 255],
+        classify: { method, ...(method === "manual" ? {} : { count: 5 }), classes },
+      });
+      await openColors();
+      const box = screen.getByRole("textbox", { name: "style_editor.range_highest" });
+      await userEvent.clear(box);
+      await userEvent.type(box, "30");
+      // 3 and 30 lie below the range's low end: neither is written.
+      expect(view.store.get("render.domain"), method).toEqual([100, 255]);
+      await userEvent.type(box, "0{Enter}");
+      expect(view.store.get("render.domain"), method).toEqual([100, 300]);
+      const names = (view.store.get("render.classify.classes") as Array<{ name?: string }>).map(
+        (c) => c.name
+      );
+      expect(names, method).toEqual(["Class 1", "Class 2", "Class 3", "Class 4", "Class 5"]);
+      view.unmount();
+    }
+  });
+
+  it("a continuous palette's range is written as it is typed", async () => {
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 100] });
+    await openColors();
+    await userEvent.type(screen.getByRole("textbox", { name: "style_editor.range_highest" }), "5");
+    expect(store.get("render.domain")).toEqual([0, 1005]);
+  });
+
+  it("the classes' note from the check shows in the colours editor", async () => {
+    const issue = {
+      code: "classes_merged",
+      level: "info" as const,
+      path: "/render/classify",
+      message: "Geometric intervals need values above 0: 1 class instead of 5.",
+    };
+    renderPanel(
+      <IssuesProvider issues={[issue]}>
+        <PopoverProvider>
+          <RasterColorSection />
+        </PopoverProvider>
+      </IssuesProvider>,
+      {
+        document: {
+          version: "1.0.0",
+          kind: "raster",
+          render: {
+            type: "continuous",
+            palette: "goat:elevation",
+            classify: { method: "geometric_interval", count: 5, classes: [{}] },
+          },
+        } as LayerStyle,
+        data: { raster: { dataset: "d1", info: CLASSED } },
+        map: MAP,
+      }
+    );
+    await openColors();
+    expect(screen.getByText(issue.message)).toBeDefined();
+  });
+
+  it("with the end colors outside, outer ends a class carries are open again", async () => {
+    const render = {
+      type: "continuous",
+      palette: "goat:elevation",
+      domain: [0, 100],
+      classify: {
+        method: "manual",
+        classes: [
+          { from: 10, to: 50 },
+          { from: 50, to: 90 },
+        ],
+      },
+    };
+    const ends = () => {
+      const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+      return [names[0].placeholder, names[1].placeholder];
+    };
+    const clamped = setup(render, {}, CLASSED);
+    await openColors();
+    expect(ends()).toEqual(["0 style_editor.range_to 50", "style_editor.range_to 100"]);
+    clamped.unmount();
+    setup({ ...render, outside: "hide" }, {}, CLASSED);
+    await openColors();
+    expect(ends()).toEqual(["10 style_editor.range_to 50", "style_editor.range_to 90"]);
+  });
+
+  it("a band formula's geometric intervals read as not available for the band, as the other computed methods", async () => {
+    setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        domain: [0, 50],
+        band: { name: "Twice", expression: "b1 * 2" },
+      },
+      {},
+      CLASSED
+    );
+    await openColors();
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    const option = optionOf("style_editor.method_geometric_interval");
+    expect(option.getAttribute("aria-disabled")).toBe("true");
+    expect(within(option).getByText("style_editor.no_breaks_for_band")).toBeDefined();
+  });
+
+  it("the note of geometric intervals on a band reaching below 0 names its lowest value", async () => {
+    i18n.addResource("en", "common", "style_editor.geometric_band_below", "down to {{min}}");
+    try {
+      const dem: RasterInfo = { ...CLASSED, stats: [{ ...CLASSED.stats[0], min: -38.935 }] };
+      setup({ type: "continuous", palette: "goat:elevation", domain: [3, 98] }, {}, dem);
+      await openColors();
+      await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+      // As the range boxes write numbers.
+      expect(
+        within(optionOf("style_editor.method_geometric_interval")).getByText("down to -38.94")
+      ).toBeDefined();
+    } finally {
+      i18n.removeResourceBundle("en", "common");
+    }
+  });
+
+  it("geometric intervals need a band whose values lie above 0: else disabled with a note", async () => {
+    const { unmount } = setup(
+      { type: "continuous", palette: "goat:elevation", domain: [3, 98] },
+      {},
+      CLASSED
+    );
+    await openColors();
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    const option = optionOf("style_editor.method_geometric_interval");
+    expect(option.getAttribute("aria-disabled")).toBe("true");
+    expect(within(option).getByText("style_editor.geometric_band_below")).toBeDefined();
+    await userEvent.keyboard("{Escape}");
+    unmount();
+    const positive: RasterInfo = {
+      ...CLASSED,
+      stats: [
+        {
+          ...CLASSED.stats[0],
+          min: 1,
+          breaks: { ...BREAKS, geometric_interval: { "5": [2.5, 6.3, 15.8, 39.8] } },
+        },
+      ],
+    };
+    const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [3, 98] }, {}, positive);
+    await openColors();
+    await choose(
+      "style_editor.method",
+      "style_editor.raster_method_continuous",
+      "style_editor.method_geometric_interval"
+    );
+    expect(store.get("render.classify")).toEqual({
+      method: "geometric_interval",
+      count: 5,
+      classes: classesOf([2.5, 6.3, 15.8, 39.8]),
+    });
   });
 
   it("the colors row names the method and the number of classes", () => {

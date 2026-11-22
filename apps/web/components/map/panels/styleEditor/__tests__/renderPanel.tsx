@@ -14,7 +14,8 @@ import { StyleSaver, type StyleTransport } from "@/lib/style/save";
 
 import { EMPTY_DATA, type StyleData, StyleEditorProvider } from "@/components/map/panels/styleEditor/context";
 
-const i18n = i18next.createInstance();
+/** The tests' i18next: every text is its key, unless a test adds a resource to read one rendered. */
+export const i18n = i18next.createInstance();
 void i18n
   .use(initReactI18next)
   .init({ lng: "en", resources: {}, initImmediate: false, react: { useSuspense: false } });

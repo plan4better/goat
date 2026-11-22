@@ -43,7 +43,15 @@ const TALLEST: PartRow = { type: "number", key: "tallest", label: "style_editor.
 const BASE: PartRow = { type: "number", key: "base", label: "style_editor.base_height" };
 /** About how wide a hexagon of each resolution is, in meters (twice H3's average edge length). */
 const WIDTH_M: Record<number, number> = { 5: 19700, 6: 7400, 7: 2800, 8: 1100, 9: 400, 10: 150 };
-const METHODS = ["quantile", "equal_interval", "natural_breaks", "std_dev", "heads_and_tails"];
+/** The classes' methods; geometric intervals need cell values above 0 (always so for counts of points). */
+const METHODS = [
+  "quantile",
+  "equal_interval",
+  "natural_breaks",
+  "std_dev",
+  "heads_and_tails",
+  "geometric_interval",
+];
 const CONTINUOUS = "continuous";
 /** Classes a method makes when the classification gives no count (goatlib DEFAULT_COUNT). */
 const DEFAULTS_COUNT = 5;

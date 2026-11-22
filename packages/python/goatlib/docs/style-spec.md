@@ -1225,10 +1225,11 @@ What the server stores after computing the classes:
 }
 ```
 
-- **Methods:** `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `manual`, `categories`
-  (formulas in 5.8).
-- **Classes:** a class covers `from` (inclusive) to `to` (exclusive); the first has no `from`, the last no `to`. Classes
-  are sorted, without gaps or overlaps (`classes_invalid`).
+- **Methods:** `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`,
+  `manual`, `categories` (formulas in 5.8).
+- **Classes:** a class covers `from` (inclusive) to `to` (exclusive); the first has no `from`, the last no `to` (on a
+  raster with `outside: "hide"` they may have them: where the drawing stops, 9.4). Classes are sorted, without gaps or
+  overlaps (`classes_invalid`).
 - **What the server writes for computed methods:** `classes` with `from` and `to`, plus `computed`:
   - `at`: when;
   - `data`: the data fingerprint;
@@ -1504,6 +1505,7 @@ formula of their own.
 | `natural_breaks` | Jenks (Fisher's exact optimization) on at most 10,000 values, sampled by feature id when there are more |
 | `std_dev` | classes one standard deviation wide around the mean; an even count puts a break at the mean, an odd count centers the middle class on it (mean +- 0.5 sd); the outer classes are open |
 | `heads_and_tails` | split at the mean, then repeat on the part above the mean while it holds under 40% of the values, up to count classes |
+| `geometric_interval` | min x (max / min)^(k / count), k = 1 to count - 1 (computed in log space): each class is wider than the one before by the same factor; needs every value above 0, so with a value at or below 0 there are no breaks and one class (info `classes_merged` says why; the editors of a field and of a raster band do not offer the method there, the H3 editor offers it always) |
 | `manual` | as written |
 
 **Ranges over classes** (`range` with numeric classes): class i of n gets r0 + i x (r1 - r0) / (n - 1). Values are
@@ -1737,7 +1739,7 @@ rasters and map services do not change.
 | H3 | the cell value (`count`, or the field with `sum` or `mean`) as classes or a ramp; one hexagon swatch while the values are not computed; the points as for a heatmap |
 | `extrude` (3.6, 8.3) | one line after the color entries: "Height" with the fixed height, the top of a by-zoom height, the field (with its range, or "levels x 3 m" for storeys), the number of classes, or for H3 the cell value |
 | raster `image` | none, or the file's color table |
-| raster `continuous` | a ramp with the domain and `unit`, or classes with the `unit`, an open first or last class closed by the band's minimum and maximum (classes draw every cell, whatever `outside` says); `min_label` and `max_label` replace the end values |
+| raster `continuous` | a ramp with the domain and `unit`, or classes with the `unit`, an open first or last class closed by the band's minimum and maximum (with `outside: "hide"`, by where the drawing stops: the class's own `from` or `to`, else the domain, 9.4); `min_label` and `max_label` replace the end values |
 | raster `categorical` | one entry per class (its value with the `unit`, or its `name`), then Other in `other_color` where one is set (the legend cannot know whether any cell has another value) |
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
@@ -2291,7 +2293,7 @@ colors `image`, colors over float cells of an unknown range, and colorings past 
 
 - Either `palette` (+ `reverse`) over `domain: [from, to]` (default: the band's minimum and maximum), or `stops`
   (value and color, ascending).
-- `outside`: `clamp` (values beyond take the end colors, default) or `hide`.
+- `outside`: `clamp` (values beyond take the end colors, default) or `hide`. It applies to classes too (9.4).
 - `interpolate` (stops only): `linear`, or `nearest` (each cell takes the color of the closest stop, today's
   `interpolate: false`).
 
@@ -2382,11 +2384,44 @@ sets on a class by position survives a recompute (section 12).
 }
 ```
 
-Quantiles, natural breaks, standard deviation and heads and tails classes come from a sample of the whole band's
-values (its overviews), computed with the same class break statistics as a vector field's when the style is checked
-(section 12). `domain` does not narrow them: they classify every value of the band, so the breaks an editor offers for
-a method and count are the classes the style keeps. Equal intervals split `domain` when it is set, else the band's
-range.
+Quantiles, natural breaks, standard deviation, geometric intervals and heads and tails classes come from a sample of
+the whole band's values (its overviews), computed with the same class break statistics as a vector field's when the
+style is checked (section 12). `domain` does not narrow them: they classify every value of the band, so the breaks an
+editor offers for a method and count are the classes the style keeps. Equal intervals split `domain` when it is set,
+else the band's range. Geometric intervals need every value of the band above 0.
+
+**Whole numbers.** On a band that holds whole numbers as it is read (an integer data type, neither scaled nor offset;
+not a formula, though a formula of one band alone, `b2`, is that band), every computed method's breaks are whole
+numbers, equal intervals included: each break is rounded half up (from its twelve significant digits), and breaks that
+round together, or onto the band's minimum or maximum, are kept once, so fewer classes result (info `classes_merged`).
+Class names and the legend then read "28 to 84". Manual breaks stay as written.
+
+**Values outside the classes** follow `outside` (9.2). With `clamp` (default) the first and last class are open: the
+cells below and above take their colors, whatever `from` or `to` they carry. With `hide` the first class starts at its
+own `from`, else at the start of `domain` (else of the computed one, else of the band's range), and the last class ends
+at its own `to`, else at the end of that range, that end included; the cells beyond are transparent, and the class
+names and the legend read those ends. An editor lets the author type the two outer ends while `hide` is set: for a
+computed method a typed end makes the classes `manual`, the inner breaks stay; equal intervals split the typed range
+again, as it is their `domain`.
+
+> "Elevation in my own classes from 250 to 400 m, the cells below and above not drawn."
+
+<!-- check: elevation -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "raster",
+  "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "outside": "hide",
+    "classify": {
+      "method": "manual",
+      "classes": [{ "from": 250, "to": 275 }, { "from": 275, "to": 300 }, { "from": 300, "to": 340 }, { "from": 340, "to": 400 }]
+    }
+  }
+}
+```
 
 ### 9.5 Categories
 
@@ -2536,11 +2571,14 @@ A raster popup is the popup of 7.4 over the cell under the pointer, with every k
   move.
 - **Only over drawn cells:** a cell the map does not draw opens no popup and shows no pointer, on hover and on click,
   as a feature its style hides: the style's no data, a value in a hidden class or category, a value in no category
-  without `other_color`, and a value beyond the `domain` or the stops of a color range with `outside: "hide"`. A
-  hillshade draws its shading under any color, so its cells always count.
+  without `other_color`, and a value beyond the `domain`, the stops or the classes of a color range with
+  `outside: "hide"` (9.4). A hillshade draws its shading under any color, so its cells always count.
 - **Class names:** a class without a `name` is named by its range as the legend writes it (7.2); an open first or last
   class is closed by the band's minimum and maximum, as classes draw the cells below and above the color range in
-  those classes whatever `outside` says.
+  those classes, or with `outside: "hide"` by where the drawing stops (9.4). The band's minimum and maximum come from
+  an overview, so a few cells lie beyond them: the popup names such a cell's open class from the cell's own value
+  ("-41 to 49.4 m" for a cell of -41 m), while the legend and the panel keep the band's ends. Without a known minimum
+  or maximum the open end reads by its bound alone ("under 49.4 m").
 
 > "Elevation on click and while hovering: the height with one decimal and its unit, in a compact popup."
 
@@ -2847,7 +2885,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `not_supported_yet` | error | a construct this deployment cannot render yet (section 19) |
 | `classify_target_conflict` | warning | a later classification covers every feature and sets the same keys (5.7) |
 | `classify_partial_overlap` | info | a later classification sets the same keys for some features |
-| `classes_merged` | info | equal breaks merged, so a classification has fewer classes than its count |
+| `classes_merged` | info | a classification has fewer classes than its count: equal breaks merged, or geometric intervals over values at or below 0 |
 | `no_values` | info | a computed classification or value form whose field has no values (an empty dataset, or every value empty) |
 | `classes_stale` | warning | stored classes from an older data fingerprint that could not be recomputed |
 | `too_many_classes`, `too_many_categories` | warning | more than 7 numeric classes or 12 categories |
@@ -2943,7 +2981,7 @@ to the intent, with the data it came from.
 
 | Intent | Computed | Stored in |
 |---|---|---|
-| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`) and `count` | class `from` and `to`, colors from the palette, sizes from the range | the classification's `classes` + `computed` |
+| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`) and `count` | class `from` and `to`, colors from the palette, sizes from the range | the classification's `classes` + `computed` |
 | categories with `count` (top N) | the N most frequent values as classes, the rest in `other` | `classes` + `computed` |
 | value form without `domain` | the field's minimum and maximum (over the values a `sqrt` scale can map, from 0, or a `log` scale, above 0) | `computed.domain` on the value form |
 | H3 `classify` or continuous H3 colors | breaks or domain per resolution | `render.computed`, keyed by resolution |
@@ -3541,7 +3579,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `id` | string | no | assigned |
 | `title` | string | no | the field's display name |
 | `field` | field name | yes (vectors) | |
-| `method` | `categories`, `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `manual` | yes | |
+| `method` | `categories`, `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`, `manual` | yes | |
 | `count` | integer 1 to 100 (top N for categories, classes otherwise) | no | categories: the classes as written; 5 |
 | `target` | property path, for example `outline.width` | no | the main color |
 | `palette`, `reverse` | palette, boolean | no | `goat:green` for numeric, `colorbrewer:Set2` for categories |

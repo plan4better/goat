@@ -57,8 +57,11 @@ from goatlib.raster.source import (
 from goatlib.raster.source import (
     failure_key as file_failure_key,
 )
-from goatlib.raster.stats import classified_sample, precomputed_breaks
-from goatlib.raster.token import Rgb
+from goatlib.raster.stats import (
+    classified_sample,
+    precomputed_breaks,
+)
+from goatlib.raster.token import Classes, Rgb
 from goatlib.raster.values import ENCODING_VERSION, ValueEncoding, value_encoding
 from goatlib.utils.layer import stored_raster_file
 from numpy.typing import NDArray
@@ -288,8 +291,9 @@ class RasterService:
     def _band_range(
         self, layer: RasterLayer, source: RasterSource, coloring: Coloring
     ) -> tuple[float, float] | None:
-        """What stands in for a missing domain, and stretches a one-band image:
-        the band's (or the formula's) minimum and maximum."""
+        """What stands in for a missing domain (of a ramp, or of classes that
+        hide the cells beyond them), and stretches a one-band image: the band's
+        (or the formula's) minimum and maximum."""
         if isinstance(coloring, Rgb):
             info = source.info()
             # Only a one-band image without a color table is stretched, by the
@@ -299,6 +303,8 @@ class RasterService:
                 return None
             first = _FIRST_BAND if held[0] == 1 else parse_formula(f"b{held[0]}")
             return self.value_range(layer, source, first)
+        if isinstance(coloring, Classes) and coloring.outside != "hide":
+            return None
         if getattr(coloring, "domain", "given") is None:
             return self.value_range(layer, source, coloring.formula)
         return None

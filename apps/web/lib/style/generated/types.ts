@@ -586,6 +586,7 @@ export interface Classification {
     | "natural_breaks"
     | "std_dev"
     | "heads_and_tails"
+    | "geometric_interval"
     | "manual";
   count?: number | null;
   target?:
@@ -1042,7 +1043,14 @@ export interface H3Value {
  */
 export interface ColorClassification {
   id?: string | null;
-  method: "quantile" | "equal_interval" | "natural_breaks" | "std_dev" | "heads_and_tails" | "manual";
+  method:
+    | "quantile"
+    | "equal_interval"
+    | "natural_breaks"
+    | "std_dev"
+    | "heads_and_tails"
+    | "geometric_interval"
+    | "manual";
   count?: number | null;
   palette?: string | string[] | null;
   reverse?: boolean;

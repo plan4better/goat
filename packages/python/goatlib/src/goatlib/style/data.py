@@ -48,10 +48,12 @@ _METHODS = {
     "natural_breaks": ClassBreakMethod.natural_breaks,
     "std_dev": ClassBreakMethod.standard_deviation,
     "heads_and_tails": ClassBreakMethod.heads_and_tails,
+    "geometric_interval": ClassBreakMethod.geometric_interval,
 }
 #: Methods that make fewer classes than asked by their definition (5.8): breaks
-#: outside the data, a head that stops shrinking. Only equal breaks count as merged.
-_FEWER_BY_DESIGN = {"std_dev", "heads_and_tails"}
+#: outside the data, a head that stops shrinking, geometric intervals over values
+#: at or below 0. Only equal breaks count as merged.
+_FEWER_BY_DESIGN = {"std_dev", "heads_and_tails", "geometric_interval"}
 #: The values a scale can map: sqrt from 0, log above 0 (5.8).
 _SCALE_WHERE = {"sqrt": "{} >= 0", "log": "{} > 0"}
 _FIELD_TYPES = ("integer", "number", "boolean", "date", "datetime", "string")

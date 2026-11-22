@@ -2937,6 +2937,41 @@
   }
  },
  {
+  "line": 2403,
+  "target": "elevation",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "raster",
+   "render": {
+    "type": "continuous",
+    "palette": "goat:elevation",
+    "outside": "hide",
+    "classify": {
+     "method": "manual",
+     "classes": [
+      {
+       "from": 250,
+       "to": 275
+      },
+      {
+       "from": 275,
+       "to": 300
+      },
+      {
+       "from": 300,
+       "to": 340
+      },
+      {
+       "from": 340,
+       "to": 400
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
   "line": 1961,
   "target": "elevation",
   "expect": [],

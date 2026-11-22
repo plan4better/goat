@@ -41,7 +41,7 @@ export interface RasterInfoResponse {
   }>;
 }
 
-/** Inner class breaks by method (`quantile`, `natural_breaks`, `std_dev`) and class count. */
+/** Inner class breaks by method (`quantile`, `natural_breaks`, `std_dev`, `geometric_interval`) and class count. */
 export type BandBreaks = Record<string, Record<string, number[]>>;
 
 export interface BandStats {
@@ -214,6 +214,11 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
   };
 }
 
+/** The statistics of a band (its number) or of a band formula (its expression, when the info was asked for it). */
+export function statsOf(info: RasterInfo | undefined, band: number | string): BandStats | undefined {
+  return info?.stats.find((b) => b.index === band);
+}
+
 /** A number as typed, cut to three digits when longer (a float file's lowest value as its no-data value: -3.4e+38).
  * Not locale formatted: the no-data box reads commas as separators. */
 export function shortNumber(value: number): string {
@@ -304,9 +309,10 @@ export function codeShare(info: RasterInfo | undefined, band: number, value: num
   return i < 0 ? 0 : counts[i] / total;
 }
 
-/** A band's minimum and maximum, as the values' description gives them; null when unknown. */
-export function bandRange(info: RasterInfo | undefined, band: number): [number, number] | null {
-  const stats = info?.stats.find((b) => b.index === band);
+/** A band's (or band formula's, `statsOf`) minimum and maximum, as the values' description gives them; null when
+ * unknown. */
+export function bandRange(info: RasterInfo | undefined, band: number | string): [number, number] | null {
+  const stats = statsOf(info, band);
   return stats && stats.min !== null && stats.max !== null ? [stats.min, stats.max] : null;
 }
 

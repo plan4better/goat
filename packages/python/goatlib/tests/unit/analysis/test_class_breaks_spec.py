@@ -88,6 +88,61 @@ def test_standard_deviation_even_and_odd_class_counts(con_with) -> None:
     )
 
 
+def test_geometric_intervals_grow_by_a_constant_ratio_from_the_minimum(
+    con_with,
+) -> None:
+    # 1 to 1000 in three classes: the ratio is 10, so the breaks are 10 and 100.
+    con = con_with([1, 5, 50, 500, 1000])
+    assert breaks(con, ClassBreakMethod.geometric_interval, 2) == pytest.approx(
+        [10, 100]
+    )
+    # Each class is the previous one's width times the same ratio.
+    con = con_with([2, 3, 7, 40, 162])
+    found = breaks(con, ClassBreakMethod.geometric_interval, 3)
+    edges = [2, *found, 162]
+    widths = [b - a for a, b in itertools.pairwise(edges)]
+    ratios = [b / a for a, b in itertools.pairwise(widths)]
+    assert ratios == pytest.approx([3, 3, 3])
+    assert found == pytest.approx([6, 18, 54])
+
+
+def test_geometric_intervals_need_every_value_above_zero(con_with) -> None:
+    for values in ([0, 1, 10, 100], [-5, 1, 10, 100]):
+        result = calculate_class_breaks(
+            con_with(values), "t", "v", ClassBreakMethod.geometric_interval, 3
+        )
+        assert result.breaks == []
+        assert result.min == values[0]
+    # One value: nothing to split.
+    assert breaks(con_with([4, 4, 4]), ClassBreakMethod.geometric_interval, 3) == []
+
+
+def test_geometric_intervals_of_a_decimal_field() -> None:
+    """DuckDB answers a DECIMAL column's minimum and maximum as Decimal."""
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (v DECIMAL(10, 2))")
+    con.executemany("INSERT INTO t VALUES (?)", [[1.5], [3], [10], [100], [250.25]])
+    found = breaks(con, ClassBreakMethod.geometric_interval, 3)
+    ratio = (250.25 / 1.5) ** 0.25
+    assert found == pytest.approx([1.5 * ratio**k for k in (1, 2, 3)])
+
+
+def test_geometric_intervals_hold_for_extreme_ratios() -> None:
+    """Computed in log space: a tiny minimum and a large maximum give finite
+    breaks, a constant ratio apart."""
+    from goatlib.analysis.statistics.class_breaks import (
+        _calculate_geometric_interval_breaks,
+    )
+
+    for low, high, n in ((1e-300, 1e10, 2), (5e-324, 1.0, 3), (1e-5, 1e300, 4)):
+        found = _calculate_geometric_interval_breaks(low, high, n)
+        assert len(found) == n and all(math.isfinite(b) for b in found)
+        assert all(low < b < high for b in found)
+        logs = [math.log(x) for x in (low, *found, high)]
+        steps = [b - a for a, b in itertools.pairwise(logs)]
+        assert steps == pytest.approx([steps[0]] * len(steps), rel=1e-9)
+
+
 def test_heads_and_tails_follows_the_40_percent_rule(con_with) -> None:
     skewed = con_with([1] * 80 + [10] * 15 + [100] * 5)
     assert breaks(skewed, ClassBreakMethod.heads_and_tails, 4) == pytest.approx(

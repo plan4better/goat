@@ -1184,6 +1184,7 @@
       "natural_breaks",
       "std_dev",
       "heads_and_tails",
+      "geometric_interval",
       "manual"
      ],
      "title": "Method",
@@ -1773,6 +1774,7 @@
       "natural_breaks",
       "std_dev",
       "heads_and_tails",
+      "geometric_interval",
       "manual"
      ],
      "title": "Method",

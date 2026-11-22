@@ -149,6 +149,44 @@ def test_compute_into_writes_the_classes_and_stamps_them(duck) -> None:
     assert "classes" not in doc["classify"][0]
 
 
+def test_geometric_intervals_are_computed_like_the_other_methods(duck) -> None:
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "classify": [{"field": "pop", "method": "geometric_interval", "count": 2}],
+    }
+    out, notes = compute_into(duck, "t", doc, geometry="point", fingerprint="f")
+    # pop runs from 1 to 9: the ratio is 3.
+    assert [(k.get("from"), k.get("to")) for k in out["classify"][0]["classes"]] == [
+        (None, 3),
+        (3, None),
+    ]
+    assert notes == []
+
+
+def test_geometric_intervals_over_values_at_or_below_zero_make_one_class() -> None:
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t AS SELECT * FROM (VALUES (0.0), (1.0), (10.0)) v(v)")
+    key = ("breaks", "v", "geometric_interval", "4")
+    # Fewer by its definition, as standard deviation: not equal breaks merged.
+    assert compute_stats(con, "t", [key])[key] == Breaks((), 0.0, 10.0, False)
+    # The style check says why the classification has one class.
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "classify": [{"field": "v", "method": "geometric_interval", "count": 4}],
+    }
+    out, notes = compute_into(con, "t", doc, geometry="point", fingerprint="f")
+    assert len(out["classify"][0]["classes"]) == 1
+    assert [(n.code, n.level, n.message) for n in notes] == [
+        (
+            "classes_merged",
+            "info",
+            "Geometric intervals need values above 0: 1 class instead of 4.",
+        )
+    ]
+
+
 def test_compute_into_reads_nothing_for_a_style_without_computed_values() -> None:
     doc = {
         "version": "1.0.0",

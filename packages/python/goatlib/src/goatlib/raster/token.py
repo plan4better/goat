@@ -102,6 +102,10 @@ class RangeClass(BaseModel):
 class Classes(_OneBand):
     kind: Literal["classes"]
     classes: Annotated[list[RangeClass], Field(min_length=1, max_length=MAX_CLASSES)]
+    #: Where open first and last classes end when `outside` hides: None for the
+    #: band's minimum and maximum, as a ramp's.
+    domain: tuple[float, float] | None = None
+    outside: Literal["clamp", "hide"] = "clamp"
 
 
 class ValueClass(BaseModel):

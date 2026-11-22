@@ -10318,6 +10318,74 @@
   "position": "top",
   "unsupported": []
  },
+ "2403": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "raster-dem",
+    "tiles": [
+     "https://geo/collections/d/coverage/tiles/WebMercatorQuad/{z}/{y}/{x}?f=webp&band=1&resampling=nearest&tilesize=512&base=-1&step=1&v=1-e1"
+    ],
+    "tileSize": 512,
+    "encoding": "custom",
+    "redFactor": 65536,
+    "greenFactor": 256,
+    "blueFactor": 1,
+    "baseShift": 1,
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-relief",
+    "type": "color-relief",
+    "source": "s",
+    "paint": {
+     "color-relief-color": [
+      "interpolate",
+      [
+       "linear"
+      ],
+      [
+       "elevation"
+      ],
+      -1,
+      "rgba(0, 0, 0, 0)",
+      0,
+      "rgba(0, 0, 0, 0)",
+      249,
+      "rgba(0, 0, 0, 0)",
+      250,
+      "rgba(47, 107, 58, 1)",
+      274,
+      "rgba(47, 107, 58, 1)",
+      275,
+      "rgba(168, 198, 108, 1)",
+      299,
+      "rgba(168, 198, 108, 1)",
+      300,
+      "rgba(201, 163, 107, 1)",
+      339,
+      "rgba(201, 163, 107, 1)",
+      340,
+      "rgba(242, 242, 242, 1)",
+      400,
+      "rgba(242, 242, 242, 1)",
+      401,
+      "rgba(0, 0, 0, 0)",
+      16777214,
+      "rgba(0, 0, 0, 0)"
+     ],
+     "resampling": "nearest"
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "2520": {
   "id": "1",
   "sources": {
