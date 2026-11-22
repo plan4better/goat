@@ -933,3 +933,268 @@ def test_v0_arrows_keep_turning_with_the_line(contexts: dict) -> None:
     assert "turn_with_line" not in r.document["symbol"]["arrows"]
     assert "icon" not in r.document["symbol"]["arrows"]
     assert errors(r.document, contexts["routes"]) == []
+
+
+GREY = "#aaaaaa"
+
+
+def test_a_filled_polygon_without_a_color_stays_grey(contexts: dict) -> None:
+    """Today's renderer draws a part without a stored color in #AAAAAA."""
+    r = convert_v0({"filled": True}, contexts["districts"])
+    assert r.document["symbol"]["fill"]["color"] == GREY
+    assert r.lossy == ()
+    assert errors(r.document, contexts["districts"]) == []
+
+
+def test_a_line_without_a_stroke_color_stays_grey(contexts: dict) -> None:
+    r = convert_v0({"stroke_width": 2}, contexts["routes"])
+    assert r.document["symbol"]["line"]["color"] == GREY
+    assert errors(r.document, contexts["routes"]) == []
+
+
+def test_outlines_without_a_stroke_color_stay_grey(contexts: dict) -> None:
+    poly = convert_v0({"filled": False, "stroked": True}, contexts["districts"])
+    assert poly.document["symbol"]["outline"]["color"] == GREY
+    point = convert_v0({"filled": True, "stroked": True}, contexts["schools"])
+    assert point.document["symbol"]["outline"]["color"] == GREY
+    assert point.document["symbol"]["marker"]["color"] == GREY
+    assert errors(point.document, contexts["schools"]) == []
+
+
+def test_a_filled_custom_marker_without_a_color_stays_grey(contexts: dict) -> None:
+    props = {
+        "custom_marker": True,
+        "filled": True,
+        "marker": {"name": "park", "url": "u", "source": "library"},
+    }
+    marker = convert_v0(props, contexts["schools"]).document["symbol"]["marker"]
+    assert marker["color"] == GREY
+
+
+def test_a_dropped_classification_without_a_base_color_draws_grey(
+    contexts: dict,
+) -> None:
+    """An incomplete classification drew the whole layer in the base color, grey when none was stored."""
+    props = {
+        "filled": True,
+        "color_field": {"name": "density", "type": "number"},
+        "color_scale": "quantile",
+        "color_range": {"colors": ["#fee8c8", "#fdbb84", "#e34a33"]},
+        "color_scale_breaks": {"min": 0, "max": 10, "breaks": [5]},
+    }
+    r = convert_v0(props, contexts["districts"])
+    assert "classify" not in r.document
+    assert r.document["symbol"]["fill"]["color"] == GREY
+    assert [n.key for n in r.lossy] == ["color_scale"]
+
+
+def test_an_unreadable_color_draws_grey_and_is_reported(contexts: dict) -> None:
+    r = convert_v0({"filled": True, "color": "nope"}, contexts["districts"])
+    assert r.document["symbol"]["fill"]["color"] == GREY
+    assert [n.key for n in r.lossy] == ["color"]
+
+
+def _popup_attribute(ctx: object, attribute: dict) -> tuple[dict, list]:
+    """An attribute converted from both of today's popup shapes: the format and the lossy keys of each."""
+    out = []
+    for props in (
+        {"popup": {"blocks": [{"type": "fieldList", "attributes": [attribute]}]}},
+        {
+            "interaction": {
+                "content": [{"type": "field_list", "attributes": [attribute]}]
+            }
+        },
+    ):
+        r = convert_v0(props, ctx)
+        assert errors(r.document, ctx) == []
+        [block] = r.document["popup"]["blocks"]
+        out.append((block["attributes"][0].get("format"), [n.key for n in r.lossy]))
+    assert out[0][0] == out[1][0]
+    return out[0][0], out[0][1] + out[1][1]
+
+
+@pytest.mark.parametrize(
+    ("preset", "fmt", "lossy"),
+    [
+        ("none", {"thousands_separator": True}, True),
+        ("decimal_max", {"thousands_separator": True}, True),
+        ("integer", {"decimals": 0, "thousands_separator": False}, False),
+        ("grouping", {"decimals": 0, "thousands_separator": True}, False),
+        ("grouping_2d", {"decimals": 2, "thousands_separator": True}, False),
+        (
+            "signed_2d",
+            {"decimals": 2, "thousands_separator": True, "always_show_sign": True},
+            True,
+        ),
+        (
+            "compact",
+            {"thousands_separator": True, "abbreviate": True},
+            True,
+        ),
+        (
+            "compact_1d",
+            {"decimals": 1, "thousands_separator": True, "abbreviate": True},
+            False,
+        ),
+        ("decimal_2", {"decimals": 2, "thousands_separator": True}, False),
+        ("decimal_3", {"decimals": 3, "thousands_separator": True}, False),
+        (
+            "currency_usd",
+            {"decimals": 2, "thousands_separator": True, "prefix": "$"},
+            True,
+        ),
+        (
+            "currency_eur",
+            {"decimals": 2, "thousands_separator": True, "prefix": "€"},
+            True,
+        ),
+        (
+            "percent",
+            {"decimals": 0, "thousands_separator": True, "percent": True},
+            False,
+        ),
+        (
+            "percent_1d",
+            {"decimals": 1, "thousands_separator": True, "percent": True},
+            False,
+        ),
+        (
+            "percent_2d",
+            {"decimals": 2, "thousands_separator": True, "percent": True},
+            False,
+        ),
+    ],
+)
+def test_each_legacy_format_preset_becomes_the_format_that_prints_the_same(
+    contexts: dict, preset: str, fmt: dict, lossy: bool
+) -> None:
+    got, notes = _popup_attribute(
+        contexts["schools"], {"name": "pupils", "type": "number", "format": preset}
+    )
+    assert got == fmt
+    assert notes == (["popup.format", "interaction.format"] if lossy else [])
+
+
+def test_a_format_config_wins_over_the_legacy_preset(contexts: dict) -> None:
+    got, notes = _popup_attribute(
+        contexts["schools"],
+        {"name": "pupils", "format": "percent", "format_config": {"decimals": 1}},
+    )
+    assert got == {"decimals": 1}
+    assert notes == []
+
+
+def test_an_empty_format_config_leaves_the_legacy_preset(contexts: dict) -> None:
+    got, _ = _popup_attribute(
+        contexts["schools"],
+        {"name": "pupils", "format": "integer", "format_config": {}},
+    )
+    assert got == {"decimals": 0, "thousands_separator": False}
+
+
+def test_a_currency_sign_sits_inside_the_attributes_own_prefix_and_suffix(
+    contexts: dict,
+) -> None:
+    got, _ = _popup_attribute(
+        contexts["schools"],
+        {
+            "name": "pupils",
+            "format": "currency_eur",
+            "prefix": "ca. ",
+            "suffix": " net",
+        },
+    )
+    assert got["prefix"] == "ca. €"
+    assert got["suffix"] == " net"
+
+
+@pytest.mark.parametrize("preset", ["roman", 5, None, ""])
+def test_an_unknown_legacy_preset_is_left_out(contexts: dict, preset: object) -> None:
+    got, notes = _popup_attribute(
+        contexts["schools"], {"name": "pupils", "format": preset}
+    )
+    assert got is None
+    if isinstance(preset, str) and preset:
+        assert notes == ["popup.format", "interaction.format"]
+    else:
+        assert notes == []
+
+
+@pytest.mark.parametrize(
+    ("context", "size", "max_width"),
+    [("schools", None, 140), ("schools", 24, 240), ("districts", 10, 100)],
+)
+def test_a_label_wraps_at_ten_ems_as_today(
+    contexts: dict, context: str, size: float | None, max_width: float
+) -> None:
+    tl = {"field": "name", **({"size": size} if size else {})}
+    r = convert_v0({"text_label": tl}, contexts[context])
+    assert r.document["symbol"]["label"]["max_width"] == max_width
+    assert errors(r.document, contexts[context]) == []
+
+
+def test_a_line_label_gets_no_wrap_width(contexts: dict) -> None:
+    """Labels along a line never wrap."""
+    r = convert_v0({"text_label": {"field": "name"}}, contexts["routes"])
+    assert "max_width" not in r.document["symbol"]["label"]
+
+
+@pytest.mark.parametrize("context", ["districts", "satellite"])
+def test_a_max_zoom_of_zero_draws_at_every_zoom_as_today(
+    contexts: dict, context: str
+) -> None:
+    r = convert_v0({"min_zoom": 3, "max_zoom": 0}, contexts[context])
+    assert r.document["min_zoom"] == 3
+    assert "max_zoom" not in r.document
+    assert "visible" not in r.map_state
+    assert r.lossy == ()
+
+
+def test_a_cluster_without_min_points_takes_todays_three(contexts: dict) -> None:
+    r = convert_v0({"cluster": {"enabled": True}}, contexts["schools"])
+    assert r.document["render"]["min_points"] == 3
+    stored = convert_v0(
+        {"cluster": {"enabled": True, "min_points": 5}}, contexts["schools"]
+    )
+    assert stored.document["render"]["min_points"] == 5
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ({"position": "fixed"}, {"layout": "modal"}, {"layout": "pinned"}),
+        ({"position": "default"}, {"layout": "pinned"}, {"layout": "popup"}),
+        ({"show_layer_header": False}, {"header": "standard"}, {"header": "none"}),
+        ({"show_layer_header": True}, {"header": "none"}, {"header": "standard"}),
+        (
+            {},
+            {"layout": "modal", "header": "none"},
+            {"layout": "modal", "header": "none"},
+        ),
+    ],
+)
+def test_todays_popup_keys_win_over_the_new_ones_when_both_are_stored(
+    contexts: dict, old: dict, new: dict, expected: dict
+) -> None:
+    """Today's renderer reads `position` and `show_layer_header` first when they are there."""
+    popup = convert_v0({"popup": {**new, **old}}, contexts["schools"]).document["popup"]
+    assert {k: popup[k] for k in expected} == expected
+
+
+def test_a_legacy_popup_with_only_an_image_lists_all_fields_first(
+    contexts: dict,
+) -> None:
+    r = convert_v0(
+        {
+            "interaction": {
+                "type": "click",
+                "content": [{"type": "image", "url": "https://x/a.png"}],
+            }
+        },
+        contexts["schools"],
+    )
+    assert r.document["popup"]["blocks"] == [
+        {"type": "field_list"},
+        {"type": "image", "source": "static", "url": "https://x/a.png"},
+    ]
+    assert errors(r.document, contexts["schools"]) == []

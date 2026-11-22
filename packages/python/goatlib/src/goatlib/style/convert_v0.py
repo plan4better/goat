@@ -27,9 +27,14 @@ TODAY_ICON_SIZE = 100
 TODAY_LABEL_SIZE = 14
 #: Today's label line height in ems: MapLibre's default, the renderer sets none.
 TODAY_LINE_HEIGHT = 1.2
+#: Today's label wrap width in ems: MapLibre's default, the renderer sets none.
+TODAY_LABEL_MAX_WIDTH_EMS = 10
 TODAY_RESAMPLING = "nearest"
 TODAY_CLUSTER_MAX_ZOOM = 14
-TODAY_UNMATCHED_COLOR = "#aaaaaa"
+TODAY_CLUSTER_MIN_POINTS = 3
+#: The color of a part without a readable stored color, and of unmatched category values.
+TODAY_COLOR = "#aaaaaa"
+TODAY_UNMATCHED_COLOR = TODAY_COLOR
 
 _METHODS = {
     "quantile": "quantile",
@@ -127,6 +132,9 @@ class _Converter:
         if out:
             doc["legend"] = out
         zooms = {k: _num(p.get(k)) for k in ("min_zoom", "max_zoom")}
+        if zooms["max_zoom"] == 0:
+            # Today's renderer reads a maximum zoom of 0 as none (`max_zoom || 24`).
+            zooms["max_zoom"] = None
         lo, hi = zooms["min_zoom"], zooms["max_zoom"]
         if lo is not None and hi is not None and lo >= hi:
             self.lose(
@@ -207,10 +215,9 @@ class _Converter:
         p = self.props
         base = parse_color(p.get(prefix))
         key = target.split(".")[1]
-        if base:
-            part[key] = base
-        elif p.get(prefix) is not None:
-            self.lose(prefix, "Unreadable color; the part takes its default.")
+        part[key] = base or TODAY_COLOR
+        if not base and p.get(prefix) is not None:
+            self.lose(prefix, "Unreadable color; the part is drawn grey.")
         field_name = _field_name(p, prefix)
         if not field_name:
             return
@@ -629,6 +636,11 @@ class _Converter:
                 )
         elif geometry == "polygon":
             label["placement"] = "inside"
+        if geometry != "line":
+            # Labels along a line never wrap.
+            label["max_width"] = limits.inside(
+                "label.max_width", TODAY_LABEL_MAX_WIDTH_EMS * size
+            )
         offset = tl.get("offset")
         ems = (
             [_num(offset[0]), _num(offset[1])]
@@ -668,7 +680,9 @@ class _Converter:
         if radius is not None:
             render["radius"] = radius
         min_points = _num(cl.get("min_points"))
-        if min_points is not None and min_points >= 2:
+        if min_points is None:
+            render["min_points"] = TODAY_CLUSTER_MIN_POINTS
+        elif min_points >= 2:
             render["min_points"] = int(min_points)
         symbol: dict[str, Any] = {}
         if parse_color(cl.get("color")):
@@ -694,7 +708,7 @@ class _Converter:
             return _popup_v1(popup, self)
         interaction = p.get("interaction")
         if isinstance(interaction, dict):
-            return _popup_from_interaction(interaction)
+            return _popup_from_interaction(interaction, self)
         return None
 
     # raster ---------------------------------------------------------------------------------------
@@ -885,19 +899,83 @@ def _dedupe_bounds(bounds: list[tuple[Any, Any, Any]]) -> list[tuple[Any, Any, A
     return out
 
 
-def _format_from_v0(attribute: dict[str, Any]) -> dict[str, Any] | None:
-    fmt = {
-        k: v
-        for k, v in _dict(attribute.get("format_config")).items()
-        if k in ("decimals", "thousands_separator", "abbreviate", "always_show_sign")
-    }
-    for key in ("prefix", "suffix"):
-        if isinstance(attribute.get(key), str) and attribute[key]:
-            fmt[key] = attribute[key]
+_FORMAT_CONFIG_KEYS = (
+    "decimals",
+    "thousands_separator",
+    "abbreviate",
+    "always_show_sign",
+)
+_GROUPED = {"thousands_separator": True}
+#: Today's number presets (`format`) as the format that prints the same, and what
+#: differs where GOAT Style has no exact counterpart. Today's presets are
+#: `Intl.NumberFormat` options; a currency sign becomes a prefix. Presets without
+#: a fixed number of decimals leave `decimals` out, so whole numbers keep none.
+_FORMAT_PRESETS: dict[str, tuple[dict[str, Any], str | None]] = {
+    "none": (
+        dict(_GROUPED),
+        "showed up to three decimals; the automatic decimals apply",
+    ),
+    "decimal_max": (
+        dict(_GROUPED),
+        "showed up to three decimals; the automatic decimals apply",
+    ),
+    "integer": ({"decimals": 0, "thousands_separator": False}, None),
+    "grouping": ({"decimals": 0, **_GROUPED}, None),
+    "grouping_2d": ({"decimals": 2, **_GROUPED}, None),
+    "signed_2d": (
+        {"decimals": 2, **_GROUPED, "always_show_sign": True},
+        "showed a plus sign on zero; zero now reads without one",
+    ),
+    "compact": (
+        {**_GROUPED, "abbreviate": True},
+        "rounded short numbers to two digits (12K); they now keep one decimal (12.3 k)",
+    ),
+    "compact_1d": ({"decimals": 1, **_GROUPED, "abbreviate": True}, None),
+    "decimal_2": ({"decimals": 2, **_GROUPED}, None),
+    "decimal_3": ({"decimals": 3, **_GROUPED}, None),
+    "currency_usd": (
+        {"decimals": 2, **_GROUPED, "prefix": "$"},
+        "placed the dollar sign by the reader's language; it is now a fixed prefix",
+    ),
+    "currency_eur": (
+        {"decimals": 2, **_GROUPED, "prefix": "€"},
+        "placed the euro sign by the reader's language; it is now a fixed prefix",
+    ),
+    "percent": ({"decimals": 0, **_GROUPED, "percent": True}, None),
+    "percent_1d": ({"decimals": 1, **_GROUPED, "percent": True}, None),
+    "percent_2d": ({"decimals": 2, **_GROUPED, "percent": True}, None),
+}
+
+
+def _format_from_v0(
+    attribute: dict[str, Any], lose: Callable[[str], None]
+) -> dict[str, Any] | None:
+    """An attribute's number format: today's `format_config` when it has any key
+    (today's renderer then ignores the preset), else its `format` preset."""
+    config = _dict(attribute.get("format_config"))
+    preset = attribute.get("format")
+    fmt: dict[str, Any] = {}
+    if config:
+        fmt = {k: v for k, v in config.items() if k in _FORMAT_CONFIG_KEYS}
+    elif isinstance(preset, str) and preset:
+        if preset in _FORMAT_PRESETS:
+            mapped, difference = _FORMAT_PRESETS[preset]
+            fmt = dict(mapped)
+            if difference:
+                lose(f'Number format "{preset}" {difference}.')
+        else:
+            lose(f'Unknown number format "{preset}" left out.')
+    prefix = attribute.get("prefix")
+    if isinstance(prefix, str) and prefix:
+        # Today's renderer puts the attribute's prefix before the formatted value, currency sign included.
+        fmt["prefix"] = prefix + fmt.get("prefix", "")
+    suffix = attribute.get("suffix")
+    if isinstance(suffix, str) and suffix:
+        fmt["suffix"] = suffix
     return fmt or None
 
 
-def _attributes(attrs: Any) -> list[dict[str, Any]]:
+def _attributes(attrs: Any, lose: Callable[[str], None]) -> list[dict[str, Any]]:
     out = []
     for a in attrs if isinstance(attrs, list) else []:
         if not isinstance(a, dict) or not isinstance(a.get("name"), str):
@@ -907,7 +985,7 @@ def _attributes(attrs: Any) -> list[dict[str, Any]]:
             item["label"] = a["label"]
         if a.get("type") in ("string", "number", "boolean"):
             item["type"] = a["type"]
-        fmt = _format_from_v0(a)
+        fmt = _format_from_v0(a, lose)
         if fmt:
             item["format"] = fmt
         out.append(item)
@@ -942,10 +1020,11 @@ def _popup_v1(popup: dict[str, Any], conv: "_Converter") -> dict[str, Any] | boo
         size = _num(popup.get(key))
         if size is not None and size >= 1:
             out[key] = min(int(size), 4000)
-    if popup.get("position") == "fixed" and "layout" not in out:
-        out["layout"] = "pinned"
-    if popup.get("show_layer_header") is False and "header" not in out:
-        out["header"] = "none"
+    # Today's renderer lets the older keys win when they are stored.
+    if popup.get("position") is not None:
+        out["layout"] = "pinned" if popup["position"] == "fixed" else "popup"
+    if popup.get("show_layer_header") is not None:
+        out["header"] = "standard" if popup["show_layer_header"] else "none"
     blocks = []
     for b in popup.get("blocks") or []:
         if not isinstance(b, dict):
@@ -957,7 +1036,9 @@ def _popup_v1(popup: dict[str, Any], conv: "_Converter") -> dict[str, Any] | boo
         if btype == "field_list":
             if b.get("layout") in ("table", "list"):
                 block["layout"] = b["layout"]
-            attributes = _attributes(b.get("attributes"))
+            attributes = _attributes(
+                b.get("attributes"), lambda note: conv.lose("popup.format", note)
+            )
             if attributes:
                 block["attributes"] = attributes
             if isinstance(b.get("collapse_after"), int):
@@ -975,7 +1056,9 @@ def _popup_v1(popup: dict[str, Any], conv: "_Converter") -> dict[str, Any] | boo
     return out
 
 
-def _popup_from_interaction(interaction: dict[str, Any]) -> dict[str, Any] | bool:
+def _popup_from_interaction(
+    interaction: dict[str, Any], conv: "_Converter"
+) -> dict[str, Any] | bool:
     trigger = interaction.get("type", "click")
     if trigger == "none":
         return False
@@ -993,11 +1076,17 @@ def _popup_from_interaction(interaction: dict[str, Any]) -> dict[str, Any] | boo
         ):
             blocks.append({"type": "image", "source": "static", "url": content["url"]})
         elif content.get("type", "field_list") == "field_list":
-            attributes = _attributes(content.get("attributes"))
+            attributes = _attributes(
+                content.get("attributes"),
+                lambda note: conv.lose("interaction.format", note),
+            )
             block: dict[str, Any] = {"type": "field_list"}
             if attributes:
                 block["attributes"] = attributes
             blocks.append(block)
+    if blocks and not any(b["type"] == "field_list" for b in blocks):
+        # Today's renderer adds a list of all fields above the images.
+        blocks.insert(0, {"type": "field_list"})
     if blocks:
         out["blocks"] = blocks
     return out

@@ -3448,10 +3448,10 @@ not kept.
 
 | Today | GOAT Style | Conversion | Lossy |
 |---|---|---|---|
-| points: `color`, `opacity`, `filled: false` | `marker.color`, `marker.opacity`, `marker.fill: false` (outline kept) | RGB array to hex | no |
-| polygons: `color`, `opacity`, `filled`, `stroked` | `fill.color`, `fill.opacity`, `fill: false`, `outline: false` | RGB to hex | no |
-| lines: `stroke_color`, `opacity` | `line.color`, `line.opacity` | RGB to hex | no |
-| `stroke_color`, `stroke_width` on points and polygons | `outline.color`, `outline.width` | RGB to hex | no |
+| points: `color`, `opacity`, `filled: false` | `marker.color`, `marker.opacity`, `marker.fill: false` (outline kept) | RGB array to hex; an absent `color` is `#aaaaaa`, the grey today's renderer draws (also on a filled custom marker) | no |
+| polygons: `color`, `opacity`, `filled`, `stroked` | `fill.color`, `fill.opacity`, `fill: false`, `outline: false` | RGB to hex; an absent `color` is `#aaaaaa` | no |
+| lines: `stroke_color`, `opacity` | `line.color`, `line.opacity` | RGB to hex; an absent `stroke_color` is `#aaaaaa` | no |
+| `stroke_color`, `stroke_width` on points and polygons | `outline.color`, `outline.width` | RGB to hex; an absent `stroke_color` is `#aaaaaa` | no |
 | `X_field` + `X_scale: ordinal` + `X_range.color_map` | `classify` with `method: categories`, one class per entry, `target` = X | values lists kept | no |
 | `X_scale`: `quantile`, `equal_interval`, `standard_deviation`, `heads_and_tails` + `X_scale_breaks` | `classify` with the method (`std_dev` for `standard_deviation`), `count`, `palette`, classes from the stored breaks, `computed` with an unknown fingerprint (recomputed on first read) | | no |
 | `X_scale: custom_breaks` | `classify` with `method: manual` | | no |
@@ -3462,7 +3462,7 @@ not kept.
 | `radius`, `radius_field`, `radius_range`, `radius_scale` | `marker.size` (fixed, or classes over the stored breaks) | **size = 2 x radius** (diameter) | no; a size by field without breaks drew one size and stays one size, reported |
 | `marker_size` (custom marker) | `marker.size` | **size = marker_size x 200 / 200 image px**, checked in the dry run | no |
 | `X_ordinal_map` (size by category) | classification with `target` = the size key | | no |
-| `marker`, `marker_field`, `marker_mapping` | `marker.icon`, classes with `marker.icon` | URLs to `goat:` or `asset:` | no |
+| `marker`, `marker_field`, `marker_mapping` | `marker.icon`, classes with `marker.icon` | URLs to `goat:` or `asset:`; a library icon is `goat:<name>` whether or not its stored marker has `source`, and takes the marker color like every library icon | no, with one exception: today's renderer tints only library icons stored with `source: library` and draws one stored without `source` in the icon's own black, so such an icon changes from black to the marker color, not reported per style |
 | `marker_anchor` (9 anchors) | `marker.anchor` (the same nine, `top-left` written `top_left`) | | no |
 | `marker_offset` | `marker.offset` | **px = offset x marker_size / 200** (MapLibre scales icon offsets by the icon size) | no |
 | `marker_allow_overlap` | `marker.allow_overlap` | | no |
@@ -3470,20 +3470,20 @@ not kept.
 | `stroke_cap`, `stroke_join`, `stroke_offset` | `line.cap`, `line.join`, `line.offset` | | no |
 | `decoration_*` (arrows): placement `start_and_end` | `arrows.placement: both_ends` | | no |
 | `decoration_allow_overlap` | dropped: arrows always overlap | | **yes** |
-| `text_label`: `field`, `size`, `color`, `outline_color`, `outline_width` | `label.text: "{field}"`, `size`, `color`, `halo` | RGB to hex | no |
+| `text_label`: `field`, `size`, `color`, `outline_color`, `outline_width` | `label.text: "{field}"`, `size`, `color`, `halo`; on points and polygons also `label.max_width` | RGB to hex; **max_width = 10 x size px** (today's renderer sets no wrap width, so MapLibre's 10 em applies; labels along a line never wrap and get none) | no |
 | `text_label.offset` (ems) | `label.offset` (px) | **px = ems x size** | no |
 | `text_label.anchor` on points (9 anchors) | `label.placement`, by the side the label sits on: `top` to `below`, `bottom` to `above`, `left` to `right`, `right` to `left`, `top-left` to `below_right`, `top-right` to `below_left`, `bottom-left` to `above_right`, `bottom-right` to `above_left`, `center` to `center`; an absent anchor is `top` (`below`) | today's renderer puts the anchor on the point itself; GOAT Style keeps the label clear of the marker, so a converted label sits half the marker size plus 2 px further out, and an offset that cleared the marker by hand adds to that | no |
 | `text_label.anchor` on lines | `label.placement: line` with the side kept in `label.offset`: `bottom` (text above the line) moves it up, `top` (below the line, also an absent anchor) moves it down, `center` keeps it on the line | **offset y = 0.6 x size px** (half of MapLibre's default line height, 1.2 em, which today's renderer keeps), added to the converted `text_label.offset` | **yes** only for the left or right part of an anchor (a shift along the line) |
 | `text_label.anchor` on polygons | `label.placement: inside`, centered on the tile service's point inside the polygon | the anchor is dropped: a label that sat above or below that point moves by half a line at most | **yes**, not reported per style |
 | `text_label.font_family` | `label.font.weight: bold` when the first font is a Bold one (Open Sans Bold), else nothing (regular) | today's renderer never drew the choice, so these labels turn bold for the first time | no |
 | `text_label.alignment`, `background`, `background_color` | dropped (alignment and backgrounds later) | | **yes** |
-| `min_zoom`, `max_zoom` | top-level `min_zoom`, `max_zoom` | | no |
+| `min_zoom`, `max_zoom` | top-level `min_zoom`, `max_zoom` | a `max_zoom` of 0 is no upper limit (today's renderer reads it as 24) and is left out | no |
 | `visibility` | map document layer entry `visible` | | no |
 | `legend.show`, `legend.caption` | `legend.show`, `legend.caption` | | no |
 | `legend.collapsed` | map document `legend.expanded` | inverted | no |
-| `cluster` (`radius`, `min_points`, `max_zoom`, `color`, `text_color`) | `render: { "type": "cluster" }` with `cluster_until_zoom` = `max_zoom` + 1 (today's value is inclusive), cluster `symbol` colors; on a layer with a custom marker also `look: points` and `count: badge` (the marker with the count on a badge in the cluster colors, as today) | | no |
-| `popup` | `popup`: `fieldList` to `field_list`, attribute `name` to `field`, `format_config` to `format`, the legacy `format` preset to the matching `format`, `position` and `show_layer_header` to `layout` and `header`, block ids kept | | no |
-| `interaction` (legacy popup) | the popup GOAT seeds from it today | | no |
+| `cluster` (`radius`, `min_points`, `max_zoom`, `color`, `text_color`) | `render: { "type": "cluster" }` with `cluster_until_zoom` = `max_zoom` + 1 (today's value is inclusive), `min_points` (3 when absent, as today), cluster `symbol` colors; on a layer with a custom marker also `look: points` and `count: badge` (the marker with the count on a badge in the cluster colors, as today) | | no |
+| `popup` | `popup`: `fieldList` to `field_list`, attribute `name` to `field`, `format_config` to `format`, the legacy `format` preset to the matching `format` (below), `position` and `show_layer_header` to `layout` and `header`, block ids kept | a `format_config` with any key wins over the preset, as today; a stored `position` or `show_layer_header` wins over `layout` or `header` (today's renderer reads the older keys first): `position: fixed` is `pinned`, any other `position` is `popup`, `show_layer_header` true is `standard`, false is `none` | **yes**, reported, for the presets marked below |
+| `interaction` (legacy popup) | the popup GOAT seeds from it today: field lists (presets as for `popup`) and images, with a field list of all fields first when the content has none | | **yes**, reported, for the presets marked below |
 | raster `opacity`, `style.opacity` | top-level `opacity` (the product) | | no |
 | raster `resampling` | `resampling` | | no |
 | raster `style_type: image`, `brightness_min`, `brightness_max`, `contrast`, `saturation`, `hue` | `render.type: image` and adjustments | **brightness = brightness_min if > 0, else brightness_max - 1** | **yes** when both are set |
@@ -3494,8 +3494,10 @@ not kept.
 
 Where a key is absent, the converter writes what today's renderer draws, not the web form's defaults: the
 renderer reads the stored properties as they are. So an absent `filled` or `stroked` is off, an absent `opacity` is 1,
-an absent `stroke_width` is 1, an absent `marker_size` is 100, an absent label size is 14, and an absent resampling
-is `nearest`. An empty zoom range (minimum not below maximum) drew nothing: it becomes `visible: false` in the map
+an absent `stroke_width` is 1, an absent `marker_size` is 100, an absent label size is 14, an absent `color` or
+`stroke_color` is `#aaaaaa` (also when it is unreadable, reported, and when a classification is left out), a label
+wraps at 10 x its size, an absent cluster `min_points` is 3, a `max_zoom` of 0 is no upper limit, and an absent
+resampling is `nearest`. An empty zoom range (minimum not below maximum) drew nothing: it becomes `visible: false` in the map
 document. A `transparent` no-data color becomes `#00000000` on the classified key only.
 
 ## 18. Reference
@@ -3505,6 +3507,24 @@ Schema and the web's types and defaults are generated from them, and these table
 `style/defaults.py`), except those that depend on the document: the pattern color is the fill color, arrows take the
 line color, the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker color on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
 Z by zoom, A by attribute, C by classes; section 4.5).
+The legacy popup `format` presets (today's `Intl.NumberFormat` options, in the reader's language) become these
+formats; each writes `thousands_separator`, and `decimals` where the preset fixes them (left out otherwise, so whole
+numbers keep none). An unknown preset is left out, reported. The attribute's own `prefix` goes before a currency
+sign, as today.
+
+| Preset | `format` | Lossy |
+|---|---|---|
+| `integer` | `decimals: 0`, `thousands_separator: false` | no |
+| `grouping` | `decimals: 0`, `thousands_separator: true` | no |
+| `grouping_2d`, `decimal_2` | `decimals: 2`, `thousands_separator: true` | no |
+| `decimal_3` | `decimals: 3`, `thousands_separator: true` | no |
+| `compact_1d` | `abbreviate: true`, `decimals: 1`, `thousands_separator: true` | no |
+| `percent`, `percent_1d`, `percent_2d` | `percent: true`, `decimals` 0, 1 or 2, `thousands_separator: true` | no |
+| `none`, `decimal_max` | `thousands_separator: true` | **yes**: today's showed up to three decimals |
+| `signed_2d` | `decimals: 2`, `thousands_separator: true`, `always_show_sign: true` | **yes**: today's showed a plus sign on zero |
+| `compact` | `abbreviate: true`, `thousands_separator: true` | **yes**: today's rounded short numbers to two digits (12K), `abbreviate` keeps one decimal |
+| `currency_usd`, `currency_eur` | `decimals: 2`, `thousands_separator: true`, `prefix: "$"` or `"€"` | **yes**: today's placed the sign by the reader's language (after the number in German) |
+
 
 ### 18.1 Layer style
 
