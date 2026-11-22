@@ -867,7 +867,8 @@ parquet from the shared `data` volume (see "The shared data volume" above).
 With no mirror present it serves an empty but valid STAC API, so it is safe to
 run before `sync_catalog` has ever run.
 
-**Data previews and assets** (`/stac/items/{id}/preview`, thumbnails, styles)
+**Data previews and assets** (`/stac/items/{id}/preview`, which answers
+signed-in users only, thumbnails, styles)
 are the only routes that read the catalog *bucket*. Leave `catalog.s3` unset and
 they answer 404 — deliberately: an endpoint a deployment does not offer simply
 is not there. The rest of the STAC API is unaffected.

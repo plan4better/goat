@@ -754,7 +754,7 @@ catalog:
     existingSecretKeys: {}         # per key; unset keys = global.auth.existingSecretKeys
 
 
-  # Data previews (GET /stac/items/{id}/preview) and assets (thumbnails,
+  # Data previews (GET /stac/items/{id}/preview, for signed-in users) and assets (thumbnails,
   # styles) are the only routes that read the catalog bucket rather than the
   # local mirror. Leave `bucket` unset and those routes answer 404 — by
   # design: an endpoint this deployment does not offer simply is not there.

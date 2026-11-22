@@ -580,3 +580,80 @@ def test_preview_of_an_unknown_item_is_404(catalog_dir: Path) -> None:
     with TestClient(app) as client:
         response = client.get("/stac/items/does-not-exist/preview")
     assert response.status_code == 404
+
+
+def _signed_in_app(
+    catalog_dir: Path, data_parquet: Path, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    """The service with sign-in on and a sample reader over a local file; the
+    token `good` is valid, any other is not."""
+    from goatlib.auth import JOSEError
+
+    def validate(settings: object, token: str) -> dict[str, str]:
+        if token != "good":
+            raise JOSEError("bad token")
+        return {"sub": "user"}
+
+    monkeypatch.setattr("catalog.auth.validate_token", validate)
+    settings = CatalogSettings(
+        data_dir=catalog_dir,
+        auth=True,
+        s3_catalog_bucket=BUCKET,
+        s3_access_key_id="key",
+        s3_secret_access_key="secret",
+    )
+    app = create_app(settings)
+    client = TestClient(app)
+    client.__enter__()
+    app.state.preview_reader = _LocalReader(settings, data_parquet)
+    return client
+
+
+def test_the_sample_is_for_signed_in_users(
+    catalog_dir: Path, data_parquet: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sample is a dataset's own data (rows with their attributes), and
+    catalog data is for signed-in users: without a valid token it answers 401,
+    also to a request that says it already has a copy. Search and the item
+    itself stay public."""
+    client = _signed_in_app(catalog_dir, data_parquet, monkeypatch)
+    try:
+        sample = "/stac/items/radverkehrsnetz-dresden-0/preview"
+        signed_in = client.get(sample, headers={"Authorization": "Bearer good"})
+        assert signed_in.status_code == 200
+        assert signed_in.json()["type"] == "FeatureCollection"
+        # Read with a sign-in: no shared cache may keep it.
+        assert signed_in.headers["Cache-Control"].startswith("private")
+
+        anonymous = client.get(sample)
+        assert anonymous.status_code == 401
+        assert anonymous.headers["www-authenticate"] == "Bearer"
+        has_a_copy = client.get(
+            sample, headers={"If-None-Match": signed_in.headers["ETag"]}
+        )
+        assert has_a_copy.status_code == 401
+        bad = client.get(sample, headers={"Authorization": "Bearer other"})
+        assert bad.status_code == 401
+
+        assert client.get("/stac/items/radverkehrsnetz-dresden-0").status_code == 200
+        assert client.get("/stac/search").status_code == 200
+    finally:
+        client.__exit__(None, None, None)
+
+
+def test_the_sample_needs_no_token_where_sign_in_is_off(
+    catalog_dir: Path, data_parquet: Path
+) -> None:
+    """`AUTH=False` turns sign-in off everywhere."""
+    settings = CatalogSettings(
+        data_dir=catalog_dir,
+        auth=False,
+        s3_catalog_bucket=BUCKET,
+        s3_access_key_id="key",
+        s3_secret_access_key="secret",
+    )
+    app = create_app(settings)
+    with TestClient(app) as client:
+        app.state.preview_reader = _LocalReader(settings, data_parquet)
+        response = client.get("/stac/items/radverkehrsnetz-dresden-0/preview")
+    assert response.status_code == 200
