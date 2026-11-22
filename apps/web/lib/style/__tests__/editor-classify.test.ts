@@ -17,6 +17,7 @@ import {
   isIntentEdit,
   moveCategoryValue,
   moveClassification,
+  pickClassPalette,
   pickClassRange,
   rangeValues,
   recolorClasses,
@@ -288,6 +289,21 @@ describe("categories picked by hand", () => {
     expect(classify(moveCategoryValue(d, 0, "5", null))[0].classes).toEqual([{ values: [7] }]);
   });
 
+  it("on a number field a value matches in goatlib's spelling: a stored 7.0 is the value 7", () => {
+    const d = doc({
+      classify: [{ field: "n", method: "categories", classes: [{ values: ["7.0"] }, { values: [] }] }],
+    });
+    expect(classify(moveCategoryValue(d, 0, "7", 1, "number"))[0].classes).toEqual([
+      { values: [] },
+      { values: ["7"] },
+    ]);
+    // Without the field's type, as text.
+    expect(classify(moveCategoryValue(d, 0, "7", null))[0].classes).toEqual([
+      { values: ["7.0"] },
+      { values: [] },
+    ]);
+  });
+
   it("adds a class with fresh id and its own values, and removes one", () => {
     const added = addCategoryClass(top(), 0, { fill: { color: "#e78ac3" } });
     expect(classify(added)[0].classes).toContainEqual({ id: "c4", values: [], fill: { color: "#e78ac3" } });
@@ -318,7 +334,10 @@ describe("categories picked by hand", () => {
 
   it("reads a value as the field's type", () => {
     expect(categoryValue("42", "integer")).toBe(42);
-    expect(categoryValue("2.5", "number")).toBe(2.5);
+    // A number field's value as goatlib writes category classes: its text, without a trailing zero.
+    expect(categoryValue("2.5", "number")).toBe("2.5");
+    expect(categoryValue("2.50", "number")).toBe("2.5");
+    expect(categoryValue("1.0", "number")).toBe("1");
     expect(categoryValue("true", "boolean")).toBe(true);
     expect(categoryValue("0042", "string")).toBe("0042");
     expect(categoryValue("x", "integer")).toBe("x");
@@ -414,6 +433,141 @@ describe("colors picked by hand", () => {
     const manual = (colors: string[]) => ({ ...computed(colors), method: "manual" });
     expect(classColorsByHand(manual(["#111111", "#333333"]), "fill.color", PALETTE)).toBe(false);
     expect(classColorsByHand(manual(["#111111", "#FF0000"]), "fill.color", PALETTE)).toBe(true);
+  });
+
+  it("computed classes switched to manual keep the server's colors, which are the palette's", () => {
+    // A quantile classification as the server answers it: goatlib's `sample_colors` of GOAT green over 5 classes.
+    const server = ["#e6f6ef", "#a7e2c7", "#5fca9b", "#259e72", "#145c42"];
+    const classes = server.map((color, i) => ({
+      id: `c${i + 1}`,
+      ...(i ? { from: i } : {}),
+      ...(i < 4 ? { to: i + 1 } : {}),
+      fill: { color },
+    }));
+    const quantile = doc({
+      classify: [
+        {
+          id: "pop",
+          field: "pop",
+          method: "quantile",
+          count: 5,
+          palette: "goat:green",
+          classes,
+          computed: {
+            generated: {
+              target: "fill.color",
+              values: Object.fromEntries(classes.map((k) => [k.id, k.fill.color])),
+            },
+          },
+        },
+      ],
+    });
+    const c = (d: LayerStyle) => (d as unknown as { classify: Record<string, unknown>[] }).classify[0];
+    expect(classColorsByHand(c(quantile), "fill.color", "goat:green")).toBe(false);
+    expect(classColorsByHand(c(setMethod(quantile, 0, "manual")), "fill.color", "goat:green")).toBe(false);
+  });
+});
+
+describe("a palette picked for classes the server does not fill", () => {
+  const colors = (d: LayerStyle) =>
+    (
+      d as unknown as { classify: Array<{ classes: Array<{ fill?: { color: string } }> }> }
+    ).classify[0].classes.map((k) => k.fill?.color);
+  const manual = (n: number) =>
+    doc({
+      classify: [
+        {
+          id: "pop",
+          field: "pop",
+          method: "manual",
+          classes: Array.from({ length: n }, (_, i) =>
+            i === 0 ? { to: 1 } : i === n - 1 ? { from: i } : { from: i, to: i + 1 }
+          ),
+        },
+      ],
+    });
+
+  // The colors goatlib's `sample_colors` gives computed classes of the same count.
+  it.each([
+    ["goat:green", 5, false, ["#e6f6ef", "#a7e2c7", "#5fca9b", "#259e72", "#145c42"]],
+    ["goat:green", 5, true, ["#145c42", "#259e72", "#5fca9b", "#a7e2c7", "#e6f6ef"]],
+    [
+      "colorbrewer:BuGn",
+      13,
+      false,
+      [
+        "#f7fcfd",
+        "#ebf7fa",
+        "#ddf2f3",
+        "#ccece6",
+        "#aadfd3",
+        "#89d1bd",
+        "#66c2a4",
+        "#4eb585",
+        "#38a265",
+        "#238b45",
+        "#0e7734",
+        "#005f26",
+        "#00441b",
+      ],
+    ],
+    ["colorbrewer:YlOrRd", 4, false, ["#ffffb2", "#fecc5c", "#fd8d3c", "#e31a1c"]],
+    ["d3:viridis", 6, false, ["#440154", "#424385", "#2e788d", "#30a881", "#82d150", "#fde725"]],
+  ] as const)(
+    "%s for %i manual classes (reversed: %s) colors them as computed classes",
+    (id, n, reversed, want) => {
+      const out = pickClassPalette(manual(n), 0, "fill.color", id, reversed);
+      expect(colors(out)).toEqual(want);
+      const c = (out as unknown as { classify: Record<string, unknown>[] }).classify[0];
+      expect(c.palette).toBe(id);
+      expect(c.reverse).toBe(reversed || undefined);
+      expect(classColorsByHand(c, "fill.color", id)).toBe(false);
+    }
+  );
+
+  const byHand = () =>
+    doc({
+      classify: [
+        {
+          id: "use",
+          field: "use",
+          method: "categories",
+          classes: ["a", "b", "c", "d", "e"].map((v, i) => ({ id: `c${i + 1}`, values: [v] })),
+        },
+      ],
+    });
+
+  it("categories picked by hand: a qualitative palette and a list of colors repeat in order, as the server's", () => {
+    const set2 = pickClassPalette(byHand(), 0, "fill.color", "colorbrewer:Set2", false);
+    expect(colors(set2)).toEqual(["#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854"]);
+    const list = pickClassPalette(byHand(), 0, "fill.color", ["#111111", "#222222", "#333333"], false);
+    expect(colors(list)).toEqual(["#111111", "#222222", "#333333", "#111111", "#222222"]);
+  });
+
+  it("categories picked by hand: a sequential palette is spread over the classes, as the server's", () => {
+    const out = pickClassPalette(byHand(), 0, "fill.color", "goat:green", false);
+    expect(colors(out)).toEqual(["#e6f6ef", "#a7e2c7", "#5fca9b", "#259e72", "#145c42"]);
+  });
+
+  it("computed classes lose their colors: the server colors them again", () => {
+    const quantile = doc({
+      classify: [
+        {
+          id: "pop",
+          field: "pop",
+          method: "quantile",
+          count: 2,
+          classes: [
+            { id: "c1", to: 1, fill: { color: "#ff0000" } },
+            { id: "c2", from: 1, fill: { color: "#00ff00" } },
+          ],
+        },
+      ],
+    });
+    const out = pickClassPalette(quantile, 0, "fill.color", "goat:green", true);
+    expect(colors(out)).toEqual([undefined, undefined]);
+    const c = (out as unknown as { classify: Record<string, unknown>[] }).classify[0];
+    expect([c.palette, c.reverse]).toEqual(["goat:green", true]);
   });
 });
 

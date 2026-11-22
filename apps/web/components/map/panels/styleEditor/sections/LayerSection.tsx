@@ -29,6 +29,7 @@ import {
   useLayerMapState,
   useMoveOffered,
 } from "@/components/map/panels/styleEditor/mapState";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useNextLevel,
@@ -65,6 +66,7 @@ export function VisibleRow() {
               t("style_editor.part_zooms", {
                 part: t(`style_editor.part_${part === "marker" ? "fill" : part}`),
                 zooms: zoomText(t, value.min_zoom, value.max_zoom),
+                ...PLAIN,
               }),
             ]
           : []
@@ -112,8 +114,14 @@ function DrawOrderRow() {
         ...fields
           .filter((f) => f.type === "number" || f.type === "integer")
           .flatMap((f) => [
-            { value: `smallest:${f.name}`, label: t("style_editor.order_smallest", { field: f.label }) },
-            { value: `largest:${f.name}`, label: t("style_editor.order_largest", { field: f.label }) },
+            {
+              value: `smallest:${f.name}`,
+              label: t("style_editor.order_smallest", { field: f.label, ...PLAIN }),
+            },
+            {
+              value: `largest:${f.name}`,
+              label: t("style_editor.order_largest", { field: f.label, ...PLAIN }),
+            },
           ]),
       ]}
       onChange={(value) => {
@@ -141,13 +149,14 @@ function TimeRow() {
     { value: "", label: t("style_editor.time_off") },
     ...fields.flatMap((f) =>
       f.type === "integer"
-        ? [{ value: `${f.name}\u00001`, label: t("style_editor.time_one", { field: f.label }) }]
+        ? [{ value: `${f.name}\u00001`, label: t("style_editor.time_one", { field: f.label, ...PLAIN }) }]
         : f.type === "date" || f.type === "datetime"
           ? DATE_STEPS.map((step) => ({
               value: `${f.name}\u0000${step}`,
               label: t("style_editor.time_date", {
                 field: f.label,
                 step: t(`style_editor.time_step_${step}`),
+                ...PLAIN,
               }),
             }))
           : []

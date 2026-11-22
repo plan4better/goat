@@ -12,7 +12,13 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Geometry } from "@/lib/style/compile/types";
-import { addCategoryClass, moveClass, removeClass, setManualBound } from "@/lib/style/editor/classify";
+import {
+  addCategoryClass,
+  classPaletteColors,
+  moveClass,
+  removeClass,
+  setManualBound,
+} from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { compoundOf, fixedChoice, writeCompound } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
@@ -36,7 +42,6 @@ import { PathIconPicker } from "@/components/map/panels/styleEditor/editors/Icon
 import { useShapeState } from "@/components/map/panels/styleEditor/editors/ShapeField";
 import { GROUPS, PATTERNS } from "@/components/map/panels/styleEditor/editors/partRows";
 import { IconGlyph } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
-import { paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import { PatternPicture, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { MarkerPicture } from "@/components/map/panels/styleEditor/pickers/ShapeTiles";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
@@ -484,7 +489,9 @@ export interface ClassListProps {
 const recordWith = (key: string, value: unknown): JsonObject =>
   key.split(".").reduceRight<unknown>((inner, part) => ({ [part]: inner }), value) as JsonObject;
 
-/** "Add class": a new category class with the first palette color no class has, its values open to pick. */
+/** "Add class": a new category class with the first palette color no class has, its values open to pick. The colors are
+ * the ones as many classes as there are then get from the palette (reversed where they are), so the new color is one
+ * the palette picker's strip shows for that count. */
 function AddClassButton({
   ci,
   c,
@@ -503,8 +510,8 @@ function AddClassButton({
     const classes = (Array.isArray(c.classes) ? c.classes : []).filter(isObject);
     let record: JsonObject = {};
     if (CAPABILITIES[target]?.kind === "color") {
-      const used = new Set(classes.map((k) => getIn(k, target)));
-      const colors = paletteColors(palette, Math.max(classes.length + 1, 8));
+      const used = new Set(classes.map((k) => String(getIn(k, target)).toLowerCase()));
+      const colors = classPaletteColors(c, palette, classes.length + 1);
       record = recordWith(target, colors.find((color) => !used.has(color)) ?? CATEGORY_GRAY);
     }
     store.update((doc) => addCategoryClass(doc, ci, record));

@@ -7,6 +7,8 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 import { type PopupProperties, popupProperties } from "@/lib/validations/layer";
 
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
+
 /** The part a click or hover finds a hexagon on. */
 export const HEXAGON_PART = "h3-fill";
 
@@ -38,7 +40,7 @@ export function hexagonPopup(
       ? [
           {
             name: "h3_value",
-            label: t(`style_editor.h3_value_${op}`, { field: value.field }),
+            label: t(`style_editor.h3_value_${op}`, { field: value.field, ...PLAIN }),
             type: "number" as const,
           },
         ]

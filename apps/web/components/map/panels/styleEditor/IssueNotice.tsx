@@ -11,6 +11,7 @@ import type { Path } from "@/lib/style/editor/store";
 import type { StyleIssue } from "@/lib/style/save";
 
 import { useEditor } from "@/components/map/panels/styleEditor/context";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 
 const IssuesContext = createContext<{ byPath: Map<Path, StyleIssue[]>; all: StyleIssue[] }>({
   byPath: new Map(),
@@ -59,6 +60,7 @@ export function IssueNotice({ issue }: { issue: StyleIssue }) {
         value: String(fix.value ?? ""),
         target: fix.target ?? "",
         field: fix.field ?? "",
+        ...PLAIN,
       })
     : undefined;
   return (

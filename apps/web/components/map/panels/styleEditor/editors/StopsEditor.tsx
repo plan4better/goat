@@ -17,6 +17,9 @@ interface Stop {
   color: string;
 }
 
+/** The key of a stop's color picker, before the stop's place in the list. */
+const STOP_PICKER = "stop-color:";
+
 export function StopsEditor() {
   const { t } = useTranslation("common");
   const store = useEditor();
@@ -25,12 +28,18 @@ export function StopsEditor() {
   const interpolate = useStyleValue<unknown>("render.interpolate");
   const stops = (Array.isArray(value) ? value : []) as Stop[];
   const write = (next: Stop[]) => store.set("render.stops", next);
+  // A stop's color picker writes to the stop at its place in the list: an add, a removal or a sort closes it, so it
+  // never writes to the stop that takes that place.
+  const changeList = (next: Stop[]) => {
+    if (popover.current("picker")?.key.startsWith(STOP_PICKER)) popover.close("picker");
+    write(next);
+  };
   // Sorted when the value box is left: sorting per keystroke would move the stop away from the cursor.
   const sortStops = () => {
     const current = store.get("render.stops");
     if (!Array.isArray(current)) return;
     const next = [...(current as Stop[])].sort((a, b) => a.value - b.value);
-    if (next.some((stop, i) => stop !== current[i])) write(next);
+    if (next.some((stop, i) => stop !== current[i])) changeList(next);
   };
   return (
     <>
@@ -43,7 +52,7 @@ export function StopsEditor() {
               <IconButton
                 size="small"
                 aria-label={t("style_editor.remove_stop")}
-                onClick={() => write(stops.filter((_, j) => j !== i))}>
+                onClick={() => changeList(stops.filter((_, j) => j !== i))}>
                 <Icon iconName={ICON_NAME.TRASH} sx={{ fontSize: 12 }} />
               </IconButton>
             ) : undefined
@@ -59,7 +68,7 @@ export function StopsEditor() {
               value={stop.color}
               onOpenPicker={(anchor) =>
                 popover.open("picker", {
-                  key: `stop-color:${i}`,
+                  key: `${STOP_PICKER}${i}`,
                   title: t("style_editor.stop_n", { n: i + 1 }),
                   anchorTop: anchorTopOf(anchor),
                   anchorEl: anchor,
@@ -79,7 +88,7 @@ export function StopsEditor() {
         <AddButton
           onClick={() => {
             const last = stops[stops.length - 1];
-            write([...stops, { value: (last?.value ?? 0) + 1, color: last?.color ?? "#9aa3ad" }]);
+            changeList([...stops, { value: (last?.value ?? 0) + 1, color: last?.color ?? "#9aa3ad" }]);
           }}>
           {t("style_editor.add_stop")}
         </AddButton>

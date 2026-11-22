@@ -51,9 +51,10 @@ describe("heatmap", () => {
     await waitFor(() =>
       expect(store.get("render.weight")).toEqual({ field: "visitors", domain: [0, 50000] })
     );
-    fireEvent.change(screen.getByRole("textbox", { name: "style_editor.range_highest" }), {
-      target: { value: "20000" },
-    });
+    const highest = screen.getByRole("textbox", { name: "style_editor.range_highest" });
+    fireEvent.change(highest, { target: { value: "20000" } });
+    // The range's boxes take their number when left.
+    fireEvent.blur(highest);
     expect(store.get("render.weight.domain")).toEqual([0, 20000]);
   });
 

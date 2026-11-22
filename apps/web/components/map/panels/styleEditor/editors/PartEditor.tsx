@@ -41,6 +41,7 @@ import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRo
 import { PatternRow } from "@/components/map/panels/styleEditor/editors/PatternEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { type PartGroup, groupOf } from "@/components/map/panels/styleEditor/editors/partRows";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
 
@@ -64,11 +65,21 @@ function memoryOf(store: EditorStore): Map<Path, unknown> {
 
 export const partPath = (group: PartGroup): Path => `symbol.${group.part}`;
 
-/** Switches a part off (remembering it) or on (restoring it, else `{}`). */
-export function togglePart(store: EditorStore, path: Path, on: boolean): void {
+/** Switches a part off (remembering it) or on (restoring it, else `{}`); `after` adjusts the document in the same edit
+ * when the part comes on (heights take one fill opacity). */
+export function togglePart(
+  store: EditorStore,
+  path: Path,
+  on: boolean,
+  after?: (doc: LayerStyle) => LayerStyle
+): void {
   const memory = memoryOf(store);
   if (on) {
-    store.set(path, memory.get(path) ?? {});
+    const value = memory.get(path) ?? {};
+    store.update((doc) => {
+      const next = setIn(doc, path, value);
+      return after ? after(next) : next;
+    }, path);
     memory.delete(path);
   } else {
     const value = store.get(path);
@@ -129,7 +140,10 @@ export function HeaderSwitch({
       disabled={disabled}
       onChange={onToggle}
       inputProps={{
-        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", { part: name }),
+        "aria-label": t(on ? "style_editor.turn_part_off" : "style_editor.turn_part_on", {
+          part: name,
+          ...PLAIN,
+        }),
       }}
     />
   );

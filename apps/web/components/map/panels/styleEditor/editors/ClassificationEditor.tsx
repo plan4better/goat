@@ -12,19 +12,19 @@ import { useTranslation } from "react-i18next";
 
 import { useUniqueValues } from "@/lib/api/processes";
 import { useProjectLayerHistogramStats } from "@/lib/api/projects";
+import { categoryText } from "@/lib/style/editor/categoryText";
 import {
   CLASS_COUNTS,
   MAX_CLASS_COUNT,
   classColorsByHand,
+  classPaletteColors,
   classValuesByHand,
   classesPending,
   classifyTargets,
-  clearClassValues,
+  pickClassPalette,
   pickClassRange,
-  recolorClasses,
   removeClassification,
   retarget,
-  serverFillsClasses,
   setClassificationField,
   setManualBound,
   setMethod,
@@ -32,7 +32,7 @@ import {
 import { SLIDERS, withStored } from "@/lib/style/editor/defaults";
 import { targetsOf } from "@/lib/style/editor/forms";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
-import { type EditorStore, getIn, setIn } from "@/lib/style/editor/store";
+import { type EditorStore, getIn } from "@/lib/style/editor/store";
 import { CAPABILITIES, defaultRange } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -52,6 +52,7 @@ import { Histogram, type HistogramHandle } from "@/components/map/panels/styleEd
 import { choiceValues } from "@/components/map/panels/styleEditor/editors/partRows";
 import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useCloseWhenGone,
@@ -102,19 +103,11 @@ function rangePresets(key: string): Array<[number, number]> {
 }
 
 /** Writes `classify[ci]`'s palette. A new palette takes every class: the server colors again the classes it fills,
- * also a color picked by hand; the panel colors manual classes and categories picked by hand itself. */
+ * also a color picked by hand; the panel colors manual classes and categories picked by hand itself, as the server
+ * colors computed classes. */
 const classPaletteWriter =
-  (store: EditorStore, ci: number, target: string, steps: number) =>
-  (next: string | string[], reversed: boolean) =>
-    store.update((doc) => {
-      const path = `classify.${ci}`;
-      let out = setIn(doc, `${path}.palette`, next);
-      out = setIn(out, `${path}.reverse`, reversed || undefined);
-      const c = store.get(path);
-      if (isObject(c) && serverFillsClasses(c)) return clearClassValues(out, ci, target);
-      const colors = paletteColors(next, steps);
-      return recolorClasses(out, ci, target, reversed ? [...colors].reverse() : colors);
-    });
+  (store: EditorStore, ci: number, target: string) => (next: string | string[], reversed: boolean) =>
+    store.update((doc) => pickClassPalette(doc, ci, target, next, reversed));
 
 function ClassPalettePicker({
   ci,
@@ -131,7 +124,7 @@ function ClassPalettePicker({
   const path = `classify.${ci}`;
   const palette = useStyleValue<string | string[] | undefined>(`${path}.palette`);
   const reverse = useStyleValue<boolean | undefined>(`${path}.reverse`);
-  const write = classPaletteWriter(store, ci, target, steps);
+  const write = classPaletteWriter(store, ci, target);
   const current = palette ?? DEFAULT_PALETTE[categories ? "categories" : "numeric"];
   return (
     <PalettePicker
@@ -232,7 +225,9 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   const classColors = classes
     .map((record) => getIn(record, target))
     .filter((v): v is string => typeof v === "string");
-  const stripColors = classColors.length ? classColors : paletteColors(palette, classes.length || undefined);
+  const stripColors = classColors.length
+    ? classColors
+    : classPaletteColors(c, palette, classes.length || paletteColors(palette).length);
   const strip = stripColors.length
     ? `linear-gradient(90deg, ${stripColors
         .map(
@@ -252,12 +247,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   // Values typed into the classes follow no range: the row says so, and a picked range takes every class again.
   const ownValues = kind === "number" && classValuesByHand(c, target, range);
   // Colors picked by hand follow no palette: the palette row says so, as the range row does.
-  const ownColors =
-    kind === "color" &&
-    classColorsByHand(c, target, [
-      ...paletteColors(palette),
-      ...paletteColors(palette, classes.length || undefined),
-    ]);
+  const ownColors = kind === "color" && classColorsByHand(c, target, palette);
 
   // The breaks on the histogram: one dragged becomes a bound typed by hand (manual breaks, the others kept).
   const cuts = classes.flatMap((record, k) =>
@@ -279,24 +269,30 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
     return typeof color === "string" ? color : "#9aa3ad";
   };
 
-  const valueCounts = new Map((uniqueValues?.values ?? []).map((item) => [String(item.value), item.count]));
+  // Field values and class values in one spelling: a number field's "2.50" (as the database prints it) and a stored
+  // "2.50" are the class value "2.5", as goatlib writes it.
+  const spelled = (v: unknown) => categoryText(v, fieldType);
+  const valueCounts = new Map((uniqueValues?.values ?? []).map((item) => [spelled(item.value), item.count]));
   const classCounts = categories
     ? classes.map((record) =>
         Array.isArray(record.values) && record.values.length
-          ? record.values.reduce<number>((sum, v) => sum + (valueCounts.get(String(v)) ?? 0), 0)
+          ? [...new Set(record.values.map(spelled))].reduce<number>(
+              (sum, v) => sum + (valueCounts.get(v) ?? 0),
+              0
+            )
           : undefined
       )
     : classStats?.bins.map((bin) => bin.count);
   const noDataCount = (categories ? undefined : histogramStats?.missing_count) ?? undefined;
   // Values in no class draw as Other; their count is known when every value of the field is in the list.
   const classed = new Set(
-    classes.flatMap((record) => (Array.isArray(record.values) ? record.values.map(String) : []))
+    classes.flatMap((record) => (Array.isArray(record.values) ? record.values.map(spelled) : []))
   );
   const valueTotal = uniqueValues?.total ?? 0;
   const otherShown = categories && valueTotal > classed.size;
   const otherCount =
     otherShown && uniqueValues && uniqueValues.values.length >= valueTotal
-      ? uniqueValues.values.reduce((sum, v) => (classed.has(String(v.value)) ? sum : sum + v.count), 0)
+      ? uniqueValues.values.reduce((sum, v) => (classed.has(spelled(v.value)) ? sum : sum + v.count), 0)
       : undefined;
   // Whether the data holds such features at all: the panel's own numbers where it has them, else what the server
   // recorded with the classes (`computed.no_data`, `computed.other`, which the legend follows too).
@@ -346,7 +342,7 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
         {idField && (
           <Box sx={{ px: 3, py: 1 }}>
             <Alert severity="warning" sx={{ py: 0, px: 2, "& .MuiAlert-message": { fontSize: "0.75rem" } }}>
-              {t("style_editor.id_field_hint", { field: fieldLabel })}
+              {t("style_editor.id_field_hint", { field: fieldLabel, ...PLAIN })}
             </Alert>
           </Box>
         )}
@@ -359,7 +355,9 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
               return {
                 value: key,
                 label: t(propLabelKey(key)),
-                sub: owner ? t("style_editor.also_set_by", { field: String(owner.field) }) : undefined,
+                sub: owner
+                  ? t("style_editor.also_set_by", { field: String(owner.field), ...PLAIN })
+                  : undefined,
               };
             })}
             onChange={(key) => store.update((doc) => retarget(doc, ci, key, geometry))}
@@ -514,7 +512,10 @@ export function useClassificationOpener(): (ci: number, anchorTop: number) => vo
     const id = typeof c.id === "string" ? c.id : undefined;
     popover.open(next, {
       key: classificationKey(c, ci),
-      title: t("style_editor.by_classes_title", { label: t(propLabelKey(targetsOf(c, geometry)[0])) }),
+      title: t("style_editor.by_classes_title", {
+        label: t(propLabelKey(targetsOf(c, geometry)[0])),
+        ...PLAIN,
+      }),
       anchorTop,
       fill: true,
       render: () => <ClassificationEditor ci={ci} id={id} />,

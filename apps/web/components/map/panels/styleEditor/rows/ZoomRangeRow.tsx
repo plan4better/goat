@@ -153,8 +153,15 @@ export const ZoomRangeRow = memo(function ZoomRangeRow({
             step={1}
             value={[low, high]}
             getAriaLabel={(index) => t(index === 0 ? "style_editor.zoom_from" : "style_editor.zoom_until")}
-            onChange={(_, next) => {
-              const [a, b] = next as number[];
+            // goatlib takes From below Until: the thumb moved stops one zoom before the other.
+            disableSwap
+            onChange={(_, next, thumb) => {
+              let [a, b] = next as number[];
+              if (b - a < 1) {
+                if (thumb === 0) a = Math.max(0, b - 1);
+                else b = Math.min(MAX_ZOOM, a + 1);
+                if (b - a < 1) [a, b] = thumb === 0 ? [0, 1] : [MAX_ZOOM - 1, MAX_ZOOM];
+              }
               onChange(a <= 0 ? undefined : a, b >= MAX_ZOOM ? undefined : b);
             }}
           />

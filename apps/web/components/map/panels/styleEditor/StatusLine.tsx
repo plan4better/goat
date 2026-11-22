@@ -11,29 +11,36 @@ import type { StyleSaver } from "@/lib/style/save";
 
 export function useSaverState(saver: StyleSaver) {
   const subscribe = useCallback((listener: () => void) => saver.subscribe(listener), [saver]);
-  const read = () => `${saver.status}|${saver.stopReason ?? ""}`;
+  const read = () => `${saver.status}|${saver.stopReason ?? ""}|${saver.stopCode ?? ""}`;
   const snapshot = useSyncExternalStore(subscribe, read, read);
-  const [status, reason] = snapshot.split("|");
-  return { status, reason: reason || null };
+  const [status, reason, code] = snapshot.split("|");
+  return { status, reason: reason || null, code: code || null };
+}
+
+/** Refusal codes of a document or request body over the server's size limit. */
+const TOO_LARGE = new Set(["document_too_large", "body_too_large"]);
+
+/** The text key of a save status: why saving stopped, a style too large to save by its own words. */
+function statusKey({ status, reason, code }: ReturnType<typeof useSaverState>): string {
+  if (status !== "stopped") return `style_editor.status_${status}`;
+  if (reason === "refused" && code && TOO_LARGE.has(code)) return "style_editor.stopped_too_large";
+  return `style_editor.stopped_${reason}`;
 }
 
 /** The save status in words, for a line beside the style's name. */
 export function useStatusText(saver: StyleSaver): { text: string; stopped: boolean } {
   const { t } = useTranslation("common");
-  const { status, reason } = useSaverState(saver);
-  return {
-    text: status === "stopped" ? t(`style_editor.stopped_${reason}`) : t(`style_editor.status_${status}`),
-    stopped: status === "stopped",
-  };
+  const state = useSaverState(saver);
+  return { text: t(statusKey(state)), stopped: state.status === "stopped" };
 }
 
 /** `problemsOnly`: where the status is shown beside the style's name, this line appears only when saving stopped. */
 export function StatusLine({ saver, problemsOnly = false }: { saver: StyleSaver; problemsOnly?: boolean }) {
   const { t } = useTranslation("common");
-  const { status, reason } = useSaverState(saver);
+  const state = useSaverState(saver);
+  const { status, reason } = state;
   if (problemsOnly && status !== "stopped") return null;
-  const text =
-    status === "stopped" ? t(`style_editor.stopped_${reason}`) : t(`style_editor.status_${status}`);
+  const text = t(statusKey(state));
   const refusal = saver.stopIssues.map((issue) => issue.message).join(" ");
   return (
     // Beside the style's name the status is announced already: this line only spells out why saving stopped.

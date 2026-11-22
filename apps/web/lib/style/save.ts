@@ -38,7 +38,8 @@ export interface StyleTransport {
 
 export type SaveStatus = "saved" | "saving" | "retrying" | "offline" | "stopped";
 /** Why saving stopped: no access, the layer is gone, the style changed meanwhile, or the server refused the document
- * whole (422: a document of a newer GOAT Style version, a check that would refuse it again). */
+ * whole (422: a document of a newer GOAT Style version, a check that would refuse it again, a document over the size
+ * limit; 413: a request body over the cap). */
 export type StopReason = "forbidden" | "deleted" | "base_too_old" | "refused";
 
 interface SaverOptions {
@@ -71,6 +72,7 @@ export class StyleSaver {
   private state: SaveStatus = "saved";
   private stopped: StopReason | null = null;
   private refusal: StyleIssue[] = [];
+  private refusalCode: string | null = null;
   private lastIssues: StyleIssue[] = [];
   private readonly listeners = new Set<() => void>();
 
@@ -108,6 +110,12 @@ export class StyleSaver {
   /** The issues the server refused the document with, while saving is stopped for that. */
   get stopIssues(): StyleIssue[] {
     return this.state === "stopped" && this.stopped === "refused" ? this.refusal : [];
+  }
+
+  /** The code the server refused the document with (`document_too_large`, `body_too_large`, ...), while saving is
+   * stopped for that. */
+  get stopCode(): string | null {
+    return this.state === "stopped" && this.stopped === "refused" ? this.refusalCode : null;
   }
 
   /** The last document the server stored: what the copy's changes are taken against. */
@@ -279,7 +287,7 @@ export class StyleSaver {
           ? "deleted"
           : result.status === 409 && result.code === "base_too_old"
             ? "base_too_old"
-            : result.status === 422
+            : result.status === 422 || result.status === 413
               ? "refused"
               : null;
     if (reason) {
@@ -287,6 +295,8 @@ export class StyleSaver {
       this.state = "stopped";
       this.stopped = reason;
       this.refusal = result.issues ?? [];
+      // A 413 from a proxy in front of core carries no body to read the code from.
+      this.refusalCode = result.code ?? (result.status === 413 ? "body_too_large" : null);
       this.onStop?.(reason);
       return;
     }

@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { PALETTES } from "@/lib/style/generated/catalog";
-import { paletteColors } from "@/lib/style/palettes";
+import { paletteColors, paletteSteps } from "@/lib/style/palettes";
 
 export type PaletteKind = "sequential" | "diverging" | "qualitative";
 
@@ -35,6 +35,18 @@ export function stripBackground(colors: string[], stepped: boolean): string {
 }
 
 const ordered = (colors: string[], reverse?: boolean) => (reverse ? [...colors].reverse() : colors);
+
+/** The colors a strip shows: in classes, the colors `steps` classes get from the palette (`paletteSteps`, as the
+ * classes are colored; a list in a picker of qualitative palettes only, the categories', repeats in order); else the
+ * palette's own colors. Turned round where `reverse` says so. */
+function stripColors(
+  value: string | string[],
+  { steps, reverse, kinds }: { steps?: number; reverse?: boolean; kinds: PaletteKind[] }
+): string[] {
+  if (steps === undefined) return ordered(Array.isArray(value) ? value : paletteColors(value), reverse);
+  const qualitative = Array.isArray(value) && kinds.length === 1 && kinds[0] === "qualitative";
+  return paletteSteps(value, steps, { reverse, kind: qualitative ? "qualitative" : undefined });
+}
 
 function Strip({
   name,
@@ -189,7 +201,7 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
             {kind === "all" && heading(t("style_editor.palette_yours"))}
             <Strip
               name={t("style_editor.my_colors")}
-              colors={ordered(custom, reverse)}
+              colors={stripColors(custom, { steps, reverse, kinds })}
               stepped={stepped}
               selected
               onPick={() => onChange(custom)}
@@ -204,7 +216,7 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
               heading(t(sectionOf(palette)))}
             <Strip
               name={palette.name}
-              colors={ordered(paletteColors(id, steps), reverse)}
+              colors={stripColors(id, { steps, reverse, kinds })}
               stepped={stepped}
               selected={value === id}
               onPick={() => onChange(id)}

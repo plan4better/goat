@@ -40,7 +40,7 @@ Die Zeile im Abschnitt zeigt dann das Feld und die Größe, zum Beispiel <code>N
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Geben Sie den Text unter <code>Vorlage</code> ein. Felder stehen in geschweiften Klammern und werden durch den Wert jedes Objekts ersetzt, zum Beispiel <code>{"{name}"}, {"{population}"} Einwohner</code> oder <code>{"{area_km2}"} km²</code>. Mit <code>Feld einfügen</code> hängen Sie ein Feld an. Ein Zeilenumbruch in der Vorlage beginnt eine neue Zeile in der Beschriftung.</div>
+  <div class="content">Geben Sie den Text unter <code>Vorlage</code> ein. Felder stehen in geschweiften Klammern und werden durch den Wert jedes Objekts ersetzt, zum Beispiel <code>{"{name}"}, {"{population}"} Einwohner</code> oder <code>{"{area_km2}"} km²</code>. Mit <code>Feld einfügen</code> hängen Sie ein Feld an. Ein Zeilenumbruch in der Vorlage beginnt eine neue Zeile in der Beschriftung. Die Vorlage wird übernommen, wenn Sie das Feld verlassen oder <code>Strg+Enter</code> (<code>Cmd+Enter</code> auf dem Mac) drücken; eine Vorlage, die nicht gelesen werden kann, bleibt im Feld, mit einem Hinweis auf den Grund.</div>
 </div>
 
 <div class="step">

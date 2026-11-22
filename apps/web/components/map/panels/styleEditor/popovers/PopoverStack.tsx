@@ -25,6 +25,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { FloatingPanel } from "@/components/common/FloatingPanel";
 import { RIGHT_PANEL_WIDTH } from "@/components/map/layouts/desktop/rightStack";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   CLOSED,
   LevelContext,
@@ -87,8 +88,8 @@ export const PopoverFrame = memo(function PopoverFrame({
           {onBack && backTitle && (
             <IconButton
               size="small"
-              aria-label={t("style_editor.back_to", { title: backTitle })}
-              title={t("style_editor.back_to", { title: backTitle })}
+              aria-label={t("style_editor.back_to", { title: backTitle, ...PLAIN })}
+              title={t("style_editor.back_to", { title: backTitle, ...PLAIN })}
               onClick={onBack}
               sx={{ ml: -1.5 }}>
               <Icon iconName={ICON_NAME.CHEVRON_LEFT} sx={{ fontSize: 12 }} />

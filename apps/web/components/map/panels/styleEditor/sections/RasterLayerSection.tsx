@@ -31,6 +31,7 @@ import {
 } from "@/components/map/panels/styleEditor/editors/AdjustmentsEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
@@ -80,7 +81,7 @@ function NoDataRow() {
       }
       const current = (store.get("render.no_data.values") as number[] | undefined) ?? [];
       if (!current.includes(value)) write([...current, value]);
-      setNote(t("style_editor.no_data_picked", { value }));
+      setNote(t("style_editor.no_data_picked", { value, ...PLAIN }));
     });
   };
   const label = t("style_editor.no_data");
@@ -108,7 +109,7 @@ function NoDataRow() {
           !info
             ? undefined
             : info.noData !== undefined
-              ? t("style_editor.no_data_from_file", { value: shortNumber(info.noData) })
+              ? t("style_editor.no_data_from_file", { value: shortNumber(info.noData), ...PLAIN })
               : t("style_editor.no_data_none")
         }
         disabled={waiting}

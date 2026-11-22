@@ -11,6 +11,7 @@ import { formatNumberText } from "@/lib/style/editor/labels";
 import type { Path } from "@/lib/style/editor/store";
 
 import { useEditor, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ChoiceRow, SwitchRow, TextRow } from "@/components/map/panels/styleEditor/rows";
 
 const DECIMALS = ["auto", "0", "1", "2", "3", "4", "5"];
@@ -89,7 +90,10 @@ export function NumberFormatEditor({ path }: { path: Path }) {
         onChange={(suffix) => write({ suffix })}
       />
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pt: 2 }}>
-        {t("style_editor.format_hint", { preview: formatNumberText(PREVIEW_NUMBER, format, i18n.language) })}
+        {t("style_editor.format_hint", {
+          preview: formatNumberText(PREVIEW_NUMBER, format, i18n.language),
+          ...PLAIN,
+        })}
       </Typography>
     </>
   );

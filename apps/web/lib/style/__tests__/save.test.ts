@@ -214,7 +214,10 @@ describe("StyleSaver", () => {
     [404, undefined, "deleted"],
     [409, "base_too_old", "base_too_old"],
     [422, "check_failed", "refused"],
-  ] as const)("stops on %s and says why", async (status, code, reason) => {
+    [422, "document_too_large", "refused"],
+    [413, "body_too_large", "refused"],
+    [413, undefined, "refused"],
+  ] as const)("stops on %s %s and says why", async (status, code, reason) => {
     const t = fakeTransport();
     const onStop = vi.fn();
     const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41, onStop });
@@ -251,6 +254,32 @@ describe("StyleSaver", () => {
     await vi.advanceTimersByTimeAsync(60000);
     expect(t.saves).toHaveLength(1);
     expect(s.document).toEqual(withFill({ color: "#222222" }));
+  });
+
+  it.each([
+    [422, "document_too_large", "document_too_large"],
+    [413, "body_too_large", "body_too_large"],
+    // A proxy's 413 has no body to read a code from.
+    [413, undefined, "body_too_large"],
+    [422, "newer_version", "newer_version"],
+  ] as const)("a refusal %s %s keeps its code while saving is stopped", async (status, code, kept) => {
+    const t = fakeTransport();
+    const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });
+    expect(s.stopCode).toBeNull();
+    s.edit(withFill({ color: "#111111" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    await t.answer({ ok: false, status, code });
+    expect(s.stopReason).toBe("refused");
+    expect(s.stopCode).toBe(kept);
+  });
+
+  it("a stop for another reason has no refusal code", async () => {
+    const t = fakeTransport();
+    const s = new StyleSaver({ transport: t.transport, document: DOC, revision: 41 });
+    s.edit(withFill({ color: "#111111" }));
+    await vi.advanceTimersByTimeAsync(1000);
+    await t.answer({ ok: false, status: 409, code: "base_too_old" });
+    expect(s.stopCode).toBeNull();
   });
 
   it("applies the changes to the current style after base_too_old, or discards them", async () => {

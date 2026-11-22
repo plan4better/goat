@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUniqueValues } from "@/lib/api/processes";
+import { categoryText } from "@/lib/style/editor/categoryText";
 import { MAX_CLASS_COUNT, categoryValue, moveCategoryValue } from "@/lib/style/editor/classify";
 import { targetsOf } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
@@ -16,6 +17,7 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { SEARCH_INPUT } from "@/components/common/SearchableMenu";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { TextRow } from "@/components/map/panels/styleEditor/rows";
 
 /** The values the list starts with: the most frequent ones, as the classification editor loads them; as many as All
@@ -33,8 +35,6 @@ function locate(all: unknown, ci: number, cid?: string, kid?: string, k?: number
   const kAt = kid === undefined ? (k ?? -1) : classes.findIndex((r) => isObject(r) && r.id === kid);
   return [at, kAt];
 }
-
-const text = (v: unknown) => String(v);
 
 export function ClassValues({
   ci: openedCi,
@@ -73,21 +73,26 @@ export function ClassValues({
   });
   if (!record) return null;
 
+  // Field values and class values in one spelling: a number field's "2.50" (as the database prints it) and a stored
+  // "2.50" are the class value "2.5", as goatlib writes it, which is also what a tick writes.
+  const spelled = (v: unknown) => categoryText(v, fieldType);
   const counts = new Map<string, number>();
   for (const v of [...(top?.values ?? []), ...(found?.values ?? [])])
-    if (v.value !== null) counts.set(text(v.value), v.count);
+    if (v.value !== null) counts.set(spelled(v.value), v.count);
   const owner = new Map<string, number>();
-  classes.forEach((r, i) => (Array.isArray(r.values) ? r.values : []).forEach((v) => owner.set(text(v), i)));
+  classes.forEach((r, i) =>
+    (Array.isArray(r.values) ? r.values : []).forEach((v) => owner.set(spelled(v), i))
+  );
   const needle = query.toLocaleLowerCase();
   // A search narrows the class's own values too.
-  const own = (Array.isArray(record.values) ? record.values : [])
-    .map(text)
-    .filter((v) => !needle || v.toLocaleLowerCase().includes(needle));
+  const own = [...new Set((Array.isArray(record.values) ? record.values : []).map(spelled))].filter(
+    (v) => !needle || v.toLocaleLowerCase().includes(needle)
+  );
   const source = (query ? found?.values : top?.values) ?? [];
   const others = source
-    .filter((v) => v.value !== null && owner.get(text(v.value)) !== k)
+    .filter((v) => v.value !== null && owner.get(spelled(v.value)) !== k)
     .slice(0, SHOWN)
-    .map((v) => text(v.value));
+    .map((v) => spelled(v.value));
   const total = top?.total ?? 0;
   const target = targetsOf(c, data.geometry)[0];
   const color = (i: number) => {
@@ -99,14 +104,16 @@ export function ClassValues({
     return typeof name === "string" && name ? name : t("style_editor.class_n", { n: i + 1 });
   };
   const toggle = (value: string, on: boolean) =>
-    store.update((doc) => moveCategoryValue(doc, ci, categoryValue(value, fieldType), on ? null : k));
+    store.update((doc) =>
+      moveCategoryValue(doc, ci, categoryValue(value, fieldType), on ? null : k, fieldType)
+    );
 
   const item = (value: string, on: boolean) => {
     const at = owner.get(value);
     const elsewhere = at !== undefined && at !== k;
     const dot = elsewhere ? color(at) : undefined;
     const where = elsewhere
-      ? t("style_editor.value_in_class", { name: className(at) })
+      ? t("style_editor.value_in_class", { name: className(at), ...PLAIN })
       : on
         ? undefined
         : t("style_editor.value_in_no_class");

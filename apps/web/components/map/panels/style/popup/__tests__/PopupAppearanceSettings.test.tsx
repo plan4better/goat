@@ -43,4 +43,15 @@ describe("PopupAppearanceSettings", () => {
     fireEvent.change(height, { target: { value: "0" } });
     expect(onChange).toHaveBeenLastCalledWith({ max_height: undefined });
   });
+
+  it("width and max height stop at 4000 px, the most goatlib takes", () => {
+    const onChange = vi.fn();
+    renderPanel(<PopupAppearanceSettings popup={popupProperties.parse({})} onChange={onChange} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "popup_width" }), { target: { value: "5000" } });
+    expect(onChange).toHaveBeenLastCalledWith({ width: 4000 });
+    fireEvent.change(screen.getByRole("textbox", { name: "popup_max_height" }), {
+      target: { value: "4001" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith({ max_height: 4000 });
+  });
 });

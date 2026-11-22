@@ -20,6 +20,7 @@ import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightR
 import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
@@ -110,7 +111,7 @@ export function ValueRow({
         ...numbers.flatMap((f) =>
           ops.map((op) => ({
             value: `${op}:${f.name}`,
-            label: t(`style_editor.h3_value_${op}`, { field: f.label }),
+            label: t(`style_editor.h3_value_${op}`, { field: f.label, ...PLAIN }),
           }))
         ),
       ]}

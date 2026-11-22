@@ -24,6 +24,7 @@ import {
   tileStyles,
   usePaneGroups,
 } from "@/components/map/panels/styleEditor/pickers/iconTiles";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 
 const TONE_KEY = "goat-style-emoji-tone";
 const RECENT_KEY = "goat-style-recent-emoji";
@@ -345,7 +346,7 @@ export function EmojiPane({ value, onPick }: { value?: string; onPick: (ref: str
               {sectionOf("found", found)}
             </Box>
           ) : (
-            <PaneEmpty>{t("no_results_for", { q: query.trim() })}</PaneEmpty>
+            <PaneEmpty>{t("no_results_for", { q: query.trim(), ...PLAIN })}</PaneEmpty>
           ))}
         {/* The groups stay drawn under a search, so clearing it shows them at once. */}
         <Box hidden={!!found}>

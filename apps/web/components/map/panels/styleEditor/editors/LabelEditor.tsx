@@ -5,7 +5,7 @@
 // up their popovers: Halo (color and width), Text style (font, case, spacing, line height, wrap width) and Position
 // (placement, offset, repeat distance, priority, overlap, space around).
 import { Button, Typography } from "@mui/material";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
@@ -50,6 +50,7 @@ import { PropertyRow } from "@/components/map/panels/styleEditor/editors/Propert
 import { choiceGlyph } from "@/components/map/panels/styleEditor/editors/choiceGlyph";
 import { LETTER_CASES, type PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { FieldPicker, FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useIsOpen,
@@ -167,9 +168,35 @@ function TextRows({ base }: { base: Path }) {
 
   const [insertAnchor, setInsertAnchor] = useState<HTMLElement | null>(null);
 
-  // The preview in the case the map draws (the class's own in class scope).
+  // The template box writes a text as a whole (the server takes back a template it cannot read). A text it wrote that
+  // came back refused (an error at its path, the text as it was before) stays in the box to be corrected; any other
+  // change of the text drops it.
+  const [written, setWritten] = useState<{ text: string; over: string } | null>(null);
+  const [typing, setTyping] = useState<string | null>(null);
+  const refused =
+    written !== null &&
+    written.text !== template &&
+    written.over === template &&
+    issues.some((issue) => issue.level === "error");
+  const boxText = refused ? written.text : template;
+  useEffect(() => {
+    if (written && template !== written.text && template !== written.over) setWritten(null);
+  }, [template, written]);
+  const writeTemplate = (value: string) => {
+    setWritten({ text: value, over: template });
+    store.set(textPath, value || undefined);
+  };
+
+  // The preview in the case the map draws (the class's own in class scope), of the text in the box.
   const transform = useScoped(`${base}.transform`).value;
-  const filled = fillTemplate(template, data.sample, data.fieldTypes, format ?? {}, i18n.language, formats);
+  const filled = fillTemplate(
+    typing ?? boxText,
+    data.sample,
+    data.fieldTypes,
+    format ?? {},
+    i18n.language,
+    formats
+  );
   const preview =
     transform === "uppercase"
       ? filled.toLocaleUpperCase(i18n.language)
@@ -211,10 +238,12 @@ function TextRows({ base }: { base: Path }) {
           <TextRow
             label={t("style_editor.template")}
             multiline
-            value={template}
+            value={boxText}
             placeholder={t("style_editor.template_placeholder")}
             note={t("style_editor.template_note")}
-            onChange={(value) => store.set(textPath, value || undefined)}
+            commitOnLeave
+            onDraft={setTyping}
+            onChange={writeTemplate}
           />
           <Row>
             <Button
@@ -232,9 +261,7 @@ function TextRows({ base }: { base: Path }) {
               title={t("style_editor.insert_field")}
               placement="bottom-start"
               fields={data.fields}
-              onChange={(name) =>
-                store.set(textPath, `${(store.get(textPath) as string | undefined) ?? ""}${fieldToken(name)}`)
-              }
+              onChange={(name) => writeTemplate(`${boxText}${fieldToken(name)}`)}
             />
           </Row>
         </>
@@ -252,7 +279,7 @@ function TextRows({ base }: { base: Path }) {
         numberFields.map((name) => (
           <NavRow
             key={name}
-            label={t("style_editor.numbers_in", { field: fieldLabel(name) })}
+            label={t("style_editor.numbers_in", { field: fieldLabel(name), ...PLAIN })}
             value={
               formats?.[name]
                 ? t("style_editor.example", {
@@ -261,13 +288,14 @@ function TextRows({ base }: { base: Path }) {
                       { ...(format ?? {}), ...formats[name] },
                       i18n.language
                     ),
+                    ...PLAIN,
                   })
                 : t("style_editor.as_all_numbers")
             }
             onOpen={(anchor) =>
               popover.open(next, {
                 key: `label:format:${name}`,
-                title: t("style_editor.numbers_in", { field: fieldLabel(name) }),
+                title: t("style_editor.numbers_in", { field: fieldLabel(name), ...PLAIN }),
                 anchorTop: anchorTopOf(anchor),
                 render: () => <NumberFormatEditor path={`${base}.formats.${name}`} />,
               })
@@ -293,7 +321,10 @@ function TextRows({ base }: { base: Path }) {
           label={t("style_editor.numbers")}
           value={
             format
-              ? t("style_editor.example", { value: formatNumberText(PREVIEW_NUMBER, format, i18n.language) })
+              ? t("style_editor.example", {
+                  value: formatNumberText(PREVIEW_NUMBER, format, i18n.language),
+                  ...PLAIN,
+                })
               : t("style_editor.as_in_dataset")
           }
           onOpen={(anchor) =>
@@ -327,8 +358,14 @@ function PriorityRow({ base }: { base: Path }) {
         ...fields
           .filter((f) => isNumberType(f.type))
           .flatMap((f) => [
-            { value: `largest:${f.name}`, label: t("style_editor.priority_largest", { field: f.label }) },
-            { value: `smallest:${f.name}`, label: t("style_editor.priority_smallest", { field: f.label }) },
+            {
+              value: `largest:${f.name}`,
+              label: t("style_editor.priority_largest", { field: f.label, ...PLAIN }),
+            },
+            {
+              value: `smallest:${f.name}`,
+              label: t("style_editor.priority_smallest", { field: f.label, ...PLAIN }),
+            },
           ]),
       ]}
       onChange={(value) => {

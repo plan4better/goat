@@ -2,12 +2,14 @@
 // palette or range; a value form's field or scale) is an intent edit: it is saved at once, and the classes or the
 // domain stay pending until the reply brings them (spec 12, 13.1).
 import type { Geometry } from "@/lib/style/compile/types";
+import { categoryText, numberText } from "@/lib/style/editor/categoryText";
 import { MAIN_COLOR, compoundKeys, compoundOf, targetsOf } from "@/lib/style/editor/forms";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
 import type { EditorStore, Scope } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, deepEqual, isObject } from "@/lib/style/json";
+import { paletteColors, paletteSteps } from "@/lib/style/palettes";
 
 export const INTENT_KEYS = [
   "field",
@@ -217,10 +219,12 @@ function handPicked(doc: LayerStyle, ci: number, classes: JsonObject[]): LayerSt
   return setIn(doc, `classify.${ci}`, { ...rest, classes });
 }
 
-/** A value of the field as the unique values list it (as text), in the field's type: class values match by type. */
+/** A value of the field as the unique values list it (as text), as goatlib writes it into category classes: a whole
+ * number or yes/no in the field's type, a number field's value as text in goatlib's spelling ("2.5" for "2.50"). */
 export function categoryValue(text: string, type?: string): string | number | boolean {
   if (type === "boolean") return text === "true" ? true : text === "false" ? false : text;
-  if (type === "integer" || type === "number") {
+  if (type === "number") return numberText(text);
+  if (type === "integer") {
     const n = Number(text);
     return text.trim() !== "" && Number.isFinite(n) ? n : text;
   }
@@ -228,17 +232,20 @@ export function categoryValue(text: string, type?: string): string | number | bo
 }
 
 /** `value` in class `to` of `classify[ci]`, out of the class that had it; `to` null leaves it in no class. A value is in
- * one class at most; values compare as text, as goatlib compares them. */
+ * one class at most; values compare as text, as goatlib compares them, a number field's (`type` "number") in goatlib's
+ * spelling ("2.50" is "2.5"). */
 export function moveCategoryValue(
   doc: LayerStyle,
   ci: number,
   value: string | number | boolean,
-  to: number | null
+  to: number | null,
+  type?: string
 ): LayerStyle {
   const c = classifyOf(doc)[ci];
   if (!c) return doc;
+  const key = categoryText(value, type);
   const classes = list(c.classes).map((k, i) => {
-    const values = (Array.isArray(k.values) ? k.values : []).filter((v) => String(v) !== String(value));
+    const values = (Array.isArray(k.values) ? k.values : []).filter((v) => categoryText(v, type) !== key);
     return { ...k, values: i === to ? [...values, value] : values };
   });
   return handPicked(doc, ci, classes);
@@ -294,6 +301,35 @@ export function recolorClasses(doc: LayerStyle, ci: number, target: string, colo
 export const serverFillsClasses = (c: JsonObject): boolean =>
   c.method !== "manual" && !(c.method === "categories" && typeof c.count !== "number");
 
+/** The colors `n` classes of `c` take from `palette`, as goatlib's `sample_colors` colors the classes the server
+ * computes: spread over the whole palette, turned round when `c.reverse`; a list of colors on categories repeats in
+ * order, as a qualitative palette does. */
+export function classPaletteColors(c: JsonObject, palette: string | string[], n: number): string[] {
+  return paletteSteps(palette, n, {
+    reverse: c.reverse === true,
+    kind: c.method === "categories" && Array.isArray(palette) ? "qualitative" : undefined,
+  });
+}
+
+/** `classify[ci]` with the palette `palette`, turned round when `reversed`. The server colors the classes it fills
+ * again, also a color picked by hand; the panel colors manual classes and categories picked by hand itself, with the
+ * colors the server gives computed classes of the same count. */
+export function pickClassPalette(
+  doc: LayerStyle,
+  ci: number,
+  target: string,
+  palette: string | string[],
+  reversed: boolean
+): LayerStyle {
+  const c = classifyOf(doc)[ci];
+  if (!c) return doc;
+  let out = setIn(doc, `classify.${ci}.palette`, palette);
+  out = setIn(out, `classify.${ci}.reverse`, reversed || undefined);
+  if (serverFillsClasses(c)) return clearClassValues(out, ci, target);
+  const colors = classPaletteColors({ ...c, reverse: reversed }, palette, list(c.classes).length);
+  return recolorClasses(out, ci, target, colors);
+}
+
 /** The classes of `classify[ci]` without their value at `target`: a palette or range picked for classes the server
  * fills takes every class, also one picked by hand (the server only replaces the values it wrote). */
 export function clearClassValues(doc: LayerStyle, ci: number, target: string): LayerStyle {
@@ -348,17 +384,25 @@ export function classValuesByHand(c: JsonObject, target: string, range: [number,
 
 /** Whether a class holds a color at `target` that was picked by hand. Classes the server fills: a color other than the
  * one it recorded writing (`computed.generated`), which it keeps on a new palette. Classes the panel colors: a color
- * the palette (`colors`) does not have. */
-export function classColorsByHand(c: JsonObject, target: string, colors: string[]): boolean {
+ * `palette` does not give them: neither one of its own colors nor one sampled for as many classes, as the server
+ * colors computed classes (classes switched to manual keep those). */
+export function classColorsByHand(c: JsonObject, target: string, palette: string | string[]): boolean {
   const generated = isObject(c.computed) && isObject(c.computed.generated) ? c.computed.generated : undefined;
   const written = generated?.target === target && isObject(generated.values) ? generated.values : {};
-  const palette = new Set(colors.map((color) => color.toLowerCase()));
+  const classes = list(c.classes);
+  const given = new Set(
+    [
+      ...paletteColors(palette),
+      ...paletteColors(palette, classes.length || undefined),
+      ...classPaletteColors(c, palette, classes.length),
+    ].map((color) => color.toLowerCase())
+  );
   const server = serverFillsClasses(c);
-  return list(c.classes).some((k) => {
+  return classes.some((k) => {
     const color = getIn(k, target);
     if (typeof color !== "string") return false;
     if (server) return typeof k.id !== "string" || written[k.id] !== color;
-    return !palette.has(color.toLowerCase());
+    return !given.has(color.toLowerCase());
   });
 }
 

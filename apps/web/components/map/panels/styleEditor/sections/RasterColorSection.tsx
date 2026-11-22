@@ -25,6 +25,7 @@ import { CategoriesRow } from "@/components/map/panels/styleEditor/editors/Categ
 import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { paletteStrip, renderColors } from "@/components/map/panels/styleEditor/editors/RasterClassList";
 import { RasterColorsEditor } from "@/components/map/panels/styleEditor/editors/RasterColorsEditor";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
@@ -58,7 +59,7 @@ function ColorsRow() {
       : classify && n
         ? method === "manual"
           ? t("style_editor.raster_manual_n", { n })
-          : t("style_editor.raster_classes_n", { method: t(`style_editor.method_${method}`), n })
+          : t("style_editor.raster_classes_n", { method: t(`style_editor.method_${method}`), n, ...PLAIN })
         : t("style_editor.raster_method_continuous");
   const label = t("style_editor.colors");
   return (

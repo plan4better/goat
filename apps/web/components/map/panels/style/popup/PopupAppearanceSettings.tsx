@@ -17,8 +17,12 @@ const ENABLED_LAYOUTS = ["popup", "pinned"] as const;
 const ANCHORS = ["top_left", "top_right", "bottom_left", "bottom_right"] as const;
 const HEADERS = ["standard", "compact", "none"] as const;
 
-/** A size in px, or undefined (Auto) for anything but a positive whole number (the schema's constraint). */
-const positiveInt = (n: number) => (Number.isInteger(n) && n > 0 ? n : undefined);
+/** The largest popup width or height goatlib takes, in px. */
+const MAX_SIZE = 4000;
+
+/** A size in px, or undefined (Auto) for anything but a positive whole number (the schema's constraint); at most
+ * MAX_SIZE. */
+const positiveInt = (n: number) => (Number.isInteger(n) && n > 0 ? Math.min(n, MAX_SIZE) : undefined);
 
 /** A size in px that is Auto while empty. */
 function SizeRow({
@@ -37,6 +41,7 @@ function SizeRow({
         value={value}
         unit="px"
         min={1}
+        max={MAX_SIZE}
         width={96}
         placeholder={t("auto")}
         ariaLabel={label}

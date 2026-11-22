@@ -2,6 +2,9 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { classPaletteColors } from "@/lib/style/editor/classify";
+import { paletteColors } from "@/lib/style/palettes";
+
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
@@ -158,6 +161,40 @@ describe("pickers", () => {
     await userEvent.click(screen.getByRole("button", { name: "style_editor.palette_kind_sequential" }));
     expect(screen.queryByText("style_editor.palette_group_science")).toBeNull();
     expect(strips()[0].getAttribute("aria-label")).toBe("BuGn");
+  });
+
+  /** The colors a strip draws, in order (the computed style writes them as rgb). */
+  const stripColors = (name: string) =>
+    Array.from(
+      getComputedStyle(screen.getByRole("button", { name })).background.matchAll(
+        /rgb\((\d+), (\d+), (\d+)\)/g
+      ),
+      (m) =>
+        `#${m
+          .slice(1, 4)
+          .map((v) => Number(v).toString(16).padStart(2, "0"))
+          .join("")}`
+    );
+
+  it("in classes, a strip shows the colors that many classes get from the palette, reversed as they are", () => {
+    const mine = ["#111111", "#222222", "#333333"];
+    renderPanel(<PalettePicker value={mine} reverse steps={10} onChange={vi.fn()} kinds={["qualitative"]} />);
+    // Ten categories of a qualitative palette repeat its colors in order, the palette turned round first.
+    const categories = { method: "categories", reverse: true };
+    expect(stripColors("Set2")).toEqual(classPaletteColors(categories, "colorbrewer:Set2", 10));
+    expect(stripColors("Set2")).toHaveLength(10);
+    expect(stripColors("style_editor.my_colors")).toEqual(classPaletteColors(categories, mine, 10));
+  });
+
+  it("in classes of numbers, a strip shows the colors blended for that many classes; without classes, the ramp", () => {
+    const { unmount } = renderPanel(
+      <PalettePicker value="goat:elevation" steps={4} onChange={vi.fn()} kinds={["sequential"]} />
+    );
+    expect(stripColors("Viridis")).toEqual(classPaletteColors({ method: "quantile" }, "d3:viridis", 4));
+    expect(stripColors("Viridis")).toHaveLength(4);
+    unmount();
+    renderPanel(<PalettePicker value="goat:elevation" reverse onChange={vi.fn()} kinds={["sequential"]} />);
+    expect(stripColors("Viridis")).toEqual([...paletteColors("d3:viridis")].reverse());
   });
 
   it("an inline palette shows as yours; its colors are edited in the list under the Palette row, not here", async () => {

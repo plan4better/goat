@@ -30,6 +30,7 @@ import {
   NumberFormatEditor,
   PREVIEW_NUMBER,
 } from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useNextLevel,
@@ -180,6 +181,7 @@ export function LegendEditor() {
                   isObject(c.format)
                     ? t("style_editor.example", {
                         value: formatNumberText(PREVIEW_NUMBER, c.format as NumberFormatSpec, i18n.language),
+                        ...PLAIN,
                       })
                     : t("style_editor.as_in_dataset")
                 }

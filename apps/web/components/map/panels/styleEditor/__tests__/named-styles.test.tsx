@@ -14,7 +14,7 @@ import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { NamedStyles } from "@/components/map/panels/styleEditor/NamedStyles";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 
-import { echoTransport, renderPanel } from "./renderPanel";
+import { echoTransport, i18n, renderPanel } from "./renderPanel";
 
 const api = vi.hoisted(() => ({
   createNamedStyle: vi.fn(async () => ({ id: "n1" })),
@@ -301,5 +301,25 @@ describe("named styles", () => {
     await openStyles();
     for (const name of ["style_editor.copy_style", "style_editor.paste_style"])
       expect(button(name).classList.contains("MuiButton-text")).toBe(true);
+  });
+
+  it("Duplicate names the copy with the style's name as it is, and the menu button says it", async () => {
+    const name = `Pop/km² & <"density">'s`;
+    i18n.addResource("en", "common", "style_editor.copy_of", "{{name}} copy");
+    i18n.addResource("en", "common", "style_editor.style_more", "More for {{name}}");
+    try {
+      const layer = layerWith(["Other"]) as unknown as { style: { name: string } };
+      layer.style.name = name;
+      setup(layer as unknown as MapLayer);
+      await userEvent.click(button(`style_editor.styles: ${name}`));
+      await userEvent.click(screen.getAllByRole("button", { name: `More for ${name}` })[0]);
+      await userEvent.click(item("duplicate"));
+      expect(api.createNamedStyle).toHaveBeenLastCalledWith("p1", 5, {
+        name: `${name} copy`,
+        copy_from: "a",
+      });
+    } finally {
+      i18n.removeResourceBundle("en", "common");
+    }
   });
 });

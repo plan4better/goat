@@ -42,6 +42,7 @@ import { ShapedIcon } from "@/components/map/panels/styleEditor/editors/ShapeFie
 import { GROUPS, type PartGroup } from "@/components/map/panels/styleEditor/editors/partRows";
 import { IconStops } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
 import { useIconLabel } from "@/components/map/panels/styleEditor/pickers/iconRefs";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { type DropdownItem, DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
@@ -296,7 +297,7 @@ function ScopeNote() {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
       <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-        {t("style_editor.scope_note", { class: name })}
+        {t("style_editor.scope_note", { class: name, ...PLAIN })}
       </Typography>
       <Button variant="text" size="small" onClick={() => store.setScope(null)} sx={{ textTransform: "none" }}>
         {t("style_editor.all_features")}

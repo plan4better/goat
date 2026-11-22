@@ -13,6 +13,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import type { ChoiceOption } from "@/components/map/panels/styleEditor/rows/ChoiceRow";
 
 interface SummaryContext {
@@ -69,10 +70,16 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
   const value = getIn(doc, path);
   switch (modeOf(doc, path, ctx.geometry)) {
     case "classes":
-      return t("style_editor.by_field", { field: label(classificationFor(doc, key, ctx.geometry)?.field) });
+      return t("style_editor.by_field", {
+        field: label(classificationFor(doc, key, ctx.geometry)?.field),
+        ...PLAIN,
+      });
     case "attribute":
     case "raw":
-      return t("style_editor.by_field", { field: label(isObject(value) ? value.field : undefined) });
+      return t("style_editor.by_field", {
+        field: label(isObject(value) ? value.field : undefined),
+        ...PLAIN,
+      });
     case "zoom": {
       const stops = (isObject(value) && Array.isArray(value.zoom) ? value.zoom : []) as Array<
         [number, unknown]

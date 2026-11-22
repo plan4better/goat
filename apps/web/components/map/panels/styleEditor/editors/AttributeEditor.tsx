@@ -5,7 +5,7 @@
 // the values the server computed for the field. A field or scale change saves at once; the values follow with the
 // reply. "Fixed range" writes the domain as a clamp the server never replaces.
 import { Box, Typography } from "@mui/material";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
 import { domainPending } from "@/lib/style/editor/classify";
@@ -27,6 +27,7 @@ import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
 import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useCloseWhenGone,
@@ -43,6 +44,31 @@ import {
 } from "@/components/map/panels/styleEditor/rows";
 
 const SCALES = ["linear", "sqrt", "log"];
+
+/** A range typed in two boxes (a fixed range, a weight's range): each box takes its number when it is left, and the
+ * pair is written once both have a number and it goes from low to high, as goatlib takes a domain. Until then the
+ * typed numbers stay in the boxes; `invalid` while both have one that does not go from low to high. */
+export function useRangeBoxes(
+  stored: readonly [number, number] | undefined | null,
+  write: (next: [number, number]) => void
+) {
+  const [typed, setTyped] = useState<[number | undefined, number | undefined] | null>(null);
+  // A range changed elsewhere (undo, the field's profile) replaces what was typed.
+  const storedKey = stored ? `${stored[0]}|${stored[1]}` : "";
+  useEffect(() => setTyped(null), [storedKey]);
+  const shown: [number | undefined, number | undefined] = typed ?? [stored?.[0], stored?.[1]];
+  const commit = (index: 0 | 1, value: number) => {
+    const next: [number | undefined, number | undefined] = [shown[0], shown[1]];
+    next[index] = value;
+    const [low, high] = next;
+    if (low !== undefined && high !== undefined && low < high) {
+      setTyped(null);
+      write([low, high]);
+    } else setTyped(next);
+  };
+  const invalid = typed !== null && typed[0] !== undefined && typed[1] !== undefined;
+  return { shown, commit, invalid };
+}
 
 /** "12 to 9,800" for a number field's profile. */
 export function profileRange(
@@ -105,6 +131,11 @@ export function AttributeEditor({ path }: { path: Path }) {
   const subscribe = useCallback((listener: () => void) => store.saver.subscribe(listener), [store]);
   const readStored = () => store.saver.stored;
   useSyncExternalStore(subscribe, readStored, readStored);
+  // The fixed range's boxes (written as `write({ domain })` writes it, one undo step for typing).
+  const domainBoxes = useRangeBoxes(
+    isObject(form) && Array.isArray(form.domain) ? (form.domain as [number, number]) : undefined,
+    (next) => store.update((doc) => setIn(doc, `${path}.domain`, next), `${path}.domain`)
+  );
   // Made fixed (or by zoom) while open, by the row's mode or an undo: the editor closes.
   useCloseWhenGone(!byAttribute(form));
   if (!byAttribute(form))
@@ -145,6 +176,7 @@ export function AttributeEditor({ path }: { path: Path }) {
       max: number(domain[1]),
       a: unit(a),
       b: unit(b),
+      ...PLAIN,
     });
   }
 
@@ -202,7 +234,8 @@ export function AttributeEditor({ path }: { path: Path }) {
             unit={bounds.unit}
             pct={bounds.pct}
             value={range[0]}
-            onChange={(v) => write({ range: [v, range[1]] })}
+            // goatlib takes a range from low to high: Smallest stops at Largest.
+            onChange={(v) => write({ range: [Math.min(v, range[1]), range[1]] })}
           />
           <SliderRow
             label={t("style_editor.range_largest")}
@@ -212,7 +245,7 @@ export function AttributeEditor({ path }: { path: Path }) {
             unit={bounds.unit}
             pct={bounds.pct}
             value={range[1]}
-            onChange={(v) => write({ range: [range[0], v] })}
+            onChange={(v) => write({ range: [range[0], Math.max(v, range[0])] })}
           />
         </>
       )}
@@ -274,21 +307,25 @@ export function AttributeEditor({ path }: { path: Path }) {
         }}
       />
       {fixed && (
-        <Row label={t("style_editor.domain")}>
+        <Row
+          label={t("style_editor.domain")}
+          note={domainBoxes.invalid ? t("style_editor.range_low_to_high") : undefined}>
           <NumberInput
-            value={domain?.[0]}
+            value={domainBoxes.shown[0]}
             width={72}
             ariaLabel={t("style_editor.domain_from")}
-            onChange={(v) => write({ domain: [v, domain?.[1] ?? v] })}
+            commitOnLeave
+            onChange={(v) => domainBoxes.commit(0, v)}
           />
           <Typography variant="caption" color="text.secondary">
             {t("style_editor.to")}
           </Typography>
           <NumberInput
-            value={domain?.[1]}
+            value={domainBoxes.shown[1]}
             width={72}
             ariaLabel={t("style_editor.domain_to")}
-            onChange={(v) => write({ domain: [domain?.[0] ?? v, v] })}
+            commitOnLeave
+            onChange={(v) => domainBoxes.commit(1, v)}
           />
         </Row>
       )}

@@ -310,6 +310,48 @@ describe("classification editor", () => {
     expect(saves).toHaveLength(1);
   });
 
+  // Quantiles as the server answers them: goatlib's `sample_colors` of GOAT green over 5 classes.
+  const GREEN = ["#e6f6ef", "#a7e2c7", "#5fca9b", "#259e72", "#145c42"];
+  const greenClasses = GREEN.map((color, i) => ({
+    id: `c${i + 1}`,
+    ...(i ? { from: i * 1000 } : {}),
+    ...(i < 4 ? { to: (i + 1) * 1000 } : {}),
+    fill: { color },
+  }));
+  const GREEN_QUANTILE = {
+    ...QUANTILE,
+    count: 5,
+    palette: "goat:green",
+    classes: greenClasses,
+    computed: {
+      generated: {
+        target: "fill.color",
+        values: Object.fromEntries(greenClasses.map((k) => [k.id, k.fill.color])),
+      },
+    },
+  };
+  const classColors = (store: { get(path: string): unknown }) =>
+    (store.get("classify.0.classes") as Array<{ fill?: { color?: string } }>).map((k) => k.fill?.color);
+
+  it("right after Method Manual the palette row still names the palette: nobody picked a color", async () => {
+    shell(doc([GREEN_QUANTILE]));
+    expect(screen.getByText("GOAT green")).toBeDefined();
+    await choose("style_editor.method", "style_editor.method_quantile", "style_editor.method_manual");
+    expect(screen.getByText("GOAT green")).toBeDefined();
+    expect(screen.queryByText("style_editor.palette_custom")).toBeNull();
+  });
+
+  it("a palette picked for manual classes colors them as the server colors computed classes of that count", async () => {
+    const { store } = shell(
+      doc([{ ...GREEN_QUANTILE, method: "manual", count: undefined, computed: undefined }])
+    );
+    await userEvent.click(screen.getByText("GOAT green"));
+    await userEvent.click(screen.getByRole("button", { name: "Viridis" }));
+    expect(store.get("classify.0.palette")).toBe("d3:viridis");
+    expect(classColors(store)).toEqual(["#440154", "#3e5189", "#21918c", "#6cc761", "#fde725"]);
+    expect(screen.queryByText("style_editor.palette_custom")).toBeNull();
+  });
+
   it("widths typed into the classes read as your own values; a picked range takes every class again", async () => {
     const widths = {
       ...QUANTILE,
@@ -653,6 +695,27 @@ describe("categories picked by hand", () => {
     expect(store.get("classify.0.classes.2.values")).toEqual(["forest"]);
   });
 
+  it.each([
+    // Two classes as a reversed Set2 colors two: the colors three classes get are the reversed three-class Set2.
+    [true, ["#b3b3b3", "#e5c494"], "#8da0cb"],
+    // Three classes as a reversed Set2 colors three: the next color of the four-class Set2, put in front.
+    [true, ["#8da0cb", "#fc8d62", "#66c2a5"], "#e78ac3"],
+    // A class color written in capitals is a color a class has.
+    [false, ["#66C2A5", "#fc8d62"], "#8da0cb"],
+  ])(
+    "Add class (reversed %s, classes %j) takes the first color no class has of those as many classes get",
+    async (reverse, colors, added) => {
+      const classes = colors.map((color, i) => ({ id: `c${i + 1}`, values: [`v${i}`], fill: { color } }));
+      const { store } = shell(doc([{ ...LAND_USE, reverse, classes }]), { ci: 0 }, withValues);
+      await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
+      expect(store.get(`classify.0.classes.${colors.length}`)).toEqual({
+        id: `c${colors.length + 1}`,
+        values: [],
+        fill: { color: added },
+      });
+    }
+  );
+
   it("a class dragged to another row's place moves there; the classes are picked by hand from then on", async () => {
     const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
     const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
@@ -800,6 +863,120 @@ describe("categories picked by hand", () => {
     unique.total = 158;
     shell(doc([LAND_USE]), { ci: 0 }, withValues);
     expect(screen.getByText("style_editor.id_field_hint")).toBeDefined();
+  });
+});
+
+describe("categories on a decimal field", () => {
+  // The unique values come as the database prints them; the classes hold goatlib's spelling, which the map compares.
+  const SHARE_DATA = {
+    layerId: "l1",
+    featureCount: 11,
+    fields: [{ name: "share", type: "number" as const, label: "share" }],
+    fieldTypes: { share: "number" as const },
+  };
+  const SHARE = {
+    id: "share",
+    field: "share",
+    method: "categories",
+    count: 3,
+    classes: [
+      { id: "c1", values: ["0"], fill: { color: "#66c2a5" } },
+      { id: "c2", values: ["1", "4"], fill: { color: "#fc8d62" } },
+      { id: "c3", values: ["2.5"], fill: { color: "#8da0cb" } },
+    ],
+    other: { fill: { color: "#aaaaaa" } },
+  };
+  const rows = () => Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+  const otherRow = () =>
+    screen.getByPlaceholderText("style_editor.other").closest("[data-class-row]") as HTMLElement;
+  /** The picker's values: the text each shows and the note on where it is. */
+  const listed = () =>
+    screen
+      .getAllByRole("menuitem")
+      .map((item) => [item.querySelector("p")?.textContent, item.getAttribute("title")]);
+  beforeEach(() => {
+    unique.values = [
+      { value: "0.0", count: 5 },
+      { value: "1.0", count: 3 },
+      { value: "2.50", count: 2 },
+      { value: "4.0", count: 1 },
+    ];
+    unique.total = 4;
+    unique.matches = [];
+  });
+
+  it("each class counts its features and Other counts none", () => {
+    shell(doc([SHARE]), { ci: 0 }, SHARE_DATA);
+    // A row's count is its last number (a class labelled 0 shows that number first).
+    const counts = rows()
+      .slice(0, 3)
+      .map((row) => within(row).queryAllByText(/^\d+$/).at(-1)?.textContent);
+    expect(counts).toEqual(["5", "4", "2"]);
+    expect(otherRow().getAttribute("data-absent")).toBe("true");
+    expect(within(otherRow()).getByText("0")).toBeDefined();
+  });
+
+  it("Other counts only the features of values in no class", () => {
+    unique.values = [...unique.values, { value: "7.25", count: 6 }];
+    unique.total = 5;
+    shell(doc([SHARE]), { ci: 0 }, SHARE_DATA);
+    expect(otherRow().getAttribute("data-absent")).toBeNull();
+    expect(within(otherRow()).getByText("6")).toBeDefined();
+  });
+
+  it("the value picker shows each value in its class; a tick moves it in the classes' spelling", async () => {
+    const { store } = shell(doc([SHARE]), { ci: 0 }, SHARE_DATA);
+    await userEvent.click(screen.getByRole("button", { name: "2.5" }));
+    expect(screen.getByText("style_editor.in_this_class · 1")).toBeDefined();
+    expect(listed()).toEqual([
+      ["2.5", null],
+      ["0", "style_editor.value_in_class"],
+      ["1", "style_editor.value_in_class"],
+      ["4", "style_editor.value_in_class"],
+    ]);
+    await userEvent.click(screen.getAllByRole("menuitem")[2]);
+    expect(store.get("classify.0.classes")).toEqual([
+      { id: "c1", values: ["0"], fill: { color: "#66c2a5" } },
+      { id: "c2", values: ["4"], fill: { color: "#fc8d62" } },
+      { id: "c3", values: ["2.5", "1"], fill: { color: "#8da0cb" } },
+    ]);
+  });
+
+  it("a class stored in the database's spelling (7.0) counts its features, shows its value and gives it up", async () => {
+    unique.values = [...unique.values, { value: "7.0", count: 6 }];
+    unique.total = 5;
+    const stored = {
+      ...SHARE,
+      classes: [...SHARE.classes, { id: "c4", values: ["7.0"], fill: { color: "#e78ac3" } }],
+    };
+    const { store } = shell(doc([stored]), { ci: 0 }, SHARE_DATA);
+    expect(within(rows()[3]).queryAllByText(/^\d+$/).at(-1)?.textContent).toBe("6");
+    expect(otherRow().getAttribute("data-absent")).toBe("true");
+    // In class 3's values, 7 is in class 4; ticked, it moves here in goatlib's spelling.
+    await userEvent.click(screen.getByRole("button", { name: "2.5" }));
+    expect(listed()).toContainEqual(["7", "style_editor.value_in_class"]);
+    const seven = screen
+      .getAllByRole("menuitem")
+      .find((item) => item.querySelector("p")?.textContent === "7");
+    await userEvent.click(seven as HTMLElement);
+    expect(store.get("classify.0.classes.3.values")).toEqual([]);
+    expect(store.get("classify.0.classes.2.values")).toEqual(["2.5", "7"]);
+  });
+
+  it("a stored 7.0 is listed as the class's own value 7, and unticking it takes it out", async () => {
+    const stored = {
+      ...SHARE,
+      classes: [...SHARE.classes, { id: "c4", values: ["7.0"], fill: { color: "#e78ac3" } }],
+    };
+    unique.values = [...unique.values, { value: "7.0", count: 6 }];
+    unique.total = 5;
+    const { store } = shell(doc([stored]), { ci: 0 }, SHARE_DATA);
+    // The class's label opens its values (the label reads the stored value as a number).
+    await userEvent.click(within(rows()[3]).getByRole("button", { name: /^7(\.0)?$/ }));
+    expect(screen.getByText("style_editor.in_this_class · 1")).toBeDefined();
+    expect(listed()[0]).toEqual(["7", null]);
+    await userEvent.click(screen.getAllByRole("menuitem")[0]);
+    expect(store.get("classify.0.classes.3.values")).toEqual([]);
   });
 });
 

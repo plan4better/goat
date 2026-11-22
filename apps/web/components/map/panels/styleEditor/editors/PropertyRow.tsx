@@ -15,9 +15,11 @@ import {
   compoundKeys,
   compoundModeOf,
   compoundStops,
+  drawsHeights,
   keyOf,
   modeOf,
   modesFor,
+  offersZoom,
   switchCompound,
   switchMode,
   switchScopedMode,
@@ -62,6 +64,7 @@ import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPi
 import { IconStops } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
 import { PatternStops, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { useIconLabel } from "@/components/map/panels/styleEditor/pickers/iconRefs";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useIsOpen,
@@ -108,6 +111,8 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   // A classification that targets this key changes its mode (its shape, not every class value).
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
   useStyleValue(path);
+  // Heights draw with one fill opacity for the whole layer.
+  const extruded = useStyleSelector((doc) => drawsHeights(doc));
   const label = t(row.label);
   const own = scoped && overridden ? writePath : path;
   // The keys of a compound the record sets itself; in scope the others are the layer's.
@@ -123,10 +128,21 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
       )
     : modeOf(store.document, own, data.geometry);
   const withColors = colorFields(data.fields, data.sample);
+  // The document as the row shows it: in class or rule scope the record merged over the layer.
+  const shownDoc = scope ? scopedView(store.document, scope).view : store.document;
   const modes = modesFor(key, {
     scoped,
     hasNumberField: data.fields.some((f) => isNumberField(f.type)),
     hasColorField: withColors.length > 0 || mode === "raw",
+    extruded,
+    // A compound's choice always has a value; another value needs one for its stops (a marker without an icon has none).
+    zoom:
+      !!compound ||
+      offersZoom(shownDoc, path, {
+        mapZoom,
+        sample: data.sample,
+        geometry: data.geometry,
+      }),
   });
   const classify = (store.get("classify") as unknown[] | undefined) ?? [];
   const owner =
@@ -166,14 +182,14 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     if (to === "attribute")
       popover.open(next, {
         key: `attr:${path}`,
-        title: t("style_editor.by_attribute_title", { label }),
+        title: t("style_editor.by_attribute_title", { label, ...PLAIN }),
         anchorTop,
         render: () => <AttributeEditor path={editPath} />,
       });
     else if (to === "zoom")
       popover.open(next, {
         key: `zoom:${path}`,
-        title: t("style_editor.by_zoom_title", { label }),
+        title: t("style_editor.by_zoom_title", { label, ...PLAIN }),
         anchorTop,
         render: () => <ZoomEditor path={editPath} choices={zoomChoices} compound={compound} />,
       });
@@ -236,7 +252,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
         <FieldPicker
           anchorEl={classesAnchor}
           onClose={() => setClassesAnchor(null)}
-          title={t("style_editor.by_classes_of", { label: t(propLabelKey(key)) })}
+          title={t("style_editor.by_classes_of", { label: t(propLabelKey(key)), ...PLAIN })}
           fields={data.fields.filter((f) => f.type !== "date" && f.type !== "datetime")}
           onChange={(name) => {
             const field = data.fields.find((f) => f.name === name);
@@ -261,7 +277,8 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     ) : undefined;
   // A key the layer sets once (arrows placement, label priority, …) cannot differ per class.
   if (scoped && CAPABILITIES[key]?.perFeature === false) return null;
-  const shownDoc = scope ? scopedView(store.document, scope).view : store.document;
+  // Nor can the fill opacity of a layer with heights.
+  if (scoped && extruded && key === "fill.opacity") return null;
 
   if (mode !== "fixed") {
     const fieldLabel = (name: unknown) => data.fields.find((f) => f.name === name)?.label ?? String(name);
@@ -272,7 +289,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             .map(([, choice]) => compoundLabel(t, compound, choice))
             .join(" → ")
         : compound && mode === "classes"
-          ? t("style_editor.by_field", { field: fieldLabel(owner?.field) })
+          ? t("style_editor.by_field", { field: fieldLabel(owner?.field), ...PLAIN })
           : summarize(shownDoc, path, t, {
               fields: data.fields,
               mapZoom,

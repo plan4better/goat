@@ -68,15 +68,24 @@ export function modeOf(doc: LayerStyle, path: Path, geometry?: Geometry): Mode {
   return "fixed";
 }
 
+/** The modes a property offers. `zoom: false` leaves By zoom out: the value has nothing stops could start from
+ * (offersZoom). On a layer with heights (`extruded`, drawsHeights) the fill opacity is one for the whole layer: fixed
+ * or by zoom. */
 export function modesFor(
   key: string,
-  ctx: { scoped: boolean; hasNumberField: boolean; hasColorField?: boolean }
+  ctx: {
+    scoped: boolean;
+    hasNumberField: boolean;
+    hasColorField?: boolean;
+    zoom?: boolean;
+    extruded?: boolean;
+  }
 ): Mode[] {
   const cap = CAPABILITIES[key];
   if (!cap) return ["fixed"];
   const modes: Mode[] = ["fixed"];
-  if (cap.zoom) modes.push("zoom");
-  if (!ctx.scoped && cap.perFeature) {
+  if (cap.zoom && ctx.zoom !== false) modes.push("zoom");
+  if (!ctx.scoped && cap.perFeature && !(ctx.extruded && key === FILL_OPACITY)) {
     if (cap.attribute && ctx.hasNumberField) modes.push("attribute");
     // Field values as they are: a bearing for rotation, a hex text for colors.
     if (
@@ -88,6 +97,42 @@ export function modesFor(
     modes.push("classes");
   }
   return modes;
+}
+
+const FILL_OPACITY = "fill.opacity";
+
+/** Whether the layer draws heights as goatlib's checks read it: any record (the symbol, a class, `other`, `no_data`, a
+ * rule) has an `extrude` part. Heights draw with one fill opacity for the whole layer. */
+export function drawsHeights(doc: LayerStyle): boolean {
+  const records = [
+    getIn(doc, "symbol"),
+    ...list(getIn(doc, "classify")).flatMap(classRecords),
+    ...list(getIn(doc, "rules")),
+  ];
+  return records.some((record) => isObject(record) && isObject(record.extrude));
+}
+
+/** Whether a value differs by feature: it reads a field, or zoom stops hold one that does. */
+function perFeature(value: unknown): boolean {
+  if (isObject(value) && Array.isArray(value.zoom))
+    return value.zoom.some((stop) => Array.isArray(stop) && stop.length === 2 && perFeature(stop[1]));
+  return isObject(value) && "field" in value;
+}
+
+/** `doc` with one fill opacity for the whole layer while it draws heights: a fill opacity by feature or by classes
+ * becomes the fixed value it shows, and classes and rules keep no fill opacity of their own. Every edit that switches
+ * heights on goes through it. */
+export function oneFillOpacity(doc: LayerStyle, ctx: SwitchContext): LayerStyle {
+  if (!drawsHeights(doc)) return doc;
+  const path = `symbol.${FILL_OPACITY}`;
+  let next =
+    modeOf(doc, path, ctx.geometry) === "classes" || perFeature(getIn(doc, path))
+      ? switchMode(doc, path, "fixed", ctx)
+      : doc;
+  list(getIn(next, "rules")).forEach((_, i) => {
+    next = dropKey(next, `rules.${i}`, FILL_OPACITY);
+  });
+  return next;
 }
 
 /** The text fields whose value in the sample feature is a color: the fields a color can be read from as it is. */
@@ -182,6 +227,34 @@ function leaveClasses(doc: LayerStyle, key: string, geometry?: Geometry): LayerS
 
 const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
+/** Keys that are drawn with another key's value while not set: the arrows with the line's color ("Same as line"), a
+ * pattern with the fill's ("Same as fill"). */
+const DRAWN_AS: Record<string, string> = {
+  "arrows.color": "line.color",
+  "fill.pattern_color": "fill.color",
+};
+
+/** The value stops by zoom start from: the value at `path` as one fixed value, or, while it is not set, the value it
+ * is drawn with; undefined where neither gives one (a marker without an icon). */
+function zoomStartOf(doc: LayerStyle, path: Path, ctx: SwitchContext): unknown {
+  const value = fixedValue(doc, path, ctx);
+  if (value !== undefined && value !== null) return value;
+  const key = keyOf(path);
+  const other = DRAWN_AS[key];
+  if (!other || !path.endsWith(key)) return undefined;
+  const shown = fixedValue(doc, `${path.slice(0, path.length - key.length)}${other}`, ctx);
+  return shown === null ? undefined : shown;
+}
+
+/** Whether By zoom has a value to start from (the row's value at `path` in `doc`, the view a class or rule shows in
+ * scope): false while the value is not set and nothing is drawn in its place. */
+export function offersZoom(doc: LayerStyle, path: Path, ctx: SwitchContext): boolean {
+  const mode = modeOf(doc, path, ctx.geometry);
+  if (mode === "zoom" || mode === "attribute") return true;
+  const base = mode === "classes" ? leaveClasses(doc, keyOf(path), ctx.geometry) : doc;
+  return zoomStartOf(base, path, ctx) !== undefined;
+}
+
 /** A value by zoom that starts flat at `value`, three zooms either side of the map's (on the half zoom nearest it, the
  * steps the stop chart moves in). */
 function zoomForm(key: string, value: unknown, mapZoom: number): JsonObject {
@@ -207,9 +280,11 @@ export function switchScopedMode(
   // The mode the class already has, its own or inherited, changes nothing.
   const own = getIn(doc, writePath) !== undefined;
   if (modeOf(own ? doc : view, own ? writePath : path, ctx.geometry) === to) return doc;
-  const value = fixedValue(view, path, ctx);
-  if (to === "fixed") return setIn(doc, writePath, value);
-  if (to === "zoom") return setIn(doc, writePath, zoomForm(keyOf(path), value, ctx.mapZoom));
+  if (to === "fixed") return setIn(doc, writePath, fixedValue(view, path, ctx));
+  if (to === "zoom") {
+    const start = zoomStartOf(view, path, ctx);
+    return start === undefined ? doc : setIn(doc, writePath, zoomForm(keyOf(path), start, ctx.mapZoom));
+  }
   return doc;
 }
 
@@ -420,8 +495,9 @@ export function switchMode(doc: LayerStyle, path: Path, to: Mode, ctx: SwitchCon
     case "zoom": {
       // A value by attribute keeps its field at every stop (spec 4.4): the stops then change its range or palette.
       const value = getIn(base, path);
-      const start = from === "attribute" && isObject(value) ? value : fixedValue(base, path, ctx);
-      return setIn(base, path, zoomForm(key, start, ctx.mapZoom));
+      const start = from === "attribute" && isObject(value) ? value : zoomStartOf(base, path, ctx);
+      // Stops of nothing are refused: a value that is not set and drawn as nothing stays as it is.
+      return start === undefined ? doc : setIn(base, path, zoomForm(key, start, ctx.mapZoom));
     }
     case "attribute":
       if (!ctx.field) return base;

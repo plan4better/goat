@@ -40,7 +40,7 @@ The row in the section then shows the field and the size, for example <code>Name
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Type the text under <code>Template</code>. Fields go in braces and are replaced by each feature's value, for example <code>{"{name}"}, {"{population}"} inhabitants</code> or <code>{"{area_km2}"} km²</code>. Click <code>Insert a field</code> to add a field at the end. A line break in the template starts a new line in the label.</div>
+  <div class="content">Type the text under <code>Template</code>. Fields go in braces and are replaced by each feature's value, for example <code>{"{name}"}, {"{population}"} inhabitants</code> or <code>{"{area_km2}"} km²</code>. Click <code>Insert a field</code> to add a field at the end. A line break in the template starts a new line in the label. The template is applied when you leave the box or press <code>Ctrl+Enter</code> (<code>Cmd+Enter</code> on a Mac); a template that cannot be read stays in the box with a note saying why.</div>
 </div>
 
 <div class="step">

@@ -107,6 +107,83 @@ describe("zoom editor", () => {
     expect(screen.queryByRole("button", { name: "style_editor.remove_stop_aria" })).toBeNull();
   });
 
+  it("the stop's open color picker closes when the stops change around it: it never writes to another stop", async () => {
+    const { store } = setup(
+      {
+        zoom: [
+          [4, "#111111"],
+          [8, "#222222"],
+          [12, "#333333"],
+          [16, "#444444"],
+          [20, "#555555"],
+        ],
+      },
+      "line.color"
+    );
+    const picker = () => screen.queryByRole("textbox", { name: "color_value" });
+    const open = async () => {
+      await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
+      expect(picker()).not.toBeNull();
+    };
+    const zooms = () => (store.get("symbol.line.color.zoom") as Stops).map(([z]) => z);
+    // The stop at z12 is selected (the map's zoom); a removal selects the stop before it.
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.remove_stop_aria" }));
+    expect(zooms()).toEqual([4, 8, 16, 20]);
+    expect(picker()).toBeNull();
+    // The stop at z8 moved past z16 by its zoom box.
+    await open();
+    fireEvent.change(screen.getByRole("textbox", { name: "style_editor.stop_zoom" }), {
+      target: { value: "18" },
+    });
+    expect(zooms()).toEqual([4, 16, 18, 20]);
+    expect(picker()).toBeNull();
+    // A stop added on the chart.
+    await open();
+    const svg = chart();
+    fireEvent.pointerDown(svg, { clientX: at([], 10), clientY: 70, pointerId: 1 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    expect(zooms()).toEqual([4, 10, 16, 18, 20]);
+    expect(picker()).toBeNull();
+    // Another stop selected on the chart.
+    await open();
+    fireEvent.pointerDown(svg, { clientX: at([], 20), clientY: 30, pointerId: 1 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    fireEvent.pointerOut(svg, { relatedTarget: document.body });
+    expect(picker()).toBeNull();
+    // Opened again, the picker writes the selected stop's color.
+    await open();
+    const box = screen.getAllByRole("textbox", { name: "color_value" }).at(-1) as HTMLElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "#abcdef" } });
+    expect(store.get("symbol.line.color.zoom")).toEqual([
+      [4, "#111111"],
+      [10, expect.any(String)],
+      [16, "#444444"],
+      [18, "#222222"],
+      [20, "#abcdef"],
+    ]);
+  });
+
+  it("the stop's open attribute editor closes when a stop is added before it", async () => {
+    const { store } = setup({
+      zoom: [
+        [4, 1],
+        [12, { field: "traffic", range: [1, 4] }],
+        [16, 6],
+      ],
+    });
+    const title = () => screen.queryByText("style_editor.by_attribute_title");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.by_field" }));
+    expect(title()).not.toBeNull();
+    // A stop at z8 takes the attribute form's place in the list.
+    const svg = chart();
+    fireEvent.pointerDown(svg, { clientX: at([], 8), clientY: 70, pointerId: 1 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    expect((store.get("symbol.line.width.zoom") as Stops).map(([z]) => z)).toEqual([4, 8, 12, 16]);
+    expect(title()).toBeNull();
+  });
+
   it("step-only keys have no transition", () => {
     setup(
       {

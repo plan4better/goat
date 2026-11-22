@@ -234,6 +234,44 @@ describe("raster colors", () => {
     ]);
   });
 
+  it("a stop's open color picker closes when a stop is removed, added or sorted: it never writes to another stop", async () => {
+    const colors = ["#111111", "#222222", "#333333", "#444444"];
+    const stops = [100, 200, 300, 400].map((value, i) => ({ value, color: colors[i] }));
+    const { store } = setup({ type: "continuous", stops });
+    await openColors();
+    const values = () => (store.get("render.stops") as Array<{ value: number }>).map((s) => s.value);
+    const picker = () => screen.queryByRole("textbox", { name: "color_value" });
+    const valueBoxes = () => screen.getAllByRole("textbox", { name: "style_editor.stop_value" });
+    // A stop's color button in its row (read while no picker is open: the picker's title is the stop's label too).
+    const colorButton = (i: number) =>
+      within(screen.getAllByText("style_editor.stop_n")[i].parentElement as HTMLElement).getByRole("button", {
+        name: "style_editor.pick_color",
+      });
+    const open = async (i: number) => {
+      await userEvent.click(colorButton(i));
+      expect(picker()).not.toBeNull();
+    };
+    await open(1);
+    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.remove_stop" })[0]);
+    expect(values()).toEqual([200, 300, 400]);
+    expect(picker()).toBeNull();
+    await open(1);
+    fireEvent.change(valueBoxes()[0], { target: { value: "500" } });
+    fireEvent.blur(valueBoxes()[0]);
+    expect(values()).toEqual([300, 400, 500]);
+    expect(picker()).toBeNull();
+    await open(0);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_stop" }));
+    expect(values()).toEqual([300, 400, 500, 501]);
+    expect(picker()).toBeNull();
+    // Opened again, the picker writes its own stop's color.
+    await open(1);
+    const box = screen.getAllByRole("textbox", { name: "color_value" }).at(-1) as HTMLElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: "#abcdef" } });
+    expect(store.get("render.stops.1")).toEqual({ value: 400, color: "#abcdef" });
+  });
+
   it("own colors say what cells outside the stops do: Transparent hides them, End colors draws them again", async () => {
     const stops = [0, 100].map((value) => ({ value, color: "#111111" }));
     const { store } = setup({ type: "continuous", stops });

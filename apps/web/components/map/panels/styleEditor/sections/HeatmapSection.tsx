@@ -17,10 +17,12 @@ import {
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
+import { useRangeBoxes } from "@/components/map/panels/styleEditor/editors/AttributeEditor";
 import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ChoiceRow, NavRow, NumberInput, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
 
@@ -137,7 +139,10 @@ function WeightRow() {
       value={current}
       options={[
         { value: "", label: t("style_editor.weight_once") },
-        ...numbers.map((f) => ({ value: f.name, label: t("style_editor.by_field", { field: f.label }) })),
+        ...numbers.map((f) => ({
+          value: f.name,
+          label: t("style_editor.by_field", { field: f.label, ...PLAIN }),
+        })),
       ]}
       onChange={(field) => {
         // A weight by a field needs its range (spec 8.1): the field's lowest and highest value. It is part of the
@@ -168,24 +173,30 @@ function WeightRange() {
   return <DomainRow path="render.weight.domain" />;
 }
 
-/** A value's range as its lowest and highest number, typed (a weight's, a cluster value's). */
+/** A value's range as its lowest and highest number, typed (a weight's, a cluster value's); written once both boxes
+ * have a number, from low to high. */
 export function DomainRow({ path }: { path: Path }) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const value = useStyleValue<unknown>(path);
   const domain = Array.isArray(value) ? (value as [number, number]) : undefined;
+  const boxes = useRangeBoxes(domain, (next) => store.update((doc) => setIn(doc, path, next), path));
   return (
-    <Row label={t("style_editor.range")}>
+    <Row
+      label={t("style_editor.range")}
+      note={boxes.invalid ? t("style_editor.range_low_to_high") : undefined}>
       <Box sx={{ display: "flex", gap: 2, flex: 1, minWidth: 0 }}>
         <NumberInput
-          value={domain?.[0]}
+          value={boxes.shown[0]}
           ariaLabel={t("style_editor.range_lowest")}
-          onChange={(v) => store.update((doc) => setIn(doc, path, [v, domain?.[1] ?? v]), path)}
+          commitOnLeave
+          onChange={(v) => boxes.commit(0, v)}
         />
         <NumberInput
-          value={domain?.[1]}
+          value={boxes.shown[1]}
           ariaLabel={t("style_editor.range_highest")}
-          onChange={(v) => store.update((doc) => setIn(doc, path, [domain?.[0] ?? v, v]), path)}
+          commitOnLeave
+          onChange={(v) => boxes.commit(1, v)}
         />
       </Box>
     </Row>

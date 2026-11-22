@@ -10,6 +10,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { PopupBlock } from "@/lib/validations/layer";
 
+import { type FieldInfo, useStyleData } from "@/components/map/panels/styleEditor/context";
 import { DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
 import { AddButton, NavRow } from "@/components/map/panels/styleEditor/rows";
 
@@ -30,9 +31,15 @@ const BLOCK_TYPES: BlockTypeMeta[] = [
   { value: "divider", label: "divider_block", icon: ICON_NAME.DIVIDER },
 ];
 
+/** The field a new badge shows: the layer's first text field (badge values are labels), else its first field. Core
+ * checks a badge's field against the layer's fields, so a badge is only made where the layer has one. */
+function badgeField(fields: FieldInfo[]): string | undefined {
+  return (fields.find((f) => f.type === "string") ?? fields[0])?.name;
+}
+
 /** `buttonLabel` is the default text of a new button block, in the editor's
- * language: it is stored with the block and shown to every popup reader. */
-function makeBlock(type: PopupBlock["type"], buttonLabel: string): PopupBlock {
+ * language: it is stored with the block and shown to every popup reader. `field` is the badge's field. */
+function makeBlock(type: PopupBlock["type"], buttonLabel: string, field: string): PopupBlock {
   const id = v4();
   switch (type) {
     case "text":
@@ -51,12 +58,10 @@ function makeBlock(type: PopupBlock["type"], buttonLabel: string): PopupBlock {
     case "button":
       return { id, type, label: buttonLabel, url_template: "", style: "link" };
     case "badge":
-      // `field` is required (.min(1)); user must replace this placeholder
-      // before save in the block edit popper.
       return {
         id,
         type,
-        field: "placeholder",
+        field,
         mode: "single",
         palette: {},
         full_width: false,
@@ -74,7 +79,9 @@ interface PopupBlockListProps {
 
 export function PopupBlockList({ blocks, onChange, onEdit }: PopupBlockListProps) {
   const { t } = useTranslation("common");
+  const { fields } = useStyleData();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const firstField = badgeField(fields);
 
   const move = (from: number, to: number) => {
     const next = [...blocks];
@@ -132,7 +139,9 @@ export function PopupBlockList({ blocks, onChange, onEdit }: PopupBlockListProps
         items={BLOCK_TYPES.map((bt) => ({
           label: t(bt.label),
           icon: bt.icon,
-          onClick: () => onChange([...blocks, makeBlock(bt.value, t("open"))]),
+          disabled: bt.value === "badge" && !firstField,
+          tooltip: bt.value === "badge" && !firstField ? t("no_fields_available") : undefined,
+          onClick: () => onChange([...blocks, makeBlock(bt.value, t("open"), firstField ?? "")]),
         }))}
         onClose={() => setMenuAnchor(null)}
       />

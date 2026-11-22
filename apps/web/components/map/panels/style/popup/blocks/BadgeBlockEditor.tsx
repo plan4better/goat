@@ -9,6 +9,7 @@ import type { PopupBadgeBlock } from "@/lib/validations/layer";
 import { LayerValueSelectorPopper } from "@/components/map/panels/style/other/LayerValueSelectorPopper";
 import { useStyleData } from "@/components/map/panels/styleEditor/context";
 import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   AddButton,
   ColorField,
@@ -144,7 +145,7 @@ function PerValuePalette({
             actions={
               <IconButton
                 size="small"
-                aria-label={t("style_editor.remove_value", { value })}
+                aria-label={t("style_editor.remove_value", { value, ...PLAIN })}
                 onClick={() => onRemove(value)}>
                 <Icon iconName={ICON_NAME.CLOSE} sx={{ fontSize: 12 }} />
               </IconButton>

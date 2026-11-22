@@ -48,6 +48,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
   anchorTopOf,
@@ -406,6 +407,7 @@ export function PopupSection({ children }: { children?: ReactNode }) {
           value={t("style_editor.popup_appearance_summary", {
             layout: t(`style_editor.popup_layout_${config.layout}`),
             header: t(`style_editor.popup_header_${config.header}`),
+            ...PLAIN,
           })}
           onOpen={(anchor) =>
             popover.open(next, {

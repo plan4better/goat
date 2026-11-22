@@ -42,6 +42,7 @@ import {
   PaneSearch,
   TileGrid,
 } from "@/components/map/panels/styleEditor/pickers/iconTiles";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { fieldSx } from "@/components/map/panels/styleEditor/rows/fieldBox";
 
 const nameOf = (asset: UploadedAsset) => asset.display_name || asset.file_name;
@@ -119,7 +120,7 @@ function ManageRow({ asset, onChanged }: { asset: UploadedAsset; onChanged: () =
     return (
       <Box role="alert" sx={{ my: 1, px: 2.5, py: 2, borderRadius: 2, border: 1, borderColor: "divider" }}>
         <Typography variant="caption" sx={{ display: "block", lineHeight: 1.5 }}>
-          {t("style_editor.icon_delete_confirm", { name: nameOf(asset) })}
+          {t("style_editor.icon_delete_confirm", { name: nameOf(asset), ...PLAIN })}
         </Typography>
         <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
           <Button variant="text" size="small" color="inherit" onClick={() => setAsking(false)}>
@@ -145,7 +146,7 @@ function ManageRow({ asset, onChanged }: { asset: UploadedAsset; onChanged: () =
       />
       <IconButton
         size="small"
-        aria-label={t("style_editor.icon_delete", { name: nameOf(asset) })}
+        aria-label={t("style_editor.icon_delete", { name: nameOf(asset), ...PLAIN })}
         onClick={() => setAsking(true)}>
         <Icon iconName={ICON_NAME.TRASH} sx={{ fontSize: 14 }} />
       </IconButton>
@@ -278,7 +279,7 @@ export function CustomIconPane({ value, onPick }: { value?: string; onPick: (ref
             )}
         {!hasIcons && <PaneEmpty>{t("style_editor.icon_custom_empty")}</PaneEmpty>}
         {uploads.length > 0 && !shown.length && (
-          <PaneEmpty>{t("no_results_for", { q: query.trim() })}</PaneEmpty>
+          <PaneEmpty>{t("no_results_for", { q: query.trim(), ...PLAIN })}</PaneEmpty>
         )}
       </Box>
     </Box>

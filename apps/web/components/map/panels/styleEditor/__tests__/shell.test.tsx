@@ -134,6 +134,22 @@ describe("style editor shell", () => {
     expect(saves).toHaveLength(1);
   });
 
+  it.each([
+    [422, "document_too_large"],
+    [413, "body_too_large"],
+    [413, undefined],
+  ])("a style too large to save says so (%s %s), and nothing is sent again", async (status, code) => {
+    const { ui, store, saves, answer } = setup();
+    renderWithProviders(ui);
+    act(() => store.set("symbol.fill.color", "#ff0000"));
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    await act(() => answer({ ok: false, status, code }));
+    expect(screen.getByRole("status").textContent).toBe("style_editor.stopped_too_large");
+    act(() => store.set("symbol.fill.color", "#00ff00"));
+    await act(() => vi.advanceTimersByTimeAsync(60000));
+    expect(saves).toHaveLength(1);
+  });
+
   it("base_too_old asks to apply or discard", async () => {
     const { ui, store, saver, answer } = setup();
     const resolve = vi.spyOn(saver, "resolveBaseTooOld");

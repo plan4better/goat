@@ -50,6 +50,7 @@ import ToolPill from "@/components/dashboard/common/ToolPill";
 import { useSaverState, useStatusText } from "@/components/map/panels/styleEditor/StatusLine";
 import { type EditorLayer, HistoryButtons } from "@/components/map/panels/styleEditor/StyleEditor";
 import { useDatasetReference } from "@/components/map/panels/styleEditor/datasetDefault";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useIsOpener,
@@ -210,7 +211,7 @@ function StyleRow({
               <IconButton
                 edge="end"
                 size="small"
-                aria-label={t("style_editor.style_more", { name: style.name })}
+                aria-label={t("style_editor.style_more", { name: style.name, ...PLAIN })}
                 aria-haspopup="menu"
                 sx={{ px: 0.5 }}>
                 <Icon iconName={ICON_NAME.MORE_VERT} style={{ fontSize: "15px" }} />
@@ -328,7 +329,7 @@ function StylesPopover({ live }: { live: Live }) {
         onClick: () =>
           run(() =>
             createNamedStyle(projectId, layer.id, {
-              name: t("style_editor.copy_of", { name: style.name }),
+              name: t("style_editor.copy_of", { name: style.name, ...PLAIN }),
               copy_from: style.id,
             })
           ),
@@ -458,7 +459,7 @@ function StylesPopover({ live }: { live: Live }) {
       </Box>
       <Typography variant="caption" color="text.secondary" component="p" sx={{ pt: 2 }}>
         {canPaste && clipboard
-          ? t("style_editor.paste_note", { name: clipboard.sourceLayerName })
+          ? t("style_editor.paste_note", { name: clipboard.sourceLayerName, ...PLAIN })
           : t("style_editor.copy_note")}
       </Typography>
     </Box>

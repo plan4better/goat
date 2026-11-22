@@ -94,6 +94,8 @@ describe("attribute editor", () => {
     expect(store.get("symbol.line.width.range")).toEqual([5, 8]);
     const from = screen.getByRole("textbox", { name: "style_editor.domain_from" });
     for (const value of ["1", "10", "100"]) fireEvent.change(from, { target: { value } });
+    // The fixed range's boxes take their number when left.
+    fireEvent.blur(from);
     expect(store.get("symbol.line.width.domain")).toEqual([100, 500]);
     act(() => store.undo());
     expect(store.get("symbol.line.width.domain")).toEqual([0, 500]);
@@ -117,9 +119,9 @@ describe("attribute editor", () => {
     const { store } = setup({ field: "traffic", range: [1, 8], computed: { domain: [0, 500] } });
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.fixed_range" }));
     expect(store.get("symbol.line.width.domain")).toEqual([0, 500]);
-    fireEvent.change(screen.getByRole("textbox", { name: "style_editor.domain_from" }), {
-      target: { value: "10" },
-    });
+    const from = screen.getByRole("textbox", { name: "style_editor.domain_from" });
+    fireEvent.change(from, { target: { value: "10" } });
+    fireEvent.blur(from);
     expect(store.get("symbol.line.width.domain")).toEqual([10, 500]);
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.fixed_range" }));
     expect(store.get("symbol.line.width.domain")).toBeUndefined();

@@ -51,6 +51,7 @@ import { DASH_ARRAYS } from "@/components/map/panels/styleEditor/editors/choiceG
 import { PatternPicture, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { SHAPE_NEUTRAL } from "@/components/map/panels/styleEditor/pickers/ShapeTiles";
 import { useSymbols } from "@/components/map/panels/styleEditor/pickers/iconRefs";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
   useCloseWhenGone,
@@ -254,7 +255,17 @@ export function ZoomEditor({
       ? store.update((doc) => writeCompoundStops(doc, compound, record, nextStops as Array<[number, string]>))
       : store.set(`${path}.zoom`, nextStops);
 
+  // The value row's picker and the editor it opens one level deeper write to the selected stop's place in the list
+  // (stops have no ids): an add, a removal, a move past another stop or another stop selected closes them, so they
+  // never write to the stop that takes that place.
+  const closeStopEditors = () => popover.close(next);
+  const select = (i: number) => {
+    if (i !== index) closeStopEditors();
+    setSelected(i);
+  };
+
   const add = (z: number): number => {
+    closeStopEditors();
     const at = stops.findIndex(([s]) => s > z);
     const i = at < 0 ? stops.length : at;
     const left = stops[Math.max(0, i - 1)][1];
@@ -277,11 +288,13 @@ export function ZoomEditor({
     if (stops.some(([s], k) => k !== index && s === target)) return;
     const moved = stops.map((stop, k) => (k === index ? ([target, stop[1]] as [number, unknown]) : stop));
     const sorted = [...moved].sort((a, b) => a[0] - b[0]);
+    if (sorted.indexOf(moved[index]) !== index) closeStopEditors();
     writeStops(sorted);
     setSelected(sorted.indexOf(moved[index]));
   };
 
   const remove = () => {
+    closeStopEditors();
     writeStops(stops.filter((_, k) => k !== index));
     setSelected(Math.max(0, index - 1));
   };
@@ -302,11 +315,11 @@ export function ZoomEditor({
     valueRow = (
       <Row label={label}>
         <FormButton
-          text={t("style_editor.by_field", { field: fieldLabel })}
+          text={t("style_editor.by_field", { field: fieldLabel, ...PLAIN })}
           onOpen={(anchor) =>
             popover.open(next, {
               key: `attr:${stopPath}`,
-              title: t("style_editor.by_attribute_title", { label: `z${zoom}` }),
+              title: t("style_editor.by_attribute_title", { label: `z${zoom}`, ...PLAIN }),
               anchorTop: anchorTopOf(anchor),
               render: () => <AttributeEditor path={stopPath} />,
             })
@@ -378,7 +391,7 @@ export function ZoomEditor({
         label={t("style_editor.zoom_chart_aria")}
         hiddenLabel={t("style_editor.layer_hidden_zooms")}
         glyph={(v) => <StopGlyph propertyKey={key} value={v} color={glyphColor} path={path} />}
-        onSelect={setSelected}
+        onSelect={select}
         onAdd={add}
         onMove={move}
       />

@@ -10,6 +10,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import type { Mode } from "@/lib/style/editor/forms";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { type DropdownItem, DropdownMenu } from "@/components/map/panels/styleEditor/popovers/DropdownMenu";
 import { FieldButton } from "@/components/map/panels/styleEditor/rows/FieldButton";
 
@@ -85,7 +86,7 @@ export const ValueModeButton = memo(function ValueModeButton({
   return (
     <>
       <FieldButton
-        ariaLabel={t("style_editor.value_mode_aria", { label, mode: name(mode) })}
+        ariaLabel={t("style_editor.value_mode_aria", { label, mode: name(mode), ...PLAIN })}
         popup="menu"
         expanded={anchor !== null}
         active={anchor !== null}
