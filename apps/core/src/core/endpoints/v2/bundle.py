@@ -481,7 +481,8 @@ async def import_bundle(
                 detail=(
                     f"'{filename}' is not a recognised bundle upload "
                     "(expected a *gtfs*.zip, a zip containing Overture "
-                    "segments and connectors GeoParquet, or an XPlanGML .gml)"
+                    "segments and connectors GeoParquet, or an XPlanGML .gml "
+                    "or a zip holding it as xplan.gml)"
                 ),
             )
         # Refused here, not by the job: past this size the import cannot be

@@ -31,6 +31,11 @@ ARCHIVE_SKIP_EXTS = frozenset({FileFormat.TXT.value, FileFormat.DSV.value})
 _SQLITE_HEADER = b"SQLite format 3\x00"
 
 
+#: The most an uploaded archive may unpack to, by the sizes its directory
+#: states; a member is never written past the size stated for it.
+ZIP_MAX_UNPACKED_BYTES = 500 * 1024 * 1024
+
+
 class DiscoveryError(Exception):
     """Custom exception for discovery-related errors."""
 
@@ -185,9 +190,13 @@ def _discover_from_dir(directory: Path) -> Iterator[Path]:
 
 
 @contextmanager
-def _extract_zip_safely(zip_path: Path) -> Iterator[Path]:
+def extract_zip_safely(zip_path: Path) -> Iterator[Path]:
     """
     Safely extract ZIP contents to temporary directory.
+
+    The one place an uploaded archive is unpacked: a dataset upload and a
+    bundle importer that takes an archive (a zipped XPlan plan) both use it.
+    The directory stays after a normal exit, for the caller to remove.
 
     The archive's own directory structure is preserved. Flattening to basenames loses
     data: an archive holding `wien/stops.geojson` and `graz/stops.geojson` — the shape a
@@ -206,7 +215,7 @@ def _extract_zip_safely(zip_path: Path) -> Iterator[Path]:
         with zipfile.ZipFile(zip_path) as zf:
             # Check for potentially malicious ZIP files
             total_size = sum(zf.getinfo(name).file_size for name in zf.namelist())
-            if total_size > 500 * 1024 * 1024:  # 500MB limit
+            if total_size > ZIP_MAX_UNPACKED_BYTES:
                 raise DiscoveryError(f"ZIP file too large: {total_size} bytes")
 
             root = tmp_dir.resolve()
@@ -268,7 +277,7 @@ def _discover_from_zip(
     top_level = _skipped is None
     skipped: list[Path] = [] if _skipped is None else _skipped
     found = False
-    with _extract_zip_safely(zip_path) as tmp_dir:
+    with extract_zip_safely(zip_path) as tmp_dir:
         # Recursively, because the archive's folders are kept: a dataset can sit at any
         # depth, and `sorted` so the order a caller sees does not depend on the
         # filesystem.

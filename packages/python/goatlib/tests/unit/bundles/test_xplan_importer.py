@@ -2,6 +2,8 @@
 
 import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 import duckdb
@@ -342,6 +344,137 @@ def test_upload_saved_under_another_name(tmp_path: Path):
         for layer in XPlanImporter().extract_layers(str(source), str(workdir))
     }
     assert "BP_BaugebietsTeilFlaeche" in roles
+
+
+def _archive(path: Path, members: dict, *, stored: bool = False) -> Path:
+    method = zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED
+    with zipfile.ZipFile(path, "w", method) as archive:
+        for name, content in members.items():
+            archive.writestr(name, content)
+    return path
+
+
+@pytest.fixture
+def unpacked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The directory archives are unpacked into, and GML files linked into:
+    whatever a test leaves there, an import leaves on a worker."""
+    directory = tmp_path / "unpacked"
+    directory.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(directory))
+    return directory
+
+
+@pytest.mark.parametrize("stored", [False, True])
+def test_a_zipped_plan_is_the_plan(tmp_path: Path, unpacked: Path, layers, stored):
+    """A plan's archive holds the plan as `xplan.gml`, with its documents
+    beside it. Compressed or not: the start of an archive that only stores
+    its members reads like the plan itself."""
+    source = _archive(
+        tmp_path / "upload.zip",
+        {"xplan.gml": XPLAN_51, "BPlan.pdf": b"%PDF-1.7", "BPlan.png": b"png"},
+        stored=stored,
+    )
+    importer = XPlanImporter()
+    assert importer.matches_source(str(source))
+    assert infer_bundle_type("BPlan004_5-1.zip", str(source)) == BundleTypeName.xplan
+
+    validation = importer.validate(str(source))
+    assert validation.valid, validation.errors
+    assert "BP_BaugebietsTeilFlaeche" in validation.detected_roles
+
+    workdir = tmp_path / "zipped"
+    workdir.mkdir()
+    zipped = {
+        layer.role: layer
+        for layer in importer.extract_layers(str(source), str(workdir))
+    }
+    assert set(zipped) == set(layers)
+    area = "BP_BaugebietsTeilFlaeche"
+    assert _by_id(zipped[area]) == _by_id(layers[area])
+    assert list(unpacked.iterdir()) == []
+
+
+def test_an_archive_without_a_plan_is_no_plan(tmp_path: Path, unpacked: Path):
+    """Any other archive stays what it was: a dataset upload, or another
+    bundle type's."""
+    source = _archive(
+        tmp_path / "upload.zip", {"parcels.gml": XPLAN_51, "readme.txt": "notes"}
+    )
+    importer = XPlanImporter()
+    assert not importer.matches_source(str(source))
+    assert infer_bundle_type("parcels.zip", str(source)) is None
+    validation = importer.validate(str(source))
+    assert not validation.valid
+    assert "no xplan.gml" in validation.errors[0]
+    assert list(unpacked.iterdir()) == []
+
+
+def test_an_archive_with_two_plans_is_refused(tmp_path: Path, unpacked: Path):
+    source = _archive(
+        tmp_path / "upload.zip", {"a/xplan.gml": XPLAN_51, "b/xplan.gml": XPLAN_51}
+    )
+    validation = XPlanImporter().validate(str(source))
+    assert not validation.valid
+    assert "more than one" in validation.errors[0]
+    assert list(unpacked.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        {"xplan.gml": XPLAN_51, "../x.gml": XPLAN_51},
+        {"../xplan.gml": XPLAN_51},
+        {"xplan.gml": XPLAN_51, "docs/../../x.gml": XPLAN_51},
+    ],
+)
+def test_an_archive_member_outside_the_archive_is_refused(
+    tmp_path: Path, unpacked: Path, members: dict
+):
+    """An archive is unpacked by the dataset upload's own handling, which
+    refuses a member whose path leaves the archive; so is the plan in it."""
+    source = _archive(tmp_path / "upload.zip", members)
+    importer = XPlanImporter()
+
+    validation = importer.validate(str(source))
+    assert not validation.valid
+    assert "escapes the archive" in validation.errors[0]
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    with pytest.raises(ValueError, match="escapes the archive"):
+        importer.extract_layers(str(source), str(workdir))
+    assert list(workdir.iterdir()) == []
+    # Nothing was written beside the directory it was unpacked into either.
+    assert list(unpacked.iterdir()) == []
+    assert not list(tmp_path.glob("x.gml")) and not list(tmp_path.glob("xplan.gml"))
+
+
+def test_an_archive_larger_than_the_upload_limit_is_refused(
+    tmp_path: Path, unpacked: Path
+):
+    """The same limit on an archive's unpacked size as for a dataset upload,
+    checked before anything is unpacked."""
+    from goatlib.io.discover import ZIP_MAX_UNPACKED_BYTES
+
+    source = tmp_path / "upload.zip"
+    megabyte = bytes(1024 * 1024)
+    with zipfile.ZipFile(source, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xplan.gml", XPLAN_51)
+        with archive.open("BPlan.tif", "w", force_zip64=True) as raster:
+            for _ in range(ZIP_MAX_UNPACKED_BYTES // len(megabyte) + 1):
+                raster.write(megabyte)
+    assert source.stat().st_size < 2 * 1024 * 1024
+    importer = XPlanImporter()
+
+    validation = importer.validate(str(source))
+    assert not validation.valid
+    assert "too large" in validation.errors[0]
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    with pytest.raises(ValueError, match="too large"):
+        importer.extract_layers(str(source), str(workdir))
+    assert list(unpacked.iterdir()) == []
 
 
 def test_root_xlink_in_single_quotes(tmp_path: Path):

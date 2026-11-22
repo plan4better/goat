@@ -4,8 +4,10 @@ import logging
 import re
 import shutil
 import tempfile
-from pathlib import Path
-from typing import TYPE_CHECKING, List
+import zipfile
+from contextlib import ExitStack, contextmanager
+from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING, Iterator, List
 
 from goatlib.bundles.importers.base import (
     BundleImporter,
@@ -79,6 +81,62 @@ def xplan_namespace(path: str | Path) -> str | None:
     return match.group(1).decode() if match else None
 
 
+#: The plan in a plan's archive (XPlanArchiv): a ZIP that holds the plan
+#: under this name, its documents and raster images beside it.
+ARCHIVE_PLAN = "xplan.gml"
+
+
+def _archive_plans(path: str | Path) -> list[str] | None:
+    """The members named `xplan.gml` in a ZIP archive's directory, or None for
+    a file that is no ZIP. Told by content, since an upload is saved as
+    `<tmp>.zip` whatever it is; and before the namespace is looked for, since
+    an archive that only stores its members starts like the plan itself."""
+    if not zipfile.is_zipfile(path):
+        return None
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+    except (zipfile.BadZipFile, OSError):
+        return []
+    return [n for n in names if PurePosixPath(n).name.lower() == ARCHIVE_PLAN]
+
+
+@contextmanager
+def plan_file(source_path: str) -> Iterator[str]:
+    """The plan's GML file: the upload itself, or the `xplan.gml` of an
+    uploaded archive.
+
+    An archive is unpacked by the dataset upload's own handling
+    (`io.discover.extract_zip_safely`: its limit on the unpacked size, no
+    member outside the archive), and what was unpacked is removed on exit.
+
+    Raises:
+        ValueError: the archive is refused, or holds no plan or several
+    """
+    if _archive_plans(source_path) is None:
+        yield source_path
+        return
+    # Loaded only here: `io.discover` needs the geospatial stack (see above).
+    from goatlib.io.discover import DiscoveryError, extract_zip_safely
+
+    with ExitStack() as stack:
+        try:
+            unpacked = stack.enter_context(extract_zip_safely(Path(source_path)))
+        except DiscoveryError as error:
+            raise ValueError(str(error)) from error
+        stack.callback(shutil.rmtree, unpacked, ignore_errors=True)
+        plans = sorted(
+            p
+            for p in unpacked.rglob("*")
+            if p.is_file() and p.name.lower() == ARCHIVE_PLAN
+        )
+        if not plans:
+            raise ValueError(f"The archive holds no {ARCHIVE_PLAN}.")
+        if len(plans) > 1:
+            raise ValueError(f"The archive holds more than one {ARCHIVE_PLAN}.")
+        yield str(plans[0])
+
+
 def _classes(path: str) -> list[str]:
     """The file's object classes, as GDAL's GML driver reads them (`io/gml.py`).
 
@@ -129,16 +187,30 @@ def _sql_name(name: str) -> str:
 
 class XPlanImporter(BundleImporter):
     bundle_type = BundleTypeName.xplan
-    accepted_extensions = (".gml",)
+    accepted_extensions = (".gml", ".zip")
 
     def matches_filename(self, filename: str) -> bool:
-        # Any GML may be XPlan or not; only the content tells.
+        # Any GML may be XPlan or not, and any ZIP a plan's archive or not;
+        # only the content tells.
         return False
 
     def matches_source(self, source_path: str) -> bool:
+        # An archive by its directory alone: this runs in core's request, and
+        # `validate` reads the plan in it.
+        plans = _archive_plans(source_path)
+        if plans is not None:
+            return bool(plans)
         return xplan_namespace(source_path) is not None
 
     def validate(self, source_path: str) -> ValidationResult:
+        try:
+            with plan_file(source_path) as plan:
+                return self._validate_plan(plan)
+        except ValueError as error:
+            return ValidationResult(valid=False, errors=[str(error)])
+
+    @staticmethod
+    def _validate_plan(source_path: str) -> ValidationResult:
         namespace = xplan_namespace(source_path)
         if namespace is None:
             return ValidationResult(valid=False, errors=["The file is not XPlanGML."])
@@ -206,6 +278,13 @@ class XPlanImporter(BundleImporter):
                 )
 
     def extract_layers(self, source_path: str, workdir: str) -> List[ExtractedLayer]:
+        with plan_file(source_path) as plan:
+            layers = self._extract_plan(plan, workdir)
+        if not layers:
+            raise ValueError("The file holds no plan objects GOAT can read.")
+        return layers
+
+    def _extract_plan(self, source_path: str, workdir: str) -> List[ExtractedLayer]:
         import duckdb
 
         version = version_from_namespace(xplan_namespace(source_path) or "")
@@ -216,12 +295,9 @@ class XPlanImporter(BundleImporter):
         con = bound_duckdb(duckdb.connect(), workdir)
         try:
             con.execute("INSTALL spatial; LOAD spatial;")
-            layers = self._layers(con, source_path, Path(workdir), version)
+            return self._layers(con, source_path, Path(workdir), version)
         finally:
             con.close()
-        if not layers:
-            raise ValueError("The file holds no plan objects GOAT can read.")
-        return layers
 
     def _layers(
         self,

@@ -535,6 +535,14 @@ numbers.
   (`copy_with_root_xlink`).
 - A `.gml` is XPlan by its content (the namespace declared on the root), not
   its name; the web app reads the same 64 KB to route the upload.
+- A plan also comes as its archive (XPlanArchiv): a ZIP holding the plan as
+  `xplan.gml`, its documents and raster sheets beside it. An archive is one by
+  that member in its directory, which core and the web app can tell without
+  unpacking anything. The importer has no unpacking of its own: the archive
+  goes through the dataset upload's `extract_zip_safely` (`io/discover.py`),
+  so one limit on the unpacked size and one refusal of members outside the
+  archive hold for both, and what was unpacked is removed after the read.
+  Only the plan is imported; the files beside it are not.
 
 ## GOAT's public transport network is cut like an upload
 
