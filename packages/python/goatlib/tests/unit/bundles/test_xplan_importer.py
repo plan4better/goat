@@ -479,6 +479,42 @@ def test_a_version_without_code_lists_is_refused(tmp_path: Path, version: str):
         importer.extract_layers(str(source), str(workdir))
 
 
+def test_every_version_has_a_look_for_roads_water_and_building_areas():
+    """XPlanGML 6 moved roads and water from the plan kinds' own classes to
+    shared ones: whichever class a version uses for them has the look."""
+    from goatlib.bundles.importers.xplan.schema import SUPPORTED_VERSIONS
+    from goatlib.bundles.importers.xplan.schema import classes as version_classes
+    from goatlib.bundles.importers.xplan.styles import XPLAN_CLASS_STYLES
+
+    kinds = {
+        "roads": ("BP_StrassenVerkehrsFlaeche", "SO_Strassenverkehr"),
+        "water": ("BP_GewaesserFlaeche", "SO_Gewaesser"),
+        "water management": ("BP_WasserwirtschaftsFlaeche", "SO_Wasserwirtschaft"),
+        "building areas": ("BP_BaugebietsTeilFlaeche",),
+    }
+    for version in SUPPORTED_VERSIONS:
+        defined = version_classes(version)
+        for kind, candidates in kinds.items():
+            used = [c for c in candidates if c in defined]
+            assert used, (version, kind)
+            assert all(c in XPLAN_CLASS_STYLES for c in used), (version, kind, used)
+    road = XPLAN_CLASS_STYLES["BP_StrassenVerkehrsFlaeche"]
+    assert XPLAN_CLASS_STYLES["SO_Strassenverkehr"] == road
+
+
+def test_an_area_without_a_known_use_is_not_drawn_as_mixed_use():
+    """An area whose code its version's list does not hold (a municipality's
+    own code) has no kind of use: it gets the grey of an unstyled class, not
+    the colour of one of the kinds."""
+    from goatlib.bundles.importers.xplan.styles import LAND_USE_COLORS, UNSTYLED_GREY
+    from goatlib.tools.style import bundle_role_style
+
+    area = bundle_role_style("xplan", "BP_BaugebietsTeilFlaeche", "polygon")
+
+    assert area["symbol"]["fill"]["color"] == UNSTYLED_GREY
+    assert UNSTYLED_GREY not in LAND_USE_COLORS.values()
+
+
 def test_xplan_role_styles():
     from goatlib.tools.style import bundle_role_style
 

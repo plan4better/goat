@@ -92,7 +92,9 @@ def _line(color: str, dash: str = "solid") -> tuple[str, dict[str, Any]]:
 _LAND_USE = (
     "polygon",
     {
-        "fill": {"color": LAND_USE_COLORS["Mischgebiet"], "opacity": 0.7},
+        # An area without a known kind of use (a municipality's own code)
+        # belongs to no class below: the grey of an unstyled class.
+        "fill": {"color": UNSTYLED_GREY, "opacity": 0.7},
         "outline": False,
         # The plan's zoning label, built at import (`beschriftung`).
         "label": {
@@ -132,6 +134,10 @@ XPLAN_CLASS_STYLES: dict[str, tuple] = {
     "BP_StrassenbegrenzungsLinie": _line("#2e8b57"),
     "BP_StrassenVerkehrsFlaeche": _fill(ROAD_OCHRE),
     "FP_Strassenverkehr": _fill(ROAD_OCHRE),
+    # From XPlanGML 6 roads, water and water management are shared classes.
+    "SO_Strassenverkehr": _fill(ROAD_OCHRE),
+    "SO_Gewaesser": _fill(WATER_BLUE),
+    "SO_Wasserwirtschaft": _outline(WATER_BLUE_DARK),
     "BP_VerkehrsflaecheBesondererZweckbestimmung": _fill("#efd48c"),
     "BP_GruenFlaeche": _fill(GREEN),
     "FP_Gruen": _fill(GREEN),
