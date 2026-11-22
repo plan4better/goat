@@ -86,6 +86,9 @@ spec:
                    core.config. See goat.auth.backendEnv. */}}
             {{- include "goat.auth.backendEnv" (dict "values" .Values.geoapi "root" $ "fallback" true) | trim | nindent 12 }}
             {{- include "goat.s3.env" (dict "root" $ "values" .Values.geoapi "assets" false) | trim | nindent 12 }}
+            {{- /* The catalog bucket (catalog.s3): previews of catalog items
+                   that are not layers yet, read for signed-in users. */}}
+            {{- include "goat.catalogS3.env" (dict "root" $ "values" .Values.geoapi) | trim | nindent 12 }}
             {{- with .Values.geoapi.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
