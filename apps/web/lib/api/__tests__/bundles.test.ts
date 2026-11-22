@@ -34,6 +34,17 @@ describe("detectBundleType", () => {
     expect(await detectBundleType(file("other.gml", NOT_XPLAN))).toBeNull();
   });
 
+  it("takes a file it cannot read, or a name it cannot decode, as no plan", async () => {
+    // A file that was moved or cannot be read: the upload goes on as a plain dataset and fails there with a message.
+    const unreadable = file("gone.gml", XPLAN);
+    unreadable.slice = () => ({ arrayBuffer: () => Promise.reject(new Error("gone")) }) as unknown as Blob;
+    expect(await sniffXPlan(unreadable)).toEqual({ isXPlan: false, planName: null });
+    expect(await detectBundleType(unreadable)).toBeNull();
+    // A character reference outside Unicode in the plan's name: still a plan, without a suggested name.
+    const odd = XPLAN.replace("<xplan:name>T1</xplan:name>", "<xplan:name>T&#x110000;</xplan:name>");
+    expect(await sniffXPlan(file("odd.gml", odd))).toEqual({ isXPlan: true, planName: null });
+  });
+
   it("still recognises GTFS and Overture by name", async () => {
     expect((await detectBundleType(file("vbb_gtfs.zip")))?.type).toBe("pt_network_gtfs");
     expect((await detectBundleType(file("overture.zip")))?.type).toBe("street_network");

@@ -64,7 +64,7 @@ Public transport networks power GOAT's [Public Transport](../routing/public_tran
 
 ## XPlan Plans
 
-An **XPlan plan** is a land-use or development plan (Bebauungsplan, Flächennutzungsplan) in **XPlanGML**, the German exchange standard for planning. Upload the plan's `.gml` file: GOAT recognises an XPlan plan by its content, whatever the file is called. A `.gml` that is not XPlan is imported as an ordinary dataset.
+An **XPlan plan** is a land-use or development plan (Bebauungsplan, Flächennutzungsplan) in **XPlanGML**, the German exchange standard for planning. Upload the plan's `.gml` file itself, not a ZIP archive of it: GOAT recognises an XPlan plan by its content, whatever the `.gml` file is called. A `.gml` that is not XPlan is imported as an ordinary dataset.
 
 The plan becomes one layer for each kind of plan object it contains, named after its XPlan class, for example `BP_BaugebietsTeilFlaeche` for building areas or `BP_BauGrenze` for building limits. GOAT also makes the plan readable:
 

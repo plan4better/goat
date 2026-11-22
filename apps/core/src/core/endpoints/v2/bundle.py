@@ -406,7 +406,8 @@ async def import_bundle(
 ) -> BundleImportResponse:
     """Route an uploaded file to the right bundle importer (``*gtfs*.zip`` → GTFS
     PT network, ``*overture*.zip`` or a zip holding segments/connectors
-    GeoParquet → street network), validate it synchronously against the type's
+    GeoParquet → street network, a ``.gml`` declaring the XPlanGML namespace →
+    XPlan plan), validate it synchronously against the type's
     spec, create the bundle (status=processing) and optional street dependency,
     then ingest the member layers in the background."""
     # Uploads are presigned into the caller's own prefix (datasets

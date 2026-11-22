@@ -64,7 +64,7 @@ GOAT verbindet Haltestellen mit Straßen, um den Weg zur und von der Haltestelle
 
 ## XPlan-Pläne
 
-Ein **XPlan-Plan** ist ein Bauleitplan (Bebauungsplan, Flächennutzungsplan) im Format **XPlanGML**, dem deutschen Austauschstandard für die Planung. Laden Sie die `.gml`-Datei des Plans hoch: GOAT erkennt einen XPlan-Plan an seinem Inhalt, unabhängig vom Dateinamen. Eine `.gml`-Datei, die kein XPlan ist, wird als gewöhnlicher Datensatz importiert.
+Ein **XPlan-Plan** ist ein Bauleitplan (Bebauungsplan, Flächennutzungsplan) im Format **XPlanGML**, dem deutschen Austauschstandard für die Planung. Laden Sie die `.gml`-Datei des Plans selbst hoch, nicht ein ZIP-Archiv davon: GOAT erkennt einen XPlan-Plan an seinem Inhalt, unabhängig vom Namen der `.gml`-Datei. Eine `.gml`-Datei, die kein XPlan ist, wird als gewöhnlicher Datensatz importiert.
 
 Der Plan wird zu einem Layer je Art von Planobjekt, die er enthält, benannt nach seiner XPlan-Klasse, zum Beispiel `BP_BaugebietsTeilFlaeche` für Baugebiete oder `BP_BauGrenze` für Baugrenzen. Außerdem macht GOAT den Plan lesbar:
 
