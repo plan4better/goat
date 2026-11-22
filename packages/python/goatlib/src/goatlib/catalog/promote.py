@@ -464,32 +464,34 @@ async def promote(
             # Promoted before WMS was a link (as a table waiting for a copy that
             # cannot come), or failed by a copy job it never needed: made the
             # link layer it should have been.
-            await conn.execute(
-                f"""
-                UPDATE {schema}.layer SET
-                    type = 'raster', feature_layer_type = NULL,
-                    feature_layer_geometry_type = NULL,
-                    url = $2, data_type = $4,
-                    other_properties = other_properties || $3::jsonb
-                WHERE id = $1
-                """,
-                existing["id"],
-                wms["url"],
-                json.dumps(
-                    {
-                        **wms["other_properties"],
-                        "catalog_materialize": {
-                            "status": "ready",
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                        },
-                    }
-                ),
-                data_type,
-            )
-            # A table had no style row; the link layer gets its service default.
-            style = catalog_default_style(item, seed=str(existing["id"]))
-            if style is not None:
-                await insert_dataset_default(conn, schema, existing["id"], style)
+            # One transaction: the row and its style change together.
+            async with conn.transaction():
+                await conn.execute(
+                    f"""
+                    UPDATE {schema}.layer SET
+                        type = 'raster', feature_layer_type = NULL,
+                        feature_layer_geometry_type = NULL,
+                        url = $2, data_type = $4,
+                        other_properties = other_properties || $3::jsonb
+                    WHERE id = $1
+                    """,
+                    existing["id"],
+                    wms["url"],
+                    json.dumps(
+                        {
+                            **wms["other_properties"],
+                            "catalog_materialize": {
+                                "status": "ready",
+                                "updated_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        }
+                    ),
+                    data_type,
+                )
+                # A table had no style row; the link layer gets its service default.
+                style = catalog_default_style(item, seed=str(existing["id"]))
+                if style is not None:
+                    await insert_dataset_default(conn, schema, existing["id"], style)
         return {
             "layer_id": str(existing["id"]),
             "created": False,

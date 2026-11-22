@@ -6,6 +6,7 @@ from the mirror and flattening it onto layer columns.
 """
 
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -323,3 +324,55 @@ def test_snapshot_dates_are_absent_rather_than_invented(mirror: Path) -> None:
 
     assert snap["updated"] is None
     assert snap["created"] is None
+
+
+class _RecordingConnection:
+    """A connection that records whether each statement ran in a transaction."""
+
+    def __init__(self, existing: dict[str, Any]) -> None:
+        self.existing = existing
+        self.open = False
+        self.statements: list[bool] = []
+
+    async def fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
+        return self.existing
+
+    async def execute(self, sql: str, *args: Any) -> None:
+        self.statements.append(self.open)
+
+    def transaction(self) -> "_RecordingConnection":
+        return self
+
+    async def __aenter__(self) -> None:
+        self.open = True
+
+    async def __aexit__(self, *args: Any) -> None:
+        self.open = False
+
+
+async def test_a_layer_made_a_link_layer_gets_its_style_in_the_same_transaction() -> (
+    None
+):
+    """A map service promoted before it was a link is repaired on its next
+    add: the row and its default style change together, or a failure between
+    the two would leave a ready layer without a style that no later add
+    repairs."""
+    from goatlib.catalog.promote import promote
+
+    item = {
+        "id": "wms-1",
+        "version": "1",
+        "title": "Radwege",
+        "goat:layerType": "wms",
+        "links": [{"rel": "wms", "href": "https://g/ows", "title": "a"}],
+    }
+    conn = _RecordingConnection(
+        {
+            "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "data_type": None,
+            "status": "failed",
+        }
+    )
+    result = await promote(conn, "wms-1", mirror_items_path="unused", item=item)  # type: ignore[arg-type]
+    assert result["created"] is False and result["materialize"] is False
+    assert conn.statements == [True, True]
