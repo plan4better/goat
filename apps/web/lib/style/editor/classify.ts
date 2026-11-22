@@ -95,7 +95,7 @@ const NUMBER_FIELDS = new Set(["number", "integer"]);
 export const CATEGORY_COUNT = 8;
 /** The most classes a classification may ask for (goatlib `MAX_COUNT`, the schema's `count` maximum): "All values" of
  * a categories classification asks for that many, so every value of a field with up to this many gets its class. */
-export const MAX_CLASS_COUNT = 100;
+export const MAX_CLASS_COUNT = 256;
 export const CLASS_COUNT = 5;
 /** The class counts the panel's menus offer (up to 13, as the raster service computes breaks for); a stored count
  * outside them (spec: 1 to 256) is added (`withStored`). */
@@ -253,6 +253,18 @@ export function addCategoryClass(doc: LayerStyle, ci: number, record: JsonObject
   let n = classes.length + 1;
   while (ids.has(`c${n}`)) n += 1;
   return handPicked(doc, ci, [...classes, { id: `c${n}`, values: [], ...record }]);
+}
+
+/** `classify[ci]` with class `from` moved to place `to` (the legend lists the classes in their order); the classes are
+ * picked by hand from then on, so the server keeps the order. */
+export function moveClass(doc: LayerStyle, ci: number, from: number, to: number): LayerStyle {
+  const c = classifyOf(doc)[ci];
+  if (!c) return doc;
+  const classes = list(c.classes);
+  const [moved] = classes.splice(from, 1);
+  if (!moved) return doc;
+  classes.splice(to, 0, moved);
+  return handPicked(doc, ci, classes);
 }
 
 /** `classify[ci]` without class `k`: its values fall to Other. */

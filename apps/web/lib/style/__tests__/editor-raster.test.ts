@@ -3,17 +3,24 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  CATEGORY_TOPS,
+  OTHER_COLOR,
   breakCounts,
+  categoryOrder,
   classesFromBreaks,
   defaultRender,
   drawAsOptions,
   equalClasses,
   equalIntervalClasses,
   geometricRefused,
+  moveItem,
   noDataApplies,
   rasterClassesRender,
   setBreak,
   setOuterEnd,
+  shownCount,
+  sortCategories,
+  topCategories,
 } from "@/lib/style/editor/raster";
 import type { RasterInfo } from "@/lib/style/raster/metadata";
 
@@ -100,11 +107,25 @@ describe("raster render choices", () => {
     expect(defaultRender("categorical", { info: { ...byte, stats: codes(null) } })).toEqual({
       type: "categorical",
     });
-    // At most 100 classes, as a classification's All values.
+    // More codes than an 8-bit band holds: the 50 most common; the rest draw in the other values' color.
     const many = defaultRender("categorical", {
       info: { ...byte, stats: codes(Array.from({ length: 300 }, (_, i) => i)) },
     });
-    expect((many.classes as unknown[]).length).toBe(100);
+    expect((many.classes as unknown[]).length).toBe(50);
+    expect(many.other_color).toBe(OTHER_COLOR);
+    // An 8-bit band's codes all get a class.
+    const full = defaultRender("categorical", {
+      info: { ...byte, stats: codes(Array.from({ length: 256 }, (_, i) => i)) },
+    });
+    expect((full.classes as unknown[]).length).toBe(256);
+    expect(full.other_color).toBeUndefined();
+    // A table defines its codes: every code in use, by code; past 256 codes the rest draw in the other values' color.
+    const tabled = defaultRender("categorical", {
+      info: { ...landcover, stats: codes(Array.from({ length: 300 }, (_, i) => i)) },
+    });
+    expect((tabled.classes as unknown[]).length).toBe(256);
+    expect(tabled.other_color).toBe(OTHER_COLOR);
+    expect(defaultRender("categorical", { info: table }).other_color).toBeUndefined();
   });
 
   it("equal classes over a range, breaks rounded to the range's precision", () => {
@@ -468,5 +489,99 @@ describe("noDataApplies", () => {
       true
     );
     expect(noDataApplies({ type: "continuous", domain: [0, 1] }, undefined)).toBe(true);
+  });
+});
+
+describe("raster categories by share", () => {
+  // An 8-bit band without a color table: 12 codes, code 5 the most common, then 3, then the rest by a falling count.
+  const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const counts = [5, 4, 300, 3, 900, 2, 60, 1, 50, 40, 30, 20];
+  const INFO: RasterInfo = {
+    bands: 1,
+    bits: [8],
+    colorTable: false,
+    integer: true,
+    stats: [{ index: 1, min: 1, max: 12, p2: 1, p98: 12, values, counts }],
+  };
+  const order = (render: Record<string, unknown>) =>
+    (render.classes as Array<{ value: number }>).map((c) => c.value);
+
+  it("filled categories are every code the band holds, most common first", () => {
+    expect(CATEGORY_TOPS).toEqual([10, 20, 30, 50]);
+    const filled = defaultRender("categorical", { info: INFO });
+    expect(order(filled)).toEqual([5, 3, 7, 9, 10, 11, 12, 1, 2, 4, 6, 8]);
+    expect(filled.other_color).toBeUndefined();
+    expect(shownCount(filled, INFO, 1)).toBe("all");
+    // Without counts, by code.
+    const uncounted: RasterInfo = { ...INFO, stats: [{ ...INFO.stats[0], counts: null }] };
+    expect(order(defaultRender("categorical", { info: uncounted }))).toEqual(values);
+  });
+
+  it("showing the ten or all most common codes refills by share and keeps what was set on a code", () => {
+    const filled = defaultRender("categorical", { info: INFO });
+    const named = {
+      ...filled,
+      classes: (filled.classes as Array<Record<string, unknown>>).map((c) =>
+        c.value === 3 ? { ...c, name: "Forest", color: "#00ff00", visible: false } : c
+      ),
+    };
+    const ten = topCategories(named, INFO, 1, 10);
+    expect(order(ten)).toEqual([5, 3, 7, 9, 10, 11, 12, 1, 2, 4]);
+    expect((ten.classes as Array<Record<string, unknown>>)[1]).toMatchObject({
+      value: 3,
+      name: "Forest",
+      color: "#00ff00",
+      visible: false,
+    });
+    expect(shownCount(ten, INFO, 1)).toBe(10);
+    // Codes left out draw in the other values' color.
+    expect(ten.other_color).toBe(OTHER_COLOR);
+    const all = topCategories(ten, INFO, 1, "all");
+    expect(order(all)).toEqual([5, 3, 7, 9, 10, 11, 12, 1, 2, 4, 6, 8]);
+    expect(shownCount(all, INFO, 1)).toBe("all");
+    // A list edited by hand reads as such.
+    expect(shownCount({ ...ten, classes: (ten.classes as unknown[]).slice(1) }, INFO, 1)).toBe("by_hand");
+  });
+
+  it("sorts by share, by value or by name, and tells which order the classes are in", () => {
+    const filled = topCategories(defaultRender("categorical", { info: INFO }), INFO, 1, 10);
+    const classes = filled.classes as Array<Record<string, unknown>>;
+    expect(categoryOrder(classes, INFO, 1)).toBe("share");
+    const byValue = sortCategories(classes, "value", INFO, 1);
+    expect(byValue.map((c) => c.value)).toEqual([1, 2, 3, 4, 5, 7, 9, 10, 11, 12]);
+    expect(categoryOrder(byValue, INFO, 1)).toBe("value");
+    const named = byValue.map((c) => (c.value === 9 ? { ...c, name: "Acker" } : c));
+    const byName = sortCategories(named, "name", INFO, 1);
+    // Names and codes as their rows read: "1", "2", ... "12", then "Acker".
+    expect(byName.map((c) => c.value)).toEqual([1, 2, 3, 4, 5, 7, 10, 11, 12, 9]);
+    expect(categoryOrder(byName, INFO, 1)).toBe("name");
+    expect(categoryOrder(moveItem(byValue, 0, 3), INFO, 1)).toBe("custom");
+    expect(sortCategories(moveItem(byValue, 0, 3), "share", INFO, 1).map((c) => c.value)).toEqual(
+      classes.map((c) => c.value)
+    );
+  });
+
+  it("refilled after a sort by value or by name, the categories keep that order; after a drag, most common first", () => {
+    const ten = topCategories(defaultRender("categorical", { info: INFO }), INFO, 1, 10);
+    const byValue = {
+      ...ten,
+      classes: sortCategories(ten.classes as Array<Record<string, unknown>>, "value", INFO, 1),
+    };
+    expect(order(topCategories(byValue, INFO, 1, "all"))).toEqual(values);
+    expect(order(topCategories(byValue, INFO, 1, 10))).toEqual([1, 2, 3, 4, 5, 7, 9, 10, 11, 12]);
+    const named = (byValue.classes as Array<Record<string, unknown>>).map((c) =>
+      c.value === 1 ? { ...c, name: "Wald" } : c
+    );
+    const byName = { ...ten, classes: sortCategories(named, "name", INFO, 1) };
+    // "2" ... "12" in number order, the other codes among them, then "Wald".
+    expect(order(topCategories(byName, INFO, 1, "all"))).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1]);
+    const dragged = { ...ten, classes: moveItem(byValue.classes as unknown[], 0, 3) };
+    expect(order(topCategories(dragged, INFO, 1, "all"))).toEqual([5, 3, 7, 9, 10, 11, 12, 1, 2, 4, 6, 8]);
+  });
+
+  it("moves an item in a list", () => {
+    expect(moveItem(["a", "b", "c", "d"], 0, 2)).toEqual(["b", "c", "a", "d"]);
+    expect(moveItem(["a", "b", "c", "d"], 3, 1)).toEqual(["a", "d", "b", "c"]);
+    expect(moveItem(["a", "b"], 1, 1)).toEqual(["a", "b"]);
   });
 });

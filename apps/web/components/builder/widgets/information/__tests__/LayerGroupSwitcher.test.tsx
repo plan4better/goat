@@ -25,7 +25,9 @@ vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppDispatch: () => dispatch,
   useAppSelector: (select: (state: unknown) => unknown) => select({ map: { currentZoom: mapZoom } }),
 }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+}));
 vi.mock("@/components/builder/widgets/information/useWidgetLayerTree", () => ({
   useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: [], setVisibility }),
 }));
@@ -180,6 +182,42 @@ describe("LayerGroupSwitcher", () => {
     };
     renderSwitcher();
     expect(screen.getByText("Einwohner je Hektar")).toBeInTheDocument();
+  });
+
+  it("a long legend starts collapsed for each layer, whatever the layer before it showed", () => {
+    const zones = (prefix: string) => ({
+      document: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        classify: [
+          {
+            id: "zone",
+            field: "zone",
+            method: "categories",
+            classes: Array.from({ length: 13 }, (_, i) => ({
+              id: `k${i}`,
+              values: [`${prefix} ${i + 1}`],
+              fill: { color: "#2166ac" },
+            })),
+          },
+        ],
+        legend: { classes: "all" },
+      },
+    });
+    (layers[2] as { style: object }).style = zones("Use");
+    (layers[0] as { style: object }).style = zones("Soil");
+    const view = renderSwitcher();
+    expect(screen.queryByText("Use 13")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "show_more_count" }));
+    expect(screen.getByText("Use 13")).toBeInTheDocument();
+    // The next layer of the group comes onto the map.
+    (layers[2] as { entry: { visible: boolean } }).entry.visible = false;
+    (layers[0] as { entry: { visible: boolean } }).entry.visible = true;
+    layers = [...layers];
+    view.rerender(<Switcher options={{}} extra={{}} />);
+    expect(screen.getByText("Soil 10")).toBeInTheDocument();
+    expect(screen.queryByText("Soil 13")).toBeNull();
   });
 
   it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {

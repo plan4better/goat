@@ -6,10 +6,12 @@
 // show or hide. A raster class has no style of its own, so the grid has no column for it.
 import { ButtonBase, InputBase, Typography } from "@mui/material";
 import type { TFunction } from "i18next";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useLoadedRasterValues } from "@/lib/api/rasters";
-import { setIn } from "@/lib/style/editor/store";
+import { OTHER_COLOR, moveItem } from "@/lib/style/editor/raster";
+import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { coverageUrl } from "@/lib/style/layerSource";
@@ -35,6 +37,7 @@ import {
 import {
   CATEGORY_GRAY,
   ClassGrid,
+  ClassGridMore,
   ClassGridRow,
   FOCUS_MARK,
 } from "@/components/map/panels/styleEditor/editors/ClassGrid";
@@ -47,6 +50,7 @@ import {
 import { ColorRow, PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import {
   anchorTopOf,
+  useCloseWhenGone,
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
@@ -120,12 +124,32 @@ function inputLabel(render: JsonObject, info: RasterInfo | undefined, t: TFuncti
   return bandLabel(info, renderBand(render) ?? 1, t);
 }
 
-/** The editor of category `index` (its name, cell value and color), opened from its row or when it is added. */
-export function CategoryEditor({ index }: { index: number }) {
+/** The category an open editor edits: its code, and its place in the list when last seen. */
+interface CategoryBinding {
+  code: unknown;
+  index: number;
+}
+
+/** Where the bound category is in `classes` now: at the place it was last seen while that class still has its code (a
+ * code typed there that another class also has stays with the class it was typed into), else at the first class with
+ * its code; -1 where no class has it. */
+function placeOf(classes: JsonObject[], bound: CategoryBinding): number {
+  if (classes[bound.index]?.value === bound.code) return bound.index;
+  return classes.findIndex((c) => c.value === bound.code);
+}
+
+/** The editor of one category (its name, cell value and color), opened from its row or when it is added. It goes on
+ * with that category when the list is put in another order or a class before it goes, and closes when no class has
+ * its code any more. */
+export function CategoryEditor({ bound }: { bound: CategoryBinding }) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const codeLabel = useCodeLabel();
-  const record = useStyleValue<unknown>(`render.classes.${index}`);
+  const classes = classesOf(useStyleValue<unknown>("render.classes"));
+  const index = placeOf(classes, bound);
+  if (index >= 0) bound.index = index;
+  useCloseWhenGone(index < 0);
+  const record = classes[index];
   if (!isObject(record)) return null;
   const path = `render.classes.${index}`;
   return (
@@ -140,47 +164,67 @@ export function CategoryEditor({ index }: { index: number }) {
         <NumberInput
           value={record.value as number}
           ariaLabel={t("style_editor.cell_value")}
-          onChange={(v) => store.set(`${path}.value`, Math.round(v))}
+          onChange={(v) => {
+            bound.code = Math.round(v);
+            store.set(`${path}.value`, bound.code);
+          }}
         />
       </Row>
-      <ColorRow label={t("style_editor.color")} path={`${path}.color`} fallback={CATEGORY_GRAY} />
+      {/* Its picker writes to the class at this place: drawn anew at another place, the open picker closes. */}
+      <ColorRow key={index} label={t("style_editor.color")} path={`${path}.color`} fallback={CATEGORY_GRAY} />
     </>
   );
 }
 
-/** Opens category `index`'s editor one level deeper, with "Remove class". */
+/** Opens the editor of the category at `index` one level deeper, with "Remove class". */
 export function useCategoryOpener(): (index: number, title: string, anchorTop: number) => void {
   const { t } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
   const next = useNextLevel();
-  return (index, title, anchorTop) =>
+  return (index, title, anchorTop) => {
+    const bound: CategoryBinding = { code: classesOf(store.get("render.classes"))[index]?.value, index };
     popover.open(next, {
-      key: `category:${index}`,
+      key: `category:${String(bound.code)}`,
       title,
       anchorTop,
-      render: () => <CategoryEditor index={index} />,
+      render: () => <CategoryEditor bound={bound} />,
       onDelete: {
         label: t("style_editor.remove_class"),
         onClick: () => {
-          store.set(
-            "render.classes",
-            classesOf(store.get("render.classes")).filter((_, j) => j !== index)
-          );
+          const classes = classesOf(store.get("render.classes"));
+          const at = placeOf(classes, bound);
+          if (at >= 0)
+            store.set(
+              "render.classes",
+              classes.filter((_, j) => j !== at)
+            );
           popover.close(next);
         },
       },
     });
+  };
 }
 
 /** A class's color: a swatch that opens the color picker for `path`. */
-function Swatch({ path, color, title }: { path: string; color: string; title: string }) {
-  const { t } = useTranslation("common");
+function Swatch({
+  path,
+  color,
+  title,
+  ariaLabel,
+}: {
+  path: string;
+  color: string;
+  title: string;
+  /** Its name, translated by the list once for all rows. */
+  ariaLabel: string;
+}) {
   const store = useEditor();
   const popover = usePopover();
   return (
     <ButtonBase
-      aria-label={t("style_editor.class_color")}
+      disableRipple
+      aria-label={ariaLabel}
       onClick={(event) =>
         popover.open("picker", {
           key: `raster-class-color:${path}`,
@@ -251,7 +295,14 @@ function ClassRows({
             key={typeof c.id === "string" ? c.id : i}
             hidden={hidden}
             onToggle={() => store.set(`${path}.visible`, hidden ? undefined : false)}
-            swatch={<Swatch path={`${path}.color`} color={colors[i]} title={name || range} />}
+            swatch={
+              <Swatch
+                path={`${path}.color`}
+                color={colors[i]}
+                title={name || range}
+                ariaLabel={t("style_editor.class_color")}
+              />
+            }
             bound={
               manual && i > 0 ? (
                 <NumberInput
@@ -285,59 +336,155 @@ function ClassRows({
   );
 }
 
+/** A long list of categories shows this many rows, then "Show N more". */
+const CATEGORY_ROWS = 10;
+/** "Show N more" adds this many rows at once, then as many again each frame, so the first appear at once. */
+const ROWS_PER_FRAME = 50;
+
+/** One category's row, from what it shows only: an edit of another class leaves it as it is (a long list draws only
+ * the row it changes). */
+const CategoryRow = memo(function CategoryRow({
+  index,
+  label,
+  color,
+  hidden,
+  share,
+  colorLabel,
+  onOpen,
+}: {
+  index: number;
+  label: string;
+  color: string;
+  hidden: boolean;
+  share?: string;
+  /** The swatch's name (translated once by the list). */
+  colorLabel: string;
+  /** Opens the category's editor: the same function for every row and every draw. */
+  onOpen: (index: number, title: string, anchorTop: number) => void;
+}) {
+  const store = useEditor();
+  const path = `render.classes.${index}`;
+  return (
+    <ClassGridRow
+      index={index}
+      hidden={hidden}
+      onToggle={() => store.set(`${path}.visible`, hidden ? undefined : false)}
+      swatch={<Swatch path={`${path}.color`} color={color} title={label} ariaLabel={colorLabel} />}
+      label={
+        <ButtonBase
+          disableRipple
+          aria-haspopup="dialog"
+          title={label}
+          onClick={(event) => onOpen(index, label, anchorTopOf(event.currentTarget))}
+          sx={{
+            minWidth: 0,
+            height: 28,
+            mx: -1,
+            px: 1,
+            borderRadius: 1,
+            justifyContent: "flex-start",
+            "&:hover": { bgcolor: "action.hover" },
+            ...FOCUS_MARK,
+          }}>
+          <Typography variant="body2" noWrap>
+            {label}
+          </Typography>
+        </ButtonBase>
+      }
+      count={share}
+    />
+  );
+});
+
 function CategoryRows({ render, options }: { render: JsonObject; options: RangeOptions }) {
-  const { i18n } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const { raster } = useStyleData();
+  // How many rows show: the first ten, or after "Show N more" more each frame until all show.
+  const [limit, setLimit] = useState(CATEGORY_ROWS);
+  // One opener for every row, the same across draws (it opens the editor of the class at that index now).
   const openCategory = useCategoryOpener();
+  const opener = useRef(openCategory);
+  useEffect(() => {
+    opener.current = openCategory;
+  });
+  const onOpen = useCallback(
+    (index: number, title: string, anchorTop: number) => opener.current(index, title, anchorTop),
+    []
+  );
+  const colorLabel = t("style_editor.class_color");
   const band = renderBand(render);
+  const info = raster?.info;
+  const classes = classesOf(render.classes);
+  // A class added at the end ("Add class") would land behind "Show N more": the list opens so that it shows.
+  const [counted, setCounted] = useState(classes.length);
+  if (classes.length !== counted) {
+    setCounted(classes.length);
+    if (classes.length === counted + 1 && classes.length > CATEGORY_ROWS && limit <= CATEGORY_ROWS)
+      setLimit(CATEGORY_ROWS + ROWS_PER_FRAME);
+  }
+  const expanded = limit > CATEGORY_ROWS;
+  const shown = classes.slice(0, expanded ? limit : CATEGORY_ROWS);
+  useEffect(() => {
+    if (!expanded || limit >= classes.length) return;
+    const frame = requestAnimationFrame(() => setLimit((n) => n + ROWS_PER_FRAME));
+    return () => cancelAnimationFrame(frame);
+  }, [expanded, limit, classes.length]);
+  const share = (value: number) => (band !== undefined ? codeShare(info, band, value) : undefined);
+  // The values without a class: the band's codes no class lists, drawn in the other values' color when one is set.
+  const listed = new Set(classes.map((c) => c.value));
+  const codes = band !== undefined ? (info?.stats.find((b) => b.index === band)?.values ?? null) : null;
+  const left = codes?.filter((v) => !listed.has(v)) ?? null;
+  const shares = left?.map(share);
+  const otherShare =
+    shares && shares.every((v) => v !== undefined)
+      ? shares.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+      : undefined;
+  const otherColor = typeof render.other_color === "string" ? render.other_color : undefined;
   return (
     <>
-      {classesOf(render.classes).map((c, i) => {
-        const path = `render.classes.${i}`;
+      {shown.map((c, i) => {
         const value = typeof c.value === "number" ? c.value : undefined;
         const name = typeof c.name === "string" ? c.name : "";
-        const label = name || (value !== undefined ? valuesText([value], options) : "");
-        const hidden = c.visible === false;
         return (
-          <ClassGridRow
-            key={i}
-            hidden={hidden}
-            onToggle={() => store.set(`${path}.visible`, hidden ? undefined : false)}
-            swatch={
-              <Swatch
-                path={`${path}.color`}
-                color={typeof c.color === "string" ? c.color : CATEGORY_GRAY}
-                title={label}
-              />
-            }
-            label={
-              <ButtonBase
-                aria-haspopup="dialog"
-                title={label}
-                onClick={(event) => openCategory(i, label, anchorTopOf(event.currentTarget))}
-                sx={{
-                  minWidth: 0,
-                  height: 28,
-                  mx: -1,
-                  px: 1,
-                  borderRadius: 1,
-                  justifyContent: "flex-start",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}>
-                <Typography variant="body2" noWrap>
-                  {label}
-                </Typography>
-              </ButtonBase>
-            }
-            count={
-              value !== undefined && band !== undefined
-                ? shareText(codeShare(raster?.info, band, value), i18n.language)
-                : undefined
-            }
+          <CategoryRow
+            key={`${value ?? "x"}-${i}`}
+            index={i}
+            label={name || (value !== undefined ? valuesText([value], options) : "")}
+            color={typeof c.color === "string" ? c.color : CATEGORY_GRAY}
+            hidden={c.visible === false}
+            share={value !== undefined ? shareText(share(value), i18n.language) : undefined}
+            colorLabel={colorLabel}
+            onOpen={onOpen}
           />
         );
       })}
+      {!expanded && shown.length < classes.length && (
+        <ClassGridMore
+          hidden={classes.length - shown.length}
+          onShow={() => setLimit(CATEGORY_ROWS + ROWS_PER_FRAME)}
+        />
+      )}
+      {/* Other values: drawn in their color, or left out with the eye; standing back where every code has a class. */}
+      <ClassGridRow
+        hidden={!otherColor}
+        absent={left?.length === 0}
+        onToggle={() => store.set("render.other_color", otherColor ? undefined : OTHER_COLOR)}
+        swatch={
+          <Swatch
+            path="render.other_color"
+            color={otherColor ?? OTHER_COLOR}
+            title={t("style_editor.other_values")}
+            ariaLabel={colorLabel}
+          />
+        }
+        label={
+          <Typography variant="body2" noWrap>
+            {t("style_editor.other_values")}
+          </Typography>
+        }
+        count={shareText(otherShare, i18n.language)}
+      />
     </>
   );
 }
@@ -345,6 +492,7 @@ function CategoryRows({ render, options }: { render: JsonObject; options: RangeO
 /** The classes of a raster color range (`render.classify`) or its categories (`render.classes`). */
 export function RasterClassList({ kind }: { kind: "classes" | "categories" }) {
   const { t, i18n } = useTranslation("common");
+  const store = useEditor();
   const { raster } = useStyleData();
   const value = useStyleValue<unknown>("render");
   const unit = useStyleValue<unknown>("legend.unit");
@@ -374,7 +522,18 @@ export function RasterClassList({ kind }: { kind: "classes" | "categories" }) {
         count: t("style_editor.share"),
       }}
       bounds={kind === "classes" && classify.method === "manual"}
-      styled={false}>
+      styled={false}
+      rows={Array.isArray(render.classes) ? render.classes.length : 0}
+      // Categories are listed in the order the legend shows them: drag one to another's place to move it.
+      onReorder={
+        kind === "categories"
+          ? (from, to) =>
+              store.update((doc) => {
+                const now = getIn(doc, "render.classes");
+                return Array.isArray(now) ? setIn(doc, "render.classes", moveItem(now, from, to)) : doc;
+              }, "render.classes")
+          : undefined
+      }>
       {kind === "classes" ? (
         <ClassRows render={render} bins={bins} options={options} />
       ) : (

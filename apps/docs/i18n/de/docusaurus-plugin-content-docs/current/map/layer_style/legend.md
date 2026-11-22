@@ -46,6 +46,7 @@ Die Legende führt auf, was die Karte zeichnet:
 - Ein als <code>Cluster</code> dargestellter Layer führt zuerst <code>Cluster</code> auf, solange die Karte bei der aktuellen Zoomstufe noch gruppiert, dann die einzelnen Punkte: ihre Klassen, oder in einem Layer ohne Klassen <code>Einzelne Punkte</code>.
 - Farben, die sich mit dem Zoom ändern, folgen der Karte. Symbolgrößen nicht: Jedes Symbol behält in der Legende eine Größe, damit sich die Legende beim Zoomen nicht verschiebt. Nur Klassen nach Größe werden in verschiedenen Größen gezeichnet, im Verhältnis zueinander. Eine Größe, die einem Feld folgt und mit dem Zoom wächst, zeigt ihre Beispiele in den Größen, die die Karte in der Mitte zwischen ihrem ersten und letzten Stopp zeichnet.
 - Ein Name, der zu lang für seine Zeile ist, wird gekürzt. Halten Sie den Mauszeiger darüber, um ihn ganz zu lesen.
+- In der Layerliste und im <code>Layer</code>-Widget eines Dashboards zeigt ein Abschnitt mit mehr als 12 Einträgen die ersten 10 und <code>N weitere anzeigen</code>. Ein Drucklayout führt jeden Eintrag auf.
 
 Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 

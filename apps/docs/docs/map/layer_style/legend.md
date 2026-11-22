@@ -46,6 +46,7 @@ The legend lists what the map draws:
 - A layer drawn as <code>Clusters</code> lists <code>Clusters</code> first, as long as the map still clusters at the current zoom, then the single points: their classes, or in a layer without classes <code>Single points</code>.
 - Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other. A size that follows a field and grows with the zoom shows its samples at the sizes the map draws halfway between its first and last stop.
 - A name too long for its row is cut. Hover it to read it in full.
+- In the layer list and a dashboard's <code>Layers</code> widget, a section of more than 12 entries shows its first 10 and <code>Show N more</code>. A print layout lists every entry.
 
 In <code>Contents</code>, each classification has these settings:
 

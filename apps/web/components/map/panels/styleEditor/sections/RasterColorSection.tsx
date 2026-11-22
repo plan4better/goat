@@ -1,8 +1,8 @@
 "use client";
 
 // The colors of a raster file (prototype 3.3 to 3.5; spec 9.2 to 9.6): a color range opens its colors editor;
-// hillshade shows its light and colors; categories list their classes, and "Add a class" offers the file's codes no
-// class has. The colors start from the file's values, so they wait for its info.
+// hillshade shows its light and colors; categories open their editor from a Colors row, as a classification's does.
+// The colors start from the file's values, so they wait for its info.
 import { useTranslation } from "react-i18next";
 
 import { useLoadedRasterValues } from "@/lib/api/rasters";
@@ -21,10 +21,7 @@ import {
   useStyleSelector,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
-import {
-  CategoriesEditor,
-  useCategoryAdder,
-} from "@/components/map/panels/styleEditor/editors/CategoriesEditor";
+import { CategoriesRow } from "@/components/map/panels/styleEditor/editors/CategoriesEditor";
 import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { paletteStrip, renderColors } from "@/components/map/panels/styleEditor/editors/RasterClassList";
 import { RasterColorsEditor } from "@/components/map/panels/styleEditor/editors/RasterColorsEditor";
@@ -172,22 +169,14 @@ export function RasterColorSection() {
   const { t } = useTranslation("common");
   // The type only: the rows read what they show, so a class edit does not render the section.
   const typeValue = useStyleValue<unknown>("render.type");
-  const addCategory = useCategoryAdder();
-  const waiting = useRasterWaiting();
   const type = typeof typeValue === "string" ? typeValue : "image";
   if (type === "image") return null;
   return (
     <PanelSection
-      // A color scale's section holds its colors; hillshade and categories hold more.
-      title={t(type === "continuous" ? "style_editor.colors" : `style_editor.raster_type_${type}`)}
-      add={
-        type === "categorical"
-          ? { label: t("style_editor.add_category"), onClick: addCategory.open, disabled: waiting }
-          : undefined
-      }>
-      {type === "categorical" && addCategory.menu}
+      // Named after what it draws, as Draw as names it (a vector layer's Heatmap or Hexagons hold a Colors row too).
+      title={t(`style_editor.raster_type_${type}`)}>
       {type === "categorical" ? (
-        <CategoriesEditor />
+        <CategoriesRow />
       ) : (
         <>
           <ColorsRow />

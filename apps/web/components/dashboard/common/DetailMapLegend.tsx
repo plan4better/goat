@@ -1,6 +1,6 @@
 import { Paper, type Theme } from "@mui/material";
 
-import type { Legend } from "@/lib/style/legend";
+import { type Legend, informative } from "@/lib/style/legend";
 
 import { StyleLegend } from "@/components/map/legend/StyleLegend";
 
@@ -12,10 +12,11 @@ const TEXT_SX = { fontSize: (theme: Theme) => theme.typography.body2.fontSize };
  * The legend of the dashboard's detail maps (the dataset detail, a catalog entry), in their bottom-left corner: drawn
  * by the layer list's own component from the style the features use, with its section headings, as the field a
  * classification reads turns a column of swatches into an explanation. At least 200 px wide, so a ramp spans the box
- * and its end labels stand apart, and a long class list scrolls inside it.
+ * and its end labels stand apart, and a long class list scrolls inside it. No box where the legend says no more than
+ * the layer's base look (one swatch, or its name only): the page names the dataset itself.
  */
 const DetailMapLegend = ({ legend }: { legend: Legend | null | undefined }) => {
-  if (!legend) return null;
+  if (!legend || !informative(legend)) return null;
   return (
     <Paper
       data-detail-map-legend

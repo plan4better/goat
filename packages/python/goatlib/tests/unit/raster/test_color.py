@@ -164,6 +164,16 @@ def test_categories_by_rounded_value_hidden_ones_transparent_the_rest_in_the_oth
     )
 
 
+def test_256_categories_each_draw_their_color() -> None:
+    """A full 8-bit band as categories: every code its own color, through the URL token."""
+    classes = [{"value": v, "color": f"#{v:02x}{255 - v:02x}{(v * 7) % 256:02x}"} for v in range(256)]
+    c = coloring(kind="categories", band=1, classes=classes, other=None)
+    values = np.arange(256, dtype="uint8").reshape(16, 16)
+    out = colorize(c, {1: values}, file_no_data=None)
+    for v in range(256):
+        assert out[v // 16, v % 16].tolist() == [v, 255 - v, (v * 7) % 256, 255]
+
+
 def test_no_data_the_files_value_float32_rounding_nan_and_the_styles_values_are_transparent() -> (
     None
 ):

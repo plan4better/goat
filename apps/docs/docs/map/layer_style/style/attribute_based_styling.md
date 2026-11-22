@@ -104,7 +104,7 @@ At the end of the list, <code>Other</code> covers values in no class and <code>N
 
 A value you change in a class row stays when the server computes the classes again. While the classes hold sizes or widths you typed, <code>Range</code> reads <code>Your own values</code>; while they hold colors you picked, <code>Palette</code> reads <code>Your own colors</code>. Picking a range or a palette sets every class from it again.
 
-**Categories you pick yourself.** With the method <code>Categories</code>, click a class's name to open its values: tick the values that belong in this class, search them, or remove the class. <code>Add class</code> starts a new class (<code>Pick values</code>). As soon as you change the classes by hand, <code>Classes</code> says <code>Picked by hand</code>: new data keeps these classes, and values in no class are drawn as <code>Other</code>.
+**Categories you pick yourself.** With the method <code>Categories</code>, click a class's name to open its values: tick the values that belong in this class, search them, or remove the class. <code>Add class</code> starts a new class (<code>Pick values</code>). Drag a class to another's place to move it, or move it one place with Alt and the up or down arrow while one of its controls has the focus (categories only, classes of ranges keep their order): the legend follows the order. As soon as you change the classes by hand, moving one included, <code>Classes</code> says <code>Picked by hand</code>: new data keeps these classes, and values in no class are drawn as <code>Other</code>.
 
 ### Data classification methods {#data-classification-methods}
 

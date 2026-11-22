@@ -170,7 +170,13 @@ const TreeLayerLegend = ({
   const legend = useLayerLegend(style, { geometry, zoom, serviceLegendUrl }, layer, MAP_SCOPE);
   return legend && informative(legend) ? (
     // The caption goes into the row's caption slot instead.
-    <StyleLegend legend={{ ...legend, caption: undefined }} variant="tree" hideHeading={hideHeading} />
+    <StyleLegend
+      legend={{ ...legend, caption: undefined }}
+      variant="tree"
+      hideHeading={hideHeading}
+      // A long list of entries (of any legend) shows its first ten and "Show N more".
+      collapseAfter={10}
+    />
   ) : null;
 };
 

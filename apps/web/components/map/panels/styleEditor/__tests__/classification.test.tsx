@@ -15,6 +15,7 @@ import { ClassificationEditor } from "@/components/map/panels/styleEditor/editor
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { SymbolSection } from "@/components/map/panels/styleEditor/sections/SymbolSection";
 
+import { dragRow } from "./dragRows";
 import { choose, i18n, openGroup, renderPanel, renderWithProviders } from "./renderPanel";
 
 type Unique = { value: string; count: number };
@@ -176,7 +177,8 @@ describe("classification editor", () => {
     const categories = { id: "land_use", field: "land_use", method: "categories", count: 8 };
     const { store, saves } = shell(doc([categories]));
     await choose("style_editor.classes", "style_editor.count_top", "style_editor.count_all");
-    expect(store.get("classify.0.count")).toBe(100);
+    // As many as an 8-bit raster band holds codes: one limit for vectors and rasters.
+    expect(store.get("classify.0.count")).toBe(256);
     expect(saves).toHaveLength(1);
     expect(within(rowOf("style_editor.classes")).getByRole("combobox").textContent).toBe(
       "style_editor.count_all"
@@ -649,6 +651,71 @@ describe("categories picked by hand", () => {
     expect(screen.getByText("style_editor.no_values_yet")).toBeDefined();
     await userEvent.click(screen.getByRole("menuitem", { name: /forest/ }));
     expect(store.get("classify.0.classes.2.values")).toEqual(["forest"]);
+  });
+
+  it("a class dragged to another row's place moves there; the classes are picked by hand from then on", async () => {
+    const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+    await dragRow(rows[1], rows[0]);
+    expect((store.get("classify.0.classes") as Array<{ id: string }>).map((c) => c.id)).toEqual(["c2", "c1"]);
+    expect(store.get("classify.0.count")).toBeUndefined();
+  });
+
+  const dragSecondOntoFirst = async () => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+    await dragRow(rows[1], rows[0]);
+  };
+
+  it("a class's open values go on with that class when another class is dragged beside it", async () => {
+    const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
+    await userEvent.click(screen.getByRole("button", { name: "home" }));
+    await dragSecondOntoFirst();
+    expect((store.get("classify.0.classes") as Array<{ id: string }>).map((c) => c.id)).toEqual(["c2", "c1"]);
+    await userEvent.click(screen.getByRole("menuitem", { name: /forest/ }));
+    expect(store.get("classify.0.classes")).toEqual([
+      { id: "c2", values: ["shop"], fill: { color: "#fc8d62" } },
+      { id: "c1", values: ["home", "forest"], fill: { color: "#66c2a5" } },
+    ]);
+  });
+
+  it("Escape during a drag puts the class back and leaves its open values open", async () => {
+    const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
+    await userEvent.click(screen.getByRole("button", { name: "home" }));
+    expect(screen.getByText("style_editor.in_this_class · 1")).toBeDefined();
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-class-row]"));
+    await dragRow(rows[1], rows[0], () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape", code: "Escape" });
+    });
+    expect((store.get("classify.0.classes") as Array<{ id: string }>).map((c) => c.id)).toEqual(["c1", "c2"]);
+    expect(screen.getByText("style_editor.in_this_class · 1")).toBeDefined();
+    // Escape with no drag closes it as before.
+    fireEvent.keyDown(document.body, { key: "Escape", code: "Escape" });
+    await act(async () => {});
+    expect(screen.queryByText("style_editor.in_this_class · 1")).toBeNull();
+  });
+
+  it("classes without ids: a class's open values close when another class is dragged beside it", async () => {
+    const plain = { ...LAND_USE, classes: LAND_USE.classes.map(({ id: _id, ...rest }) => rest) };
+    shell(doc([plain]), { ci: 0 }, withValues);
+    await userEvent.click(screen.getByRole("button", { name: "home" }));
+    expect(screen.getByText("style_editor.in_this_class · 1")).toBeDefined();
+    await dragSecondOntoFirst();
+    expect(screen.queryByText("style_editor.in_this_class · 1")).toBeNull();
+  });
+
+  it("a class's color picker never writes to the class dragged into its place", async () => {
+    const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
+    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.class_color" })[0]);
+    expect(screen.getByRole("button", { name: "#d7301f" })).toBeDefined();
+    await dragSecondOntoFirst();
+    const pick = screen.queryByRole("button", { name: "#d7301f" });
+    if (pick) await userEvent.click(pick);
+    // Class c2, now first, keeps its color.
+    expect(store.get("classify.0.classes.0")).toEqual({
+      id: "c2",
+      values: ["shop"],
+      fill: { color: "#fc8d62" },
+    });
   });
 
   it("the class's bin removes it; its values fall to Other", async () => {

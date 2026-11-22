@@ -3599,7 +3599,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `title` | string | no | the field's display name |
 | `field` | field name | yes (vectors) | |
 | `method` | `categories`, `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`, `manual` | yes | |
-| `count` | integer 1 to 100 (top N for categories, classes otherwise) | no | categories: the classes as written; 5 |
+| `count` | integer 1 to 256 (top N for categories, classes otherwise) | no | categories: the classes as written; 5 |
 | `target` | property path, for example `outline.width` | no | the main color |
 | `palette`, `reverse` | palette, boolean | no | `goat:green` for numeric, `colorbrewer:Set2` for categories |
 | `range` | `[min, max]` for number targets | no | the target's default range |

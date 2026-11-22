@@ -12,7 +12,50 @@ import { renderColors, shareText } from "@/components/map/panels/styleEditor/edi
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 
+import { dragRow } from "./dragRows";
 import { choose, i18n, renderPanel } from "./renderPanel";
+
+// Each class row the grid draws, counted: an edit draws only the rows it changes.
+const rowRenders = vi.hoisted(() => ({ count: 0, rows: new Set<number | undefined>() }));
+vi.mock("@/components/map/panels/styleEditor/editors/ClassGrid", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/map/panels/styleEditor/editors/ClassGrid")>();
+  return {
+    ...actual,
+    ClassGridRow: (props: Parameters<typeof actual.ClassGridRow>[0]) => {
+      rowRenders.count += 1;
+      rowRenders.rows.add(props.index);
+      return actual.ClassGridRow(props);
+    },
+  };
+});
+
+// Each row of a sortable list drawn, counted through its sortable hook (the rows draw it inside the grid's row).
+const sortableRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("@dnd-kit/sortable", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dnd-kit/sortable")>();
+  return {
+    ...actual,
+    useSortable: (args: Parameters<typeof actual.useSortable>[0]) => {
+      sortableRenders.count += 1;
+      return actual.useSortable(args);
+    },
+  };
+});
+
+// The rows' eyes drawn, counted: a row's cells draw again only for that row.
+const eyeRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock("@p4b/ui/components/Icon", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@p4b/ui/components/Icon")>();
+  return {
+    ...actual,
+    Icon: (props: Parameters<typeof actual.Icon>[0]) => {
+      if (props.iconName === actual.ICON_NAME.EYE || props.iconName === actual.ICON_NAME.EYE_SLASH)
+        eyeRenders.count += 1;
+      return actual.Icon(props);
+    },
+  };
+});
 
 // The map's loaded description of a formula's values: its range is the formula's (0 to 50), which the panel has no
 // statistics for.
@@ -280,7 +323,8 @@ describe("raster colors", () => {
         },
       }
     );
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
     expect((store.get("render.classes") as Array<{ value: number }>).at(-1)).toEqual({
       value: 2,
       color: "#228b22",
@@ -290,23 +334,21 @@ describe("raster colors", () => {
   it("a new category takes the next value; other values in gray or not drawn", async () => {
     const classes = [1, 2, 3, 4, 5, 6].map((value) => ({ value, color: "#4a90c2" }));
     const { store } = setup({ type: "categorical", classes });
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
     expect((store.get("render.classes") as Array<{ value: number }>).at(-1)).toEqual({
       value: 7,
       color: "#9aa3ad",
     });
     await act(async () => {});
-    await choose(
-      "style_editor.other_values",
-      "style_editor.other_values_transparent",
-      "style_editor.other_values_gray"
+    await userEvent.keyboard("{Escape}");
+    // The Other values row: its eye draws the values without a class in gray, or leaves them out.
+    const other = within(
+      screen.getByText("style_editor.other_values").closest("[data-class-row]") as HTMLElement
     );
+    await userEvent.click(other.getByRole("button", { name: "style_editor.show_class" }));
     expect(store.get("render.other_color")).toBe("#cccccc");
-    await choose(
-      "style_editor.other_values",
-      "style_editor.other_values_gray",
-      "style_editor.other_values_transparent"
-    );
+    await userEvent.click(other.getByRole("button", { name: "style_editor.hide_class" }));
     expect(store.get("render.other_color")).toBeUndefined();
   });
 
@@ -319,9 +361,11 @@ describe("raster colors", () => {
     expect(screen.queryByText(/colorbrewer:/)).toBeNull();
   });
 
-  it("the colours section is called Colors; hillshade and categories keep their names", () => {
+  it("each colours section is named after what it draws, as Draw as names it; its row is Colors", () => {
     const { unmount } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 100] });
-    expect(screen.getByRole("heading").textContent).toBe("style_editor.colors");
+    expect(screen.getByRole("heading").textContent).toBe("style_editor.raster_type_continuous");
+    // No section and row of one name: the row alone is Colors.
+    expect(screen.getAllByText("style_editor.colors")).toHaveLength(1);
     unmount();
     const hillshade = setup({ type: "hillshade" });
     expect(screen.getByRole("heading").textContent).toBe("style_editor.raster_type_hillshade");
@@ -353,11 +397,11 @@ describe("raster colors", () => {
     expect(kinds.join("|")).not.toContain("style_editor.palette_custom");
   });
 
-  it("a new category waits for the file's info", () => {
+  it("categories wait for the file's info", () => {
     setup({ type: "categorical", classes: [{ value: 1, color: "#ff0000" }] }, {}, null);
-    expect(
-      (screen.getByRole("button", { name: "style_editor.add_category" }) as HTMLButtonElement).disabled
-    ).toBe(true);
+    expect((within(rowOf("style_editor.colors")).getByRole("button") as HTMLButtonElement).disabled).toBe(
+      true
+    );
   });
 
   it("rows wait for the file's info", () => {
@@ -1132,10 +1176,11 @@ describe("raster classes and categories on the shared grid", () => {
       ],
     };
     const { store } = setup({ type: "categorical", classes: [{ value: 1, color: "#ff0000" }] }, {}, codes);
+    await openColors();
     // The class on the grid with its share.
     const [row] = classRows();
     expect(within(row).getByText("10%")).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
     const menu = screen.getByRole("menu");
     const items = within(menu).getAllByRole("menuitem");
     // The codes not used yet, each with its share.
@@ -1170,8 +1215,15 @@ describe("raster classes and categories on the shared grid", () => {
     };
     const classes = [0, 1, 2].map((value) => ({ value, color: "#cccccc" }));
     setup({ type: "categorical", classes }, {}, paletted);
-    expect(classRows().map((row) => row.textContent)).toEqual(["050%", "125%", "215%"]);
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    await openColors();
+    // Then the Other values row: code 205 has no class.
+    expect(classRows().map((row) => row.textContent)).toEqual([
+      "050%",
+      "125%",
+      "215%",
+      "style_editor.other_values10%",
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
     expect(
       within(screen.getByRole("menu"))
         .getAllByRole("menuitem")
@@ -1219,13 +1271,14 @@ describe("raster classes and categories on the shared grid", () => {
       stats: [{ index: 1, min: 1, max: 15, p2: 1, p98: 15, values: null }],
     };
     setup({ type: "categorical", classes: [{ value: 15, color: "#ff0000" }] }, {}, codes);
+    await openColors();
     await userEvent.click(screen.getByRole("button", { name: "15" }));
     expect(
       (screen.getByRole("textbox", { name: "style_editor.category_name" }) as HTMLInputElement).placeholder
     ).toBe("15");
     await userEvent.keyboard("{Escape}");
     // Without the band's codes, Add a class starts the next value and opens its editor, titled with it.
-    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_category" }));
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
     expect(screen.getAllByText("16").length).toBeGreaterThan(0);
     expect(screen.queryByText("style_editor.value_n")).toBeNull();
   });
@@ -1249,5 +1302,308 @@ describe("raster classes and categories on the shared grid", () => {
     expect(
       (screen.getByRole("textbox", { name: "style_editor.range_lowest" }) as HTMLInputElement).value
     ).toBe("3");
+  });
+
+  // An 8-bit band without a color table: 30 codes, code 30 the most common, then 29, and so on.
+  const THIRTY: RasterInfo = {
+    bands: 1,
+    bits: [8],
+    colorTable: false,
+    integer: true,
+    stats: [
+      {
+        index: 1,
+        min: 1,
+        max: 30,
+        p2: 1,
+        p98: 30,
+        values: Array.from({ length: 30 }, (_, i) => i + 1),
+        counts: Array.from({ length: 30 }, (_, i) => i + 1),
+      },
+    ],
+  };
+  const values = (store: { get: (path: string) => unknown }) =>
+    (store.get("render.classes") as Array<{ value: number }>).map((c) => c.value);
+  const top = (n: number) => Array.from({ length: n }, (_, i) => ({ value: 30 - i, color: "#cccccc" }));
+
+  it("filled categories list ten codes and the rest as one Other values row with its share", async () => {
+    setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    const rows = classRows();
+    expect(rows).toHaveLength(11);
+    // Codes 1 to 20 hold 210 of the 465 cells.
+    const other = rows.at(-1) as HTMLElement;
+    expect(within(other).getByText("style_editor.other_values")).toBeDefined();
+    expect(within(other).getByText("45%")).toBeDefined();
+    expect(within(classRows()[0]).getByText("6.5%")).toBeDefined();
+  });
+
+  it("Classes shows the ten, twenty or all most common codes, and by hand once the list is edited", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    const select = within(rowOf("style_editor.classes")).getByRole("combobox");
+    expect(select.textContent).toBe("style_editor.count_top");
+    await userEvent.click(select);
+    const options = () =>
+      within(screen.getByRole("listbox"))
+        .getAllByRole("option")
+        .filter((el) => el.classList.contains("MuiMenuItem-root"));
+    // All values first, as a classification's categories offer them, then Top 10 and 20: 30 and 50 do not show fewer
+    // codes than the band holds.
+    expect(options().map((el) => el.textContent)).toEqual([
+      "style_editor.count_all",
+      "style_editor.count_top",
+      "style_editor.count_top",
+    ]);
+    await userEvent.click(options()[2]);
+    expect(values(store)).toEqual(Array.from({ length: 20 }, (_, i) => 30 - i));
+    await userEvent.click(within(rowOf("style_editor.classes")).getByRole("combobox"));
+    await userEvent.click(options()[0]);
+    expect(values(store)).toHaveLength(30);
+    store.set("render.classes", top(9));
+    await act(async () => {});
+    expect(within(rowOf("style_editor.classes")).getByRole("combobox").textContent).toBe(
+      "style_editor.count_by_hand"
+    );
+  });
+
+  it("a long list shows ten rows and Show N more", async () => {
+    setup({ type: "categorical", classes: top(30) }, {}, THIRTY);
+    await openColors();
+    expect(classRows()).toHaveLength(11);
+    await userEvent.click(screen.getByRole("button", { name: "show_more_count" }));
+    expect(classRows()).toHaveLength(31);
+  });
+
+  it("a long list that shows ten rows sorts those ten: a drag below them, or Alt+ArrowDown on the last, goes no further", async () => {
+    const { store } = setup({ type: "categorical", classes: top(30) }, {}, THIRTY);
+    await openColors();
+    const before = values(store);
+    // Let go on the Other values row, under the ten shown.
+    await dragRow(classRows()[0], classRows()[10]);
+    expect(values(store)).toEqual([...before.slice(1, 10), before[0], ...before.slice(10)]);
+    const now = values(store);
+    within(classRows()[9]).getByRole("button", { name: "style_editor.class_color" }).focus();
+    await userEvent.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    expect(values(store)).toEqual(now);
+  });
+
+  it("a class added to a list of ten shows: the list opens to it", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_class" }));
+    await userEvent.click(within(screen.getByRole("menu")).getByText("20"));
+    expect(values(store)).toHaveLength(11);
+    expect(screen.queryByRole("button", { name: "show_more_count" })).toBeNull();
+    // Its row, then Other values.
+    expect(classRows()).toHaveLength(12);
+    expect(within(classRows()[10]).getByRole("button", { name: "20" })).toBeDefined();
+  });
+
+  it("refilled with the twenty most common codes after a sort by value, the list stays by value", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    await choose(
+      "style_editor.category_order",
+      "style_editor.category_order_share",
+      "style_editor.category_order_value"
+    );
+    await userEvent.click(within(rowOf("style_editor.classes")).getByRole("combobox"));
+    await userEvent.click(within(screen.getByRole("listbox")).getAllByRole("option")[2]);
+    expect(values(store)).toEqual(Array.from({ length: 20 }, (_, i) => 11 + i));
+    expect(within(rowOf("style_editor.category_order")).getByRole("combobox").textContent).toBe(
+      "style_editor.category_order_value"
+    );
+  });
+
+  it("Order sorts the categories by value, by name or most common first", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    await choose(
+      "style_editor.category_order",
+      "style_editor.category_order_share",
+      "style_editor.category_order_value"
+    );
+    expect(values(store)).toEqual([21, 22, 23, 24, 25, 26, 27, 28, 29, 30]);
+    await choose(
+      "style_editor.category_order",
+      "style_editor.category_order_value",
+      "style_editor.category_order_share"
+    );
+    expect(values(store)).toEqual([30, 29, 28, 27, 26, 25, 24, 23, 22, 21]);
+  });
+
+  it("a category dragged to another row's place moves there; the order reads as own", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    const rows = classRows();
+    await dragRow(rows[0], rows[2]);
+    expect(values(store).slice(0, 3)).toEqual([29, 28, 30]);
+    await act(async () => {});
+    expect(within(rowOf("style_editor.category_order")).getByRole("combobox").textContent).toBe(
+      "style_editor.category_order_custom"
+    );
+    // The Other values row stays where it is: no key moves it either.
+    expect(classRows().at(-1)?.getAttribute("aria-keyshortcuts")).toBeNull();
+    expect(classRows()[0].getAttribute("aria-keyshortcuts")).toBe("Alt+ArrowUp Alt+ArrowDown");
+    // Alt and an arrow from a category's swatch move it one place; the focus stays on its swatch.
+    within(classRows()[2]).getByRole("button", { name: "style_editor.class_color" }).focus();
+    await userEvent.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(values(store).slice(0, 3)).toEqual([29, 30, 28]);
+    expect(document.activeElement).toBe(
+      within(classRows()[1]).getByRole("button", { name: "style_editor.class_color" })
+    );
+  });
+
+  const nameBox = () =>
+    screen.queryByRole("textbox", { name: "style_editor.category_name" }) as HTMLInputElement | null;
+  const sortByValue = async (from = "share") => {
+    await choose(
+      "style_editor.category_order",
+      `style_editor.category_order_${from}`,
+      "style_editor.category_order_value"
+    );
+    await act(async () => {});
+  };
+  const typeHex = (hex: string) => {
+    const box = screen.getAllByRole("textbox", { name: "color_value" }).at(-1) as HTMLElement;
+    fireEvent.focus(box);
+    fireEvent.change(box, { target: { value: hex } });
+  };
+  const named = (store: { get: (path: string) => unknown }, key: "name" | "color", value: string) =>
+    (store.get("render.classes") as Array<Record<string, unknown>>)
+      .filter((c) => c[key] === value)
+      .map((c) => c.value);
+
+  it("a category's open editor stays with its category when the list is put in another order", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    // Code 30's editor: the first row, most common first.
+    await userEvent.click(screen.getByRole("button", { name: "30" }));
+    expect(nameBox()?.placeholder).toBe("30");
+    // By value, 21 comes first and 30 last.
+    await sortByValue();
+    expect(values(store)[0]).toBe(21);
+    expect(nameBox()?.placeholder).toBe("30");
+    fireEvent.change(nameBox() as HTMLElement, { target: { value: "Forest" } });
+    expect(named(store, "name", "Forest")).toEqual([30]);
+    // A row dragged beside it: still code 30's.
+    const rows = classRows();
+    await dragRow(rows[9], rows[0]);
+    expect(values(store)[0]).toBe(30);
+    expect(nameBox()?.value).toBe("Forest");
+    // Remove class removes code 30, wherever it is now.
+    await sortByValue("custom");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.remove_class" }));
+    expect(values(store)).toEqual([21, 22, 23, 24, 25, 26, 27, 28, 29]);
+    expect(nameBox()).toBeNull();
+  });
+
+  it("a category's open editor follows the value typed into it, and closes when its category goes", async () => {
+    const { store } = setup(
+      {
+        type: "categorical",
+        classes: [
+          { value: 2, color: "#111111" },
+          { value: 5, color: "#555555" },
+        ],
+      },
+      {},
+      THIRTY
+    );
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "5" }));
+    const cell = screen.getByRole("textbox", { name: "style_editor.cell_value" });
+    // 25 typed over 5: the 2 on the way is the other class's code.
+    await userEvent.clear(cell);
+    await userEvent.type(cell, "25");
+    expect(values(store)).toEqual([2, 25]);
+    expect(nameBox()?.placeholder).toBe("25");
+    fireEvent.change(nameBox() as HTMLElement, { target: { value: "Lake" } });
+    expect(named(store, "name", "Lake")).toEqual([25]);
+    // The category is no longer listed (another count of classes, an undo): its editor closes.
+    store.set("render.classes", [{ value: 2, color: "#111111" }]);
+    await act(async () => {});
+    expect(nameBox()).toBeNull();
+    // The level itself closes, its Remove class with it.
+    expect(screen.queryByRole("button", { name: "style_editor.remove_class" })).toBeNull();
+  });
+
+  it("the color picker of a category's open editor closes when the list is put in another order", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "30" }));
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
+    expect(screen.getAllByRole("textbox", { name: "color_value" }).length).toBeGreaterThan(0);
+    await sortByValue();
+    // The picker was opened for the class's place in the list: it closes; the editor goes on with code 30.
+    expect(screen.queryByRole("textbox", { name: "color_value" })).toBeNull();
+    expect(nameBox()?.placeholder).toBe("30");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
+    typeHex("#123456");
+    expect(named(store, "color", "#123456")).toEqual([30]);
+  });
+
+  it("a category's swatch picker goes on with its category, or closes, when the list is put in another order", async () => {
+    const { store } = setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    await openColors();
+    await userEvent.click(within(classRows()[0]).getByRole("button", { name: "style_editor.class_color" }));
+    expect(screen.getAllByRole("textbox", { name: "color_value" }).length).toBeGreaterThan(0);
+    await sortByValue();
+    if (screen.queryByRole("textbox", { name: "color_value" })) typeHex("#123456");
+    expect(named(store, "color", "#123456").filter((v) => v !== 30)).toEqual([]);
+    // Opened again on code 30's row, now the last, it writes code 30's color.
+    const last = classRows()[9];
+    await userEvent.click(within(last).getByRole("button", { name: "style_editor.class_color" }));
+    typeHex("#abcdef");
+    expect(named(store, "color", "#abcdef")).toEqual([30]);
+  });
+
+  it("categories open from a row of their own: what they show and their colors; the list is in the popover", async () => {
+    setup({ type: "categorical", classes: top(30) }, {}, THIRTY);
+    expect(classRows()).toHaveLength(0);
+    expect(within(rowOf("style_editor.colors")).getByRole("button").textContent).toBe(
+      "style_editor.raster_categories_all"
+    );
+    await openColors();
+    // Classes and Order above the list, as a classification's editor has them.
+    expect(screen.getByText("style_editor.classes")).toBeDefined();
+    expect(screen.getByText("style_editor.category_order")).toBeDefined();
+    expect(classRows()).toHaveLength(11);
+    expect(screen.getByRole("button", { name: "style_editor.add_class" })).toBeDefined();
+    expect(screen.getAllByText("style_editor.raster_type_categorical").length).toBeGreaterThan(1);
+  });
+
+  it("the row reads Top 10 for the ten most common codes", () => {
+    setup({ type: "categorical", classes: top(10), other_color: "#cccccc" }, {}, THIRTY);
+    expect(within(rowOf("style_editor.colors")).getByRole("button").textContent).toBe(
+      "style_editor.count_top"
+    );
+  });
+
+  it("an edit draws only the class it changes, also in a long list", async () => {
+    const { store } = setup({ type: "categorical", classes: top(30) }, {}, THIRTY);
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "show_more_count" }));
+    expect(classRows()).toHaveLength(31);
+    rowRenders.count = 0;
+    rowRenders.rows.clear();
+    sortableRenders.count = 0;
+    eyeRenders.count = 0;
+    await userEvent.click(within(classRows()[5]).getByRole("button", { name: "style_editor.hide_class" }));
+    expect(store.get("render.classes.5.visible")).toBe(false);
+    // Only the class hidden, and the Other values row (no index) whose share follows the list; none of the other 29.
+    expect([...rowRenders.rows]).toEqual(expect.arrayContaining([5]));
+    expect([...rowRenders.rows].filter((i) => i !== 5 && i !== undefined)).toEqual([]);
+    expect(rowRenders.count).toBeLessThanOrEqual(4);
+    // Pressed with the pointer: the cells of the other rows do not draw again either (their eyes).
+    expect(eyeRenders.count).toBeLessThanOrEqual(3);
+    // Shown again by keyboard: the sortable rows likewise, none of the other 29 draws again. (A press of the pointer
+    // anywhere in the list draws every row's sortable state, as a drag may start; their memoised cells do not draw.)
+    sortableRenders.count = 0;
+    within(classRows()[5]).getByRole("button", { name: "style_editor.show_class" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(store.get("render.classes.5.visible")).toBeUndefined();
+    expect(sortableRenders.count).toBeLessThanOrEqual(3);
   });
 });

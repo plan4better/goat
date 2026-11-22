@@ -3,16 +3,16 @@
 // The classes of a classification (prototype 4.5 class list): per class its value for the target (a color, a number,
 // a choice or an icon), the lower bound of manual breaks, the name with the automatic label as placeholder, the
 // feature count, show or hide, and "Style this class"; then Other and No data. A category class's label opens its
-// values to pick, and "Add class" starts a new one. The rows share one grid (`ClassGrid`, a raster's classes use it
-// too), so values, labels and counts line up in columns; a number column keeps room for its longest value, as a
-// slider's value does.
+// values to pick, "Add class" starts a new one, and a category class dragged onto another moves there. The rows share
+// one grid (`ClassGrid`, a raster's classes use it too), so values, labels and counts line up in columns; a number
+// column keeps room for its longest value, as a slider's value does.
 import { Box, ButtonBase, IconButton, InputBase, Tooltip, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Geometry } from "@/lib/style/compile/types";
-import { addCategoryClass, removeClass, setManualBound } from "@/lib/style/editor/classify";
+import { addCategoryClass, moveClass, removeClass, setManualBound } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { compoundOf, fixedChoice, writeCompound } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
@@ -323,12 +323,18 @@ function ClassRow({
   const bound = bounds && typeof record === "number" && record > 0;
   return (
     <ClassGridRow
+      // A category class can be dragged to another's place or moved with Alt and an arrow (the grid's reorder); Other
+      // and No data stay last.
+      index={values && typeof record === "number" ? record : undefined}
       absent={absent}
       title={absent ? t("style_editor.none_in_data") : undefined}
       hidden={hidden}
       onToggle={() => store.set(`${path}.visible`, hidden ? undefined : false)}
       swatch={
         <TargetValue
+          // Its pickers write to the class at this place: drawn anew at another place (a class dragged), the open
+          // picker closes.
+          key={path}
           path={path}
           target={target}
           title={name || range || label}
@@ -523,6 +529,8 @@ export function ClassList({
   valueLabel,
 }: ClassListProps) {
   const { t, i18n } = useTranslation("common");
+  const store = useEditor();
+  const popover = usePopover();
   const { geometry, fields } = useStyleData();
   const classes = (Array.isArray(c.classes) ? c.classes : []).filter(isObject);
   // The placeholder is the automatic label, so a name typed by hand does not hide it.
@@ -552,7 +560,17 @@ export function ClassList({
           // Over the numbers at their end, over swatches and choices at their start.
           valueAlign: CAPABILITIES[target]?.kind === "number" ? "end" : "start",
         }}
-        bounds={bounds}>
+        bounds={bounds}
+        rows={classes.length}
+        onReorder={
+          categories
+            ? (from, to) => {
+                store.update((doc) => moveClass(doc, ci, from, to));
+                // A class without an id has its values open by its place in the list: they close.
+                if (classes.some((r) => typeof r.id !== "string")) popover.close("picker");
+              }
+            : undefined
+        }>
         {classes.map((record, i) => (
           <ClassRow
             key={typeof record.id === "string" ? record.id : i}

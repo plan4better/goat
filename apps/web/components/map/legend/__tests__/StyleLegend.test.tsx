@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PRESENCE_PENDING, buildLegend } from "@/lib/style/legend";
@@ -26,6 +26,7 @@ vi.mock("react-i18next", () => ({
           "style_editor.legend_single_points": "Single points",
           "style_editor.legend_none_view": "None in view",
           "style_editor.legend_none_filter": "None kept by the filter",
+          show_more_count: "Show {{count}} more",
         })[key] ?? "and more"
       ).replace(/{{(\w+)}}/g, (_, name: string) => String(options?.[name] ?? "")),
     i18n: { language: "en" },
@@ -36,6 +37,59 @@ const legendOf = (doc: object, geometry?: "point" | "line" | "polygon") =>
   buildLegend(doc as never, { geometry, zoom: 12 })!;
 
 describe("StyleLegend", () => {
+  it("a long list of entries shows its first ten and Show N more where asked; print lists all", () => {
+    const legend = {
+      sections: [
+        {
+          kind: "entries" as const,
+          id: "raster",
+          entries: Array.from({ length: 15 }, (_, i) => ({
+            id: String(i),
+            name: `Class ${i + 1}`,
+            swatch: { geometry: "polygon" as const, fill: { color: "#cccccc" } },
+          })),
+        },
+      ],
+    };
+    const { unmount } = render(<StyleLegend legend={legend} variant="tree" collapseAfter={10} />);
+    expect(screen.getByText("Class 10")).toBeDefined();
+    expect(screen.queryByText("Class 11")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show 5 more" }));
+    expect(screen.getByText("Class 15")).toBeDefined();
+    unmount();
+    render(<StyleLegend legend={legend} variant="tree" />);
+    expect(screen.getByText("Class 15")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Show 5 more" })).toBeNull();
+  });
+
+  it("a list collapses only where at least three entries hide", () => {
+    const entries = (count: number) => ({
+      sections: [
+        {
+          kind: "entries" as const,
+          id: "use",
+          entries: Array.from({ length: count }, (_, i) => ({
+            id: String(i),
+            name: `Class ${i + 1}`,
+            swatch: { geometry: "polygon" as const, fill: { color: "#cccccc" } },
+          })),
+        },
+      ],
+    });
+    // One or two entries more than the ten: the link would take the room of what it hides.
+    for (const count of [11, 12]) {
+      const { unmount } = render(<StyleLegend legend={entries(count)} variant="tree" collapseAfter={10} />);
+      expect(screen.getByText(`Class ${count}`)).toBeDefined();
+      expect(screen.queryByRole("button")).toBeNull();
+      unmount();
+    }
+    render(<StyleLegend legend={entries(13)} variant="tree" collapseAfter={10} />);
+    expect(screen.getByText("Class 10")).toBeDefined();
+    expect(screen.queryByText("Class 11")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 more" }));
+    expect(screen.getByText("Class 13")).toBeDefined();
+  });
+
   const twoBlocks = (classify: object[]) =>
     legendOf(
       { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#e01903" } }, classify },

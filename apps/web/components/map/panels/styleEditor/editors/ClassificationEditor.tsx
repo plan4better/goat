@@ -73,7 +73,7 @@ const NUMERIC_METHODS = [
 const CATEGORY_COUNTS = [3, 5, 8, 12];
 const HISTOGRAM_BINS = 28;
 /** The class list keeps at least this much height (px) when the window is short; the rest of the editor scrolls. */
-const CLASS_LIST_MIN = 160;
+export const CLASS_LIST_MIN = 160;
 /** The palettes the spec uses when a classification names none (18.4). */
 const DEFAULT_PALETTE = { categories: "colorbrewer:Set2", numeric: "goat:green" };
 

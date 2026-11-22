@@ -516,7 +516,7 @@ MALFORMED = [
     {"classes": [{"fill": "x"} for _ in range(5)]},
     {"classes": [{"label": "x"} for _ in range(5)]},
     {"classes": [{"label": {"halo": "x"}} for _ in range(5)]},
-    {"count": 101},
+    {"count": 257},
 ]
 
 
@@ -545,13 +545,17 @@ def test_malformed_value_forms_are_left_to_the_checks() -> None:
     assert out == doc
 
 
-def test_count_above_a_hundred_is_invalid() -> None:
-    doc = {**QUANTILE, "classify": [{**QUANTILE["classify"][0], "count": 101}]}
+def test_count_above_256_is_invalid() -> None:
+    """As many categories as an 8-bit band can hold codes, for vectors and rasters alike."""
+    doc = {**QUANTILE, "classify": [{**QUANTILE["classify"][0], "count": 257}]}
     issues = validate(doc, DataContext(kind="vector", geometry="polygon"))
     assert any(
         i.code == "invalid_value" and i.path == "/classify/density/count"
         for i in issues
     )
+    top = {**QUANTILE, "classify": [{**QUANTILE["classify"][0], "count": 256}]}
+    issues = validate(top, DataContext(kind="vector", geometry="polygon"))
+    assert not any(i.path == "/classify/density/count" for i in issues)
 
 
 def test_parts_no_longer_computed_lose_their_stamp() -> None:

@@ -2,8 +2,8 @@
 
 // A layer's legend (spec 7.2) from its data model (buildLegend): the layer list, the style panel's preview, popups'
 // header icons and print draw it with these components.
-import { Box, Skeleton, type SxProps, type Theme, Typography } from "@mui/material";
-import { Fragment, type ReactNode, useId } from "react";
+import { Box, ButtonBase, Skeleton, type SxProps, type Theme, Typography } from "@mui/material";
+import { Fragment, type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -497,7 +497,13 @@ interface StyleLegendProps {
   captionSx?: SxProps<Theme>;
   /** Draws an entry's text, keyed `<section>_<entry>` (print's inline edits); a caption by default. */
   renderText?: (key: string, text: string) => ReactNode;
+  /** A block that holds at least `MIN_HIDDEN` entries more than this shows that many and "Show N more" (the layer
+   * list, the layer widget); print lists every entry. */
+  collapseAfter?: number;
 }
+
+/** The fewest entries "Show N more" hides: the link takes a row itself, so one or two more entries show as they are. */
+const MIN_HIDDEN = 3;
 
 export function StyleLegend({
   legend,
@@ -509,8 +515,11 @@ export function StyleLegend({
   headingSx,
   captionSx,
   renderText,
+  collapseAfter,
 }: StyleLegendProps) {
   const { t, i18n } = useTranslation("common");
+  // The blocks whose every entry shows, by id.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const words = {
     under: t("style_editor.range_under"),
     to: t("style_editor.range_to"),
@@ -648,6 +657,14 @@ export function StyleLegend({
               : properties?.length && field
                 ? `${properties.map((key) => t(key)).join(", ")} · ${field}`
                 : field));
+        // How many entries a long list shows, with "Show N more", until it is opened; undefined where it shows all.
+        const limit =
+          section.kind === "entries" &&
+          collapseAfter !== undefined &&
+          !expanded.has(section.id) &&
+          section.entries.length >= collapseAfter + MIN_HIDDEN
+            ? collapseAfter
+            : undefined;
         return (
           <Box key={section.id} sx={{ pt: 0.5 }}>
             {heading && (
@@ -656,7 +673,7 @@ export function StyleLegend({
               </Typography>
             )}
             {section.kind === "entries" &&
-              section.entries.map((entry) => (
+              (limit !== undefined ? section.entries.slice(0, limit) : section.entries).map((entry) => (
                 <Box key={entry.id} sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                   {section.bars && entry.height !== undefined ? (
                     <HeightBar
@@ -675,6 +692,15 @@ export function StyleLegend({
                   {text(`${section.id}_${entry.id}`, entryText(section, entry), true)}
                 </Box>
               ))}
+            {section.kind === "entries" && limit !== undefined && (
+              <ButtonBase
+                onClick={() => setExpanded((now) => new Set(now).add(section.id))}
+                sx={{ borderRadius: 0.5, "&:hover": { textDecoration: "underline" } }}>
+                <Typography variant="caption" color="primary" sx={itemSx}>
+                  {t("show_more_count", { count: section.entries.length - limit })}
+                </Typography>
+              </ButtonBase>
+            )}
             {section.kind === "entries" && !!section.pending && (
               // Its classes are still being counted: placeholder rows, so the legend never lists every class first.
               <Box data-legend-pending aria-busy="true">

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUniqueValues } from "@/lib/api/processes";
-import { categoryValue, moveCategoryValue } from "@/lib/style/editor/classify";
+import { MAX_CLASS_COUNT, categoryValue, moveCategoryValue } from "@/lib/style/editor/classify";
 import { targetsOf } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
 import { getIn } from "@/lib/style/editor/store";
@@ -18,8 +18,9 @@ import { SEARCH_INPUT } from "@/components/common/SearchableMenu";
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
 import { TextRow } from "@/components/map/panels/styleEditor/rows";
 
-/** The values the list starts with: the most frequent ones, as the classification editor loads them. */
-export const VALUES_LIMIT = 100;
+/** The values the list starts with: the most frequent ones, as the classification editor loads them; as many as All
+ * values classifies, so every class's count is known. */
+export const VALUES_LIMIT = MAX_CLASS_COUNT;
 const SHOWN = 50;
 const SEARCH_DELAY_MS = 300;
 

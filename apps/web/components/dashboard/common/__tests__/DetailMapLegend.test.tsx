@@ -53,6 +53,23 @@ describe("DetailMapLegend", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("draws no box for a legend that lists nothing beyond the layer's look: its name only, or one swatch", () => {
+    const style = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { color: "#2bb381" } },
+    };
+    const nameOnly = buildLegend({ ...style, legend: { display: "name_only" } } as never, {
+      geometry: "polygon",
+      zoom: 12,
+    });
+    const first = render(<DetailMapLegend legend={nameOnly} />);
+    expect(box()).toBeNull();
+    first.unmount();
+    render(<DetailMapLegend legend={buildLegend(style as never, { geometry: "polygon", zoom: 12 })} />);
+    expect(box()).toBeNull();
+  });
+
   it("floats the legend in the map's bottom-left corner, at least 200 px wide so a ramp spans it", () => {
     render(<DetailMapLegend legend={rasterLegend()} />);
 

@@ -71,9 +71,10 @@ def _target_paths() -> frozenset[str]:
 
 TARGET_PATHS = _target_paths()
 
-#: The most classes or top values a classification may ask the server for, as
-#: processes caps the breaks of its class-breaks process: `count` sizes the work.
-MAX_COUNT = 100
+#: The most classes or top values a classification may ask the server for:
+#: `count` sizes the work. As many as an 8-bit raster band holds codes, so
+#: "all values" of such a band, or of a field with as many, fit.
+MAX_COUNT = 256
 
 
 def _target_kind(path: str) -> Literal["color", "number", "choice"]:

@@ -398,6 +398,8 @@ const Cells = memo(function Cells({
       {actions ?? (
         <IconButton
           size="small"
+          // No ripple: a long list draws hundreds of these, and a ripple mounts a second time after each.
+          disableRipple
           aria-label={hidden ? eye.show : eye.hide}
           onClick={onToggle}
           sx={FOCUS_MARK}>

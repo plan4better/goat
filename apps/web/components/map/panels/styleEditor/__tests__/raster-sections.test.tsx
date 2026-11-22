@@ -507,10 +507,9 @@ describe("a raster file that cannot be read", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts.map((el) => el.textContent)).toEqual(["style_editor.raster_unavailable"]);
     // The colors wait for the file.
-    // The section's title and its row are both Colors: the row comes second.
-    const colors = within(
-      screen.getAllByText("style_editor.colors")[1].parentElement as HTMLElement
-    ).getByRole("button") as HTMLButtonElement;
+    const colors = within(screen.getByText("style_editor.colors").parentElement as HTMLElement).getByRole(
+      "button"
+    ) as HTMLButtonElement;
     expect(colors.disabled).toBe(true);
     unmount();
     // An image has no colors section: the notice is there all the same.

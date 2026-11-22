@@ -78,7 +78,13 @@ const ActiveLayerLegend = ({
         </Typography>
       )}
       {legend && informative(legend) ? (
-        <StyleLegend legend={{ ...legend, caption: undefined }} variant="tree" hideHeading={hideHeading} />
+        <StyleLegend
+          legend={{ ...legend, caption: undefined }}
+          variant="tree"
+          hideHeading={hideHeading}
+          // A long list of entries (of any legend) shows its first ten and "Show N more".
+          collapseAfter={10}
+        />
       ) : (
         <Stack direction="row" alignItems="center" spacing={1}>
           {layerSwatchIcon(layer, zoom)}
@@ -227,6 +233,8 @@ export const LayerGroupSwitcher = ({
       {control}
       {active && !legendHiddenLayers.includes(active.id) && (
         <ActiveLayerLegend
+          // Each layer's legend starts with its long lists collapsed.
+          key={active.id}
           layer={active}
           simple={simpleLegendLayers.includes(active.id)}
           hideHeading={hideLegendHeading ?? true}

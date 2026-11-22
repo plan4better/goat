@@ -865,3 +865,29 @@ describe("the image adjustments on colors", () => {
     }
   });
 });
+
+describe("a full 8-bit band as categories", () => {
+  /** An 8-bit band's values description: each code its own step. */
+  const BYTES: RasterValues = {
+    encoding: { redFactor: 65536, greenFactor: 256, blueFactor: 1, baseShift: 1 },
+    range: [0, 255],
+    integer: true,
+    version: "7-e1",
+    maxzoom: 12,
+  };
+  const hex = (v: number) =>
+    `#${[v, 255 - v, (v * 7) % 256].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+  const render = {
+    type: "categorical",
+    classes: Array.from({ length: 256 }, (_, v) => ({ value: v, color: hex(v) })),
+  };
+
+  it("draws 256 categories in the browser, each code in its color", () => {
+    const out = compile({ render }, { ...SOURCE, values: BYTES });
+    expect(out.layers.map((l) => l.type)).toEqual(["color-relief"]);
+    expect(out.unsupported).toEqual([]);
+    valid(out);
+    const stops = reliefStops(rasterColorSpec(render) as Exclude<RasterColorSpec, { kind: "rgb" }>, BYTES)!;
+    for (const v of [0, 1, 17, 128, 254, 255]) expect(reliefColorAt(stops, BYTES, v)).toBe(hex(v));
+  });
+});

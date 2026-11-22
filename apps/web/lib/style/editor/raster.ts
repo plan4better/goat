@@ -34,17 +34,49 @@ export function drawAsOptions(info: RasterInfo | undefined): RasterRenderType[] 
   return out;
 }
 
-/** One category per code `band` holds (the raster service's distinct values, at most `limit`: as many as a
- * classification's All values), each in the file's color table color for it, else the palette's colors in order; named
- * by its code. Null where the codes are not known (float cells, or too many codes to list). */
+/** How many of a band's most common codes categories can show, besides All (every code, where the band has at most as
+ * many as a classification's All values: then the default, else the last of these). */
+export const CATEGORY_TOPS: readonly number[] = [10, 20, 30, 50];
+
+/** The color values without a class draw in when they are drawn (`render.other_color`). */
+export const OTHER_COLOR = "#cccccc";
+
+/** The codes `band` holds (the raster service's distinct values); null where they are not known (float cells, or too
+ * many codes to list). */
+const codesOf = (info: RasterInfo | undefined, band: number): number[] | null =>
+  info?.stats.find((b) => b.index === band)?.values ?? null;
+
+/** A band's codes most common first, by the cells the service counted for each (a code without a count after the
+ * counted ones, by code); in code order where the band has no counts. */
+function codesByShare(info: RasterInfo | undefined, band: number): number[] {
+  const stats = info?.stats.find((b) => b.index === band);
+  const values = stats?.values ?? [];
+  const counts = stats?.counts && stats.counts.length === values.length ? stats.counts : null;
+  if (!counts) return [...values];
+  return values
+    .map((value, i) => ({ value, count: counts[i] }))
+    .sort((a, b) => b.count - a.count || a.value - b.value)
+    .map((c) => c.value);
+}
+
+/** Categories from the codes `band` holds, named by their code. A file with a color table defines its codes: every
+ * code in use (at most `limit`, by default as many as a classification's All values), by code, each in its table
+ * color. Without a table, the `limit` most common codes, most common first, in the palette's colors in that order: by
+ * default every code (an 8-bit band's 256 at most), else the last of `CATEGORY_TOPS`. Null where the codes are not
+ * known. */
 export function categoriesOf(
   info: RasterInfo | undefined,
   band = 1,
-  limit = MAX_CLASS_COUNT
+  limit?: number
 ): Array<{ value: number; color: string }> | null {
-  const values = info?.stats.find((b) => b.index === band)?.values;
+  const values = codesOf(info, band);
   if (!values?.length) return null;
-  const codes = values.slice(0, limit);
+  const table = !!info?.colorTable;
+  const fits = table || values.length <= MAX_CLASS_COUNT;
+  const codes = (table ? values : codesByShare(info, band)).slice(
+    0,
+    limit ?? (fits ? MAX_CLASS_COUNT : CATEGORY_TOPS[CATEGORY_TOPS.length - 1])
+  );
   const colors = paletteSteps(CATEGORY_PALETTE, Math.min(codes.length, 12));
   return codes.map((value, i) => ({
     value,
@@ -68,10 +100,108 @@ export function defaultRender(
     return domain ? { type, domain } : { type };
   }
   if (type === "categorical") {
-    const classes = categoriesOf(opts.info, opts.band);
-    return classes ? { type, classes } : { type };
+    const band = opts.band ?? 1;
+    const classes = categoriesOf(opts.info, band);
+    if (!classes) return { type };
+    // Codes left out draw in the other values' color.
+    const left = (codesOf(opts.info, band)?.length ?? 0) > classes.length;
+    return { type, classes, ...(left ? { other_color: OTHER_COLOR } : {}) };
   }
   return { type };
+}
+
+/** What a category keeps when the list is filled again: its name, color, visibility and legend. */
+const categoryOwn = (record: JsonObject): JsonObject =>
+  Object.fromEntries(
+    ["name", "color", "visible", "legend"]
+      .filter((key) => record[key] !== undefined)
+      .map((key) => [key, record[key]])
+  );
+
+/** The categories render with the `n` most common codes of `band` (`"all"`: every code, at most as many as a
+ * classification's All values), what was set on a code still listed kept. A list sorted by value or by name stays in
+ * that order; any other (dragged by hand) is most common first. Codes left out draw in the other values' color where
+ * none is set; hiding them again is the Other values row's eye. */
+export function topCategories(
+  render: JsonObject,
+  info: RasterInfo | undefined,
+  band: number,
+  n: number | "all"
+): JsonObject {
+  const filled = categoriesOf(info, band, n === "all" ? MAX_CLASS_COUNT : n);
+  if (!filled) return render;
+  const old = (Array.isArray(render.classes) ? render.classes : []).filter(isObject);
+  const before = new Map(old.map((c) => [c.value, categoryOwn(c)] as const));
+  const order = categoryOrder(old, info, band);
+  const refilled = filled.map((c) => ({ ...c, ...before.get(c.value) }));
+  const classes =
+    order === "value" || order === "name" ? sortCategories(refilled, order, info, band) : refilled;
+  const left = (codesOf(info, band)?.length ?? 0) > classes.length;
+  return {
+    ...render,
+    classes,
+    ...(left && render.other_color === undefined ? { other_color: OTHER_COLOR } : {}),
+  };
+}
+
+/** How many of the most common codes the categories show: one of `CATEGORY_TOPS`, `"all"` when every code has a class,
+ * else `"by_hand"` (codes added, removed or changed). */
+export function shownCount(
+  render: JsonObject,
+  info: RasterInfo | undefined,
+  band: number
+): number | "all" | "by_hand" {
+  const listed = new Set(
+    (Array.isArray(render.classes) ? render.classes : []).filter(isObject).map((c) => c.value)
+  );
+  const codes = codesOf(info, band) ?? [];
+  const same = (values: number[]) => values.length === listed.size && values.every((v) => listed.has(v));
+  if (codes.length && same(codes)) return "all";
+  const ranked = codesByShare(info, band);
+  return CATEGORY_TOPS.find((n) => n < codes.length && same(ranked.slice(0, n))) ?? "by_hand";
+}
+
+export type CategorySort = "share" | "value" | "name";
+
+/** A list with the item at `from` moved to `to`. */
+export function moveItem<T>(items: T[], from: number, to: number): T[] {
+  const out = [...items];
+  const [item] = out.splice(from, 1);
+  out.splice(to, 0, item);
+  return out;
+}
+
+/** Categories sorted most common first (a code without a count after the counted ones, by code), by code, or by their
+ * label (a name, else the code) as text, numbers in number order. */
+export function sortCategories(
+  classes: JsonObject[],
+  by: CategorySort,
+  info: RasterInfo | undefined,
+  band: number
+): JsonObject[] {
+  const value = (c: JsonObject) => (typeof c.value === "number" ? c.value : Infinity);
+  if (by === "value") return [...classes].sort((a, b) => value(a) - value(b));
+  if (by === "name") {
+    const label = (c: JsonObject) => (typeof c.name === "string" && c.name ? c.name : String(c.value ?? ""));
+    return [...classes].sort((a, b) => label(a).localeCompare(label(b), undefined, { numeric: true }));
+  }
+  const rank = new Map(codesByShare(info, band).map((v, i) => [v, i]));
+  const at = (c: JsonObject) => rank.get(value(c)) ?? Infinity;
+  return [...classes].sort((a, b) => at(a) - at(b) || value(a) - value(b));
+}
+
+/** Which order the categories are in: by share (where the band's codes are counted), by value, by name, else their
+ * own. */
+export function categoryOrder(
+  classes: JsonObject[],
+  info: RasterInfo | undefined,
+  band: number
+): CategorySort | "custom" {
+  const counted = !!info?.stats.find((b) => b.index === band)?.counts;
+  const sorts: CategorySort[] = counted ? ["share", "value", "name"] : ["value", "name"];
+  return (
+    sorts.find((by) => sortCategories(classes, by, info, band).every((c, i) => c === classes[i])) ?? "custom"
+  );
 }
 
 /** `count` classes of equal width over a range (spec 9.4 manual classes), the breaks rounded to two digits of the

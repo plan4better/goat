@@ -1193,7 +1193,7 @@
     "count": {
      "anyOf": [
       {
-       "maximum": 100,
+       "maximum": 256,
        "minimum": 1,
        "type": "integer"
       },
@@ -1783,7 +1783,7 @@
     "count": {
      "anyOf": [
       {
-       "maximum": 100,
+       "maximum": 256,
        "minimum": 1,
        "type": "integer"
       },
