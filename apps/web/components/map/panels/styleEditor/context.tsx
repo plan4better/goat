@@ -16,7 +16,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import type { RasterError } from "@/lib/api/rasters";
+import { type RasterError, loadFormulaSample } from "@/lib/api/rasters";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { scopedView } from "@/lib/style/editor/classify";
 import type { EditorStore, Path, Scope } from "@/lib/style/editor/store";
@@ -140,10 +140,20 @@ export function useRasterWaiting(): boolean {
 }
 
 /** A band's values from the raster service's statistics (its 2nd to 98th percentile and distinct values); null
- * before the info arrived or for a band without values. */
-export function useRasterSample(): (band: number) => Promise<ValueSample | null> {
-  const info = useStyleData().raster?.info;
-  return useCallback(async (band: number) => sampleOf(info, band), [info]);
+ * before the info arrived or for a band without values. A band formula (its expression): from the info asked for it,
+ * the one the panel has or a request of its own. */
+export function useRasterSample(): (band: number | string) => Promise<ValueSample | null> {
+  const { raster } = useStyleData();
+  const info = raster?.info;
+  const dataset = raster?.dataset;
+  return useCallback(
+    async (band: number | string) => {
+      const known = sampleOf(info, band);
+      if (known || typeof band === "number") return known;
+      return dataset ? loadFormulaSample(dataset, band) : null;
+    },
+    [info, dataset]
+  );
 }
 
 export function useEditor(): EditorStore {

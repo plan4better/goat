@@ -363,6 +363,42 @@ describe("raster classes by method", () => {
     expect(breakCounts(positive, { expression: "b1 * 2" }, "geometric_interval")).toEqual([]);
   });
 
+  it("a band formula the info was asked for classifies as a band: its breaks, counts and lowest value", () => {
+    const ndvi = { name: "NDVI", expression: "(b4 - b3) / (b4 + b3)" };
+    const described: RasterInfo = {
+      ...INFO,
+      formula: {
+        index: 0,
+        expression: ndvi.expression,
+        min: -0.6,
+        max: 0.9,
+        p2: -0.42,
+        p98: 0.87,
+        values: null,
+        breaks: { quantile: { "3": [0.1, 0.4] }, geometric_interval: {} },
+      },
+    };
+    expect(breakCounts(described, ndvi, "quantile")).toEqual([3]);
+    expect(rasterClassesRender(render({ band: ndvi }), "quantile", 3, described)).toEqual({
+      type: "continuous",
+      palette: "goat:elevation",
+      band: ndvi,
+      classify: {
+        method: "quantile",
+        count: 3,
+        classes: [{ to: 0.1 }, { from: 0.1, to: 0.4 }, { from: 0.4 }],
+      },
+    });
+    // It reaches below 0: geometric intervals say why they are missing.
+    expect(geometricRefused(described, ndvi)).toBe(true);
+    // Equal intervals without a range start from its 2nd to 98th percentile, as a band's.
+    expect(
+      rasterClassesRender(render({ band: ndvi, domain: undefined }), "equal_interval", 2, described).domain
+    ).toEqual([-0.5, 0.9]);
+    // Another formula is not described.
+    expect(breakCounts(described, { name: "x", expression: "b1 * 2" }, "quantile")).toEqual([]);
+  });
+
   it("an outer end typed with values outside left out makes the classes manual and keeps the inner breaks", () => {
     const quantiles = render({
       domain: undefined,

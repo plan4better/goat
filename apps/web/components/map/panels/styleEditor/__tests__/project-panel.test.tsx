@@ -1,5 +1,8 @@
+import { ThemeProvider, createTheme } from "@mui/material";
 import { configureStore } from "@reduxjs/toolkit";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { I18nextProvider } from "react-i18next";
 import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +12,7 @@ import { mapReducer } from "@/lib/store/map/slice";
 import { StyleStoresProvider, useStyleStores } from "@/lib/style/editor/StyleStores";
 import type { StyleStoreRegistry } from "@/lib/style/editor/registry";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import type { RasterInfo } from "@/lib/style/raster/metadata";
 import type { SaveResult, StyleTransport } from "@/lib/style/save";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
@@ -16,7 +20,7 @@ import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { ProjectStylePanel } from "@/components/map/panels/styleEditor/ProjectStylePanel";
 import { EMPTY_DATA } from "@/components/map/panels/styleEditor/context";
 
-import { renderWithProviders } from "./renderPanel";
+import { choose, i18n, renderWithProviders } from "./renderPanel";
 
 const { transports } = vi.hoisted(() => ({ transports: [] as StyleTransport[] }));
 let loadAnswer: Promise<Awaited<ReturnType<StyleTransport["load"]>>>;
@@ -32,6 +36,11 @@ vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
 const { styleData } = vi.hoisted(() => ({ styleData: vi.fn() }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: styleData }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
+const { setLayerState } = vi.hoisted(() => ({ setLayerState: vi.fn(async () => undefined) }));
+vi.mock("@/lib/api/map", async (original) => ({
+  ...(await original<object>()),
+  useProjectMap: () => ({ setLayerState }),
+}));
 
 const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const layer = {
@@ -157,4 +166,161 @@ describe("the style panel on the project page", () => {
     await waitFor(() => expect(store?.saver.pending).toBe(false), { timeout: 3000 });
   });
 
+  it("a hillshade's info is asked for the band its colors classify, or for its formula", async () => {
+    const shaded = (id: number, render: Record<string, unknown>) =>
+      ({
+        ...layer,
+        id,
+        layer_id: `dataset-${id}`,
+        type: "raster",
+        data_type: "cog",
+        url: "https://files.example/dem.tif",
+        feature_layer_geometry_type: null,
+        style: {
+          ...layer.style,
+          id: `s${id}`,
+          document: { version: "1.0.0", kind: "raster", render: { type: "hillshade", ...render } },
+        },
+      }) as unknown as MapLayer;
+    const colored = renderProjectPanel(
+      shaded(7, { band: 2, palette: "goat:elevation", classify: { method: "quantile", count: 5 } })
+    );
+    await waitFor(() =>
+      expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ id: "dataset-7", breaksBand: 2 }))
+    );
+    colored.unmount();
+    renderProjectPanel(shaded(8, { band: { name: "Slope", expression: "b1 - b2" } }));
+    await waitFor(() =>
+      expect(styleData).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: "dataset-8", breaksBand: "b1 - b2" })
+      )
+    );
+  });
+
+  describe("another raster layer or named style in the open panel", () => {
+    const band = (index: number) => ({ index, min: 0, max: 100, p2: 0, p98: 100, values: null });
+    const FOUR: RasterInfo = {
+      bands: 4,
+      bits: [16, 16, 16, 16],
+      colorTable: false,
+      integer: true,
+      names: ["", "", "", ""],
+      stats: [1, 2, 3, 4].map(band),
+    };
+    const raster = (id: number, render: Record<string, unknown>, styleId = `s${id}`, position?: string) =>
+      ({
+        ...layer,
+        id,
+        layer_id: `dataset-${id}`,
+        name: `Raster ${id}`,
+        type: "raster",
+        data_type: "cog",
+        url: `https://files.example/${id}.tif`,
+        feature_layer_geometry_type: null,
+        entry: { type: "layer", id, ...(position ? { position } : {}) },
+        style: {
+          ...layer.style,
+          id: styleId,
+          document: { version: "1.0.0", kind: "raster", render } as unknown as LayerStyle,
+        },
+      }) as unknown as MapLayer;
+    /** The page with the panel open: `shown` is the layer picked in the layer list, the panel stays mounted. */
+    function openPanel(first: MapLayer) {
+      const redux = configureStore({ reducer: { map: mapReducer, layers: layerReducer } });
+      const cache = new Map();
+      const tree = (shown: MapLayer) => (
+        <I18nextProvider i18n={i18n}>
+          <ThemeProvider theme={createTheme()}>
+            <Provider store={redux}>
+              <SWRConfig value={{ provider: () => cache }}>
+                <StyleStoresProvider>
+                  <Registry />
+                  <ProjectStylePanel projectId="p1" layer={shown} />
+                </StyleStoresProvider>
+              </SWRConfig>
+            </Provider>
+          </ThemeProvider>
+        </I18nextProvider>
+      );
+      const view = render(tree(first));
+      return { show: (next: MapLayer) => act(async () => view.rerender(tree(next))) };
+    }
+    const rasterData = (asked: { id: string }) => ({
+      ...EMPTY_DATA,
+      layerId: asked.id,
+      raster: { dataset: asked.id, info: FOUR },
+    });
+    const row = (label: string) => screen.getByText(label).parentElement as HTMLElement;
+
+    beforeEach(() => {
+      setLayerState.mockClear();
+      styleData.mockImplementation(rasterData);
+    });
+
+    it("an index half picked on one layer is not shown on the next", async () => {
+      const range = { type: "continuous", palette: "goat:elevation", domain: [0, 100] };
+      const panel = openPanel(raster(21, range));
+      await choose("style_editor.band", "style_editor.band_n", "NDVI");
+      // One of its two input bands picked: nothing is written yet.
+      await userEvent.click(within(row("style_editor.band_nir")).getByRole("combobox"));
+      await userEvent.click(within(screen.getByRole("listbox")).getAllByRole("option")[3]);
+      expect(screen.getByText("style_editor.band_red")).toBeDefined();
+      await panel.show(raster(22, range));
+      await waitFor(() =>
+        expect(within(row("style_editor.band")).getByRole("combobox").textContent).toBe("style_editor.band_n")
+      );
+      expect(screen.queryByText("style_editor.band_nir")).toBeNull();
+      expect(screen.queryByText("style_editor.band_red")).toBeNull();
+      expect(registry?.get({ projectId: "p1", layerProjectId: 22, styleId: "s22" })?.get("render.band")).toBe(
+        undefined
+      );
+      // The same for another named style of one layer.
+      await choose("style_editor.band", "style_editor.band_n", "NDVI");
+      expect(screen.getByText("style_editor.band_nir")).toBeDefined();
+      await panel.show(raster(22, range, "other"));
+      await waitFor(() =>
+        expect(within(row("style_editor.band")).getByRole("combobox").textContent).toBe("style_editor.band_n")
+      );
+      expect(screen.queryByText("style_editor.band_nir")).toBeNull();
+    });
+
+    it("a file's info is never asked with the band or formula of the layer shown before", async () => {
+      const formula = { name: "NDVI", expression: "(b4 - b3) / (b4 + b3)" };
+      const panel = openPanel(raster(31, { type: "continuous", palette: "goat:green", band: formula }));
+      await waitFor(() =>
+        expect(styleData).toHaveBeenLastCalledWith(
+          expect.objectContaining({ id: "dataset-31", breaksBand: formula.expression })
+        )
+      );
+      await panel.show(raster(32, { type: "continuous", palette: "goat:elevation", band: 2 }));
+      await waitFor(() =>
+        expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ id: "dataset-32", breaksBand: 2 }))
+      );
+      const asked = styleData.mock.calls
+        .map(([arg]) => arg as { id: string; breaksBand?: number | string })
+        .filter((arg) => arg.id === "dataset-32")
+        .map((arg) => arg.breaksBand);
+      expect(new Set(asked)).toEqual(new Set([2]));
+    });
+
+    it("selecting a color range layer on top after an image layer leaves it where it is", async () => {
+      const panel = openPanel(raster(41, { type: "image" }));
+      await screen.findByText("style_editor.raster_type_image");
+      await panel.show(raster(42, { type: "continuous", palette: "goat:elevation", domain: [0, 100] }));
+      await waitFor(() =>
+        expect(screen.getAllByText("style_editor.raster_type_continuous").length).toBeGreaterThan(0)
+      );
+      // A named style switch of one layer, an image to a hillshade and back.
+      await panel.show(raster(43, { type: "image" }, "photo"));
+      await screen.findByText("style_editor.raster_type_image");
+      await panel.show(raster(43, { type: "hillshade" }, "relief"));
+      await waitFor(() =>
+        expect(screen.getAllByText("style_editor.raster_type_hillshade").length).toBeGreaterThan(0)
+      );
+      await panel.show(raster(43, { type: "image" }, "photo"));
+      await screen.findByText("style_editor.raster_type_image");
+      expect(setLayerState).not.toHaveBeenCalled();
+      expect(screen.queryByText("style_editor.position_hides_labels")).toBeNull();
+    });
+  });
 });

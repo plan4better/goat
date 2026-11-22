@@ -193,6 +193,10 @@ describe("raster facts from the raster service", () => {
     const raster = (render?: object) => ({ version: "1.0.0", kind: "raster", ...(render ? { render } : {}) });
     expect(breaksBandOf(raster({ type: "continuous", palette: "goat:elevation", band: 3 }))).toBe(3);
     expect(breaksBandOf(raster({ type: "continuous", palette: "goat:elevation" }))).toBe(1);
+    // A formula is asked for by its expression (geoapi describes it as a band).
+    expect(breaksBandOf(raster({ type: "continuous", band: { name: "x", expression: "b1*2" } }))).toBe(
+      "b1*2"
+    );
     // Images and categories have no classes to compute.
     for (const type of ["image", "categorical"])
       expect(breaksBandOf(raster({ type, band: 2 })), type).toBeUndefined();
@@ -206,6 +210,10 @@ describe("raster facts from the raster service", () => {
     const classify = { method: "quantile", count: 5 };
     expect(breaksBandOf(shaded({ band: 2, palette: "goat:elevation", classify }))).toBe(2);
     expect(breaksBandOf(shaded({ palette: "goat:elevation" }))).toBe(1);
+    expect(breaksBandOf(shaded({ band: { name: "Slope", expression: "b1 - b2" } }))).toBe("b1 - b2");
+    expect(breaksBandOf(shaded({ band: { name: "Slope", expression: "b1 - b2" }, palette: "d3:viridis" }))).toBe(
+      "b1 - b2"
+    );
     // Shading alone: its band, so turning its colors on finds the breaks there.
     expect(breaksBandOf(shaded({}))).toBe(1);
     expect(breaksBandOf(shaded({ band: 3 }))).toBe(3);
@@ -222,6 +230,45 @@ describe("raster facts from the raster service", () => {
     // Its statistics are there all the same.
     expect(bandRange(info, 1)).toEqual([100, 400]);
     expect(sampleOf(info, 1)).toEqual({ min: 106.4, max: 393.2, values: [] });
+  });
+
+  it("a band formula's statistics and breaks come with the info asked for it, under its expression", () => {
+    const info = rasterInfoOf({
+      ...INFO,
+      count: 2,
+      bands: [band(1), band(2)],
+      formula: {
+        ...band(0, {
+          min: -0.6,
+          max: 0.9,
+          p2: -0.4213,
+          p98: 0.8712,
+          histogram: { counts: [2, 3], edges: [-0.6, 0.15, 0.9] },
+        }),
+        expression: "(b2 - b1) / (b2 + b1)",
+        breaks: { quantile: { "3": [0.1, 0.4] } },
+      },
+    });
+    const ndvi = "(b2 - b1) / (b2 + b1)";
+    expect(bandRange(info, ndvi)).toEqual([-0.6, 0.9]);
+    expect(bandHistogram(info, ndvi)).toEqual([
+      { range: [-0.6, 0.15], count: 2 },
+      { range: [0.15, 0.9], count: 3 },
+    ]);
+    expect(bandBreaks(info, ndvi, "quantile", 3)).toEqual([0.1, 0.4]);
+    // Another formula's are not known; the bands keep theirs.
+    expect(bandRange(info, "b1 * 2")).toBeNull();
+    expect(bandBreaks(info, "b1 * 2", "quantile", 3)).toBeUndefined();
+    expect(bandRange(info, 2)).toEqual([100, 400]);
+    // A formula's range starts at its 2nd to 98th percentile, rounded outward to a tenth of the span's order: an
+    // index keeps its fractions, where a band's range is rounded to whole numbers.
+    const sample = sampleOf(info, ndvi);
+    expect(sample).toEqual({ min: -0.4213, max: 0.8712, values: [], formula: true });
+    expect(seedDomain(sample, info)).toEqual([-0.5, 0.9]);
+    expect(seedDomain({ min: 0.0213, max: 0.2487, values: [], formula: true }, info)).toEqual([0.02, 0.25]);
+    expect(seedDomain({ min: -3.2, max: 7.5, values: [], formula: true }, info)).toEqual([-4, 8]);
+    expect(seedDomain({ min: 0.5, max: 0.5, values: [], formula: true }, info)).toEqual([0, 1]);
+    expect(rasterInfoOf(INFO).formula).toBeUndefined();
   });
 
   it("a class's share splits each bin by the part of it the class covers", () => {

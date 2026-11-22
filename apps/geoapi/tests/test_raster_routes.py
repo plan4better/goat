@@ -23,6 +23,7 @@ from goatlib.raster.token import encode_token
 from goatlib.raster.values import ENCODING_VERSION, ValueEncoding, value_encoding
 
 from geoapi.config import settings
+from geoapi.routers import rasters
 from geoapi.services import raster_service as rs
 
 LAYER = "abc123def456789012345678901234ab"
@@ -186,6 +187,8 @@ def client(test_client: TestClient) -> Iterator[TestClient]:
     FakeSource.values_read, FakeSource.sizes = [], []
     FakeSource.remembering = []
     rs.raster_service.clear()
+    # No formula an earlier test left running counts toward the cap.
+    rasters._formula_runs.clear()
     with (
         patch.object(rs, "RasterSource", FakeSource),
         patch.object(rs.raster_service, "layer", AsyncMock(return_value=ROW)),
@@ -394,7 +397,10 @@ def test_info_answers_breaks_only_for_the_band_asked_for(
         assert "breaks" not in first["bands"][1]
         # Kept breaks are answered for their band alone, and without a read.
         assert client.get(info).json() == plain
+        asked = client.get(info, params={"formula": "b3 - b2"}).json()
+        assert asked["bands"] == plain["bands"] and "breaks" in asked["formula"]
         assert client.get(f"{info}?band=2").json() == second
+    assert read == ["b2", "b1", "b3 - b2"]
 
 
 async def test_concurrent_cold_infos_of_one_band_compute_its_breaks_once(
@@ -517,6 +523,434 @@ def test_info_breaks_are_those_a_style_check_writes(client: TestClient) -> None:
             )
             classes = checked["render"]["classify"]["classes"]
             assert band["breaks"][method]["5"] == [k["to"] for k in classes[:-1]]
+
+
+def test_info_describes_the_band_formula_asked_for(client: TestClient) -> None:
+    """A file with three bands: `formula` adds that formula's statistics and
+    class breaks (`formula`), from its values over the overview the bands'
+    statistics read, once per values version and formula; the bands' entries
+    and breaks stay as they are."""
+    import numpy as np
+
+    three = dataclasses.replace(INFO, count=3, bits=(32, 32, 32))
+    read: list[str] = []
+
+    def sample(self: FakeSource, formula: Any) -> Any:
+        read.append(formula.expression)
+        return np.linspace(-1.0, 1.0, 201)
+
+    info = f"/collections/{LAYER}/raster/info"
+    ndvi = "(b3 - b2) / (b3 + b2)"
+    with (
+        patch.object(FakeSource, "info", lambda self: three),
+        patch.object(
+            FakeSource,
+            "statistics",
+            lambda self: [dataclasses.replace(STATS[0], index=i) for i in (1, 2, 3)],
+        ),
+        patch.object(FakeSource, "sample", sample),
+    ):
+        plain = client.get(info).json()
+        assert "formula" not in plain and read == []
+        r = client.get(info, params={"formula": ndvi})
+        assert r.status_code == 200 and read == [ndvi]
+        body = r.json()
+        assert body["bands"] == plain["bands"]
+        described = body["formula"]
+        assert described["expression"] == ndvi
+        assert (described["min"], described["max"]) == (-1.0, 1.0)
+        assert described["p2"] == pytest.approx(-0.96)
+        assert described["p98"] == pytest.approx(0.96)
+        assert sum(described["histogram"]["counts"]) == 201
+        assert described["histogram"]["edges"][0] == -1.0
+        assert described["values"] is None
+        assert described["breaks"]["quantile"]["4"] == pytest.approx([-0.5, 0.0, 0.5])
+        # Kept: asked again, nothing is read.
+        assert client.get(info, params={"formula": ndvi}).json() == body
+        assert read == [ndvi]
+
+
+def test_a_formulas_breaks_in_the_info_are_those_a_style_check_writes(
+    client: TestClient,
+) -> None:
+    """As a band's: picking a method for a band formula in the panel and saving
+    moves no class."""
+    import numpy as np
+    from goatlib.raster.stats import PRECOMPUTE_SAMPLE, compute_raster_into
+
+    values = np.random.default_rng(7).normal(0.2, 0.3, PRECOMPUTE_SAMPLE * 3)
+    expression = "b1 * 2"
+    with patch.object(FakeSource, "sample", lambda self, formula: values):
+        r = client.get(
+            f"/collections/{LAYER}/raster/info", params={"formula": expression}
+        )
+        breaks = r.json()["formula"]["breaks"]
+        for method in ("quantile", "natural_breaks"):
+            style = {
+                "version": "1.0.0",
+                "kind": "raster",
+                "render": {
+                    "type": "continuous",
+                    "band": {"name": "Twice", "expression": expression},
+                    "palette": "goat:elevation",
+                    "classify": {"method": method, "count": 5},
+                },
+            }
+            checked, _ = compute_raster_into(
+                FakeSource(ROW.external_url),  # type: ignore[arg-type]
+                style,
+                fingerprint="url:x",
+            )
+            classes = checked["render"]["classify"]["classes"]
+            assert breaks[method]["5"] == [k["to"] for k in classes[:-1]]
+
+
+def test_a_formula_of_one_band_of_whole_numbers_breaks_at_whole_numbers(
+    client: TestClient,
+) -> None:
+    """A formula of one band alone (`b1`) is that band (spec 9.4): on an 8 bit
+    file its breaks are whole numbers and its codes are listed; any other
+    formula keeps its breaks as computed."""
+    import numpy as np
+
+    values = np.random.default_rng(3).gamma(2.0, 30.0, 5_000).round().clip(7, 255)
+    byte = dataclasses.replace(INFO, dtype="uint8")
+    info = f"/collections/{LAYER}/raster/info"
+
+    def sample(self: FakeSource, formula: Any) -> Any:
+        return values / 3 if formula.expression == "b1 / 3" else values
+
+    def every_break(described: dict[str, Any]) -> list[float]:
+        return [
+            b
+            for counts in described["breaks"].values()
+            for c in counts.values()
+            for b in c
+        ]
+
+    with (
+        patch.object(FakeSource, "sample", sample),
+        patch.object(FakeSource, "info", lambda self: byte),
+    ):
+        plain = client.get(info, params={"formula": "b1"}).json()["formula"]
+        third = client.get(info, params={"formula": "b1 / 3"}).json()["formula"]
+    assert all(float(b).is_integer() for b in every_break(plain))
+    assert plain["values"] is not None
+    assert third["values"] is None
+    assert not all(float(b).is_integer() for b in every_break(third))
+
+
+@pytest.mark.parametrize("expression", ["b1", " b1 ", "b01"])
+def test_a_formula_of_one_band_alone_is_that_band_however_it_is_typed(
+    client: TestClient, expression: str
+) -> None:
+    """On an 8 bit file the formula's breaks are the band's whole-number
+    breaks and the classes a style check writes for it, its codes are listed,
+    and its value tiles hold whole numbers as the band's."""
+    import numpy as np
+    from goatlib.raster.stats import compute_raster_into
+
+    values = np.random.default_rng(3).gamma(2.0, 30.0, 5_000).round().clip(7, 255)
+    byte = dataclasses.replace(INFO, dtype="uint8")
+    info = f"/collections/{LAYER}/raster/info"
+    style = {
+        "version": "1.0.0",
+        "kind": "raster",
+        "render": {
+            "type": "continuous",
+            "band": {"name": "Alone", "expression": expression},
+            "palette": "goat:elevation",
+            "classify": {"method": "geometric_interval", "count": 5},
+        },
+    }
+    with (
+        patch.object(FakeSource, "sample", lambda self, formula: values),
+        patch.object(FakeSource, "info", lambda self: byte),
+    ):
+        [band] = client.get(f"{info}?band=1").json()["bands"]
+        described = client.get(info, params={"formula": expression}).json()["formula"]
+        checked, _ = compute_raster_into(
+            FakeSource(ROW.external_url),  # type: ignore[arg-type]
+            style,
+            fingerprint="url:x",
+        )
+        of_band = client.get(COVERAGE).json()["goat:values"]
+        of_formula = client.get(COVERAGE, params={"formula": expression}).json()
+    assert described["expression"] == expression
+    assert described["breaks"] == band["breaks"]
+    classes = checked["render"]["classify"]["classes"]
+    assert described["breaks"]["geometric_interval"]["5"] == [
+        k["to"] for k in classes[:-1]
+    ]
+    assert described["values"] == sorted(set(values.tolist()))
+    assert of_band["integer"] is True
+    assert of_formula["goat:values"] == of_band
+
+
+def test_info_refuses_a_bad_formula_and_one_naming_a_band_without_values(
+    client: TestClient,
+) -> None:
+    reads = []
+    info = f"/collections/{LAYER}/raster/info"
+    with patch.object(FakeSource, "sample", lambda self, f: reads.append(f) or None):
+        for params in (
+            {"formula": "b1 +"},
+            {"formula": "abs(b1)"},
+            {"band": 1, "formula": "b1"},
+        ):
+            assert client.get(info, params=params).status_code == 400, params
+        r = client.get(info, params={"formula": "b2 - b1"})
+    assert r.status_code == 400 and r.json()["detail"] == "The raster has 1 band."
+    assert reads == []
+
+
+def test_a_formula_that_cannot_be_read_leaves_the_info_without_it(
+    client: TestClient,
+) -> None:
+    """A formula's statistics are optional, as breaks are: the info answers
+    the bands, the file is not marked failing."""
+    from goatlib.raster.source import recent_failure
+
+    def unreadable(self: FakeSource, formula: Any) -> Any:
+        raise RasterUnavailableError("The file's host did not answer in time.")
+
+    with patch.object(FakeSource, "sample", unreadable):
+        r = client.get(
+            f"/collections/{LAYER}/raster/info", params={"formula": "b1 * 2"}
+        )
+    assert r.status_code == 200 and "formula" not in r.json()
+    assert r.json()["bands"][0]["min"] == 100
+    assert recent_failure(rs.raster_service.failure_key(ROW)) is None
+
+
+def test_a_formula_typed_with_other_spaces_is_computed_once(
+    client: TestClient,
+) -> None:
+    """`b1+1` and ` b1 + 1 ` are one formula: read and classified once, each
+    answered under the expression as it was asked."""
+    import numpy as np
+
+    read: list[str] = []
+
+    def sample(self: FakeSource, formula: Any) -> Any:
+        read.append(formula.expression)
+        return np.linspace(0.0, 1.0, 101)
+
+    info = f"/collections/{LAYER}/raster/info"
+    with patch.object(FakeSource, "sample", sample):
+        tight = client.get(info, params={"formula": "b1+1"}).json()["formula"]
+        spaced = client.get(info, params={"formula": " b1 + 1 "}).json()["formula"]
+    assert read == ["b1+1"]
+    assert tight["expression"] == "b1+1" and spaced["expression"] == " b1 + 1 "
+    assert {**spaced, "expression": "b1+1"} == tight
+    assert tight["breaks"]["quantile"]["4"] == pytest.approx([0.25, 0.5, 0.75])
+
+
+async def _until(met: Any, seconds: float = 5.0) -> bool:
+    """Whether `met()` got true within `seconds`."""
+    import asyncio
+    import time
+
+    deadline = time.monotonic() + seconds
+    while not met():
+        if time.monotonic() > deadline:
+            return False
+        await asyncio.sleep(0.01)
+    return True
+
+
+async def test_a_formulas_overview_values_never_wait_for_the_classifying(
+    test_client: TestClient,
+) -> None:
+    """Formulas waiting for the breaks threads hold the values that are
+    classified, not an overview's worth each: the read step gives the
+    statistics and the sample, and at most a layer's read slots hold full
+    values at once."""
+    import asyncio
+    import threading
+    import weakref
+
+    import httpx
+    import numpy as np
+    from goatlib.raster.stats import PRECOMPUTE_SAMPLE
+
+    from geoapi.main import app
+
+    class Held(np.ndarray):  # type: ignore[type-arg]
+        """An array a weak reference can follow."""
+
+    #: Every overview's values a read gave, while they are held.
+    full: list[weakref.ref[Any]] = []
+    peak = [0]
+    classified: list[int] = []
+    release = threading.Event()
+
+    def held() -> int:
+        return sum(ref() is not None for ref in list(full))
+
+    class Big(FakeSource):
+        def sample(self, formula: Any) -> Any:
+            values = np.arange(1024.0 * 1024.0).view(Held)
+            full.append(weakref.ref(values))
+            peak[0] = max(peak[0], held())
+            return values
+
+    def waiting(values: Any, *rest: Any) -> Any:
+        classified.append(values.size)
+        release.wait(10)
+        return {}
+
+    formulas = rasters.MAX_FORMULA_RUNS
+    rs.raster_service.clear()
+    rasters._formula_runs.clear()
+    info = f"/collections/{LAYER}/raster/info"
+    with (
+        patch.object(rs, "RasterSource", Big),
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=ROW)),
+        patch.object(rs, "remote_validator", return_value=None),
+        patch.object(rs, "precomputed_breaks", waiting),
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            await http.get(info)
+            try:
+                asked = [
+                    asyncio.create_task(http.get(info, params={"formula": f"b1 + {i}"}))
+                    for i in range(formulas)
+                ]
+                # Every formula is read, and the breaks threads are taken.
+                assert await _until(lambda: len(full) == formulas and classified)
+                freed = await _until(lambda: held() == 0, 2.0)
+                waiting_for_breaks = len(rasters._formula_runs)
+            finally:
+                release.set()
+            answers = await asyncio.gather(*asked)
+    assert freed, held()
+    assert waiting_for_breaks == formulas
+    assert peak[0] <= rasters.READS_PER_LAYER, peak
+    assert set(classified) == {PRECOMPUTE_SAMPLE}
+    # The statistics are of the whole overview, not of the sample.
+    assert {r.json()["formula"]["max"] for r in answers} == {1024.0 * 1024.0 - 1}
+
+
+async def test_formulas_past_the_cap_are_answered_without_the_formula(
+    test_client: TestClient,
+) -> None:
+    """At most `MAX_FORMULA_RUNS` formulas are described at once: an info
+    asking for another one meanwhile answers its bands without `formula` and
+    starts nothing, one asking for a formula that is being described waits for
+    it, and nothing is kept as failed."""
+    import asyncio
+    import threading
+
+    import httpx
+    import numpy as np
+
+    from geoapi.main import app
+
+    release = threading.Event()
+    read: list[str] = []
+
+    class Read(FakeSource):
+        def sample(self, formula: Any) -> Any:
+            read.append(formula.expression)
+            return np.arange(10.0)
+
+    def waiting(values: Any, *rest: Any) -> Any:
+        release.wait(10)
+        return {}
+
+    cap = rasters.MAX_FORMULA_RUNS
+    rs.raster_service.clear()
+    rasters._formula_runs.clear()
+    info = f"/collections/{LAYER}/raster/info"
+    with (
+        patch.object(rs, "RasterSource", Read),
+        patch.object(rs.raster_service, "layer", AsyncMock(return_value=ROW)),
+        patch.object(rs, "remote_validator", return_value=None),
+        patch.object(rs, "precomputed_breaks", waiting),
+    ):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            await http.get(info)
+            try:
+                running = [
+                    asyncio.create_task(http.get(info, params={"formula": f"b1 + {i}"}))
+                    for i in range(cap)
+                ]
+                assert await _until(lambda: len(rasters._formula_runs) == cap)
+                over = await http.get(info, params={"formula": "b1 + 99"})
+                joined = asyncio.create_task(http.get(info, params={"formula": "b1+0"}))
+                await asyncio.sleep(0.05)
+                pending = len(rasters._formula_runs)
+            finally:
+                release.set()
+            answers = await asyncio.gather(*running, joined)
+            assert await _until(lambda: not rasters._formula_runs)
+            again = await http.get(info, params={"formula": "b1 + 99"})
+    assert over.status_code == 200 and "formula" not in over.json()
+    assert over.json()["bands"][0]["min"] == 100
+    assert pending == cap
+    assert [r.json()["formula"]["expression"] for r in answers] == [
+        *(f"b1 + {i}" for i in range(cap)),
+        "b1+0",
+    ]
+    assert again.json()["formula"]["expression"] == "b1 + 99"
+    assert sorted(read) == sorted([*(f"b1 + {i}" for i in range(cap)), "b1 + 99"])
+
+
+def test_a_formula_of_one_large_value_is_described(client: TestClient) -> None:
+    """A formula whose values are one large number leaves no room for the
+    histogram's bins: the info answers its statistics with one bin, and no
+    breaks, as for any formula of one value."""
+    import numpy as np
+
+    band = np.arange(0, 256, dtype="uint8").reshape(16, 16)
+
+    def sample(self: FakeSource, formula: Any) -> Any:
+        values = formula.evaluate({i: band for i in formula.bands})
+        return values[np.isfinite(values)].astype("float64")
+
+    # The value as a formula holds it (float32).
+    large = float(np.float32(1e16))
+    with patch.object(FakeSource, "sample", sample):
+        r = client.get(
+            f"/collections/{LAYER}/raster/info",
+            params={"formula": "b1 - b1 + 10000000000000000"},
+        )
+    assert r.status_code == 200
+    described = r.json()["formula"]
+    assert described["min"] == described["max"] == large
+    assert described["histogram"] == {"counts": [256], "edges": [large, large]}
+    assert described["breaks"] == {}
+
+
+def test_a_formula_that_cannot_be_classified_leaves_the_info_without_it(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Whatever fails after the read: the info answers the bands without
+    `formula`, logged without the file's key, and the formula is not described
+    again at once."""
+    import numpy as np
+
+    calls: list[str] = []
+
+    def failing(layer: Any, formula: Any, *rest: Any) -> Any:
+        calls.append(formula.expression)
+        raise RuntimeError("could not describe https://cdn.example/dem.tif?sig=abc")
+
+    info = f"/collections/{LAYER}/raster/info"
+    with (
+        patch.object(FakeSource, "sample", lambda self, f: np.arange(10.0)),
+        patch.object(rasters, "formula_described", failing),
+        caplog.at_level("WARNING"),
+    ):
+        answers = [client.get(info, params={"formula": "b1 * 2"}) for _ in range(2)]
+    for r in answers:
+        assert r.status_code == 200 and "formula" not in r.json()
+        assert r.json()["bands"][0]["min"] == 100
+    assert calls == ["b1 * 2"]
+    assert "could not describe" in caplog.text and "sig=abc" not in caplog.text
 
 
 def test_a_failed_breaks_computation_still_answers_the_statistics(

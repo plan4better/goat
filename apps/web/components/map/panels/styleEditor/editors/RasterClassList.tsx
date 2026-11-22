@@ -18,6 +18,7 @@ import { coverageUrl } from "@/lib/style/layerSource";
 import { rangeText, valuesText } from "@/lib/style/legend";
 import { paletteColors } from "@/lib/style/palettes";
 import { classColors, classEnds, classReach } from "@/lib/style/raster/color";
+import { bandOrFormula } from "@/lib/style/raster/formula";
 import {
   type HistogramBin,
   type RasterInfo,
@@ -110,11 +111,9 @@ export const renderBand = (render: JsonObject): number | undefined => {
   return typeof band === "number" ? band : undefined;
 };
 
-/** The band's histogram, none for a formula. */
-export const renderHistogram = (render: JsonObject, info: RasterInfo | undefined): HistogramBin[] => {
-  const band = renderBand(render);
-  return band === undefined ? [] : bandHistogram(info, band);
-};
+/** The histogram of the band, or of the band formula where the info was asked for it; none where it is not known. */
+export const renderHistogram = (render: JsonObject, info: RasterInfo | undefined): HistogramBin[] =>
+  bandHistogram(info, bandOrFormula(render.band));
 
 /** The name of what the classes cover: the band as the file names it, or the formula. */
 function inputLabel(render: JsonObject, info: RasterInfo | undefined, t: TFunction): string {

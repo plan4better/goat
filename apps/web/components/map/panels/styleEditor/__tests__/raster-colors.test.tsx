@@ -63,6 +63,7 @@ vi.mock("@/lib/api/rasters", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/rasters")>()),
   useLoadedRasterValues: (url?: string) =>
     url?.includes("formula=") ? { range: [0, 50], integer: false, version: "1", encoding: {} } : undefined,
+  loadFormulaSample: async () => ({ min: 0.4, max: 49.6, values: [], formula: true }),
 }));
 
 const MAP = {
@@ -179,6 +180,18 @@ describe("raster colors", () => {
     await userEvent.click(screen.getByRole("button", { name: "style_editor.range_from_data" }));
     expect(empty.store.get("render.domain")).toEqual([0, 1]);
     expect(screen.getByText("style_editor.range_nothing_found")).toBeDefined();
+  });
+
+  it("From the data on a band formula takes the formula's values, not band 1's", async () => {
+    const { store } = setup({
+      type: "continuous",
+      band: { name: "Half", expression: "b1 / 2" },
+      palette: "goat:elevation",
+      domain: [0, 1],
+    });
+    await openColors();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.range_from_data" }));
+    await waitFor(() => expect(store.get("render.domain")).toEqual([0, 50]));
   });
 
   it("typing the range writes it", async () => {
@@ -890,6 +903,34 @@ describe("raster classes and categories on the shared grid", () => {
     // The histogram is band 1's, not the formula's: none.
     await userEvent.keyboard("{Escape}");
     expect(document.querySelector("svg[viewBox] rect")).toBeNull();
+  });
+
+  it("a band formula the info describes has its histogram and its computed classes", async () => {
+    const twice = { name: "Twice", expression: "b1 * 2" };
+    const described: RasterInfo = {
+      ...CLASSED,
+      formula: {
+        ...CLASSED.stats[0],
+        index: 0,
+        expression: twice.expression,
+        breaks: { quantile: { "3": [70, 130] } },
+      },
+    };
+    const { store } = setup(
+      { type: "continuous", palette: "goat:elevation", domain: [0, 200], band: twice },
+      {},
+      described
+    );
+    await openColors();
+    expect(document.querySelector("svg[viewBox] rect")).not.toBeNull();
+    await userEvent.click(within(rowOf("style_editor.method")).getByRole("combobox"));
+    expect(optionOf("style_editor.method_quantile").getAttribute("aria-disabled")).not.toBe("true");
+    await userEvent.click(optionOf("style_editor.method_quantile"));
+    expect(store.get("render.classify")).toEqual({
+      method: "quantile",
+      count: 3,
+      classes: [{ to: 70 }, { from: 70, to: 130 }, { from: 130 }],
+    });
   });
 
   it("the classes offer the counts the service computed breaks for", async () => {

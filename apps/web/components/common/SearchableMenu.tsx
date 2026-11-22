@@ -1,7 +1,7 @@
 "use client";
 
 // A list to pick from, opened at its control: the app's menu card (popoverSurface, lifted as MUI's menus are) with
-// MenuRow rows and MenuHeading headings. A long list has a search row at the top (a field list from SEARCH_FROM_FIELDS
+// MenuRow rows, MenuHeading headings and plain dividers between runs of rows. A long list has a search row at the top (a field list from SEARCH_FROM_FIELDS
 // rows on, a list of fixed choices from SEARCH_FROM_CHOICES), flush with the rows
 // and above them (the rows scroll under the divider, never under the search). Down moves from the search into the
 // rows, Enter takes the first match, typing on a row goes on in the search. It opens with the chosen row in view,
@@ -66,6 +66,8 @@ export interface SearchableMenuItem {
   tooltip?: string;
   /** A heading row, not selectable. */
   heading?: boolean;
+  /** A plain divider between runs of rows (as PopperMenu's groups), not selectable; `label` is not shown. */
+  divider?: boolean;
   /** The row's name for assistive tech where its label alone is not (a font's "Bold" under "Italic"). */
   ariaLabel?: string;
   /** Matched by the search besides the label (a field's name under its display name). */
@@ -76,6 +78,9 @@ export interface SearchableMenuItem {
 }
 
 export type MenuPlacement = "bottom-start" | "bottom-end";
+
+/** A row to pick: neither a heading nor a divider. */
+const isRow = (item: SearchableMenuItem): boolean => !item.heading && !item.divider;
 
 export interface SearchableMenuProps {
   anchorEl: HTMLElement | null;
@@ -180,18 +185,18 @@ export default function SearchableMenu({
   // A control in an outlined field (a select, the panel's field buttons) aligns the menu with the whole field.
   const box = (anchorEl.closest(".MuiInputBase-root") as HTMLElement | null) ?? anchorEl;
   const all = typeof items === "function" ? items("") : items;
-  const searchable = all.filter((item) => !item.heading).length >= searchFrom;
+  const searchable = all.filter(isRow).length >= searchFrom;
   const needle = search.trim().toLocaleLowerCase();
-  // While searching, the matching rows only (headings drop out unless the caller keeps them).
+  // While searching, the matching rows only (headings and dividers drop out unless the caller keeps them).
   const shown = !needle
     ? all
     : typeof items === "function"
       ? items(needle)
-      : all.filter((item) => !item.heading && matches(item, needle));
-  const giveBack = () => (focusOnClose ?? anchorEl).focus();
-  const close = () => {
+      : all.filter((item) => isRow(item) && matches(item, needle));
+  const giveBack = (options?: FocusOptions) => (focusOnClose ?? anchorEl).focus(options);
+  const close = (options?: FocusOptions) => {
     onClose();
-    giveBack();
+    giveBack(options);
   };
   const pick = (item: SearchableMenuItem) => {
     if (item.disabled) return;
@@ -206,7 +211,7 @@ export default function SearchableMenu({
       rows()[0]?.focus();
     } else if (event.key === "Enter") {
       event.preventDefault();
-      const first = shown.find((item) => !item.heading && !item.disabled);
+      const first = shown.find((item) => isRow(item) && !item.disabled);
       if (first) pick(first);
     }
   };
@@ -398,9 +403,19 @@ export default function SearchableMenu({
               flex: "1 1 auto",
             }}>
             {shown.map((item, i) =>
-              item.heading ? <MenuHeading key={`h-${i}`}>{item.label}</MenuHeading> : rowOf(item, i)
+              item.divider ? (
+                <Divider
+                  key={`d-${i}`}
+                  component="li"
+                  sx={{ my: "4px" }}
+                />
+              ) : item.heading ? (
+                <MenuHeading key={`h-${i}`}>{item.label}</MenuHeading>
+              ) : (
+                rowOf(item, i)
+              )
             )}
-            {!shown.some((item) => !item.heading) && (
+            {!shown.some(isRow) && (
               <Typography
                 component="li"
                 role="presentation"

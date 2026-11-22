@@ -2348,8 +2348,11 @@ Map services (9.8) draw as sent, adjustments as MapLibre paint.
 }
 ```
 
-`band` is a band number (from 1) or a formula: `b1` to `b8`, numbers, `+ - * /` and brackets. The dataset can name
-common formulas (NDVI) so the panel offers them.
+`band` is a band number (from 1) or a formula: its `name` (the popup's label for the value) and its `expression` of
+`b1`, `b2`, ... (bands of values of the file), numbers, `+ - * /`, unary minus and brackets, at most 500 characters
+long. The panel offers NDVI, NDMI and NDWI:
+a normalized difference `(a - b) / (a + b)` of two bands under that name, which the panel shows with its bands; the
+name tells the three apart, as their expressions share one shape.
 
 ### 9.4 Classes on a raster
 

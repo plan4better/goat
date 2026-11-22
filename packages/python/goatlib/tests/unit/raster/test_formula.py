@@ -1,6 +1,15 @@
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 from goatlib.raster.formula import FormulaError, parse_formula, single_band
+
+#: Shared with the web (apps/web/lib/style/__tests__/raster-formula.test.ts): the
+#: style panel checks a typed formula by the same rules before it writes it.
+SHARED_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "formulas.json").read_text()
+)
 
 
 def _bands(**values: list[float]) -> dict[int, np.ndarray]:
@@ -59,6 +68,18 @@ def test_division_by_zero_and_invalid_values_are_no_data() -> None:
         _bands(b1=[0, 1, np.nan], b2=[0, -1, 1])
     )
     assert np.isnan(out).all()
+
+
+@pytest.mark.parametrize(
+    "case", SHARED_CASES, ids=[repr(c["expression"][:24]) for c in SHARED_CASES]
+)
+def test_the_cases_the_style_panel_shares(case: dict) -> None:
+    if case["used"] is None:
+        with pytest.raises(FormulaError):
+            parse_formula(case["expression"], case.get("bands"))
+    else:
+        formula = parse_formula(case["expression"], case.get("bands"))
+        assert list(formula.bands) == case["used"]
 
 
 @pytest.mark.parametrize(

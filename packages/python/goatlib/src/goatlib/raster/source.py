@@ -438,6 +438,14 @@ def _stats(index: int, values: np.ndarray, integer: bool) -> BandStats:
     )
 
 
+def formula_statistics(values: np.ndarray, integer: bool = False) -> BandStats:
+    """A band formula's statistics from its values (`RasterSource.sample`), as
+    `RasterSource.statistics` gives a band's; index 0, the formula's codes only
+    where its values are whole numbers as read (`integer`: a formula of one band
+    alone of such a file, spec 9.4)."""
+    return _stats(0, values, integer)
+
+
 def _value_bands(band_names: Sequence[str]) -> list[int]:
     """The indexes of the bands a read gave (rio-tiler names them `b1`, `b2`,
     ...): the file's bands but an alpha band. As the reader takes it, an alpha

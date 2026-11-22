@@ -279,8 +279,8 @@ export function wholeBand(info: RasterInfo | undefined, band: unknown): boolean 
  * formula, where the info was asked for it); 2 to 13 for equal intervals and manual breaks, which need no breaks. */
 export function breakCounts(info: RasterInfo | undefined, band: unknown, method: string): number[] {
   if (!BREAK_METHODS.includes(method)) return [...CLASS_COUNTS];
-  if (typeof band !== "number") return [];
-  return CLASS_COUNTS.filter((n) => bandBreaks(info, band, method, n) !== undefined);
+  const key = bandOrFormula(band);
+  return CLASS_COUNTS.filter((n) => bandBreaks(info, key, method, n) !== undefined);
 }
 
 /** A class's own settings (spec 9.4: they survive a recompute by position): its name, visibility, legend and a color
@@ -307,14 +307,16 @@ function classRange(render: JsonObject, info: RasterInfo | undefined): [number, 
   const given = Array.isArray(render.domain) ? render.domain : null;
   if (given && given.length === 2 && given.every((v) => typeof v === "number"))
     return given as [number, number];
-  const band = render.band ?? 1;
-  const seeded = typeof band === "number" && info ? seedDomain(sampleOf(info, band), info) : null;
+  const band = bandOrFormula(render.band);
+  const sample = info ? sampleOf(info, band) : null;
+  // A band without a sample starts as an 8-bit file's full range; a formula's range is its values' only.
+  const seeded = info && (sample || typeof band === "number") ? seedDomain(sample, info) : null;
   if (seeded) return seeded;
   const computed =
     isObject(render.computed) && Array.isArray(render.computed.domain) ? render.computed.domain : null;
   if (computed && computed.length === 2 && computed.every((v) => typeof v === "number"))
     return computed as [number, number];
-  return typeof band === "number" ? bandRange(info, band) : null;
+  return bandRange(info, band);
 }
 
 /** The color range's render with its colors by `method` in `count` classes (spec 9.4), written by the panel at once:
@@ -367,10 +369,7 @@ export function rasterClassesRender(
     };
     return next;
   }
-  const breaks =
-    typeof render.band === "object"
-      ? undefined
-      : bandBreaks(info, (render.band as number) ?? 1, method, count);
+  const breaks = bandBreaks(info, bandOrFormula(render.band), method, count);
   delete next.domain;
   next.classify = {
     method,

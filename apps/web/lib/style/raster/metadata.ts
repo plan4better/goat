@@ -41,6 +41,9 @@ export interface RasterInfoResponse {
      * all. */
     breaks?: BandBreaks;
   }>;
+  /** The band formula the info is asked for (`rasterInfoUrl` with an expression): its statistics and breaks, as a
+   * band's; missing where it was not asked for or could not be read. */
+  formula?: (Omit<RasterInfoResponse["bands"][number], "index"> & { expression: string }) | null;
 }
 
 /** Inner class breaks by method (`quantile`, `natural_breaks`, `std_dev`, `geometric_interval`) and class count. */
@@ -83,6 +86,8 @@ export interface RasterInfo {
   /** With a color table: its entries' colors (`BandFacts.palette`). */
   palette?: Palette;
   stats: BandStats[];
+  /** The statistics and breaks of the band formula the info was asked for, under its expression (index 0). */
+  formula?: BandStats & { expression: string };
 }
 
 const hex = (rgb: number[]) =>
@@ -211,24 +216,32 @@ export function rasterInfoOf(json: RasterInfoResponse): RasterInfo {
     names: Array.from({ length: json.count }, (_, i) => fileName(json.names[i], i + 1)),
     ...(colorInterp ? { colorInterp } : {}),
     ...(palette ? { palette } : {}),
-    stats: json.bands.map((b) => ({
-      index: b.index,
-      min: b.min,
-      max: b.max,
-      p2: b.p2,
-      p98: b.p98,
-      values: b.values,
-      counts: b.counts ?? null,
-      mean: b.mean,
-      std: b.std,
-      histogram: b.histogram,
-      breaks: b.breaks ?? {},
-    })),
+    stats: json.bands.map(statsOfJson),
+    ...(json.formula
+      ? { formula: { ...statsOfJson({ ...json.formula, index: 0 }), expression: json.formula.expression } }
+      : {}),
+  };
+}
+
+function statsOfJson(b: RasterInfoResponse["bands"][number]): BandStats {
+  return {
+    index: b.index,
+    min: b.min,
+    max: b.max,
+    p2: b.p2,
+    p98: b.p98,
+    values: b.values,
+    counts: b.counts ?? null,
+    mean: b.mean,
+    std: b.std,
+    histogram: b.histogram,
+    breaks: b.breaks ?? {},
   };
 }
 
 /** The statistics of a band (its number) or of a band formula (its expression, when the info was asked for it). */
 export function statsOf(info: RasterInfo | undefined, band: number | string): BandStats | undefined {
+  if (typeof band === "string") return info?.formula?.expression === band ? info.formula : undefined;
   return info?.stats.find((b) => b.index === band);
 }
 
@@ -245,23 +258,24 @@ export interface HistogramBin {
   count: number;
 }
 
-/** A band's histogram as bins; none where the info has none for it. */
-export function bandHistogram(info: RasterInfo | undefined, band: number): HistogramBin[] {
-  const histogram = info?.stats.find((b) => b.index === band)?.histogram;
+/** A band's (or band formula's, `statsOf`) histogram as bins; none where the info has none for it. */
+export function bandHistogram(info: RasterInfo | undefined, band: number | string): HistogramBin[] {
+  const histogram = statsOf(info, band)?.histogram;
   if (!histogram) return [];
   const { counts, edges } = histogram;
   return counts.map((count, i) => ({ range: [edges[i], edges[i + 1]], count }));
 }
 
-/** The inner breaks the raster service computed for `count` classes of `method` on a band; undefined where it computed
- * none (a formula, another count, a band without values). */
+/** The inner breaks the raster service computed for `count` classes of `method` on a band or band formula
+ * (`statsOf`); undefined where the info has none (another count, a band without values, a band or formula the info
+ * was not asked for). */
 export function bandBreaks(
   info: RasterInfo | undefined,
-  band: number,
+  band: number | string,
   method: string,
   count: number
 ): number[] | undefined {
-  return info?.stats.find((b) => b.index === band)?.breaks?.[method]?.[String(count)];
+  return statsOf(info, band)?.breaks?.[method]?.[String(count)];
 }
 
 /** The band or band formula the info is asked for: geoapi answers class breaks only for the band asked (`?band=`), and
@@ -276,6 +290,8 @@ export function breaksBandOf(style: unknown): number | string | undefined {
   const { type, band = 1 } = render as { type?: unknown; band?: unknown };
   if (type !== "continuous" && type !== "hillshade") return undefined;
   if (typeof band === "number") return band;
+  const expression = (band as { expression?: unknown } | null)?.expression;
+  return typeof expression === "string" && expression.trim() ? expression : undefined;
 }
 
 const binTotal = (bins: HistogramBin[]) => bins.reduce((sum, bin) => sum + bin.count, 0);
@@ -348,6 +364,8 @@ export interface ValueSample {
   max: number;
   /** Distinct values, sorted, at most 32. */
   values: number[];
+  /** A band formula's values: its range keeps their fractions (`seedDomain`). */
+  formula?: true;
 }
 
 const MAX_VALUES = 32;
@@ -357,17 +375,34 @@ const MAX_VALUES = 32;
 export function sampleOf(info: RasterInfo | undefined, band: number | string): ValueSample | null {
   const stats = statsOf(info, band);
   if (!stats || stats.p2 === null || stats.p98 === null) return null;
-  return { min: stats.p2, max: stats.p98, values: (stats.values ?? []).slice(0, MAX_VALUES) };
+  return {
+    min: stats.p2,
+    max: stats.p98,
+    values: (stats.values ?? []).slice(0, MAX_VALUES),
+    ...(typeof band === "string" ? { formula: true as const } : {}),
+  };
 }
 
-/** A starting range for a palette: the style's stops, else the band's values (whole numbers around them), else the
- * full range of an 8-bit file; null when nothing is known. */
+/** A starting range for a palette: the style's stops, else the band's values (whole numbers around them; a band
+ * formula's rounded outward to a tenth of their span's order), else the full range of an 8-bit file; null when nothing
+ * is known. */
 export function seedDomain(
   sample: ValueSample | null,
   info: RasterInfo,
   stops?: Array<{ value: number }>
 ): [number, number] | null {
   if (stops?.length) return [stops[0].value, stops[stops.length - 1].value];
+  const span = sample ? sample.max - sample.min : 0;
+  if (sample?.formula && span > 0) {
+    // A formula's values are often fractions (an index from -1 to 1): rounded outward to a tenth of the span's order.
+    const order = Math.floor(Math.log10(span)) - 1;
+    const step = 10 ** order;
+    const digits = Math.max(0, -order);
+    return [
+      Number((Math.floor(sample.min / step) * step).toFixed(digits)),
+      Number((Math.ceil(sample.max / step) * step).toFixed(digits)),
+    ];
+  }
   if (sample) {
     const low = Math.floor(sample.min);
     const high = Math.ceil(sample.max);

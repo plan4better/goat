@@ -1,21 +1,13 @@
 "use client";
 
-// General for raster files (prototype 3.1, 3.2; spec 9): how the cells are drawn, which band, and which bands make
-// the picture. Switching to a color range starts from the band's values (the raster service's statistics) or the
+// General for raster files (prototype 3.1, 3.2; spec 9): how the cells are drawn, which band or band formula (also the
+// one a hillshade shades; `RasterBandRows`), and which bands make the picture. Switching to a color range starts from the band's values (the raster service's statistics) or the
 // file's type, so the choice waits for the file's info; a file the service cannot read says so once, at the top.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import {
-  type RasterRenderType,
-  categoriesOf,
-  defaultRender,
-  drawAsOptions,
-  equalClasses,
-  rasterClassesRender,
-} from "@/lib/style/editor/raster";
-import { getIn, setIn } from "@/lib/style/editor/store";
-import { isObject } from "@/lib/style/json";
+import { type RasterRenderType, defaultRender, drawAsOptions } from "@/lib/style/editor/raster";
+import { setIn } from "@/lib/style/editor/store";
 import { bandLabel, drawingFacts, imageBands, seedDomain, valueBands } from "@/lib/style/raster/metadata";
 import type { StyleIssue } from "@/lib/style/save";
 
@@ -28,6 +20,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { drawAsIcon } from "@/components/map/panels/styleEditor/drawAsIcons";
+import { RasterBandRows } from "@/components/map/panels/styleEditor/editors/RasterBandRows";
 import {
   dropOffer,
   offerMove,
@@ -53,65 +46,13 @@ export function RasterGeneralSection() {
   const waiting = useRasterWaiting();
   // Each key on its own: `render` also holds the classes, which this section does not show.
   const typeValue = useStyleValue<unknown>("render.type");
-  const bandValue = useStyleValue<unknown>("render.band");
   const bandsValue = useStyleValue<unknown>("render.bands");
   const [custom, setCustom] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const type = (typeof typeValue === "string" ? typeValue : "image") as RasterRenderType;
   const info = raster?.info;
-  const band = typeof bandValue === "number" ? bandValue : 1;
   const options = drawAsOptions(info);
   if (!options.includes(type)) options.push(type);
-
-  /** A range from the band's values, unless the user wrote one meanwhile. */
-  const seedFromData = async (forBand: number, kind: RasterRenderType) => {
-    const found = await sample(forBand);
-    if (!found || !info) return;
-    const now = store.get("render");
-    if (!isObject(now) || now.type !== kind) return;
-    if (kind === "continuous" || kind === "hillshade") {
-      const domain = seedDomain(found, info);
-      if (!domain) return;
-      store.update((doc) => {
-        const render = getIn(doc, "render");
-        const classify = isObject(render) && isObject(render.classify) ? render.classify : null;
-        const classes = classify && Array.isArray(classify.classes) ? classify.classes : [];
-        const method = typeof classify?.method === "string" ? classify.method : "manual";
-        // Equal intervals split the band's range.
-        if (isObject(render) && classify && method === "equal_interval") {
-          const count = typeof classify.count === "number" ? classify.count : classes.length || 5;
-          return setIn(doc, "render", rasterClassesRender({ ...render, domain }, method, count, info));
-        }
-        let next = setIn(doc, "render.domain", domain);
-        if (classes.length)
-          next = setIn(next, "render.classify.classes", equalClasses(domain, classes.length));
-        return next;
-      });
-    }
-  };
-
-  /** Another band: categories take its codes (the other values' color kept); classes the band's values classify
-   * themselves (quantiles, natural breaks, ...) take its breaks at once; a range and its equal or manual classes start
-   * from its values. */
-  const setBand = (next: number) => {
-    const render = store.get("render");
-    const classify = isObject(render) && isObject(render.classify) ? render.classify : null;
-    const method = typeof classify?.method === "string" ? classify.method : "manual";
-    const computed = !!classify && method !== "manual" && method !== "equal_interval";
-    store.update((doc) => {
-      const out = setIn(doc, "render.band", next === 1 ? undefined : next);
-      const now = getIn(out, "render");
-      if (!isObject(now)) return out;
-      if (type === "categorical") return setIn(out, "render.classes", categoriesOf(info, next) ?? undefined);
-      if (computed && isObject(now.classify)) {
-        const classes = Array.isArray(now.classify.classes) ? now.classify.classes : [];
-        const count = typeof now.classify.count === "number" ? now.classify.count : classes.length || 5;
-        return setIn(out, "render", rasterClassesRender(now, method, count, info));
-      }
-      return out;
-    }, "render.band");
-    if (type === "continuous" && !computed) void seedFromData(next, type);
-  };
 
   const drawAs = async (next: RasterRenderType) => {
     // The layer and its place as the choice is made: the values of a color range may take a request.
@@ -187,14 +128,7 @@ export function RasterGeneralSection() {
         }))}
         onChange={(next) => void drawAs(next)}
       />
-      {bandCount > 1 && (type === "continuous" || type === "categorical") && (
-        <ChoiceRow<number>
-          label={t("style_editor.band")}
-          value={band}
-          options={bandOptions}
-          onChange={setBand}
-        />
-      )}
+      {type !== "image" && <RasterBandRows type={type} />}
       {type === "image" && bandCount >= 3 && (
         <>
           <ChoiceRow<string>

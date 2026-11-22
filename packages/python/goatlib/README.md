@@ -321,7 +321,9 @@ stack, so validation runs in core too.
 - **One formula grammar** (`formula.py`): `b1`, `b2`, ... up to the file's band
   count, numbers, `+ - * /`, brackets, parsed into a small tree and evaluated with
   numpy, never `eval`. Validation (`style.data_check`) and evaluation use the same
-  parser. Division by zero is no data.
+  parser, and the web's style panel mirrors it to check a typed formula (both run
+  the cases of `tests/unit/raster/fixtures/formulas.json`). Division by zero is no
+  data.
 - **Value tiles hold the cells' values; the browser colors them** (`values.py`):
   each pixel holds a code `q = R * 65536 + G * 256 + B` for the value
   `base + q * step`, `q = 0` for no data, which a MapLibre `raster-dem` source

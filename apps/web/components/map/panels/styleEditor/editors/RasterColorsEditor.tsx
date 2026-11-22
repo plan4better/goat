@@ -142,7 +142,7 @@ export function RasterColorsEditor() {
   };
 
   const fromData = async () => {
-    const found = await sample(band);
+    const found = await sample(sampled);
     const seeded = found && info ? seedDomain(found, info) : null;
     if (!seeded) {
       setNote(t("style_editor.range_nothing_found"));
@@ -164,7 +164,7 @@ export function RasterColorsEditor() {
     }
     let range = Array.isArray(render.domain) ? (render.domain as [number, number]) : null;
     if (!range) {
-      const found = await sample(band);
+      const found = await sample(sampled);
       range = found && info ? seedDomain(found, info) : null;
     }
     if (!range) {

@@ -225,6 +225,33 @@ def test_a_bands_histogram_has_fifty_bins(cog_server: str) -> None:
     assert len(counts) == 50 and len(edges) == 51
 
 
+@pytest.mark.parametrize(
+    "values",
+    [[1e16] * 6, [1e300] * 3, [1e16, 1e16 + 2], [1.0, 1.0 + 2e-16]],
+    ids=["one large value", "one huge value", "large neighbours", "neighbours"],
+)
+def test_values_too_close_for_fifty_bins_get_one_bin(values: list[float]) -> None:
+    """One large value, or values a float apart, leave no room for fifty bins
+    between them: the statistics hold one bin of them all, from the minimum to
+    the maximum."""
+    import numpy as np
+    from goatlib.raster.source import formula_statistics
+
+    stats = formula_statistics(np.array(values))
+    assert (stats.min, stats.max) == (min(values), max(values))
+    assert stats.histogram == ([len(values)], [min(values), max(values)])
+    assert stats.p2 is not None and stats.mean is not None
+
+
+def test_one_ordinary_value_keeps_fifty_bins_around_it() -> None:
+    import numpy as np
+    from goatlib.raster.source import formula_statistics
+
+    counts, edges = formula_statistics(np.zeros(6)).histogram
+    assert len(counts) == 50 and sum(counts) == 6
+    assert (edges[0], edges[-1]) == (-0.5, 0.5)
+
+
 def test_a_band_of_one_large_value_has_statistics(tmp_path) -> None:  # noqa: ANN001
     import numpy as np
     import rasterio

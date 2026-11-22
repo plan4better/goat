@@ -26,6 +26,8 @@ export interface ChoiceOption<T = string> {
   /** The option's name for assistive tech where its full name lacks the text it shows in the menu (default: the full
    * name, in a group). */
   ariaLabel?: string;
+  /** A plain divider above the option in the menu: it starts a run of options apart from those before. */
+  divider?: boolean;
 }
 
 export interface ChoiceRowProps<T = string> {
@@ -38,6 +40,8 @@ export interface ChoiceRowProps<T = string> {
   note?: ReactNode;
   /** The choice waits for something (a file's info): shown, but its menu does not open. */
   disabled?: boolean;
+  /** What the field says while its value is none of the options (nothing picked yet). */
+  placeholder?: string;
 }
 
 export interface ChoiceFieldProps<T = string> {
@@ -48,6 +52,8 @@ export interface ChoiceFieldProps<T = string> {
   ariaLabel?: string;
   disabled?: boolean;
   sx?: SxProps<Theme>;
+  /** What the field says while its value is none of the options (nothing picked yet). */
+  placeholder?: string;
 }
 
 /** An option's whole name: its label, or in a group its `short`. */
@@ -55,10 +61,19 @@ const fullName = <T,>(option: ChoiceOption<T> | undefined): string =>
   (option?.group ? option.short : undefined) ?? option?.label ?? "";
 
 /** The choice's field alone, for a row of several fields (a rule's condition). */
-export function ChoiceField<T>({ value, options, onChange, ariaLabel, disabled, sx }: ChoiceFieldProps<T>) {
+export function ChoiceField<T>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  disabled,
+  sx,
+  placeholder,
+}: ChoiceFieldProps<T>) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const current = options.find((option) => Object.is(option.value, value));
   const items = options.flatMap((option, i) => [
+    ...(option.divider && i > 0 ? [{ label: "", divider: true }] : []),
     ...(option.group && option.group !== options[i - 1]?.group
       ? [{ label: option.group, heading: true }]
       : []),
@@ -95,11 +110,12 @@ export function ChoiceField<T>({ value, options, onChange, ariaLabel, disabled, 
         <Typography
           component="span"
           variant="body2"
-          fontWeight="bold"
+          fontWeight={current ? "bold" : undefined}
+          color={current ? undefined : "text.secondary"}
           noWrap
           title={fullName(current)}
           sx={{ flex: 1, minWidth: 0 }}>
-          {current?.short ?? current?.label ?? ""}
+          {current ? (current.short ?? current.label) : (placeholder ?? "")}
         </Typography>
       </FieldButton>
       <DropdownMenu anchorEl={anchor} role="listbox" items={items} onClose={() => setAnchor(null)} />
@@ -116,6 +132,7 @@ function ChoiceRowInner<T>({
   mode,
   note,
   disabled,
+  placeholder,
 }: ChoiceRowProps<T>) {
   return (
     <Row label={label} actions={mode} note={note}>
@@ -130,6 +147,7 @@ function ChoiceRowInner<T>({
           onChange={onChange}
           ariaLabel={typeof label === "string" ? label : undefined}
           disabled={disabled}
+          placeholder={placeholder}
         />
       )}
     </Row>

@@ -39,7 +39,7 @@ from uuid import UUID
 import numpy as np
 from cachetools import TTLCache
 from goatlib.raster.color import Coloring, image_bands
-from goatlib.raster.formula import Formula, parse_formula
+from goatlib.raster.formula import Formula, parse_formula, single_band
 from goatlib.raster.source import (
     FAILURE_TTL_S,
     TILE_SIZE,
@@ -50,6 +50,7 @@ from goatlib.raster.source import (
     RasterUnavailableError,
     TileSize,
     check_bands,
+    formula_statistics,
     logged,
     native_zoom,
     recent_failure,
@@ -134,6 +135,15 @@ class RasterService:
         self._breaks_failed: TTLCache[tuple[str, int], Breaks] = TTLCache(
             1024, FAILURE_TTL_S
         )
+        #: A band formula's statistics and breaks, by file version and
+        #: formula (`formula_key`); one that could not be computed is kept as
+        #: None for 30 s.
+        self._formulas: TTLCache[tuple[str, str], FormulaStats] = TTLCache(
+            1024, STATS_TTL_S
+        )
+        self._formulas_failed: TTLCache[tuple[str, str], None] = TTLCache(
+            1024, FAILURE_TTL_S
+        )
         self._lock = threading.Lock()
         self._gates: dict[str, threading.Lock] = {}
 
@@ -144,6 +154,8 @@ class RasterService:
         self._bounds.clear()
         self._breaks.clear()
         self._breaks_failed.clear()
+        self._formulas.clear()
+        self._formulas_failed.clear()
 
     async def layer(self, layer_id: str, fresh: bool = False) -> RasterLayer | None:
         """The raster file layer `layer_id` (32 hex digits), or None; kept for
@@ -250,6 +262,43 @@ class RasterService:
         statistics, or for 30 seconds when they could not be computed."""
         with self._lock:
             (self._breaks if complete else self._breaks_failed)[(file, band)] = breaks
+
+    def kept_formula(self, file: str, name: str) -> tuple[bool, FormulaStats | None]:
+        """Whether the statistics and breaks of the band formula `name`
+        (`formula_key`) of the file version `file` are known, and they: kept
+        for an hour, or None where they could not be computed in the last 30
+        seconds."""
+        with self._lock:
+            found: FormulaStats | None = self._formulas.get((file, name))
+            failed = (file, name) in self._formulas_failed
+        return found is not None or failed, found
+
+    def keep_formula(
+        self, file: str, name: str, described: FormulaStats | None
+    ) -> None:
+        """Keep the statistics and breaks of the band formula `name`
+        (`formula_key`) for an hour, or that they could not be computed for 30
+        seconds."""
+        with self._lock:
+            if described is None:
+                self._formulas_failed[(file, name)] = None
+            else:
+                self._formulas[(file, name)] = described
+
+    def formula_sample(
+        self, layer: RasterLayer, formula: Formula, info: RasterInfo
+    ) -> tuple[BandStats, NDArray[np.float64]]:
+        """What a band formula is described from: the statistics of its
+        values over the overview the bands' statistics read
+        (`RasterSource.sample`), and the values a style check classifies
+        (`classified_sample`), from which its class breaks are computed. The
+        overview's values go no further than this read: only the sample waits
+        for the classifying. A failed read raises without marking the file
+        failing, as `band_sample`."""
+        with self._source(layer, remember_failures=False) as opened:
+            values: NDArray[np.float64] = opened.sample(formula)
+        stats = formula_statistics(values, _whole_numbers(info, formula))
+        return stats, classified_sample(values)
 
     def band_sample(self, layer: RasterLayer, band: int) -> NDArray[np.float64]:
         """What a band's class breaks are computed from: the values a style
@@ -462,10 +511,9 @@ def _extent(
 
 
 def _single_band(formula: Formula) -> int | None:
-    """The band a formula only names (`b2`), else None."""
-    if len(formula.bands) == 1 and formula.expression.strip() == f"b{formula.bands[0]}":
-        return formula.bands[0]
-    return None
+    """The band a formula names alone (`b2`, as goatlib's `single_band` takes
+    it: the style check's and the style panel's reading), else None."""
+    return single_band(formula.expression)
 
 
 _FIRST_BAND = parse_formula("b1")
@@ -499,6 +547,46 @@ def band_breaks(
             text,
         )
         return {}, False
+
+
+def formula_key(formula: Formula) -> str:
+    """What a band formula's statistics and breaks are kept under: its
+    expression without the spaces, which change nothing in a formula that
+    parses, so `b1+1` and `b1 + 1` are described once."""
+    return "".join(formula.expression.split())
+
+
+def _whole_numbers(info: RasterInfo, formula: Formula) -> bool:
+    """Whether a formula's values are whole numbers as read: a formula of one
+    band alone of a file of whole numbers (spec 9.4)."""
+    return whole_number_values(info) and _single_band(formula) is not None
+
+
+def formula_described(
+    layer: RasterLayer,
+    formula: Formula,
+    stats: BandStats,
+    sample: NDArray[np.float64],
+    info: RasterInfo,
+) -> FormulaStats:
+    """A band formula's statistics with its class breaks, computed from the
+    sample of its values (`formula_sample`: the values a style check
+    classifies), whole numbers only for a formula of one band alone of a file
+    of whole numbers (spec 9.4). Breaks that cannot be computed are none,
+    logged without the file's key."""
+    try:
+        return stats, precomputed_breaks(sample, _whole_numbers(info, formula))
+    except Exception as error:
+        address, text = logged(RasterService.failure_key(layer), error)
+        logger.warning(
+            "The class breaks of the band formula %s of the raster file %s could "
+            "not be computed: %s: %s",
+            formula.expression,
+            address,
+            type(error).__name__,
+            text,
+        )
+        return stats, {}
 
 
 #: The most entries a color table is sent with: an 8 bit band's codes.
@@ -577,6 +665,19 @@ def info_json(
             }
             for b in stats
         ],
+        # The band formula the info is asked for, as a band: its statistics
+        # and breaks (the panel's histogram and computed classes of a formula).
+        **(
+            {
+                "formula": {
+                    "expression": formula[0],
+                    **_stats_json(formula[1][0]),
+                    "breaks": formula[1][1],
+                }
+            }
+            if formula is not None
+            else {}
+        ),
     }
 
 

@@ -53,9 +53,12 @@ from geoapi.deps.authz import require_layer_read
 from geoapi.services.raster_service import (
     BandBreaks,
     Breaks,
+    FormulaStats,
     RasterLayer,
     Resampling,
     band_breaks,
+    formula_described,
+    formula_key,
     info_json,
     palette,
     raster_service,
@@ -97,6 +100,14 @@ BREAKS_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="breaks")
 #: infos of a cold band wait for one computation, without a read slot or a
 #: thread.
 _breaks_runs: dict[tuple[int, str, int], asyncio.Future[Breaks]] = {}
+#: The band formulas being described, by event loop, file version and
+#: formula (`formula_key`), as the breaks.
+_formula_runs: dict[tuple[int, str, str], asyncio.Future[FormulaStats | None]] = {}
+#: At most this many band formulas are being described at once in the process:
+#: an info asking for another one meanwhile answers without `formula`. Any
+#: text that parses is a formula of its own, so without a cap their values
+#: would queue for the breaks threads that every layer's class breaks share.
+MAX_FORMULA_RUNS = 8
 #: A tile read taking longer answers 504. GDAL's timeouts bound each request a
 #: read sends, not the read.
 TILE_DEADLINE_S = 10.0
@@ -417,7 +428,21 @@ def _sized(tilesize: int) -> tuple[int, ...]:
 async def raster_info(
     collection_id: Annotated[str, Path(alias="collectionId")],
     band: BreaksBandQuery = None,
+    formula: Annotated[
+        str | None,
+        Query(
+            max_length=1000,
+            description=(
+                "A band formula whose statistics and class breaks the info "
+                "answers (`formula`, with the expression as asked), instead "
+                "of a band: no band carries breaks then"
+            ),
+        ),
+    ] = None,
 ) -> dict[str, Any]:
+    if band is not None and formula is not None:
+        raise HTTPException(status_code=400, detail="A band or a formula, not both.")
+    asked = _values_of(None, formula) if formula is not None else None
     layer = await _layer(collection_id)
     file, info, stats = await _read(layer, raster_service.described)
     breaks: BandBreaks = {}
@@ -429,7 +454,69 @@ async def raster_info(
             kept if kept is not None else await _breaks(layer, file, info, band)
         )
     described = None
+    if asked is not None:
+        with _answers():
+            check_bands(info, asked.bands)
+        found = await _formula(layer, file, info, asked)
+        described = (asked.expression, found) if found is not None else None
     return info_json(info, stats, breaks, described)
+
+
+async def _formula(
+    layer: RasterLayer, file: str, info: RasterInfo, formula: Formula
+) -> FormulaStats | None:
+    """A band formula's statistics and class breaks of the file version
+    `file`: kept, or computed once while every info asking meanwhile waits
+    without a read slot, however the formula is spaced (`formula_key`). None
+    where they could not be computed (kept so for 30 seconds), and while
+    `MAX_FORMULA_RUNS` other formulas are being described (nothing is kept
+    then, the next info asks again): an info without them still answers."""
+    name = formula_key(formula)
+    known, kept = raster_service.kept_formula(file, name)
+    if known:
+        return kept
+    key = (id(asyncio.get_running_loop()), file, name)
+    run = _formula_runs.get(key)
+    if run is None:
+        if len(_formula_runs) >= MAX_FORMULA_RUNS:
+            return None
+        run = _formula_runs[key] = asyncio.ensure_future(
+            _compute_formula(layer, file, info, formula, name)
+        )
+        run.add_done_callback(lambda _: _formula_runs.pop(key, None))
+    return await asyncio.shield(run)
+
+
+async def _compute_formula(
+    layer: RasterLayer, file: str, info: RasterInfo, formula: Formula, name: str
+) -> FormulaStats | None:
+    """Reads the formula's values in one of the layer's read slots, which
+    gives their statistics and the sample to classify (the overview's values
+    stay on the raster thread), then classifies the sample after releasing it,
+    as a band's breaks. Whatever fails is logged and kept as failed under
+    `name` (`formula_key`): the info answers without the formula."""
+    loop = asyncio.get_running_loop()
+    try:
+        async with _slot(layer.id):
+            stats, sample = await loop.run_in_executor(
+                RASTER_EXECUTOR, raster_service.formula_sample, layer, formula, info
+            )
+        described: FormulaStats = await loop.run_in_executor(
+            BREAKS_EXECUTOR, formula_described, layer, formula, stats, sample, info
+        )
+    except Exception as error:
+        address, text = logged(raster_service.failure_key(layer), error)
+        logger.warning(
+            "The band formula %s of the raster file %s was not described: %s: %s",
+            formula.expression,
+            address,
+            type(error).__name__,
+            text,
+        )
+        raster_service.keep_formula(file, name, None)
+        return None
+    raster_service.keep_formula(file, name, described)
+    return described
 
 
 async def _breaks(layer: RasterLayer, file: str, info: RasterInfo, band: int) -> Breaks:
