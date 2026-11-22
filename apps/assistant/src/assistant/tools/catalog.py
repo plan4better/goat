@@ -637,14 +637,29 @@ _RECORD_DROP = ("stac_extensions", "geometry")
 _RECORD_MEMBERS = 25
 _RECORD_COLUMNS = 60
 _MEMBER_DESCRIPTION_CHARS = 300
+#: A field's `keywords` are examples of its values: this many of them, each
+#: cut to this length, say what it holds.
+_COLUMN_KEYWORDS = 8
+_KEYWORD_CHARS = 40
+
+
+def _compact_column(column: dict[str, Any]) -> dict[str, Any]:
+    """A field's name, type and description, examples of its values
+    (`keywords`) and a number field's `statistics` (minimum, maximum, mean)."""
+    keep = ("name", "type", "description", "keywords", "statistics")
+    kept = {key: column[key] for key in keep if column.get(key) is not None}
+    if isinstance(kept.get("keywords"), list):
+        kept["keywords"] = [
+            str(value)[:_KEYWORD_CHARS] for value in kept["keywords"][:_COLUMN_KEYWORDS]
+        ]
+    return kept
 
 
 def _compact_columns(columns: Any) -> Any:
     if not isinstance(columns, list):
         return columns
-    keep = ("name", "type", "description", "keywords", "statistics")
     return [
-        {key: column[key] for key in keep if column.get(key) is not None}
+        _compact_column(column)
         for column in columns[:_RECORD_COLUMNS]
         if isinstance(column, dict)
     ]
