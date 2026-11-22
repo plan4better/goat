@@ -5,7 +5,8 @@
 // rows on, a list of fixed choices from SEARCH_FROM_CHOICES), flush with the rows
 // and above them (the rows scroll under the divider, never under the search). Down moves from the search into the
 // rows, Enter takes the first match, typing on a row goes on in the search. It opens with the chosen row in view,
-// closes on a pointer-down outside it, and Escape closes it alone and gives the focus back to its control.
+// closes on a pointer-down outside it and when its control is scrolled out of view, and Escape closes it alone and gives
+// the focus back to its control.
 import SearchIcon from "@mui/icons-material/Search";
 import {
   Box,
@@ -166,6 +167,9 @@ export default function SearchableMenu({
   // Opens with the chosen row in the middle of the list: once the list is on the page (the popper draws its content a
   // moment after it opens), scrolled within the list only.
   const scrolledFor = useRef<HTMLElement | null>(null);
+  // The control seen in view while the menu is open at it: the menu closes when it leaves the view (scrolled out of a
+  // panel or the window), not when it was never laid out.
+  const seenIn = useRef<HTMLElement | null>(null);
   const listRef = useCallback(
     (el: HTMLUListElement | null) => {
       list.current = el;
@@ -296,7 +300,26 @@ export default function SearchableMenu({
       placement={placement}
       modifiers={[
         { name: "offset", options: { offset: [0, POPOVER_GAP] } },
-        { name: "preventOverflow", options: { padding: 12 } },
+        // Inside the window on both axes while its control is: a menu that would run past the window's bottom moves
+        // up over its control, so its last rows are never cut off (at most until it stands right above the control).
+        // Tethered, it goes with its control while that is scrolled toward the edge of the window or a panel rather
+        // than stay pinned at the edge; once the control is out of view, it closes (below).
+        { name: "preventOverflow", options: { padding: 12, altAxis: true, tether: true } },
+        // Its control scrolled out of view (Popper's hide: hidden by a scroll container or the window), it closes as
+        // Escape closes it, giving the focus back without scrolling the control into view again.
+        {
+          name: "closeWhenHidden",
+          enabled: true,
+          phase: "main",
+          requires: ["hide"],
+          fn: ({ state }) => {
+            if (!state.modifiersData.hide?.isReferenceHidden) seenIn.current = anchorEl;
+            else if (seenIn.current === anchorEl) {
+              seenIn.current = null;
+              close({ preventScroll: true });
+            }
+          },
+        },
       ]}
       sx={{ zIndex: 1400 }}>
       {/* A press on the control is left to it, which closes the menu: closing here too would reopen it. */}
@@ -404,9 +427,13 @@ export default function SearchableMenu({
             }}>
             {shown.map((item, i) =>
               item.divider ? (
+                // A menu may hold separators, a listbox options only: there the line is left out of what assistive
+                // tech reads. The arrow keys pass over it either way (it takes no focus).
                 <Divider
                   key={`d-${i}`}
                   component="li"
+                  role={role === "listbox" ? "presentation" : "separator"}
+                  aria-hidden={role === "listbox" || undefined}
                   sx={{ my: "4px" }}
                 />
               ) : item.heading ? (
