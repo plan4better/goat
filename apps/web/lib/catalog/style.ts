@@ -20,10 +20,10 @@ function previewStyle(style: Record<string, unknown>): LayerStyle {
   return rest as unknown as LayerStyle;
 }
 
-/** A raster layer drawn by the catalog's raster tiles, colored by its style as a project draws it. */
+/** A raster item drawn from geoapi's raster tiles (`catalogRasterSource`), colored by its style as a project draws it. */
 export function catalogRasterLayer(
   style: unknown,
-  source: { tiles: string; coverage: string } | null
+  source: { tiles: string; tileset: string; coverage: string } | null
 ): RenderLayer | undefined {
   if (!source || !isDrawableStyle(style) || style.kind !== "raster") return undefined;
   return {

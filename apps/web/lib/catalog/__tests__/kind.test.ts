@@ -122,23 +122,30 @@ describe("catalogServiceTiles", () => {
   });
 });
 
+const GEOAPI = "https://geoapi.example";
+
 describe("catalogTilesUrl", () => {
-  it("draws the published tiles through the catalog, and nothing else", () => {
-    const tiled = { ...item({}), assets: { tiles: { href: "https://cat.example/assets/x/tiles" } } };
-    expect(catalogTilesUrl(tiled)).toBe("https://cat.example/assets/x/tiles/{z}/{x}/{y}");
-    // A bucket path the API did not rewrite is not something a browser can read.
-    expect(catalogTilesUrl({ ...item({}), assets: { tiles: { href: "../../data/x.pmtiles" } } })).toBeNull();
-    expect(catalogTilesUrl(item({}))).toBeNull();
+  it("reads the published tiles from geoapi, for an item that says it has them", () => {
+    expect(catalogTilesUrl(item({ "goat:tiles": true }), GEOAPI)).toBe(
+      "https://geoapi.example/collections/catalog:x/tiles/WebMercatorQuad/{z}/{x}/{y}"
+    );
+    // Without published tiles the detail map draws the sample.
+    expect(catalogTilesUrl(item({}), GEOAPI)).toBeNull();
+    // No geoapi address, nowhere to read them from.
+    expect(catalogTilesUrl(item({ "goat:tiles": true }), "")).toBeNull();
   });
 });
 
 describe("catalogRasterSource", () => {
-  it("draws a raster through the tiles the catalog announces for it", () => {
-    const raster = { ...item({ "goat:layerType": "raster" }), assets: { raster: { href: "https://cat.example/assets/r/raster" } } };
-    expect(catalogRasterSource(raster)).toEqual({
-      tiles: "https://cat.example/assets/r/raster/{z}/{x}/{y}.webp",
-      coverage: "https://cat.example/assets/r/raster/coverage/tiles/WebMercatorQuad",
+  it("reads a raster item from geoapi's raster routes, as a layer's file", () => {
+    expect(catalogRasterSource(item({ "goat:layerType": "raster" }), GEOAPI)).toEqual({
+      tiles: "https://geoapi.example/collections/catalog:x/raster/tiles/{z}/{x}/{y}.webp",
+      tileset: "https://geoapi.example/collections/catalog:x/raster/tiles",
+      coverage: "https://geoapi.example/collections/catalog:x/coverage/tiles/WebMercatorQuad",
     });
-    expect(catalogRasterSource(item({ "goat:layerType": "raster" }))).toBeNull();
+    // A map service is drawn by its provider, a vector layer by its tiles or its sample.
+    expect(catalogRasterSource(item({ "goat:layerType": "wms" }), GEOAPI)).toBeNull();
+    expect(catalogRasterSource(item({}), GEOAPI)).toBeNull();
+    expect(catalogRasterSource(item({ "goat:layerType": "raster" }), "")).toBeNull();
   });
 });

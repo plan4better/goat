@@ -7,7 +7,7 @@ import type { MapGeoJSONFeature, MapLayerMouseEvent } from "react-map-gl/maplibr
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
 import { useCatalogPreview, useCatalogStyle } from "@/lib/api/catalog";
-import { catalogRasterSource, catalogServiceTiles, catalogTilesUrl } from "@/lib/catalog/kind";
+import { catalogKindOf, catalogRasterSource, catalogServiceTiles, catalogTilesUrl } from "@/lib/catalog/kind";
 import {
   CATALOG_SAMPLE_KEY,
   catalogRasterLayer,
@@ -25,6 +25,7 @@ import type { CatalogItem } from "@/lib/validations/catalog";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
+import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
 import DetailMapLegend from "@/components/dashboard/common/DetailMapLegend";
@@ -61,11 +62,14 @@ const CatalogFootprintMap = ({
   const basemapStyle = useCatalogBasemapStyle();
   /** A WMS or WMTS item has no sample: the service draws itself, live. */
   const wmsTiles = catalogServiceTiles(item);
-  /** A raster is drawn by the catalog's raster tiles; it has no sample. */
-  const rasterSource = useMemo(() => catalogRasterSource(item), [item]);
-  const { preview, isLoading } = useCatalogPreview(item.id, !wmsTiles && !rasterSource);
+  /** The item's own data is read from geoapi, which answers it to signed-in users only. */
+  const signedIn = useCatalogPreviewAccess();
+  /** A raster is drawn from geoapi's raster tiles; it has no sample. */
+  const isRaster = catalogKindOf(item, true) === "raster";
+  const rasterSource = useMemo(() => (signedIn ? catalogRasterSource(item) : null), [item, signedIn]);
+  const { preview, isLoading } = useCatalogPreview(item.id, !wmsTiles && !isRaster);
   /** goat-data's tiles: the whole layer at every zoom, where the sample shows a slice. */
-  const tilesUrl = catalogTilesUrl(item);
+  const tilesUrl = signedIn ? catalogTilesUrl(item) : null;
 
   const footprint = useMemo<GeoJSON.FeatureCollection | null>(() => {
     if (!item.geometry) return null;

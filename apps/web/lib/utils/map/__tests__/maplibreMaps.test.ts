@@ -20,9 +20,28 @@ const MAKES_A_MAP =
 
 describe("the shared map options", () => {
   it("route the own label fonts' glyph requests", async () => {
-    const { MAPLIBRE_MAP_OPTIONS } = await import("@/lib/utils/map/maplibre");
+    const { MAPLIBRE_MAP_OPTIONS, mapRequest } = await import("@/lib/utils/map/maplibre");
     const { ownGlyphsRequest } = await import("@/lib/utils/map/glyphs");
-    expect(MAPLIBRE_MAP_OPTIONS.transformRequest).toBe(ownGlyphsRequest);
+    expect(MAPLIBRE_MAP_OPTIONS.transformRequest).toBe(mapRequest);
+    const glyphs = "https://tiles.example/fonts/Noto%20Sans%20Medium/0-255.pbf";
+    expect(ownGlyphsRequest(glyphs, "Glyphs")).toBeDefined();
+    expect(mapRequest(glyphs, "Glyphs")).toEqual(ownGlyphsRequest(glyphs, "Glyphs"));
+    expect(mapRequest("https://tiles.example/data/3/4/2.pbf", "Tile")).toBeUndefined();
+  });
+
+  it("sign the requests of a catalog item's preview, where the catalog page set the sign-in", async () => {
+    const { mapRequest } = await import("@/lib/utils/map/maplibre");
+    const { catalogPreviewRequest, setCatalogPreviewToken } = await import("@/lib/catalog/preview");
+    const { GEOAPI_BASE_URL } = await import("@/lib/constants");
+    const tile = `${GEOAPI_BASE_URL}/collections/catalog:x/tiles/WebMercatorQuad/3/4/2`;
+    expect(mapRequest(tile, "Tile")).toBeUndefined();
+    setCatalogPreviewToken("token");
+    try {
+      expect(mapRequest(tile, "Tile")).toEqual(catalogPreviewRequest(tile));
+      expect(mapRequest(tile, "Tile")?.headers).toEqual({ Authorization: "Bearer token" });
+    } finally {
+      setCatalogPreviewToken(null);
+    }
   });
 });
 

@@ -83,6 +83,8 @@ export type CatalogItemProperties = {
   keywords?: string[] | null;
   version?: string | null;
   "goat:geometryType"?: CatalogGeometryType | null;
+  /** The layer has published tiles: geoapi reads them for its preview (`catalogTilesUrl`). */
+  "goat:tiles"?: boolean | null;
   "goat:geographical_code"?: string | null;
   /** Publisher name, denormalised from the parent collection's `providers`. */
   "goat:publisher"?: string | null;

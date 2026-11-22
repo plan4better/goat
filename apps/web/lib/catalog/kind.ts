@@ -2,6 +2,9 @@ import type { Theme } from "@mui/material";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import { catalogCollectionId } from "@/lib/catalog/preview";
+import { GEOAPI_BASE_URL } from "@/lib/constants";
+import { coverageUrl, imageTilesetUrl } from "@/lib/style/layerSource";
 import { wmsTileTemplate } from "@/lib/utils/externalService";
 import type { CatalogItem } from "@/lib/validations/catalog";
 
@@ -65,24 +68,29 @@ export const catalogServiceTiles = (item: CatalogItem): string | null => {
 };
 
 /**
- * The tile address of a layer's published tiles, served by the catalog one tile
- * at a time (`/assets/{id}/tiles/{z}/{x}/{y}`); `null` without them, when the
- * detail map draws the sample instead.
+ * The tile address of a layer's published tiles, which geoapi reads for the item's collection
+ * (`catalogCollectionId`); `null` for an item without them, when the detail map draws the sample instead.
  */
-export const catalogTilesUrl = (item: CatalogItem): string | null => {
-  const href = (item.assets as Record<string, { href?: string } | null> | undefined)?.tiles?.href;
-  return href && /^https?:\/\//i.test(href) ? `${href.replace(/\/$/, "")}/{z}/{x}/{y}` : null;
-};
+export const catalogTilesUrl = (item: CatalogItem, base: string | undefined = GEOAPI_BASE_URL): string | null =>
+  base && item.properties["goat:tiles"] === true
+    ? `${base}/collections/${catalogCollectionId(item.id)}/tiles/WebMercatorQuad/{z}/{x}/{y}`
+    : null;
 
 /**
- * A raster layer's image tiles and value tiles (`coverage`), as the catalog announces
- * them (`assets.raster`, `/assets/{id}/raster`); `null` for anything else.
+ * A raster item's colored tiles, their description and its value tiles (`coverage`), on the routes geoapi has for a
+ * layer's raster file; `null` for anything else.
  */
-export const catalogRasterSource = (item: CatalogItem): { tiles: string; coverage: string } | null => {
-  const href = (item.assets as Record<string, { href?: string } | null> | undefined)?.raster?.href;
-  if (!href || !/^https?:\/\//i.test(href)) return null;
-  const root = href.replace(/\/$/, "");
-  return { tiles: `${root}/{z}/{x}/{y}.webp`, coverage: `${root}/coverage/tiles/WebMercatorQuad` };
+export const catalogRasterSource = (
+  item: CatalogItem,
+  base: string | undefined = GEOAPI_BASE_URL
+): { tiles: string; tileset: string; coverage: string } | null => {
+  if (!base || catalogKindOf(item, true) !== "raster") return null;
+  const collection = catalogCollectionId(item.id);
+  return {
+    tiles: `${imageTilesetUrl(collection, base)}/{z}/{x}/{y}.webp`,
+    tileset: imageTilesetUrl(collection, base),
+    coverage: coverageUrl(collection, base),
+  };
 };
 
 /**
