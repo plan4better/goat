@@ -18,26 +18,29 @@ MAX_STEP = math.pi / 32
 
 
 def _arc(p0: tuple, p1: tuple, p2: tuple) -> list[tuple]:
-    """Points along the circle through p0, p1, p2, from p0 to p2 via p1."""
-    (ax, ay), (bx, by), (cx, cy) = p0[:2], p1[:2], p2[:2]
-    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-    if abs(d) < 1e-12:  # the three points are on a line
-        return [p0, p2] if p0 != p2 else [p0, p1, p2]
-    ux = (
-        (ax**2 + ay**2) * (by - cy)
-        + (bx**2 + by**2) * (cy - ay)
-        + (cx**2 + cy**2) * (ay - by)
-    ) / d
-    uy = (
-        (ax**2 + ay**2) * (cx - bx)
-        + (bx**2 + by**2) * (ax - cx)
-        + (cx**2 + cy**2) * (bx - ax)
-    ) / d
-    radius = math.hypot(ax - ux, ay - uy)
-    a0, a1, a2 = (math.atan2(y - uy, x - ux) for x, y in ((ax, ay), (bx, by), (cx, cy)))
-    if p0 == p2:  # a full circle: p1 is the opposite point
+    """Points along the circle through p0, p1, p2, from p0 to p2 via p1.
+
+    Computed relative to p0: map coordinates are millions of metres, and
+    their squares leave too few digits for an arc of half a metre."""
+    ox, oy = p0[:2]
+    (bx, by), (cx, cy) = ((p[0] - ox, p[1] - oy) for p in (p1, p2))
+    if p0[:2] == p2[:2]:
+        # A full circle: p1 is the opposite point, the centre lies between.
+        ux, uy = bx / 2, by / 2
         sweep = 2 * math.pi
+        if (ux, uy) == (0.0, 0.0):
+            return [p0[:2], p2[:2]]
     else:
+        d = 2 * (bx * cy - by * cx)
+        if abs(d) < 1e-12:  # the three points are on a line
+            return [p0[:2], p2[:2]]
+        b2, c2 = bx**2 + by**2, cx**2 + cy**2
+        ux = (cy * b2 - by * c2) / d
+        uy = (bx * c2 - cx * b2) / d
+        sweep = 0.0
+    radius = math.hypot(ux, uy)
+    a0, a1, a2 = (math.atan2(y - uy, x - ux) for x, y in ((0, 0), (bx, by), (cx, cy)))
+    if not sweep:
         ccw = (a1 - a0) % (2 * math.pi) < (a2 - a0) % (2 * math.pi)
         sweep = (a2 - a0) % (2 * math.pi)
         if not ccw:
@@ -45,8 +48,8 @@ def _arc(p0: tuple, p1: tuple, p2: tuple) -> list[tuple]:
     steps = max(2, math.ceil(abs(sweep) / MAX_STEP))
     points = [
         (
-            ux + radius * math.cos(a0 + sweep * i / steps),
-            uy + radius * math.sin(a0 + sweep * i / steps),
+            ox + ux + radius * math.cos(a0 + sweep * i / steps),
+            oy + uy + radius * math.sin(a0 + sweep * i / steps),
         )
         for i in range(steps + 1)
     ]
