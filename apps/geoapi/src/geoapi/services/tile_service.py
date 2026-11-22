@@ -30,6 +30,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -189,6 +190,24 @@ _TEMP_MISS_TTL_S = 30
 # Filters prepared for stored tiles, by layer, tiles version and request
 # filter. Small: each holds its area twice as a geometry (PreparedFilter).
 _STORED_FILTERS_MAX_SIZE = 64
+
+
+#: A layer id as tile files carry it in their name: 32 hex digits.
+_LAYER_ID = re.compile(r"[0-9a-fA-F]{32}")
+
+
+def _layer_tiles_file(directory: Path, layer_id: str) -> Path | None:
+    """The tile file `t_<id>.pmtiles` of a layer in `directory`; None for an id
+    that is no layer id, so an id from a request never names a file outside the
+    directory."""
+    normalized = layer_id.replace("-", "")
+    if not _LAYER_ID.fullmatch(normalized):
+        return None
+    base = os.path.normpath(directory)
+    path = os.path.normpath(os.path.join(base, f"t_{normalized}.pmtiles"))
+    if not path.startswith(base + os.sep):
+        return None
+    return Path(path)
 
 
 def _tiles_version(pmtiles_path: Path, label: bool) -> str | None:
@@ -954,21 +973,22 @@ class TileService:
 
         # No `kind` here, so both trees are candidates. The catalog one is a
         # single stat() and holds at most the promoted layers, so it goes first.
-        catalog = self.catalog_tiles_dir / f"t_{layer_id_normalized}.pmtiles"
-        if catalog.exists():
-            self._pmtiles_path_cache[layer_id_normalized] = catalog
-            return catalog
-
-        flat = self.tiles_data_dir / f"t_{layer_id_normalized}.pmtiles"
-        if flat.exists():
-            self._pmtiles_path_cache[layer_id_normalized] = flat
-            return flat
+        for directory in (self.catalog_tiles_dir, self.tiles_data_dir):
+            path = _layer_tiles_file(directory, layer_id)
+            if path is None:
+                return None
+            if path.exists():
+                self._pmtiles_path_cache[layer_id_normalized] = path
+                return path
 
         return None
 
     def _search_temp_pmtiles(self, layer_id: str) -> Path | None:
         """Search the workflow temp tree, nested by user, workflow and node."""
         layer_id_normalized = layer_id.replace("-", "")
+        # The id goes into a glob pattern: only a layer id may.
+        if not _LAYER_ID.fullmatch(layer_id_normalized):
+            return None
         if layer_id_normalized in self._temp_pmtiles_misses:
             return None
 
