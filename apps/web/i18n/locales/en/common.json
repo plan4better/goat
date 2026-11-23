@@ -5806,6 +5806,8 @@
   "fetch_features_section_features": "Features",
   "fetch_features_section_result": "Result",
   "fetch_features_section_modes": "Modes",
+  "fetch_features_exclude_long_distance": "Exclude long-distance lines",
+  "fetch_features_exclude_long_distance_tip": "Lines whose trips stop over 20 km apart on average, or run over 150 km stopping less than every 12 km. Removed with all their trips.",
   "fetch_features_pt_modes_needed": "Choose at least one mode",
   "fetch_features_theme": "Theme",
   "fetch_features_quick_picks": "Quick picks",

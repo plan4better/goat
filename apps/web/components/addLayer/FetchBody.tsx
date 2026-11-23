@@ -1,6 +1,7 @@
 "use client";
 
 import ErrorOutlineOutlined from "@mui/icons-material/ErrorOutlineOutlined";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import {
   Box,
   Button,
@@ -15,6 +16,7 @@ import {
   Popper,
   Skeleton,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
@@ -36,7 +38,13 @@ import { MapProvider } from "react-map-gl/maplibre";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { type MirrorValue, getMirrorColumns, getMirrorSample, getMirrorValues } from "@/lib/api/processes";
+import {
+  type MirrorValue,
+  getMirrorColumns,
+  getMirrorSample,
+  getMirrorValues,
+  usePtNetworkCoverageMask,
+} from "@/lib/api/processes";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -60,6 +68,7 @@ import { usePTModeItems } from "@/hooks/map/ToolsHooks";
 
 import UploadDestinationPill from "@/components/addLayer/UploadDestinationPill";
 import { SpatialPickerMap } from "@/components/dashboard/catalog/CatalogSpatialPicker";
+import MaskLayer from "@/components/map/MaskLayer";
 import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 import Selector from "@/components/map/panels/common/Selector";
 import { FieldLabel, SettingsColumn, SettingsSection } from "@/components/map/panels/common/SettingsColumn";
@@ -232,6 +241,8 @@ const AreaSettings = ({ flow }: { flow: FetchFlow["fetch"] }) => {
  * edited by the draw tool alone). */
 const AreaMap = ({ flow }: { flow: FetchFlow["fetch"] }) => {
   const theme = useTheme();
+  // Where the public transport network is: a cut outside it holds no lines.
+  const { mask } = usePtNetworkCoverageMask(flow.source === "pt_network");
   const { drawing, outline } = useAreaTools();
   // The area follows the one size state, as the estimate and the button do: grey until the first
   // answer, then green, or orange while the area holds more than a fetch takes.
@@ -280,6 +291,7 @@ const AreaMap = ({ flow }: { flow: FetchFlow["fetch"] }) => {
       cursor={drawing ? "crosshair" : undefined}
       onMoveEnd={measure}
       onLoad={measure}
+      layers={mask && <MaskLayer mask={mask} id="fetch-pt-network-coverage" />}
       sx={{ flex: 1, minHeight: 280 }}
       overlay={
         <>
@@ -1675,6 +1687,20 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
                 {flow.source === "pt_network" && (
                   <SettingsSection label={t("fetch_features_section_modes")} icon={ICON_NAME.BUS}>
                     <PtModes flow={flow} />
+                    {/* Laid out as the tools lay out a boolean input: label left, switch right. */}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Typography variant="body2">{t("fetch_features_exclude_long_distance")}</Typography>
+                        <Tooltip title={t("fetch_features_exclude_long_distance_tip")} placement="top" arrow>
+                          <HelpOutlineIcon sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }} />
+                        </Tooltip>
+                      </Stack>
+                      <Switch
+                        size="small"
+                        checked={flow.excludeLongDistance}
+                        onChange={(event) => flow.setExcludeLongDistance(event.target.checked)}
+                      />
+                    </Stack>
                   </SettingsSection>
                 )}
                 {isNetwork ? null : (

@@ -19,8 +19,8 @@ lines through the stops is also what outgrows the import's memory bound).
 they came from. It is written last, so its presence means the tables are
 complete.
 
-Built where a ``public_transport`` base data version is built, then published
-with it (``python -m goatlib.tasks.sync_base_data publish``)::
+Built where a ``public_transport`` base data version is built, and published
+with it::
 
     python -m goatlib.bundles.importers.pt_network.store gtfs.zip \\
         <version>/pt_network/gtfs_tables
@@ -60,6 +60,21 @@ _SORT: Dict[str, str] = {
 def tables_dir(pt_network_base_path: str) -> Path:
     """Where the tables lie: next to the timetable (``pt_network_base_path``)."""
     return Path(pt_network_base_path).parent / TABLES_DIRNAME
+
+
+#: The network's coverage as a mask: one polygon over the world with the areas
+#: the network serves cut out of it, at the root of its base data version, next
+#: to ``pt_network/``. Written by the network build; a version may lack one.
+COVERAGE_MASK_FILENAME = "pt_geofence_mask.geojson"
+
+
+def coverage_mask_path(pt_network_base_path: str) -> Path:
+    """Where the network's coverage mask lies: at the root of the version that
+    holds the timetable (``pt_network_base_path``). The timetable path is
+    resolved first, as an installed version is reached through a link
+    (``pt_network -> .base/public_transport/<version>/pt_network``, see
+    ``tasks/sync_base_data``)."""
+    return Path(pt_network_base_path).resolve().parent.parent / COVERAGE_MASK_FILENAME
 
 
 def _sha256(path: str) -> str:

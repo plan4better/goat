@@ -46,6 +46,10 @@ class TripCountStationTool(PTToolBase):
         ...     reference_area_path="path/to/area.geojson",
         ...     stops_path="path/to/stops.parquet",
         ...     stop_times_path="path/to/stop_times.parquet",
+        ...     trips_path="path/to/trips.parquet",
+        ...     routes_path="path/to/routes.parquet",
+        ...     calendar_dates_path="path/to/calendar_dates.parquet",
+        ...     service_date="2026-11-24",
         ...     time_window=PTTimeWindow(
         ...         weekday="weekday",
         ...         from_time=25200,  # 07:00
@@ -81,34 +85,19 @@ class TripCountStationTool(PTToolBase):
         )
         ref_geom = ref_meta.geometry_column
 
-        # Step 2: Import GTFS data (shared from PTToolBase). A bundle brings the
-        # feed as published, so its tables are joined for the chosen date; the
-        # shipped feed arrives pre-digested and is read as it is.
-        if params.bundle_stops_path and params.service_date:
-            logger.info("Importing GTFS stops from bundle...")
-            self._import_bundle_gtfs_stops(str(params.bundle_stops_path))
-
-            logger.info(
-                "Importing GTFS stop_times from bundle for %s...", params.service_date
-            )
-            self._import_bundle_gtfs_stop_times(
-                str(params.bundle_stop_times_path),
-                str(params.bundle_trips_path),
-                str(params.bundle_routes_path),
-                params.service_date,
-                str(params.bundle_calendar_path)
-                if params.bundle_calendar_path
-                else None,
-                str(params.bundle_calendar_dates_path)
-                if params.bundle_calendar_dates_path
-                else None,
-            )
-        else:
-            logger.info("Importing GTFS stops...")
-            self._import_gtfs_stops(str(params.stops_path))
-
-            logger.info("Importing GTFS stop_times...")
-            self._import_gtfs_stop_times(str(params.stop_times_path))
+        # Step 2: Import the feed's GTFS tables for the date (shared from
+        # PTToolBase).
+        logger.info("Importing GTFS stops...")
+        self._import_gtfs_stops(str(params.stops_path))
+        logger.info("Importing GTFS stop_times for %s...", params.service_date)
+        self._import_gtfs_stop_times(
+            str(params.stop_times_path),
+            str(params.trips_path),
+            str(params.routes_path),
+            params.service_date,
+            str(params.calendar_path) if params.calendar_path else None,
+            str(params.calendar_dates_path) if params.calendar_dates_path else None,
+        )
 
         # Step 3: Get stations within reference area (shared from PTToolBase)
         logger.info("Finding stations within reference area...")

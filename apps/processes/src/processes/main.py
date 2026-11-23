@@ -28,7 +28,7 @@ from processes.ducklake import (
     search_ducklake_manager,
 )
 from processes.models import HealthCheck
-from processes.routers import processes_router, workflows_router
+from processes.routers import processes_router, pt_network_router, workflows_router
 from processes.services.access import close_pool as close_access_pool
 from processes.services.windmill_client import windmill_client
 
@@ -125,6 +125,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # Include routers
 app.include_router(processes_router)
 app.include_router(workflows_router)
+app.include_router(pt_network_router)
 
 
 @app.get(

@@ -80,6 +80,7 @@ export const SpatialPickerMap = ({
   onMoveEnd,
   onLoad,
   overlay,
+  layers,
   shapeColor = SHAPE_COLOR,
   cursor,
   sx,
@@ -93,6 +94,8 @@ export const SpatialPickerMap = ({
   onLoad?: MapProps["onLoad"];
   /** Drawn over the map box. */
   overlay?: ReactNode;
+  /** Map layers drawn under the picked area, such as where a source has data. */
+  layers?: ReactNode;
   /** The drawn area's colour. */
   shapeColor?: string;
   /** Set on the map itself: the map's own canvas style would win over one set on a box around it. */
@@ -141,6 +144,7 @@ export const SpatialPickerMap = ({
         mapStyle={basemapStyle}
         // Ours replaces it, at the end of the map's children.
         attributionControl={false}>
+        {layers}
         <DrawControl displayControlsDefault={false} defaultMode={MapboxDraw.constants.modes.SIMPLE_SELECT} />
         <Source id="spatial-draft" type="geojson" data={features}>
           <MapLayer

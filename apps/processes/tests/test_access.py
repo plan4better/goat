@@ -173,7 +173,7 @@ class TestLocations:
         [
             ("buffer", "input_path"),
             ("clip", "overlay_path"),
-            ("trip_count", "stops_path"),
+            ("trip_count", "reference_area_path"),
         ],
     )
     def test_a_file_location_set_by_the_caller_is_refused(

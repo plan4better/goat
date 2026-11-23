@@ -257,6 +257,9 @@ export type FetchFlowState = {
   /** The public transport network's modes whose lines are kept: all to begin with. */
   ptModes: string[];
   setPtModes: (modes: string[]) => void;
+  /** Leave out the network's long-distance lines, whatever their mode: on to begin with. */
+  excludeLongDistance: boolean;
+  setExcludeLongDistance: (exclude: boolean) => void;
 };
 
 export type FetchFlow = FlowController & { fetch: FetchFlowState };
@@ -362,6 +365,7 @@ export const useFetchFlow = ({
   const [writtenSql, setWrittenSql] = useState<string | null>(null);
   const [customName, setCustomName] = useState<string | null>(null);
   const [ptModes, setPtModes] = useState<string[]>(ALL_PT_MODES);
+  const [excludeLongDistance, setExcludeLongDistance] = useState(true);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>();
   const [isBusy, setIsBusy] = useState(false);
   const nextId = useRef((seed?.filters.length ?? 0) + 1);
@@ -475,6 +479,7 @@ export const useFetchFlow = ({
     setSql("");
     setCustomName(null);
     setPtModes(ALL_PT_MODES);
+    setExcludeLongDistance(true);
     setIsBusy(false);
     setSelectedFolder(undefined);
     folderInitialized.current = false;
@@ -630,6 +635,7 @@ export const useFetchFlow = ({
             area,
             // Every mode is no filter: only a narrower choice is sent.
             ...(source === "pt_network" && ptModes.length < ALL_PT_MODES.length ? { pt_modes: ptModes } : {}),
+            ...(source === "pt_network" && excludeLongDistance ? { exclude_long_distance: true } : {}),
           })
         : await executeProcessAsync("fetch_data", {
             user_id: userProfile?.id,
@@ -661,6 +667,7 @@ export const useFetchFlow = ({
     firstSizePending,
     isNetwork,
     ptModes,
+    excludeLongDistance,
     userProfile?.id,
     projectId,
     fetchParams,
@@ -819,6 +826,8 @@ export const useFetchFlow = ({
       inWorkflow: !!workflow,
       ptModes,
       setPtModes,
+      excludeLongDistance,
+      setExcludeLongDistance,
     },
   };
 };

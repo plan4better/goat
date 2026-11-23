@@ -169,6 +169,7 @@ vi.mock("@/lib/api/processes", () => ({
   getMirrorValues: vi.fn(),
   getMirrorColumns: vi.fn(),
   getMirrorSample: vi.fn(),
+  usePtNetworkCoverageMask: () => ({ mask: undefined, isLoading: false }),
 }));
 vi.mock("@/lib/api/content", () => ({ refreshContentFeed: vi.fn(), useSpaces: () => ({ spaces: [] }) }));
 vi.mock("@/lib/api/folders", () => ({

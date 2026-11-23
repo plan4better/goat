@@ -3,7 +3,7 @@
 A fake zone (channels.json + versioned data sets with manifests) is served over
 real HTTP with range support, or read as a plain folder, and synced into a
 temporary data dir. What is under test is the contract the tools rely on: the
-legacy paths (`street_network/`, `gtfs/`, ...) resolve to a verified version,
+legacy paths (`street_network/`, `pt_network/`, ...) resolve to a verified version,
 switching versions never exposes a partial one, and a bad publication never
 replaces a good install.
 """
@@ -89,7 +89,7 @@ STREET_V1 = {
     "nodes/h3_3=8097/data_0.parquet": b"nodes-8097-v1",
 }
 PT_V1 = {
-    "gtfs/stops.parquet": b"stops-v1",
+    "pt_network/gtfs_tables/stops.parquet": b"stops-v1",
     "pt_network/gtfs.bin": b"timetable-v1" * 100,
 }
 
@@ -166,7 +166,9 @@ def run(url: str, data_dir: Path, **kwargs: Any) -> dict[str, Any]:
 
 def installed(data_dir: Path, dataset: str) -> str:
     """The version a legacy path currently resolves to."""
-    link = {"street_network": "street_network", "public_transport": "gtfs"}[dataset]
+    link = {"street_network": "street_network", "public_transport": "pt_network"}[
+        dataset
+    ]
     return Path(os.readlink(data_dir / link)).parts[2]
 
 
@@ -195,9 +197,11 @@ def test_fresh_install_links_the_legacy_paths_to_the_version(
     assert (
         data_dir / "street_network/edges/h3_3=8097/data_0.parquet"
     ).read_bytes() == b"edges-8097-v1"
-    assert (data_dir / "gtfs/stops.parquet").read_bytes() == b"stops-v1"
+    assert (
+        data_dir / "pt_network/gtfs_tables/stops.parquet"
+    ).read_bytes() == b"stops-v1"
     assert (data_dir / "pt_network/gtfs.bin").read_bytes() == b"timetable-v1" * 100
-    for link in ("street_network", "gtfs", "pt_network"):
+    for link in ("street_network", "pt_network"):
         assert (data_dir / link).is_symlink()
 
 
@@ -387,7 +391,7 @@ def test_public_transport_needs_the_street_network_it_was_built_against(
         run(server.url, data_dir)
 
     assert installed(data_dir, "street_network") == "2026-09-17"
-    assert not (data_dir / "gtfs").exists()
+    assert not (data_dir / "pt_network").exists()
 
 
 def test_an_existing_directory_is_left_alone_without_adopt(
@@ -646,142 +650,3 @@ def test_the_windmill_script_defaults_are_plain_data() -> None:
     assert (
         SyncBaseDataParams().sources[0].url == "https://goat-base-data.plan4better.de/"
     )
-
-
-# ─── publish ───────────────────────────────────────────────────────────────
-
-
-def _version_folder(root: Path, files: dict[str, bytes]) -> Path:
-    for rel, content in files.items():
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_bytes(content)
-    return root
-
-
-def test_a_published_version_is_what_a_sync_installs(
-    zone: Path, data_dir: Path, tmp_path: Path
-) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    base.publish(
-        _version_folder(tmp_path / "street", STREET_V1),
-        zone.as_uri() + "/",
-        dataset="street_network",
-        version="2026-09-17",
-        channel="stable",
-    )
-    tables = {"pt_network/gtfs_tables/stops.parquet": b"stops-table"}
-    base.publish(
-        _version_folder(tmp_path / "pt", {**PT_V1, **tables}),
-        zone.as_uri() + "/",
-        dataset="public_transport",
-        version="2026-11-02",
-        requires={"street_network": "2026-09-17"},
-        coverage={"name": "Test", "bbox": [6.0, 46.0, 15.0, 55.0]},
-        channel="stable",
-    )
-
-    run(zone.as_uri() + "/", data_dir)
-
-    assert installed(data_dir, "public_transport") == "2026-11-02"
-    assert (data_dir / "pt_network/gtfs_tables/stops.parquet").read_bytes() == (
-        b"stops-table"
-    )
-    manifest = json.loads(
-        (zone / "public_transport/2026-11-02/manifest.json").read_text()
-    )
-    assert manifest["requires"] == {"street_network": "2026-09-17"}
-    assert manifest["coverage"]["name"] == "Test"
-    assert {f["path"] for f in manifest["files"]} == set(PT_V1) | set(tables)
-
-
-def test_publishing_lists_a_version_without_moving_the_channel(
-    zone: Path, tmp_path: Path
-) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    for version, channel in (("2026-09-17", "stable"), ("2026-10-07", None)):
-        base.publish(
-            _version_folder(tmp_path / version, STREET_V1),
-            zone.as_uri() + "/",
-            dataset="street_network",
-            version=version,
-            channel=channel,
-        )
-    channels = json.loads((zone / "channels.json").read_text())
-    assert channels["channels"]["stable"]["street_network"] == "2026-09-17"
-    assert [v["version"] for v in channels["versions"]["street_network"]] == [
-        "2026-09-17",
-        "2026-10-07",
-    ]
-
-
-def test_a_published_version_is_never_overwritten(zone: Path, tmp_path: Path) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    folder = _version_folder(tmp_path / "pt", PT_V1)
-    base.publish(folder, zone.as_uri() + "/", dataset="public_transport", version="v1")
-    with pytest.raises(ValueError, match="immutable"):
-        base.publish(
-            folder, zone.as_uri() + "/", dataset="public_transport", version="v1"
-        )
-
-
-def test_no_channel_moves_to_a_version_missing_a_linked_folder(
-    zone: Path, tmp_path: Path
-) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    # A server following the channel switches every link of the data set, and
-    # gtfs/ would point at nothing.
-    folder = _version_folder(
-        tmp_path / "pt", {k: v for k, v in PT_V1.items() if k.startswith("pt_")}
-    )
-    with pytest.raises(ValueError, match="has no gtfs"):
-        base.publish(
-            folder,
-            zone.as_uri() + "/",
-            dataset="public_transport",
-            version="v1",
-            channel="stable",
-        )
-    assert not (zone / "public_transport").exists()
-
-    # Without a channel it is listed, for a server to pin.
-    base.publish(folder, zone.as_uri() + "/", dataset="public_transport", version="v1")
-    channels = json.loads((zone / "channels.json").read_text())
-    assert "public_transport" not in channels.get("channels", {}).get("stable", {})
-
-
-def test_files_a_data_set_does_not_read_are_refused(zone: Path, tmp_path: Path) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    folder = _version_folder(tmp_path / "pt", {**PT_V1, "notes/readme.txt": b"x"})
-    with pytest.raises(ValueError, match="notes/readme.txt"):
-        base.publish(
-            folder, zone.as_uri() + "/", dataset="public_transport", version="v1"
-        )
-    assert not (zone / "public_transport").exists()
-
-
-def test_a_published_partitioned_version_syncs_by_region(
-    zone: Path, data_dir: Path, tmp_path: Path
-) -> None:
-    from goatlib.tasks import sync_base_data as base
-
-    base.publish(
-        _version_folder(tmp_path / "street", STREET_V1),
-        zone.as_uri() + "/",
-        dataset="street_network",
-        version="2026-09-17",
-        channel="stable",
-    )
-    manifest = json.loads(
-        (zone / "street_network/2026-09-17/manifest.json").read_text()
-    )
-    assert {f["h3_3"] for f in manifest["files"]} == {8097, 7954}
-
-    run(zone.as_uri() + "/", data_dir, datasets=["street_network"], h3_3=[8097])
-
-    assert (data_dir / "street_network/edges/h3_3=8097/data_0.parquet").exists()
-    assert not (data_dir / "street_network/edges/h3_3=7954").exists()

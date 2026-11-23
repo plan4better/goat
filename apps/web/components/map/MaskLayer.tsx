@@ -1,7 +1,8 @@
 import { Layer, Source } from "react-map-gl/maplibre";
 
 type MaskLayerProps = {
-  maskLayerUrl: string;
+  /** The mask: a GeoJSON URL, or the GeoJSON itself. */
+  mask: string | GeoJSON.GeoJSON;
   maskLayerColor?: string;
   id: string;
   beforeId?: string;
@@ -11,7 +12,7 @@ const MaskLayer = (props: MaskLayerProps) => {
   return (
     <>
       {/* MASK LAYER  (Shows where tool computation is available*/}
-      <Source type="geojson" data={props.maskLayerUrl}>
+      <Source type="geojson" data={props.mask}>
         <Layer
           id={props.id}
           type="fill"

@@ -4,11 +4,12 @@ OGC API - Processes implementation for GOAT's geospatial analysis tools.
 
 ## Overview
 
-This service implements [OGC API - Processes - Part 1: Core (OGC 18-062r2)](https://docs.ogc.org/is/18-062r2/18-062r2.html). It does four things:
+This service implements [OGC API - Processes - Part 1: Core (OGC 18-062r2)](https://docs.ogc.org/is/18-062r2/18-062r2.html). It does five things:
 
 - **Runs analytics tools asynchronously.** An execution request becomes a Windmill job (`f/goat/tools/<tool>`); the client polls `/jobs/{jobId}` for status and the result.
-- **Answers short statistics queries synchronously** (feature counts, class breaks, unique values, histograms, layer search, SQL preview, style checks). These run in-process against DuckLake and return in the response.
-- **Lists what the OpenStreetMap and Overture mirror holds** for an area (`mirror-values`: tags, attributes and their values for Add layer › Integrate dataset). The one synchronous query that reads S3 instead of DuckLake: the mirror sits in the catalog bucket (`mirror/<osm|overture>/`), so processes needs `CATALOG_S3_*` like the workers. The layout it relies on is in the catalog README's harvester contract. For GOAT's street and public transport networks it answers only the size, from the area's H3-6 cells: the networks sit on the workers' disks, which processes cannot read (Helm mounts no data into it).
+- **Answers short statistics queries synchronously** (feature counts, class breaks, unique values, histograms, layer search, SQL preview). These run in-process against DuckLake and return in the response.
+- **Lists what the OpenStreetMap and Overture mirror holds** for an area (`mirror-values`: tags, attributes and their values for Add layer › Integrate dataset). The one synchronous query that reads S3 instead of DuckLake: the mirror sits in the catalog bucket (`mirror/<osm|overture>/`), so processes needs `CATALOG_S3_*` like the workers. The layout it relies on is in the catalog README's harvester contract. For GOAT's street and public transport networks it answers only the size, from the area's H3-6 cells: the networks are the workers' data, which processes reads only where it shares their data volume.
+- **Serves the default public transport network's coverage mask** (`GET /pt-network/coverage-mask`), which the network build writes at the root of its base data version (`pt_geofence_mask.geojson`, found from `PT_NETWORK_BASE_PATH`), so the dialog that cuts the network can show where the network is. Read from the shared data volume, so it is there only where processes mounts it (compose, and Helm with `data.enabled`); elsewhere, and for a network built without a mask, it answers `null` (not 404: no mask is a normal state, and a 404 shows as a failed request in the browser) and the dialog shows no mask.
 - **Checks and runs workflows.** The `/workflows` routes list a workflow's issues, submit a whole workflow graph as one `workflow_runner` job (removing the previous run's per-node temporary outputs first), finalize its temporary results into layers, and read those outputs.
 
 The full, current route list is the OpenAPI document at `/api/docs`.

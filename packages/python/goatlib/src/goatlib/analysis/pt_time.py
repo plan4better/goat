@@ -23,13 +23,16 @@ from datetime import date as date_type
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict
 
-#: Anchor dates for the default network — a Monday, a Saturday and a Sunday
+#: Anchor dates for the default network — a Tuesday, a Saturday and a Sunday
 #: inside its timetable's span. Only meaningful for that timetable: an uploaded
-#: feed covering, say, March to June 2026 contains none of them.
+#: feed covering, say, March to June 2026 contains none of them. They must lie
+#: inside every default network in use: the Europe network built from feeds of
+#: 19 Nov 2026 runs 28 days, to 16 Dec; the networks built from May 2026 run to
+#: 31 Dec 2026. Move them with the next network whose window they leave.
 DEFAULT_NETWORK_ANCHORS: Dict[str, date_type] = {
-    "weekday": date_type(2026, 6, 16),
-    "saturday": date_type(2026, 6, 20),
-    "sunday": date_type(2026, 6, 21),
+    "weekday": date_type(2026, 11, 24),
+    "saturday": date_type(2026, 11, 28),
+    "sunday": date_type(2026, 11, 29),
 }
 
 #: 07:00, when neither a window nor a time was given.

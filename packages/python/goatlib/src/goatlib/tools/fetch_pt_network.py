@@ -50,6 +50,15 @@ class FetchPtNetworkParams(ToolInputBase):
         description="Modes whose lines are kept, as the routing tools name them (none: all)",
         json_schema_extra=ui_field(section="input", field_order=2, hidden=True),
     )
+    exclude_long_distance: bool = Field(
+        False,
+        description=(
+            "Leave out long-distance lines (high-speed and InterCity trains, night "
+            "trains, coaches, long ferries), judged by how far their trips travel "
+            "and how far apart they stop, whatever their mode"
+        ),
+        json_schema_extra=ui_field(section="input", field_order=3, hidden=True),
+    )
     folder_id: str = Field(
         ...,
         description="Folder the bundle and its layers are created in",
@@ -84,6 +93,7 @@ class FetchPtNetworkRunner(BundleImportRunner):
         result_bundle_name: Optional[str] = None,
         project_id: Optional[str] = None,
         pt_modes: Optional[list[str]] = None,
+        exclude_long_distance: bool = False,
     ) -> Dict[str, Any]:
         assert self.settings is not None, "init_from_env()/init() must run first"
         pool = await self.get_postgres_pool()
@@ -118,6 +128,7 @@ class FetchPtNetworkRunner(BundleImportRunner):
                         store_dir=str(store),
                         workdir=workdir,
                         modes=pt_modes,
+                        exclude_long_distance=exclude_long_distance,
                     )
                 finally:
                     con.close()
@@ -158,5 +169,6 @@ def main(params: FetchPtNetworkParams) -> dict:
             result_bundle_name=params.result_bundle_name,
             project_id=params.project_id,
             pt_modes=[m.value for m in params.pt_modes] if params.pt_modes else None,
+            exclude_long_distance=params.exclude_long_distance,
         )
     )

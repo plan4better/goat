@@ -5814,6 +5814,8 @@
   "fetch_features_section_features": "Objekte",
   "fetch_features_section_result": "Ergebnis",
   "fetch_features_section_modes": "Verkehrsmittel",
+  "fetch_features_exclude_long_distance": "Fernverkehrslinien ausschließen",
+  "fetch_features_exclude_long_distance_tip": "Linien mit im Schnitt über 20 km zwischen Halten, oder über 150 km Fahrt mit Halten seltener als alle 12 km. Werden mit allen Fahrten entfernt.",
   "fetch_features_pt_modes_needed": "Mindestens ein Verkehrsmittel wählen",
   "fetch_features_theme": "Thema",
   "fetch_features_quick_picks": "Schnellauswahl",

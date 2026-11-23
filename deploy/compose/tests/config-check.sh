@@ -78,6 +78,9 @@ check_common() {
   # GOAT_CA_BUNDLE and the same folders it may point into.
   jq -e '.services as $s | $s.assistant.environment | has("GOAT_CA_BUNDLE") and .GOAT_CA_BUNDLE == $s.core.environment.GOAT_CA_BUNDLE' <<<"$json" >/dev/null || fail "assistant GOAT_CA_BUNDLE differs from core"
   jq -e '.services as $s | [$s.assistant.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $a | [$s.core.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $c | ($a | length) == 2 and $a == $c' <<<"$json" >/dev/null || fail "assistant mounts the CA folders unlike core"
+  # processes serves the public transport network's coverage mask from next
+  # to the timetable the workers route on, read from the same volume.
+  jq -e '.services as $s | $s.processes.environment.PT_NETWORK_BASE_PATH == $s["windmill-worker-tools"].environment.PT_NETWORK_BASE_PATH and ($s.processes.volumes | any(.source == "goat-data" and .target == "/app/data"))' <<<"$json" >/dev/null || fail "processes reads another public transport network than the workers"
   # geoapi and processes (raster files over HTTPS, S3) get the same CA and
   # folders, and start through init/ca/ca-bundle.sh, which builds the file
   # GDAL and boto3 trust; the command is each image's own CMD.
