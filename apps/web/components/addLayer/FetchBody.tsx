@@ -45,7 +45,6 @@ import {
   getMirrorValues,
   usePtNetworkCoverageMask,
 } from "@/lib/api/processes";
-
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -68,7 +67,6 @@ import {
 import { usePTModeItems } from "@/hooks/map/ToolsHooks";
 
 import UploadDestinationPill from "@/components/addLayer/UploadDestinationPill";
-
 import { SpatialPickerMap } from "@/components/dashboard/catalog/CatalogSpatialPicker";
 import MaskLayer from "@/components/map/MaskLayer";
 import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
