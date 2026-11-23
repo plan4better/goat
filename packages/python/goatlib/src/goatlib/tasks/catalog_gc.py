@@ -58,6 +58,7 @@ class CatalogGCOutput(BaseModel):
 
     candidates: int = 0
     deleted: int = 0
+    bundles_deleted: int = 0
     files_removed: int = 0
     errors: list[str] = Field(default_factory=list)
     dry_run: bool = False
@@ -107,6 +108,27 @@ class CatalogGCTask:
             **self.settings.postgres_connect_args(TASKS_APPLICATION_NAME),
         )
         try:
+            bundles = f"""
+                {schema}.bundle b
+                WHERE b.catalog_external_uid IS NOT NULL
+                  AND b.updated_at < NOW() - make_interval(hours => $1)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {schema}.layer_project_group g
+                      WHERE g.bundle_id = b.id
+                  )
+            """
+            if params.dry_run:
+                out.bundles_deleted = await conn.fetchval(
+                    f"SELECT count(*) FROM {bundles}", params.grace_hours
+                )
+            else:
+                out.bundles_deleted = len(
+                    await conn.fetch(
+                        f"DELETE FROM {bundles} RETURNING b.id", params.grace_hours
+                    )
+                )
+            logger.info("Catalog GC: %d unused catalog bundle(s)", out.bundles_deleted)
+
             rows = await conn.fetch(
                 f"""
                 SELECT l.id

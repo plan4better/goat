@@ -273,30 +273,35 @@ async def promote_bundle(
     first add and reused after; members are attached on every add, so one the
     catalog cleanup removed comes back."""
     async with conn.transaction():
-        bundle_id = await conn.fetchval(
-            f"""
-            INSERT INTO "{schema}".bundle
-                (name, bundle_type, status, catalog_external_uid, catalog_version, updated_at)
-            VALUES ($1, $2, 'ready', $3, $4, now())
-            ON CONFLICT (catalog_external_uid, catalog_version)
-                WHERE catalog_external_uid IS NOT NULL
-            DO NOTHING
-            RETURNING id
-            """,
-            name,
-            bundle_type,
-            dataset_id,
-            version,
-        )
-        if bundle_id is None:
+        # Twice at most: the cleanup may delete an unused bundle between the
+        # conflicting INSERT and the UPDATE, and then the INSERT wins.
+        for _ in range(2):
             bundle_id = await conn.fetchval(
                 f"""
-                SELECT id FROM "{schema}".bundle
+                INSERT INTO "{schema}".bundle
+                    (name, bundle_type, status, catalog_external_uid, catalog_version, updated_at)
+                VALUES ($1, $2, 'ready', $3, $4, now())
+                ON CONFLICT (catalog_external_uid, catalog_version)
+                    WHERE catalog_external_uid IS NOT NULL
+                DO NOTHING
+                RETURNING id
+                """,
+                name,
+                bundle_type,
+                dataset_id,
+                version,
+            ) or await conn.fetchval(
+                # Touched like a reused layer, so the catalog cleanup spares it.
+                f"""
+                UPDATE "{schema}".bundle SET updated_at = now()
                 WHERE catalog_external_uid = $1 AND catalog_version = $2
+                RETURNING id
                 """,
                 dataset_id,
                 version,
             )
+            if bundle_id is not None:
+                break
         await conn.executemany(
             f"""
             INSERT INTO "{schema}".bundle_layer (bundle_id, layer_id, role)
