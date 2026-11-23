@@ -5,6 +5,7 @@ and the step that hands the bundle's timetable and linkage to the analysis
 params. Each tool used to carry its own copy of all three.
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +131,118 @@ def fetch_gtfs_tables(
                 source.export_layer_to_parquet(layer_id=layer_id, user_id=user_id)
             )
     return paths
+
+
+def cut_network_tables(
+    tables_dir: "str | Path",
+    reference_area_path: "str | Path",
+    service_date: str,
+    workdir: "str | Path",
+) -> "dict[str, str]":
+    """The default network's GTFS tables (``pt_network/gtfs_tables``), cut to
+    what a count in ``reference_area_path`` on ``service_date`` reads, as
+    parquet by role: the shape ``fetch_gtfs_tables`` gives a bundle's.
+
+    The network is a continent's: read whole, the count joins hundreds of
+    millions of stop times to every trip and route. So the cut goes first,
+    smallest table first: the area's stops and the date's services, then only
+    their stop times, and only the trips and routes those name. Services are
+    resolved to the date here, so what is returned states them as added on it
+    (``calendar_dates``), whichever calendar file the network used.
+    """
+    import duckdb
+
+    from goatlib.analysis.accessibility.base import active_services_sql
+    from goatlib.bundles.importers.base import bound_duckdb
+    from goatlib.bundles.importers.pt_network.store import read_store
+    from goatlib.io.config import parquet_copy_options
+
+    info = read_store(tables_dir)
+    src = {t["role"]: t["path"].replace("'", "''") for t in info["tables"]}
+    missing = [r for r in ("stops", "stop_times", "trips", "routes") if r not in src]
+    if missing:
+        raise ValueError(
+            "This server's public transport network lacks the GTFS table(s) "
+            + ", ".join(missing)
+            + ". Its base data needs updating (sync_base_data)."
+        )
+    out = Path(workdir) / "network_tables"
+    out.mkdir(parents=True, exist_ok=True)
+    area = str(reference_area_path).replace("'", "''")
+    day = datetime.strptime(service_date, "%Y-%m-%d").date().strftime("%Y%m%d")
+    active = active_services_sql(
+        service_date, src.get("calendar"), src.get("calendar_dates")
+    )
+    con = bound_duckdb(duckdb.connect(), str(out))
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        # The area's geometry column, by type: GeoParquet reads as GEOMETRY,
+        # a plain parquet holds it as WKB.
+        columns = con.execute(
+            f"DESCRIBE SELECT * FROM read_parquet('{area}')"
+        ).fetchall()
+        geometry = next(
+            (f'"{n}"' for n, t, *_ in columns if str(t).upper().startswith("GEOMETRY")),
+            None,
+        ) or next(
+            (
+                f'ST_GeomFromWKB("{n}")'
+                for n, *_ in columns
+                if n in ("geometry", "geom")
+            ),
+            None,
+        )
+        if geometry is None:
+            raise ValueError("The reference area has no geometry.")
+        con.execute(f"""
+            CREATE TEMP TABLE area AS
+            SELECT ST_Union_Agg({geometry}) AS geom,
+                   ST_Extent_Agg({geometry}) AS box
+            FROM read_parquet('{area}')
+        """)
+        # The area's stops: by their coordinates' box first, which the stops'
+        # row groups skip on, then by the area itself.
+        con.execute(f"""
+            CREATE TEMP TABLE area_stops AS
+            SELECT s.* FROM read_parquet('{src["stops"]}') s, area a
+            WHERE CAST(s.stop_lon AS DOUBLE) BETWEEN ST_XMin(a.box) AND ST_XMax(a.box)
+              AND CAST(s.stop_lat AS DOUBLE) BETWEEN ST_YMin(a.box) AND ST_YMax(a.box)
+              AND ST_Intersects(
+                  ST_Point(CAST(s.stop_lon AS DOUBLE), CAST(s.stop_lat AS DOUBLE)), a.geom)
+        """)
+        con.execute(f"""
+            CREATE TEMP TABLE day_trips AS
+            SELECT trip_id, route_id, service_id FROM read_parquet('{src["trips"]}')
+            WHERE service_id IN ({active})
+        """)
+        con.execute(f"""
+            CREATE TEMP TABLE area_stop_times AS
+            SELECT trip_id, stop_id, arrival_time
+            FROM read_parquet('{src["stop_times"]}')
+            WHERE stop_id IN (SELECT stop_id FROM area_stops)
+              AND trip_id IN (SELECT trip_id FROM day_trips)
+        """)
+        con.execute("""
+            CREATE TEMP TABLE kept_trips AS SELECT * FROM day_trips
+            WHERE trip_id IN (SELECT DISTINCT trip_id FROM area_stop_times)
+        """)
+        written = {
+            "stops": "SELECT * FROM area_stops",
+            "stop_times": "SELECT * FROM area_stop_times",
+            "trips": "SELECT * FROM kept_trips",
+            "routes": f"""SELECT route_id, route_type FROM read_parquet('{src["routes"]}')
+                          WHERE route_id IN (SELECT route_id FROM kept_trips)""",
+            "calendar_dates": f"""SELECT DISTINCT service_id, '{day}' AS date,
+                                         1 AS exception_type FROM kept_trips""",
+        }
+        paths: dict[str, str] = {}
+        for role, query in written.items():
+            path = out / f"{role}.parquet"
+            con.execute(f"COPY ({query}) TO '{path}' {parquet_copy_options()}")
+            paths[role] = str(path)
+        return paths
+    finally:
+        con.close()
 
 
 def ensure_pt_date(bundle_id: "str | None", pt_date: Any) -> None:
