@@ -152,6 +152,24 @@ The assistant keeps its conversations in the `assistant` schema of GOAT's databa
    ./smoke.sh --quick
    ```
 
+Releases that convert stored data say so in their release notes. The release that introduces GOAT Style, the new layer styles, converts every stored style while the database migrates (tens of thousands of styles take about a minute) and keeps the old styles for one release. To go back, restore the backup from step 1: style changes made after the upgrade are lost. Map thumbnails are drawn again once, the next time the thumbnail job runs. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG file, so zoom to layer and map previews find it. Layers added before have none. Once the new release runs, fill them in once:
+
+```bash
+docker compose run --rm --no-deps geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+It reads only each file's header and changes only layers without an extent, so running it again does no harm; `--dry-run` lists what it would store. A file it cannot reach is logged and its layer keeps no extent; the map then asks for the file's bounds when it needs them. It runs in a new geoapi container, which trusts `GOAT_CA_BUNDLE` as the service does.
+
+The same release tiles point layers with a new recipe. In [Windmill](#windmill), run the task `f/goat/tasks/sync_pmtiles` once with `force` off: it rebuilds the tiles of existing point layers and leaves the layers whose tiles are current.
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that still runs the old version sends styles the old way, and core refuses those saves (422) until the tab is reloaded. API scripts that still send `properties` when they update a layer, a project layer or a layer group get the same answer, with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of", "does not contain the text" and the negated date conditions) into the form the filter panel writes now: they keep the features without a value, so a map with such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while the running release keeps serving. If a long-running transaction holds one of the tables, the migration stops after a few seconds with a lock timeout error and changes nothing more: run the upgrade again.
+
 ## Logs {#logs}
 
 ```bash

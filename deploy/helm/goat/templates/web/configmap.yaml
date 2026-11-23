@@ -51,6 +51,13 @@ data:
   {{- with .Values.web.supportEmail }}
   NEXT_PUBLIC_SUPPORT_EMAIL: {{ . | quote }}
   {{- end }}
+  {{- /* 3D sources (the `map` block), always rendered: an empty value turns
+         the feature off instead of leaving the image's placeholder empty. */}}
+  {{- range $pair := list (list "NEXT_PUBLIC_TERRAIN_TILES_URL" .Values.map.terrainTilesUrl) (list "NEXT_PUBLIC_BUILDINGS_TILES_URL" .Values.map.buildingsTilesUrl) }}
+  {{- if not (include "goat.env.userSet" (dict "values" $.Values.web "key" (index $pair 0))) }}
+  {{ index $pair 0 }}: {{ index $pair 1 | default "" | quote }}
+  {{- end }}
+  {{- end }}
   {{- /* Node adds this file to its trusted CAs (NextAuth → Keycloak). */}}
   {{- if and (include "goat.caBundle.enabled" .) (not (include "goat.env.userSet" (dict "values" .Values.web "key" "NODE_EXTRA_CA_CERTS"))) }}
   NODE_EXTRA_CA_CERTS: {{ include "goat.caBundle.path" . | quote }}

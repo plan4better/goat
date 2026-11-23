@@ -322,7 +322,7 @@ async def test_non_shareable_link_does_not_leak_read(
     # The owner sees all of it — this is what the locked row below must not.
     own = _row_for(await _project_layers(client, project.id, a.id), layer.id)
     assert own["locked"] is False, "the layer's own owner still sees it"
-    assert own["properties"] == LINK_STYLE
+    assert "properties" not in own, "styles come from the map request"
     assert own["other_properties"] == LINK_OTHER
     assert own["query"] == LINK_QUERY
     assert own["charts"] == LINK_CHARTS
@@ -335,8 +335,14 @@ async def test_non_shareable_link_does_not_leak_read(
     locked = _row_for(await _project_layers(client, project.id, c.id), layer.id)
     assert locked["locked"] is True
     assert locked["name"] == own["name"], "the tree still shows that it is there"
-    assert locked["properties"] == {}
+    assert "properties" not in locked
     assert locked["layer_id"] == str(layer.id)
+    # Its style is withheld where styles are served: the map request names none.
+    locked_map = await client.get(
+        f"{settings.API_V2_STR}/project/{project.id}/map", headers=_bearer(c.id)
+    )
+    assert locked_map.status_code == 200, locked_map.text
+    assert str(locked["id"]) not in locked_map.json()["styles"]
     # Whitelist: nothing outside LOCKED_ROW_KEYS may carry a real value.
     for field in (
         "query",
@@ -656,13 +662,13 @@ async def test_single_layer_read_is_locked_the_same_way(
 
     own = await _one_project_layer(client, project.id, link_id, a.id)
     assert own["locked"] is False
-    assert own["properties"] == LINK_STYLE
+    assert "properties" not in own
     assert own["description"] == LAYER_DESCRIPTION
 
     locked = await _one_project_layer(client, project.id, link_id, c.id)
     assert locked["locked"] is True
     assert locked["id"] == link_id
-    assert locked["properties"] == {}
+    assert "properties" not in locked
     for field in ("query", "charts", "other_properties", "description", "size", "tags"):
         assert locked.get(field) is None, field
 
@@ -835,7 +841,7 @@ async def test_put_on_a_locked_link_does_not_leak(
     assert row["locked"] is False
     assert row["name"] == "renamed by the owner"
     assert row["description"] == LAYER_DESCRIPTION
-    assert row["properties"] == LINK_STYLE
+    assert "properties" not in row
 
 
 @pytest.mark.asyncio

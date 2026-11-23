@@ -65,6 +65,7 @@ from goatlib.io.config import (
     PARQUET_VERSION,
     parquet_copy_options,
 )
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.io.sql import sql_identifier, sql_literal
 from goatlib.models.bundle import BundleArtifactState, artifact_state
 from goatlib.models.io import DatasetMetadata
@@ -74,6 +75,11 @@ from goatlib.storage.ducklake import (
     uri_with_application_name,
 )
 from goatlib.storage.s3_config import apply_duckdb_s3_settings, boto_client_kwargs
+from goatlib.style.context import DataContext
+from goatlib.style.data import compute_into
+from goatlib.style.defaults import default_style
+from goatlib.style.fingerprint import fingerprint
+from goatlib.style.version import stamp
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
@@ -83,6 +89,7 @@ from goatlib.utils.layer import (
     layer_schema_name,
     layer_table_path,
     resolve_layer_schema,
+    table_path_parts,
 )
 from goatlib.utils.shared_disk import wait_for
 
@@ -90,6 +97,10 @@ logger = logging.getLogger(__name__)
 
 # Catalog connections a tool run's DuckLake attach keeps between reads.
 TOOLS_CATALOG_CONNECTIONS = 3
+
+#: The data a workflow preview's computed style values are stamped with: a
+#: preview has no layer, so no snapshot. Saving it computes them again.
+TEMP_FINGERPRINT = "temp"
 
 #: How ST_GeometryType names each geometry family: the form a result with
 #: rows reports its geometry type in.
@@ -722,24 +733,23 @@ class SimpleToolRunner:
         catalog_path: "Path",
         cql_filter: dict[str, Any],
     ) -> str:
-        """One filtered COPY of a catalog layer's file to a temp parquet."""
-        import json
+        """One filtered COPY of a catalog layer's file to a temp parquet; a
+        filter it cannot apply is refused (`checked_cql_filter`)."""
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
 
         con = self.duckdb_con
         described = con.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{catalog_path}')"
         ).fetchall()
-        cols = [r[0] for r in described]
         # The file's geometry column is whatever the publisher named it.
         geom_col = next(
             (r[0] for r in described if "GEOMETRY" in str(r[1]).upper()),
             "geometry",
         )
-        filters = build_cql_filter(
-            {"filter": json.dumps(cql_filter), "lang": "cql2-json"}, cols, geom_col
+        filters = checked_cql_filter(
+            cql_filter, {str(r[0]): str(r[1]) for r in described}, geom_col
         )
         where = f"WHERE {' AND '.join(filters.clauses)}" if filters.clauses else ""
         tmp = tempfile.NamedTemporaryFile(suffix=".parquet", delete=False)
@@ -1037,6 +1047,48 @@ class SimpleToolRunner:
                 pass
             self._duckdb_con = None
 
+    def _get_ducklake_snapshot_id(
+        self: Self,
+        schema_name: str,
+        table_name: str,
+    ) -> int | None:
+        """Get the DuckLake snapshot_id for a table.
+
+        Queries the DuckLake internal metadata catalog to get the
+        begin_snapshot for a table. This snapshot_id is used to track
+        whether PMTiles files are in sync with the source data.
+
+        Args:
+            schema_name: DuckLake schema name (e.g., "user_xxx")
+            table_name: Table name without schema (e.g., "t_yyy")
+
+        Returns:
+            Snapshot ID if found, None otherwise
+        """
+        catalog = self.settings.ducklake_catalog_schema if self.settings else "ducklake"
+        try:
+            result = fetch_one(
+                self.duckdb_con,
+                f"""
+                SELECT t.begin_snapshot
+                FROM __ducklake_metadata_lake.{catalog}.ducklake_table t
+                JOIN __ducklake_metadata_lake.{catalog}.ducklake_schema s
+                    ON t.schema_id = s.schema_id
+                WHERE s.schema_name = '{schema_name}'
+                AND t.table_name = '{table_name}'
+                AND t.end_snapshot IS NULL
+            """,
+            )
+
+            if result:
+                return result[0]
+        except Exception as e:
+            logger.debug(
+                f"Could not get snapshot_id for {schema_name}.{table_name}: {e}"
+            )
+
+        return None
+
 
 class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
     """Base class for analysis tools that create new layers.
@@ -1182,84 +1234,58 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         """
         return "tool"
 
-    def compute_quantile_breaks(
-        self: Self,
-        table_name: str | None = None,
-        column_name: str = "",
-        num_breaks: int = 6,
-        strip_zeros: bool = True,
-        parquet_path: Path | str | None = None,
-    ) -> dict[str, Any] | None:
-        """Compute quantile breaks for a column using DuckDB.
-
-        Args:
-            table_name: Full table path (e.g., "lake.user_xxx.t_yyy")
-            column_name: Column name to compute breaks for
-            num_breaks: Number of break values (default 6 to match 7-color palette)
-            strip_zeros: Whether to exclude zero values (default True)
-            parquet_path: Alternative to table_name — read directly from parquet
-
-        Returns:
-            Dict with breaks, min, max, mean, std_dev, method, attribute
-        """
-        # Allow computing from parquet file directly (for temp mode)
-        if not table_name and parquet_path:
-            table_name = f"read_parquet({sql_literal(parquet_path)})"
-        if not table_name:
-            return None
-        from goatlib.analysis.schemas.statistics import ClassBreakMethod
-        from goatlib.analysis.statistics import calculate_class_breaks
-
-        try:
-            result = calculate_class_breaks(
-                con=self.duckdb_con,
-                table_name=table_name,
-                attribute=column_name,
-                method=ClassBreakMethod.quantile,
-                num_breaks=num_breaks,
-                strip_zeros=strip_zeros,
-            )
-
-            if result.breaks:
-                # Remove duplicates and sort
-                unique_breaks = sorted(set(result.breaks))
-
-                return {
-                    "breaks": unique_breaks,
-                    "min": result.min,
-                    "max": result.max,
-                    "mean": result.mean,
-                    "std_dev": result.std_dev,
-                    "method": "quantile",
-                    "attribute": column_name,
-                }
-        except Exception as e:
-            logger.warning("Failed to compute quantile breaks: %s", e)
-
-        return None
-
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: TParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return custom layer properties (style) for the output.
+        """The GOAT Style document of the output layer (spec 17).
 
-        Override in subclasses to provide tool-specific styles (e.g., heatmaps).
-        If None is returned, default style will be generated based on geometry type.
+        Override in subclasses for a tool's own look (`goatlib.tools.style`).
+        Values the server computes (classes, domains) are filled from the data
+        afterwards (`computed_style`); None gives the default style.
 
         Args:
             params: Tool parameters
             metadata: Dataset metadata from analysis
-            table_info: DuckLake table info (for computing quantile breaks)
-            parquet_path: Alternative to table_info — compute style from parquet file
-
-        Returns:
-            Style dict or None for default style
+            geometry: The output's geometry ("point", "line", "polygon"), None
+                for a table
+            relation: The output data as a DuckDB relation, for tools whose look
+                depends on its values
         """
         return None
+
+    def computed_style(
+        self: Self,
+        document: dict[str, Any] | None,
+        *,
+        relation: str,
+        geometry: str | None,
+        fingerprint: str,
+        seed: str,
+    ) -> dict[str, Any]:
+        """`document`, or the default style for the geometry (its color picked by
+        `seed`), with the values the server computes filled from `relation`; as
+        it is when they cannot be computed. Either way with the lowest GOAT Style
+        version its keys need (`stamp`)."""
+        if document is None:
+            document = default_style(
+                DataContext(kind="vector", geometry=geometry), seed=seed
+            )
+        try:
+            computed, _ = compute_into(
+                self.duckdb_con,
+                relation,
+                document,
+                geometry=geometry,
+                fingerprint=fingerprint,
+            )
+        except Exception:  # never fail a run on its style: the map load computes it
+            logger.warning("Computing the result's style failed", exc_info=True)
+            return stamp(document)
+        return stamp(computed)
 
     def _export_temp_layer_to_parquet(
         self: Self,
@@ -1275,15 +1301,15 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         Args:
             temp_layer_id: Temp layer ID in format "workflow_id:node_id" or "workflow_id:node_id:uuid"
             user_id: User UUID for the temp directory path
-            cql_filter: Optional CQL filter (applied via DuckDB query)
+            cql_filter: Optional CQL filter (applied via DuckDB query); one it
+                cannot apply is refused (`checked_cql_filter`)
 
         Returns:
             Path to the parquet file (copy or original if no filter)
         """
-        import json
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
         from goatlib.tools.temp_writer import temp_step_folder
 
         # Parse temp_layer_id - can be "workflow_id:node_id" or "workflow_id:node_id:uuid"
@@ -1331,10 +1357,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         columns_result = self.duckdb_con.execute(
             f"DESCRIBE SELECT * FROM read_parquet('{temp_parquet_path}')"
         )
-        column_names = [row[0] for row in columns_result.fetchall()]
-
-        filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-        cql_filters = build_cql_filter(filter_dict, column_names, "geometry")
+        columns = {str(row[0]): str(row[1]) for row in columns_result.fetchall()}
+        cql_filters = checked_cql_filter(cql_filter, columns, "geometry")
 
         where_clause = ""
         if cql_filters.clauses:
@@ -1450,15 +1474,16 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         Args:
             layer_id: Layer UUID string or temp layer ID (workflow_id:node_id)
             user_id: User UUID string (used for fallback if layer info unavailable)
-            cql_filter: Optional CQL2-JSON filter dict to apply
+            cql_filter: Optional CQL2-JSON filter dict to apply. One it cannot
+                apply raises `UnreadableFilterError` (`checked_cql_filter`):
+                the tool must not run on the whole layer instead.
 
         Returns:
             Path to the temporary parquet file
         """
-        import json
         import tempfile
 
-        from goatlib.storage.query_builder import build_cql_filter
+        from goatlib.storage.query_builder import checked_cql_filter
 
         self._read_layer_ids.append(layer_id)
 
@@ -1513,21 +1538,15 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             )
             raise
 
-        temp_file = tempfile.NamedTemporaryFile(
-            suffix=".parquet", delete=False, prefix="layer_"
-        )
-        temp_path = temp_file.name
-        temp_file.close()
-
-        # Detect geometry column name and get column names from table schema
+        # Detect geometry column name and get column types from table schema
         cols_result = self._execute_with_retry(
             "describe table",
             f"DESCRIBE {table_name}",
         )
         geom_col = "geometry"  # default
-        column_names: list[str] = []
+        columns: dict[str, str] = {}
         for col_name, col_type, *_ in cols_result.fetchall():
-            column_names.append(col_name)
+            columns[col_name] = col_type
             if "GEOMETRY" in col_type.upper():
                 geom_col = col_name
 
@@ -1536,11 +1555,16 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         params: list[Any] = []
 
         if cql_filter:
-            filter_dict = {"filter": json.dumps(cql_filter), "lang": "cql2-json"}
-            cql_filters = build_cql_filter(filter_dict, column_names, geom_col)
+            cql_filters = checked_cql_filter(cql_filter, columns, geom_col)
             if cql_filters.clauses:
                 where_clause = "WHERE " + " AND ".join(cql_filters.clauses)
                 params = cql_filters.params
+
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=".parquet", delete=False, prefix="layer_"
+        )
+        temp_path = temp_file.name
+        temp_file.close()
 
         if where_clause:
             # Use parameterized query
@@ -1785,11 +1809,6 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 f"at {output_parquet}"
             )
 
-            # Compute style properties from parquet (works for both temp and permanent)
-            custom_properties = self.get_layer_properties(
-                params, metadata, parquet_path=output_parquet
-            )
-
             # Branch: temp_mode vs permanent mode
             if temp_mode:
                 # Temp mode: write to /data/temporary/, no DB records
@@ -1798,7 +1817,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                     output_parquet=output_parquet,
                     output_name=output_name,
                     output_layer_id=output_layer_id,
-                    properties=custom_properties,
+                    metadata=metadata,
                     geometry_type=self.result_geometry_type(params.user_id, metadata),
                 )
 
@@ -1840,7 +1859,6 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                     output_name=output_name,
                     metadata=metadata,
                     table_info=table_info,
-                    custom_properties=custom_properties,
                 )
             )
 
@@ -1887,7 +1905,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         output_parquet: Path,
         output_name: str,
         output_layer_id: str,
-        properties: dict[str, Any] | None = None,
+        metadata: DatasetMetadata,
         geometry_type: str | None = None,
     ) -> dict[str, Any]:
         """Write result to temporary storage for workflow preview.
@@ -1901,7 +1919,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             output_parquet: Path to the output parquet file
             output_name: Display name for the layer
             output_layer_id: UUID for the layer (for identification)
-            properties: Optional layer style properties from the tool
+            metadata: Dataset metadata from analysis (for the layer's style)
             geometry_type: The geometry type of a result whose rows give
                 none; when not given, `result_geometry_type` without the
                 analysis's metadata (a runner's own `run()` passes none)
@@ -1929,13 +1947,25 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             pmtiles_max_zoom=self.settings.pmtiles_max_zoom if self.settings else 14,
         )
 
+        relation = f"read_parquet({sql_literal(output_parquet)})"
+
+        def style(geometry_type: str | None) -> dict[str, Any]:
+            geometry = normalize_geometry_type(geometry_type)
+            return self.computed_style(
+                self.get_layer_style(params, metadata, geometry, relation),
+                relation=relation,
+                geometry=geometry,
+                fingerprint=TEMP_FINGERPRINT,
+                seed=output_layer_id,
+            )
+
         # Write to temp storage
         result = writer.write_from_parquet(
             source_parquet=output_parquet,
             layer_name=output_name,
             process_id=self.get_tool_type(),
             duckdb_con=self.duckdb_con,
-            properties=properties,
+            style=style,
             geometry_type=geometry_type,
         )
 
@@ -1975,7 +2005,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             "parquet_path": str(result.parquet_path),
             "pmtiles_path": str(result.pmtiles_path) if result.pmtiles_path else None,
             "wm_labels": wm_labels,
-            "properties": properties,
+            "style": result.metadata.style,
         }
 
     def _ingest_to_ducklake(
@@ -2027,17 +2057,18 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 # (goatlib.io.bbox_columns).
                 columns = star_excluding(stray_bbox_columns(cols))
 
-                # Create table from parquet with Hilbert ordering for spatial locality
-                # This ensures spatially-close rows are stored together in row groups,
-                # enabling efficient bbox-based row group pruning during queries
+                # Rows in Hilbert order over the layer's extent: spatially close
+                # rows share row groups, which bbox filters then skip
+                # (goatlib.io.spatial_order). The order fixes the feature ids.
                 if geom_col:
+                    order = hilbert_key(sql_identifier(geom_col), "read_parquet(?)")
                     con.execute(
                         f"""
                         CREATE TABLE {table_name} AS
                         SELECT {columns} FROM read_parquet(?)
-                        ORDER BY ST_Hilbert({sql_identifier(geom_col)})
+                        ORDER BY {order}
                     """,
-                        [str(parquet_path)],
+                        [str(parquet_path), str(parquet_path)],
                     )
                     logger.info(
                         "Created DuckLake table: %s from %s (Hilbert-sorted by %s)",
@@ -2162,47 +2193,6 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             "extent_wkt": extent_wkt,
         }
 
-    def _get_ducklake_snapshot_id(
-        self: Self,
-        schema_name: str,
-        table_name: str,
-    ) -> int | None:
-        """Get the DuckLake snapshot_id for a table.
-
-        Queries the DuckLake internal metadata catalog to get the
-        begin_snapshot for a table. This snapshot_id is used to track
-        whether PMTiles files are in sync with the source data.
-
-        Args:
-            schema_name: DuckLake schema name (e.g., "user_xxx")
-            table_name: Table name without schema (e.g., "t_yyy")
-
-        Returns:
-            Snapshot ID if found, None otherwise
-        """
-        try:
-            result = fetch_one(
-                self.duckdb_con,
-                f"""
-                SELECT t.begin_snapshot
-                FROM __ducklake_metadata_lake.ducklake.ducklake_table t
-                JOIN __ducklake_metadata_lake.ducklake.ducklake_schema s
-                    ON t.schema_id = s.schema_id
-                WHERE s.schema_name = '{schema_name}'
-                AND t.table_name = '{table_name}'
-                AND t.end_snapshot IS NULL
-            """,
-            )
-
-            if result:
-                return result[0]
-        except Exception as e:
-            logger.debug(
-                f"Could not get snapshot_id for {schema_name}.{table_name}: {e}"
-            )
-
-        return None
-
     def _generate_pmtiles(
         self: Self,
         user_id: str,
@@ -2322,7 +2312,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         output_name: str,
         metadata: DatasetMetadata,
         table_info: dict[str, Any],
-        custom_properties: dict[str, Any] | None = None,
+        style: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create layer record and optionally link to project.
 
@@ -2332,8 +2322,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             output_name: Layer display name
             metadata: Dataset metadata from analysis
             table_info: DuckLake table info
-            custom_properties: Optional custom layer properties (style).
-                               If None, get_layer_properties() is called.
+            style: The layer's GOAT Style document; None asks
+                get_layer_style(). Computed values are filled from the table.
 
         Returns:
             Dict with folder_id and layer_project_id (if added to project)
@@ -2364,12 +2354,27 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         layer_type = "feature" if is_feature else "table"
         feature_layer_type = self.get_feature_layer_type(params) if is_feature else None
 
-        # Get custom layer properties (style) from parameter or subclass
-        if custom_properties is None:
-            custom_properties = self.get_layer_properties(params, metadata, table_info)
+        # The style, its computed values stamped with the snapshot that wrote the
+        # table: the layer's data_snapshot, so its first load is not stale.
+        style_doc = None
+        data_snapshot = None
+        if is_feature:
+            relation = table_info["table_name"]
+            geometry = normalize_geometry_type(detected_geom_type)
+            data_snapshot = self._get_ducklake_snapshot_id(*table_path_parts(relation))
+            style_doc = self.computed_style(
+                style
+                if style is not None
+                else self.get_layer_style(params, metadata, geometry, relation),
+                relation=relation,
+                geometry=geometry,
+                fingerprint=fingerprint(
+                    data_snapshot=data_snapshot, catalog_version=None
+                ),
+                seed=output_layer_id,
+            )
 
-        # Create layer metadata (returns generated properties)
-        layer_properties = await self.db_service.create_layer(
+        await self.db_service.create_layer(
             layer_id=output_layer_id,
             user_id=params.user_id,
             folder_id=folder_id,
@@ -2380,9 +2385,10 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             extent_wkt=table_info.get("extent_wkt"),
             feature_count=table_info.get("feature_count", 0),
             size=table_info.get("size", 0),
-            properties=custom_properties,
+            style=style_doc,
             tool_type=self.get_tool_type(),
             job_id=self.get_job_id(),
+            data_snapshot=data_snapshot,
         )
 
         # Add to project if requested
@@ -2392,7 +2398,6 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 layer_id=output_layer_id,
                 project_id=params.project_id,
                 name=output_name,
-                properties=layer_properties,
             )
 
         return {"folder_id": folder_id, "layer_project_id": layer_project_id}

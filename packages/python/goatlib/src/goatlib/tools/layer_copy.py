@@ -11,10 +11,10 @@ layer owned by the user who ran it, in the project's folder:
   a geometry that arrives as WKB BLOB (an empty catalog file, see
   ``project_import``) is turned back into GEOMETRY;
 * a ``customer.layer`` row carrying the source's name, description, tags,
-  geometry type, style (``properties``), column settings (``field_config``)
-  and thumbnail, with a ``template_copy`` stamp naming the source. The
-  source's catalog and workflow-output stamps are not carried: the copy is
-  user data, not a catalog dataset or some workflow's result.
+  geometry type, default style (its ``layer_style`` rows), column settings
+  (``field_config``) and thumbnail, with a ``template_copy`` stamp naming the
+  source. The source's catalog and workflow-output stamps are not carried: the
+  copy is user data, not a catalog dataset or some workflow's result.
 
 Then, in one transaction, the project entries named in ``layer_project_ids``
 that still show the source are pointed at the copy (the entry keeps its id,
@@ -277,13 +277,14 @@ async def insert_copy_layer(
     """Write the copy's ``customer.layer`` row from the source's own row:
     owned by ``user_id`` in the project's folder and space, everything that
     describes the data taken over, never the source's sharing (``public``,
-    ``restricted``, grants) or catalog identity."""
+    ``restricted``, grants) or catalog identity. The source's default style
+    comes along; entries pointed at the copy keep their own styles."""
     status = await conn.execute(
         f"""
         INSERT INTO {schema}.layer (
             id, user_id, folder_id, space_id, name, description, type,
             feature_layer_type, feature_layer_geometry_type, extent,
-            properties, other_properties, field_config, tags, thumbnail_url,
+            other_properties, field_config, tags, thumbnail_url,
             size, tool_type, job_id, created_at, updated_at
         )
         SELECT $1, $2, $3, $4, src.name, src.description, src.type,
@@ -293,7 +294,7 @@ async def insert_copy_layer(
                        THEN ST_Multi(ST_GeomFromText($6::text, 4326))
                    WHEN $7 THEN src.extent
                END,
-               src.properties, $8::jsonb,
+               $8::jsonb,
                COALESCE(src.field_config, '{{}}'::jsonb), src.tags,
                src.thumbnail_url, $9, src.tool_type, $10, NOW(), NOW()
         FROM {schema}.layer src
@@ -312,6 +313,14 @@ async def insert_copy_layer(
     )
     if status != "INSERT 0 1":
         raise ValueError(f"Layer {source_layer_id} disappeared during the copy")
+    await conn.execute(
+        f"""
+        INSERT INTO {schema}.layer_style (layer_id, name, document)
+        SELECT $1, name, document FROM {schema}.layer_style WHERE layer_id = $2
+        """,
+        uuid.UUID(layer_id),
+        uuid.UUID(source_layer_id),
+    )
 
 
 async def point_links_at_copy(

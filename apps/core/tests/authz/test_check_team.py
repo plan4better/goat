@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.authz.conftest import call_check_team
 
-AUTHZ_DIR = Path("src/core/db/sql/functions/authz")
+AUTHZ_DIR = Path(__file__).resolve().parents[2] / "src/core/db/sql/functions/authz"
 
 
 def test_authorization_sql_passes_three_arguments_to_check_team() -> None:

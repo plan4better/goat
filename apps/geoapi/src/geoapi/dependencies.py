@@ -1,13 +1,20 @@
 """FastAPI dependencies for GeoAPI."""
 
 import asyncio
+import hashlib
+import json
 import logging
+import re
 import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path as FSPath
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import Depends, HTTPException, Path, Query
+from goatlib.filter.normalize import DAYS_AGO, normalize
+from goatlib.filter.validate import over_request_limits, over_request_limits_text
+from goatlib.storage.cql_evaluator import parse_cql2_filter
 from goatlib.utils.layer import (
     InvalidLayerIdError,
     LayerNotFoundError,
@@ -368,6 +375,80 @@ def reject_unknown_fields(
         )
 
 
+# What `_filter_problem` found for the filters last seen, by digest: a screen
+# of tiles brings the same filter once per tile, and reading a large area
+# takes a while. The check runs in a worker thread; requests that bring a
+# filter while it is checked wait for that check (`_filter_problems_running`).
+_FILTER_PROBLEMS_MAX = 256
+# The longest filter text that is parsed at all; a longer one is refused by its
+# length, before any parse. The web stops a filter at
+# `goatlib.filter.limits.MAX_LENGTH` characters of URL, and the text is never
+# longer than its URL form, so this lies well above anything it sends, and
+# above one area at the points ceiling (`REQUEST_MAX_POINTS`).
+_FILTER_TEXT_MAX = 1_000_000
+_EMPTY_OBJECT = re.compile(r"\s*\{\s*\}\s*")
+_filter_problems: OrderedDict[bytes, Optional[str]] = OrderedDict()
+_filter_problems_running: dict[bytes, "asyncio.Future[Optional[str]]"] = {}
+
+
+def _filter_problem(text: str, lang: str) -> Optional[str]:
+    """Why a request's filter is refused; None for one the query path reads.
+
+    The query builder skips a filter it cannot parse and answers with every
+    feature, so the filter is parsed here as the builder parses it (cql2-json
+    after `goatlib.filter.normalize`) and refused when that fails. The request
+    ceilings (`goatlib.filter.limits.REQUEST_MAX_*`) come first for cql2-json,
+    so nothing over one is parsed. CQL2 text has to be parsed to be measured:
+    it is held against the ceilings as the CQL2-JSON it stands for. What that
+    form cannot express measures as nothing, as in cql2-json.
+    """
+    try:
+        if lang == "cql2-json":
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                return "The filter is not valid JSON."
+            if not isinstance(parsed, dict):
+                return "The filter is not valid CQL2 JSON."
+            issues = over_request_limits(parsed)
+            if not issues:
+                parse_cql2_filter(normalize(parsed), lang)
+        else:
+            issues = over_request_limits_text(parse_cql2_filter(text, lang))
+    except RecursionError:
+        return "The filter nests too deeply."
+    except Exception:
+        name = "CQL2 JSON" if lang == "cql2-json" else "CQL2 text"
+        return f"The filter is not valid {name}."
+    return " ".join(i.message for i in issues) or None
+
+
+async def _check_filter_once(key: bytes, text: str, lang: str) -> Optional[str]:
+    """`_filter_problem` in a worker thread, its verdict kept by `key`."""
+    problem = await asyncio.to_thread(_filter_problem, text, lang)
+    _filter_problems[key] = problem
+    while len(_filter_problems) > _FILTER_PROBLEMS_MAX:
+        _filter_problems.popitem(last=False)
+    return problem
+
+
+async def _checked_filter(text: str, lang: str) -> Optional[str]:
+    """Why a filter is refused, from the kept verdicts or checked once:
+    requests with the same filter that arrive while it is checked wait for
+    that check instead of parsing it again."""
+    key = hashlib.sha1(f"{lang}\n{text}".encode()).digest()
+    if key in _filter_problems:
+        _filter_problems.move_to_end(key)
+        return _filter_problems[key]
+    running = _filter_problems_running.get(key)
+    if running is None:
+        running = asyncio.ensure_future(_check_filter_once(key, text, lang))
+        _filter_problems_running[key] = running
+        running.add_done_callback(lambda _: _filter_problems_running.pop(key, None))
+    # A request that is cancelled leaves the check to the others
+    return await asyncio.shield(running)
+
+
 async def cql_filter_query(
     filter: Annotated[
         Optional[str],
@@ -383,13 +464,39 @@ async def cql_filter_query(
     """Parse CQL2 filter query parameter.
 
     Returns a dict with 'filter' (raw string) and 'lang' (cql2-json or cql2-text).
+
+    Every client filter enters here, so one over a request ceiling
+    (`goatlib.filter.limits.REQUEST_MAX_*`) or one that does not parse is
+    answered 400 here (`_filter_problem`) and never reaches the query builder;
+    a text longer than `_FILTER_TEXT_MAX` is answered 400 before any parse.
+    The ceilings lie well above the save limits: a filter saved over one still
+    filters. The text is passed on as it was sent (the tile cache keys on it),
+    except for a filter with a relative day ("in the last n days",
+    `goatlib.filter.normalize.days_ago`): that one is passed on normalized,
+    with the day it means today, so the tile caches, the stored tiles' prepared
+    filters and the ETags key on that day and a filter sent the same way
+    tomorrow is another filter. An empty filter is no filter, and so is an
+    empty JSON object: what a client sends for a layer without conditions.
     """
-    if filter is None:
+    if filter is None or not filter.strip():
         return None
+    if len(filter) > _FILTER_TEXT_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The filter is longer than {_FILTER_TEXT_MAX} characters.",
+        )
 
     lang = filter_lang or "cql2-json"  # Default to cql2-json
     if lang not in ("cql2-json", "cql2-text"):
         raise HTTPException(status_code=400, detail=f"Invalid filter-lang: {lang}")
+    if lang == "cql2-json" and _EMPTY_OBJECT.fullmatch(filter):
+        return None
+
+    problem = await _checked_filter(filter, lang)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    if lang == "cql2-json" and DAYS_AGO in filter:
+        filter = json.dumps(normalize(json.loads(filter)), ensure_ascii=False)
 
     return {"filter": filter, "lang": lang}
 

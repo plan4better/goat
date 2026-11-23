@@ -4,7 +4,7 @@ import {
   resolveActiveBasemap,
   synthesizeMapStyle,
 } from "@/hooks/map/MapHooks";
-import { BASEMAPS } from "@/lib/constants/basemaps";
+import { BASEMAPS, GLYPHS_URL } from "@/lib/constants/basemaps";
 
 const customVector = {
   source: "custom" as const,
@@ -119,6 +119,27 @@ describe("synthesizeMapStyle", () => {
       },
       layers: [{ id: "raster-layer", type: "raster", source: "raster-source" }],
     });
+  });
+
+  it("draws a raster basemap's subdomains and TMS rows as the map reads them", () => {
+    const style = synthesizeMapStyle({
+      ...customRaster,
+      url: "https://{switch:a,b}.tiles.example.org/{z}/{x}/{-y}.png",
+    });
+    expect(style).toMatchObject({
+      sources: {
+        "raster-source": {
+          type: "raster",
+          tiles: ["https://a.tiles.example.org/{z}/{x}/{y}.png", "https://b.tiles.example.org/{z}/{x}/{y}.png"],
+          scheme: "tms",
+        },
+      },
+    });
+  });
+
+  it("gives the styles it builds glyphs, so labels draw in the label font", () => {
+    expect(synthesizeMapStyle(customRaster)).toMatchObject({ glyphs: GLYPHS_URL });
+    expect(synthesizeMapStyle(customSolid)).toMatchObject({ glyphs: GLYPHS_URL });
   });
 
   it("returns a background-only style spec for solid basemaps", () => {

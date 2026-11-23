@@ -11,25 +11,18 @@ Jetzt passen wir das Erscheinungsbild beider Layer an, um eine klare Karte zu er
 
 ## Den "Supermärkte" Punkt-Layer gestalten
 
-1. **Klicken Sie auf den Layer "Supermärkte"**
-2. **Deaktivieren Sie `Benutzerdefinierter Marker`** (Marker werden in einfache Punkte umgewandelt)
-3. **Entfernen Sie das Feld "Farbe basierend auf"** durch Klick auf das Kreuz (×)
-4. **Wählen Sie Orange als Füllfarbe**
-
-<div style={{ display: 'flex', justifyContent: 'center' }}>
-<Video src={require('/img/tutorials/01_erste_schritte/layer-gestalten.mp4').default} alt="Catchment Area Calculation Result in GOAT" style={{ maxHeight: "100%", maxWidth: "auto"}}/>
-</div>
+1. **Klicken Sie auf den Layer "Supermärkte"**: Rechts öffnet sich sein Stil-Panel
+2. **Klicken Sie im Abschnitt `Punkte` auf `Symbol`** und schalten Sie das Symbol mit dem Schalter im Kopf des Editors aus (die Punkte werden als einfache Punkte gezeichnet)
+3. **Klicken Sie auf `Füllung`**: Folgt die `Farbe` einem Feld, klicken Sie auf die Schaltfläche daneben und wählen Sie `Fest`
+4. **Wählen Sie Orange als `Farbe`**
 
 ## Den "Mannheim" Grenz-Layer gestalten
 
 1. **Klicken Sie auf den Layer "Mannheim"**
-2. **Deaktivieren Sie die Füllfarbe** im rechten Panel
-3. **Aktivieren Sie die Strichfarbe**
-4. **Wählen Sie Schwarz als Randfarbe** und stellen Sie die **Strichbreite auf 1** ein
-
-
-
+2. **Klicken Sie im Abschnitt `Polygone` auf `Füllung`** und schalten Sie sie mit dem Schalter im Kopf des Editors aus
+3. **Klicken Sie auf `Umriss`** und schalten Sie ihn auf dieselbe Weise ein
+4. **Wählen Sie Schwarz als `Farbe`** und stellen Sie die **`Breite` auf 1** ein
 
 :::info Zusätzliche Ressourcen
-Falls Sie tiefer in die Gestaltung von Layern eintauchen möchten, können Sie die Videos "Layer-Gestaltung" oder "Attributbasierte Layer-Gestaltung" ansehen.
+Falls Sie tiefer in die Gestaltung von Layern eintauchen möchten, lesen Sie [Basis-Styling](/map/layer_style/style/styling) und [Attributbasiertes Styling](/map/layer_style/style/attribute_based_styling) in der Dokumentation.
 :::

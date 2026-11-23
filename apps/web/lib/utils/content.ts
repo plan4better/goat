@@ -28,47 +28,6 @@ export const layerTypeLabelKey = (type: Layer["type"] | null | undefined): strin
   return "feature_layer";
 };
 
-/**
- * Where a layer's data comes from, as one line for a details panel — or `null` for data
- * GOAT holds, which needs no explanation.
- *
- * Linked means drawn live from someone else's service: it can change or disappear without
- * notice. A WFS import is the other case worth naming — a copy GOAT holds, whose origin is
- * still useful to know. The format stands beside the host rather than replacing the type,
- * because a format alone cannot say which of the two a layer is: a COG may be linked today
- * and uploaded tomorrow.
- */
-export const layerSourceLine = (
-  source: { dataType?: string | null; isLinked?: boolean; host?: string | null },
-  t: (key: string, values?: Record<string, string>) => string
-): string | null => {
-  const format = source.dataType ? source.dataType.toUpperCase() : "";
-  if (source.isLinked)
-    return source.host
-      ? t("layer_source_linked", { format, host: source.host })
-      : t("layer_source_linked_no_host", { format });
-  if (source.dataType === "wfs" && source.host)
-    return t("layer_source_imported", { format, host: source.host });
-  return null;
-};
-
-/** The same three facts the content feed sends, read off a full layer: a stored `url` makes
- * it linked, and only the host of any address is kept. */
-export const layerSourceOf = (layer: {
-  url?: string | null;
-  data_type?: string | null;
-  other_properties?: { url?: string | null } | null;
-}) => {
-  const address = layer.url || layer.other_properties?.url || null;
-  let host: string | null = null;
-  try {
-    host = address ? new URL(address).hostname || null : null;
-  } catch {
-    host = null;
-  }
-  return { dataType: layer.data_type ?? null, isLinked: !!layer.url, host };
-};
-
 /** The i18n key for an item's type chip. Layers key off `layer_type`
  * (feature/raster/table) rather than off the generic "layer" content type,
  * reusing the same keys today's dataset cards render (`feature_layer`,

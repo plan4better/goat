@@ -4,6 +4,7 @@ Uses goatlib statistics functions to compute analytics on DuckLake layers.
 These are synchronous operations that return immediate results.
 """
 
+import dataclasses
 import functools
 import json
 import logging
@@ -11,7 +12,7 @@ import re
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 import duckdb
@@ -31,7 +32,22 @@ from goatlib.analysis.statistics import (
     calculate_unique_values,
     search_layer_features,
 )
-from goatlib.storage import build_cql_filter, is_pin_miss_error, load_extensions
+from goatlib.filter.normalize import normalize
+from goatlib.filter.validate import over_request_limits
+from goatlib.io.remote_source.url_guard import UnsafeUrlError
+from goatlib.raster.source import RasterSource, RasterUnavailableError
+from goatlib.raster.stats import compute_raster_into, raster_context
+from goatlib.storage import (
+    UnreadableFilterError,
+    checked_cql_filter,
+    is_pin_miss_error,
+    load_extensions,
+    parse_cql2_filter,
+)
+from goatlib.style.context import DataContext
+from goatlib.style.data import compute_into, describe
+from goatlib.style.data_check import referenced_fields
+from goatlib.style.validate import validate
 from goatlib.utils.layer import (
     catalog_layer_parquet,
     catalog_layer_relation,
@@ -42,6 +58,7 @@ from goatlib.utils.layer import (
 )
 from goatlib.utils.sql_validation import validate_sql_query
 
+from processes.config import settings
 from processes.dependencies import (
     _layer_id_to_table_name,
     get_schema_for_layer,
@@ -53,9 +70,19 @@ from processes.ducklake import (
     preview_ducklake_manager,
     search_ducklake_manager,
 )
+from processes.services.access import RasterFile
 from processes.services.public_search_config import get_public_search_layers
 
 logger = logging.getLogger(__name__)
+
+#: What this deployment draws of the style specification's "later" constructs
+#: (section 19: H3, band formulas, the raster service, map service popups): H3
+#: hexagons (geoapi's H3 tiles) and the raster service with band formulas;
+#: styles that need map service popups answer `not_supported_yet`.
+STYLE_CAPABILITIES: frozenset[str] = frozenset(
+    {"h3", "raster_service", "band_formulas"}
+)
+
 
 _Read = TypeVar("_Read", bound=Callable[..., Any])
 
@@ -85,6 +112,45 @@ def _reads_the_latest_layer(read: _Read) -> _Read:
             return read(*args, **kwargs)
 
     return wrapper  # type: ignore[return-value]
+
+
+def _checked_filter(filter_expr: Any) -> dict[str, Any] | None:
+    """A request's filter as the builder takes it; None for no filter.
+
+    An empty object is no filter too: what a client sends for a layer without
+    conditions.
+
+    The builder skips a filter it cannot parse, and the answer would then
+    cover every feature. So the filter is parsed here as the builder parses it
+    (after `goatlib.filter.normalize`) and refused when that fails. The request
+    ceilings (`goatlib.filter.limits.REQUEST_MAX_*`) come first, so nothing
+    over one is parsed. Raises the 400 to answer otherwise.
+    """
+    if not filter_expr or (isinstance(filter_expr, str) and not filter_expr.strip()):
+        return None
+    try:
+        if isinstance(filter_expr, str):
+            try:
+                parsed = json.loads(filter_expr)
+            except ValueError:
+                raise HTTPException(400, "The filter is not valid JSON.") from None
+        else:
+            parsed = filter_expr
+        if not isinstance(parsed, dict):
+            raise HTTPException(400, "The filter is not valid CQL2 JSON.")
+        if not parsed:
+            return None
+        issues = over_request_limits(parsed)
+        if issues:
+            raise HTTPException(400, " ".join(i.message for i in issues))
+        parse_cql2_filter(normalize(parsed), "cql2-json")
+    except HTTPException:
+        raise
+    except RecursionError:
+        raise HTTPException(400, "The filter nests too deeply.") from None
+    except Exception:
+        raise HTTPException(400, "The filter is not valid CQL2 JSON.") from None
+    return parsed
 
 
 class AnalyticsService:
@@ -203,58 +269,47 @@ class AnalyticsService:
 
         Returns:
             Tuple of (where_clause, params)
+
+        Raises:
+            HTTPException: 400 for a filter that does not parse or is over a
+                request ceiling (`_checked_filter`), and for one the layer
+                cannot take (`checked_cql_filter`: a field it lacks, a value
+                its field cannot hold); the statistic would otherwise cover
+                every feature
         """
-        if not filter_expr:
+        filter_dict = _checked_filter(filter_expr)
+        if filter_dict is None:
             return "TRUE", []
+
+        # Get column types and detect geometry column from the table. A read
+        # that fails is the request's error, never a dropped filter: on a pin
+        # miss `_reads_the_latest_layer` reads again with the filter.
+        with self._connection(table_name) as con:
+            result = con.execute(f"DESCRIBE {table_name}").fetchall()
+            column_types = {row[0]: row[1] for row in result}
+
+        # Detect geometry column name (could be 'geom', 'geometry', etc.)
+        geometry_column = "geometry"  # default
+        for col_name, col_type in column_types.items():
+            if "geometry" in col_type.lower() or col_name.lower() in (
+                "geom",
+                "geometry",
+            ):
+                geometry_column = col_name
+                break
 
         try:
-            # Parse the filter JSON string
-            if isinstance(filter_expr, str):
-                filter_dict = json.loads(filter_expr)
-            else:
-                filter_dict = filter_expr
-
-            # Get column names and detect geometry column from the table
-            with self._connection(table_name) as con:
-                result = con.execute(f"DESCRIBE {table_name}").fetchall()
-                column_names = [row[0] for row in result]
-                column_types = {row[0]: row[1] for row in result}
-
-            # Detect geometry column name (could be 'geom', 'geometry', etc.)
-            geometry_column = "geometry"  # default
-            for col_name, col_type in column_types.items():
-                if "geometry" in col_type.lower() or col_name.lower() in (
-                    "geom",
-                    "geometry",
-                ):
-                    geometry_column = col_name
-                    break
-
-            # Build CQL filter with proper structure
-            cql_filter = {"filter": filter_dict, "lang": "cql2-json"}
-            query_filters = build_cql_filter(
-                cql_filter,
-                column_names,
-                geometry_column=geometry_column,
+            query_filters = checked_cql_filter(
+                filter_dict, column_types, geometry_column
             )
+        except UnreadableFilterError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from None
 
-            where_clause = query_filters.to_full_where(default="TRUE")
-            params = query_filters.params
+        where_clause = query_filters.to_full_where(default="TRUE")
+        params = query_filters.params
 
-            logger.debug("CQL filter built: %s with params %s", where_clause, params)
-            return where_clause, params
-
-        except json.JSONDecodeError as e:
-            logger.warning("Failed to parse filter JSON '%s': %s", filter_expr, e)
-            return "TRUE", []
-        except Exception as e:
-            if is_pin_miss_error(e):
-                # The table is not in the pinned snapshot yet: dropping the
-                # filter would let the statistic count everything once the
-                # next connection sees it (`_reads_the_latest_layer`).
-                raise
-            logger.warning("Failed to build filter '%s': %s", filter_expr, e)
-            return "TRUE", []
+        logger.debug("CQL filter built: %s with params %s", where_clause, params)
+        return where_clause, params
 
     @_reads_the_latest_layer
     def feature_count(
@@ -668,6 +723,106 @@ class AnalyticsService:
             )
         return group.model_dump()
 
+    def style_check(
+        self,
+        collection: str,
+        document: dict[str, Any],
+        geometry: Literal["point", "line", "polygon"] | None = None,
+        compute: bool = True,
+        stored: bool = False,
+        fingerprint: str | None = None,
+        raster_file: RasterFile | None = None,
+    ) -> dict[str, Any]:
+        """A GOAT Style document checked against its layer, with its computed
+        values (classes, domains) written in when `compute` is set.
+
+        Statistics are over the whole layer, never filtered (style spec 12).
+        A raster file (`raster_file`, read by the route from the layer row) is
+        read through goatlib.raster; a map service is validated only.
+        """
+        notes: list[Any] = []
+        if document.get("kind") == "raster":
+            ctx = DataContext(kind="raster")
+            if raster_file:
+                ctx, document, notes = self._raster_check(
+                    raster_file, document, compute=compute, fingerprint=fingerprint
+                )
+        else:
+            table_name = self._get_table_name(collection)
+            with self._connection(table_name) as con:
+                ctx = describe(
+                    con,
+                    table_name,
+                    geometry=geometry,
+                    fields_used=referenced_fields(document),
+                )
+                if compute:
+                    document, notes = compute_into(
+                        con,
+                        table_name,
+                        document,
+                        geometry=geometry,
+                        fingerprint=fingerprint or "unknown",
+                    )
+            if is_catalog_relation(table_name) and ctx.fields is not None:
+                # A catalog view's rowid is the feature id, not a field.
+                ctx = dataclasses.replace(
+                    ctx, fields={k: v for k, v in ctx.fields.items() if k != "rowid"}
+                )
+        ctx = dataclasses.replace(ctx, capabilities=STYLE_CAPABILITIES)
+        issues = sorted(
+            [*notes, *validate(document, ctx, stored=stored)],
+            key=lambda i: (i.path, i.code),
+        )
+        return {
+            "document": document,
+            "issues": [i.model_dump(mode="json", exclude_none=True) for i in issues],
+            "feature_count": ctx.feature_count,
+            "fields": [
+                {"name": f.name, "type": f.type} for f in (ctx.fields or {}).values()
+            ],
+        }
+
+    def _raster_check(
+        self,
+        raster: RasterFile,
+        document: dict[str, Any],
+        *,
+        compute: bool,
+        fingerprint: str | None,
+    ) -> tuple[DataContext, dict[str, Any], list[Any]]:
+        """The raster file's context and, with `compute`, the style's computed
+        values. A file that cannot be read now answers 503, so core keeps the
+        style stale and asks again; an address the URL guard refuses is
+        validated without the file."""
+        try:
+            with RasterSource(
+                raster.external_url,
+                settings.raster_private_hosts,
+                stored_file=raster.stored_file,
+            ) as source:
+                ctx = raster_context(source)
+                notes: list[Any] = []
+                if compute:
+                    document, notes = compute_raster_into(
+                        source, document, fingerprint=fingerprint or "unknown"
+                    )
+                return ctx, document, notes
+        except UnsafeUrlError as error:
+            logger.warning("style-check: raster address refused: %s", error)
+            return DataContext(kind="raster"), document, []
+        except RasterUnavailableError as error:
+            logger.warning("style-check: raster file unavailable: %s", error)
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "type": "http://www.opengis.net/def/exceptions/ogcapi-processes-1/1.0/job-execution-failed",
+                    "title": "Raster file unavailable",
+                    "status": 503,
+                    "detail": "The raster file could not be read; try again later.",
+                },
+            ) from None
+
     def layer_search(
         self,
         query: str,
@@ -866,36 +1021,27 @@ class AnalyticsService:
         view_name: str,
         filter_expr: str | None,
     ) -> tuple[str, list[Any]]:
-        """Build a SQL WHERE clause from a CQL2 filter using an existing DuckDB connection."""
+        """Build a SQL WHERE clause from a CQL2 filter using an existing DuckDB
+        connection. Raises `UnreadableFilterError` for a filter the view cannot
+        take (`checked_cql_filter`), which the preview reports instead of
+        reading the layer unfiltered."""
         if not filter_expr:
             return "TRUE", []
 
-        try:
-            filter_dict = (
-                json.loads(filter_expr) if isinstance(filter_expr, str) else filter_expr
-            )
+        result = con.execute(f'DESCRIBE "{view_name}"').fetchall()
+        column_types = {row[0]: row[1] for row in result}
 
-            result = con.execute(f'DESCRIBE "{view_name}"').fetchall()
-            column_names = [row[0] for row in result]
-            column_types = {row[0]: row[1] for row in result}
+        geometry_column = "geometry"
+        for col_name, col_type in column_types.items():
+            if "GEOMETRY" in col_type.upper() or col_name.lower() in (
+                "geom",
+                "geometry",
+            ):
+                geometry_column = col_name
+                break
 
-            geometry_column = "geometry"
-            for col_name, col_type in column_types.items():
-                if "GEOMETRY" in col_type.upper() or col_name.lower() in (
-                    "geom",
-                    "geometry",
-                ):
-                    geometry_column = col_name
-                    break
-
-            cql_filter_obj = {"filter": filter_dict, "lang": "cql2-json"}
-            query_filters = build_cql_filter(
-                cql_filter_obj, column_names, geometry_column=geometry_column
-            )
-            return query_filters.to_full_where(default="TRUE"), query_filters.params
-        except Exception as e:
-            logger.warning("Failed to build WHERE clause for '%s': %s", view_name, e)
-            return "TRUE", []
+        query_filters = checked_cql_filter(filter_expr, column_types, geometry_column)
+        return query_filters.to_full_where(default="TRUE"), query_filters.params
 
     def _create_alias_view(
         self,
@@ -909,6 +1055,10 @@ class AnalyticsService:
         TEMP, so the view belongs to this cursor alone: pooled cursors share
         one database, and a plain `input_1` view could be replaced by another
         request's between this request creating it and reading it.
+
+        A filter the layer cannot take raises `UnreadableFilterError`; the
+        preview reports it rather than show the unfiltered layer as if it
+        were filtered.
         """
         if not filter_expr:
             con.execute(f'CREATE OR REPLACE TEMP VIEW "{alias}" AS {source_sql}')
@@ -936,12 +1086,11 @@ class AnalyticsService:
                     f'CREATE OR REPLACE TEMP VIEW "{alias}" AS SELECT * FROM "{filt_table}"'
                 )
             except Exception as e:
-                logger.warning(
-                    "Failed to apply filter to alias '%s', using unfiltered: %s",
-                    alias,
-                    e,
-                )
-                con.execute(f'CREATE OR REPLACE TEMP VIEW "{alias}" AS {source_sql}')
+                logger.warning("Failed to apply filter to alias '%s': %s", alias, e)
+                raise UnreadableFilterError(
+                    "The layer's filter cannot be applied to its data. "
+                    "Change or remove the filter and try again."
+                ) from e
 
     def preview_sql(
         self,
@@ -970,7 +1119,15 @@ class AnalyticsService:
 
         Returns:
             Dict with success, columns, rows, error
+
+        Raises:
+            HTTPException: 400 for a filter that does not parse or is over a
+                request ceiling (`_checked_filter`)
         """
+        # Refused before any layer is loaded: the alias views below fall back
+        # to the unfiltered layer when the filter cannot be applied.
+        _checked_filter(filter_expr)
+
         # Validate SQL first: it runs on a connection with DuckLake attached,
         # so it may read only the layers it declares, by their aliases.
         try:

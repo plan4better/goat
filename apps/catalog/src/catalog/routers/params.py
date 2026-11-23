@@ -217,29 +217,31 @@ class FacetFilters(BaseModel):
     stay in step, so a new seeded facet fails the suite instead of silently
     lacking a query parameter.
 
-    Values are comma-separated (``?license=CC-BY-4.0,ODbL-1.0`` means either).
+    Values are comma-separated (``?license=CC-BY-4.0,ODbL-1.0`` means either),
+    or repeated (``?license=CC-BY-4.0&license=ODbL-1.0``), which is how the web
+    sends the values ticked in one facet.
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    themes: str | None = Field(
+    themes: CsvList = Field(
         default=None,
         # `data_category` is what the collections endpoint has always called
         # this; accepted everywhere now rather than on that one endpoint.
         validation_alias=AliasChoices("themes", "data_category"),
         description="Thematic categories, comma-separated",
     )
-    language: str | None = Field(default=None, description="Metadata language")
+    language: CsvList = Field(default=None, description="Metadata language")
     year: int | None = Field(default=None, description="Calendar year of the data")
-    license: str | None = Field(default=None, description="SPDX license identifiers")
-    publisher: str | None = Field(default=None, description="Publishing organisations")
-    type: str | None = Field(default=None, description="feature | table | raster")
-    geometry_type: str | None = Field(
+    license: CsvList = Field(default=None, description="SPDX license identifiers")
+    publisher: CsvList = Field(default=None, description="Publishing organisations")
+    type: CsvList = Field(default=None, description="feature | table | raster")
+    geometry_type: CsvList = Field(
         default=None,
         validation_alias=AliasChoices("geometry_type", "geom_type"),
         description="Geometry type of the layer",
     )
-    geographical_code: str | None = Field(
+    geographical_code: CsvList = Field(
         default=None, description="Country or region codes"
     )
 
@@ -251,7 +253,7 @@ class FacetFilters(BaseModel):
         caller never reaches the query builder.
         """
         return {
-            name: str(value)
+            name: ",".join(map(str, value)) if isinstance(value, list) else str(value)
             for name, value in self.__dict__.items()
             if name in FacetFilters.model_fields and value is not None
         }

@@ -1,0 +1,8 @@
+[
+  { "about": "A float band: the breaks as computed, to twelve digits.", "domain": [0.5, 100.3], "count": 5, "whole": false, "breaks": [20.46, 40.42, 60.38, 80.34] },
+  { "about": "The same range on a whole-number band: each break rounded.", "domain": [0.5, 100.3], "count": 5, "whole": true, "breaks": [20, 40, 60, 80] },
+  { "about": "An 8 bit band's range.", "domain": [7, 255], "count": 5, "whole": true, "breaks": [57, 106, 156, 205] },
+  { "about": "Breaks that round together are kept once: fewer classes.", "domain": [0, 3], "count": 7, "whole": true, "breaks": [1, 2] },
+  { "about": "A half rounds up.", "domain": [0, 5], "count": 2, "whole": true, "breaks": [3] },
+  { "about": "A negative half rounds up too.", "domain": [-5, 0], "count": 2, "whole": true, "breaks": [-2] }
+]

@@ -21,7 +21,7 @@ sidebar_position: 7
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Wählen Sie den Tab <code>Basemap</code>. Wählen Sie <code>Vektor</code> für Style-JSON-Quellen oder <code>Raster</code> für XYZ-Kachelquellen.</div>
+  <div class="content">Wählen Sie den Tab <code>Basemap</code>. Wählen Sie <code>Vektor</code> für Style-JSON-Quellen oder <code>Raster</code> für XYZ-Kachelquellen. Eine Raster-URL versteht <code>&#123;-y&#125;</code>, <code>&#123;s&#125;</code> und <code>&#123;switch:a,b,c&#125;</code> wie ein XYZ-Layer (siehe [Layer hinzufügen](./layers#layer-hinzufügen)).</div>
 </div>
 
 <div class="step">

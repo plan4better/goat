@@ -396,7 +396,8 @@ class FeatureService:
         geom_col = geometry_column if has_geometry else None
 
         hidden = _hidden_columns(native_column_types)
-        if properties:
+        # An empty list asks for features without properties.
+        if properties is not None:
             prop_cols = [
                 p
                 for p in properties
@@ -603,8 +604,9 @@ class FeatureService:
                 elif "JSON" in type_upper:
                     json_cols.add(col_name)
 
-            # Build select clause
-            if properties:
+            # Build select clause; an empty list asks for features without
+            # properties, as on a stored layer.
+            if properties is not None:
                 select_cols = [
                     f'"{p}"' for p in properties if p != geom_col and p in col_names
                 ]
@@ -614,7 +616,9 @@ class FeatureService:
             if geom_col:
                 select_cols.append(f'ST_AsGeoJSON("{geom_col}") AS geom_json')
 
-            select_clause = ", ".join(select_cols) if select_cols else "*"
+            select_clause = (
+                ", ".join(select_cols) if select_cols else "NULL AS geom_json"
+            )
 
             # Build WHERE clause (applies to both count and data queries)
             where_clause = "1=1"

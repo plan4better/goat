@@ -29,6 +29,16 @@ check is a round trip. A short in-process TTL cache below bounds that cost:
 one map pan (~50 tile requests) costs one ``customer.can`` query per
 (layer, user) instead of fifty. The trade-off is that a revoked share can
 still read for up to ``READ_AUTHZ_CACHE_TTL_SECONDS`` after being revoked.
+
+For a caller without a sign-in the verdict says whether anyone may read the
+layer (a layer of a published project, a catalog layer's public grant).
+``require_layer_read`` leaves it on the request, and the raster tile routes
+read it through ``read_by_anyone`` to decide how long a shared cache may keep
+a tile: the same answer in shadow and enforced mode, and no second query.
+
+A catalog item that is not a layer yet (collection id ``catalog:<item id>``,
+``geoapi.services.catalog_items``) has no row for ``customer.can``. Its one
+rule is ``catalog_read_allowed``, enforced always: never in shadow mode.
 """
 
 import logging
@@ -36,11 +46,12 @@ import time
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Path, Query, status
+from fastapi import Depends, HTTPException, Path, Query, Request, status
 
 from geoapi.config import settings
 from geoapi.dependencies import normalize_layer_id
 from geoapi.deps.auth import get_optional_user_id
+from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.layer_service import layer_service
 
 logger = logging.getLogger("geoapi.read_authz")
@@ -84,15 +95,43 @@ def _cache_set(key: tuple[str, UUID | None], allowed: bool) -> None:
     _read_authz_cache[key] = (allowed, _now() + READ_AUTHZ_CACHE_TTL_SECONDS)
 
 
-async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> None:
+def catalog_read_allowed(item_id: str, user_id: UUID | None) -> bool:
+    """Whether the data of a catalog item that is not a layer yet may be read:
+    its tiles and its raster previews.
+
+    The one place that decides. Today: signed-in users, whatever the item.
+    Search and discovery are public and do not come here (the catalog service
+    answers them, without data). A public read-only catalog later is a change
+    of this function alone, for example "also without a sign-in when the
+    item's licence allows it", not of the routes.
+    """
+    return user_id is not None
+
+
+async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> bool:
     """Shared verdict: cache -> `customer.can` -> raise (enforced) or log (shadow).
+
+    Returns whether the rule lets this caller read: False for a read shadow
+    mode serves anyway (refused, or not evaluated).
 
     A service-call error (a missing `customer.can`, a Postgres hiccup) is
     never cached and never propagates as a 500 to the caller: in shadow mode
     it is treated as allowed, matching shadow mode's "never blocks" contract;
     when enforcement is on, it is treated as a denial — fail closed, since a
     read the rule engine could not evaluate must not be served.
+
+    A catalog item is no layer: `catalog_read_allowed` decides, and a refusal
+    is a 401 whatever `ENFORCE_READ_AUTHZ` says.
     """
+    item_id = catalog_item_id(collection_id)
+    if item_id is not None:
+        if not catalog_read_allowed(item_id, user_id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Sign in to read catalog data",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return True
     layer_id = normalize_layer_id(collection_id)
     key = (layer_id, user_id)
     allowed = _cache_get(key)
@@ -108,17 +147,18 @@ async def _check_and_enforce(collection_id: str, user_id: UUID | None) -> None:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Not allowed to read this layer",
                 ) from e
-            return
+            return False
         _cache_set(key, allowed)
 
     if allowed:
-        return
+        return True
     if settings.ENFORCE_READ_AUTHZ:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to read this layer",
         )
     logger.warning("read_authz.would_deny layer=%s user=%s", layer_id, user_id)
+    return False
 
 
 async def enforce_layer_read(layer_id: str, user_id: UUID | None) -> None:
@@ -127,16 +167,37 @@ async def enforce_layer_read(layer_id: str, user_id: UUID | None) -> None:
     await _check_and_enforce(layer_id, user_id)
 
 
+#: The `request.state` attribute `require_layer_read` leaves its verdict for a
+#: caller without a sign-in in.
+_READ_BY_ANYONE = "layer_read_by_anyone"
+
+
 async def require_layer_read(
     collection_id: Annotated[str, Path(alias="collectionId")],
     user_id: UUID | None = Depends(get_optional_user_id),
+    *,
+    request: Request,
 ) -> None:
     """Deny (or, in shadow mode, log) a read the one authorization rule refuses.
 
     Never bypassed — attach this to any route whose handler has no temp-layer
-    branch of its own.
+    branch of its own. For a caller without a sign-in, the verdict is whether
+    anyone may read the layer; it is left on the request for `read_by_anyone`.
     """
-    await _check_and_enforce(collection_id, user_id)
+    allowed = await _check_and_enforce(collection_id, user_id)
+    if user_id is None:
+        setattr(request.state, _READ_BY_ANYONE, allowed)
+
+
+def read_by_anyone(request: Request) -> bool:
+    """Whether the layer `request` reads may be read without a sign-in, as
+    `require_layer_read` found for this request (no second question to the
+    database). False when it did not decide it: a signed-in caller, a read the
+    rule could not evaluate, a route without the check. With `AUTH` off
+    every reader is the one local user and nothing is private: True."""
+    if not settings.AUTH:
+        return True
+    return getattr(request.state, _READ_BY_ANYONE, False) is True
 
 
 async def require_layer_read_unless_temp(

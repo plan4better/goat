@@ -3,6 +3,6 @@
     "position": 2,
     "link": {
       "type": "generated-index",
-      "description": "Alle zu der Karte hinzugefügten Layer können gestaltet werden. Dies kann mit derselben Farbe und Erscheinung für alle Features oder mit einem attributbasierten Styling erfolgen."
+      "description": "Alle zu der Karte hinzugefügten Layer können im Stil-Panel gestaltet werden: mit einem Aussehen für alle Objekte, nach Attribut, nach Klassen, nach Zoom oder mit Regeln, in mehreren benannten Stilen je Layer."
     }
   }

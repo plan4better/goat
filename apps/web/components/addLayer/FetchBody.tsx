@@ -34,6 +34,7 @@ import turfArea from "@turf/area";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { MapProvider } from "react-map-gl/maplibre";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
@@ -45,10 +46,12 @@ import {
   usePtNetworkCoverageMask,
 } from "@/lib/api/processes";
 
+import { DrawProvider } from "@/lib/providers/DrawProvider";
+
 import type { SelectorItem } from "@/types/map/common";
 
 import {
-  type AreaMode,
+  FETCH_MAP_ID,
   type FetchFlow,
   type Geometry,
   MAX_FEATURES,
@@ -65,17 +68,15 @@ import {
 import { usePTModeItems } from "@/hooks/map/ToolsHooks";
 
 import UploadDestinationPill from "@/components/addLayer/UploadDestinationPill";
-import {
-  SpatialAreaSettings,
-  type SpatialPicker,
-  SpatialPickerMap,
-  useSpatialPicker,
-} from "@/components/dashboard/catalog/CatalogSpatialPicker";
+
+import { SpatialPickerMap } from "@/components/dashboard/catalog/CatalogSpatialPicker";
 import MaskLayer from "@/components/map/MaskLayer";
 import SegmentedControl from "@/components/map/panels/common/SegmentedControl";
 import Selector from "@/components/map/panels/common/Selector";
 import { FieldLabel, SettingsColumn, SettingsSection } from "@/components/map/panels/common/SettingsColumn";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
+import { AreaChooser } from "@/components/map/panels/filter/area/AreaChooser";
+import { AreaToolsProvider, useAreaTools } from "@/components/map/panels/filter/area/AreaTools";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 /**
@@ -217,31 +218,34 @@ const useTagOptions = (flow: FetchFlow["fetch"], key?: string, prefetch = false)
   return { options, loading, counting, failed, sampled, load };
 };
 
-const AREA_MODES: AreaMode[] = ["view", "region", "point", "polygon"];
+/** Whether the area is the map view, the box over the preview. */
+const isViewArea = (flow: FetchFlow["fetch"]) =>
+  !!flow.areaHost.area?.pieces.some((piece) => piece.kind === "view");
 
-/** How the area is chosen, and what that way needs: the map beside it is where it is picked. */
-const AreaSettings = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPicker }) => {
+/** The area's pieces and the ways to add to them: the map beside them is where shapes are drawn. */
+const AreaSettings = ({ flow }: { flow: FetchFlow["fetch"] }) => {
   const { t } = useTranslation("common");
   return (
-    <SpatialAreaSettings
-      modes={AREA_MODES}
-      mode={flow.areaMode}
-      onModeChange={flow.setAreaMode}
-      picker={picker}>
-      {flow.areaMode === "view" && (
-        <Typography variant="caption" color="text.secondary">
+    // The picker's rows keep their own inset, as in the filter panel: they line up with the
+    // section's fields through a negative margin.
+    <Box sx={{ mx: -3 }}>
+      <AreaChooser emptyText={t("fetch_features_area_none")} />
+      {isViewArea(flow) && (
+        <Typography variant="caption" color="text.secondary" component="p" sx={{ px: 3, pt: 1 }}>
           {t("fetch_features_area_view_hint")}
         </Typography>
       )}
-    </SpatialAreaSettings>
+    </Box>
   );
 };
 
-/** The area on a map that fills its side: the map view is the area, other ways pick it on the map. */
-const AreaMap = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPicker }) => {
+/** The area on a map that fills its side: the map view is the area, other pieces are drawn on it (a shape being
+ * edited by the draw tool alone). */
+const AreaMap = ({ flow }: { flow: FetchFlow["fetch"] }) => {
   const theme = useTheme();
   // Where the public transport network is: a cut outside it holds no lines.
   const { mask } = usePtNetworkCoverageMask(flow.source === "pt_network");
+  const { drawing, outline } = useAreaTools();
   // The area follows the one size state, as the estimate and the button do: grey until the first
   // answer, then green, or orange while the area holds more than a fetch takes.
   const shapeColor =
@@ -250,8 +254,8 @@ const AreaMap = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPi
       : flow.sizeState === "ok"
         ? theme.palette.primary.main
         : theme.palette.text.secondary;
-  const isView = flow.areaMode === "view";
-  // Another way opens framed on its own area; only the map view needs the box.
+  const isView = isViewArea(flow);
+  // Other pieces open framed on themselves; only the map view needs the box.
   const [initialViewState] = useState(() =>
     isView && flow.viewBox
       ? {
@@ -282,14 +286,13 @@ const AreaMap = ({ flow, picker }: { flow: FetchFlow["fetch"]; picker: SpatialPi
 
   return (
     <SpatialPickerMap
-      picker={picker}
-      mapId="fetch-features-preview"
+      area={outline}
+      mapId={FETCH_MAP_ID}
       initialViewState={initialViewState}
-      geometry={isView || picker.value ? undefined : flow.area}
       shapeColor={shapeColor}
+      cursor={drawing ? "crosshair" : undefined}
       onMoveEnd={measure}
       onLoad={measure}
-      frameEdits
       layers={mask && <MaskLayer mask={mask} id="fetch-pt-network-coverage" />}
       sx={{ flex: 1, minHeight: 280 }}
       overlay={
@@ -601,16 +604,12 @@ const SmallToggle = <T extends string>({
   <ToggleButtonGroup
     exclusive
     size="small"
-    color="primary"
     value={value}
     disabled={disabled}
     aria-label={label}
     onChange={(_, next: T | null) => next && onChange(next)}>
     {items.map((item) => (
-      <ToggleButton
-        key={item.value}
-        value={item.value}
-        sx={{ typography: "caption", py: 0.25, px: 1.5, textTransform: "none" }}>
+      <ToggleButton key={item.value} value={item.value}>
         {item.label}
       </ToggleButton>
     ))}
@@ -1630,149 +1629,151 @@ const FetchBody = ({ controller }: { controller: FetchFlow }) => {
   const { fetch: flow } = controller;
   const isNetwork = isNetworkSource(flow.source);
   const [tab, setTab] = useState<PreviewTab>("map");
-  // One picker for the settings column and the map, so the search and the radius on the left
-  // and the clicks on the right edit the same shape; it outlives the map when another tab shows.
-  const picker = useSpatialPicker({
-    mode: flow.areaMode === "view" ? null : flow.areaMode,
-    // Each way shows its own last choice; the flow keeps one, so another way's shows nothing.
-    value: flow.areaMode !== "view" && flow.spatial?.kind === flow.areaMode ? flow.spatial : null,
-    onChange: flow.setSpatial,
-  });
 
+  // The picker on the left and the preview on the right share the preview's draw tool and view:
+  // the providers hold both, and outlive the map when another tab shows.
   return (
-    <Stack sx={{ minHeight: 0, flex: 1 }}>
-      <Stack
-        direction="row"
-        spacing={2.5}
-        alignItems="center"
-        sx={{ px: 5, py: 3, borderBottom: `1px solid ${theme.palette.divider}` }}>
-        <Box
-          sx={{
-            width: 30,
-            height: 30,
-            borderRadius: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "text.secondary",
-            backgroundColor: theme.palette.action.hover,
-          }}>
-          <Icon
-            iconName={SOURCE_ICONS[flow.source]}
-            style={{ fontSize: ICON_SIZE.large }}
-            htmlColor="currentColor"
-          />
-        </Box>
-        <Typography variant="body1" fontWeight="fontWeightBold">
-          {t(`fetch_features_source_${flow.source}`)}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-          {t(`fetch_features_licence_${flow.source}`)}
-        </Typography>
-        <Typography
-          variant="caption"
-          fontWeight="fontWeightBold"
-          color="text.secondary"
-          sx={{ px: 2.5, py: 0.5, borderRadius: 999, border: `1px solid ${theme.palette.divider}` }}>
-          {t("connect_service_copy")}
-        </Typography>
-      </Stack>
-      <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, flex: 1, minHeight: 0 }}>
-        <SettingsColumn>
-          {/* The source's description goes above the sections, as a tool's does, so the
-                sections' guide line runs through unbroken. */}
-          {isNetwork && (
-            <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic", pb: 2 }}>
-              {t(`fetch_features_${flow.source}_hint`)}
-            </Typography>
-          )}
-          <SettingsSection label={t("fetch_features_area")} icon={ICON_NAME.BOUNDING_BOX}>
-            <AreaSettings flow={flow} picker={picker} />
-          </SettingsSection>
-          {/* The public transport network's lines, by mode: the routing tools' choice. */}
-          {flow.source === "pt_network" && (
-            <SettingsSection label={t("fetch_features_section_modes")} icon={ICON_NAME.BUS}>
-              <PtModes flow={flow} />
-              {/* Laid out as the tools lay out a boolean input: label left, switch right. */}
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Typography variant="body2">{t("fetch_features_exclude_long_distance")}</Typography>
-                  <Tooltip title={t("fetch_features_exclude_long_distance_tip")} placement="top" arrow>
-                    <HelpOutlineIcon sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }} />
-                  </Tooltip>
-                </Stack>
-                <Switch
-                  size="small"
-                  checked={flow.excludeLongDistance}
-                  onChange={(event) => flow.setExcludeLongDistance(event.target.checked)}
-                />
-              </Stack>
-            </SettingsSection>
-          )}
-          {isNetwork ? null : (
-            <SettingsSection label={t("fetch_features_section_features")} icon={ICON_NAME.FILTER}>
-              <FeatureChoice flow={flow} />
-              <QuickPicks flow={flow} />
-              <FilterSection flow={flow} />
-            </SettingsSection>
-          )}
-          {!flow.inWorkflow && (
-            <SettingsSection label={t("fetch_features_section_result")} icon={ICON_NAME.LAYERS}>
-              <TextFieldInput
-                label={t(isNetwork ? "fetch_features_bundle_name" : "layer_name")}
-                value={flow.name}
-                onChange={flow.setName}
-                // As the tool forms' name fields: no clear button.
-                clearable={false}
-                inputProps={{ "aria-label": t(isNetwork ? "fetch_features_bundle_name" : "layer_name") }}
-              />
-              <Box>
-                <FieldLabel>{t("connect_service_save_to")}</FieldLabel>
-                <UploadDestinationPill
-                  folders={flow.folders}
-                  spaces={flow.spaces}
-                  selected={flow.selectedFolder}
-                  onSelect={flow.setSelectedFolder}
+    <DrawProvider>
+      <MapProvider>
+        <AreaToolsProvider host={flow.areaHost}>
+          <Stack sx={{ minHeight: 0, flex: 1 }}>
+            <Stack
+              direction="row"
+              spacing={2.5}
+              alignItems="center"
+              sx={{ px: 5, py: 3, borderBottom: `1px solid ${theme.palette.divider}` }}>
+              <Box
+                sx={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 2,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "text.secondary",
+                  backgroundColor: theme.palette.action.hover,
+                }}>
+                <Icon
+                  iconName={SOURCE_ICONS[flow.source]}
+                  style={{ fontSize: ICON_SIZE.large }}
+                  htmlColor="currentColor"
                 />
               </Box>
-            </SettingsSection>
-          )}
-        </SettingsColumn>
-        <Stack sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-          <Tabs
-            value={tab}
-            onChange={(_, next: PreviewTab) => setTab(next)}
-            sx={{ px: 3, minHeight: 44, borderBottom: `1px solid ${theme.palette.divider}` }}>
-            <Tab
-              value="map"
-              label={t("fetch_features_tab_map")}
-              sx={{ minHeight: 44, textTransform: "none" }}
-            />
-            {!isNetwork && (
-              <Tab
-                value="table"
-                label={t("fetch_features_tab_table")}
-                sx={{ minHeight: 44, textTransform: "none" }}
-              />
-            )}
-            <Tab
-              value="details"
-              label={t("fetch_features_tab_details")}
-              sx={{ minHeight: 44, textTransform: "none" }}
-            />
-          </Tabs>
-          {tab === "map" || (tab === "table" && isNetwork) ? (
-            <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-              <AreaMap flow={flow} picker={picker} />
+              <Typography variant="body1" fontWeight="fontWeightBold">
+                {t(`fetch_features_source_${flow.source}`)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                {t(`fetch_features_licence_${flow.source}`)}
+              </Typography>
+              <Typography
+                variant="caption"
+                fontWeight="fontWeightBold"
+                color="text.secondary"
+                sx={{ px: 2.5, py: 0.5, borderRadius: 999, border: `1px solid ${theme.palette.divider}` }}>
+                {t("connect_service_copy")}
+              </Typography>
+            </Stack>
+            <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, flex: 1, minHeight: 0 }}>
+              <SettingsColumn>
+                {/* The source's description goes above the sections, as a tool's does, so the
+                sections' guide line runs through unbroken. */}
+                {isNetwork && (
+                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic", pb: 2 }}>
+                    {t(`fetch_features_${flow.source}_hint`)}
+                  </Typography>
+                )}
+                <SettingsSection label={t("fetch_features_area")} icon={ICON_NAME.BOUNDING_BOX}>
+                  <AreaSettings flow={flow} />
+                </SettingsSection>
+                {/* The public transport network's lines, by mode: the routing tools' choice. */}
+                {flow.source === "pt_network" && (
+                  <SettingsSection label={t("fetch_features_section_modes")} icon={ICON_NAME.BUS}>
+                    <PtModes flow={flow} />
+                    {/* Laid out as the tools lay out a boolean input: label left, switch right. */}
+                    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                      <Stack direction="row" alignItems="center" spacing={1}>
+                        <Typography variant="body2">{t("fetch_features_exclude_long_distance")}</Typography>
+                        <Tooltip title={t("fetch_features_exclude_long_distance_tip")} placement="top" arrow>
+                          <HelpOutlineIcon sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }} />
+                        </Tooltip>
+                      </Stack>
+                      <Switch
+                        size="small"
+                        checked={flow.excludeLongDistance}
+                        onChange={(event) => flow.setExcludeLongDistance(event.target.checked)}
+                      />
+                    </Stack>
+                  </SettingsSection>
+                )}
+                {isNetwork ? null : (
+                  <SettingsSection label={t("fetch_features_section_features")} icon={ICON_NAME.FILTER}>
+                    <FeatureChoice flow={flow} />
+                    <QuickPicks flow={flow} />
+                    <FilterSection flow={flow} />
+                  </SettingsSection>
+                )}
+                {!flow.inWorkflow && (
+                  <SettingsSection label={t("fetch_features_section_result")} icon={ICON_NAME.LAYERS}>
+                    <TextFieldInput
+                      label={t(isNetwork ? "fetch_features_bundle_name" : "layer_name")}
+                      value={flow.name}
+                      onChange={flow.setName}
+                      // As the tool forms' name fields: no clear button.
+                      clearable={false}
+                      inputProps={{
+                        "aria-label": t(isNetwork ? "fetch_features_bundle_name" : "layer_name"),
+                      }}
+                    />
+                    <Box>
+                      <FieldLabel>{t("connect_service_save_to")}</FieldLabel>
+                      <UploadDestinationPill
+                        folders={flow.folders}
+                        spaces={flow.spaces}
+                        selected={flow.selectedFolder}
+                        onSelect={flow.setSelectedFolder}
+                      />
+                    </Box>
+                  </SettingsSection>
+                )}
+              </SettingsColumn>
+              <Stack sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+                <Tabs
+                  value={tab}
+                  onChange={(_, next: PreviewTab) => setTab(next)}
+                  sx={{ px: 3, minHeight: 44, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                  <Tab
+                    value="map"
+                    label={t("fetch_features_tab_map")}
+                    sx={{ minHeight: 44, textTransform: "none" }}
+                  />
+                  {!isNetwork && (
+                    <Tab
+                      value="table"
+                      label={t("fetch_features_tab_table")}
+                      sx={{ minHeight: 44, textTransform: "none" }}
+                    />
+                  )}
+                  <Tab
+                    value="details"
+                    label={t("fetch_features_tab_details")}
+                    sx={{ minHeight: 44, textTransform: "none" }}
+                  />
+                </Tabs>
+                {tab === "map" || (tab === "table" && isNetwork) ? (
+                  <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                    <AreaMap flow={flow} />
+                  </Box>
+                ) : tab === "table" ? (
+                  <SampleTable flow={flow} />
+                ) : (
+                  <DetailsPanel flow={flow} />
+                )}
+              </Stack>
             </Box>
-          ) : tab === "table" ? (
-            <SampleTable flow={flow} />
-          ) : (
-            <DetailsPanel flow={flow} />
-          )}
-        </Stack>
-      </Box>
-    </Stack>
+          </Stack>
+        </AreaToolsProvider>
+      </MapProvider>
+    </DrawProvider>
   );
 };
 

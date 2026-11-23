@@ -9,6 +9,10 @@ import type { DrawStyle } from "../types";
 // Default color — used when feature doesn't have user properties set
 const DEFAULT_COLOR = "#ef4444";
 
+/** The id of a feature whose midpoints show while it is edited (direct_select), so that a click on one adds a corner
+ * there. Everyone else's midpoints stay hidden. */
+export const SHOWN_MIDPOINTS_ID = "shown-midpoints";
+
 export const defaultDrawStyles: DrawStyle[] = [
   // Polygon fill — uses user__fillColor if set on the feature, else default
   {
@@ -81,6 +85,23 @@ export const defaultDrawStyles: DrawStyle[] = [
     type: "circle",
     filter: ["all", ["==", "$type", "Point"], ["==", "meta", "midpoint"]],
     paint: { "circle-radius": 0, "circle-color": "#ef4444", "circle-opacity": 0 },
+  },
+  // Midpoints of the one feature that shows them: smaller than a vertex, white with the line's colour around
+  {
+    id: "gl-draw-polygon-midpoint-shown",
+    type: "circle",
+    filter: [
+      "all",
+      ["==", "$type", "Point"],
+      ["==", "meta", "midpoint"],
+      ["==", "parent", SHOWN_MIDPOINTS_ID],
+    ],
+    paint: {
+      "circle-radius": 4,
+      "circle-color": "#fff",
+      "circle-stroke-color": "#ef4444",
+      "circle-stroke-width": 2,
+    },
   },
   // Point — when _iconImage is set, circle becomes a transparent selection ring around the icon
   {

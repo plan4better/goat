@@ -1,26 +1,22 @@
 import ClearIcon from "@mui/icons-material/Clear";
-import SearchIcon from "@mui/icons-material/Search";
 import {
   Box,
-  Checkbox,
   FormControl,
   IconButton,
-  InputAdornment,
   Link,
-  ListSubheader,
   MenuItem,
   Select,
   Stack,
-  TextField,
   Typography,
   useTheme,
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { LayerFieldType } from "@/lib/validations/layer";
 
 import FieldKindIcon, { fieldIndicatorKind } from "@/components/common/FieldKindIcon";
+import FieldMenu from "@/components/common/FieldMenu";
 import FormLabelHelper from "@/components/common/FormLabelHelper";
 
 export type SelectorProps<T extends boolean = false> = {
@@ -47,20 +43,14 @@ const EMPTY_FIELDS: LayerFieldType[] = [];
 
 const LayerFieldSelector = <T extends boolean = false>(props: SelectorProps<T>) => {
   const theme = useTheme();
-  const [searchText, setSearchText] = useState("");
   const { selectedField, fields, setSelectedField } = props;
   const [focused, setFocused] = useState(false);
+  // The field list opens under the select (the app's FieldMenu); the select itself only shows the value.
+  const root = useRef<HTMLDivElement | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   // Ensure fields is always an array (defensive check) - use stable reference
   const safeFields = fields && fields.length > 0 ? fields : EMPTY_FIELDS;
-
-  const displayedfields = useMemo(() => {
-    if (safeFields.length === 0) return EMPTY_FIELDS;
-    const filtered = safeFields.filter((field) => {
-      return containsText(field.name, searchText);
-    });
-    return filtered;
-  }, [safeFields, searchText]);
 
   const { t } = useTranslation("common");
   const selectedValue = useMemo(() => {
@@ -95,18 +85,11 @@ const LayerFieldSelector = <T extends boolean = false>(props: SelectorProps<T>) 
         />
       )}
       <Select
+        ref={root}
         fullWidth
-        MenuProps={{
-          autoFocus: false,
-          slotProps: {
-            paper: {
-              sx: {
-                maxHeight: "350px",
-                maxWidth: "300px",
-                overflowY: "auto",
-              },
-            },
-          },
+        open={false}
+        onOpen={() => {
+          if (!props.disabled) setAnchor(root.current);
         }}
         multiple={props.multiple ? true : false}
         disabled={props.disabled}
@@ -143,13 +126,6 @@ const LayerFieldSelector = <T extends boolean = false>(props: SelectorProps<T>) 
             }
           } catch (error) {
             console.error("Failed to parse field selection:", error);
-          }
-        }}
-        onClose={() => {
-          setFocused(false);
-          setSearchText("");
-          if (props.onClose) {
-            props.onClose();
           }
         }}
         onFocus={() => {
@@ -208,98 +184,94 @@ const LayerFieldSelector = <T extends boolean = false>(props: SelectorProps<T>) 
             </Typography>
           ) : null;
         }}>
-        <ListSubheader sx={{ px: 2, pt: 1 }}>
-          <TextField
-            size="small"
-            autoFocus
-            placeholder={t("search_fields")}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
-            onChange={(e) => setSearchText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") {
-                e.stopPropagation();
-              }
-            }}
-          />
-          {props.multiple && (
-            <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-              <Link
-                component="button"
-                variant="caption"
-                underline="hover"
-                disabled={Array.isArray(selectedField) && selectedField.length === safeFields.length}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  setSelectedField(safeFields as any);
-                }}
-                sx={{
-                  color:
-                    Array.isArray(selectedField) && selectedField.length === safeFields.length
-                      ? theme.palette.text.disabled
-                      : theme.palette.primary.main,
-                  cursor:
-                    Array.isArray(selectedField) && selectedField.length === safeFields.length
-                      ? "default"
-                      : "pointer",
-                }}>
-                {t("select_all")}
-              </Link>
-              <Typography variant="caption" color="text.secondary">
-                |
-              </Typography>
-              <Link
-                component="button"
-                variant="caption"
-                underline="hover"
-                disabled={!Array.isArray(selectedField) || selectedField.length === 0}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  setSelectedField([] as any);
-                }}
-                sx={{
-                  color:
-                    !Array.isArray(selectedField) || selectedField.length === 0
-                      ? theme.palette.text.disabled
-                      : theme.palette.primary.main,
-                  cursor:
-                    !Array.isArray(selectedField) || selectedField.length === 0 ? "default" : "pointer",
-                }}>
-                {t("deselect_all")}
-              </Link>
-            </Stack>
-          )}
-        </ListSubheader>
-        {displayedfields.map((field) => (
-          <MenuItem sx={{ px: 2 }} key={field.name} value={JSON.stringify(field)}>
-            {props.multiple && Array.isArray(selectedField) && (
-              <Checkbox
-                sx={{ mr: 2, p: 0 }}
-                size="small"
-                checked={selectedField ? selectedField.some((f) => f.name === field.name) : false}
-              />
-            )}
-
-            <Box component="span" sx={{ mr: 1.5, display: "inline-flex" }}>
-              <FieldKindIcon kind={fieldIndicatorKind(field)} />
-            </Box>
-            <Typography
-              variant="body2"
-              fontWeight="bold"
-              noWrap
-              sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-              {field.name}
-            </Typography>
-          </MenuItem>
+        {/* The options the select checks its value against; the list itself is the FieldMenu below. */}
+        {safeFields.map((field) => (
+          <MenuItem key={field.name} value={JSON.stringify(field)} />
         ))}
       </Select>
+      <FieldMenu
+        anchorEl={anchor}
+        fields={safeFields}
+        multiple={!!props.multiple}
+        isSelected={(field) =>
+          Array.isArray(selectedField)
+            ? selectedField.some((f) => f.name === field.name)
+            : selectedField?.name === field.name
+        }
+        onPick={(field) => {
+          if (!props.multiple) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            setSelectedField(field as any);
+            return;
+          }
+          const current: LayerFieldType[] = Array.isArray(selectedField) ? selectedField : [];
+          const next = current.some((f) => f.name === field.name)
+            ? current.filter((f) => f.name !== field.name)
+            : [...current, field];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setSelectedField(next as any);
+        }}
+        header={
+          props.multiple ? (
+            <Box sx={{ px: "16px", py: 1.5 }}>
+              <Stack direction="row" spacing={2}>
+                <Link
+                  component="button"
+                  variant="caption"
+                  underline="hover"
+                  disabled={Array.isArray(selectedField) && selectedField.length === safeFields.length}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setSelectedField(safeFields as any);
+                  }}
+                  sx={{
+                    color:
+                      Array.isArray(selectedField) && selectedField.length === safeFields.length
+                        ? theme.palette.text.disabled
+                        : theme.palette.primary.main,
+                    cursor:
+                      Array.isArray(selectedField) && selectedField.length === safeFields.length
+                        ? "default"
+                        : "pointer",
+                  }}>
+                  {t("select_all")}
+                </Link>
+                <Typography variant="caption" color="text.secondary">
+                  |
+                </Typography>
+                <Link
+                  component="button"
+                  variant="caption"
+                  underline="hover"
+                  disabled={!Array.isArray(selectedField) || selectedField.length === 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    setSelectedField([] as any);
+                  }}
+                  sx={{
+                    color:
+                      !Array.isArray(selectedField) || selectedField.length === 0
+                        ? theme.palette.text.disabled
+                        : theme.palette.primary.main,
+                    cursor:
+                      !Array.isArray(selectedField) || selectedField.length === 0 ? "default" : "pointer",
+                  }}>
+                  {t("deselect_all")}
+                </Link>
+              </Stack>
+            </Box>
+          ) : undefined
+        }
+        searchLabel={t("search_fields")}
+        focusOnClose={root.current?.querySelector<HTMLElement>("[role='combobox']") ?? null}
+        onClose={() => {
+          setAnchor(null);
+          setFocused(false);
+          props.onClose?.();
+        }}
+      />
     </FormControl>
   );
 };

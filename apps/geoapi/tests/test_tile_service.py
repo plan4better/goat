@@ -275,8 +275,59 @@ def test_finding_tiles_by_layer_id_alone_sees_catalog_tiles() -> None:
         service.tiles_data_dir = tiles
         service.catalog_tiles_dir = catalog
 
-        (catalog / "t_cat456.pmtiles").write_bytes(b"CAT")
-        assert (
-            service._find_pmtiles_by_layer_id("cat456") == catalog / "t_cat456.pmtiles"
-        )
-        assert service._find_pmtiles_by_layer_id("missing") is None
+        cat = "ca7456" + "0" * 26
+        (catalog / f"t_{cat}.pmtiles").write_bytes(b"CAT")
+        assert service._find_pmtiles_by_layer_id(cat) == catalog / f"t_{cat}.pmtiles"
+        assert service._find_pmtiles_by_layer_id("f" * 32) is None
+
+
+LAYER_ID = "0b6c8a2e-5f1d-4c3a-9e7b-2d4f6a8c0e1f"
+
+
+def test_a_layer_id_finds_its_tile_file() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        tiles, catalog = root / "tiles", root / "catalog"
+        tiles.mkdir()
+        catalog.mkdir()
+        service = TileService()
+        service.tiles_data_dir = tiles
+        service.catalog_tiles_dir = catalog
+        stored = tiles / f"t_{LAYER_ID.replace('-', '')}.pmtiles"
+        stored.write_bytes(b"PM")
+
+        assert service._find_known_pmtiles(LAYER_ID) == stored
+
+
+@pytest.mark.parametrize(
+    "layer_id",
+    [
+        "x/../../t_secret",
+        "x/../t_secret",
+        "..",
+        "*",
+        "a/b",
+        "0b6c8a2e5f1d4c3a9e7b2d4f6a8c0e1",
+        "",
+    ],
+)
+def test_an_id_that_is_no_layer_id_finds_no_file(layer_id: str) -> None:
+    """Only a layer id (32 hex digits, hyphens or not) names a tile file: anything
+    else finds none, also where a file of that name exists, and no glob of the
+    workflow tree runs for it."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        tiles, catalog = root / "tiles", root / "catalog"
+        tiles.mkdir()
+        catalog.mkdir()
+        (root / "temporary" / "u" / "w").mkdir(parents=True)
+        (root / "temporary" / "u" / "w" / "t_other.pmtiles").write_bytes(b"PM")
+        (root / "t_secret.pmtiles").write_bytes(b"PM")
+        (tiles / "t_secret.pmtiles").write_bytes(b"PM")
+        (tiles / "t_x").mkdir()
+        service = TileService()
+        service.tiles_data_dir = tiles
+        service.catalog_tiles_dir = catalog
+
+        assert service._find_known_pmtiles(layer_id) is None
+        assert service._search_temp_pmtiles(layer_id) is None

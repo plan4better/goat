@@ -1,6 +1,9 @@
 import pytest
+import pytest_asyncio
 from core.core.config import settings
 from core.db.models.credit_usage import CreditUsage
+from core.db.models.folder import Folder
+from sqlalchemy import delete
 from tests.billing import enable_billing
 from tests.utils import org_with_default_user
 
@@ -8,6 +11,23 @@ from tests.utils import org_with_default_user
 @pytest.fixture(autouse=True)
 def billing_on(monkeypatch: pytest.MonkeyPatch) -> None:
     enable_billing(monkeypatch)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def no_folders_left(db_session):
+    """These tests give the default user folders without a space, for the
+    layers and projects they count. Every test shares that user, and its
+    folder list reads only folders in a space, so they go with the test (their
+    layers and projects with them)."""
+    yield
+    await db_session.rollback()
+    await db_session.execute(
+        delete(Folder).where(
+            Folder.user_id == settings.DEFAULT_USER_ID,
+            Folder.space_id.is_(None),
+        )
+    )
+    await db_session.commit()
 
 
 @pytest.fixture(autouse=True)

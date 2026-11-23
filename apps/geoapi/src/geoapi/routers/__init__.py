@@ -7,6 +7,7 @@ from geoapi.routers.expressions import router as expressions_router
 from geoapi.routers.features import router as features_router
 from geoapi.routers.features_write import router as features_write_router
 from geoapi.routers.metadata import router as metadata_router
+from geoapi.routers.rasters import router as rasters_router
 from geoapi.routers.tiles import router as tiles_router
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "metadata_router",
     "expressions_router",
     "download_router",
+    "rasters_router",
     "explorer_router",
 ]

@@ -42,12 +42,7 @@ const ProjectLayerRenameModal: React.FC<ProjectLayerRenameDialogProps> = ({
       setIsLoading(true);
       if (!projectLayer) return;
 
-      const updatedProjectLayer = {
-        ...projectLayer,
-        name: layerName,
-      };
-
-      await updateProjectLayer(projectId, projectLayer.id, updatedProjectLayer);
+      await updateProjectLayer(projectId, projectLayer.id, { name: layerName });
 
       if (renameSourceLayer && dataset) {
         await updateDataset(dataset.id, {

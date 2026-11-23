@@ -27,7 +27,7 @@ TABLE = "lake.t"
 def lake(tmp_path: Path) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     try:
-        con.execute("LOAD ducklake; LOAD spatial;")
+        con.execute("INSTALL ducklake; INSTALL spatial; LOAD ducklake; LOAD spatial;")
     except duckdb.Error as exc:  # pragma: no cover - extension missing offline
         pytest.skip(f"ducklake/spatial extension unavailable: {exc}")
     con.execute(

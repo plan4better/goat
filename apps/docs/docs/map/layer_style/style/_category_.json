@@ -3,7 +3,7 @@
     "position": 2,
     "link": {
       "type": "generated-index",
-      "description": "All layers added to the map can be styled. This can be done using the same colour and appearance for all features, or using an attribute-based styling."
+      "description": "All layers added to the map can be styled in the style panel: with one look for all features, by attribute, by classes, by zoom or with rules, in several named styles per layer."
     }
   }
   

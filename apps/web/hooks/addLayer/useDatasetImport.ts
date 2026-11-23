@@ -82,7 +82,7 @@ export const useDatasetImport = () => {
         // A recognised bundle (e.g. a GTFS feed) imports as a bundle — one
         // upload becoming several linked layers — instead of a single layer.
         // The backend re-infers the type from the file, so this only routes.
-        const bundleType = detectBundleType(file);
+        const bundleType = await detectBundleType(file);
         let jobId: string | undefined;
         if (bundleType) {
           const response = await requestBundleImport({

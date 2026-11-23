@@ -77,7 +77,7 @@ Deleting content does not remove it straight away: it goes to the **Trash**, whe
 
 - **New folder**, to group content however suits you
 - **Blank project** or **Import project**
-- **Upload dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
+- **Upload dataset**, to upload a file from your device (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Fetch / Connect data**, to add an external layer by URL (WFS, WMS, WMTS, XYZ Tiles or COG)
 - **Upload document**, for a file that belongs with the work without being data
 
@@ -130,9 +130,11 @@ You can import a project that was exported from GOAT as a `.zip` file.
   <img src={require('/img/workspace/projects/project_import.webp').default} alt="Import a project in GOAT" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+A project exported from a newer GOAT whose styles use something this GOAT does not know yet is not imported: the job fails before anything is created, and its message names the GOAT Style version the project needs. Update GOAT, then import the project again.
+
 ### Uploading a dataset
 
-GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet**, and **COG** files, as well as **GTFS** (`gtfs.zip`) archives for [Public Transport Networks](../data/dataset_types.md#public-transport-networks) and **Overture** (`overture.zip`) archives for [Street Networks](../data/dataset_types.md#street-networks).
+GOAT supports multiple file formats for upload: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **GML**, **CSV**, **XLSX**, **ZIP**, **Parquet**, and **COG** files, as well as **GTFS** (`gtfs.zip`) archives for [Public Transport Networks](../data/dataset_types.md#public-transport-networks), **Overture** (`overture.zip`) archives for [Street Networks](../data/dataset_types.md#street-networks), and **XPlanGML** (`.gml`) files for [XPlan Plans](../data/dataset_types.md#xplan-plans).
 
 <div class="step">
   <div class="step-number">1</div>
@@ -178,7 +180,9 @@ A service that already publishes the data, such as a **Web Feature Service (WFS)
 Once added, a connected layer appears on this page like any other dataset, with two differences that show where its data comes from:
 
 - A **`Linked`** tag, meaning the layer is **drawn live from the external service** rather than stored in GOAT. Its content can change or disappear if the service does.
-- A **source line** showing the format and host, for example `WMS, linked from wms.nrw.de`. A **WFS** layer is imported as a copy into GOAT instead, and reads `Imported from WFS (wfs.nrw.de)`.
+- A **`Source`** in its `Details`, for example `Remote file (COG) · maplibre.org` or `Map service (WMS) · wms.nrw.de`: where the layer comes from, and its host. A **WFS** layer is imported as a copy into GOAT instead, and reads `Copied from WFS · wfs.nrw.de`.
+
+Opened, the dataset shows the same `Source` and its `Address`, with a button to copy it, as the layer's `Metadata` tab does on a map. The part of the address after a `?`, where a key or a signature may sit, is shown only to someone who may edit the dataset: in the opened dataset, its owner; on a map, the project's owner and editors, for their own datasets and those of the project's owner.
 
 ## Working with a dataset
 

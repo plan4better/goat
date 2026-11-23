@@ -68,9 +68,9 @@ class LayerCreateFilteredParams(ToolInputBase):
             hidden=True,
         ),
     )
-    source_properties: dict[str, Any] | None = Field(
+    source_layer_project_id: int | None = Field(
         None,
-        description="Style properties to copy from the source layer",
+        description="Project layer of the source whose active style the new layer takes",
         json_schema_extra=ui_field(
             section="input",
             field_order=3,
@@ -91,6 +91,7 @@ class LayerCreateFilteredToolRunner(BaseToolRunner["LayerCreateFilteredParams"])
     output_geometry_type: str | None = None  # Dynamic based on source layer
     output_geometry_follows_input = True
     default_output_name = "Filtered Layer"
+    _source_style: dict[str, Any] | None = None
 
     def process(
         self: Self,
@@ -107,6 +108,7 @@ class LayerCreateFilteredToolRunner(BaseToolRunner["LayerCreateFilteredParams"])
 
         # The exported parquet IS our output — no further analysis needed
         output_path = Path(input_path)
+        self._source_style = self._read_source_style(params)
 
         metadata = DatasetMetadata(
             path=str(output_path),
@@ -114,15 +116,31 @@ class LayerCreateFilteredToolRunner(BaseToolRunner["LayerCreateFilteredParams"])
         )
         return output_path, metadata
 
-    def get_layer_properties(
+    def _read_source_style(
+        self: Self, params: LayerCreateFilteredParams
+    ) -> dict[str, Any] | None:
+        """The active style of the source's project layer, read while `run` holds
+        the pool; None without one, or for a project the user may not read."""
+        if params.source_layer_project_id is None or self.db_service is None:
+            return None
+        return _get_or_create_event_loop().run_until_complete(
+            self.db_service.get_active_style(
+                params.source_layer_project_id,
+                params.source_layer_id,
+                params.user_id,
+            )
+        )
+
+    def get_layer_style(
         self: Self,
         params: LayerCreateFilteredParams,
         metadata: DatasetMetadata,
-        table_info: Any = None,
-        parquet_path: Any = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return the source layer's style properties."""
-        return params.source_properties
+        """The source project layer's active style; its computed values are
+        computed again for the filtered rows."""
+        return self._source_style
 
     def get_feature_layer_type(
         self: Self,

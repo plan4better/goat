@@ -132,6 +132,8 @@ async def extended_test_schemas(postgres_pool: Any, test_schemas: None) -> None:
             ("custom_basemaps", "JSONB"),
             ("max_extent", "FLOAT[]"),
             ("builder_config", "JSONB"),
+            ("locale", "TEXT"),
+            ("scene", "JSONB"),
         ]:
             col_name, col_type = col_def
             await conn.execute(f"""
@@ -410,6 +412,7 @@ async def test_export_import_round_trip(
     # ------------------------------------------------------------------
     export_params = ProjectExportParams(
         user_id=user_id,
+        project_id=project_id,
         project_metadata={
             "name": "Test Export Project",
             "description": "A project for testing export/import",
@@ -516,7 +519,7 @@ async def test_export_import_round_trip(
 
             # Manifest structure
             manifest = json.loads(zf.read("manifest.json"))
-            assert manifest["format_version"] == "1.1"
+            assert manifest["format_version"] == "1.2"
             assert manifest["project_name"] == "Test Export Project"
             assert manifest["layer_count"] == 2
             assert manifest["internal_layer_count"] == 1

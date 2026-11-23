@@ -29,7 +29,7 @@ Die gesamte Konfiguration steht in der Datei `.env` im Ordner des Pakets. `setup
 | `GOAT_ACME_EMAIL` | leer | Optionaler Kontakt für Ablaufhinweise von Let's Encrypt (nur `auto`) |
 | `GOAT_TRUSTED_PROXIES` | `private_ranges` | Adressen, die `X-Forwarded-*`-Header setzen dürfen (Ihr Load Balancer), als CIDRs durch Leerzeichen getrennt |
 | `GOAT_ADMIN_ALLOW_CIDRS` | `0.0.0.0/0 ::/0` | Netze, die die Keycloak-Admin-Konsole unter `/keycloak/admin` öffnen dürfen |
-| `GOAT_CA_BUNDLE` | leer | Pfad innerhalb der Container zu zusätzlichen CA-Zertifikaten (PEM) in `./certs`, etwa Ihrer Firmen-CA für Load Balancer, Keycloak, SMTP-Relay oder den Modellserver des KI-Assistenten; im Modus `internal` von setup.sh gesetzt. Siehe [Firmen-CA](./https.md#company-ca). |
+| `GOAT_CA_BUNDLE` | leer | Pfad innerhalb der Container zu zusätzlichen CA-Zertifikaten (PEM) in `./certs`, etwa Ihrer Firmen-CA für Load Balancer, Keycloak, SMTP-Relay, den Modellserver des KI-Assistenten oder einen Host von Rasterdateien; im Modus `internal` von setup.sh gesetzt. Siehe [Firmen-CA](./https.md#company-ca). |
 | `GOAT_HTTP_PORT` | `80` | Port für HTTP; von setup.sh aus der URL oder `--http-port` gesetzt |
 | `GOAT_HTTPS_PORT` | `443` | Port für HTTPS; von setup.sh aus der URL gesetzt |
 | `GOAT_HOSTNAME`, `GOAT_NETWORK_ALIAS`, `GOAT_SITE_ADDRESS`, `GOAT_HTTPS_PUBLISH`, `GOAT_KEYCLOAK_SSL_REQUIRED` | | Abgeleitet; von setup.sh gesetzt |
@@ -104,7 +104,7 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | leer | MapTiler-Schlüssel für die Satelliten-/Hybrid-Grundkarte (ausgeblendet, wenn leer) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | leer | Mapbox-Token für die Ortssuche |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen). Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* lesen ihren Spiegel aus demselben Bucket; siehe [OpenStreetMap und Overture Maps](./external_services.md#open-data-mirror). |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | leer | Der GOAT-Datenkatalog (schreibgeschützter Bucket mit den harmonisierten Datensätzen, aus dem die Katalogseite angemeldeten Nutzern auch die Daten eines Datensatzes zeigt, bevor sie ihn hinzufügen). Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* lesen ihren Spiegel aus demselben Bucket; siehe [OpenStreetMap und Overture Maps](./external_services.md#open-data-mirror). |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | leer | Geocoding-Dienst, den Analyse-Werkzeuge verwenden |
 | `NEXT_PUBLIC_WEBSITE_URL` | leer | Eine Website, die GOATs Blog- und Changelog-Feeds veröffentlicht. Sie füllt die Neuigkeiten auf der Startseite und liefert das Willkommensvideo sowie den Link zum Datenschutz im Menü und im Hinweis des KI-Assistenten; solange leer, erscheint nichts davon. |
 | `NEXT_PUBLIC_SUPPORT_EMAIL` | leer | E-Mail-Adresse hinter *Problem melden* und dem Link *Feedback* des KI-Assistenten, solange [Support-Tickets](./external_services.md#support) aus sind, und in der Meldung, wenn der Support vorübergehend nicht erreichbar ist. Standard ist `support@plan4better.de`; tragen Sie für eine White-Label-Installation Ihre eigene Adresse ein. Eine ungültige Adresse wird ignoriert und der Standard verwendet. |
@@ -116,6 +116,10 @@ Die Dienste von GOAT benennen ihre Datenbanksitzungen nach sich selbst (`goat-co
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo-Serveraktion, die eine Nachricht als Teilnehmer des Tickets veröffentlicht |
 | `OTEL_ENABLED` | `false` | Traces, Metriken und Logs über OpenTelemetry exportieren |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | leer | Ihr OpenTelemetry-Endpunkt (OTLP) |
+| `RASTER_PRIVATE_HOSTS` | leer | Hosts, von denen geoapi und processes die COG-Dateien von Rasterlayern lesen dürfen, obwohl sie auf eine private, Loopback- oder Link-Local-Adresse auflösen, durch Kommas getrennt: ein Objektspeicher in Ihrem eigenen Netz. Jeder andere Host muss auf öffentliche Adressen auflösen, damit ein Layer GOAT nicht aus Ihrem Netz lesen lassen kann. Hat ein solcher Host ein Zertifikat Ihrer Firmen-CA, setzen Sie auch `GOAT_CA_BUNDLE`. |
+| `TERRAIN_TILES_URL` | `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | Höhenkacheln für das Gelände in der 3D-Ansicht der Karte (Terrarium-kodiert, 512 px), standardmäßig von Mapterhorn. Die Browser der Betrachter laden sie. Leer blendet *Gelände* aus. Siehe [Quellen der 3D-Ansicht](./external_services.md#map-3d). |
+| `BUILDINGS_TILES_URL` | `https://tiles.openfreemap.org/planet` | TileJSON einer Vektorquelle im OpenMapTiles-Schema für 3D-Gebäude auf Grundkarten ohne eigene (Raster-, einfarbige und eigene Grundkarten), standardmäßig von OpenFreeMap. Die Browser der Betrachter laden sie. Leer blendet *3D-Gebäude* auf diesen Grundkarten aus. Siehe [Quellen der 3D-Ansicht](./external_services.md#map-3d). |
+| `GOAT_GEOAPI_URL` | *(auskommentiert)*, `http://geoapi:8000` | Wo core geoapi erreicht: Wird ein Rasterlayer aus einer COG-Datei hinzugefügt oder ändert sich die Adresse seiner Datei, fragt core geoapi nach den Grenzen der Datei und speichert sie als Ausdehnung des Layers. Ändern Sie sie nur, wenn geoapi außerhalb des Bundles läuft. |
 
 Wenn Sie `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` für einen Dienst setzen, nehmen Sie `Authorization` nie auf: Sonst landen die Anmelde-Tokens von Benutzern und externen Agenten in Ihren Traces.
 

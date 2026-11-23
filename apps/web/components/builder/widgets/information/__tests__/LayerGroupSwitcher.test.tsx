@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { JsonObject } from "@/lib/style/json";
+import { baseSwatch } from "@/lib/style/legend";
 import type { GroupSwitcherType } from "@/lib/validations/widget";
 
 import {
@@ -10,17 +12,24 @@ import {
 
 /**
  * A layer group shown one layer at a time: picking one turns it
- * on and its siblings off, through the same tree update the layers widget uses.
+ * on and its siblings off, as map state, the way the layers widget changes it.
  */
 
 const dispatch = vi.fn();
-const updateTree = vi.fn().mockResolvedValue(undefined);
+const setVisibility = vi.fn().mockResolvedValue(undefined);
 let layers: object[] = [];
 
-vi.mock("@/hooks/store/ContextHooks", () => ({ useAppDispatch: () => dispatch }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+// The map's state as the store holds it: its zoom, rounded to a tenth (MapViewer).
+let mapZoom: number | undefined = 12;
+vi.mock("@/hooks/store/ContextHooks", () => ({
+  useAppDispatch: () => dispatch,
+  useAppSelector: (select: (state: unknown) => unknown) => select({ map: { currentZoom: mapZoom } }),
+}));
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+}));
 vi.mock("@/components/builder/widgets/information/useWidgetLayerTree", () => ({
-  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: [], updateTree }),
+  useWidgetLayerTree: () => ({ projectId: "p", layers, layerGroups: [], setVisibility }),
 }));
 
 const layer = (id: number, name: string, order: number, visibility: boolean, group = 7) => ({
@@ -29,7 +38,9 @@ const layer = (id: number, name: string, order: number, visibility: boolean, gro
   order,
   layer_project_group_id: group,
   type: "feature",
-  properties: { visibility },
+  feature_layer_geometry_type: "polygon",
+  entry: { type: "layer", id, visible: visibility },
+  style: { document: { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#2bb381" } } } },
 });
 
 const GROUP = 7;
@@ -58,15 +69,16 @@ const Switcher = ({
 
 const visibilityIn = (call: number) =>
   Object.fromEntries(
-    updateTree.mock.calls[call][0].items.map((i: { id: number; properties: { visibility: boolean } }) => [
-      i.id,
-      i.properties.visibility,
+    setVisibility.mock.calls[call][0].map((change: { id: number; visible: boolean }) => [
+      change.id,
+      change.visible,
     ])
   );
 
 beforeEach(() => {
+  mapZoom = 12;
   dispatch.mockClear();
-  updateTree.mockClear();
+  setVisibility.mockClear();
   layers = [
     layer(3, "2021", 2, false),
     layer(1, "2015", 0, false),
@@ -90,8 +102,9 @@ describe("LayerGroupSwitcher", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "2021" }));
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    // Only the layers that change are written; layer 1 is off already.
+    expect(visibilityIn(0)).toEqual({ 2: false, 3: true });
     const events = dispatch.mock.calls.map(([a]) => a.payload);
     expect(events).toEqual([
       expect.objectContaining({ type: "visibility_changed", sourceId: 2, value: false }),
@@ -103,7 +116,7 @@ describe("LayerGroupSwitcher", () => {
     renderSwitcher();
 
     fireEvent.click(screen.getByRole("radio", { name: "2018" }));
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("leaves out layers the Layers widget excludes, and renders nothing for an empty group", () => {
@@ -119,22 +132,22 @@ describe("LayerGroupSwitcher", () => {
     layers = [layer(1, "a", 0, true), layer(2, "b", 1, true), layer(3, "c", 2, false)];
     renderSwitcher({}, { viewOnly: true });
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(visibilityIn(0)).toEqual({ 1: true, 2: false, 3: false });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    expect(visibilityIn(0)).toEqual({ 2: false });
   });
 
   it("turns the last layer on in the public view when none is on", () => {
     layers = [layer(1, "a", 0, false), layer(2, "b", 1, false), layer(3, "c", 2, false)];
     renderSwitcher({}, { viewOnly: true });
 
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(visibilityIn(0)).toEqual({ 3: true });
   });
 
   it("leaves the saved visibility alone in the editor", () => {
     layers = [layer(1, "a", 0, true), layer(2, "b", 1, true), layer(3, "c", 2, false)];
     renderSwitcher();
 
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("does not offer tables or locked layers", () => {
@@ -159,12 +172,111 @@ describe("LayerGroupSwitcher", () => {
     hidden.unmount();
 
     // The legend caption shows above the legend, as in the layer list.
-    (layers[2] as { properties: object }).properties = {
-      visibility: true,
-      legend: { caption: "Einwohner je Hektar" },
+    (layers[2] as { style: object }).style = {
+      document: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        legend: { caption: "Einwohner je Hektar" },
+      },
     };
     renderSwitcher();
     expect(screen.getByText("Einwohner je Hektar")).toBeInTheDocument();
+  });
+
+  it("a long legend starts collapsed for each layer, whatever the layer before it showed", () => {
+    const zones = (prefix: string) => ({
+      document: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        classify: [
+          {
+            id: "zone",
+            field: "zone",
+            method: "categories",
+            classes: Array.from({ length: 13 }, (_, i) => ({
+              id: `k${i}`,
+              values: [`${prefix} ${i + 1}`],
+              fill: { color: "#2166ac" },
+            })),
+          },
+        ],
+        legend: { classes: "all" },
+      },
+    });
+    (layers[2] as { style: object }).style = zones("Use");
+    (layers[0] as { style: object }).style = zones("Soil");
+    const view = renderSwitcher();
+    expect(screen.queryByText("Use 13")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "show_more_count" }));
+    expect(screen.getByText("Use 13")).toBeInTheDocument();
+    // The next layer of the group comes onto the map.
+    (layers[2] as { entry: { visible: boolean } }).entry.visible = false;
+    (layers[0] as { entry: { visible: boolean } }).entry.visible = true;
+    layers = [...layers];
+    view.rerender(<Switcher options={{}} extra={{}} />);
+    expect(screen.getByText("Soil 10")).toBeInTheDocument();
+    expect(screen.queryByText("Soil 13")).toBeNull();
+  });
+
+  it("a legend of the name only shows its own title, and nothing more than the name without one", () => {
+    const nameOnly = (legend: object) => ({
+      document: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#2bb381" } },
+        classify: [
+          {
+            id: "zone",
+            field: "zone",
+            method: "categories",
+            classes: [{ id: "a", values: ["park"], fill: { color: "#2166ac" } }],
+          },
+        ],
+        legend: { display: "name_only", ...legend },
+      },
+    });
+    (layers[2] as { style: object }).style = nameOnly({ title: "Land use 2024" });
+    const titled = renderSwitcher();
+    // The name beside the layer's swatch as before, the title under it.
+    expect(screen.getAllByText("2018")).toHaveLength(2);
+    expect(screen.getByText("Land use 2024")).toBeInTheDocument();
+    expect(screen.queryByText("park")).toBeNull();
+    titled.unmount();
+
+    (layers[2] as { style: object }).style = nameOnly({});
+    renderSwitcher();
+    // once on the chip, once beside the layer's swatch
+    expect(screen.getAllByText("2018")).toHaveLength(2);
+    expect(screen.queryByTestId("legend-preview")).toBeNull();
+  });
+
+  it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {
+    // A fill color by zoom: at 12.6 the map blends 30% of the way, at 13 half of the way.
+    const document = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: {
+        fill: {
+          color: {
+            zoom: [
+              [12, "#000000"],
+              [14, "#ffffff"],
+            ],
+          },
+        },
+      },
+    };
+    (layers[2] as { style: object }).style = { document };
+    const at = (zoom: number) =>
+      baseSwatch(document as unknown as JsonObject, { geometry: "polygon", zoom }).fill?.color;
+    expect(at(12.6)).not.toBe(at(13));
+    mapZoom = 12.6;
+    const { container } = renderSwitcher();
+    const fills = [...container.querySelectorAll("rect")].map((rect) => rect.getAttribute("fill"));
+    expect(fills).toContain(at(12.6));
+    expect(fills).not.toContain(at(13));
   });
 
   it("plays through the layers and wraps around", async () => {
@@ -177,7 +289,7 @@ describe("LayerGroupSwitcher", () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS);
     });
 
-    expect(visibilityIn(0)).toEqual({ 1: true, 2: false, 3: false });
+    expect(visibilityIn(0)).toEqual({ 1: true, 3: false });
   });
 
   it("only shows each play step in the editor, and saves the layer it stops on once", async () => {
@@ -189,12 +301,12 @@ describe("LayerGroupSwitcher", () => {
     await act(async () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS);
     });
-    expect(updateTree).toHaveBeenCalledTimes(1);
-    expect(updateTree.mock.calls[0][1]).toEqual({ persist: false });
+    expect(setVisibility).toHaveBeenCalledTimes(1);
+    expect(setVisibility.mock.calls[0][1]).toEqual({ persist: false });
 
     fireEvent.click(screen.getByRole("button", { name: "pause" }));
-    expect(updateTree).toHaveBeenCalledTimes(2);
-    expect(updateTree.mock.calls[1][1]).toEqual({ persist: true });
+    expect(setVisibility).toHaveBeenCalledTimes(2);
+    expect(setVisibility.mock.calls[1][1]).toEqual({ persist: true });
   });
 
   it("saves nothing more when playing stops in the public view", async () => {
@@ -208,7 +320,7 @@ describe("LayerGroupSwitcher", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "pause" }));
 
-    expect(updateTree).toHaveBeenCalledTimes(1);
+    expect(setVisibility).toHaveBeenCalledTimes(1);
   });
 
   it("stops playing when the play button is switched off", async () => {
@@ -222,7 +334,7 @@ describe("LayerGroupSwitcher", () => {
       vi.advanceTimersByTime(PLAY_INTERVAL_MS * 3);
     });
 
-    expect(updateTree).not.toHaveBeenCalled();
+    expect(setVisibility).not.toHaveBeenCalled();
   });
 
   it("renders a slider with one mark per layer", () => {
@@ -238,7 +350,7 @@ describe("LayerGroupSwitcher", () => {
     // A keyboard step is a change and its commit at once; a drag commits only when let go
     fireEvent.change(screen.getByRole("slider"), { target: { value: 2 } });
 
-    expect(updateTree.mock.calls.map((call) => call[1])).toEqual([{ persist: false }, { persist: true }]);
+    expect(setVisibility.mock.calls.map((call) => call[1])).toEqual([{ persist: false }, { persist: true }]);
     expect(visibilityIn(1)).toEqual({ 1: false, 2: false, 3: true });
   });
 
@@ -250,6 +362,6 @@ describe("LayerGroupSwitcher", () => {
     fireEvent.mouseDown(select);
     fireEvent.click(screen.getByRole("option", { name: "2021" }));
 
-    expect(visibilityIn(0)).toEqual({ 1: false, 2: false, 3: true });
+    expect(visibilityIn(0)).toEqual({ 2: false, 3: true });
   });
 });

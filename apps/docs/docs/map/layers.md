@@ -30,7 +30,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 **New data**
 
-- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
+- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Create layer**: a new empty layer you draw into
 - **Fetch / Connect data**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, features from OpenStreetMap or Overture Maps for an area, or GOAT's street network or public transport network for an area as a bundle
 
@@ -140,7 +140,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
   <TabItem value="XYZ" label="XYZ" className="tabItemBox">
     <div class="step">
-      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. The address is the layer, so there is no list to choose from &mdash; check the preview shows what you expect.</p></div>
+      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. For a service that counts its tile rows from the south (TMS), write <code>&#123;-y&#125;</code> instead of <code>&#123;y&#125;</code>; <code>&#123;s&#125;</code> spreads the requests over the subdomains a, b and c, and <code>&#123;switch:1,2,3&#125;</code> over the ones it names (16 at most). The address is the layer, so there is no list to choose from; check that the preview shows what you expect.</p></div>
     </div>
   </TabItem>
 
@@ -164,7 +164,7 @@ GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overtur
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
+  <div class="content"><p>Choose the <code>Area</code>. It starts as the <code>Map view</code>: pan and zoom the map until the dashed box shows the area. Under <code>Add to area</code> you can instead pick <code>Regions</code> from a searchable list, <code>Draw polygon</code> on the map (click its corners, double-click to finish), or place a <code>Point and radius</code> (click the centre, then set the radius under it; its pen icon lets you drag the centre or the edge on the map). Regions, polygons and circles can be combined into one area; the map view replaces them, and they replace the map view. Remove a part with the cross on its row; <code>Cancel</code> or the Escape key stops drawing.</p>Every feature that touches the area is added, including one that crosses its border.</div>
 </div>
 
 <div class="step">

@@ -18,15 +18,18 @@ ENV PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
 # ca-certificates is what OpenSSL's default verify paths read: the build
 # stage needs it to download the DuckDB extensions, the runtime for any HTTPS
-# the service makes. Installed in the shared base so both stages have it.
+# the service makes. libexpat1 is the one library rasterio's wheel loads from
+# the system (its GDAL is inside the wheel). Installed in the shared base so
+# both stages have them.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y tzdata ca-certificates \
+    && apt-get install --no-install-recommends -y tzdata ca-certificates libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== STAGE 2: Python environment ====
-# geoapi only uses goatlib's light "serving" surface (storage/query/models), so
-# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels,
-# manby (the `manby` program that cuts tiles from stored ones) among them.
+# geoapi only uses goatlib's light "serving" surface (storage/query/models) and
+# its `raster` extra, so no system GDAL, routing or build toolchain is needed —
+# all deps ship manylinux wheels (rasterio's bundles its own GDAL), manby (the
+# `manby` program that cuts tiles from stored ones) among them.
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv

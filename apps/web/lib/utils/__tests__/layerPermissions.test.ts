@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
 import {
+  canEditDataset,
   canEditLayerFeatures,
   canEditLayerFields,
   canSetDefaultStyle,
@@ -231,27 +232,69 @@ describe("canEditLayerFields", () => {
 });
 
 describe("canSetDefaultStyle", () => {
-  const catalogLayer = { other_properties: { catalog_item: { id: "x" } } } as never;
-  const ownLayer = { other_properties: {} } as never;
+  const catalogLayer = { other_properties: { catalog_item: { id: "x" } }, user_id: "me" } as never;
+  const ownLayer = { other_properties: {}, user_id: "me" } as never;
+  const othersLayer = { other_properties: {}, user_id: "someone" } as never;
+  const editor = { currentUserId: "me", projectOwnerId: "owner", isProjectEditor: true };
 
-  it("refuses a catalog layer", () => {
-    // The button PUTs the dataset row, which `check_layer` grants only
-    // `layer-viewer` on — GET is allowed, PUT and DELETE are not.
-    expect(canSetDefaultStyle(catalogLayer)).toBe(false);
+  it("refuses a catalog layer, whoever asks", () => {
+    // The dataset row of a catalog layer is read only: `check_layer` grants
+    // only `layer-viewer` on it, and core refuses its default style.
+    expect(canSetDefaultStyle(catalogLayer, editor)).toBe(false);
+    expect(canSetDefaultStyle(catalogLayer, { ...editor, currentUserId: "owner" })).toBe(false);
   });
 
   it("refuses a layer still being materialized", () => {
     expect(
-      canSetDefaultStyle({ other_properties: { catalog_materialize: { status: "pending" } } } as never)
+      canSetDefaultStyle(
+        { other_properties: { catalog_materialize: { status: "pending" } }, user_id: "me" } as never,
+        editor
+      )
     ).toBe(false);
   });
 
-  it("allows a layer the user holds", () => {
-    expect(canSetDefaultStyle(ownLayer)).toBe(true);
+  it("allows a project editor who may write the dataset: its owner, or a layer of the project's owner", () => {
+    expect(canSetDefaultStyle(ownLayer, editor)).toBe(true);
+    expect(canSetDefaultStyle({ other_properties: {}, user_id: "owner" } as never, editor)).toBe(true);
+  });
+
+  it("refuses a dataset the user may not write, and a project viewer", () => {
+    expect(canSetDefaultStyle(othersLayer, editor)).toBe(false);
+    expect(canSetDefaultStyle(ownLayer, { ...editor, isProjectEditor: false })).toBe(false);
+    expect(canSetDefaultStyle({ other_properties: {}, user_id: "me", locked: true } as never, editor)).toBe(
+      false
+    );
   });
 
   it("refuses when there is no layer", () => {
-    expect(canSetDefaultStyle(null)).toBe(false);
-    expect(canSetDefaultStyle(undefined)).toBe(false);
+    expect(canSetDefaultStyle(null, editor)).toBe(false);
+    expect(canSetDefaultStyle(undefined, editor)).toBe(false);
+  });
+});
+
+describe("canEditDataset", () => {
+  const editor = { currentUserId: "me", projectOwnerId: "owner", isProjectEditor: true };
+  const remoteFile = (fields: Record<string, unknown>) =>
+    ({
+      type: "raster",
+      data_type: "cog",
+      url: "https://example.org/a.tif",
+      other_properties: {},
+      ...fields,
+    }) as never;
+
+  it("allows a project editor who owns the dataset, or a dataset of the project's owner", () => {
+    expect(canEditDataset(remoteFile({ user_id: "me" }), editor)).toBe(true);
+    expect(canEditDataset(remoteFile({ user_id: "owner" }), editor)).toBe(true);
+  });
+
+  it("refuses someone else's dataset, a project viewer, a locked row, a catalog layer and no layer", () => {
+    expect(canEditDataset(remoteFile({ user_id: "someone" }), editor)).toBe(false);
+    expect(canEditDataset(remoteFile({ user_id: "me" }), { ...editor, isProjectEditor: false })).toBe(false);
+    expect(canEditDataset(remoteFile({ user_id: "me", locked: true }), editor)).toBe(false);
+    expect(
+      canEditDataset(remoteFile({ user_id: "me", other_properties: { catalog_item: { id: "x" } } }), editor)
+    ).toBe(false);
+    expect(canEditDataset(undefined, editor)).toBe(false);
   });
 });

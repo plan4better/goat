@@ -4,12 +4,13 @@ This task synchronizes PMTiles files with DuckLake geometry layers and with
 promoted catalog layers. It can be run as a scheduled Windmill job or
 triggered manually.
 
-A layer's tiles are in sync when manby built them with the current recipe
-(MANBY_MARKER) from the current data: the layer's DuckLake snapshot, or for a
-catalog layer its local GeoParquet copy, when that is no newer than the tiles.
-Tiles from before manby or from an older recipe are stale like tiles of old
-data, so a plain run after a deploy that brings a new recipe rebuilds them,
-without `force` (which rebuilds the layers already done too). A run stopped on
+A layer's tiles are in sync when manby built them with the current recipe of
+their kind (MANBY_RECIPES: points, lines, polygons, label anchors) from the
+current data: the layer's DuckLake snapshot, or for a catalog layer its local
+GeoParquet copy, when that is no newer than the tiles. Tiles from before manby
+or from an older recipe are stale like tiles of old data, so a plain run after
+a deploy that brings a new recipe rebuilds them, and only the kinds whose
+recipe changed, without `force` (which rebuilds the layers already done too). A run stopped on
 the way goes on with the layers still stale when it is started again.
 
 Architecture:

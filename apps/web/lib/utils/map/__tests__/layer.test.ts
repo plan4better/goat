@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterSelectableProjectLayers, resolveProjectLayer, selectDataLayers } from "../layer";
+import { filterSelectableProjectLayers, resolveProjectLayer } from "../layer";
 import type { ProjectLayer } from "@/lib/validations/project";
 
 const SYSTEM_ID = "903ecdca-b717-48db-bbce-0219e41439cf";
@@ -16,41 +16,6 @@ const layer = (overrides: {
     name: "layer",
     ...overrides,
   }) as unknown as ProjectLayer;
-
-describe("selectDataLayers", () => {
-  it("keeps an ordinary, unlocked layer", () => {
-    const layers = [layer({ id: 1, layer_id: "a" })];
-    expect(selectDataLayers(layers, [])).toEqual(layers);
-  });
-
-  it("drops a locked layer — it must never become a map source", () => {
-    const visible = layer({ id: 1, layer_id: "a", locked: false });
-    const locked = layer({ id: 2, layer_id: "b", locked: true });
-    expect(selectDataLayers([visible, locked], [])).toEqual([visible]);
-  });
-
-  it("drops a system layer", () => {
-    const visible = layer({ id: 1, layer_id: "a" });
-    const system = layer({ id: 2, layer_id: SYSTEM_ID });
-    expect(selectDataLayers([visible, system], [SYSTEM_ID])).toEqual([visible]);
-  });
-
-  it("drops a layer that is both system and locked exactly once", () => {
-    const system = layer({ id: 2, layer_id: SYSTEM_ID, locked: true });
-    expect(selectDataLayers([system], [SYSTEM_ID])).toEqual([]);
-  });
-
-  it("returns an empty array for undefined input", () => {
-    expect(selectDataLayers(undefined, [])).toEqual([]);
-  });
-
-  it("preserves the input order", () => {
-    const a = layer({ id: 1, layer_id: "a" });
-    const b = layer({ id: 2, layer_id: "b" });
-    const c = layer({ id: 3, layer_id: "c" });
-    expect(selectDataLayers([a, b, c], [])).toEqual([a, b, c]);
-  });
-});
 
 describe("filterSelectableProjectLayers", () => {
   it("keeps an ordinary layer", () => {

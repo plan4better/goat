@@ -1,21 +1,24 @@
 "use client";
 
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { Box } from "@mui/material";
-import maplibregl from "maplibre-gl";
+import type { Map as MaplibreMap } from "maplibre-gl";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Map, MapProvider, type MapRef } from "react-map-gl/maplibre";
 
-import { DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
-import { PATTERN_IMAGES } from "@/lib/constants/pattern-images";
-import { addOrUpdateMarkerImages, addPatternImages } from "@/lib/transformers/map-image";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
-import type { ProjectLayer } from "@/lib/validations/project";
+import { BUILDINGS_TILES_URL, TERRAIN_TILES_URL } from "@/lib/constants";
+import { BASEMAPS, DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
+import { isImageryBasemap } from "@/lib/scene/auto";
+import { buildingsAnchor } from "@/lib/scene/compile";
+import { extrudes } from "@/lib/style/compile/polygons";
+import type { JsonObject } from "@/lib/style/json";
+import { renderLayersOf } from "@/lib/style/render/viewLayers";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
+import { parseThumbnailData, thumbnailLayers, thumbnailView } from "@/lib/utils/map/thumbnail";
 
-import Layers from "@/components/map/Layers";
+import { useScene } from "@/hooks/map/useScene";
 
-maplibregl.addProtocol("cog", cogProtocol);
+import { StyledLayers } from "@/components/map/StyledLayers";
 
 // Thumbnail dimensions
 const THUMBNAIL_WIDTH = 800;
@@ -31,24 +34,6 @@ const DEFAULT_VIEW_STATE = {
 };
 
 /**
- * Interface for thumbnail data passed via URL params
- * This is serialized as base64-encoded JSON in the `data` query param
- */
-interface ThumbnailData {
-  viewState: {
-    latitude: number;
-    longitude: number;
-    zoom: number;
-    bearing?: number;
-    pitch?: number;
-  };
-  basemap: string;
-  layers: ProjectLayer[];
-  bounds?: [number, number, number, number]; // [west, south, east, north]
-  useBounds?: boolean; // If true, fit to bounds; if false, use viewState (default: true if bounds provided)
-}
-
-/**
  * The renderer hands the payload over on `window`, set by an init script that
  * runs before any of this page's own code. It used to arrive in the `?data=`
  * query param, but the payload carries the whole layer list and the request
@@ -60,29 +45,6 @@ function readInjectedThumbnailData(): string | null {
   if (typeof window === "undefined") return null;
   const injected = (window as { __THUMBNAIL_DATA__?: unknown }).__THUMBNAIL_DATA__;
   return typeof injected === "string" ? injected : null;
-}
-
-/**
- * Parse and decode thumbnail data from URL query param
- */
-function parseThumbnailData(dataParam: string | null): ThumbnailData | null {
-  if (!dataParam) return null;
-
-  try {
-    const decoded = atob(dataParam);
-    const parsed = JSON.parse(decoded) as ThumbnailData;
-
-    // Validate required fields
-    if (!parsed.viewState || !parsed.basemap || !Array.isArray(parsed.layers)) {
-      console.error("Invalid thumbnail data: missing required fields");
-      return null;
-    }
-
-    return parsed;
-  } catch (error) {
-    console.error("Failed to parse thumbnail data:", error);
-    return null;
-  }
 }
 
 /**
@@ -110,7 +72,10 @@ export default function ThumbnailPage() {
   const [mounted, setMounted] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  // Whether the renderer still loads a raster layer's values; known after its first draw.
+  const [valuesPending, setValuesPending] = useState(true);
   const mapRef = React.useRef<MapRef>(null);
+  const [loadedMap, setLoadedMap] = useState<MaplibreMap | null>(null);
 
   // Ensure client-side only rendering to avoid hydration mismatch
   useEffect(() => {
@@ -138,9 +103,8 @@ export default function ThumbnailPage() {
     return DEFAULT_VIEW_STATE;
   }, [thumbnailData]);
 
-  const layersToRender = useMemo((): ProjectLayer[] => {
-    return thumbnailData?.layers ?? [];
-  }, [thumbnailData]);
+  const viewLayers = useMemo(() => thumbnailLayers(thumbnailData?.layers), [thumbnailData]);
+  const layersToRender = useMemo(() => renderLayersOf(viewLayers), [viewLayers]);
 
   const bounds = useMemo(() => {
     return thumbnailData?.bounds ?? null;
@@ -163,22 +127,43 @@ export default function ThumbnailPage() {
     return getBasemapUrl(DEFAULT_BASEMAP);
   }, [thumbnailData]);
 
+  // A project's saved 2D or 3D view with its scene (3D spec 10); a layer thumbnail stays flat. The light tone: the
+  // thumbnail is drawn on white, whatever the viewer's theme.
+  const view = useMemo(
+    () =>
+      thumbnailView(
+        thumbnailData ?? { viewState: DEFAULT_VIEW_STATE, basemap: DEFAULT_BASEMAP, layers: [] },
+        type
+      ),
+    [thumbnailData, type]
+  );
+  const basemap =
+    BASEMAPS.find((b) => b.value === thumbnailData?.basemap) ??
+    BASEMAPS.find((b) => b.value === DEFAULT_BASEMAP) ??
+    BASEMAPS[0];
+  const projectExtrudes = useMemo(
+    () => viewLayers.some((l) => l.visible && l.style && extrudes(l.style.document as unknown as JsonObject)),
+    [viewLayers]
+  );
+  const appliedScene = useScene(loadedMap, {
+    scene: view.scene,
+    mode: view.mode,
+    projection: view.projection,
+    tone: "light",
+    terrainUrl: TERRAIN_TILES_URL,
+    buildingsUrl: BUILDINGS_TILES_URL,
+    projectExtrudes,
+    imagery: isImageryBasemap(basemap),
+    basemap,
+  });
+
   // Handle map load
   const handleMapLoad = useCallback(() => {
     setMapLoaded(true);
+    setLoadedMap(mapRef.current?.getMap() ?? null);
 
     if (mapRef.current) {
-      // Add marker images for point layers with custom markers
-      layersToRender.forEach((layer) => {
-        if (layer.type === "feature" && layer.feature_layer_geometry_type === "point") {
-          const pointFeatureProperties = layer.properties as FeatureLayerPointProperties;
-          addOrUpdateMarkerImages(layer.id, pointFeatureProperties, mapRef.current);
-        }
-      });
-
-      // Add pattern images for fill layers
-      addPatternImages(PATTERN_IMAGES ?? [], mapRef.current);
-
+      // Icons and patterns load on demand through the renderer's image resolver.
       // Fit bounds if provided and useBounds is true
       // This ensures the thumbnail shows all content within the bounds
       if (bounds && useBounds) {
@@ -205,14 +190,18 @@ export default function ThumbnailPage() {
         );
       }
     }
-  }, [bounds, useBounds, layersToRender, type]);
+  }, [bounds, useBounds, type]);
 
   // Signal to Playwright that the page is ready
   useEffect(() => {
     // Data is ready if we have valid thumbnailData
     const isDataLoaded = thumbnailData !== null;
+    // A 3D view waits for its scene: captured before terrain and sky are on, the thumbnail would show neither.
+    const sceneReady = view.mode === "2d" || appliedScene !== null;
+    // Raster layers that color values draw once their descriptions are loaded (a failed one is not waited for).
+    const valuesReady = layersToRender.length === 0 || !valuesPending;
 
-    if (isDataLoaded && mapLoaded) {
+    if (isDataLoaded && mapLoaded && sceneReady && valuesReady) {
       // Give additional delay for map tiles to fully render
       const timer = setTimeout(() => {
         setIsReady(true);
@@ -221,7 +210,7 @@ export default function ThumbnailPage() {
       }, 1500); // 1.5 second delay to allow map tiles to render
       return () => clearTimeout(timer);
     }
-  }, [thumbnailData, mapLoaded]);
+  }, [thumbnailData, mapLoaded, view.mode, appliedScene, layersToRender.length, valuesPending]);
 
   // Show empty placeholder during SSR/initial mount to avoid hydration mismatch
   if (!mounted) {
@@ -262,9 +251,11 @@ export default function ThumbnailPage() {
       }}>
       <MapProvider>
         <Map
+          {...MAPLIBRE_MAP_OPTIONS}
           ref={mapRef}
           mapStyle={basemapUrl}
           initialViewState={viewState}
+          maxPitch={view.maxPitch}
           style={{ width: THUMBNAIL_WIDTH, height: THUMBNAIL_HEIGHT }}
           attributionControl={false}
           logoPosition="bottom-left"
@@ -272,7 +263,14 @@ export default function ThumbnailPage() {
           onLoad={handleMapLoad}
           interactive={false} // Disable interactivity for thumbnails
         >
-          {mapLoaded && layersToRender.length > 0 && <Layers layers={layersToRender} />}
+          {mapLoaded && layersToRender.length > 0 && (
+            <StyledLayers
+              layers={layersToRender}
+              locale="en"
+              ground={buildingsAnchor(appliedScene)}
+              onValuesPending={setValuesPending}
+            />
+          )}
         </Map>
       </MapProvider>
 

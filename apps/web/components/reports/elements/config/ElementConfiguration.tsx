@@ -5,9 +5,10 @@ import type { StyleSpecification } from "maplibre-gl";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import type { ProjectLayer } from "@/lib/validations/project";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 import { chartTypes, elementTypes } from "@/lib/validations/widget";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 import SelectedItemContainer from "@/components/map/panels/Container";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
@@ -22,7 +23,7 @@ import ScalebarElementConfig from "@/components/reports/elements/config/Scalebar
 interface ElementConfigurationProps {
   element: ReportElement;
   allElements?: ReportElement[];
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   basemapUrl?: string | StyleSpecification;
   onChange: (updates: Partial<ReportElement>) => void;
   onDelete: () => void;

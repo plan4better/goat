@@ -36,8 +36,8 @@ from goatlib.tools.schemas import (
     get_default_layer_name,
 )
 from goatlib.tools.style import (
-    get_oev_gueteklassen_stations_style,
-    get_oev_gueteklassen_style,
+    oev_gueteklassen_stations_style,
+    oev_gueteklassen_style,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,14 +289,14 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
             "geometry": "GEOMETRY",
         }
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: OevGueteklassenToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return ÖV-Güteklassen style with class count from active configuration."""
+        """One class per PT quality class of the active configuration."""
         station_config = params.station_config or STATION_CONFIG_DEFAULT
 
         class_values = [
@@ -306,7 +306,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
         ]
         class_count = max(class_values) if class_values else 1
 
-        return get_oev_gueteklassen_style(class_count=class_count)
+        return oev_gueteklassen_style(class_count=class_count)
 
     def _street_network_graph(
         self: Self, params: OevGueteklassenToolParams, temp_dir: Path
@@ -449,11 +449,6 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                 f"at {output_parquet}"
             )
 
-            # Compute style from params (static, no data dependency)
-            custom_properties = self.get_layer_properties(
-                params, metadata, parquet_path=output_parquet
-            )
-
             # Temp mode: write primary (polygon) output only, skip stations and DB records
             if temp_mode:
                 result = self._write_temp_result(
@@ -461,7 +456,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                     output_parquet=output_parquet,
                     output_name=output_name,
                     output_layer_id=output_layer_id,
-                    properties=custom_properties,
+                    metadata=metadata,
                 )
                 asyncio.get_event_loop().run_until_complete(self._close_db_service())
                 return result
@@ -523,7 +518,6 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                     output_name=output_name,
                     metadata=metadata,
                     table_info=table_info,
-                    custom_properties=custom_properties,
                 )
             )
 
@@ -546,7 +540,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                         output_name=stations_output_name,
                         metadata=stations_metadata,
                         table_info=stations_table_info,
-                        custom_properties=get_oev_gueteklassen_stations_style(),
+                        style=oev_gueteklassen_stations_style(),
                     )
                 )
                 logger.info(f"Stations layer created: {stations_layer_id}")

@@ -11,6 +11,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import type { MapMouseEvent } from "maplibre-gl";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useMap } from "react-map-gl/maplibre";
@@ -49,7 +50,7 @@ export default function StartingPointsTable({ maxStartingPoints }: StartingPoint
 
   // Handle map clicks to add starting points
   useEffect(() => {
-    const handleMapClick = (event: maplibregl.MapMouseEvent) => {
+    const handleMapClick = (event: MapMouseEvent) => {
       const coordinate = [event.lngLat.lng, event.lngLat.lat] as [number, number];
       if (maxStartingPoints === 1) {
         dispatch(setToolboxStartingPoints(undefined));

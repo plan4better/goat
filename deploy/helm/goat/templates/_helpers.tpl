@@ -232,6 +232,24 @@ Service port is 80, so no port suffix.
 {{- end }}
 
 {{/*
+In-cluster URL of the geoapi service, or empty when it is not deployed. Core
+asks it for a COG's bounds when a raster layer is added or its file address
+changes, and stores them as the layer's extent. Unset, such a layer is stored without one and the web asks
+geoapi itself.
+*/}}
+{{- define "goat.geoapi.url" -}}
+{{- if .Values.geoapi.enabled -}}
+{{- $host := include "goat.serviceFullname" (dict "context" . "component" "geoapi") -}}
+{{- $port := int (.Values.geoapi.service.port | default 80) -}}
+{{- if eq $port 80 -}}
+{{- printf "http://%s" $host -}}
+{{- else -}}
+{{- printf "http://%s:%d" $host $port -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Path prefix of the assistant behind a path-routing ingress: the first path of
 its ingress without a trailing slash; "" for "/" or without an ingress. It is
 the service's ROOT_PATH and the suffix of the web app's NEXT_PUBLIC_ASSISTANT_URL.
@@ -388,6 +406,19 @@ empty, and the services then accept tokens of every client. Param: root.
 {{- end }}
 
 {{/*
+RASTER_PRIVATE_HOSTS for geoapi and processes: the hosts in
+`global.rasterPrivateHosts`, comma-separated, rendered when the list is not
+empty and the service's own config does not set it. Param: dict with "root"
+and "config" (the service's config map).
+*/}}
+{{- define "goat.rasterPrivateHosts" -}}
+{{- $hosts := join "," (.root.Values.global.rasterPrivateHosts | default list) -}}
+{{- if and $hosts (not (hasKey .config "RASTER_PRIVATE_HOSTS")) }}
+RASTER_PRIVATE_HOSTS: {{ $hosts | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 The AUTH value a service gets: "true" or "false", never empty — no service
 may fall back to its code default (geoapi/processes default to AUTH on).
 */}}
@@ -522,6 +553,7 @@ Params: values, root.
 `global.caBundle` names a ConfigMap or a Secret holding a PEM CA certificate.
 Mounted at /etc/goat/ca/ca.pem in core, web, the assistant and the Windmill
 print, tools and workflows workers; each points its own variable at that file.
+geoapi and processes get a file built from it (goat.caBundle.trustInit).
 */}}
 {{- define "goat.caBundle.enabled" -}}
 {{- $ca := .Values.global.caBundle | default dict -}}
@@ -555,6 +587,72 @@ print, tools and workflows workers; each points its own variable at that file.
 - name: goat-ca-bundle
   mountPath: /etc/goat/ca
   readOnly: true
+{{- end }}
+
+{{/*
+geoapi and processes read raster files over HTTPS with GDAL and S3 objects
+with boto3. Both trust one CA file, certifi's, not the system store, so a
+file with only the company CA would refuse every public host. An init
+container on the service's own image writes certifi's CAs plus
+/etc/goat/ca/ca.pem into an emptyDir, and GDAL_CURL_CA_BUNDLE and
+AWS_CA_BUNDLE point at it. They are container env, not set by a start
+script, so `kubectl exec` commands (the raster extent backfill) trust it too.
+*/}}
+{{- define "goat.caBundle.trustPath" -}}/etc/goat/ca-trust/ca-bundle.pem{{- end }}
+
+{{/* Params: root, values (the service's values block). */}}
+{{- define "goat.caBundle.trustInit" -}}
+{{- $v := .values -}}
+- name: ca-bundle
+  image: {{ include "goat.image" (dict "image" $v.image "global" .root.Values.global "root" .root) }}
+  imagePullPolicy: {{ $v.image.pullPolicy }}
+  {{- with $v.securityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  command: ["sh", "-c"]
+  args:
+    - |
+      set -eu
+      if ! grep -q -- "-----BEGIN CERTIFICATE-----" /etc/goat/ca/ca.pem; then
+        echo "ca-bundle: no certificate found in global.caBundle" >&2
+        exit 1
+      fi
+      out={{ include "goat.caBundle.trustPath" .root }}
+      { cat "$(python -c 'import certifi; print(certifi.where())')"; echo; cat /etc/goat/ca/ca.pem; } > "$out"
+      echo "ca-bundle: wrote the public CAs and global.caBundle to $out"
+  {{- with $v.resources }}
+  resources:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  volumeMounts:
+    {{- include "goat.caBundle.mount" .root | nindent 4 }}
+    - name: goat-ca-trust
+      mountPath: /etc/goat/ca-trust
+{{- end }}
+
+{{- define "goat.caBundle.trustVolume" -}}
+- name: goat-ca-trust
+  emptyDir: {}
+{{- end }}
+
+{{- define "goat.caBundle.trustMount" -}}
+- name: goat-ca-trust
+  mountPath: /etc/goat/ca-trust
+  readOnly: true
+{{- end }}
+
+{{/* `env:` entries; a value in the service's config or extraEnv wins.
+     Params: root, values. */}}
+{{- define "goat.caBundle.trustEnv" -}}
+{{- if include "goat.caBundle.enabled" .root }}
+{{- range list "GDAL_CURL_CA_BUNDLE" "AWS_CA_BUNDLE" }}
+{{- if not (include "goat.env.userSet" (dict "values" $.values "key" .)) }}
+- name: {{ . }}
+  value: {{ include "goat.caBundle.trustPath" $.root | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 
 {{/*

@@ -13,7 +13,7 @@ import { useDatasetImport } from "@/hooks/addLayer/useDatasetImport";
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 
 /**
- * Whether a drop landed inside a dialog, drawer, menu or popover.
+ * Whether a drop landed inside a dialog, drawer, menu, popover or popper (the style editor's icon picker).
  *
  * By MUI's own container class rather than by a flag each of them sets: this
  * listens on the window, so it sees drops meant for anything layered over the
@@ -25,6 +25,7 @@ const OVERLAY_SELECTOR = [
   ".MuiDrawer-root",
   ".MuiPopover-root",
   ".MuiMenu-root",
+  ".MuiPopper-root",
   // The assistant dock takes its own drops: it opens the upload dialog (spec §10).
   "[data-assistant-dock]",
 ].join(",");
@@ -49,7 +50,7 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
   const [needsSetup, setNeedsSetup] = useState<File | null>(null);
 
   const take = useCallback(
-    (files: FileList | null) => {
+    async (files: FileList | null) => {
       const dropped = Array.from(files ?? []);
       if (dropped.length === 0) return;
       if (dropped.length > 1) {
@@ -68,7 +69,7 @@ const MapDropTarget = ({ projectId }: { projectId: string }) => {
       // imported from a drop alone: a GTFS feed's stop-to-street linkage is
       // built against a street network, and nothing here can pick one. So the
       // drop opens the dialog and the upload finishes there.
-      if (detectBundleType(file)?.requiresStreetNetwork) {
+      if ((await detectBundleType(file))?.requiresStreetNetwork) {
         setNeedsSetup(file);
         return;
       }

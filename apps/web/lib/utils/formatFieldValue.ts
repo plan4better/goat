@@ -13,6 +13,8 @@ type DisplayConfig = {
   thousands_separator?: boolean;
   abbreviate?: boolean;
   always_show_sign?: boolean;
+  /** The value as a percent of 1 (0.73 reads 73 %), in the reader's language. */
+  percent?: boolean;
   format?: string;
 };
 
@@ -92,7 +94,9 @@ function formatNumber(
 export function formatFieldValue(
   value: unknown,
   kind: FieldKind,
-  cfg: DisplayConfig
+  cfg: DisplayConfig,
+  /** The reader's language, for a percent. */
+  locale?: string
 ): string {
   if (value === null || value === undefined) return "";
 
@@ -118,6 +122,18 @@ export function formatFieldValue(
   if (typeof value !== "number" || Number.isNaN(value)) return String(value);
 
   if (kind === "number") {
+    if (cfg.percent) {
+      const digits =
+        typeof cfg.decimals === "number"
+          ? { minimumFractionDigits: cfg.decimals, maximumFractionDigits: cfg.decimals }
+          : {};
+      const text = new Intl.NumberFormat(locale, {
+        style: "percent",
+        useGrouping: !!cfg.thousands_separator,
+        ...digits,
+      }).format(value);
+      return cfg.always_show_sign && value > 0 ? `+${text}` : text;
+    }
     return formatNumber(value, cfg, 2, true);
   }
 

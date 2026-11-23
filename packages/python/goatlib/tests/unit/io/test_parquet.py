@@ -377,3 +377,24 @@ def test_an_empty_result_has_the_columns_of_a_full_one(
     assert written == 0
     assert _schema(duckdb_con, empty) == _schema(duckdb_con, full)
     assert dict(_schema(duckdb_con, empty))["geometry"] == "GEOMETRY('OGC:CRS84')"
+
+
+def test_row_groups_are_spatially_compact(
+    duckdb_con: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """Each row group holds points from a small part of the map, so a spatial
+    query skips the others (ST_Hilbert without a box did not do that)."""
+    from fixtures.spatial_spread import SCATTERED_POINTS, block_spread
+
+    duckdb_con.execute(f"CREATE TABLE scattered AS {SCATTERED_POINTS}")
+    output_path = tmp_path / "scattered.parquet"
+
+    write_optimized_geoparquet(duckdb_con, "scattered", output_path, row_group_size=500)
+
+    spread = block_spread(
+        duckdb_con,
+        f"SELECT file_row_number AS pos, geometry "
+        f"FROM read_parquet('{output_path}', file_row_number=true)",
+        block=500,
+    )
+    assert spread < 0.1

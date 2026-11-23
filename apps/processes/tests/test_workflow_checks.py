@@ -373,6 +373,49 @@ async def test_a_dataset_step_without_a_layer() -> None:
     assert [issue.params["step"] for issue in issues] == ["Schools", "Template input"]
 
 
+def raster_step() -> dict[str, Any]:
+    return dataset(layer_id=OTHER, label="DEM", layerType="raster")
+
+
+async def test_a_dataset_step_holding_a_raster_layer() -> None:
+    # The buffer reads a field: a layer that is asked for its fields and lacks
+    # it would be a field_not_in_layer.
+    nodes = [
+        raster_step(),
+        tool("a", "buffer", {"distance_type": "field", "distance_field": "speed"}),
+    ]
+    edges = [edge("data", "a", "input_layer_id")]
+    fields = FakeFields({OTHER: ["name"]})
+
+    issues = await check(nodes, edges, fields=fields)
+
+    assert codes(issues) == ["layer_raster_not_supported"]
+    issue = only(issues, "layer_raster_not_supported")
+    assert (issue.level, issue.node_ids, issue.params) == (
+        "error",
+        ("data",),
+        {"step": "DEM"},
+    )
+    assert issue.message == (
+        "DEM: workflows cannot use raster layers; choose a feature layer or a table."
+    )
+    # Its layer has no fields to look up.
+    assert fields.asked == []
+
+
+async def test_a_raster_step_on_a_heatmap_is_not_counted() -> None:
+    counts = FakeCounts({OTHER: 934_847})
+
+    issues = await check(
+        [raster_step(), heatmap("heatmap_gravity")],
+        opportunities("data"),
+        counts=counts,
+    )
+
+    assert "too_many_destinations" not in codes(issues)
+    assert counts.asked == []
+
+
 def if_step(**data: Any) -> dict[str, Any]:
     return step("if", "if", label="Enough schools?", **data)
 
@@ -409,9 +452,18 @@ async def test_an_if_condition_must_be_complete() -> None:
     no_field = {**COUNT_ROW, "method": "mean"}
     logical = {"id": "l", "attribute": "kind", "expression": "is", "value": ""}
     blank = {"id": "b", "attribute": "kind", "expression": "is_blank"}
+    true = {"id": "t", "attribute": "open", "expression": "is_true", "value": ""}
 
     def condition(row: dict[str, Any]) -> dict[str, Any]:
         return {"op": "and", "expressions": [row]}
+
+    def between(value: Any) -> dict[str, Any]:
+        return {
+            "id": "r",
+            "attribute": "built",
+            "expression": "is_between",
+            "value": value,
+        }
 
     for data in (
         {},
@@ -419,6 +471,11 @@ async def test_an_if_condition_must_be_complete() -> None:
         {"condition": condition(no_value)},
         {"condition": condition(no_field)},
         {"condition": condition(logical)},
+        # A range takes two values (`workflow_runner.range_bounds`).
+        {"condition": condition(between(["2024-05-01"]))},
+        {"condition": condition(between(["2024-05-01", ""]))},
+        {"condition": condition(between([1, 2, 3]))},
+        {"condition": condition(between("2024-05-01"))},
         {"mode": "custom", "customExpression": "  "},
     ):
         issues = await check([*nodes, if_step(**data)], edges)
@@ -427,6 +484,11 @@ async def test_an_if_condition_must_be_complete() -> None:
     for data in (
         {"condition": condition(COUNT_ROW)},
         {"condition": condition(blank)},
+        {"condition": condition(true)},
+        {"condition": condition({**true, "expression": "is_false"})},
+        {"condition": condition(between(["2024-05-01", "2024-05-31"]))},
+        # A number range as older steps store it
+        {"condition": condition(between("10-20"))},
         {"mode": "custom", "customExpression": "COUNT(*) > 10"},
     ):
         assert await check([*nodes, if_step(**data)], edges) == [], data

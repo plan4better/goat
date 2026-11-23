@@ -53,6 +53,8 @@ check_common() {
   # every table it needs (apps/assistant/sql/grants.sql lists them).
   jq -e '.services as $s | $s.assistant.environment | .POSTGRES_USER == $s.core.environment.POSTGRES_USER and .POSTGRES_USER == $s["core-migrate"].environment.POSTGRES_USER and .POSTGRES_DB == $s.core.environment.POSTGRES_DB' <<<"$json" >/dev/null || fail "assistant must use GOAT's database role"
   jq -e '.services.assistant.environment.REDIS_URL == "redis://redis:6379/0"' <<<"$json" >/dev/null || fail "assistant redis"
+  # The project archive jobs reach core on the compose network, as processes tells them.
+  jq -e '.services.processes.environment.CORE_URL == "http://core:8000"' <<<"$json" >/dev/null || fail "processes has no CORE_URL for the jobs"
   jq -e '.services.assistant.environment | .ASSISTANT_CORE_URL == "http://core:8000" and .ASSISTANT_GEOAPI_URL == "http://geoapi:8000" and .ASSISTANT_CATALOG_URL == "http://catalog:8400" and .GOAT_PROCESSES_URL == "http://processes:8000"' <<<"$json" >/dev/null || fail "assistant service urls"
   jq -e '.services as $s | $s.assistant.environment.KEYCLOAK_CLIENT_ID == $s.web.environment.KEYCLOAK_CLIENT_ID and $s.assistant.environment.KEYCLOAK_CLIENT_SECRET == $s.web.environment.KEYCLOAK_CLIENT_SECRET' <<<"$json" >/dev/null || fail "assistant must refresh logins with the web client"
   jq -e '.services.assistant.environment.ASSISTANT_TOKEN_EXCHANGE_ENABLED == "false"' <<<"$json" >/dev/null || fail "token exchange needs Keycloak 26.2"
@@ -79,6 +81,16 @@ check_common() {
   # processes serves the public transport network's coverage mask from next
   # to the timetable the workers route on, read from the same volume.
   jq -e '.services as $s | $s.processes.environment.PT_NETWORK_BASE_PATH == $s["windmill-worker-tools"].environment.PT_NETWORK_BASE_PATH and ($s.processes.volumes | any(.source == "goat-data" and .target == "/app/data"))' <<<"$json" >/dev/null || fail "processes reads another public transport network than the workers"
+  # geoapi and processes (raster files over HTTPS, S3) get the same CA and
+  # folders, and start through init/ca/ca-bundle.sh, which builds the file
+  # GDAL and boto3 trust; the command is each image's own CMD.
+  for svc in geoapi processes; do
+    jq -e --arg s "$svc" '.services as $all | $all[$s].environment | has("GOAT_CA_BUNDLE") and .GOAT_CA_BUNDLE == $all.core.environment.GOAT_CA_BUNDLE' <<<"$json" >/dev/null || fail "$svc GOAT_CA_BUNDLE differs from core"
+    jq -e --arg s "$svc" '.services as $all | [$all[$s].volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $a | [$all.core.volumes[] | select(.target == "/certs" or .target == "/caddy-data") | [.source, .target, .read_only]] as $c | ($a | length) == 2 and $a == $c' <<<"$json" >/dev/null || fail "$svc mounts the CA folders unlike core"
+    jq -e --arg s "$svc" '.services[$s] | .entrypoint == ["sh", "/init/ca-bundle.sh"] and .command == ["fastapi", "run", "apps/\($s)/src/\($s)/main.py"]' <<<"$json" >/dev/null || fail "$svc does not start through the CA wrapper with its image's command"
+    jq -e --arg s "$svc" '[.services[$s].volumes[] | select(.target == "/init/ca-bundle.sh" and .read_only == true and (.source | endswith("/init/ca/ca-bundle.sh")))] | length == 1' <<<"$json" >/dev/null || fail "$svc lacks the CA wrapper mount"
+    jq -e --arg s "$svc" '.services[$s].environment | (has("GDAL_CURL_CA_BUNDLE") or has("AWS_CA_BUNDLE")) | not' <<<"$json" >/dev/null || fail "$svc sets GDAL_CURL_CA_BUNDLE or AWS_CA_BUNDLE itself (only the wrapper sets them, and never empty)"
+  done
   # DuckDB spills to disk only at its own budget, so geoapi's and processes'
   # budgets stay under 3/4 of their memory limits: geoapi's pool shares one
   # connection budgeted POOL_SIZE x MEMORY_LIMIT, plus its read and write
@@ -124,6 +136,23 @@ jq -e '.services.core.environment.ODOO_SUPPORT_POST_ACTION == "GOAT: post messag
 jq -e '[.services[] | select(.environment | has("ODOO_SUPPORT_API_KEY"))] | length == 1' <<<"$j" >/dev/null || fail "support api key outside core"
 # Token client allow-list off by default: empty for every service that verifies tokens.
 jq -e '[.services | (.core, .geoapi, .processes, .catalog) | .environment.AUTH_ALLOWED_CLIENTS] | all(. == "")' <<<"$j" >/dev/null || fail "allowed clients not empty by default"
+# Raster files are read only from public hosts by default: the private-host list is empty for both readers.
+jq -e '[.services | (.geoapi, .processes) | .environment.RASTER_PRIVATE_HOSTS] | all(. == "")' <<<"$j" >/dev/null || fail "raster private hosts not empty by default"
+# core asks geoapi for a COG layer's bounds on geoapi's in-network port.
+jq -e '.services.core.environment.GOAT_GEOAPI_URL == "http://geoapi:8000"' <<<"$j" >/dev/null || fail "core lacks the geoapi URL"
+
+# 3D sources: one value per source reaches the web (browser) and core (scene checks), the public defaults while unset.
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp" and .services.core.environment.TERRAIN_TILES_URL == .services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL' <<<"$j" >/dev/null || fail "terrain tiles url default or twins differ"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "https://tiles.openfreemap.org/planet" and .services.core.environment.BUILDINGS_TILES_URL == .services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL' <<<"$j" >/dev/null || fail "buildings tiles url default or twins differ"
+
+variant=no-3d-sources
+# An empty value turns a source off and stays empty (no default fills it in), for both twins.
+d3=$(make_variant --public-url https://goat.example.org --tls off)
+sed -i '/^TERRAIN_TILES_URL=/d; /^BUILDINGS_TILES_URL=/d' "$d3/.env"
+printf 'TERRAIN_TILES_URL=\nBUILDINGS_TILES_URL=\n' >> "$d3/.env"
+j3=$(render "$d3"); check_common "$j3"
+jq -e '.services.web.environment.NEXT_PUBLIC_TERRAIN_TILES_URL == "" and .services.core.environment.TERRAIN_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty terrain tiles url not kept empty"
+jq -e '.services.web.environment.NEXT_PUBLIC_BUILDINGS_TILES_URL == "" and .services.core.environment.BUILDINGS_TILES_URL == ""' <<<"$j3" >/dev/null || fail "empty buildings tiles url not kept empty"
 
 variant=support
 d2=$(make_variant --public-url https://goat.example.org --tls auto --acme-email ops@plan4better.de)
@@ -137,6 +166,8 @@ j2=$(render "$d2"); check_common "$j2"
 jq -e '.services.core.environment | .ODOO_URL == "https://odoo.example.org" and .ODOO_DB == "odoo-db" and .ODOO_SUPPORT_API_KEY == "bridge-key" and .ODOO_SUPPORT_TEAM_ID == "7"' <<<"$j2" >/dev/null || fail "odoo settings not passed to core"
 # processes reads the open-data mirror from the catalog bucket.
 jq -e '.services.processes.environment | has("CATALOG_S3_BUCKET")' <<<"$j" >/dev/null || fail "catalog bucket not passed to processes"
+# geoapi reads catalog items' tiles and rasters from it for the catalog page's previews.
+jq -e '.services.geoapi.environment | has("CATALOG_S3_BUCKET") and has("CATALOG_S3_SECRET_ACCESS_KEY")' <<<"$j" >/dev/null || fail "catalog bucket not passed to geoapi"
 # The edge proxy must not cap request bodies (support uploads take up to 55 MiB).
 ! grep -q "^[[:space:]]*request_body" "$here/init/caddy/Caddyfile" || fail "Caddyfile caps the request body"
 
@@ -200,8 +231,12 @@ jq -e '.services.core.environment.S3_ENDPOINT_URL == "https://s3.example.org"' <
 jq -e '.services.web.environment.NEXT_PUBLIC_KEYCLOAK_ISSUER == "https://login.example.org/realms/goat"' <<<"$j" >/dev/null || fail "external issuer"
 # A realm shared with other applications: the allow-list reaches every service that verifies tokens.
 echo "AUTH_ALLOWED_CLIENTS=goat,goat-scripts" >> "$d/.env"
+echo "RASTER_PRIVATE_HOSTS=garage,files.internal" >> "$d/.env"
+echo "GOAT_GEOAPI_URL=http://geoapi.internal:8100" >> "$d/.env"
 j=$(render "$d"); check_common "$j"
 jq -e '[.services | (.core, .geoapi, .processes, .catalog) | .environment.AUTH_ALLOWED_CLIENTS] | all(. == "goat,goat-scripts")' <<<"$j" >/dev/null || fail "allowed clients not passed to the APIs"
+jq -e '[.services | (.geoapi, .processes) | .environment.RASTER_PRIVATE_HOSTS] | all(. == "garage,files.internal")' <<<"$j" >/dev/null || fail "raster private hosts not passed to geoapi and processes"
+jq -e '.services.core.environment.GOAT_GEOAPI_URL == "http://geoapi.internal:8100"' <<<"$j" >/dev/null || fail "geoapi URL not passed to core"
 
 variant=auth-false
 d=$(make_variant --public-url http://localhost --tls off)
@@ -220,6 +255,32 @@ variant=internal-ca
 d=$(make_variant --public-url https://10.0.0.5:8443 --tls internal)
 j=$(render "$d"); check_common "$j"
 jq -e '.services.assistant.environment.GOAT_CA_BUNDLE == "/caddy-data/caddy/pki/authorities/local/root.crt"' <<<"$j" >/dev/null || fail "assistant must trust Caddy's root"
+jq -e '[.services | (.geoapi, .processes) | .environment.GOAT_CA_BUNDLE] | all(. == "/caddy-data/caddy/pki/authorities/local/root.crt")' <<<"$j" >/dev/null || fail "geoapi and processes must trust Caddy's root"
+
+# init/ca/ca-bundle.sh: without GOAT_CA_BUNDLE the command starts unchanged;
+# with it, GDAL_CURL_CA_BUNDLE and AWS_CA_BUNDLE name one file holding
+# certifi's CAs (here a stand-in) and then the company CA.
+variant=ca-bundle-script
+wrapper="$here/init/ca/ca-bundle.sh"
+t=$(mktemp -d)
+mkdir "$t/bin"
+printf -- '-----BEGIN CERTIFICATE-----\npublic\n-----END CERTIFICATE-----' > "$t/certifi.pem"
+printf '#!/bin/sh\necho %s\n' "$t/certifi.pem" > "$t/bin/python"
+chmod +x "$t/bin/python"
+printf -- '-----BEGIN CERTIFICATE-----\ncompany\n-----END CERTIFICATE-----\n' > "$t/ca.pem"
+run_wrapper() { env -u GDAL_CURL_CA_BUNDLE -u AWS_CA_BUNDLE PATH="$t/bin:$PATH" TMPDIR="$t" "$@"; }
+out=$(run_wrapper GOAT_CA_BUNDLE= sh "$wrapper" env) || fail "wrapper fails without a CA"
+! grep -q '^GDAL_CURL_CA_BUNDLE=\|^AWS_CA_BUNDLE=' <<<"$out" || fail "wrapper sets a CA file without GOAT_CA_BUNDLE"
+out=$(run_wrapper GOAT_CA_BUNDLE="$t/ca.pem" sh "$wrapper" env) || fail "wrapper fails with a CA"
+bundle=$(sed -n 's/^GDAL_CURL_CA_BUNDLE=//p' <<<"$out")
+[ -n "$bundle" ] && grep -qx "AWS_CA_BUNDLE=$bundle" <<<"$out" || fail "GDAL_CURL_CA_BUNDLE and AWS_CA_BUNDLE must name the built file"
+[ "$(cat "$bundle")" = "$(cat "$t/certifi.pem"; echo; cat "$t/ca.pem")" ] || fail "built file is not certifi's CAs followed by the company CA"
+out=$(run_wrapper GOAT_CA_BUNDLE="$t/ca.pem" GDAL_CURL_CA_BUNDLE=/own.pem sh "$wrapper" env) || fail "wrapper fails with an own GDAL_CURL_CA_BUNDLE"
+grep -qx 'GDAL_CURL_CA_BUNDLE=/own.pem' <<<"$out" || fail "an own GDAL_CURL_CA_BUNDLE must win"
+if run_wrapper GOAT_CA_BUNDLE="$t/missing.pem" sh "$wrapper" true 2>/dev/null; then fail "wrapper starts with an unreadable GOAT_CA_BUNDLE"; fi
+printf 'no certificate\n' > "$t/empty.pem"
+if run_wrapper GOAT_CA_BUNDLE="$t/empty.pem" sh "$wrapper" true 2>/dev/null; then fail "wrapper starts without a certificate in GOAT_CA_BUNDLE"; fi
+rm -rf "$t"
 
 # The SSE route: flushed at once, and not inside the compressed web block.
 variant=caddy-assistant

@@ -47,6 +47,8 @@ Statt der mitgelieferten Instanzen können Sie das Chart auch auf ein bestehende
 
 Jeder Dienst hat standardmäßig Speicher-Requests und -Limits sowie einen CPU-Request ohne Limit. Die README des Charts listet sie auf; braucht ein Dienst mehr, etwa geoapi bei einem großen Katalog, erhöhen Sie sie unter `<service>.resources` und setzen Sie Requests und Limits gemeinsam.
 
+Rasterlayer sind COG-Dateien, die geoapi und processes per HTTPS dort lesen, wohin ihre Adresse zeigt; beide brauchen daher ausgehendes HTTPS zu diesen Hosts. Ein Host, der auf eine private, Loopback- oder Link-Local-Adresse auflöst, wird abgelehnt, damit ein Layer GOAT nicht aus dem Cluster lesen lassen kann. Hosts, die es trotzdem dürfen, etwa ein Objektspeicher im Cluster mit COG-Dateien, tragen Sie in `global.rasterPrivateHosts` ein (`RASTER_PRIVATE_HOSTS`); stammt sein Zertifikat von einer Firmen-CA, setzen Sie auch `global.caBundle`. GDAL, das die Dateien liest, löst einen Host beim Lesen erneut auf und folgt Weiterleitungen; sperren Sie daher zusätzlich ausgehenden Verkehr von geoapi und processes in private Adressbereiche mit einer NetworkPolicy, ausgenommen die eingetragenen Hosts. Wird ein Rasterlayer aus einer COG-Datei hinzugefügt oder ändert sich die Adresse seiner Datei, fragt core geoapi nach den Grenzen der Datei und speichert sie als Ausdehnung des Layers; das Chart verweist core auf sein eigenes geoapi. Läuft geoapi außerhalb des Releases, tragen Sie seine Adresse im Cluster in `core.config.GOAT_GEOAPI_URL` ein.
+
 ## Was Sie einstellen müssen {#required-values}
 
 ### Öffentliche URLs {#public-urls}
@@ -57,6 +59,8 @@ Der Browser ruft core, geoapi, processes, catalog und den Assistenten direkt auf
 Ohne die URLs von core, geoapi, processes und catalog zeigt die Web-App eine leere Seite. Ohne die URL des Assistenten blendet sie nur den Assistenten aus.
 :::
 
+Layer-Filter stehen in der URL der Kachel- und Objektanfragen an geoapi, wie OGC API Features es vorsieht. Ein Filter mit einem detaillierten Gebiet ergibt URLs von bis zu etwa 60.000 Zeichen. ingress-nginx nimmt standardmäßig Anfragezeilen bis 8 KB an und beantwortet längere mit 414: Erhöhen Sie das in der ConfigMap des Controllers mit `large-client-header-buffers: "4 64k"`. Jeder andere Proxy vor geoapi braucht denselben Spielraum.
+
 ### Objektspeicher {#storage}
 
 Beschreiben Sie Ihren S3-Speicher einmal in `global.s3`: den Bucket für Uploads, Anbieter, Endpunkt, Region, ob der Speicher Pfad-URLs (path style) braucht, und ein Secret mit dem Zugangsschlüssel-Paar (`global.s3.existingSecret`). core, geoapi, processes und die Analyse-Worker (siehe unten) erhalten alle diese Einstellungen.
@@ -64,6 +68,8 @@ Beschreiben Sie Ihren S3-Speicher einmal in `global.s3`: den Bucket für Uploads
 Hochgeladene Bilder, etwa Vorschaubilder von Projekten und Datensätzen, Profilbilder und Bilder in Dashboards, liegen in einem zweiten Bucket desselben Speichers (`global.s3.assets.bucket`). Browser laden sie direkt aus diesem Bucket; machen Sie ihn deshalb öffentlich lesbar und tragen Sie seine öffentliche URL in `global.s3.assets.publicUrl` ein. Außerhalb von AWS ist die URL Pflicht. GOATs eigene Grafiken liefert die Web-App selbst aus; sie brauchen beides nicht.
 
 Erlaubt Ihr Speicher keinen öffentlich lesbaren Bucket, setzen Sie stattdessen `global.s3.assets.servedByCore: true` (`ASSETS_SERVED_BY_CORE`). GOAT legt die Bilder dann im Upload-Bucket unter `assets/` ab, und core liefert sie über seine API aus; Sie brauchen dann weder einen Assets-Bucket noch eine öffentliche URL. Core muss dafür GOAT v3.0.9 oder neuer ausführen, also neuer als die Vorgabe des Charts: Setzen Sie `core.image.tag`. Die Bildlinks zeigen auf die API von core unter dem Host der Web-App; hat core einen eigenen Host, setzen Sie `global.s3.assets.publicUrl` auf `<öffentliche URL von core>/api/v2/asset/file`.
+
+Projektexporte und -importe nehmen hochgeladene Symbole und Bilder über die API von core mit, nie über den Speicher der Bilder: Der Tools-Worker lädt jedes Bild über seinen Link, er muss also core erreichen (das Chart setzt `CORE_URL` in processes auf den Service von core; läuft core woanders, `processes.config.CORE_URL` setzen) und die öffentliche Adresse der Bilder.
 
 Ohne eigenen Speicher setzen Sie `garage.enabled: true`: Das Chart betreibt dann ein Garage mit einem Knoten, wie das Docker-Compose-Paket, legt beide Buckets und ein Schlüsselpaar an und füllt `global.s3` dafür aus. Browser erreichen es über den Host der Web-App, Uploads unter `/<bucket>` und Bilder unter `/<assets bucket>`; `garage.ingress.enabled: true` richtet beide Routen für ingress-nginx ein. Mit einem anderen Ingress-Controller richten Sie sie selbst ein (siehe README des Charts). Es ist ein einzelner Knoten ohne Replikation: Sichern Sie sein Datenvolume.
 
@@ -79,7 +85,7 @@ Verwenden andere Anwendungen denselben Realm, bestehen deren Tokens ebenfalls di
 - **Keycloak** verschickt seine eigenen E-Mails, etwa zum Zurücksetzen des Passworts, mit den SMTP-Einstellungen seines Realms. Tragen Sie dort denselben Server ein.
 - **`global.auth.provisionInvitedUsers: true`** lässt eine Einladung das Keycloak-Konto anlegen, und Keycloak schickt einen Link zum Setzen des Passworts. Nutzen Sie es, wenn Ihr Realm keine Selbstregistrierung erlaubt. Der Keycloak-Client von core braucht dann die realm-management-Rollen `view-users` und `manage-users`.
 - **`global.auth.allowOrganizationCreation: false`** lässt nur Konten mit der Keycloak-Realm-Rolle `superuser` Organisationen anlegen; alle anderen sehen <code>Warten auf eine Einladung</code>, bis sie eingeladen werden. So richtet niemand, der sich vor seiner Einladung anmeldet, eine eigene Organisation ein, nach der er nicht mehr eingeladen werden könnte. Richten Sie Ihre Organisation ein oder geben Sie einem Konto diese Rolle, bevor Sie es abschalten. Ein Superuser kann eine Organisation mit höchstens einem Mitglied und ohne Inhalt mit `DELETE /api/v2/organizations/{organization_id}/permanent` endgültig löschen, damit ihr Mitglied eingeladen werden kann; ist die Abrechnung über Stripe eingeschaltet, kündigen Sie den Stripe-Kunden aus `stripe_id` in der Antwort in Stripe.
-- **`global.caBundle`** nennt eine ConfigMap oder ein Secret mit dem Zertifikat einer eigenen CA, für ein SMTP-Relay, ein Keycloak oder Seiten, die der Druck-Worker öffnet, deren Zertifikat von einer privaten CA stammt. Das Chart bindet es in core, die Web-App, den Assistenten und die Worker `print`, `tools` und `workflows` ein.
+- **`global.caBundle`** nennt eine ConfigMap oder ein Secret mit dem Zertifikat einer eigenen CA, für ein SMTP-Relay, ein Keycloak, Seiten, die der Druck-Worker öffnet, oder Hosts von Rasterdateien und S3, deren Zertifikat von einer privaten CA stammt. Das Chart bindet es in core, die Web-App, den Assistenten und die Worker `print`, `tools` und `workflows` ein. geoapi und processes lesen Rasterdateien mit GDAL und S3 mit boto3, die einer einzigen CA-Datei statt dem Zertifikatsspeicher des Systems vertrauen: Ein Init-Container schreibt die öffentlichen CAs und Ihre in eine Datei, und das Chart setzt `GDAL_CURL_CA_BUNDLE` und `AWS_CA_BUNDLE` darauf.
 
 ### Support-Tickets {#support}
 
@@ -128,6 +134,28 @@ Geben Sie dem Assistenten ein Ingress (`assistant.ingress`) oder setzen Sie `web
 **Datenbank.** Der Assistent verbindet sich als Datenbankbenutzer von GOAT, dem die Datenbank gehört. Eine eigene Rolle braucht die Rechte aus `apps/assistant/sql/grants.sql`, weil die Berechtigungsprüfungen von GOAT mit den Rechten des Aufrufers laufen; `python -m assistant.dbcheck` im Pod des Assistenten gibt `ok` aus oder nennt, was fehlt. Bei einer ersten Installation läuft die Prüfung beim Start des Assistenten, bevor die Datenbankmigration sein Schema angelegt hat. Die Readiness-Probe prüft nur die Datenbankverbindung und Redis, der Pod ist also bereit, aber jede Anfrage an Unterhaltungen schlägt fehl, bis die Migration gelaufen ist, und das Start-Log sowie jeder Hintergrunddurchlauf nennen das fehlende Schema. Das ist während der Installation erwartet. Prüfen Sie danach erneut mit `dbcheck`.
 
 **Probes und Last.** Die Readiness-Probe ist `/readyz` (Datenbank und Redis sind erreichbar), die Liveness-Probe ist `/healthz`. Die Liste der Unterhaltungen prüft den Zugriff mit `customer.can` einmal pro gelisteter Zeile, bis zu 200 Zeilen pro Anfrage: Berücksichtigen Sie das in Lasttests und bei der Dimensionierung der Datenbank.
+
+## Quellen der 3D-Ansicht {#map-3d}
+
+Die 3D-Ansicht der Karte lädt Gelände und 3D-Gebäude von Kachelservern außerhalb Ihres Clusters: `map.terrainTilesUrl` (Höhenkacheln, standardmäßig der öffentliche Server von Mapterhorn) und `map.buildingsTilesUrl` (ein Vektor-TileJSON für Gebäude auf Grundkarten ohne eigene, standardmäßig OpenFreeMap). Das Chart gibt jeden Wert an die Web-App (`NEXT_PUBLIC_TERRAIN_TILES_URL`, `NEXT_PUBLIC_BUILDINGS_TILES_URL`) und an core (`TERRAIN_TILES_URL`, `BUILDINGS_TILES_URL`). Die Browser der Betrachter fragen die Kacheln direkt an, diese Anbieter sehen also ihre IP-Adressen. Setzen Sie einen Wert auf Ihre eigene Kopie oder auf `""`, um die Funktion auszuschalten. Was jede Quelle ist, der Datenschutzhinweis und wie Sie das Gelände selbst bereitstellen: [Quellen der 3D-Ansicht](./docker_compose/external_services.md#map-3d).
+
+## Updates {#upgrade}
+
+`helm upgrade` führt die Datenbankmigrationen im Migrations-Hook von core aus, bevor die neuen Pods starten; das Chart-README nennt, was jede Chart-Version ändert. Das Release, das GOAT Style einführt, die neuen Layer-Stile, wandelt in diesem Hook jeden gespeicherten Stil um (zehntausende Stile dauern etwa eine Minute) und behält die alten Stile für ein Release. Sichern Sie die Datenbank vor dem Update: Zurückgehen heißt, diese Sicherung wiederherzustellen, und Änderungen an Stilen nach dem Update gehen dabei verloren. Die Vorschaubilder der Karten werden einmal neu gezeichnet. Ein veröffentlichtes Projekt, dessen Layer nach der letzten Veröffentlichung umgestaltet wurden, führt diese Layer als unveröffentlichte Änderungen: Sie waren nie veröffentlicht, und die öffentliche Karte bleibt, wie sie ist, bis Sie erneut veröffentlichen. Ein Projekt, das während des Updates veröffentlicht wurde, zeigt auf seiner öffentlichen Seite keine Layer, bis es erneut veröffentlicht wird.
+
+Ab diesem Release speichert GOAT die Ausdehnung eines Raster-Layers, der aus einer COG-Datei hinzugefügt wird, damit „Auf Layer zoomen“ und die Kartenvorschau ihn finden. Layer, die vorher hinzugefügt wurden, haben keine. Sobald das neue Release läuft, ergänzen Sie sie einmal (der Befehl ändert nur Layer ohne Ausdehnung, ein erneuter Lauf schadet also nicht; `--dry-run` zeigt, was er speichern würde):
+
+```bash
+kubectl -n goat exec deploy/goat-geoapi -- python -m geoapi.scripts.backfill_raster_extents
+```
+
+Dasselbe Release kachelt Punkt-Layer nach einem neuen Rezept. Führen Sie in Windmill einmal den Task `f/goat/tasks/sync_pmtiles` mit ausgeschaltetem `force` aus (er läuft auf dem `tools`-Worker): Er baut die Kacheln vorhandener Punkt-Layer neu und lässt Layer mit aktuellen Kacheln unverändert.
+
+Bitten Sie die Nutzer, GOAT-Tabs neu zu laden, die während des Updates offen waren: Ein Tab, in dem noch die alte Version läuft, sendet Stile auf dem alten Weg, und core lehnt dieses Speichern ab (422), bis der Tab neu geladen wird. API-Skripte, die beim Ändern eines Layers, eines Projekt-Layers oder einer Layer-Gruppe noch `properties` senden, erhalten dieselbe Antwort mit einem Hinweis auf die Stil-Routen.
+
+Das Update wandelt außerdem gespeicherte Filter mit einer Verneinung („ist nicht“, „ist keiner von“, „enthält nicht den Text“ und die verneinten Datumsbedingungen) in die Form um, die das Filter-Panel jetzt schreibt: Sie behalten die Features ohne Wert, eine Karte mit einem solchen Filter kann also mehr Features zeigen als zuvor.
+
+Die Migration schreibt zuerst die neuen Spalten fest und wandelt danach die Stile um, während die laufende Version weiter antwortet. Hält eine lang laufende Transaktion eine der Tabellen, bricht die Migration nach wenigen Sekunden mit einem Lock-Timeout ab und ändert nichts weiter: Führen Sie das Update dann erneut aus (`helm upgrade` erneut ausführen).
 
 ## Weiterführende Informationen {#further-reading}
 

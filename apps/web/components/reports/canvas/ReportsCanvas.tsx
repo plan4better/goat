@@ -16,13 +16,18 @@ import { Rnd } from "react-rnd";
 
 import ThemeProvider from "@p4b/ui/theme/ThemeProvider";
 
+import { useProjectMap } from "@/lib/api/map";
 import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { resolveElementFrame } from "@/lib/print/elementFrame";
 import { mmToPx, pxToMm, resolvePageMm } from "@/lib/print/units";
 import { setReportCanvasZoom } from "@/lib/store/map/slice";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Scene } from "@/lib/style/generated/types";
+import type { Project } from "@/lib/validations/project";
 import type { ReportElement, ReportLayoutConfig } from "@/lib/validations/reportLayout";
 
+import type { Basemap } from "@/types/map/common";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useBasemap } from "@/hooks/map/MapHooks";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
@@ -274,7 +279,12 @@ interface ReportElementRendererProps {
   zoom: number;
   isSelected: boolean;
   basemapUrl?: string | StyleSpecification;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
+  /** The project's number locale. */
+  locale?: string;
+  /** The project's 3D scene and basemap, for map elements with a tilted view. */
+  scene?: Scene | null;
+  basemap?: Basemap;
   allElements: ReportElement[];
   paperWidthPx: number;
   paperHeightPx: number;
@@ -296,6 +306,9 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
   isSelected,
   basemapUrl,
   projectLayers,
+  locale,
+  scene,
+  basemap,
   allElements,
   paperWidthPx,
   paperHeightPx,
@@ -742,6 +755,9 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
             zoom={zoom}
             basemapUrl={basemapUrl}
             projectLayers={projectLayers}
+            locale={locale}
+            scene={scene}
+            basemap={basemap}
             atlasPage={atlasPage}
             featureAttributes={featureAttributes}
             viewOnly={!isSelected}
@@ -759,7 +775,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
 
 interface ReportsCanvasProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   reportConfig?: ReportLayoutConfig;
   selectedElementId?: string | null;
   onElementSelect?: (elementId: string | null) => void;
@@ -813,7 +829,9 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
   const [panStart, setPanStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   // Get basemap style from project (synced live). Vector → URL string, raster/solid → synthesized StyleSpecification.
-  const { mapStyle: basemapUrl } = useBasemap(project);
+  const { mapStyle: basemapUrl, activeBasemap } = useBasemap(project);
+  // The project's 3D scene from its map document (the map layers' request, already in the cache).
+  const { map: projectMap } = useProjectMap(project?.id);
 
   // Print config (atlas limits from backend)
   const { atlasMaxPages } = usePrintConfig();
@@ -1225,6 +1243,9 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
                         zoom={zoom}
                         isSelected={selectedElementId === element.id}
                         basemapUrl={basemapUrl}
+                        locale={project?.locale ?? undefined}
+                        scene={projectMap?.map.scene}
+                        basemap={activeBasemap}
                         projectLayers={projectLayers}
                         allElements={elements}
                         paperWidthPx={paperDimensions.widthPx}

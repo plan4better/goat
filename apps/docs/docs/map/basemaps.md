@@ -21,7 +21,7 @@ sidebar_position: 7
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Select the <code>Basemap</code> tab. Choose <code>Vector</code> for Style JSON sources or <code>Raster</code> for XYZ tile sources.</div>
+  <div class="content">Select the <code>Basemap</code> tab. Choose <code>Vector</code> for Style JSON sources or <code>Raster</code> for XYZ tile sources. A raster URL takes <code>&#123;-y&#125;</code>, <code>&#123;s&#125;</code> and <code>&#123;switch:a,b,c&#125;</code> as an XYZ layer does (see [Add layers](./layers#add-layers)).</div>
 </div>
 
 <div class="step">

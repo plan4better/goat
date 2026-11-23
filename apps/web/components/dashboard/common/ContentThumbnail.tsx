@@ -17,7 +17,7 @@ type Texture = "dots" | "raked" | "mesh" | "rules" | "pixels" | "graticule";
 
 const textureFor = (kind: MarkKind, geometryType?: string | null): Texture => {
   if (kind === "table") return "rules";
-  if (kind === "raster") return "pixels";
+  if (kind === "raster" || kind === "wms" || kind === "wmts") return "pixels";
   switch (geometryType) {
     case "point":
       return "dots";

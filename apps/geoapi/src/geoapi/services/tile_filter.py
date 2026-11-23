@@ -13,7 +13,8 @@ Three differences between the two shape the output:
   neither true nor false, and NOT keeps it that way; manby's negated operators
   (`!=`, `!in`, `!ilike`, and `none`) are true for a missing attribute. So a
   negation is pushed down to the tests (`not (a and b)` is `not a or not b`)
-  and each negated test is guarded with `has`; `none` is never used.
+  and each negated test is guarded with `has`; `none` is never used on
+  attributes.
 - Types. The tiles hold numbers and booleans as such, everything else as text,
   dates and timestamps in the text format of goatlib.io.pmtiles. A literal
   becomes what the column holds in the tiles, as DuckDB casts it to the
@@ -22,13 +23,24 @@ Three differences between the two shape the output:
   filter is left to DuckDB.
 - Areas. `s_intersects` with a polygon is taken out of the filter as its area,
   which `PreparedFilter` cuts per tile into manby's `intersects`. Only an area
-  every feature must intersect (in the top-level `and`) can be taken out.
+  every feature must intersect, or must miss (`not s_intersects`), in the
+  top-level `and` can be taken out. It is taken out as its union
+  (goatlib.filter.area), as DuckDB is handed it. The NULL rule above concerns
+  attributes: a feature in the tiles always has a geometry, so a missed area
+  becomes manby's `none` of `intersects`.
+
+A filter DuckDB does not take at all is no filter here either: its query
+builder drops a CQL filter it cannot evaluate, a property the layer lacks
+(saved before the column was dropped) above all, with every other test in it,
+and keeps the bbox. The stored tiles answer the same.
 
 `get_prepared_filter` keeps a translated filter prepared for the tiles of a
 file version. manby tests a feature clipped to the tile and its buffer, so of
 an area only the part near the tile matters: a tile the area misses gets no
 tile, a tile it covers no area test, and a tile on its edge the area cut to
-the tile, a few vertices instead of all of them for every tile.
+the tile, a few vertices instead of all of them for every tile. An area the
+features must miss is the mirror: a tile it covers gets no tile, a tile it
+misses no area test.
 """
 
 import hashlib
@@ -38,29 +50,34 @@ import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
 import shapely
+from goatlib.filter.area import normalize_area
+from goatlib.filter.normalize import normalize
 from goatlib.storage.cql_evaluator import parse_cql2_filter
-from goatlib.storage.query_builder import _normalize_geometry_property
+from goatlib.storage.query_builder import _normalize_geometry_property, build_filters
 from pygeofilter import ast, values
 from shapely.geometry import shape
 
 
 @dataclass(frozen=True)
 class TranslatedFilter:
-    """A tile filter for manby; at least one part is set.
+    """A tile filter for manby; with no part set, the stored tiles as they are.
 
     Attributes:
         attributes: manby filter expression without areas, or None
         area: GeoJSON Polygon or MultiPolygon every feature must intersect,
             or None
+        outside: GeoJSON Polygon or MultiPolygon no feature may intersect,
+            or None
     """
 
     attributes: list | None
     area: dict | None
+    outside: dict | None = None
 
 
 class Untranslatable(Exception):
@@ -132,33 +149,49 @@ def translate(
         geometry_column: Name of the geometry column
 
     Returns:
-        The filter, or None when DuckDB has to answer it: something manby
-        cannot express exactly, a property missing from the tiles, a filter
-        that does not parse, or nothing to filter.
+        The filter, without any part when DuckDB drops the CQL filter and
+        there is no bbox; or None when DuckDB has to answer it: something
+        manby cannot express exactly, a property missing from the tiles, a
+        filter that does not parse, or nothing to filter.
     """
+    if cql_filter is None and bbox is None:
+        return None
     translator = _Translator(columns, tile_fields, geometry_column)
     try:
         attributes = None
         if cql_filter is not None:
             node = _parse(cql_filter, geometry_column)
-            attributes = translator.condition(node, negate=False, top=True)
+            if _duckdb_takes(cql_filter, columns, geometry_column):
+                attributes = translator.condition(node, negate=False, top=True)
         if bbox is not None:
             translator.areas.append(_rectangle(bbox))
         area = translator.area()
+        outside = translator.outside_area()
     except Untranslatable:
         return None
-    if attributes is None and area is None:
-        return None
-    return TranslatedFilter(attributes=attributes, area=area)
+    return TranslatedFilter(attributes=attributes, area=area, outside=outside)
+
+
+def _duckdb_takes(cql_filter: dict, columns: list[dict], geometry_column: str) -> bool:
+    """Whether DuckDB's tile query filters by the CQL filter, as
+    `TileService._generate_dynamic_tile` builds its WHERE clause."""
+    names = [c["name"] for c in columns]
+    return bool(
+        build_filters(
+            cql_filter=cql_filter, geometry_column=geometry_column, column_names=names
+        ).clauses
+    )
 
 
 def _parse(cql_filter: dict, geometry_column: str) -> Any:
     """The pygeofilter AST, as `build_cql_filter` parses the filter."""
     try:
-        return parse_cql2_filter(
-            _normalize_geometry_property(cql_filter["filter"], geometry_column),
-            cql_filter.get("lang", "cql2-json"),
-        )
+        lang = cql_filter.get("lang", "cql2-json")
+        parsed = _normalize_geometry_property(cql_filter["filter"], geometry_column)
+        # The spellings the parser does not take, as build_cql_filter rewrites them
+        if lang == "cql2-json":
+            parsed = normalize(json.loads(parsed))
+        return parse_cql2_filter(parsed, lang)
     except Exception as e:
         raise Untranslatable("filter does not parse") from e
 
@@ -181,15 +214,17 @@ class _Translator:
         self.tile_fields = tile_fields
         self.geometry_names = _GEOMETRY_ALIASES | {geometry_column.lower()}
         self.areas: list[dict] = []
+        self.outside: list[dict] = []
 
     def condition(self, node: Any, negate: bool, top: bool = False) -> list | None:
         """manby expression true where `node` is true in SQL, or false with `negate`.
 
         `top` is set in the filter's top-level `and`, where an area is taken
-        out (None is returned for it).
+        out (None is returned for it): one every feature must intersect, or
+        with `negate` one every feature must miss.
         """
         if isinstance(node, ast.Not):
-            return self.condition(node.sub_node, not negate)
+            return self.condition(node.sub_node, not negate, top)
         if isinstance(node, (ast.And, ast.Or)):
             conjunction = isinstance(node, ast.And) != negate
             parts = [
@@ -234,7 +269,7 @@ class _Translator:
             key, _ = self.field(lhs)
             return ["has", key] if node.not_ != negate else ["!has", key]
         if isinstance(node, ast.GeometryIntersects) and top:
-            self.areas.append(self.polygon(node))
+            (self.outside if negate else self.areas).append(self.polygon(node))
             return None
         raise Untranslatable(type(node).__name__)
 
@@ -257,7 +292,12 @@ class _Translator:
         return column["name"], kind
 
     def polygon(self, node: ast.GeometryIntersects) -> dict:
-        """The polygon an `s_intersects` on the geometry column tests."""
+        """The polygon an `s_intersects` on the geometry column tests.
+
+        As its union (`normalize_area`), as DuckDB is handed it: a prepared
+        geometry reads a tile inside two overlapping polygons of an area as
+        outside, and `area` cannot compare an invalid one.
+        """
         lhs, rhs = node.lhs, node.rhs
         if not (
             isinstance(lhs, ast.Attribute) and lhs.name.lower() in self.geometry_names
@@ -268,7 +308,7 @@ class _Translator:
             "MultiPolygon",
         ):
             raise Untranslatable("s_intersects without a polygon")
-        return rhs.geometry
+        return normalize_area(rhs.geometry)
 
     def area(self) -> dict | None:
         """The one area every feature must intersect.
@@ -287,6 +327,17 @@ class _Translator:
         except Exception as e:  # malformed GeoJSON from the request
             raise Untranslatable("area") from e
         raise Untranslatable("areas without one inside the others")
+
+    def outside_area(self) -> dict | None:
+        """The one area every feature must miss: missing all of several areas
+        is missing their union."""
+        if len(self.outside) <= 1:
+            return self.outside[0] if self.outside else None
+        try:
+            union = shapely.union_all([shape(area) for area in self.outside])
+        except Exception as e:  # malformed GeoJSON from the request
+            raise Untranslatable("area") from e
+        return json.loads(shapely.to_geojson(union))
 
 
 def _kind(duckdb_type: str) -> str | None:
@@ -351,7 +402,8 @@ def _temporal(kind: str, value: Any) -> str:
     """A date or time literal in the tiles' text for the kind.
 
     DuckDB casts a literal for a DATE column to its day and one without an
-    offset for a TIMESTAMPTZ column to UTC (geoapi's time zone). The tiles
+    offset for a TIMESTAMPTZ column to UTC (geoapi's time zone), so a UTC
+    literal on a column without a time zone reads as that time. The tiles
     hold milliseconds; the web sends whole seconds, and only those translate.
     """
     if isinstance(value, (date, datetime)):
@@ -362,6 +414,9 @@ def _temporal(kind: str, value: Any) -> str:
         moment = datetime.fromisoformat(value)
         if kind == "timestamptz" and moment.tzinfo is not None:
             moment = moment.astimezone(timezone.utc)
+        elif moment.utcoffset() == timedelta(0):
+            # A UTC time is the same time without its zone: geoapi reads in UTC
+            moment = moment.replace(tzinfo=None)
     except (ValueError, OverflowError) as e:
         raise Untranslatable("not a date or time") from e
     if kind == "date":
@@ -441,29 +496,21 @@ _prepared_lock = threading.Lock()
 
 
 class PreparedFilter:
-    """A translated filter with its area parsed and prepared once.
+    """A translated filter with its areas parsed and prepared once.
 
     Shared by the threads that answer tiles. A prepared shapely geometry is not
-    safe to use from several threads at once, so the area's `intersects` and
+    safe to use from several threads at once, so the areas' `intersects` and
     `contains` run under a lock. The cut runs outside it, on a copy of the area
     that is not prepared, so it never reads the geometry the tests prepare.
 
     Raises:
-        shapely.errors.GEOSException: the area is not valid GeoJSON
+        shapely.errors.GEOSException: an area is not valid GeoJSON
     """
 
     def __init__(self, translated: TranslatedFilter) -> None:
         self.attributes = translated.attributes
-        self.area: shapely.Geometry | None = None
-        self._area_for_cut: shapely.Geometry | None = None
-        if translated.area is not None:
-            self.area = shapely.from_geojson(json.dumps(translated.area))
-            # WKB holds the coordinates exactly
-            self._area_for_cut = shapely.from_wkb(shapely.to_wkb(self.area))
-            # GEOS fills a geometry's envelope on first use; filled here, the
-            # threads that cut the shared copy only read it
-            shapely.bounds(self._area_for_cut)
-            shapely.prepare(self.area)
+        self.area, self._area_for_cut = _prepared_area(translated.area)
+        self.outside, self._outside_for_cut = _prepared_area(translated.outside)
         self._attributes_json = (
             None if self.attributes is None else json.dumps(self.attributes)
         )
@@ -475,43 +522,83 @@ class PreparedFilter:
         """The manby filter file for the tile z/x/y, written into `folder`.
 
         Returns:
-            The file; None when no filter is left (the area covers the tile
-            and there is no attribute test); False when no feature can pass
-            (no area in the tile).
+            The file; None when no filter is left (the area covers the tile,
+            the outside area misses it, and there is no attribute test); False
+            when no feature can pass (no area in the tile, or the outside area
+            covers it).
         """
-        expression = self._attributes_json
-        if self.area is not None:
+        tests = [] if self._attributes_json is None else [self._attributes_json]
+        if self.area is not None or self.outside is not None:
             west, south, east, north = _lonlat_box(z, x, y)
             box = shapely.box(west, south, east, north)
+            covered = met = False
             with self._lock:
-                if not self.area.intersects(box):
-                    return False
-                covered = self.area.contains(box)
-            if not covered:
-                # outside the lock: the cut of a large area takes a while
-                cut = shapely.clip_by_rect(self._area_for_cut, west, south, east, north)
-                parts = [
-                    part
-                    for part in shapely.get_parts(cut)
-                    if part.geom_type == "Polygon" and not part.is_empty
-                ]
+                if self.area is not None:
+                    if not self.area.intersects(box):
+                        return False
+                    covered = self.area.contains(box)
+                if self.outside is not None:
+                    met = self.outside.intersects(box)
+                    if met and self.outside.contains(box):
+                        return False
+            # outside the lock: the cut of a large area takes a while
+            if self.area is not None and not covered:
+                parts = _intersects_tests(self._area_for_cut, west, south, east, north)
                 if not parts:  # the area only touches the box
                     return False
-                # One test per part: manby finds an area wholly inside a
-                # polygon feature by one vertex of the area's first part, so
-                # a feature holding a later part would be dropped. shapely's
-                # GeoJSON text as it is: parsing it and writing it out again
-                # would cost more than the cut.
-                tests = [f'["intersects", {shapely.to_geojson(p)}]' for p in parts]
-                test = tests[0] if len(tests) == 1 else f'["any", {", ".join(tests)}]'
-                expression = (
-                    test if expression is None else f'["all", {expression}, {test}]'
+                tests.append(parts[0] if len(parts) == 1 else _op("any", parts))
+            if met:
+                parts = _intersects_tests(
+                    self._outside_for_cut, west, south, east, north
                 )
-        if expression is None:
+                # an area that only touches the box misses every feature in it
+                if parts:
+                    tests.append(_op("none", parts))
+        if not tests:
             return None
+        expression = tests[0] if len(tests) == 1 else _op("all", tests)
         path = folder / "filter.json"
         path.write_text(f'{{"*": {expression}}}', encoding="utf-8")
         return path
+
+
+def _prepared_area(
+    area: dict | None,
+) -> tuple[shapely.Geometry | None, shapely.Geometry | None]:
+    """The area prepared for the tests, and a copy of it for the cut."""
+    if area is None:
+        return None, None
+    geometry = shapely.from_geojson(json.dumps(area))
+    # WKB holds the coordinates exactly
+    for_cut = shapely.from_wkb(shapely.to_wkb(geometry))
+    # GEOS fills a geometry's envelope on first use; filled here, the threads
+    # that cut the shared copy only read it
+    shapely.bounds(for_cut)
+    shapely.prepare(geometry)
+    return geometry, for_cut
+
+
+def _intersects_tests(
+    area: shapely.Geometry, west: float, south: float, east: float, north: float
+) -> list[str]:
+    """manby's `intersects` for each polygon of the area cut to the box.
+
+    One test per part: manby finds an area wholly inside a polygon feature by
+    one vertex of the area's first part, so a feature holding a later part
+    would be missed. shapely's GeoJSON text as it is: parsing it and writing it
+    out again would cost more than the cut.
+    """
+    cut = shapely.clip_by_rect(area, west, south, east, north)
+    return [
+        f'["intersects", {shapely.to_geojson(part)}]'
+        for part in shapely.get_parts(cut)
+        if part.geom_type == "Polygon" and not part.is_empty
+    ]
+
+
+def _op(name: str, expressions: list[str]) -> str:
+    """The manby expression `[name, *expressions]` of JSON texts."""
+    return f'["{name}", {", ".join(expressions)}]'
 
 
 def _lonlat_box(z: int, x: int, y: int) -> tuple[float, float, float, float]:
@@ -539,7 +626,11 @@ def _lonlat_box(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 def filter_digest(translated: TranslatedFilter) -> str:
     """SHA-1 of the filter's canonical JSON, the same for the same filter."""
     text = json.dumps(
-        {"attributes": translated.attributes, "area": translated.area},
+        {
+            "attributes": translated.attributes,
+            "area": translated.area,
+            "outside": translated.outside,
+        },
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -549,7 +640,8 @@ def filter_digest(translated: TranslatedFilter) -> str:
 def request_digest(
     layer_id: str, cql_filter: dict[str, Any] | None, bbox: list[float] | None
 ) -> str:
-    """SHA-1 of a tile request's filter as sent, with the layer it filters.
+    """SHA-1 of a tile request's filter as `cql_filter_query` passes it on
+    (as sent, a relative day resolved to today's), with the layer it filters.
 
     With the version of the layer's stored tiles it identifies the translated
     filter without parsing it again: `translate` reads the filter, the bbox

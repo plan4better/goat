@@ -11,7 +11,9 @@ The actual AST -> SQL evaluator lives in goatlib
 job is: pick the right parser for the given language, validate that every
 referenced property is one the catalog advertises as queryable
 (``catalog.services.registry``, derived from the loaded table)
-(anything else is a 400, never a silently-ignored filter), validate
+(anything else is a 400, never a silently-ignored filter), hold the filter
+against the request ceilings (``goatlib.filter.limits.REQUEST_MAX_*``, a 400
+with the ceiling it is over), validate
 ``filter_crs`` (only CRS84 or unset), and translate any parse/evaluation
 failure into ``ApiError(400, ...)`` so the router never has to know about
 pygeofilter's own exception types.
@@ -20,6 +22,8 @@ pygeofilter's own exception types.
 import json
 from typing import Any
 
+from goatlib.filter.normalize import normalize
+from goatlib.filter.validate import over_request_limits, over_request_limits_text
 from goatlib.storage.cql_evaluator import cql2_to_duckdb_sql
 from pygeofilter import ast
 from pygeofilter.parsers.cql2_json import parse as parse_cql2_json
@@ -72,6 +76,12 @@ def _validate_queryables(cql_ast: Any, registry: QueryableRegistry) -> None:
         raise ApiError(400, f"unknown queryable(s): {', '.join(unknown)}")
 
 
+def _within_ceilings(issues: list[Any]) -> None:
+    """Raise ``ApiError(400)`` naming the request ceilings a filter is over."""
+    if issues:
+        raise ApiError(400, " ".join(issue.message for issue in issues))
+
+
 def compile_cql2(
     filter_value: str | dict[str, Any],
     filter_lang: str | None,
@@ -84,8 +94,8 @@ def compile_cql2(
     ``None`` defaults to ``"cql2-text"`` here -- choosing the per-verb
     default (cql2-text for GET, cql2-json for POST) is the router's job,
     not this function's. Raises ``ApiError(400)`` on: an invalid
-    ``filter_lang``, a parse error, a reference to an unknown queryable, or
-    an unsupported ``filter_crs``.
+    ``filter_lang``, a parse error, a filter over a request ceiling, a
+    reference to an unknown queryable, or an unsupported ``filter_crs``.
     """
     lang = filter_lang if filter_lang is not None else "cql2-text"
     if lang not in _VALID_FILTER_LANGS:
@@ -101,11 +111,17 @@ def compile_cql2(
                 if isinstance(filter_value, (str, dict))
                 else json.dumps(filter_value)
             )
-            cql_ast = parse_cql2_json(source)
+            if isinstance(source, str):
+                source = json.loads(source)
+            # Before it is parsed, so nothing over a ceiling is.
+            _within_ceilings(over_request_limits(source))
+            cql_ast = parse_cql2_json(normalize(source))
         else:
             if not isinstance(filter_value, str):
                 raise ApiError(400, "cql2-text filter must be a string")
+            # Text has to be parsed to be measured.
             cql_ast = parse_cql2_text(filter_value)
+            _within_ceilings(over_request_limits_text(cql_ast))
     except ApiError:
         raise
     except Exception as exc:

@@ -39,7 +39,7 @@ test("a point added on the map is saved to the dataset", async ({ page }) => {
 
     await page.goto(`/map/${projectId}`);
     const row = page.locator(".tree-item").filter({ hasText: "E2E Editable Points" });
-    await row.getByRole("button", { name: "More Options" }).click({ timeout: 30000 });
+    await row.getByRole("button", { name: "More options" }).click({ timeout: 30000 });
     await page.getByRole("button", { name: "Edit features", exact: true }).click();
 
     await page.getByRole("button", { name: "Add a feature" }).click();

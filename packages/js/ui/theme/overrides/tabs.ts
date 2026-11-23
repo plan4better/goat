@@ -16,6 +16,10 @@ const Tabs = (theme: Theme) => {
     },
     MuiTab: {
       styleOverrides: {
+        // Labels as written (sentence case), as the buttons' are; MUI draws them in capitals.
+        root: {
+          textTransform: 'none'
+        },
         textColorSecondary: {
           '&.Mui-selected': {
             color: theme.palette.text.secondary

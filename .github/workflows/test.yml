@@ -77,6 +77,59 @@ jobs:
       - name: 🧪 Vitest (Next's server code)
         run: pnpm --filter web exec vitest run next.test.ts
 
+  web-style-lab:
+    name: web (style lab)
+    if: ${{ inputs.web }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # REQUIRED. GOAT Styles drawn on a real MapLibre map in headless Chromium
+    # (vitest browser mode, apps/web/vitest.lab.config.ts). Its own job beside
+    # the jsdom suite, which excludes the lab's *.lab.test.tsx files. The
+    # screenshot baselines are made with this Chromium on Linux.
+    steps:
+      - name: ⏱️ Start the clock
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+      - name: 📥 Monorepo install
+        uses: ./.github/actions/pnpm-install
+      # The same browser cache as the vitest job: one entry per Playwright
+      # release.
+      - name: 🎭 Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: 💾 Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: 📥 Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: 🧪 Style lab
+        run: pnpm --filter @p4b/web lab
+      # A screenshot that differs leaves the picture this Chromium took
+      # (<id>-actual-chromium-linux.png, and <id>-reference-chromium-linux.png
+      # where no baseline exists) under apps/web/.vitest/attachments/: to look
+      # at, or to take as the new baseline in lab/__screenshots__/. The folder
+      # name starts with a dot, which upload-artifact leaves out unless told.
+      - name: 📤 Style lab screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: style-lab-screenshots
+          path: apps/web/.vitest/attachments/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+      - name: ⏱️ Duration
+        if: always()
+        run: |
+          elapsed=$(( $(date +%s) - JOB_STARTED ))
+          echo "### style lab: $((elapsed / 60)) min $((elapsed % 60)) s (budget 5 min)" >> "$GITHUB_STEP_SUMMARY"
+          [ "$elapsed" -le 300 ] || echo "::warning::style lab took ${elapsed}s, over its 5 minute budget"
+
   core:
     name: core (pytest)
     if: ${{ inputs.core }}

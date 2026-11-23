@@ -26,6 +26,7 @@ import json
 import logging
 import shutil
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,8 +65,8 @@ class TempLayerMetadata(BaseModel):
         None, description="Process/tool ID that created this layer"
     )
     size_bytes: int = Field(0, description="Size of the parquet file in bytes")
-    properties: dict[str, Any] | None = Field(
-        None, description="Layer style properties from the tool"
+    style: dict[str, Any] | None = Field(
+        None, description="The layer's GOAT Style document, with computed values"
     )
 
 
@@ -171,7 +172,7 @@ class TempLayerWriter:
         layer_name: str,
         process_id: str | None = None,
         duckdb_con: duckdb.DuckDBPyConnection | None = None,
-        properties: dict[str, Any] | None = None,
+        style: Callable[[str | None], dict[str, Any] | None] | None = None,
         geometry_type: str | None = None,
     ) -> TempLayerResult:
         """Write a parquet file to temporary storage.
@@ -186,7 +187,8 @@ class TempLayerWriter:
             layer_name: Display name for the layer
             process_id: Optional process/tool ID
             duckdb_con: Optional DuckDB connection for reading parquet metadata
-            properties: Optional layer style properties from the tool
+            style: Builds the layer's style from its geometry type as read from
+                the data
             geometry_type: The geometry type the tool gives its result, for a
                 result whose rows give none (one without rows): an export of
                 it is then a layer of that type. Only a result with a
@@ -214,9 +216,8 @@ class TempLayerWriter:
             geometry_type=geometry_type,
         )
 
-        # Attach tool style properties if provided
-        if properties:
-            metadata.properties = properties
+        if style is not None:
+            metadata.style = style(metadata.geometry_type)
 
         # Generate PMTiles if enabled and has geometries to draw
         pmtiles_path = None

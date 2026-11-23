@@ -16,13 +16,21 @@ export const useAssets = (queryParams?: { asset_type?: AssetTypeEnum }) => {
 
 export const useDocuments = (folderId: string | undefined) => {
   const { data, isLoading, error, mutate } = useSWR<UploadedAsset[]>(
-    folderId
-      ? [`${ASSETS_API_BASE_URL}`, { asset_type: "document", folder_id: folderId }]
-      : null,
+    folderId ? [`${ASSETS_API_BASE_URL}`, { asset_type: "document", folder_id: folderId }] : null,
     fetcher
   );
   return { documents: data ?? [], isLoading, isError: error, mutate };
 };
+
+/** An upload core refused: its status and its reason (the response's `detail`, else its text). */
+export class AssetUploadError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string
+  ) {
+    super(`Upload failed: ${detail}`);
+  }
+}
 
 export const uploadAsset = async (
   file: File,
@@ -48,7 +56,14 @@ export const uploadAsset = async (
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Upload failed: ${errorText}`);
+    let detail = errorText;
+    try {
+      const body = JSON.parse(errorText);
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      // Not JSON: the text is the reason.
+    }
+    throw new AssetUploadError(response.status, detail);
   }
 
   const data = await response.json();

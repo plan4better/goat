@@ -6,9 +6,9 @@ SQL append are covered in ``test_append_rows.py``, so they are replaced at the
 level below (``_append_rows_into``), like DuckLake, PMTiles and Postgres.
 """
 
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, AsyncIterator, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -257,6 +257,31 @@ def test_add_to_project_off_leaves_project_alone(tmp_path: Path) -> None:
     assert "link" not in h.log
 
 
+def _link_pool(link_id: int) -> tuple[MagicMock, MagicMock]:
+    """A pool without an entry for the layer yet; the new entry is inserted on
+    the one connection it hands out, in a transaction (with its first style)."""
+    conn = MagicMock(name="conn")
+    conn.fetchrow = AsyncMock(return_value={"id": link_id})
+    conn.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def transaction() -> AsyncIterator[None]:
+        yield
+
+    conn.transaction = transaction
+
+    @asynccontextmanager
+    async def acquire() -> AsyncIterator[Any]:
+        yield conn
+
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value=None)
+    pool.execute = AsyncMock()
+    pool.close = AsyncMock()
+    pool.acquire = acquire
+    return pool, conn
+
+
 def test_project_link_shareable_only_with_share_right() -> None:
     # D7: a layer the runner may not share must not travel with the project.
     import asyncio
@@ -264,17 +289,14 @@ def test_project_link_shareable_only_with_share_right() -> None:
     runner = FinalizeLayerRunner()
     runner.settings = MagicMock()
     runner.settings.customer_schema = "customer"
-    pool = MagicMock()
-    pool.fetchrow = AsyncMock(side_effect=[None, {"id": 7}])
-    pool.execute = AsyncMock()
-    pool.close = AsyncMock()
+    pool, conn = _link_pool(7)
     with patch.object(runner, "get_postgres_pool", new=AsyncMock(return_value=pool)):
         asyncio.run(runner._ensure_project_link(_params(), "Monitoring"))
-    insert_sql = pool.fetchrow.call_args_list[1].args[0]
+    insert_sql = conn.fetchrow.call_args.args[0]
     assert "shareable" in insert_sql
     assert "customer.layer_is_catalog" in insert_sql
     assert "customer.can('layer'" in insert_sql
-    assert pool.execute.await_count == 1  # layer_order updated
+    assert "layer_order" in conn.execute.call_args.args[0]  # layer_order updated
 
 
 def test_existing_project_link_is_kept() -> None:
@@ -327,13 +349,10 @@ def test_project_entry_for_the_target_carries_no_export_stamp() -> None:
     runner = FinalizeLayerRunner()
     runner.settings = MagicMock()
     runner.settings.customer_schema = "customer"
-    pool = MagicMock()
-    pool.fetchrow = AsyncMock(side_effect=[None, {"id": 7}])
-    pool.execute = AsyncMock()
-    pool.close = AsyncMock()
+    pool, conn = _link_pool(7)
     with patch.object(runner, "get_postgres_pool", new=AsyncMock(return_value=pool)):
         asyncio.run(runner._ensure_project_link(_params(), "Monitoring"))
-    insert_sql = pool.fetchrow.call_args_list[1].args[0]
+    insert_sql = conn.fetchrow.call_args.args[0]
     assert "other_properties" not in insert_sql
     assert "workflow_export" not in insert_sql
 
@@ -361,11 +380,8 @@ def test_new_dataset_links_stay_shareable_as_before() -> None:
     runner = FinalizeLayerRunner()
     runner.settings = MagicMock()
     runner.settings.customer_schema = "customer"
-    pool = MagicMock()
-    pool.fetchrow = AsyncMock(side_effect=[None, {"id": 5}])
-    pool.execute = AsyncMock()
-    pool.close = AsyncMock()
+    pool, conn = _link_pool(5)
     with patch.object(runner, "get_postgres_pool", new=AsyncMock(return_value=pool)):
         asyncio.run(runner._get_or_create_project_link(TARGET, PROJECT, "Result"))
-    insert_sql = pool.fetchrow.call_args_list[1].args[0]
+    insert_sql = conn.fetchrow.call_args.args[0]
     assert "shareable" not in insert_sql

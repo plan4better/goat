@@ -23,6 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from goatlib.style.map_rows import MAX_DOCUMENT_BYTES, json_bytes
 from goatlib.tools.registry import TOOL_REGISTRY
 from goatlib.utils.credentials import redact_credentials
 from goatlib.workflows.run_errors import error_message, step_errors
@@ -53,21 +54,25 @@ from processes.models.processes import (
     StatusInfo,
 )
 from processes.services.access import (
+    RasterFile,
     analytics_references,
     empty_copy_of_template,
     ensure_allowed,
     ensure_empty_copy_of_template,
+    raster_file,
     tool_references,
 )
 from processes.services.analytics_registry import (
     LayerSearchProcessInput,
     MirrorValuesProcessInput,
+    StyleCheckProcessInput,
     analytics_registry,
 )
 from processes.services.analytics_service import AnalyticsService
 from processes.services.beta_access import get_beta_email_domains, is_beta_user_email
 from processes.services.public_search_config import get_public_sql_scope
 from processes.services.tool_registry import tool_registry
+from processes.services.user_session import user_session_inputs
 from processes.services.windmill_client import (
     WindmillClient,
     WindmillError,
@@ -151,12 +156,15 @@ PUBLIC_ALLOWED_PROCESSES = frozenset(
 )
 
 # Every sync-analytics process handled inline below (the public subset above
-# plus the two authenticated-only SQL helpers). Membership here routes a
-# request into `_execute_analytics_sync`; `PUBLIC_ALLOWED_PROCESSES` then
-# decides whether it may run without a caller.
+# plus the two authenticated-only SQL helpers, style-check, which core calls
+# with the user's token when a style is saved or read, and mirror-values;
+# public maps never compute). Membership here routes a request into
+# `_execute_analytics_sync`; `PUBLIC_ALLOWED_PROCESSES` then decides whether
+# it may run without a caller.
 SYNC_ANALYTICS_PROCESSES = PUBLIC_ALLOWED_PROCESSES | {
     "preview-sql",
     "validate-sql",
+    "style-check",
     # Reads the mirror for an area the caller draws, so it is sync but not public.
     "mirror-values",
 }
@@ -249,13 +257,17 @@ def is_public_allowed_process(process_id: str) -> bool:
 
 
 def _execute_analytics_sync(
-    process_id: str, inputs: dict[str, Any], user_id: UUID | None = None
+    process_id: str,
+    inputs: dict[str, Any],
+    user_id: UUID | None = None,
+    raster_file: RasterFile | None = None,
 ) -> dict[str, Any]:
     """Execute an analytics process synchronously.
 
     Args:
         process_id: Analytics process ID
         inputs: Process inputs
+        raster_file: style-check of a raster file: its file from the layer row
 
     Returns:
         Process result as dict
@@ -338,6 +350,17 @@ def _execute_analytics_sync(
                 limit=inputs.get("limit", 10),
                 offset=inputs.get("offset", 0),
                 filter_expr=inputs.get("filter_expr"),
+            )
+        elif process_id == "style-check":
+            style_input = StyleCheckProcessInput.model_validate(inputs)
+            return analytics_service.style_check(
+                collection=style_input.collection,
+                document=style_input.document,
+                geometry=style_input.geometry,
+                compute=style_input.compute,
+                stored=style_input.stored,
+                fingerprint=style_input.fingerprint,
+                raster_file=raster_file,
             )
         elif process_id == "layer-search":
             return analytics_service.layer_search(
@@ -624,6 +647,21 @@ def _require_whole_numbers(inputs: dict[str, Any]) -> None:
         )
 
 
+def _require_document_size(inputs: dict[str, Any]) -> None:
+    """A style document above MAX_DOCUMENT_BYTES of compact UTF-8 JSON (the
+    limit core applies to every document it takes) is refused before any work."""
+    if json_bytes(inputs.get("document")) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": OGC_EXCEPTION_INVALID_PARAMETER,
+                "title": "Invalid parameter",
+                "status": 422,
+                "detail": f"document is larger than {MAX_DOCUMENT_BYTES} bytes",
+            },
+        )
+
+
 @router.post(
     "/processes/{process_id}/execution",
     summary="Execute a process",
@@ -720,11 +758,23 @@ async def execute_process(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         _require_whole_numbers(execute_request.inputs)
+        if process_id == "style-check":
+            _require_document_size(execute_request.inputs)
         # Every layer the query reads must be readable by the caller (a
         # layer of a published project is readable by anyone).
         await ensure_allowed(
             user_id, analytics_references(process_id, execute_request.inputs)
         )
+        raster = None
+        document = execute_request.inputs.get("document")
+        if (
+            process_id == "style-check"
+            and isinstance(document, dict)
+            and document.get("kind") == "raster"
+        ):
+            raster = await raster_file(
+                str(execute_request.inputs.get("collection", ""))
+            )
         global _layer_search_inflight
         is_search = process_id == "layer-search"
         if is_search and _layer_search_inflight >= _LAYER_SEARCH_MAX_INFLIGHT:
@@ -770,6 +820,7 @@ async def execute_process(
                         process_id,
                         execute_request.inputs,
                         user_id,
+                        raster,
                     ),
                     timeout=settings.ANALYTICS_QUERY_TIMEOUT,
                 )
@@ -835,14 +886,14 @@ async def execute_process(
         "user_id": str(user_id),
     }
 
-    # Pass access_token and refresh_token to print_report for Playwright authentication
-    # The refresh_token allows the worker to refresh expired access tokens during long atlas jobs
-    # NOTE: Keycloak client credentials are read from env vars in the print worker directly,
-    # NOT passed through job inputs, to avoid exposing secrets in Windmill's job storage
-    if process_id == "print_report":
-        if access_token:
-            job_inputs["access_token"] = access_token
-        # refresh_token is passed from the frontend in the inputs — same exposure as access_token
+    # What a job that acts as the user gets of the session: the access token
+    # (print_report, project_import), core's address (the project archive
+    # tools) and print_report's refresh_token from the web app. print_report's
+    # Keycloak client comes from the print worker's env, never from job inputs,
+    # so no secret lands in Windmill's job storage.
+    job_inputs = user_session_inputs(
+        process_id, job_inputs, access_token, settings.CORE_URL
+    )
 
     # Auto-populate od_matrix_path from routing_mode so the field can stay hidden
     # in the UI while the analysis layer still gets it.

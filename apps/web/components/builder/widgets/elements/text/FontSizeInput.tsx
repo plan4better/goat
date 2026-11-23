@@ -1,5 +1,13 @@
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
-import { Divider, ListItemText, Menu, MenuItem, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import {
+  Divider,
+  ListItemText,
+  Menu,
+  MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@mui/material";
 import type { Editor } from "@tiptap/react";
 import { useEditorState } from "@tiptap/react";
 import { useEffect, useState } from "react";
@@ -19,12 +27,7 @@ interface FontSizeInputProps {
   forceClose?: boolean;
 }
 
-const FontSizeInput: React.FC<FontSizeInputProps> = ({
-  editor,
-  onOpen,
-  onClose,
-  forceClose,
-}) => {
+const FontSizeInput: React.FC<FontSizeInputProps> = ({ editor, onOpen, onClose, forceClose }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
 
@@ -118,12 +121,8 @@ const FontSizeInput: React.FC<FontSizeInputProps> = ({
           onChange={handleUnitChange}
           size="small"
           sx={{ mx: 1, mb: 0.5 }}>
-          <ToggleButton value="pt" sx={{ px: 1.5, py: 0.25, fontSize: "0.75rem" }}>
-            pt
-          </ToggleButton>
-          <ToggleButton value="mm" sx={{ px: 1.5, py: 0.25, fontSize: "0.75rem" }}>
-            mm
-          </ToggleButton>
+          <ToggleButton value="pt">pt</ToggleButton>
+          <ToggleButton value="mm">mm</ToggleButton>
         </ToggleButtonGroup>
         <Divider sx={{ my: 0.5 }} />
         {/* Size presets */}

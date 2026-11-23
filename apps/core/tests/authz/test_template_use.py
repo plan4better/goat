@@ -699,3 +699,190 @@ async def test_a_use_preview_takes_a_workflow_template_and_what_a_use_takes(
         assert set(refused.json()) == {"detail"}
         for secret in (str(layer.id), "Buffer workflow", "Input Layer", "dataset-1"):
             assert secret not in refused.text
+
+
+async def _raster(layer: Any) -> Any:
+    """`layer` turned into a raster file layer (flushed by the caller's commit)."""
+    layer.type = "raster"
+    layer.feature_layer_type = None
+    layer.feature_layer_geometry_type = None
+    layer.data_type = "cog"
+    layer.url = "https://cdn.example/dem.tif"
+    return layer
+
+
+async def _ask_template(client: AsyncClient, home: str, layer_id: UUID) -> str:
+    """A workflow template with one "ask" dataset input, `node:dataset-1`."""
+    source_project_id = await _create_project(client, home, name="source")
+    workflow_id = await _create_workflow(
+        client, source_project_id, _dataset_workflow_config(layer_id)
+    )
+    created = await client.post(
+        f"{settings.API_V2_STR}/template",
+        json={
+            "name": "Buffer workflow",
+            "folder_id": home,
+            "source": {
+                "kind": "workflow",
+                "project_id": source_project_id,
+                "workflow_id": workflow_id,
+            },
+            "inputs": [
+                {
+                    "key": "node:dataset-1",
+                    "label": "Input Layer",
+                    "mode": "ask",
+                    "layer_type": "feature",
+                    "geometry_type": "polygon",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    return str(created.json()["id"])
+
+
+@pytest.mark.asyncio
+async def test_a_raster_bound_to_a_workflow_input_is_refused(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    make_layer: Callable[..., Awaitable[Any]],
+) -> None:
+    """A workflow's dataset inputs take vector data and tables: binding a raster
+    is a 422 naming the input and the layer, and the use writes nothing (no
+    project in the folder, no workflow, no layer in the target project); the
+    preview refuses it the same way."""
+    home = str(fixture_get_home_folder["id"])
+    owner = await db_session.get(User, fixture_create_user)
+    home_folder = await db_session.get(Folder, UUID(home))
+    assert owner is not None and home_folder is not None
+    layer = await make_layer(owner, home_folder)
+    raster = await _raster(await make_layer(owner, home_folder))
+    await db_session.commit()
+
+    source_project_id = await _create_project(client, home, name="source")
+    workflow_id = await _create_workflow(
+        client, source_project_id, _dataset_workflow_config(layer.id)
+    )
+    created = await client.post(
+        f"{settings.API_V2_STR}/template",
+        json={
+            "name": "Buffer workflow",
+            "folder_id": home,
+            "source": {
+                "kind": "workflow",
+                "project_id": source_project_id,
+                "workflow_id": workflow_id,
+            },
+            "inputs": [
+                {
+                    "key": "node:dataset-1",
+                    "label": "Input Layer",
+                    "mode": "ask",
+                    "layer_type": "feature",
+                    "geometry_type": "polygon",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    tid = created.json()["id"]
+    target_project_id = await _create_project(client, home, name="target")
+    before = await _project_rows(db_session, target_project_id)
+    projects = (
+        await db_session.execute(
+            text(f"SELECT count(*) FROM {S}.project WHERE folder_id = :f"),
+            {"f": UUID(home)},
+        )
+    ).scalar_one()
+    bindings = {"node:dataset-1": str(raster.id)}
+    expected = {
+        "code": "template_input_raster",
+        "key": "node:dataset-1",
+        "layer_id": str(raster.id),
+    }
+
+    for target in ({"project_id": target_project_id}, {"target_folder_id": home}):
+        used = await client.post(
+            f"{settings.API_V2_STR}/template/{tid}/use",
+            json={**target, "bindings": bindings},
+        )
+        assert used.status_code == 422, used.text
+        assert used.json()["detail"] == expected
+    assert await _project_rows(db_session, target_project_id) == before
+    assert (
+        await db_session.execute(
+            text(f"SELECT count(*) FROM {S}.project WHERE folder_id = :f"),
+            {"f": UUID(home)},
+        )
+    ).scalar_one() == projects
+
+    preview = await client.post(
+        f"{settings.API_V2_STR}/template/{tid}/use/preview",
+        json={"project_id": target_project_id, "bindings": bindings},
+    )
+    assert preview.status_code == 422, preview.text
+    assert preview.json()["detail"] == expected
+
+
+@pytest.mark.asyncio
+async def test_a_raster_binding_is_answered_only_where_it_matters(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: UUID,
+    fixture_get_home_folder: dict[str, object],
+    make_layer: Callable[..., Awaitable[Any]],
+    make_user: Callable[..., Awaitable[User]],
+    make_folder: Callable[..., Awaitable[Folder]],
+    make_project: Callable[..., Awaitable[Project]],
+) -> None:
+    """The raster check comes after the target's write check (403 or 404 first,
+    as in the preview), reads only keys that are inputs of the template, and
+    never tells the type of a layer the caller cannot read: such a raster stays
+    an unresolved input."""
+    home = str(fixture_get_home_folder["id"])
+    owner = await db_session.get(User, fixture_create_user)
+    home_folder = await db_session.get(Folder, UUID(home))
+    assert owner is not None and home_folder is not None
+    layer = await make_layer(owner, home_folder)
+    mine = await _raster(await make_layer(owner, home_folder))
+    other = await make_user()
+    other_folder = await make_folder(other)
+    theirs = await _raster(await make_layer(other, other_folder))
+    their_project = await make_project(other, other_folder)
+    await db_session.commit()
+    tid = await _ask_template(client, home, layer.id)
+    target_project_id = await _create_project(client, home, name="target")
+    url = f"{settings.API_V2_STR}/template/{tid}/use"
+
+    not_mine = await client.post(
+        url,
+        json={
+            "project_id": str(their_project.id),
+            "bindings": {"node:dataset-1": str(mine.id)},
+        },
+    )
+    assert not_mine.status_code in (403, 404), not_mine.text
+
+    not_an_input = await client.post(
+        url,
+        json={
+            "project_id": target_project_id,
+            "bindings": {"node:elsewhere": str(mine.id)},
+        },
+    )
+    assert not_an_input.status_code == 200, not_an_input.text
+
+    unreadable = await client.post(
+        url,
+        json={
+            "project_id": target_project_id,
+            "bindings": {"node:dataset-1": str(theirs.id)},
+        },
+    )
+    assert unreadable.status_code == 200, unreadable.text
+    assert [i["key"] for i in unreadable.json()["unresolved_inputs"]] == [
+        "node:dataset-1"
+    ]

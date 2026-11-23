@@ -43,7 +43,7 @@ export const datasetCard = (collection: CatalogCollection): CatalogCardModel => 
     kind:
       memberCount > 1
         ? "bundle"
-        : layerType === "raster" || layerType === "table"
+        : layerType === "raster" || layerType === "wms" || layerType === "wmts" || layerType === "table"
           ? layerType
           : layerType === "feature"
             ? "vector"

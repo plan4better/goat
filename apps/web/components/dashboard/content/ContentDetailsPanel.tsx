@@ -2,6 +2,7 @@
 
 import { Box, Button, Chip, IconButton, Paper, Stack, Typography, alpha, useTheme } from "@mui/material";
 import { formatDistance } from "date-fns";
+import type { ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -13,13 +14,13 @@ import {
   folderPath,
   iconFor,
   lastRoleSegment,
-  layerSourceLine,
   markKindOf,
   restrictedAncestorName,
   spaceDisplayName,
   spaceIconFor,
   typeLabelKey,
 } from "@/lib/utils/content";
+import { feedSource, sourceLabel } from "@/lib/utils/layerOrigin";
 import type { ContentItem, ShareEntry, Space } from "@/lib/validations/content";
 import type { Folder } from "@/lib/validations/folder";
 
@@ -114,16 +115,34 @@ const ContentDetailsPanel = ({
   const grants = item ? shareEntries(item) : [];
   const isRestricted = !!item && (item.restricted || item.restricted_inherited);
 
+  // Where a layer comes from, by the rule and in the words of the dataset detail and the Metadata tab, the host it is
+  // drawn or copied from after it. The feed sends the host alone (a full address can carry a key): the address itself,
+  // with its copy button, is in the opened dataset.
+  const source = item ? feedSource(item) : undefined;
   // The labelled metadata rows, in the same treatment the catalog's own
   // detail sidebar uses. "Owner" stays a sentence below them, since it names
   // its own subject rather than being a value in a column.
-  const sourceLine = item
-    ? layerSourceLine({ dataType: item.data_type, isLinked: item.is_linked, host: item.source_host }, t)
-    : null;
-  const metaRows: { icon: ICON_NAME; label: string; value: string }[] = item
+  const metaRows: { icon: ICON_NAME; label: string; value: ReactNode }[] = item
     ? [
         { icon: iconFor(item), label: t("type"), value: t(typeLabelKey(item)) },
-        ...(sourceLine ? [{ icon: ICON_NAME.LINK, label: t("source"), value: sourceLine }] : []),
+        ...(source
+          ? [
+              {
+                icon: ICON_NAME.GLOBE,
+                label: t("source"),
+                value: (
+                  <>
+                    {sourceLabel(source, t)}
+                    {item.source_host && (
+                      <Box component="span" sx={{ color: "text.secondary" }}>
+                        {` · ${item.source_host}`}
+                      </Box>
+                    )}
+                  </>
+                ),
+              },
+            ]
+          : []),
         {
           icon: ICON_NAME.FOLDER,
           label: t("location"),

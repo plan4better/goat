@@ -167,7 +167,7 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
     # which every cut draws again.
     assert set(by_role) == set(imported) - {"route_directions.txt", "shape_lines"}
     con = duckdb.connect()
-    con.execute("LOAD spatial")
+    con.execute("INSTALL spatial; LOAD spatial;")
     for role, layer in imported.items():
         if role not in by_role:
             continue

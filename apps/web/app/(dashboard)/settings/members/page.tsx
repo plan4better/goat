@@ -21,6 +21,7 @@ import {
 import { PAGE_SIZE } from "@/lib/api/usage";
 import { useOrganization, useUserProfile } from "@/lib/api/users";
 import { undoToast } from "@/lib/toasts";
+import { copyText } from "@/lib/utils/clipboard";
 
 import { useNow } from "@/hooks/assistant/useNow";
 import { useOrganizationId } from "@/hooks/settings/useOrganizationId";
@@ -251,15 +252,10 @@ export default function MembersPage() {
   };
 
   // As GOAT's other copy buttons, a copy that worked is not toasted (the menu
-  // closes, so there is no button to show it on); one that could not (no
-  // clipboard outside a secure context, or the browser refused) says so.
+  // closes, so there is no button to show it on); one that could not (the
+  // browser refused every way) says so.
   const copyEmail = async (email: string) => {
-    try {
-      if (!navigator.clipboard) throw new Error("No clipboard");
-      await navigator.clipboard.writeText(email);
-    } catch {
-      toast.error(t("settings_card_copy_failed"));
-    }
+    if (!(await copyText(email))) toast.error(t("settings_card_copy_failed"));
   };
 
   const resend = async (row: MemberRow) => {
