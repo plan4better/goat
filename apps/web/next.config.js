@@ -87,5 +87,12 @@ module.exports = (phase) => {
   if (phase === PHASE_DEVELOPMENT_SERVER || phase === PHASE_PRODUCTION_BUILD) {
     copyMaplibreWorker();
   }
-  return withBundleAnalyzer(nextConfig);
+  // A production build type-checks the app without its tests: some tests read
+  // fixtures of other packages, and an image is built from this package's
+  // pruned sources alone. `pnpm typecheck` checks the tests too.
+  const config =
+    phase === PHASE_PRODUCTION_BUILD
+      ? { ...nextConfig, typescript: { tsconfigPath: "tsconfig.build.json" } }
+      : nextConfig;
+  return withBundleAnalyzer(config);
 };
