@@ -6,13 +6,17 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { layerCard } from "@/lib/catalog/card";
+import { catalogBundleType } from "@/lib/catalog/kind";
 import { datasetPeriod } from "@/lib/catalog/period";
 import type { CatalogCollection, CatalogItem } from "@/lib/validations/catalog";
 
 import { linkHref, useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
+import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
 
 import CatalogCard from "@/components/dashboard/catalog/CatalogCard";
+import CatalogPlanMap from "@/components/dashboard/catalog/CatalogPlanMap";
 import CatalogProviderCard from "@/components/dashboard/catalog/CatalogProviderCard";
+import CatalogSignInHint from "@/components/dashboard/catalog/CatalogSignInHint";
 import {
   BUNDLE_ACCENT,
   DetailHeader,
@@ -48,6 +52,9 @@ const CatalogBundleDetail = ({
   const { t } = useTranslation("common");
   const theme = useTheme();
   const labels = useCatalogLabels();
+  // A typed bundle is one dataset: one map of all its layers.
+  const plan = !!catalogBundleType(collection);
+  const signedIn = useCatalogPreviewAccess();
 
   const memberCount = (collection["goat:member_count"] as number | undefined) ?? members.length;
 
@@ -161,6 +168,8 @@ const CatalogBundleDetail = ({
             )}
             <KeywordSection keywords={collection.keywords} />
           </SectionCard>
+          {plan && signedIn && <CatalogPlanMap members={members} />}
+          {plan && !signedIn && <CatalogSignInHint />}
 
           <SectionCard
             title={t("catalog_layers_in_bundle")}

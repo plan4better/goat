@@ -62,12 +62,16 @@ def get_asset(
         raise ApiError(404, f"Item not found: {item_id}")
 
     res = resolve_id(store, item_id)
-    if res is None or res["kind"] != "item":
+    if res is None:
+        raise ApiError(404, f"Item not found: {item_id}")
+    # A dataset may publish its own thumbnail; a style is always a layer's.
+    row = res.get("row") if res["kind"] == "item" else res.get("collection_row")
+    if res["kind"] != "item" and asset_kind.name != "thumbnail":
         raise ApiError(404, f"Item not found: {item_id}")
 
-    content, media_type, key = reader.read(asset_kind, res["row"])
+    content, media_type, key = reader.read(asset_kind, row)
     if asset_kind.name == "style":
-        content = _current_style(content, res["row"])
+        content = _current_style(content, row)
     return Response(
         content=content,
         media_type=media_type,

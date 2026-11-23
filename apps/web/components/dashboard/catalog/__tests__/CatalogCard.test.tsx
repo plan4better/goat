@@ -61,3 +61,21 @@ describe("CatalogCard", () => {
     expect(onExpandedChange.mock.calls).toEqual([[true], [false]]);
   });
 });
+
+vi.mock("@/lib/api/catalog", () => ({ useCatalogCollectionItems: () => ({ items: [] }) }));
+
+describe("CatalogPickerCard", () => {
+  it("picks an XPlan plan whole, by its own id: core adds it as one bundle", async () => {
+    const { default: CatalogPickerCard } = await import("@/components/addLayer/CatalogPickerCard");
+    const selection = { ids: [] as string[], toggle: vi.fn(), setMany: vi.fn(), clear: vi.fn() };
+    const plan = {
+      id: "plan-1",
+      title: "Bebauungsplan",
+      "goat:member_count": 16,
+      "goat:bundleType": "xplan",
+    } as never;
+    render(<CatalogPickerCard collection={plan} selection={selection} starred={false} onToggleStar={vi.fn()} />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(selection.setMany).toHaveBeenCalledWith(["plan-1"], true);
+  });
+});

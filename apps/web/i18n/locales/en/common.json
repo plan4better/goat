@@ -1557,7 +1557,7 @@
     "type": {
       "street_network": "Street Network",
       "pt_network_gtfs": "Public Transport Network",
-      "xplan": "XPlan Plan",
+      "xplan": "XPlan",
       "feature": "Feature",
       "raster": "Raster",
       "wms": "WMS",

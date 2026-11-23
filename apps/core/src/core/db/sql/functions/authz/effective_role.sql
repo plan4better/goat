@@ -54,6 +54,14 @@ LANGUAGE sql STABLE AS $$
     SELECT l.catalog_external_uid IS NOT NULL FROM customer.layer l WHERE l.id = layer_id
 $$;
 
+/* The same for a bundle: a shared catalog bundle (an XPlan plan added from
+   the catalog) has no space, is readable by everyone and writable by nobody. */
+CREATE OR REPLACE FUNCTION customer.bundle_is_catalog(bundle_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+    SELECT b.catalog_external_uid IS NOT NULL FROM customer.bundle b WHERE b.id = bundle_id
+$$;
+
 /* A folder and its ancestors, nearest first; the depth trigger keeps this to at most 4 rows. */
 CREATE OR REPLACE FUNCTION customer.folder_chain(folder_id_input UUID)
 RETURNS SETOF UUID
@@ -130,6 +138,9 @@ BEGIN
         SELECT p.space_id, p.folder_id, p.deleted_at INTO space_ref, folder_ref, deleted FROM customer.project p WHERE p.id = resource_id_input;
     ELSIF resource_type_input = 'bundle' THEN
         SELECT b.space_id, b.folder_id, b.deleted_at INTO space_ref, folder_ref, deleted FROM customer.bundle b WHERE b.id = resource_id_input;
+        IF FOUND THEN
+            is_catalog := customer.bundle_is_catalog(resource_id_input);
+        END IF;
     ELSIF resource_type_input = 'folder' THEN
         SELECT f.space_id, f.parent_id, f.deleted_at INTO space_ref, folder_ref, deleted FROM customer.folder f WHERE f.id = resource_id_input;
     ELSIF resource_type_input = 'template' THEN

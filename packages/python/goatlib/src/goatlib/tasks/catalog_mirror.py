@@ -110,7 +110,9 @@ __all__ = [
 #:      the envelope of its extent -- a bbox cannot exclude Koblenz from NRW.
 #: v11: an item's `goat:layerType` is its own kind (feature, table, raster, wms,
 #:      wmts), not the `bundle` its dataset is published as.
-MIRROR_FORMAT_VERSION = 11
+#: v12: the layers of a typed bundle (`goat:bundleType` other than generic, an
+#:      XPlan plan) carry the bundle's type, so the catalog lists the plan as one.
+MIRROR_FORMAT_VERSION = 12
 
 ITEMS_FILENAME = "items.parquet"
 COLLECTIONS_FILENAME = "collections.parquet"
@@ -521,6 +523,12 @@ def build_mirror(
         inherited = coll_expr(
             _opt(collections, "goat:layerType", 'lower(c."goat:layerType")')
         )
+        # A typed bundle (an XPlan plan) is added whole, so its layers are of
+        # the bundle's type for the catalog; promote still reads each layer's
+        # own kind from its geometry and data (`goatlib.catalog.item.layer_type`).
+        bundle_type = coll_expr(
+            _opt(collections, "goat:bundleType", 'lower(c."goat:bundleType")')
+        )
 
         def has_link(rel: str) -> str:
             return item_expr(
@@ -536,6 +544,8 @@ def build_mirror(
         data_type = item_expr(_opt(items, "assets", "lower(i.assets.data.type)"))
         own = "('table', 'feature', 'raster', 'wms', 'wmts')"
         layer_type = f"""CASE
+            WHEN coalesce({bundle_type}, 'generic') NOT IN ('generic', '')
+                THEN {bundle_type}
             WHEN {item_expr(_opt(items, "goat:geometryType", 'i."goat:geometryType"'))}
                 IS NOT NULL THEN 'feature'
             WHEN {declared} IN {own} THEN {declared}

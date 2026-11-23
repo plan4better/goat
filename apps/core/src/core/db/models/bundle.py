@@ -8,7 +8,7 @@ from uuid import UUID
 
 from goatlib.models.bundle import BundleStatus
 from pydantic import field_serializer
-from sqlalchemy import ForeignKey, Integer, Text
+from sqlalchemy import ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlmodel import Boolean, Column, DateTime, Field, Relationship, text
@@ -44,7 +44,16 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     """
 
     __tablename__ = "bundle"
-    __table_args__ = {"schema": settings.SCHEMA}
+    __table_args__ = (
+        Index(
+            "uq_bundle_catalog_identity",
+            "catalog_external_uid",
+            "catalog_version",
+            unique=True,
+            postgresql_where=text("catalog_external_uid IS NOT NULL"),
+        ),
+        {"schema": settings.SCHEMA},
+    )
 
     id: UUID | None = Field(
         default=None,
@@ -70,10 +79,33 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
         sa_column=Column(
             UUID_PG(as_uuid=True),
             ForeignKey(f"{settings.SCHEMA}.space.id", ondelete="CASCADE"),
-            nullable=False,
+            nullable=True,
             index=True,
         ),
-        description="Space this bundle belongs to.",
+        description="Space this bundle belongs to. NULL for a catalog bundle.",
+    )
+    folder_id: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(f"{settings.SCHEMA}.folder.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
+        description="Folder the bundle lives in. NULL for a catalog bundle.",
+    )
+    catalog_external_uid: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description=(
+            "The catalog dataset a shared bundle (an XPlan plan) was added "
+            "from. With catalog_version unique, like a catalog layer's, so "
+            "every project that adds the same plan version shares one bundle."
+        ),
+    )
+    catalog_version: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="The catalog dataset's version the shared bundle holds.",
     )
     deleted_at: datetime | None = Field(
         default=None,

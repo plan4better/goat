@@ -192,7 +192,7 @@ async def test_project_grant_gives_read_only_on_its_layers(
 
 
 @pytest.mark.asyncio
-async def test_catalog_layer_is_readable_by_anyone_never_writable(
+async def test_catalog_layer_and_bundle_are_readable_by_anyone_never_writable(
     db_session: AsyncSession,
     roles: dict[str, UUID],
     make_user: Callable[..., Awaitable[User]],
@@ -209,6 +209,20 @@ async def test_catalog_layer_is_readable_by_anyone_never_writable(
     assert await role(db_session, "layer", lid, someone.id) == "viewer"
     assert await role(db_session, "layer", lid, None) == "viewer"
     assert not await can(db_session, "layer", lid, someone.id, "write")
+
+    # A shared catalog bundle (an XPlan plan): no space, no folder, no owner.
+    bid = (
+        await db_session.execute(
+            text(
+                f"INSERT INTO {S}.bundle (id, name, user_id, folder_id, space_id, bundle_type, catalog_external_uid, catalog_version, updated_at) "
+                "VALUES (gen_random_uuid(), 'plan', NULL, NULL, NULL, 'xplan', 'stac:plan', '1', now()) RETURNING id"
+            )
+        )
+    ).scalar_one()
+    assert await role(db_session, "bundle", bid, someone.id) == "viewer"
+    assert await role(db_session, "bundle", bid, None) == "viewer"
+    assert not await can(db_session, "bundle", bid, someone.id, "write")
+    assert not await can(db_session, "bundle", bid, someone.id, "delete")
 
 
 @pytest.mark.asyncio

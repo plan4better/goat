@@ -13,6 +13,7 @@ import pytest
 from goatlib.catalog.promote import (
     CatalogItemNotFoundError,
     _jsonable,
+    bundle_version,
     catalog_default_style,
     is_wms,
     layer_type,
@@ -21,6 +22,7 @@ from goatlib.catalog.promote import (
     read_items,
     resolve_item_ids,
     style_key_for,
+    typed_datasets,
     wms_layer,
     wmts_layer,
 )
@@ -135,6 +137,9 @@ def test_layer_type_wms_is_a_raster(mirror: Path) -> None:
     # A bundle member inherits `bundle`; its own link still says it is a WMS.
     member = {"goat:layerType": "bundle", "links": link}
     assert is_wms(member) and layer_type(member) == ("raster", None)
+    # A plan's member carries the plan's type (mirror v12) and is still a WMS.
+    plan_member = {**member, "goat:layerType": "xplan"}
+    assert is_wms(plan_member) and layer_type(plan_member) == ("raster", None)
     # A vector layer that also offers a WMS view stays a feature.
     vector = {**member, "goat:geometryType": "polygon"}
     assert not is_wms(vector) and layer_type(vector) == ("feature", "polygon")
@@ -235,6 +240,25 @@ def test_resolve_item_ids_expands_a_single_layer_dataset(mirror: Path) -> None:
 
 def test_resolve_item_ids_expands_every_member_of_a_dataset(mirror: Path) -> None:
     assert resolve_item_ids(mirror, ["dataset-2"]) == ["item-2", "item-3"]
+
+
+def test_a_typed_bundle_is_known_by_its_dataset_and_its_members(mirror: Path) -> None:
+    """An XPlan plan is added whole: its dataset is known by its bundle type,
+    whatever case the publisher wrote it in; `generic` is only a grouping."""
+    con = duckdb.connect()
+    con.execute(
+        f"""COPY (SELECT * FROM (VALUES ('dataset-1', 'Generic'), ('dataset-2', 'XPlan'))
+            AS t(id, "goat:bundleType"))
+            TO '{mirror.parent / "mirror_collections.parquet"}' (FORMAT PARQUET)"""
+    )
+    con.close()
+    plan = {"dataset-2": ("xplan", "dataset-2")}
+    assert typed_datasets(mirror, {"dataset-1", "dataset-2"}) == plan
+    assert typed_datasets(mirror, {"dataset-1"}) == {}
+    # A plan's version follows its members: any changed member, a new version.
+    one = bundle_version([("item-2", "1"), ("item-3", "1")])
+    assert one == bundle_version([("item-3", "1"), ("item-2", "1")])
+    assert one != bundle_version([("item-2", "1"), ("item-3", "2")])
 
 
 def test_resolve_item_ids_keeps_request_order(mirror: Path) -> None:

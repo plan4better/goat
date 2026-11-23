@@ -4,8 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from goatlib.config.postgres import asyncpg_connect_args
+from goatlib.models.bundle import BundleTypeName
 from goatlib.utils.credentials import postgres_uri
 from pydantic import UUID4
+from sqlmodel import select
 
 from core.core.config import settings
 from core.crud.crud_layer_project import layer_project as crud_layer_project
@@ -198,10 +200,13 @@ async def add_catalog_items_to_project(
     import asyncpg
     from goatlib.catalog.promote import (
         CatalogItemNotFoundError,
+        bundle_version,
         promote,
+        promote_bundle,
         read_items,
         resolve_item_ids,
         service_layer,
+        typed_datasets,
     )
     from starlette.concurrency import run_in_threadpool
 
@@ -237,8 +242,53 @@ async def add_catalog_items_to_project(
         # mirror sized for a million rows does not stall every other core
         # request while it is read.
         items = await run_in_threadpool(read_items, mirror, item_ids)
+        # A typed bundle (an XPlan plan) is added whole, as one shared bundle.
+        typed = await run_in_threadpool(
+            typed_datasets,
+            mirror,
+            {item["collection"] for item in items.values() if item.get("collection")},
+        )
     except CatalogItemNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    # Never a single member, nor some of them: only the plan itself.
+    for catalog_id in catalog_ids:
+        dataset = (items.get(catalog_id) or {}).get("collection")
+        if dataset in typed and catalog_id != dataset:
+            _, title = typed[dataset]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{title}' is added whole, not layer by layer.",
+            )
+    for dataset, (kind, title) in typed.items():
+        if kind not in {t.value for t in BundleTypeName}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{title}' is a {kind} dataset, which cannot be added yet.",
+            )
+        roles = [
+            item.get("goat:role")
+            for item in items.values()
+            if item.get("collection") == dataset and item.get("goat:role")
+        ]
+        if len(roles) != len(set(roles)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{title}' lists a layer role twice, so it cannot be added.",
+            )
+    # A plan's version is its members' (`bundle_version`); each member is keyed
+    # by it too, so every plan version has layers of its own.
+    plan_versions = {
+        dataset: bundle_version(
+            [
+                (item_id, item.get("version"))
+                for item_id, item in items.items()
+                if item.get("collection") == dataset
+            ]
+        )
+        for dataset in typed
+    }
+    bundle_members: dict[str, list[tuple[UUID, str | None]]] = {}
+    healed_plans: set[str] = set()
 
     # Bounded before the first promote: see `catalog_batch_refusal`.
     existing_layers = await crud_layer_project.count_by_project(
@@ -261,12 +311,19 @@ async def add_catalog_items_to_project(
     )
     try:
         for catalog_id in item_ids:
+            dataset = items[catalog_id].get("collection")
+            plan_version = plan_versions.get(dataset)
             result = await promote(
                 conn,
                 catalog_id,
                 mirror_items_path=mirror,
                 schema=settings.SCHEMA,
                 item=items[catalog_id],
+                version=(
+                    f"{items[catalog_id].get('version') or ''}@{plan_version}"
+                    if plan_version
+                    else None
+                ),
             )
             layer_id = uuid_module.UUID(result["layer_id"])
             # Enqueue for a fresh layer — and re-enqueue for an existing one
@@ -322,7 +379,7 @@ async def add_catalog_items_to_project(
                         layer_id,
                         decision.reason,
                     )
-                if should_enqueue:
+                if should_enqueue and plan_version is None:
                     # A heal reuses the broken entry already in the project
                     # rather than adding a "Copy from …" twin next to it.
                     # (Re-adding a HEALTHY dataset still duplicates on
@@ -339,10 +396,29 @@ async def add_catalog_items_to_project(
                     if existing_link_id is not None:
                         reused_link_ids.append(existing_link_id)
                         add_link = False
-            if add_link:
+            if plan_version:
+                bundle_members.setdefault(dataset, []).append(
+                    (layer_id, items[catalog_id].get("goat:role"))
+                )
+                if should_enqueue and not result["created"]:
+                    healed_plans.add(dataset)
+            elif add_link:
                 layer_ids.append(layer_id)
             if should_enqueue:
                 to_materialize.append({"layer_id": result["layer_id"]})
+        bundle_ids: dict[UUID, str] = {}
+        for dataset, members in bundle_members.items():
+            kind, title = typed[dataset]
+            bundle_id = await promote_bundle(
+                conn,
+                schema=settings.SCHEMA,
+                dataset_id=dataset,
+                bundle_type=kind,
+                name=title,
+                version=plan_versions[dataset],
+                members=members,
+            )
+            bundle_ids[bundle_id] = dataset
     finally:
         await conn.close()
 
@@ -369,6 +445,31 @@ async def add_catalog_items_to_project(
         else []
     )
     assert isinstance(layers_project, List)
+    for bundle_id, dataset in bundle_ids.items():
+        # A plan already in the project is added again only to heal its copies:
+        # its entries are the answer. Otherwise it is refused like any bundle.
+        group_id = await async_session.scalar(
+            select(LayerProjectGroup.id).where(
+                LayerProjectGroup.project_id == project_id,
+                LayerProjectGroup.bundle_id == bundle_id,
+            )
+        )
+        if group_id is not None and dataset in healed_plans:
+            reused_link_ids += list(
+                await async_session.scalars(
+                    select(LayerProjectLink.id).where(
+                        LayerProjectLink.layer_project_group_id == group_id
+                    )
+                )
+            )
+            continue
+        _, members_project = await crud_layer_project_group.add_bundle(
+            async_session,
+            project_id=project_id,
+            bundle_id=bundle_id,
+            user_id=user_id,
+        )
+        layers_project = layers_project + members_project
     if reused_link_ids:
         layers_project = layers_project + await crud_layer_project.get_by_ids(
             async_session=async_session,

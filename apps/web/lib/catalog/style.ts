@@ -15,7 +15,7 @@ export const CATALOG_SAMPLE_KEY = "catalog-sample";
 const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
 /** The style without its zoom range: a preview opens framed on the whole dataset, often below the layer's min_zoom. */
-function previewStyle(style: Record<string, unknown>): LayerStyle {
+export function previewStyle(style: Record<string, unknown>): LayerStyle {
   const { min_zoom: _min, max_zoom: _max, ...rest } = style;
   return rest as unknown as LayerStyle;
 }

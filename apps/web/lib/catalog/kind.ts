@@ -6,7 +6,7 @@ import { catalogCollectionId } from "@/lib/catalog/preview";
 import { GEOAPI_BASE_URL } from "@/lib/constants";
 import { coverageUrl, imageTilesetUrl } from "@/lib/style/layerSource";
 import { wmsTileTemplate } from "@/lib/utils/externalService";
-import type { CatalogItem } from "@/lib/validations/catalog";
+import type { CatalogCollection, CatalogItem } from "@/lib/validations/catalog";
 
 /** What kind of thing a catalog result is. */
 
@@ -161,3 +161,9 @@ export const toneFor = (kind: MarkKind): ContentTone => {
 /** A tone's colour. The tinted ground behind it is `alpha(this, 0.12)`. */
 export const toneColorOf = (theme: Theme, tone: ContentTone): string =>
   tone === "primary-dark" ? theme.palette.primary.dark : theme.palette[tone].main;
+
+/** A typed bundle's type (`xplan`): such a dataset is added whole, never layer by layer. */
+export const catalogBundleType = (collection: CatalogCollection): string | undefined => {
+  const type = collection["goat:bundleType"]?.toLowerCase();
+  return type && type !== "generic" ? type : undefined;
+};

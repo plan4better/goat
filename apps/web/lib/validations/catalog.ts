@@ -22,7 +22,7 @@
  */
 
 /** GOAT layer vocabulary. `bundle` means the item stands in for several layers. */
-export type CatalogLayerType = "feature" | "table" | "raster" | "wms" | "wmts" | "bundle";
+export type CatalogLayerType = "feature" | "table" | "raster" | "wms" | "wmts" | "xplan" | "bundle";
 
 export type CatalogGeometryType = "point" | "line" | "polygon";
 
@@ -153,6 +153,8 @@ export type CatalogCollection = {
     temporal?: { interval?: (string | null)[][] | null } | null;
   } | null;
   "goat:member_count"?: number | null;
+  /** A typed bundle (`xplan`): added whole, as one shared bundle. `generic` for a plain group of layers. */
+  "goat:bundleType"?: string | null;
   "goat:publisher"?: string | null;
   "goat:geographical_code"?: string | null;
   "goat:layerType"?: CatalogLayerType | null;

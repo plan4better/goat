@@ -35,7 +35,16 @@ import MapViewer from "@/components/map/MapViewer";
  * lines and areas they belong to. */
 const DRAW_ORDER: Record<string, number> = { point: 0, line: 1, polygon: 2 };
 
-const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
+/** What the map reads of a member: a GOAT layer, or a catalog item drawn by geoapi under `catalog:<item id>`. */
+type BundleMapLayer = Pick<Layer, "id" | "type" | "feature_layer_geometry_type" | "extent"> & {
+  layer_id?: string;
+};
+
+const BundleMapPreview: React.FC<{
+  layers: BundleMapLayer[];
+  /** The members' styles where they are not GOAT layers yet (a catalog plan); fetched from core otherwise. */
+  styles?: Record<string, ViewLayer["style"]>;
+}> = ({ layers, styles: given }) => {
   const theme = useTheme();
   const { t } = useTranslation("common");
   const mapRef = useRef<MapRef | null>(null);
@@ -56,7 +65,8 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
     [layers]
   );
   const ids = useMemo(() => drawable.map((layer) => layer.id), [drawable]);
-  const { styles } = useDatasetStyles(ids);
+  const { styles: fetched } = useDatasetStyles(given ? [] : ids);
+  const styles = given ?? fetched;
   const viewLayers = useMemo<ViewLayer[]>(
     () =>
       drawable.map((layer) => ({ ...layer, visible: true, entry: {}, style: styles?.[layer.id] ?? null })),

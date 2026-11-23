@@ -12,18 +12,23 @@ from goatlib.style.migrate import context_for, stored_document
 RASTER_SUFFIXES = (".tif", ".tiff")
 
 
+#: Kinds a layer declares for itself; anything else is what its dataset is.
+_OWN_KINDS = frozenset({"feature", "table", "raster", "wms", "wmts"})
+
+
 def _is_service(item: dict[str, Any], rel: str) -> bool:
     """Whether the item is a live map service of this kind, promoted as a link and never copied.
 
-    Declared so, or a bundle member (which inherits ``bundle``) whose own link of
-    that ``rel`` says so. A layer with geometry is vector data even when it also
-    offers a map view. Same rule as the web's ``catalogKindOf``.
+    Declared so, or a bundle member (which inherits ``bundle``, or its plan's
+    type such as ``xplan``) whose own link of that ``rel`` says so. A layer with
+    geometry is vector data even when it also offers a map view. Same rule as
+    the web's ``catalogKindOf``.
     """
     declared = (item.get("goat:layerType") or "").lower()
     if declared == rel:
         return True
     return (
-        declared in ("", "bundle")
+        declared not in _OWN_KINDS
         and not item.get("goat:geometryType")
         and any(
             isinstance(link, dict) and link.get("rel") == rel and link.get("href")

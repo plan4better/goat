@@ -26,6 +26,7 @@ the same link layer Connect data makes, born ``ready``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -37,6 +38,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from uuid import UUID
 
 import asyncpg
 import duckdb
@@ -52,6 +54,10 @@ logger = logging.getLogger(__name__)
 
 _ITEM_COLUMNS = [
     "id",
+    "collection",
+    # A typed bundle's member role (an XPlan class): what the shared bundle
+    # records for each layer (`bundle_layer.role`).
+    '"goat:role"',
     "title",
     "description",
     "license",
@@ -204,6 +210,114 @@ def resolve_item_ids(
                 seen.add(item_id)
                 resolved.append(item_id)
     return resolved
+
+
+#: Bundle types that are only a grouping: their layers are added one by one.
+_PLAIN_BUNDLE_TYPES = frozenset({"", "generic"})
+
+
+def typed_datasets(
+    mirror_items_path: str | Path, dataset_ids: set[str]
+) -> dict[str, tuple[str, str]]:
+    """Which of `dataset_ids` are typed bundles: `{dataset: (type, title)}`.
+
+    A typed bundle (an XPlan plan) is added whole, as one shared bundle. The
+    type is the dataset's `goat:bundleType`, lowercased, read from the
+    collections file beside `mirror_items_path`; a dataset without one, or of
+    type `generic`, is not in the answer.
+    """
+    collections = Path(mirror_items_path).with_name("mirror_collections.parquet")
+    if not dataset_ids or not collections.exists():
+        return {}
+    con = duckdb.connect()
+    try:
+        columns = {
+            row[0]
+            for row in con.execute(
+                "DESCRIBE SELECT * FROM read_parquet(?)", [str(collections)]
+            ).fetchall()
+        }
+        if "goat:bundleType" not in columns:
+            return {}
+        title = "coalesce(title, id)" if "title" in columns else "id"
+        rows = con.execute(
+            f"""
+            SELECT id, lower("goat:bundleType"), {title} FROM read_parquet(?)
+            WHERE id IN ({", ".join("?" * len(dataset_ids))})
+            """,
+            [str(collections), *dataset_ids],
+        ).fetchall()
+    finally:
+        con.close()
+    return {
+        dataset: (kind, str(title))
+        for dataset, kind, title in rows
+        if (kind or "") not in _PLAIN_BUNDLE_TYPES
+    }
+
+
+def bundle_version(members: list[tuple[str, Any]]) -> str:
+    """The version of a typed bundle: a digest of its members' `(item id,
+    version)`, so a plan with any member changed is a new version (a new
+    shared bundle) and the same plan always gets the same one."""
+    joined = "\n".join(
+        f"{item_id}@{version or ''}" for item_id, version in sorted(members)
+    )
+    return hashlib.sha1(joined.encode()).hexdigest()[:16]
+
+
+async def promote_bundle(
+    conn: asyncpg.Connection,
+    *,
+    schema: str,
+    dataset_id: str,
+    bundle_type: str,
+    name: str,
+    version: str,
+    members: list[tuple[UUID, str | None]],
+) -> UUID:
+    """The shared bundle of a typed catalog dataset (an XPlan plan), made on its
+    first add and reused by every later one, by anyone.
+
+    Like a catalog layer it has no owner, space or folder, and is keyed by
+    `(catalog_external_uid, catalog_version)` under `uq_bundle_catalog_identity`.
+    The row and its members (`(layer id, role)`, layers already promoted) are
+    written in one transaction, so a concurrent first add waits on the index,
+    then takes the winner's bundle with its members.
+    """
+    async with conn.transaction():
+        bundle_id = await conn.fetchval(
+            f"""
+            INSERT INTO "{schema}".bundle
+                (name, bundle_type, status, catalog_external_uid, catalog_version, updated_at)
+            VALUES ($1, $2, 'ready', $3, $4, now())
+            ON CONFLICT (catalog_external_uid, catalog_version)
+                WHERE catalog_external_uid IS NOT NULL
+            DO NOTHING
+            RETURNING id
+            """,
+            name,
+            bundle_type,
+            dataset_id,
+            version,
+        )
+        if bundle_id is None:
+            return await conn.fetchval(
+                f"""
+                SELECT id FROM "{schema}".bundle
+                WHERE catalog_external_uid = $1 AND catalog_version = $2
+                """,
+                dataset_id,
+                version,
+            )
+        await conn.executemany(
+            f"""
+            INSERT INTO "{schema}".bundle_layer (bundle_id, layer_id, role)
+            VALUES ($1, $2, $3)
+            """,
+            [(bundle_id, layer_id, role) for layer_id, role in members],
+        )
+        return bundle_id
 
 
 def wmts_layer(item: dict[str, Any]) -> dict[str, Any]:
@@ -419,9 +533,14 @@ async def promote(
     mirror_items_path: str | Path,
     schema: str = "customer",
     item: dict[str, Any] | None = None,
+    version: str | None = None,
 ) -> dict[str, Any]:
     """Return the shared ``customer.layer`` for a catalog item, creating it
     if this is the first use of this (item, version).
+
+    ``version`` replaces the item's own as the identity: a plan member is keyed
+    by its plan's version too, so each plan version has members of its own (a
+    layer belongs to one bundle).
 
     ``item`` is the mirror row when the caller already has it (see
     :func:`read_items`); otherwise it is read here.
@@ -439,7 +558,10 @@ async def promote(
     """
     if item is None:
         item = read_item(mirror_items_path, item_id)
-    version = str(item.get("version") or "")
+    version = version or str(item.get("version") or "")
+    # The style's computed values are stamped with the identity version, the
+    # one the layer row carries.
+    stamped = {**item, "version": version}
     # Built before any write: an unusable link fails here, not halfway through.
     service = service_layer(item)
     data_type, wms = service if service else (None, None)
@@ -489,7 +611,7 @@ async def promote(
                     data_type,
                 )
                 # A table had no style row; the link layer gets its service default.
-                style = catalog_default_style(item, seed=str(existing["id"]))
+                style = catalog_default_style(stamped, seed=str(existing["id"]))
                 if style is not None:
                     await insert_dataset_default(conn, schema, existing["id"], style)
         return {
@@ -504,7 +626,7 @@ async def promote(
     # The dataset's own rendering when it publishes one; GOAT's default is the
     # fallback, not the rule. The default row is written *here*, with the layer:
     # the project layer's first style is copied from it as the link is created.
-    style = catalog_default_style(item, seed=str(new_id))
+    style = catalog_default_style(stamped, seed=str(new_id))
     name = (item.get("title") or "").strip() or item_id
     other_properties = {
         **(wms["other_properties"] if wms else {}),

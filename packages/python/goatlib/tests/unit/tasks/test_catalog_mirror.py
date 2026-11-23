@@ -519,13 +519,22 @@ def test_a_bundles_layers_say_what_they_are(tmp_path: Path) -> None:
             ('m-table', 'c-b', 'bundle', NULL, [], {'data': {'href': 'data/c.parquet', 'type': 'application/vnd.apache.parquet'}}),
             ('m-table-wms', 'c-b', 'table', NULL,
              [{'rel': 'wms', 'href': 'https://g/ows', 'type': 'image/png', 'title': 'c'}],
-             {'data': {'href': 'data/e.parquet', 'type': 'application/vnd.apache.parquet'}})
+             {'data': {'href': 'data/e.parquet', 'type': 'application/vnd.apache.parquet'}}),
+            ('x-poly', 'c-x', 'bundle', 'polygon', [], {'data': {'href': 'data/f.parquet', 'type': 'application/vnd.apache.parquet'}}),
+            ('x-text', 'c-x', 'bundle', NULL, [], {'data': {'href': 'data/g.parquet', 'type': 'application/vnd.apache.parquet'}})
         ) AS t(id, collection, "goat:layerType", "goat:geometryType", links, assets)
         """
     )
+    # A typed bundle (an XPlan plan): its type and each member's role pass through.
+    con.execute("""ALTER TABLE items ADD COLUMN "goat:role" VARCHAR""")
     con.execute(
-        """CREATE TABLE collections AS SELECT 'c-b' AS id, 'Bundle' AS title,
-           'bundle' AS "goat:layerType" """
+        """UPDATE items SET "goat:role" = 'BP_BaugebietsTeilFlaeche' WHERE id = 'x-poly'"""
+    )
+    con.execute(
+        """CREATE TABLE collections AS SELECT * FROM (VALUES
+               ('c-b', 'Bundle', 'bundle', 'generic'),
+               ('c-x', 'Plan', 'bundle', 'xplan')
+           ) AS t(id, title, "goat:layerType", "goat:bundleType")"""
     )
     items_path, collections_path = tmp_path / "i.parquet", tmp_path / "c.parquet"
     con.execute(f"COPY items TO '{items_path.as_posix()}' (FORMAT PARQUET)")
@@ -551,8 +560,15 @@ def test_a_bundles_layers_say_what_they_are(tmp_path: Path) -> None:
         "m-tif-wms": "raster",
         "m-table": "table",
         "m-table-wms": "table",
+        # A typed bundle's layers are of its type: the catalog lists the plan as one.
+        "x-poly": "xplan",
+        "x-text": "xplan",
     }
     # The dataset itself is still a bundle: cards show "Bundle".
     assert check.execute(
-        f"SELECT \"goat:layerType\" FROM read_parquet('{out_c.as_posix()}')"
-    ).fetchone() == ("bundle",)
+        f'SELECT "goat:layerType", "goat:bundleType" '
+        f"FROM read_parquet('{out_c.as_posix()}') WHERE id = 'c-x'"
+    ).fetchone() == ("bundle", "xplan")
+    assert check.execute(
+        f"SELECT \"goat:role\" FROM read_parquet('{out.as_posix()}') WHERE id = 'x-poly'"
+    ).fetchone() == ("BP_BaugebietsTeilFlaeche",)
