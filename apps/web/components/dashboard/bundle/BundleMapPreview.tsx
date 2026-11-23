@@ -35,14 +35,14 @@ import MapViewer from "@/components/map/MapViewer";
  * lines and areas they belong to. */
 const DRAW_ORDER: Record<string, number> = { point: 0, line: 1, polygon: 2 };
 
-/** What the map reads of a member: a GOAT layer, or a catalog item drawn by geoapi under `catalog:<item id>`. */
+/** A member: a GOAT layer, or a catalog item (`layer_id` = `catalog:<item id>`). */
 type BundleMapLayer = Pick<Layer, "id" | "type" | "feature_layer_geometry_type" | "extent"> & {
   layer_id?: string;
 };
 
 const BundleMapPreview: React.FC<{
   layers: BundleMapLayer[];
-  /** The members' styles where they are not GOAT layers yet (a catalog plan); fetched from core otherwise. */
+  /** Styles for catalog members; fetched from core when not given. */
   styles?: Record<string, ViewLayer["style"]>;
 }> = ({ layers, styles: given }) => {
   const theme = useTheme();

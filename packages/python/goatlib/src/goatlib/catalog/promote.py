@@ -43,7 +43,13 @@ from uuid import UUID
 import asyncpg
 import duckdb
 
-from goatlib.catalog.item import is_wms, is_wmts, item_style, layer_type
+from goatlib.catalog.item import (
+    PLAIN_BUNDLE_TYPES,
+    is_wms,
+    is_wmts,
+    item_style,
+    layer_type,
+)
 from goatlib.style.compute import stamp_computed
 from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import fingerprint
@@ -55,8 +61,7 @@ logger = logging.getLogger(__name__)
 _ITEM_COLUMNS = [
     "id",
     "collection",
-    # A typed bundle's member role (an XPlan class): what the shared bundle
-    # records for each layer (`bundle_layer.role`).
+    # A plan member's role (its XPlan class), stored in `bundle_layer.role`.
     '"goat:role"',
     "title",
     "description",
@@ -212,20 +217,10 @@ def resolve_item_ids(
     return resolved
 
 
-#: Bundle types that are only a grouping: their layers are added one by one.
-_PLAIN_BUNDLE_TYPES = frozenset({"", "generic"})
-
-
 def typed_datasets(
     mirror_items_path: str | Path, dataset_ids: set[str]
 ) -> dict[str, tuple[str, str]]:
-    """Which of `dataset_ids` are typed bundles: `{dataset: (type, title)}`.
-
-    A typed bundle (an XPlan plan) is added whole, as one shared bundle. The
-    type is the dataset's `goat:bundleType`, lowercased, read from the
-    collections file beside `mirror_items_path`; a dataset without one, or of
-    type `generic`, is not in the answer.
-    """
+    """Which of `dataset_ids` are typed bundles (an XPlan plan): `{dataset: (type, title)}`."""
     collections = Path(mirror_items_path).with_name("mirror_collections.parquet")
     if not dataset_ids or not collections.exists():
         return {}
@@ -252,14 +247,12 @@ def typed_datasets(
     return {
         dataset: (kind, str(title))
         for dataset, kind, title in rows
-        if (kind or "") not in _PLAIN_BUNDLE_TYPES
+        if (kind or "") not in PLAIN_BUNDLE_TYPES
     }
 
 
 def bundle_version(members: list[tuple[str, Any]]) -> str:
-    """The version of a typed bundle: a digest of its members' `(item id,
-    version)`, so a plan with any member changed is a new version (a new
-    shared bundle) and the same plan always gets the same one."""
+    """A typed bundle's version: a digest of its members' `(item id, version)`."""
     joined = "\n".join(
         f"{item_id}@{version or ''}" for item_id, version in sorted(members)
     )
@@ -277,14 +270,8 @@ async def promote_bundle(
     members: list[tuple[UUID, str | None]],
 ) -> UUID:
     """The shared bundle of a typed catalog dataset (an XPlan plan), made on its
-    first add and reused by every later one, by anyone.
-
-    Like a catalog layer it has no owner, space or folder, and is keyed by
-    `(catalog_external_uid, catalog_version)` under `uq_bundle_catalog_identity`.
-    The row and its members (`(layer id, role)`, layers already promoted) are
-    written in one transaction, so a concurrent first add waits on the index,
-    then takes the winner's bundle with its members.
-    """
+    first add and reused after; members are attached on every add, so one the
+    catalog cleanup removed comes back."""
     async with conn.transaction():
         bundle_id = await conn.fetchval(
             f"""
@@ -302,7 +289,7 @@ async def promote_bundle(
             version,
         )
         if bundle_id is None:
-            return await conn.fetchval(
+            bundle_id = await conn.fetchval(
                 f"""
                 SELECT id FROM "{schema}".bundle
                 WHERE catalog_external_uid = $1 AND catalog_version = $2
@@ -314,6 +301,7 @@ async def promote_bundle(
             f"""
             INSERT INTO "{schema}".bundle_layer (bundle_id, layer_id, role)
             VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
             """,
             [(bundle_id, layer_id, role) for layer_id, role in members],
         )
@@ -538,9 +526,7 @@ async def promote(
     """Return the shared ``customer.layer`` for a catalog item, creating it
     if this is the first use of this (item, version).
 
-    ``version`` replaces the item's own as the identity: a plan member is keyed
-    by its plan's version too, so each plan version has members of its own (a
-    layer belongs to one bundle).
+    ``version`` replaces the item's own as identity: each plan version gets its own members.
 
     ``item`` is the mirror row when the caller already has it (see
     :func:`read_items`); otherwise it is read here.
@@ -559,8 +545,7 @@ async def promote(
     if item is None:
         item = read_item(mirror_items_path, item_id)
     version = version or str(item.get("version") or "")
-    # The style's computed values are stamped with the identity version, the
-    # one the layer row carries.
+    # Stamped with the identity version, the one the layer row carries.
     stamped = {**item, "version": version}
     # Built before any write: an unusable link fails here, not halfway through.
     service = service_layer(item)

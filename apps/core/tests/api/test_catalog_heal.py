@@ -393,6 +393,24 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
     )
     assert again.status_code == 409
 
+    # Anyone reads the shared bundle, though it has no folder.
+    read = await client.get(f"{settings.API_V2_STR}/bundle/{bundle_id}")
+    assert read.status_code == 200, read.text
+    assert read.json()["folder_id"] is None
+
+    # A bundle that lost its members (catalog cleanup) gets them back on the next add.
+    await db_session.execute(
+        text(f"DELETE FROM {S}.bundle_layer WHERE bundle_id = :b"), {"b": bundle_id}
+    )
+    await db_session.commit()
+    third = await project()
+    readded = await client.post(
+        f"{settings.API_V2_STR}/project/{third}/layer-catalog",
+        params={"catalog_ids": ["plan"]},
+    )
+    assert readded.status_code == 200, readded.text
+    assert len(readded.json()) == len(members)
+
     member_alone = await client.post(
         f"{settings.API_V2_STR}/project/{first}/layer-catalog",
         params={"catalog_ids": ["m-text"]},

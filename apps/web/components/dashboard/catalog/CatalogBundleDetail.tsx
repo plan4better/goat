@@ -22,8 +22,8 @@ import {
   DetailHeader,
   DetailTabs,
   KeywordSection,
-  LicenseNotices,
   LicenseBadge,
+  LicenseNotices,
   LicenseTerms,
   type MetaField,
   MetaSidebar,
@@ -65,8 +65,7 @@ const CatalogBundleDetail = ({
   const dataDate = labels.periodField(datasetPeriod(collection, members));
   // `other` is STAC's "unknown", not a licence — see `licenseLabel`.
   const licenseLabel = labels.licenseLabel(collection.license);
-  const licenseHref =
-    linkHref(collection.links, "license") ?? linkHref(collection.links, "via");
+  const licenseHref = linkHref(collection.links, "license") ?? linkHref(collection.links, "via");
   const allSaved = members.length > 0 && members.every((member) => starred[member.id]);
 
   const fields: (MetaField | false | undefined)[] = [

@@ -132,13 +132,15 @@ export type CatalogCollection = {
   /** The notice an attribution licence obliges a user to reproduce. */
   attribution?: string | null;
   keywords?: string[] | null;
-  providers?: {
-    name: string;
-    roles?: string[] | null;
-    url?: string | null;
-    /** Free text; the harvester puts the contact address here. */
-    description?: string | null;
-  }[] | null;
+  providers?:
+    | {
+        name: string;
+        roles?: string[] | null;
+        url?: string | null;
+        /** Free text; the harvester puts the contact address here. */
+        description?: string | null;
+      }[]
+    | null;
   links: CatalogLink[];
   themes?: CatalogTheme[] | null;
   /** Harvest clock, not the dataset's own date (harvester contract C11). */
@@ -153,7 +155,7 @@ export type CatalogCollection = {
     temporal?: { interval?: (string | null)[][] | null } | null;
   } | null;
   "goat:member_count"?: number | null;
-  /** A typed bundle (`xplan`): added whole, as one shared bundle. `generic` for a plain group of layers. */
+  /** `xplan` for a plan added whole; `generic` for a plain group of layers. */
   "goat:bundleType"?: string | null;
   "goat:publisher"?: string | null;
   "goat:geographical_code"?: string | null;

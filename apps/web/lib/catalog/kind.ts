@@ -38,6 +38,8 @@ export const catalogKindOf = (item: CatalogItem, asMember?: boolean): CatalogKin
       const service = item.links?.find((link) => link.rel === "wms" || link.rel === "wmts")?.rel;
       if (service === "wms" || service === "wmts") return service;
       if (typeof props["table:row_count"] === "number") return "table";
+      // A GeoTIFF among a bundle's or a plan's layers: goatlib's `layer_type` reads it the same way.
+      if (/\.tiff?$/i.test(item.assets?.data?.href ?? "")) return "raster";
       return "unknown";
     }
   }
@@ -71,7 +73,10 @@ export const catalogServiceTiles = (item: CatalogItem): string | null => {
  * The tile address of a layer's published tiles, which geoapi reads for the item's collection
  * (`catalogCollectionId`); `null` for an item without them, when the detail map draws the sample instead.
  */
-export const catalogTilesUrl = (item: CatalogItem, base: string | undefined = GEOAPI_BASE_URL): string | null =>
+export const catalogTilesUrl = (
+  item: CatalogItem,
+  base: string | undefined = GEOAPI_BASE_URL
+): string | null =>
   base && item.properties["goat:tiles"] === true
     ? `${base}/collections/${catalogCollectionId(item.id)}/tiles/WebMercatorQuad/{z}/{x}/{y}`
     : null;

@@ -36,11 +36,11 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     sense as a unit. A bundle bundles those member layers under one
     owner and folder, tagged with a ``bundle_type`` whose spec — in code, see
     ``goatlib.models.bundle`` — describes the roles and artifacts to expect.
-    Deleting a bundle cascades to its layers.
+    Deleting a bundle cascades to its layers. A catalog bundle (an XPlan plan)
+    has no owner, space or folder, like a catalog layer.
 
-    Inherits ``folder_id``, ``name`` and ``description`` from
-    ``ContentBaseAttributes`` and ``created_at``/``updated_at`` from
-    ``DateTimeBase``.
+    Inherits ``name`` and ``description`` from ``ContentBaseAttributes`` and
+    ``created_at``/``updated_at`` from ``DateTimeBase``.
     """
 
     __tablename__ = "bundle"

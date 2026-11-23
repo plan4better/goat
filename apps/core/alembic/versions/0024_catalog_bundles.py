@@ -1,10 +1,4 @@
-"""Shared catalog bundles: an XPlan plan added from the catalog, once per version.
-
-A catalog bundle is the bundle counterpart of a catalog layer: no space, no
-folder, no owner, identified by `(catalog_external_uid, catalog_version)` with a
-partial unique index, readable by everyone and writable by nobody. The rule lives
-in `customer.effective_role` (`bundle_is_catalog`, next to `layer_is_catalog`),
-reinstalled here from its file the way 0005 installs it.
+"""Shared catalog bundles (XPlan plans): no owner, space or folder, like a catalog layer.
 
 Revision ID: 0024_catalog_bundles
 Revises: 0023_filter_empty_values
@@ -56,8 +50,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Catalog bundles cannot exist without these columns, and the access rule
-    # reads them: answer "no catalog bundle" before the columns go.
+    # The access rule reads the columns, so it stops reading them first.
     op.execute(
         f"""CREATE OR REPLACE FUNCTION {S}.bundle_is_catalog(bundle_id UUID)
         RETURNS BOOLEAN LANGUAGE sql STABLE AS $$ SELECT FALSE $$"""

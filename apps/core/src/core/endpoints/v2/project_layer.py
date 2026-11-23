@@ -260,7 +260,8 @@ async def add_catalog_items_to_project(
                 detail=f"'{title}' is added whole, not layer by layer.",
             )
     for dataset, (kind, title) in typed.items():
-        if kind not in {t.value for t in BundleTypeName}:
+        # Only a plan is shared whole: a network's artifacts are built per owner.
+        if kind != BundleTypeName.xplan.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"'{title}' is a {kind} dataset, which cannot be added yet.",
@@ -275,8 +276,7 @@ async def add_catalog_items_to_project(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"'{title}' lists a layer role twice, so it cannot be added.",
             )
-    # A plan's version is its members' (`bundle_version`); each member is keyed
-    # by it too, so every plan version has layers of its own.
+    # Each plan version gets its own members, keyed by `bundle_version`.
     plan_versions = {
         dataset: bundle_version(
             [
@@ -294,7 +294,12 @@ async def add_catalog_items_to_project(
     existing_layers = await crud_layer_project.count_by_project(
         async_session=async_session, project_id=project_id
     )
-    refusal = catalog_batch_refusal(requested=len(item_ids), existing=existing_layers)
+    # A plan counts once toward the request size, its layers toward the project's.
+    plan_layers = sum(1 for item in items.values() if item.get("collection") in typed)
+    refusal = catalog_batch_refusal(
+        requested=len(item_ids) - plan_layers + len(typed),
+        existing=existing_layers + plan_layers - len(typed),
+    )
     if refusal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
     # A WMS or WMTS whose link cannot be drawn is refused before anything is
@@ -446,8 +451,7 @@ async def add_catalog_items_to_project(
     )
     assert isinstance(layers_project, List)
     for bundle_id, dataset in bundle_ids.items():
-        # A plan already in the project is added again only to heal its copies:
-        # its entries are the answer. Otherwise it is refused like any bundle.
+        # A plan already in the project: its entries if this add healed a copy, else 409.
         group_id = await async_session.scalar(
             select(LayerProjectGroup.id).where(
                 LayerProjectGroup.project_id == project_id,

@@ -1,5 +1,5 @@
-import { StrictMode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import CatalogCard from "@/components/dashboard/catalog/CatalogCard";
@@ -74,7 +74,9 @@ describe("CatalogPickerCard", () => {
       "goat:member_count": 16,
       "goat:bundleType": "xplan",
     } as never;
-    render(<CatalogPickerCard collection={plan} selection={selection} starred={false} onToggleStar={vi.fn()} />);
+    render(
+      <CatalogPickerCard collection={plan} selection={selection} starred={false} onToggleStar={vi.fn()} />
+    );
     fireEvent.click(screen.getByRole("checkbox"));
     expect(selection.setMany).toHaveBeenCalledWith(["plan-1"], true);
   });

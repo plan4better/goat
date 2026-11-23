@@ -12,8 +12,11 @@ from goatlib.style.migrate import context_for, stored_document
 RASTER_SUFFIXES = (".tif", ".tiff")
 
 
+#: Bundle types that are only a grouping: their layers are added one by one.
+PLAIN_BUNDLE_TYPES = frozenset({"", "generic"})
+
 #: Kinds a layer declares for itself; anything else is what its dataset is.
-_OWN_KINDS = frozenset({"feature", "table", "raster", "wms", "wmts"})
+OWN_KINDS = frozenset({"feature", "table", "raster", "wms", "wmts"})
 
 
 def _is_service(item: dict[str, Any], rel: str) -> bool:
@@ -28,7 +31,7 @@ def _is_service(item: dict[str, Any], rel: str) -> bool:
     if declared == rel:
         return True
     return (
-        declared not in _OWN_KINDS
+        declared not in OWN_KINDS
         and not item.get("goat:geometryType")
         and any(
             isinstance(link, dict) and link.get("rel") == rel and link.get("href")

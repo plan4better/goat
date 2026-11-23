@@ -54,12 +54,14 @@ LANGUAGE sql STABLE AS $$
     SELECT l.catalog_external_uid IS NOT NULL FROM customer.layer l WHERE l.id = layer_id
 $$;
 
-/* The same for a bundle: a shared catalog bundle (an XPlan plan added from
-   the catalog) has no space, is readable by everyone and writable by nobody. */
+/* The same for a shared catalog bundle (an XPlan plan). plpgsql, so 0005 can
+   install this file before 0024 adds the column. */
 CREATE OR REPLACE FUNCTION customer.bundle_is_catalog(bundle_id UUID)
 RETURNS BOOLEAN
-LANGUAGE sql STABLE AS $$
-    SELECT b.catalog_external_uid IS NOT NULL FROM customer.bundle b WHERE b.id = bundle_id
+LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    RETURN (SELECT b.catalog_external_uid IS NOT NULL FROM customer.bundle b WHERE b.id = bundle_id);
+END;
 $$;
 
 /* A folder and its ancestors, nearest first; the depth trigger keeps this to at most 4 rows. */

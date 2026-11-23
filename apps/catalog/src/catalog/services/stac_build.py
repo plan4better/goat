@@ -507,11 +507,8 @@ def _state_thumbnail(
 ) -> None:
     """Give the dataset its own published thumbnail, else that of a layer.
 
-    Most Collections publish no thumbnail (only `collection-mirror`, which this
-    API never serves), so a dataset card borrows one of its layers'. The href
-    then points at the *layer* that owns the object, because that is where the
-    asset route resolves a key from. A dataset that publishes its own (an XPlan
-    plan drawn whole) is served under its own id instead.
+    Most Collections publish none, so a card borrows one of its layers', and the
+    href points at the *layer* that owns the object.
 
     No `type`: the collection row does not know the layer's, and guessing one
     would be a claim about bytes this row has never seen. A client reads the type

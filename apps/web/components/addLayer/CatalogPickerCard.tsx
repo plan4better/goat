@@ -42,7 +42,7 @@ const CatalogPickerCard = ({
   onToggleStar: (id: string) => void;
 }) => {
   const card = useMemo(() => datasetCard(collection), [collection]);
-  // A typed bundle (outisde generic) is picked whole, by its own id, like a
+  // A typed bundle (not generic) is picked whole, by its own id, like a
   // one-layer dataset: core adds it as one shared bundle and refuses its layers.
   const isBundle = card.memberCount > 1 && !!card.bundleId && !catalogBundleType(collection);
 

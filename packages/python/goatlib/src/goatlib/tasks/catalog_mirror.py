@@ -65,6 +65,7 @@ from pathlib import Path
 
 import duckdb
 
+from goatlib.catalog.item import OWN_KINDS, PLAIN_BUNDLE_TYPES
 from goatlib.io.config import parquet_copy_options
 
 logger = logging.getLogger(__name__)
@@ -523,9 +524,7 @@ def build_mirror(
         inherited = coll_expr(
             _opt(collections, "goat:layerType", 'lower(c."goat:layerType")')
         )
-        # A typed bundle (an XPlan plan) is added whole, so its layers are of
-        # the bundle's type for the catalog; promote still reads each layer's
-        # own kind from its geometry and data (`goatlib.catalog.item.layer_type`).
+        # A plan's layers take its type here; promote still reads each layer's own kind.
         bundle_type = coll_expr(
             _opt(collections, "goat:bundleType", 'lower(c."goat:bundleType")')
         )
@@ -542,9 +541,10 @@ def build_mirror(
 
         data_href = item_expr(_opt(items, "assets", "lower(i.assets.data.href)"))
         data_type = item_expr(_opt(items, "assets", "lower(i.assets.data.type)"))
-        own = "('table', 'feature', 'raster', 'wms', 'wmts')"
+        own = "(" + ", ".join(f"'{k}'" for k in sorted(OWN_KINDS)) + ")"
+        plain = "(" + ", ".join(f"'{t}'" for t in sorted(PLAIN_BUNDLE_TYPES)) + ")"
         layer_type = f"""CASE
-            WHEN coalesce({bundle_type}, 'generic') NOT IN ('generic', '')
+            WHEN coalesce({bundle_type}, '') NOT IN {plain}
                 THEN {bundle_type}
             WHEN {item_expr(_opt(items, "goat:geometryType", 'i."goat:geometryType"'))}
                 IS NOT NULL THEN 'feature'
