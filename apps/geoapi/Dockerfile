@@ -18,9 +18,11 @@ ENV PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
 # ca-certificates is what OpenSSL's default verify paths read: the build
 # stage needs it to download the DuckDB extensions, the runtime for any HTTPS
-# the service makes. Installed in the shared base so both stages have it.
+# the service makes. libexpat1 is the one library rasterio's wheel loads from
+# the system (its GDAL is inside the wheel). Installed in the shared base so
+# both stages have them.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y tzdata ca-certificates \
+    && apt-get install --no-install-recommends -y tzdata ca-certificates libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== STAGE 2: Python environment ====
