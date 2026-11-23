@@ -3,6 +3,7 @@ import type { PayloadAction } from "@reduxjs/toolkit";
 import type { MapGeoJSONFeature } from "react-map-gl/maplibre";
 
 import { BASEMAPS } from "@/lib/constants/basemaps";
+import type { ViewMode } from "@/lib/scene/view";
 import type { UnitPreference } from "@/lib/utils/measurementUnits";
 import type {
   BasemapLayerConfig,
@@ -84,6 +85,14 @@ export interface PopupPreview {
 
 export type MapMode = "data" | "builder" | "reports" | "workflows" | "public";
 
+/** A project's map in 2D or 3D, and its projection (3D spec 5.1); tagged with the project, since the store outlives
+ * the page. */
+export interface ProjectView {
+  projectId: string;
+  mode: ViewMode;
+  projection: "mercator" | "globe";
+}
+
 export interface MapState {
   project: Project | undefined;
   basemaps: Basemap[];
@@ -128,6 +137,7 @@ export interface MapState {
   dataPanelLayerId: number | null;
   dataPanelHeight: number;
   reportCanvasZoom: number;
+  view: ProjectView | undefined;
 }
 
 const initialState = {
@@ -162,6 +172,7 @@ const initialState = {
   dataPanelLayerId: null,
   dataPanelHeight: 0,
   reportCanvasZoom: 1,
+  view: undefined,
 } as MapState;
 
 const mapSlice = createSlice({
@@ -338,6 +349,17 @@ const mapSlice = createSlice({
     setReportCanvasZoom: (state, action: PayloadAction<number>) => {
       state.reportCanvasZoom = action.payload;
     },
+    /** The page's project opens in this mode and projection. */
+    initView: (state, action: PayloadAction<ProjectView>) => {
+      state.view = action.payload;
+    },
+    /** 2D or 3D for the open project; the map eases to it. */
+    setViewMode: (state, action: PayloadAction<ViewMode>) => {
+      if (state.view) state.view.mode = action.payload;
+    },
+    setProjection: (state, action: PayloadAction<ProjectView["projection"]>) => {
+      if (state.view) state.view.projection = action.payload;
+    },
   },
 });
 
@@ -379,6 +401,9 @@ export const {
   setDataPanelLayerId,
   setDataPanelHeight,
   setReportCanvasZoom,
+  initView,
+  setViewMode,
+  setProjection,
 } = mapSlice.actions;
 
 export const mapReducer = mapSlice.reducer;

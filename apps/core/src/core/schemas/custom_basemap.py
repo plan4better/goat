@@ -10,6 +10,8 @@ from pydantic import (
     field_validator,
 )
 
+from core.db.models.layer import check_layer_url
+
 
 def _validate_uuid_str(value: str) -> str:
     """Ensures the value parses as a UUID; returns the original string."""
@@ -81,7 +83,10 @@ class RasterCustomBasemap(_BaseCustomBasemap):
     def must_have_xyz_placeholders(cls, value: str) -> str:
         if not (value.startswith("http://") or value.startswith("https://")):
             raise ValueError("Raster URL must start with http:// or https://")
-        if "{z}" not in value or "{x}" not in value or "{y}" not in value:
+        check_layer_url(value)
+        # `{-y}` counts the rows from the south (TMS).
+        has_y = "{y}" in value or "{-y}" in value
+        if "{z}" not in value or "{x}" not in value or not has_y:
             raise ValueError("Raster URL must contain {z}, {x}, and {y} placeholders")
         return value
 

@@ -4,13 +4,10 @@ import WMTSCapabilities from "ol/format/WMTSCapabilities";
 
 import { generateLayerGetLegendGraphicUrl, generateWmsUrl } from "@/lib/transformers/wms";
 import { convertWmtsToXYZUrl } from "@/lib/transformers/wmts";
+import { xyzAddressesValid, xyzHost, xyzTiles } from "@/lib/transformers/xyz";
 import WFSCapabilities from "@/lib/utils/parser/ol/format/WFSCapabilities";
 import type { CreateLayerFromDataset, CreateRasterLayer } from "@/lib/validations/layer";
-import {
-  createLayerFromDatasetSchema,
-  createRasterLayerSchema,
-  rasterLayerPropertiesSchema,
-} from "@/lib/validations/layer";
+import { createLayerFromDatasetSchema, createRasterLayerSchema } from "@/lib/validations/layer";
 
 /**
  * External services a layer can be connected from: what an address is, what the service
@@ -33,6 +30,9 @@ export type UnsupportedReason =
   /** A WMTS whose Web Mercator grid does not match the map's zoom levels, such as one offset by five. */
   | { reason: "grid" };
 
+/** A style a service offers for a layer (WMS `Style`, WMTS `Style`), with its legend. */
+export type ServiceStyle = { name: string; title: string; legendUrl?: string };
+
 export type ServiceLayer = {
   /** The service's own name for it, unique within the service. */
   id: string;
@@ -46,6 +46,8 @@ export type ServiceLayer = {
   /** WMS: the style drawn and its legend. */
   style?: string;
   legendUrl?: string;
+  /** Every style the service offers for the layer, the default first. */
+  styles?: ServiceStyle[];
   /** WMTS: the XYZ template the layer is drawn from. */
   tileUrl?: string;
   /** WFS: the CRS as the service names it, passed on to the import. */
@@ -126,16 +128,18 @@ const direct = (kind: ServiceKind, url: string, title: string): ConnectedService
  */
 export const detectDirectService = (address: string): ConnectedService | null => {
   const trimmed = address.trim();
+  // `new URL` escapes the braces, so the placeholders are looked for in the raw text.
+  const has = (token: string) => trimmed.includes(`{${token}}`);
+  // `{-y}` counts the rows from the south (TMS). A tile template is checked as the addresses
+  // it stands for: its subdomain list (`{switch:a,b}`) would read as a port.
+  if (has("z") && has("x") && (has("y") || has("-y")) && !has("TileRow") && !has("TileCol"))
+    return xyzAddressesValid(trimmed) ? direct("xyz", trimmed, xyzHost(trimmed)) : null;
   let url: URL;
   try {
     url = parseHttpUrl(trimmed);
   } catch {
     return null;
   }
-  // `new URL` escapes the braces, so the placeholders are looked for in the raw text.
-  const has = (token: string) => trimmed.includes(`{${token}}`);
-  if (has("z") && has("x") && has("y") && !has("TileRow") && !has("TileCol"))
-    return direct("xyz", trimmed, url.hostname);
   if (has("TileMatrix") && has("TileRow") && has("TileCol") && !has("Style") && !has("TileMatrixSet"))
     return direct("wmts", trimmed, url.hostname);
   if (/\.tiff?$/i.test(url.pathname)) return direct("cog", trimmed, fileStem(url));
@@ -225,6 +229,13 @@ const parseWms = (address: string, text: string): ConnectedService => {
         unsupported: crs.length && !crs.some(isWebMercator) ? { reason: "projection", crs } : undefined,
         style: style?.Name ?? "",
         legendUrl: style?.LegendURL?.[0]?.OnlineResource,
+        styles: ((layer.Style ?? []) as any[])
+          .filter((s) => s?.Name)
+          .map((s) => ({
+            name: s.Name,
+            title: s.Title || s.Name,
+            ...(s.LegendURL?.[0]?.OnlineResource ? { legendUrl: s.LegendURL[0].OnlineResource } : {}),
+          })),
       });
     }
     const children: any[] = layer.Layer ?? [];
@@ -378,6 +389,13 @@ const parseWmts = (address: string, text: string): ConnectedService => {
     return {
       id: layer.Identifier,
       title: layer.Title || layer.Identifier,
+      styles: ((layer.Style ?? []) as any[])
+        .filter((style) => style?.Identifier)
+        .map((style) => ({
+          name: style.Identifier,
+          title: typeof style.Title === "string" && style.Title ? style.Title : style.Identifier,
+          ...(style.LegendURL?.[0]?.href ? { legendUrl: style.LegendURL[0].href } : {}),
+        })),
       abstract: layer.Abstract || undefined,
       crs,
       bounds,
@@ -486,29 +504,51 @@ export const selectionBounds = (service: ConnectedService, ids: string[]): LngLa
   ];
 };
 
-const wmsTileUrl = (service: ConnectedService, layers: ServiceLayer[]) => {
-  const base = service.getMapBase ?? getMapBaseOf(service.url);
+/** The GetMap tile template for some layers of the WMS whose GetMap address is `base`. */
+export const wmsTileTemplate = (
+  base: string,
+  layerIds: string[],
+  styles: string[] = [],
+  version?: string
+) => {
   const [path, query] = base.split("?");
   const url = generateWmsUrl(
     path,
-    layers.map((layer) => layer.id).join(","),
-    layers.map((layer) => layer.style ?? "").join(","),
-    service.version
+    layerIds.join(","),
+    layerIds.map((_, i) => styles[i] ?? "").join(","),
+    version
   );
   // `generateWmsUrl` starts its own query; the server's parameters go in front of it.
   return query ? url.replace("?", `?${query}&`) : url;
 };
 
+const wmsTileUrl = (service: ConnectedService, layers: ServiceLayer[]) =>
+  wmsTileTemplate(
+    service.getMapBase ?? getMapBaseOf(service.url),
+    layers.map((layer) => layer.id),
+    layers.map((layer) => layer.style ?? ""),
+    service.version
+  );
+
 /**
- * What the layer is drawn from: a tile template, a COG, or `null` where nothing can be
- * drawn yet — no layer picked, or WFS features that only exist once imported.
+ * What the layer is drawn from, with `url` what the layer stores: a tile template, a COG.
+ * An XYZ template is drawn from `tiles`, one address per subdomain, with `scheme` for rows
+ * counted from the south.
  */
-export const previewSource = (
-  service: ConnectedService,
-  ids: string[]
-): { kind: "tiles" | "cog"; url: string } | null => {
+export type PreviewSource = {
+  kind: "tiles" | "cog";
+  url: string;
+  tiles?: string[];
+  scheme?: "tms";
+};
+
+/**
+ * What the layer is drawn from, or `null` where nothing can be drawn yet — no layer
+ * picked, or WFS features that only exist once imported.
+ */
+export const previewSource = (service: ConnectedService, ids: string[]): PreviewSource | null => {
   if (service.kind === "cog") return { kind: "cog", url: `cog://${service.url}` };
-  if (service.kind === "xyz") return { kind: "tiles", url: service.url };
+  if (service.kind === "xyz") return { kind: "tiles", url: service.url, ...xyzTiles(service.url) };
   if (service.kind === "wmts" && isDirect(service))
     return { kind: "tiles", url: convertWmtsToXYZUrl(service.url) };
   const layers = pickedLayers(service, ids);
@@ -581,6 +621,9 @@ export const buildLayerRequest = (
       : service.kind === "wmts" && layers.length
         ? { layers: [layers[0].id] }
         : {};
+  // One service layer: the styles it offers, for the style panel's choice (spec 9.8).
+  const styles = layers.length === 1 ? layers[0].styles : undefined;
+  if (styles?.length) Object.assign(otherProperties, { service_styles: styles });
 
   return {
     kind: "raster",
@@ -592,7 +635,6 @@ export const buildLayerRequest = (
       // The COG protocol prefix is the map's business; the layer stores the file's address.
       url: service.kind === "cog" ? service.url : source.url,
       ...(bounds ? { extent: extentWkt(bounds) } : {}),
-      properties: rasterLayerPropertiesSchema.parse({ visibility: true }),
       other_properties: otherProperties,
     }),
   };

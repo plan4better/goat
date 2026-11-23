@@ -10,6 +10,7 @@ import { USERS_API_BASE_URL } from "@/lib/api/users";
 import { addRunningJobIds } from "@/lib/store/jobs/slice";
 import { homeFolderOf } from "@/lib/utils/content";
 import { bindsDataset } from "@/lib/utils/templates";
+import { takesLayer } from "@/lib/utils/workflowDatasets";
 import type { ContentItem, Space } from "@/lib/validations/content";
 import type { Folder } from "@/lib/validations/folder";
 import type { ProjectLayer } from "@/lib/validations/project";
@@ -26,6 +27,29 @@ import { useAppDispatch } from "@/hooks/store/ContextHooks";
  * tray and the map's job watcher can follow. */
 export const startedCopyJobIds = (result: TemplateUseResult): string[] =>
   result.copy_jobs.flatMap((job) => (job.job_id ? [job.job_id] : []));
+
+/** The project layers a template input can be bound to, filtered by the input's `layer_type`/`geometry_type` when it
+ * declares one. A binding names a dataset, not a link, so a dataset the project links more than once is offered once.
+ * A workflow takes no raster layers. */
+export function bindingCandidates(
+  input: TemplateInput,
+  layers: ProjectLayer[],
+  payloadKind: TemplateRead["payload_kind"]
+): ProjectLayer[] {
+  const seen = new Set<string>();
+  return layers.filter((layer) => {
+    if (
+      (input.layer_type && layer.type !== input.layer_type) ||
+      (input.geometry_type && layer.feature_layer_geometry_type !== input.geometry_type) ||
+      (payloadKind === "workflow" && !takesLayer(layer)) ||
+      seen.has(layer.layer_id)
+    ) {
+      return false;
+    }
+    seen.add(layer.layer_id);
+    return true;
+  });
+}
 
 /** Where "Use template" was opened from: a panel already sitting inside a
  * project passes `in_project` and the payload is inserted there; Home,
@@ -193,27 +217,11 @@ export const useUseTemplate = (template: TemplateRead, context: UseTemplateConte
     });
   };
 
-  /** The project layers a given input can be bound to — a shipped input's
-   * own dataset stays the default — filtered by the input's `layer_type`/
-   * `geometry_type` when it declares one. Empty when the target is a new
-   * project (there is no project yet), so the row offers no choice. */
-  const candidatesFor = (input: TemplateInput): ProjectLayer[] => {
-    if (!selectedProjectId) return [];
-    // A binding names a dataset, not a link, so a dataset the project links
-    // more than once is offered once.
-    const seen = new Set<string>();
-    return (projectLayers ?? []).filter((layer) => {
-      if (
-        (input.layer_type && layer.type !== input.layer_type) ||
-        (input.geometry_type && layer.feature_layer_geometry_type !== input.geometry_type) ||
-        seen.has(layer.layer_id)
-      ) {
-        return false;
-      }
-      seen.add(layer.layer_id);
-      return true;
-    });
-  };
+  /** The project layers a given input can be bound to (`bindingCandidates`);
+   * a shipped input's own dataset stays the default. Empty when the target is
+   * a new project (there is no project yet), so the row offers no choice. */
+  const candidatesFor = (input: TemplateInput): ProjectLayer[] =>
+    selectedProjectId ? bindingCandidates(input, projectLayers ?? [], template.payload_kind) : [];
 
   // A workflow's inputs step lists every dataset the workflow refers to —
   // the shipped ones so the caller sees what lands in the project, the ask

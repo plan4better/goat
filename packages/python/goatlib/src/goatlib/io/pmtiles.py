@@ -13,10 +13,11 @@ The generation pipeline:
        anchor points (--convert-polygons-to-label-points). The tile service
        concatenates MVT bytes from both files at serving time.
     3. Store PMTiles in a separate tiles directory (cache/derived data)
-    4. Embed DuckLake snapshot_id and MANBY_MARKER in PMTiles metadata: the
-       snapshot for sync tracking, the marker because geoapi filters stored
-       tiles only when it finds it and sync_pmtiles rebuilds tiles without
-       the current one.
+    4. Embed DuckLake snapshot_id, MANBY_MARKER and the recipe's version
+       (MANBY_RECIPES) in PMTiles metadata: the snapshot for sync tracking,
+       the marker because geoapi filters stored tiles only when it finds it,
+       and sync_pmtiles rebuilds tiles without the marker or of an older
+       recipe.
 
 Usage:
     from goatlib.io.pmtiles import PMTilesGenerator
@@ -57,12 +58,25 @@ from goatlib.utils.layer import layer_id_to_table_name
 logger = logging.getLogger(__name__)
 
 # Recorded in the description of every tileset manby built, next to the
-# snapshot id. geoapi filters stored tiles only when it finds it: the point
-# tiles built before manby merged nearby points at every zoom, and some had no
-# feature ids. A tileset counts as in sync only with this marker
-# (is_pmtiles_in_sync), so bumping `recipe` after a change to manby_flags
-# makes the next sync_pmtiles run rebuild every tileset built with the old one.
-MANBY_MARKER: dict = {"tiler": "manby", "recipe": 1}
+# snapshot id and the recipe. geoapi filters stored tiles only when it finds
+# it: the point tiles built before manby merged nearby points at every zoom,
+# and some had no feature ids.
+MANBY_MARKER: dict = {"tiler": "manby"}
+
+# The version of each recipe of manby_flags, by the kind of tiles it builds
+# (see _tiles_kind), recorded as `recipe` next to MANBY_MARKER. A tileset
+# counts as in sync only with its kind's version (is_pmtiles_in_sync), so
+# bumping one after a change to its recipe makes the next sync_pmtiles run
+# rebuild the tilesets of that kind, and no others.
+MANBY_RECIPES: dict[str, int] = {
+    "points": 2,
+    "lines": 1,
+    "polygons": 1,
+    "label_anchors": 1,
+}
+
+# A kind of tiles by the geometry type tile statistics give their layer
+_KIND_OF_GEOMETRY = {"Point": "points", "LineString": "lines", "Polygon": "polygons"}
 
 # Columns geoapi hides from tiles (its HIDDEN_FIELDS default): the GeoParquet
 # bbox and the legacy scalar bbox fields.
@@ -82,6 +96,13 @@ ONE_LOCATION_DEGREES = 1e-6
 # manby's exit status when -zg finds no two locations to guess a max zoom
 # from. Any other failure (a build killed for its memory) fails the build.
 MANBY_EXIT_NO_ZOOM_GUESS = 110
+
+# The most features a point tile holds (manby's -O): manby drops the densest
+# points of a tile over it, and adds zooms where they are needed. MapLibre
+# numbers the pictures of one symbol layer in a tile with a signed 16-bit
+# counter, so a tile with more points drawn as pictures (an icon, any marker
+# but a plain circle) fails to draw.
+POINT_TILE_FEATURE_LIMIT = 25_000
 
 
 def _guesses_max_zoom(flags: list[str]) -> bool:
@@ -103,6 +124,13 @@ def _part_type(geometry_type: str | None) -> int:
     if "LINE" in geom_upper:
         return 2
     return 3
+
+
+def _recipe_kind(geometry_type: str | None, label_anchor: bool) -> str:
+    """The key in MANBY_RECIPES of the recipe a build takes."""
+    if label_anchor:
+        return "label_anchors"
+    return ("points", "lines", "polygons")[_part_type(geometry_type) - 1]
 
 
 def publish_tiles(built: Path, final: Path) -> None:
@@ -296,17 +324,44 @@ class PMTilesGenerator:
         Returns:
             The description as a dict, {} if the file has none or is unreadable
         """
+        return self._marker_of(self._metadata(pmtiles_path))
+
+    @staticmethod
+    def _metadata(pmtiles_path: Path | str) -> dict:
+        """The PMTiles metadata JSON, {} if the file is unreadable."""
         try:
             with open(pmtiles_path, "rb") as f:
-                reader = PMTilesReader(MmapSource(f))
-                description = reader.metadata().get("description", "")
-            if description.startswith("{"):
-                data = json.loads(description)
-                if isinstance(data, dict):
-                    return data
+                return PMTilesReader(MmapSource(f)).metadata()
         except Exception as e:
-            logger.debug(f"Could not read the description of {pmtiles_path}: {e}")
+            logger.debug(f"Could not read the metadata of {pmtiles_path}: {e}")
         return {}
+
+    @staticmethod
+    def _marker_of(metadata: dict) -> dict:
+        """The description of PMTiles metadata as a dict, {} if it is none."""
+        description = metadata.get("description", "")
+        if isinstance(description, str) and description.startswith("{"):
+            try:
+                data = json.loads(description)
+            except ValueError:
+                return {}
+            if isinstance(data, dict):
+                return data
+        return {}
+
+    def _tiles_kind(self: Self, metadata: dict) -> str | None:
+        """The kind of tiles a file holds, as MANBY_RECIPES names it.
+
+        Label points sit in the anchor layer; their tile statistics give the
+        type of the polygons they were made from. Other tiles are of the type
+        their tile statistics give. None when the metadata says neither.
+        """
+        layers = metadata.get("vector_layers") or []
+        if any(layer.get("id") == self.config.anchor_layer_name for layer in layers):
+            return "label_anchors"
+        stats = (metadata.get("tilestats") or {}).get("layers") or []
+        geometry = stats[0].get("geometry") if stats else None
+        return _KIND_OF_GEOMETRY.get(geometry)
 
     def get_pmtiles_snapshot_id(self: Self, pmtiles_path: Path | str) -> int | None:
         """Read the DuckLake snapshot_id from PMTiles metadata.
@@ -324,11 +379,11 @@ class PMTilesGenerator:
     ) -> str | None:
         """Why a PMTiles file needs a rebuild, None when it is in sync.
 
-        In sync means built with the current recipe (every key of
-        MANBY_MARKER matches) from the current snapshot. A file from before
-        manby, or from an older recipe, is stale whatever its snapshot, in its
-        description or in a sidecar `.pmtiles.meta.json` (which only builds
-        from before manby wrote).
+        In sync means built by manby (MANBY_MARKER), with the current
+        recipe of its kind of tiles (MANBY_RECIPES), from the current
+        snapshot. A file from before manby, or from an older recipe, is stale
+        whatever its snapshot, in its description or in a sidecar
+        `.pmtiles.meta.json` (which only builds from before manby wrote).
 
         Args:
             pmtiles_path: Path to PMTiles file
@@ -337,12 +392,20 @@ class PMTilesGenerator:
                 layer's parquet), which record none
 
         Returns:
-            The reason, such as "recipe 1, current 2", or None
+            The reason, such as "points recipe 1, current 2", or None
         """
-        marker = self.read_marker(pmtiles_path)
+        metadata = self._metadata(pmtiles_path)
+        marker = self._marker_of(metadata)
         for key, current in MANBY_MARKER.items():
             if marker.get(key) != current:
                 return f"{key} {marker.get(key)}, current {current}"
+        kind = self._tiles_kind(metadata)
+        if kind is None:
+            return "kind of tiles unknown"
+        if marker.get("recipe") != MANBY_RECIPES[kind]:
+            return (
+                f"{kind} recipe {marker.get('recipe')}, current {MANBY_RECIPES[kind]}"
+            )
         if marker.get("snapshot_id") != current_snapshot_id:
             return (
                 f"snapshot {marker.get('snapshot_id')}, current {current_snapshot_id}"
@@ -702,6 +765,10 @@ class PMTilesGenerator:
         max_zoom = self.config.max_zoom if self.config.max_zoom is not None else 14
         part_type = _part_type(geometry_type)
 
+        marker = {
+            **MANBY_MARKER,
+            "recipe": MANBY_RECIPES[_recipe_kind(geometry_type, label_anchor)],
+        }
         description: dict = {"generated_at": datetime.now(timezone.utc).isoformat()}
         if snapshot_id is not None:
             description = {"snapshot_id": snapshot_id, **description}
@@ -712,7 +779,7 @@ class PMTilesGenerator:
             "--use-attribute-for-id=_rowid",  # Promote _rowid to MVT feature ID
             "--exclude=_rowid",  # Ensure _rowid is removed from properties
             "--preserve-input-order",  # The input is ordered by _rowid
-            f"--description={json.dumps({**description, **MANBY_MARKER})}",
+            f"--description={json.dumps({**description, **marker})}",
             "-q",
         ]
         # Without a container limit manby keeps its default: half the memory
@@ -758,7 +825,7 @@ class PMTilesGenerator:
                 "-M",
                 "2000000",  # 2MB tile size limit (default 500KB)
                 "-O",
-                "200000",
+                str(POINT_TILE_FEATURE_LIMIT),
                 "--drop-densest-as-needed",
                 "--extend-zooms-if-still-dropping",
                 "--low-detail=10",

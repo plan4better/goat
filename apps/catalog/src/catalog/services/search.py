@@ -20,6 +20,8 @@ from datetime import datetime as dt
 from typing import Any, Literal
 
 import duckdb
+from goatlib.filter.area import normalize_area
+from goatlib.filter.validate import over_request_limits
 from pydantic import BaseModel, ConfigDict, Field
 
 from catalog.errors import ApiError
@@ -425,7 +427,15 @@ def build_filters(
             env = f"ST_MakeEnvelope({add(w)}, {add(s)}, {add(e)}, {add(n)})"
             filters.append(f"({overlaps} AND ST_Intersects({geom}, {env}))")
     elif p.intersects is not None:
-        geom_json = json.dumps(p.intersects)
+        # Held against the request ceilings as the filter it stands for.
+        issues = over_request_limits(
+            {"op": "s_intersects", "args": [{"property": "geometry"}, p.intersects]}
+        )
+        if issues:
+            raise ApiError(400, " ".join(issue.message for issue in issues))
+        # As the union of its polygons: against a constant MultiPolygon whose
+        # polygons overlap, DuckDB reads a point in two of them as outside.
+        geom_json = json.dumps(normalize_area(p.intersects))
         # No envelope prefilter here: the caller's geometry is arbitrary, so its
         # bounds would have to be computed before the query is built. bbox is the
         # parameter a map viewport sends on every pan, and it is the one this

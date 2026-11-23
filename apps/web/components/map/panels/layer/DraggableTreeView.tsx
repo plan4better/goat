@@ -34,6 +34,8 @@ export interface BaseTreeItem {
   icon?: React.ReactNode;
   /** A layer: its legend, below the row. A group: shown instead of its children. */
   legendContent?: React.ReactNode;
+  /** Shown under a layer's row whether its legend is open or not (a time slider); outside the row's drag handle. */
+  footer?: React.ReactNode;
   isSelectable?: boolean;
   isVisible?: boolean; // Add this property for visibility styling
   labelInfo?: string; // Add missing property
@@ -492,6 +494,10 @@ const RecursiveTreeItemInner = <T extends BaseTreeItem>({
             opacity: 0.5,
           }}
         />
+      )}
+
+      {!item.isGroup && item.footer && !isOverlay && (
+        <Box sx={{ pl: `${baseIndent + 28}px`, pr: 1, pb: 0.5 }}>{item.footer}</Box>
       )}
 
       {/* EXPANSION */}

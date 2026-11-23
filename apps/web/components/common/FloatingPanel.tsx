@@ -1,6 +1,8 @@
 import { Stack, type SxProps, type Theme, useTheme } from "@mui/material";
 import { alpha } from "@mui/material";
 
+import { MAP_PANEL_ATTR } from "@/lib/constants";
+
 interface FloatingPanelProps {
   children: React.ReactNode;
   sx?: SxProps<Theme>;
@@ -24,6 +26,8 @@ export const FloatingPanel = ({
   const theme = useTheme();
   return (
     <Stack
+      // Zoom to layer keeps a layer clear of the panels over the map.
+      {...{ [MAP_PANEL_ATTR]: "" }}
       direction="column"
       sx={[
         {

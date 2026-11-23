@@ -52,17 +52,17 @@ Sobald Sie die Layer zu Ihrer Karte hinzugefügt und die Analyse berechnet haben
 
 <div class="step">
   <div class="step-number">6</div>
-  <div class="content">Klicken Sie im Panel <code>Layer</code> auf einen Layer. Seine Einstellungen öffnen sich rechts mit ausgewähltem Tab <code>Stil</code>. Wählen Sie im Abschnitt <code>Stil</code> unter <code>Füllfarbe</code> (bei einem Linien-Layer <code>Farbe</code>) die gewünschte Farbe aus. Wenn Sie nach Attribut gestalten möchten, klicken Sie daneben auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/> und wählen Sie unter <code>Farbe basierend auf</code> ein Feld aus.</div>
+  <div class="content">Klicken Sie im Panel <code>Layer</code> auf einen Layer. Seine Einstellungen öffnen sich rechts mit ausgewähltem Tab <code>Stil</code>. Klicken Sie im Abschnitt <code>Polygone</code>, <code>Linien</code> oder <code>Punkte</code> auf <code>Füllung</code> (bei einem Linien-Layer <code>Linie</code>) und wählen Sie unter <code>Farbe</code> die gewünschte Farbe aus. Wenn Sie nach Attribut gestalten möchten, klicken Sie auf die Schaltfläche neben <code>Farbe</code>, wählen Sie <code>Nach Attribut</code> oder <code>Nach Klassen</code> und dann ein Feld.</div>
 </div>
 
 <div class="step">
   <div class="step-number">7</div>
-  <div class="content">Sie können im Abschnitt <code>Stil</code> weitermachen: Wählen Sie eine <code>Palette</code> für die attributbasierten Farben, legen Sie die <code>Strichfarbe</code> fest oder aktivieren Sie bei einem Punkt-Layer <code>Benutzerdefiniertes Symbol</code>, um ein Icon als Marker zu verwenden.</div>
+  <div class="content">Sie können im selben Abschnitt weitermachen: Wählen Sie eine <code>Palette</code> für die Farben nach Attribut oder nach Klassen, legen Sie den <code>Umriss</code> fest oder wählen Sie bei einem Punkt-Layer ein <code>Symbol</code> für die Marker.</div>
 </div>
 
 <div class="step">
   <div class="step-number">8</div>
-  <div class="content">Öffnen Sie in den Abschnitten darunter <code>Beschriftungen</code> und wählen Sie unter <code>Beschriftung nach</code> ein Feld aus, aktivieren Sie das <code>Popup</code> und richten Sie seinen Inhalt ein, und legen Sie unter <code>Legende</code> fest, ob der Layer angezeigt wird, und fügen Sie einen <code>Untertitel</code> hinzu. Weitere Details finden Sie unter [Layer-Stil](../map/layer_style/style/styling).</div>
+  <div class="content">Klicken Sie auf <code>Beschriftung</code> und wählen Sie unter <code>Text</code> ein Feld aus. Legen Sie in den Abschnitten darunter im <code>Popup</code> fest, wann es erscheint (<code>Anzeigen bei</code>), und richten Sie seinen <code>Inhalt</code> ein; legen Sie unter <code>Legende</code> fest, ob die Legende angezeigt wird, und fügen Sie unter <code>Inhalt</code> eine <code>Bildunterschrift</code> hinzu. Weitere Details finden Sie unter [Layer-Stil](../map/layer_style/style/styling).</div>
 </div>
 
 ## Bereit, Ihre Arbeit zu teilen

@@ -1,32 +1,31 @@
 "use client";
 
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { Box, CircularProgress, Typography } from "@mui/material";
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
+import type { StyleSpecification } from "maplibre-gl";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import ThemeProvider from "@p4b/ui/theme/ThemeProvider";
 
 import { useProject } from "@/lib/api/projects";
-import { useProjectLayerGroups } from "@/lib/api/projects";
 import { useReportLayout } from "@/lib/api/reportLayouts";
 import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { resolveElementFrame } from "@/lib/print/elementFrame";
 import { snapScalebarWidths } from "@/lib/print/scalebar";
 import { mmToPx, resolvePageMm } from "@/lib/print/units";
-import { orderLayersByTree } from "@/lib/utils/map/layerTreeOrder";
-import type { CustomBasemap, ProjectLayer } from "@/lib/validations/project";
+import type { Scene } from "@/lib/style/generated/types";
+import type { CustomBasemap } from "@/lib/validations/project";
 import type { ReportLayoutConfig } from "@/lib/validations/reportLayout";
 
-import { useFilteredProjectLayers } from "@/hooks/map/LayerPanelHooks";
+import type { Basemap } from "@/types/map/common";
+
 import { useBasemap } from "@/hooks/map/MapHooks";
+import { type MapLayer, useMapLayers } from "@/hooks/map/useMapLayers";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
+import { useLegendsWaiting } from "@/hooks/style/useLegendPresence";
 
 import { ElementContentRenderer } from "@/components/reports/elements/renderers/ElementRenderers";
-
-maplibregl.addProtocol("cog", cogProtocol);
 
 // Print DPI - higher quality for PDF output (used when generating the actual PDF)
 // const PRINT_DPI = 300;
@@ -58,13 +57,14 @@ export default function PrintPage() {
 
   const { reportLayout, isLoading, isError } = useReportLayout(projectId, layoutId);
   const { project, isLoading: isProjectLoading } = useProject(projectId);
-  const { layers: allProjectLayers, isLoading: isLayersLoading } = useFilteredProjectLayers(
-    projectId,
-    ["table"],
-    []
-  );
-  const { layerGroups: projectLayerGroups } = useProjectLayerGroups(projectId);
-  const { mapStyle, setActiveBasemap } = useBasemap(project);
+  const {
+    layers: mapLayers,
+    map: projectMap,
+    isLoading: isLayersLoading,
+  } = useMapLayers(projectId, {
+    revalidateOnMount: true,
+  });
+  const { mapStyle, setActiveBasemap, activeBasemap } = useBasemap(project);
 
   // Populate the Redux active basemap so <Layers> can apply the custom
   // basemap's layer_config (label visibility, layer stacking). Unlike the
@@ -85,12 +85,8 @@ export default function PrintPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBasemapValue, activeBasemapLayerConfigKey]);
 
-  // Order layers to match the visual layer panel hierarchy (same logic as editor)
-  // and filter out layers that belong to invisible groups.
-  const projectLayers = useMemo(
-    () => orderLayersByTree(allProjectLayers || [], projectLayerGroups),
-    [allProjectLayers, projectLayerGroups]
-  );
+  // The map's layers in the map document's order, with their visibility and styles (tables draw nothing).
+  const projectLayers = useMemo(() => mapLayers.filter((layer) => layer.type !== "table"), [mapLayers]);
   const [isReady, setIsReady] = useState(false);
 
   // Print config (atlas limits from backend)
@@ -129,13 +125,24 @@ export default function PrintPage() {
   // Check if all maps are loaded
   const allMapsLoaded = mapElementCount === 0 || mapsLoadedCount >= mapElementCount;
 
+  // A legend that lists only the classes the filter keeps, or those in its map's view, waits for their count.
+  const legendsWaiting = useLegendsWaiting();
+
   // Check if atlas data is ready (if atlas is enabled)
   const atlasReady = !isAtlasEnabled || (!isAtlasLoading && (atlasResult !== null || atlasTotalPages === 0));
 
   // Signal to Playwright that the page is ready for printing
   // Wait for data to load AND all maps to be loaded AND atlas data (if enabled)
   useEffect(() => {
-    if (reportLayout && !isLoading && !isProjectLoading && !isLayersLoading && allMapsLoaded && atlasReady) {
+    if (
+      reportLayout &&
+      !isLoading &&
+      !isProjectLoading &&
+      !isLayersLoading &&
+      allMapsLoaded &&
+      atlasReady &&
+      !legendsWaiting
+    ) {
       // Give additional delay for map tiles to fully render
       // Keep this short since Playwright also waits for networkidle
       const timer = setTimeout(() => {
@@ -145,7 +152,7 @@ export default function PrintPage() {
       }, 1000); // 1 second delay to allow map tiles to render
       return () => clearTimeout(timer);
     }
-  }, [reportLayout, isLoading, isProjectLoading, isLayersLoading, allMapsLoaded, atlasReady]);
+  }, [reportLayout, isLoading, isProjectLoading, isLayersLoading, allMapsLoaded, atlasReady, legendsWaiting]);
 
   // Set document title based on layout name (used as PDF filename)
   useEffect(() => {
@@ -245,6 +252,9 @@ export default function PrintPage() {
             config={reportLayout.config}
             basemapUrl={mapStyle}
             projectLayers={projectLayers}
+            locale={project?.locale ?? undefined}
+            scene={projectMap?.map.scene}
+            basemap={activeBasemap}
             atlasPage={currentAtlasPage}
             onMapLoaded={handleMapLoaded}
           />
@@ -279,7 +289,12 @@ export default function PrintPage() {
 interface ReportElementsProps {
   config: ReportLayoutConfig;
   basemapUrl?: string | StyleSpecification;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
+  /** The project's number locale. */
+  locale?: string;
+  /** The project's 3D scene and basemap: a tilted map element prints in 3D (3D spec 10). */
+  scene?: Scene | null;
+  basemap?: Basemap;
   atlasPage?: AtlasPage | null;
   onMapLoaded?: () => void;
 }
@@ -288,6 +303,9 @@ const ReportElements: React.FC<ReportElementsProps> = ({
   config,
   basemapUrl,
   projectLayers,
+  locale,
+  scene,
+  basemap,
   atlasPage,
   onMapLoaded,
 }) => {
@@ -366,6 +384,9 @@ const ReportElements: React.FC<ReportElementsProps> = ({
               height={heightPx}
               basemapUrl={basemapUrl}
               projectLayers={projectLayers}
+              locale={locale}
+              scene={scene}
+              basemap={basemap}
               atlasPage={atlasPage}
               viewOnly
               onElementUpdate={handleElementUpdate}

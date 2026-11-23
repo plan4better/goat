@@ -1,256 +1,211 @@
 ---
-description: "Gestalten Sie Füll- und Strichfarbe, Strichbreite, Marker oder Punktradius nach einem Datenfeld, mit Farbpaletten und Klassifizierungen wie Quantil."
+description: "Gestalten Sie Farben, Größen, Breiten und Symbole nach einem Datenfeld, nach Zoom oder nach Klassen mit Paletten und Klassifizierungsmethoden wie Quantilen oder manuellen Grenzen, gestalten Sie eine Klasse für sich und ändern Sie passende Objekte mit Regeln."
 sidebar_position: 2
 ---
 
 # Attributbasiertes Styling
 
-**Sie können Layer basierend auf Daten-Attributen gestalten, um Unterschiede und Trends leicht zu identifizieren.** Jeder Visualisierungsaspekt (Füllfarbe, Strichfarbe, Strichbreite, Benutzerdefiniertes Symbol und Punkteinstellungen) kann nach jedem Feld in den Daten Ihres Layers gestaltet werden.
+**Sie können einen Layer nach seinen Daten gestalten, um Unterschiede und Trends auf einen Blick zu zeigen.** Fast jede Farbe, Größe, Breite und jedes Symbol im Stil-Panel kann einem Feld folgen, sich mit dem Zoom ändern oder einen Wert je Klasse eines Feldes annehmen. Regeln ändern die Objekte, die eine Bedingung erfüllen.
 
-<iframe width="100%" height="500" src="https://www.youtube.com/embed/cLIPMCOu4FQ?si=aydSJN_Pf0fusO9x" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+## Wie ein Wert festgelegt wird
 
-## Wie man attributbasiertes Styling anwendet
+Rechts neben einer Eigenschaft im Stil-Panel sitzt eine kleine Schaltfläche mit einem Symbol und einem Pfeil. Sie zeigt, wie der Wert festgelegt wird. Klicken Sie darauf, um eine andere Art zu wählen:
+
+| Option | Was sie bewirkt |
+| ------ | --------------- |
+| <code>Fest</code> | Ein Wert überall. |
+| <code>Nach Zoom</code> | Der Wert ändert sich beim Zoomen oder wechselt an den Zoomstufen, die Sie festlegen. Siehe [Nach Zoom](#by-zoom). |
+| <code>Nach Attribut</code> | Ein Farbverlauf über ein Zahlenfeld oder eine Größe im Verhältnis zu einem Zahlenfeld. Siehe [Nach Attribut](#by-attribute). |
+| <code>Feldwerte</code> | Nimmt den Wert des Feldes, wie er ist: ein Textfeld mit Farben wie `#2166ac` oder ein Zahlenfeld für die <code>Drehung</code> von Symbolen oder eine <code>Höhe</code>. |
+| <code>Nach Klassen</code> | Ein Wert je Kategorie oder Bereich eines Feldes. Siehe [Nach Klassen](#by-classes). |
+
+Das Menü zeigt nur die Optionen, die die Eigenschaft erlaubt. <code>Feldwerte</code> erscheint bei Farben nur, wenn der Layer ein Textfeld mit Farben hat. Während Sie [eine Klasse gestalten](#style-one-class), kommt <code>Zurücksetzen</code> hinzu, das der Klasse wieder den Wert aller Objekte gibt.
+
+Wenn Sie eine Option wählen, öffnet sich ihr Editor neben dem Panel. Danach zeigt die Zeile eine Zusammenfassung, etwa einen Farbverlauf, <code>Nach Zoom · 3 Stufen</code> oder den Namen des Feldes; ein Klick auf die Zeile öffnet den Editor wieder.
+
+## Nach Attribut {#by-attribute}
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">Klicken Sie im <code>Layer</code>-Panel auf Ihren Layer. Rechts öffnet sich das Einstellungs-Panel des Layers mit den Tabs <code>Stil</code>, <code>Filtern</code> und <code>Metadaten</code>; der Tab <code>Stil</code> ist ausgewählt. Die Styling-Optionen finden Sie dort im Bereich <code>Stil</code>.</div>
+  <div class="content">Öffnen Sie einen Teil des Symbols, zum Beispiel <code>Füllung</code> im Abschnitt <code>Polygone</code>, klicken Sie auf die Schaltfläche neben <code>Farbe</code> und wählen Sie <code>Nach Attribut</code>. Der Editor <code>Farbe nach Attribut</code> öffnet sich.</div>
 </div>
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-<TabItem value="fill-color" label="Füllfarbe" default>
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Klicken Sie neben <code>Füllfarbe</code> auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>; der Bereich <code>Erweiterte Optionen</code> wird eingeblendet.</div>
+  <div class="content">Wählen Sie unter <code>Feld</code> das <strong>Zahlenfeld</strong>, nach dem gestaltet werden soll. Die Liste zeigt den Wertebereich jedes Feldes.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In <code>Farbe basierend auf</code> wählen Sie das <strong>Text-, Zahlen- oder Boolean-Feld (wahr/falsch) zum Stylen</strong> aus.</div>
+  <div class="content">Klicken Sie bei einer Farbe auf <code>Palette</code> und wählen Sie eine Palette (siehe <a href="#color-palettes">Farbpaletten</a>). Bei einer Größe oder Breite legen Sie unter <code>Kleinster Wert</code> und <code>Größter Wert</code> fest, welche Werte sie annimmt.</div>
 </div>
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Jetzt können Sie zu <code>Palette</code> gehen und eine <strong>Farbpalette</strong> wählen oder die Standardpalette behalten. Erfahren Sie mehr im Abschnitt <a href="#farbpalette">Farbpalette</a> unten.</div>
+  <div class="content">Wählen Sie unter <code>Skala</code>, wie Werte auf die Farben oder Größen abgebildet werden: <code>Linear</code> (Werte werden gleichmäßig abgebildet), <code>Quadratwurzel</code> (Größen wachsen mit der Fläche, die übliche Wahl für Kreise; bei Farben mehr von der Palette für die kleinen Werte) oder <code>Logarithmisch</code> (für Werte über mehrere Größenordnungen).</div>
 </div>
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Klicken Sie auf <code>Farbskala</code> und wählen Sie Ihre <strong>Datenklassifizierungsmethode</strong>. Alle Methoden finden Sie im Abschnitt <a href="#datenklassifizierungsmethoden">Datenklassifizierungsmethoden</a>.</div>
+  <div class="content">Legen Sie <code>Keine Daten</code> fest: die Farbe oder den Wert von Objekten ohne Wert im Feld. <code>Titel in der Legende</code> benennt den Verlauf in der Legende; ohne Eingabe gilt der Name des Feldes.</div>
 </div>
+
+<code>Werte</code> zeigt den Bereich, den der Server aus dem Feld berechnet hat, zum Beispiel <code>2 bis 97 entlang der Palette</code>. Der Server berechnet ihn neu, wenn sich die Daten ändern. Um den Bereich festzuhalten, schalten Sie <code>Fester Bereich</code> ein und geben ihn unter <code>Bereich</code> ein; Werte außerhalb erhalten die Endwerte.
+
+## Nach Klassen {#by-classes}
+
+Nach Klassen teilt die Werte eines Feldes in Klassen und gibt jeder Klasse einen eigenen Wert: eine Farbe, Größe, Breite, ein Muster oder Symbol.
 
 <div class="step">
-  <div class="step-number">6</div>
-  <div class="content">Am Ende des <code>Farbskala</code>-Panels können Sie <code>Keine Daten</code> aktivieren, um Features, bei denen das gewählte Feld keinen Wert hat, eine Farbe zuzuweisen. Die Standardfarbe ist Grau (<code>#CCCCCC</code>). Klicken Sie auf das Farbfeld, um sie zu ändern.</div>
+  <div class="step-number">1</div>
+  <div class="content">Klicken Sie auf die Schaltfläche neben einer Eigenschaft, zum Beispiel <code>Farbe</code> im Editor <code>Füllung</code>, und wählen Sie <code>Nach Klassen</code>.</div>
 </div>
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/styling/attribute-based-fill-color.mp4').default} alt="Füllfarbe Styling" style={{ maxHeight: "auto", maxWidth: "20%", objectFit: "cover"}}/>
-</div>
-
-</TabItem>
-<TabItem value="stroke-color" label="Strichfarbe">
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Klicken Sie neben <code>Strichfarbe</code> (bei Linien-Layern mit <code>Farbe</code> beschriftet) auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>; der Bereich <code>Erweiterte Optionen</code> wird eingeblendet.</div>
+  <div class="content">Wählen Sie das Feld in der Liste, die sich öffnet. Text-, Zahlen- und Wahr/Falsch-Felder sind möglich. Der Klassifizierungseditor öffnet sich, zum Beispiel <code>Füllfarbe nach Klassen</code>.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In <code>Farbe basierend auf</code> wählen Sie das <strong>Text-, Zahlen- oder Boolean-Feld (wahr/falsch) zum Stylen</strong> aus.</div>
+  <div class="content">Wählen Sie unter <code>Methode</code>, wie die Klassen gebildet werden (siehe <a href="#datenklassifizierungsmethoden">Datenklassifizierungsmethoden</a>), und unter <code>Klassen</code>, wie viele.</div>
 </div>
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Jetzt können Sie zu <code>Palette</code> gehen und eine <strong>Farbpalette</strong> wählen oder die Standardpalette behalten. Erfahren Sie mehr im Abschnitt <a href="#farbpalette">Farbpalette</a> unten.</div>
+  <div class="content">Wählen Sie bei Farben eine <code>Palette</code>, bei Größen und Breiten einen <code>Bereich</code>. Bei einem Zahlenfeld zeigt ein Histogramm die Werte und die Klassengrenzen; ziehen Sie eine Grenze daran entlang, oder klicken Sie darauf und verwenden Sie die Pfeiltasten: Die Klassen werden zu <code>Manuelle Grenzen</code>, und die übrigen Grenzen bleiben. Eine Grenze bleibt einen Schritt innerhalb der Balken des Histogramms; bei einem Feld aus ganzen Zahlen bewegt sie sich in ganzen Zahlen.</div>
 </div>
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Klicken Sie auf <code>Farbskala</code> und wählen Sie Ihre <strong>Datenklassifizierungsmethode</strong>. Alle Methoden finden Sie im Abschnitt <a href="#datenklassifizierungsmethoden">Datenklassifizierungsmethoden</a>.</div>
+  <div class="content">Passen Sie die Klassen in der Klassenliste an (siehe <a href="#the-class-list">Die Klassenliste</a>).</div>
 </div>
+
+Weitere Einstellungen des Klassifizierungseditors:
+
+- <code>Feld</code>: das Feld, aus dem die Klassen gebildet werden. Sie können es hier ändern.
+- <code>Setzt</code>: die Eigenschaft, die die Klassen setzen, etwa <code>Füllfarbe</code>, <code>Umrissbreite</code> oder <code>Symbol</code>. Eine Eigenschaft, die eine andere Klassifizierung setzt, zeigt <code>auch gesetzt von</code> diesem Feld.
+- Das Papierkorb-Symbol im Kopf des Editors (<code>Klassifizierung entfernen</code>) entfernt die Klassen; die Eigenschaft hat dann wieder einen Wert.
+
+Der Server berechnet die Klassen: Währenddessen zeigt der Editor <code>Klassen werden berechnet…</code> und danach, aus wie vielen Objekten sie berechnet wurden. Die Klassen werden neu berechnet, wenn sich die Daten ändern, außer Klassen, die Sie von Hand festgelegt haben.
+
+### Die Klassenliste {#the-class-list}
+
+Jede Klasse hat eine Zeile mit:
+
+- ihrem Wert: ein Farbfeld, eine Zahl, ein Muster oder ein Symbol. Klicken Sie darauf, um ihn zu ändern.
+- bei <code>Manuelle Grenzen</code> ihrer Untergrenze, ab der zweiten Klasse.
+- ihrem Namen. Ohne Eingabe gelten die Werte oder der Bereich der Klasse, zum Beispiel <code>2.800 bis 3.600</code>; geben Sie einen Namen ein, erscheint er stattdessen in der Legende, etwa <code>Niedrig</code> oder <code>Hoch</code>.
+- der Zahl der Objekte darin.
+- einem Augen-Symbol, um die Klasse aus- oder einzublenden (<code>Diese Klasse ausblenden</code>, <code>Diese Klasse einblenden</code>).
+- einem Stift-Symbol, <code>Diese Klasse gestalten</code>, das die Klasse im Panel öffnet: siehe [Eine Klasse gestalten](#style-one-class).
+
+Am Ende der Liste steht <code>Andere</code> für Werte in keiner Klasse und <code>Keine Daten</code> für Objekte ohne Wert im Feld. Eine Zeile für Objekte, die es in den Daten nicht gibt, ist abgeblendet und zählt 0: Ihre Einstellungen warten auf Daten, die solche Objekte enthalten, und die Legende lässt sie weg.
+
+Einen Wert, den Sie in einer Klassenzeile ändern, behält die Klasse, auch wenn der Server die Klassen neu berechnet. Solange die Klassen eingegebene Größen oder Breiten haben, zeigt <code>Bereich</code> <code>Eigene Werte</code>; solange sie selbst gewählte Farben haben, zeigt <code>Palette</code> <code>Eigene Farben</code>. Wählen Sie einen Bereich oder eine Palette, erhalten alle Klassen ihre Werte wieder daraus.
+
+**Selbst gewählte Kategorien.** Bei der Methode <code>Kategorien</code> klicken Sie auf den Namen einer Klasse, um ihre Werte zu öffnen: Haken Sie die Werte an, die in diese Klasse gehören, durchsuchen Sie sie oder entfernen Sie die Klasse. <code>Klasse hinzufügen</code> beginnt eine neue Klasse (<code>Werte auswählen</code>). Ziehen Sie eine Klasse an die Stelle einer anderen, um sie zu verschieben, oder verschieben Sie sie mit Alt und der Pfeiltaste nach oben oder unten um eine Stelle, während eines ihrer Bedienelemente den Fokus hat (nur bei Kategorien, Klassen aus Wertebereichen behalten ihre Reihenfolge): Die Legende folgt der Reihenfolge. Sobald Sie die Klassen von Hand ändern, auch durch Verschieben, zeigt <code>Klassen</code> den Eintrag <code>Von Hand gewählt</code>: Neue Daten behalten diese Klassen, und Werte in keiner Klasse erscheinen als <code>Andere</code>.
+
+### Datenklassifizierungsmethoden {#datenklassifizierungsmethoden}
+
+| Methode | Wie sie die Klassen bildet | Geeignet für |
+| ------- | -------------------------- | ------------ |
+| <code>Kategorien</code> | Eine Klasse pro Wert. | Text- und Wahr/Falsch-Felder oder Zahlen, die Codes sind. Die einzige Methode für Text- und Wahr/Falsch-Felder. |
+| <code>Quantile</code> | Etwa gleich viele Objekte in jeder Klasse ([Quantil](https://www.plan4better.de/de/glossar/quantilklassifizierung)). | Rangfolgen; ergibt ungleiche Wertebereiche. |
+| <code>Gleiche Intervalle</code> | Klassen gleicher Breite ([Gleiche Intervalle](https://www.plan4better.de/de/glossar/gleiche-intervalle)). | Gleichmäßig verteilte Werte; bei schiefen Daten bleiben manche Klassen leer. |
+| <code>Natürliche Unterbrechungen</code> | Grenzen dort, wo die Werte springen (Jenks). | Werte, die Gruppen bilden. |
+| <code>Standardabweichung</code> | Klassen um den Mittelwert ([Standardabweichung](https://www.plan4better.de/de/glossar/standardabweichung-klassifizierung)). | Zeigen, wie weit Objekte vom Durchschnitt entfernt liegen; am besten bei normalverteilten Daten. |
+| <code>Head/Tail-Breaks</code> | Für Werte, bei denen wenige sehr groß sind. | Schiefe Daten, bei denen die Extreme zählen. |
+| <code>Geometrische Intervalle</code> | Klassen, die um denselben Faktor breiter werden. Nur für Felder, deren Werte alle über 0 liegen; sonst ist die Methode nicht verfügbar. | Werte, die über Größenordnungen wachsen, etwa Einwohnerzahlen oder Preise. |
+| <code>Manuelle Grenzen</code> | Sie geben die Untergrenze jeder Klasse ein. | Eigene Schwellenwerte, gleich über mehrere Karten. |
+
+<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>13 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> (bis zu 256) oder die häufigsten (<code>Top 3</code>, <code>Top 5</code>, <code>Top 8</code> oder <code>Top 12</code>) bei Kategorien.
+
+### Mehrere Klassifizierungen
+
+Ein Layer kann mehrere Klassifizierungen haben, zum Beispiel die Füllfarbe nach Flächennutzung und die Umrissbreite nach Fläche. Sie gelten der Reihe nach; wo zwei dieselbe Eigenschaft setzen, gewinnt die spätere. Die Reihenfolge ändern Sie in der Legende unter <code>Inhalt</code> bei <code>Reihenfolge</code> (siehe [Legende](../legend.md)).
+
+## Eine Klasse gestalten {#style-one-class}
+
+Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Füllung, einen Umriss, ein Symbol, eine Beschriftung oder einen Zoombereich erhalten.
 
 <div class="step">
-  <div class="step-number">6</div>
-  <div class="content">Am Ende des <code>Farbskala</code>-Panels können Sie <code>Keine Daten</code> aktivieren, um Features, bei denen das gewählte Feld keinen Wert hat, eine Farbe zuzuweisen. Die Standardfarbe ist Grau (<code>#CCCCCC</code>). Klicken Sie auf das Farbfeld, um sie zu ändern.</div>
+  <div class="step-number">1</div>
+  <div class="content">Klicken Sie im Kopf des Abschnitts <code>Polygone</code>, <code>Linien</code> oder <code>Punkte</code> auf <code>Alle Objekte</code> (erscheint, sobald der Layer Klassen hat). Das Menü <code>Eine Klasse gestalten</code> listet die Klassen aller Klassifizierungen.</div>
 </div>
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/styling/attribute-based-stroke-color.mp4').default} alt="Strichfarbe Styling" style={{ maxHeight: "auto", maxWidth: "20%", objectFit: "cover"}}/>
-</div>
-
-</TabItem>
-<TabItem value="custom-marker" label="Benutzerdefiniertes Symbol">
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Aktivieren Sie bei <code>Benutzerdefiniertes Symbol</code> den Schalter und klicken Sie auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>; der Bereich <code>Erweiterte Optionen</code> wird eingeblendet.</div>
+  <div class="content">Wählen Sie eine Klasse. Der Abschnitt zeigt <code>Nur … wird bearbeitet. Ein Punkt markiert, was sich von allen Objekten unterscheidet.</code> und zusätzlich <code>Sichtbar</code>, den eigenen Zoombereich der Klasse.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In <code>Symbol basierend auf</code> wählen Sie das <strong>Textfeld zum Stylen</strong> aus.</div>
+  <div class="content">Ändern Sie die Zeilen wie gewohnt: Die Änderungen gelten nur für diese Klasse. Um einer Eigenschaft wieder den Wert aller Objekte zu geben, wählen Sie im Menü ihrer Schaltfläche <code>Zurücksetzen</code>. Eine Klasse kann einen Teil ausschalten, den der Layer zeigt; ein Teil, der für den ganzen Layer ausgeschaltet ist, zum Beispiel die Füllung, bleibt aber in jeder Klasse aus: Sein Schalter ist ausgegraut mit <code>Für den Layer ausgeschaltet</code>, und die Klasse behält ihre Einstellungen für den Fall, dass Sie den Teil für alle Objekte wieder einschalten. Die Zeile eines solchen Teils zeigt <code>Für alle aus</code>. Bei jedem Teil außer dem Hauptteil (die Füllung von Polygonen, die Linie von Linien, der Marker von Punkten) bietet der Editor der Klasse <code>Pro Klasse erlauben</code> an: Der Teil bleibt für alle Objekte aus, und Klassen können ihn einschalten.</div>
 </div>
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Klicken Sie auf <code>Marker (Ordinal)</code> und wählen Sie den Marker für jeden Kategoriewert: aus der <code>Bibliothek</code> oder durch Hochladen eines eigenen Markers unter <code>Benutzerdefiniert</code>.</div>
+  <div class="content">Klicken Sie auf <code>Alle Objekte</code>, um wieder den ganzen Layer zu bearbeiten.</div>
 </div>
+
+## Nach Zoom {#by-zoom}
 
 <div class="step">
-  <div class="step-number">5</div>
-  <div class="content">Unter <code>Marker-Einstellungen</code> passen Sie den <code>Größe</code>-Schieberegler an, um die Basisgröße des Markers festzulegen, und nutzen Sie <code>Position</code>, um die Verankerung des Icons relativ zum Kartenpunkt zu steuern (<code>Mitte</code>, <code>Oben</code>, <code>Unten</code>, <code>Links</code>, <code>Rechts</code> oder eine Eckposition wie <code>Oben Links</code>).</div>
+  <div class="step-number">1</div>
+  <div class="content">Klicken Sie auf die Schaltfläche neben einer Eigenschaft und wählen Sie <code>Nach Zoom</code>. Der Editor öffnet sich mit einem Diagramm: die Zoomstufen von links nach rechts, der Wert an jedem Stopp und eine Markierung beim aktuellen Zoom der Karte. Zoomstufen, bei denen der Layer ausgeblendet ist, sind schattiert.</div>
 </div>
-
-<div class="step">
-  <div class="step-number">6</div>
-  <div class="content">Aktivieren Sie <code>Überlappung zulassen</code>, damit Marker nicht ausgeblendet werden, wenn sie sich auf der Karte überlappen.</div>
-</div>
-
-<div class="step">
-  <div class="step-number">7</div>
-  <div class="content">Optional: Klicken Sie neben <code>Marker-Einstellungen</code> auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>, um den Bereich <code>Erweiterte Optionen</code> einzublenden, und setzen Sie <code>Markergröße basierend auf</code> auf ein numerisches Feld, um die Markergröße pro Feature zu variieren. Weitere Details zur Größenklassifizierung finden Sie im Tab <a href="#punkteinstellungen">Punkteinstellungen</a>.</div>
-</div>
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <Video src={require('/img/map/styling/attribute-based-custom-marker.mp4').default} alt="Benutzerdefiniertes Symbol Styling" style={{ maxHeight: "auto", maxWidth: "40%", objectFit: "cover"}}/>
-</div>
-
-</TabItem>
-<TabItem value="stroke-width" label="Strichbreite">
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Klicken Sie neben <code>Strichbreite</code> auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>; der Bereich <code>Erweiterte Optionen</code> wird eingeblendet.</div>
+  <div class="content">Klicken Sie auf einen Stopp, um ihn auszuwählen, an eine andere Stelle im Diagramm, um einen hinzuzufügen, und ziehen Sie einen Stopp, um ihn zu verschieben. Für den ausgewählten Stopp legen Sie unter <code>Stopp</code> seinen Zoom und unter <code>Wert</code> seinen Wert fest; bei mehr als zwei Stopps entfernt ihn das Papierkorb-Symbol neben <code>Stopp</code>.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In <code>Strich basierend auf</code> wählen Sie das <strong>numerische Feld</strong> aus, das die Strichbreite steuern soll.</div>
+  <div class="content">Wählen Sie unter <code>Übergang</code>, wie sich der Wert zwischen den Stopps ändert: <code>Linear</code>, <code>Weich</code> (erst langsam, zum nächsten Stopp hin schneller) oder <code>Stufen</code> (springt an jedem Stopp zum nächsten Wert). Werte wie eine Strichart oder ein Symbol wechseln immer an jedem Stopp. Auf einem Marker mit Form, einem Pin oder einem Symbol auf einem Kreis, auf dem Marker einer Fläche oder Linie und auf einem Muster ändert sich eine Farbe einmal je ganzer Zoomstufe: bei Zoom 12,5 hat sie ihren Wert von Zoom 12.</div>
 </div>
+
+**Größen, die einem Feld folgen und mit dem Zoom wachsen.** Legen Sie den Wert zuerst <code>Nach Attribut</code> fest und wählen Sie dann <code>Nach Zoom</code>: Jeder Stopp behält das Feld. Der <code>Wert</code> eines Stopps zeigt dann <code>Nach</code> und den Namen des Feldes; klicken Sie darauf, um für diesen Stopp <code>Kleinster Wert</code> und <code>Größter Wert</code> festzulegen, etwa größere Kreise bei einem höheren Zoom. Zwischen den Stopps gehen die Größen ineinander über, sodass die Kreise beim Wachsen ihre Verhältnisse behalten. Das gilt für jede Größe, Breite, Farbe, Deckkraft und Höhe, die sich <code>Nach Attribut</code> festlegen lässt.
+
+## Farbpaletten {#color-palettes}
+
+Die Palettenauswahl öffnet sich über <code>Palette</code> oder <code>Farben</code>. Sie zeigt die Paletten von GOAT nach Art (<code>Alle</code>, <code>Sequenziell</code>, <code>Divergierend</code> und <code>Kategorien</code>), die Paletten, die dieser Stil verwendet (<code>Verwendet</code>), und Ihre eigenen (<code>Eigene</code>). Unter <code>Alle</code> steht <code>Wissenschaft und Gelände</code> zuerst: die wahrnehmungsgleichen Verläufe Viridis, Magma, Cividis, Inferno und Plasma sowie Verläufe für Höhen und Vegetation (Elevation, Terrain, Hypsometric tints, NDVI), für Raster wie für Zahlenfelder. <code>Umkehren</code> dreht die Farben um.
+
+| Art | Beispiel | Beschreibung |
+| :-: | -------- | ------------ |
+| <code>Sequenziell</code> | <img src={require('/img/map/styling/sequential_palette.png').default} alt="Sequenzielle Paletten"/> | **Für Werte in einer Reihenfolge**, etwa steigende oder fallende Zahlen: Die Farben laufen von einem Ende zum anderen. |
+| <code>Divergierend</code> |   | **Für Werte um einen Mittelpunkt**, etwa positive und negative Werte. |
+| <code>Kategorien</code> | <img src={require('/img/map/styling/qualitative_palette.png').default} alt="Paletten für Kategorien"/> | **Für unterschiedliche Kategorien** ohne Reihenfolge oder Rangordnung. |
+
+Eine Farbe nach Attribut (ein stufenloser Verlauf) listet die Farben der Palette unten in ihrem Editor als Klassenliste (<code>Farbe</code> und <code>Wert</code>): Jede Zeile zeigt eine Farbe und den Feldwert, an dem sie liegt (den Farbcode, solange die Werte noch nicht bekannt sind); ein Klick auf das Farbfeld ändert sie, zeigen Sie auf eine Zeile (oder erreichen Sie sie mit der Tastatur), dann fügt das Plus eine Kopie ihrer Farbe dahinter ein (bis zu 12 Farben) und der Papierkorb entfernt ihre Farbe (solange mehr als zwei übrig sind), eine Zeile lässt sich an eine andere Stelle ziehen (oder mit Alt und der Pfeiltaste nach oben oder unten um eine Stelle verschieben, während eines ihrer Bedienelemente den Fokus hat), und <code>Farbe hinzufügen</code> fügt am Ende eine an. Die erste Änderung macht die Palette zu eigenen Farben (2 bis 12; eine umgekehrte Palette behält die Reihenfolge, in der sie gezeichnet wird), und eine Palette erneut zu wählen ersetzt sie. Dieselbe Liste steht unter <code>Farben</code> einer Heatmap und von H3-Sechsecken ohne Klassen. Klassen haben keine solche Liste: Ihre Zeilen sind die Farben zum Bearbeiten, und <code>Palette</code> färbt sie alle neu.
+
+## Regeln {#rules}
+
+Eine Regel ist eine Bedingung auf beliebigen Feldern und das, was sie für die passenden Objekte ändert, für das, was eine Klassifizierung nicht ausdrücken kann: mehrere Felder auf einmal, ein Schwellenwert neben Kategorien oder leere Werte. Regeln gelten nach den Klassifizierungen, in der Reihenfolge der Liste: Wo zwei Regeln dieselbe Eigenschaft ändern, gewinnt die weiter unten.
 
 <div class="step">
-  <div class="step-number">4</div>
-  <div class="content">Klicken Sie auf <code>Größenskala</code>, um das Klassifizierungsfenster zu öffnen. Wählen Sie eine <strong>Klassifizierungsmethode</strong> und legen Sie die Anzahl der <strong>Schritte</strong> fest (2–10). Jeder Schritt zeigt eine Breitenvorschau neben dem Wertebereich.</div>
+  <div class="step-number">1</div>
+  <div class="content">Klicken Sie im Abschnitt <code>Regeln</code> auf <code>Regel hinzufügen</code> (das Plus).</div>
 </div>
-
-:::note
-Die attributbasierte Strichbreite gilt für **Linien, Polygone und Punkte**.
-:::
-
-</TabItem>
-<TabItem value="point-settings" label="Punkteinstellungen">
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Klicken Sie neben <code>Punkteinstellungen</code> auf das Optionen-Symbol <img src={require('/img/icons/options.png').default} alt="Optionen-Symbol" style={{ maxHeight: "20px", maxWidth: "20px", objectFit: "cover"}}/>; der Bereich <code>Erweiterte Optionen</code> wird eingeblendet.</div>
+  <div class="content">Klicken Sie unter <code>Wenn</code> auf <code>Bedingung hinzufügen</code> und wählen Sie ein Feld. Der Editor der Bedingung öffnet sich neben der Regel: Wählen Sie unter <code>Bedingung</code> den Vergleich und legen Sie den Wert fest wie beim <a href="../../filter#nach-attributen-filtern">Filtern</a>, aus der Liste der Werte des Felds mit ihrer Häufigkeit oder mit dem Schieberegler über dem Histogramm. Jede Bedingung steht danach als Satz in ihrer Zeile: Ein Klick auf die Zeile ändert sie; zeigen Sie auf die Zeile und klicken Sie auf das Papierkorb-Symbol, um sie zu entfernen (eine Regel behält mindestens eine Bedingung). Ab zwei Bedingungen legt das Menü neben <code>Wenn</code> fest, ob Objekte jede Bedingung erfüllen (<code>Alle erfüllt</code>) oder mindestens eine (<code>Eine erfüllt</code>).</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">In <code>Radius basierend auf</code> wählen Sie das <strong>numerische Feld</strong> aus, das den Punktradius steuern soll.</div>
+  <div class="content">Klicken Sie auf <code>Regel hinzufügen</code>. Der Editor der Regel öffnet sich.</div>
 </div>
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Klicken Sie auf <code>Größenskala</code>, um das Klassifizierungsfenster zu öffnen. Wählen Sie eine <strong>Klassifizierungsmethode</strong> und legen Sie die Anzahl der <strong>Schritte</strong> fest (2–10). Jeder Schritt zeigt eine Größenvorschau neben dem Wertebereich. Es stehen dieselben Methoden wie bei der Farbklassifizierung zur Verfügung: [Quantil](https://www.plan4better.de/de/glossar/quantilklassifizierung), [Standardabweichung](https://www.plan4better.de/de/glossar/standardabweichung-klassifizierung), [Gleiches Intervall](https://www.plan4better.de/de/glossar/gleiche-intervalle), Heads und Tails, Benutzerdefinierte Schritte und Benutzerdefinierte Ordinalskala.</div>
+  <div class="content">Geben Sie unter <code>Name</code> einen Namen ein (ohne Eingabe gilt die Bedingung als Satz) und wählen Sie unter <code>Dann</code>, was sie bewirkt: <code>Zeigen</code> aus blendet die passenden Objekte aus, <code>Zoomstufen</code> zeigt sie bei weniger Zoomstufen, <code>In Legende</code> aus lässt die Regel in der Legende weg, und <code>Passende Objekte gestalten</code> öffnet die Regel im Symbol-Abschnitt, um ihnen eine eigene Füllung, einen Umriss, ein Symbol oder eine Beschriftung zu geben, wie bei <a href="#style-one-class">einer Klasse</a>.</div>
 </div>
 
-:::note
-Punkteinstellungen sind nur für **Punkt-Layer ohne Benutzerdefiniertes Symbol** verfügbar. Für Punkt-Layer mit einem Benutzerdefinierten Symbol verwenden Sie <code>Markergröße basierend auf</code> im Tab Benutzerdefiniertes Symbol.
-:::
-
-</TabItem>
-</Tabs> 
-
-## Farbpalette
-
-Eine Palette ist ein Set von Farben, die Ihre Datenwerte oder Kategorien repräsentieren.
-
-Sie können Ihre Palette anpassen, indem Sie den <code>Typ</code> und die <code>Schritte</code> auswählen, mit <code>Umgekehrt</code> die Farben umkehren oder <code>Benutzerdefiniert</code> für Ihren eigenen Farbbereich aktivieren.
-
-GOAT bietet vier vordefinierte Palettentypen:
-
-<p></p>
-
-| Palettentyp  | Beispiel                                                                                                                                                     | Beschreibung                                                                                                                                                                                                                                  |
-| :----------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Divergierend | <img src={require('/img/map/styling/diverging_palette.png').default} alt="divergierend" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/> | **Nützlich für Daten mit einem zentralen Mittelpunkt**, wie positive und negative Werte. Hilft dabei, Variationen um diesen Mittelpunkt klar zu zeigen.                                                                                       |
-| Sequenziell  | <img src={require('/img/map/styling/sequential_palette.png').default} alt="sequenziell" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/> | **Ideal für Daten, die einer natürlichen Progression oder geordneten Sequenz folgen**, wie steigende oder sinkende Werte. Exzellent für die Visualisierung kontinuierlicher Daten, zeigt allmähliche Änderungen von einem Extrem zum anderen. |
-|  Qualitativ  | <img src={require('/img/map/styling/qualitative_palette.png').default} alt="qualitativ" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/> | **Entwickelt für unterschiedliche Kategorien oder Klassen.** Hilft dabei, zwischen diskreten Kategorien zu unterscheiden, ohne Ordnung oder Wichtigkeit zu implizieren.                                                                       |
-| Einzelner Farbton | <img src={require('/img/map/styling/singlehue_palette.png').default} alt="einzelner Farbton" style={{ maxHeight: "auto", maxWidth: "auto", objectFit: "cover"}}/>    | **Verwendet verschiedene Schattierungen und Töne einer einzigen Farbe.** Erzeugt ein harmonisches Aussehen und ist effektiv für die Informationsübermittlung ohne die Ablenkung mehrerer Farben.                                              |
-
-## Datenklassifizierungsmethoden
-
-Die <code>Farbskala</code> bestimmt, wie Datenwerte auf Farben abgebildet werden. GOAT bietet sechs Datenklassifizierungsmethoden: **Quantil, Standardabweichung, Gleiches Intervall, Heads und Tails, Benutzerdefinierte Schritte und Benutzerdefinierte Ordinalskala.** Für Text- und Boolean-Felder steht nur Benutzerdefinierte Ordinalskala zur Verfügung. Alle Methoden haben standardmäßig 7 Klassen, aber Sie können diese Anzahl nach Bedarf anpassen.
-
-### Quantil
-
-**Teilt Daten in Klassen mit gleichen Anzahlen von Features auf. Ideal für linear verteilte Daten**, erzeugt aber ungleiche Wertebereiche.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <img src={require('/img/map/styling/quantile.webp').default} alt="Quantil" style={{ maxHeight: "auto", maxWidth: "75%", objectFit: "cover"}}/>
-
-</div>  
-
-### Standardabweichung
-
-**Klassifiziert Daten nach Abweichung vom Durchschnitt**. Zeigt **relative Streuung, Verteilung und Ausreißer statistisch**, benötigt aber normalverteilte Daten.
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <img src={require('/img/map/styling/standard_deviation.webp').default} alt="Standardabweichung" style={{ maxHeight: "auto", maxWidth: "75%", objectFit: "cover"}}/>
-
-</div> 
-
-### Gleiches Intervall
-
-**Teilt Daten in gleich große Wertebereiche auf**. Funktioniert gut bei **gleichmäßig verteilten Daten, kann aber bei schiefen Daten irreführend sein** (einige Klassen können leer sein).
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <img src={require('/img/map/styling/equal_interval.webp').default} alt="Gleiches Intervall" style={{ maxHeight: "auto", maxWidth: "75%", objectFit: "cover"}}/>
-
-</div> 
-
-### Heads und Tails
-
-**Behandelt schiefe Daten durch Hervorhebung von Extremen**. Fokussiert auf 'Köpfe' (sehr hohe Werte) und 'Schwänze' (sehr niedrige Werte). **Nützlich für Datensätze, bei denen Extreme am wichtigsten sind und zur Hervorhebung von Disparitäten.**
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <img src={require('/img/map/styling/heads_tails.webp').default} alt="Heads und Tails" style={{ maxHeight: "auto", maxWidth: "75%", objectFit: "cover"}}/>
-
-</div> 
-
-### Benutzerdefinierte Ordinalskala (für **Strings** und **Boolean-Werte**)
-
-**Sortiert und visualisiert String-Daten** wie Kategorien oder Labels. Da Strings keine natürliche Ordnung haben, **ermöglicht Benutzerdefinierte Ordinalskala Ihnen, Ihre eigenen Ordnungsregeln zu definieren** für maßgeschneiderte Sequenzen. Ein Boolean-Feld hat die zwei Werte `true` und `false`, denen Sie je eine Farbe geben können.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <img src={require('/img/map/styling/ordinal.webp').default} alt="Benutzerdefinierte Ordinalskala für Strings" style={{ maxHeight: "auto", maxWidth: "75%", objectFit: "cover"}}/>
-
-</div>
-
-<p></p>
-
-Sie können mehr Schritte hinzufügen und mehrere String-Werte pro Gruppe aus dem <code>Dropdown-Menü</code> auswählen, das alle Werte aus Ihrem Datensatz auflistet.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-
-  <Video src={require('/img/map/styling/custom_ordinal.mp4').default} alt="Benutzerdefinierte Ordinalskala für Strings" style={{ maxHeight: "300px", maxWidth: "300px", objectFit: "cover"}}/>
-
-</div> 
-
-### Benutzerdefinierte Schritte (für **Zahlen**)
-
-**Für numerische Daten mit benutzerdefinierten Breakpoints oder Schwellenwerten**. Bietet maßgeschneiderte Visualisierungen für spezifische Kontexte. **Hilft dabei, Konsistenz über Karten hinweg zu erhalten**. Gibt volle Kontrolle über Klassifizierungen, die mit realen Bedürfnissen übereinstimmen.
-
+Die Zeilen des Abschnitts <code>Regeln</code> zeigen den Namen jeder Regel und was sie ändert. Mit den Pfeilen verschieben Sie eine Regel nach oben oder unten; das Papierkorb-Symbol im Kopf des Regel-Editors (<code>Regel entfernen</code>) entfernt sie. Eine Bedingung, die die Zeilen nicht darstellen können, öffnet sich als CQL2-Text (<code>Als CQL2 bearbeiten</code>).
 
 :::tip HINWEIS
-Um Ihren Datensatz mit den Styling-Einstellungen in anderen Projekten zu verwenden, [speichern Sie Ihren Stil als Standard](./styling.md#stil-kopieren-und-einfügen).
+Um Ihre Gestaltung dieses Datensatzes auch in anderen Projekten zu nutzen, machen Sie sie zum Standardstil des Datensatzes: siehe [Benannte Stile](./styling.md#named-styles).
 :::

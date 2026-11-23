@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { type CustomDomainConfig, useCustomDomainConfig } from "@/lib/api/customDomainConfig";
 import { isApexDomain } from "@/lib/validations/customDomain";
 
-import CopyButton from "@/components/settings/whiteLabel/CopyButton";
+import CopyButton from "@/components/common/CopyButton";
 
 /** The one record a domain needs: an A record on `@` for a main domain, a
  * CNAME on the leftmost label for a subdomain. Core accepts either. */

@@ -23,8 +23,9 @@ This file is the short version. The full guide is in the GOAT documentation:
 - Open ports: **443**, plus 80 for the redirect from `http://` (or the one port you
   choose for plain HTTP). Nothing else needs to be reachable.
 - For automatic HTTPS: a DNS name pointing at the server.
-- Outgoing internet access for the base data download, the basemaps and the
-  optional integrations.
+- Outgoing internet access for the base data download, the basemaps, the raster
+  layers' files (geoapi and processes read each COG where its address points) and
+  the optional integrations.
 - `openssl` for `setup.sh`, `curl` and `jq` for `smoke.sh`.
 
 The bundle does not install or upgrade Docker: install it from
@@ -62,7 +63,10 @@ The public URL must be a bare origin (no path). All services live under it:
 certificate into `./certs` and set `GOAT_CA_BUNDLE=/certs/<file>.pem` in `.env`.
 This also covers an SMTP relay whose certificate comes from that CA: GOAT and
 Keycloak verify the relay's certificate against the public CAs and this file.
-The assistant trusts `GOAT_CA_BUNDLE` like the other services.
+The assistant trusts `GOAT_CA_BUNDLE` like the other services. geoapi and
+processes trust it for raster files and S3 too: they start through
+`init/ca/ca-bundle.sh`, which writes the public CAs plus this file into one
+file and points `GDAL_CURL_CA_BUNDLE` and `AWS_CA_BUNDLE` at it.
 
 More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_hosting/docker_compose/https)
 
@@ -86,13 +90,20 @@ More in the docs: [HTTPS and addresses](https://goat.plan4better.de/docs/self_ho
   (or turn its direct access grants off).
 - **No login at all** (local demos only): `AUTH=False`. Everybody acts as one
   built-in administrator.
+- **Raster files on your own network:** geoapi and processes refuse a raster
+  layer whose address resolves to a private, loopback or link-local address, so a
+  layer cannot make GOAT read from inside your network. List the hosts that may
+  anyway (an object store holding COGs) in `RASTER_PRIVATE_HOSTS`, comma-separated.
+  core asks the bundle's geoapi for a COG's bounds when a raster layer is added
+  or its file address changes (`GOAT_GEOAPI_URL`, `http://geoapi:8000`; change it
+  only if geoapi runs elsewhere).
 
 More in the docs: [External services](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services)
 
 ## Optional integrations
 
 In `.env`: `NEXT_PUBLIC_MAPTILER_KEY` (satellite basemap), `NEXT_PUBLIC_MAPBOX_TOKEN`
-(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog, and the OpenStreetMap and Overture mirror for Add layer › Connect service),
+(place search), `SMTP_*` (email, below), `CATALOG_S3_*` (GOAT data catalog with its previews for signed-in users, and the OpenStreetMap and Overture mirror for Add layer › Connect service),
 `GEOCODING_URL` / `GEOCODING_AUTHORIZATION`, `ODOO_*` (Odoo connection and support tickets, below),
 `NEXT_PUBLIC_SUPPORT_EMAIL` (address of "Report a problem" and the AI assistant's "Feedback" link without tickets, default `support@plan4better.de`),
 `OTEL_*` (telemetry export).
@@ -112,6 +123,12 @@ go into `./assistant.env` (see `.env.example`). External agents reach the MCP
 endpoint at `<GOAT_PUBLIC_URL>/assistant/mcp`.
 
 More in the docs: [External services → AI assistant](https://goat.plan4better.de/docs/self_hosting/docker_compose/external_services#assistant)
+
+**3D sources.** `TERRAIN_TILES_URL` (Terrarium elevation tiles, default Mapterhorn's public
+server) and `BUILDINGS_TILES_URL` (an OpenMapTiles TileJSON for 3D buildings on basemaps without
+their own, default OpenFreeMap) go to both the web app and core. Viewers' browsers load them while a
+map is in 3D, so those hosts see the viewers' IP addresses (Mapterhorn runs on Cloudflare, which
+keeps logs up to 30 days). Point a URL at your own copy, or set it empty to turn the feature off.
 
 **Email.** GOAT sends invitations and Keycloak sends password resets through one
 SMTP server. Email is off while `SMTP_HOST` is empty.
@@ -215,6 +232,43 @@ docker compose pull
 docker compose up -d   # database migrations run automatically
 ./smoke.sh --quick
 ```
+
+The release that introduces GOAT Style, the new layer styles, converts every
+stored style while the database migrates (tens of thousands of styles take about
+a minute) and keeps the old styles for one release. Back up before upgrading:
+going back means restoring that backup, and style changes made after the upgrade
+are lost. Map thumbnails are drawn again once. A published project whose layers
+were restyled after its last publish lists those layers as unpublished changes:
+they never were published, and the public map stays as it is until you publish
+again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG
+file. Fill it in once for layers added before (idempotent, `--dry-run` lists what
+it would store):
+
+```bash
+docker compose run --rm --no-deps geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+That release also tiles point layers with a new recipe. Run the Windmill task
+`f/goat/tasks/sync_pmtiles` once, with `force` off, so existing point layers get
+the new tiles (see "Windmill" in the docs for how to reach it).
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that
+still runs the old version sends styles the old way, and core refuses those
+saves (422) until the tab is reloaded. API scripts that still send `properties`
+when they update a layer, a project layer or a layer group get the same answer,
+with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of",
+"does not contain the text" and the negated date conditions) into the form the
+filter panel writes now: they keep the features without a value, so a map with
+such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while
+the running release keeps serving. If a long-running transaction holds one of
+the tables, the migration stops after a few seconds with a lock timeout error
+and changes nothing more: run the upgrade again.
 
 More in the docs: [Operations → Upgrades](https://goat.plan4better.de/docs/self_hosting/docker_compose/operations#upgrade)
 

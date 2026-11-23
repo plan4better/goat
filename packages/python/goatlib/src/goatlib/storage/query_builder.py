@@ -4,14 +4,35 @@ This module provides reusable components for building DuckDB SQL queries
 with spatial filters, CQL2 filters, and other common query patterns.
 """
 
+import json
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from goatlib.filter.normalize import normalize
 from goatlib.storage.cql_evaluator import cql2_to_duckdb_sql, parse_cql2_filter
 
 logger = logging.getLogger(__name__)
+
+#: The most reasons a refused filter names; the rest it counts.
+_MAX_REASONS = 3
+#: The kinds of column a filter's checker reads as fields, as the map's
+#: queryables give them (a time is text there); objects and geometries are no
+#: fields.
+_FIELD_KINDS = {"time": "string"} | {
+    kind: kind
+    for kind in ("string", "number", "integer", "boolean", "date", "datetime")
+}
+
+
+class UnreadableFilterError(ValueError):
+    """A layer's filter that a tool or an export cannot apply.
+
+    Refused rather than dropped: without it the tool would run on the whole
+    layer and hand back a result that looks right.
+    """
 
 
 @dataclass
@@ -122,38 +143,141 @@ def build_cql_filter(
         normalize_geometry_aliases: Whether to normalize 'geom' to actual column name
 
     Returns:
-        QueryFilters with CQL clause, or empty if parsing fails
-
-    Raises:
-        ValueError: If CQL filter is invalid and should fail the request
+        QueryFilters with CQL clause, or empty if parsing fails. A map request
+        then shows every feature; a tool or an export, which must not run on
+        the whole layer instead, uses `checked_cql_filter`.
     """
-    filters = QueryFilters()
-
     try:
-        # Include geometry column and common aliases in valid field names
-        geom_aliases = {"geom", "geometry", geometry_column.lower()}
-        cql_field_names = list(column_names)
-        cql_field_names.extend(geom_aliases)
-
-        # Preprocess filter to normalize geometry column references
-        filter_str = cql_filter["filter"]
-        if normalize_geometry_aliases and isinstance(filter_str, str):
-            filter_str = _normalize_geometry_property(filter_str, geometry_column)
-
-        ast = parse_cql2_filter(
-            filter_str,
-            cql_filter.get("lang", "cql2-json"),
+        return _translated(
+            cql_filter, column_names, geometry_column, normalize_geometry_aliases
         )
-        cql_sql, cql_params = cql2_to_duckdb_sql(ast, cql_field_names, geometry_column)
-        filters.add(f"({cql_sql})", *cql_params)
-
-        logger.debug("CQL filter SQL: %s, params: %s", cql_sql, cql_params)
-
     except Exception as e:
         logger.warning("CQL2 parse error: %s", e)
         # Don't fail the request, just skip the filter
+        return QueryFilters()
 
+
+def _translated(
+    cql_filter: dict[str, Any],
+    column_names: list[str],
+    geometry_column: str,
+    normalize_geometry_aliases: bool,
+) -> QueryFilters:
+    """`build_cql_filter`'s clause; raises where the filter does not translate."""
+    filters = QueryFilters()
+    # Include geometry column and common aliases in valid field names
+    geom_aliases = {"geom", "geometry", geometry_column.lower()}
+    cql_field_names = list(column_names)
+    cql_field_names.extend(geom_aliases)
+
+    # Preprocess filter to normalize geometry column references
+    filter_str = cql_filter["filter"]
+    if normalize_geometry_aliases and isinstance(filter_str, str):
+        filter_str = _normalize_geometry_property(filter_str, geometry_column)
+
+    # Legacy and standard spellings the parser does not take (goatlib.filter.normalize)
+    if cql_filter.get("lang", "cql2-json") == "cql2-json":
+        filter_str = normalize(
+            json.loads(filter_str) if isinstance(filter_str, str) else filter_str
+        )
+
+    ast = parse_cql2_filter(
+        filter_str,
+        cql_filter.get("lang", "cql2-json"),
+    )
+    cql_sql, cql_params = cql2_to_duckdb_sql(ast, cql_field_names, geometry_column)
+    filters.add(f"({cql_sql})", *cql_params)
+
+    logger.debug("CQL filter SQL: %s, params: %s", cql_sql, cql_params)
     return filters
+
+
+def _unreadable(reasons: list[str]) -> UnreadableFilterError:
+    shown = " ".join(reasons[:_MAX_REASONS])
+    if len(reasons) > _MAX_REASONS:
+        shown += f" ({len(reasons) - _MAX_REASONS} more)"
+    return UnreadableFilterError(
+        f"The layer's filter cannot be applied: {shown} "
+        "Change or remove the filter and try again."
+    )
+
+
+def checked_cql_filter(
+    cql_filter: Any,
+    columns: Mapping[str, str],
+    geometry_column: str = "geometry",
+) -> QueryFilters:
+    """A layer's CQL2-JSON filter as WHERE clauses for a tool or an export,
+    which filter by it in full or not at all.
+
+    `build_cql_filter` drops a filter it cannot read: a map request then shows
+    every feature, but a tool or an export would run on the whole layer and
+    hand back a result that looks right. Here such a filter raises
+    `UnreadableFilterError` with its reasons: a filter over a request ceiling
+    (`goatlib.filter.limits.REQUEST_MAX_*`), one the checker finds broken as a
+    saved filter (`goatlib.filter.validate` with `stored=True`: its errors and
+    the fields a data change broke; the save limits are warnings there, so a
+    filter saved over one applies as it does on the map), and one the
+    evaluator does not translate.
+
+    Args:
+        cql_filter: The filter, as a dict or JSON text; None or an empty
+            object is no filter and gives no clause.
+        columns: The layer's columns with their DuckDB types (DESCRIBE), or
+            with the kinds `goatlib.utils.column_types.type_class` gives them.
+            The checker reads them as the map's queryables give them: a time
+            as text, objects and geometries as no fields.
+        geometry_column: Name of the geometry column
+    """
+    from typing import get_args
+
+    from goatlib.filter.validate import over_request_limits, validate
+    from goatlib.style.context import DataContext, FieldInfo
+    from goatlib.utils.column_types import TypeClass, type_class
+
+    def kind_of(column_type: str) -> str:
+        return (
+            column_type
+            if column_type in get_args(TypeClass)
+            else type_class(column_type)
+        )
+
+    if isinstance(cql_filter, str):
+        try:
+            cql_filter = json.loads(cql_filter)
+        except ValueError:
+            raise _unreadable(["The filter is not valid JSON."]) from None
+    if cql_filter is None or cql_filter == {}:
+        return QueryFilters()
+    issues = over_request_limits(cql_filter) if isinstance(cql_filter, dict) else []
+    if not issues:
+        fields = {
+            name: FieldInfo(name=name, type=_FIELD_KINDS[kind])  # type: ignore[arg-type]
+            for name, column_type in columns.items()
+            if (kind := kind_of(column_type)) in _FIELD_KINDS
+        }
+        context = DataContext(kind="vector", fields=fields)
+        issues = [
+            issue
+            for issue in validate(cql_filter, context, stored=True)
+            if issue.level in ("error", "damaged")
+        ]
+    if issues:
+        raise _unreadable([issue.message for issue in issues])
+    try:
+        return _translated(
+            {"filter": json.dumps(cql_filter), "lang": "cql2-json"},
+            list(columns),
+            geometry_column,
+            normalize_geometry_aliases=True,
+        )
+    except RecursionError:
+        raise _unreadable(["The filter nests too deeply."]) from None
+    except Exception as e:
+        logger.warning("CQL2 filter refused: %s", e)
+        raise _unreadable(
+            ["It uses a field or a form the services cannot read."]
+        ) from None
 
 
 def _normalize_geometry_property(filter_str: str, geometry_column: str) -> str:

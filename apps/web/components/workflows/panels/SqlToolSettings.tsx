@@ -50,9 +50,10 @@ import {
   selectVariables,
 } from "@/lib/store/workflow/selectors";
 import { requestMapView, requestTableView, updateNode } from "@/lib/store/workflow/slice";
+import { isRasterDataset, isRasterLayer, takesLayer } from "@/lib/utils/workflowDatasets";
 import { sqlInputsByHandle } from "@/lib/utils/workflowHandles";
 import type { ContentItem } from "@/lib/validations/content";
-import type { WorkflowNode } from "@/lib/validations/workflow";
+import type { DatasetNodeData, WorkflowNode } from "@/lib/validations/workflow";
 
 import type { SelectorItem } from "@/types/map/common";
 
@@ -294,7 +295,12 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
         layerName = sourceData.label as string;
       }
 
-      if (sourceData?.type === "dataset" && sourceData.layerId) {
+      // A raster layer (workflows take none) offers no columns.
+      if (
+        sourceData?.type === "dataset" &&
+        sourceData.layerId &&
+        !isRasterDataset(sourceData as DatasetNodeData, projectLayers)
+      ) {
         const layerIdValue = sourceData.layerId as string;
         const isUUID = layerIdValue.includes("-") && layerIdValue.length > 20;
         if (isUUID) {
@@ -339,8 +345,9 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
   const addl0Uuid = additionalLayers[0]?.layerId;
   const addl1Uuid = additionalLayers[1]?.layerId;
 
-  const addl0Fields = useLayerFieldsForSql(addl0Uuid);
-  const addl1Fields = useLayerFieldsForSql(addl1Uuid);
+  // A raster layer of the project (workflows take none) is asked for no fields.
+  const addl0Fields = useLayerFieldsForSql(isRasterLayer(addl0Uuid, projectLayers) ? undefined : addl0Uuid);
+  const addl1Fields = useLayerFieldsForSql(isRasterLayer(addl1Uuid, projectLayers) ? undefined : addl1Uuid);
 
   // Predicted columns for tool source nodes (keyed by source node ID)
   const [predictedColumns, setPredictedColumns] = useState<Record<string, Record<string, string>>>({});
@@ -397,8 +404,9 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
       if (!targetNode) return {};
       const targetData = targetNode.data as Record<string, unknown>;
 
-      // Dataset node: fetch columns from queryables API
+      // Dataset node: fetch columns from queryables API (a raster layer has none)
       if (targetData?.type === "dataset" && targetData.layerId) {
+        if (isRasterDataset(targetData as DatasetNodeData, projectLayers)) return {};
         const layerIdValue = targetData.layerId as string;
         let layerUuid = layerIdValue;
         if (!layerIdValue.includes("-") || layerIdValue.length <= 20) {
@@ -683,7 +691,8 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
   // Convert project layers to selector items
   const layerSelectorItems: SelectorItem[] = useMemo(() => {
     if (!projectLayers) return [];
-    return projectLayers.map((layer) => ({
+    // Workflows take no raster layers.
+    return projectLayers.filter(takesLayer).map((layer) => ({
       value: String(layer.id),
       label: layer.name,
       icon:
@@ -1065,6 +1074,8 @@ export default function SqlToolSettings({ node, onBack }: SqlToolSettingsProps) 
         open={myDatasetsOpen}
         onClose={() => setMyDatasetsOpen(false)}
         onPick={handleMyDatasetsPick}
+        canPick={(item) => takesLayer({ type: item.layer_type })}
+        cannotPickLabel={t("workflow_raster_not_supported")}
       />
 
       {/* Save Dataset Dialog */}

@@ -152,6 +152,24 @@ Der Assistent speichert seine Unterhaltungen im Schema `assistant` der GOAT-Date
    ./smoke.sh --quick
    ```
 
+Releases, die gespeicherte Daten umwandeln, nennen das in ihren Release Notes. Das Release, das GOAT Style einführt, die neuen Layer-Stile, wandelt bei der Datenbankmigration jeden gespeicherten Stil um (zehntausende Stile dauern etwa eine Minute) und behält die alten Stile für ein Release. Um zurückzugehen, stellen Sie das Backup aus Schritt 1 wieder her: Änderungen an Stilen nach dem Update gehen dabei verloren. Die Vorschaubilder der Karten werden einmal neu gezeichnet, beim nächsten Lauf des Vorschaubild-Jobs. Ein veröffentlichtes Projekt, dessen Layer nach der letzten Veröffentlichung umgestaltet wurden, führt diese Layer als unveröffentlichte Änderungen: Sie waren nie veröffentlicht, und die öffentliche Karte bleibt, wie sie ist, bis Sie erneut veröffentlichen.
+
+Ab diesem Release speichert GOAT die Ausdehnung eines Raster-Layers, der aus einer COG-Datei hinzugefügt wird, damit „Auf Layer zoomen“ und die Kartenvorschau ihn finden. Layer, die vorher hinzugefügt wurden, haben keine. Sobald das neue Release läuft, ergänzen Sie sie einmal:
+
+```bash
+docker compose run --rm --no-deps geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+Der Befehl liest nur den Header jeder Datei und ändert nur Layer ohne Ausdehnung; ein erneuter Lauf schadet also nicht. `--dry-run` zeigt, was er speichern würde. Eine Datei, die er nicht erreicht, wird protokolliert, und ihr Layer bleibt ohne Ausdehnung; die Karte fragt dann bei Bedarf nach den Grenzen der Datei. Er läuft in einem neuen geoapi-Container, der `GOAT_CA_BUNDLE` vertraut wie der Dienst.
+
+Dasselbe Release kachelt Punkt-Layer nach einem neuen Rezept. Führen Sie in [Windmill](#windmill) einmal den Task `f/goat/tasks/sync_pmtiles` mit ausgeschaltetem `force` aus: Er baut die Kacheln vorhandener Punkt-Layer neu und lässt Layer mit aktuellen Kacheln unverändert.
+
+Bitten Sie die Nutzer, GOAT-Tabs neu zu laden, die während des Updates offen waren: Ein Tab, in dem noch die alte Version läuft, sendet Stile auf dem alten Weg, und core lehnt dieses Speichern ab (422), bis der Tab neu geladen wird. API-Skripte, die beim Ändern eines Layers, eines Projekt-Layers oder einer Layer-Gruppe noch `properties` senden, erhalten dieselbe Antwort mit einem Hinweis auf die Stil-Routen.
+
+Das Update wandelt außerdem gespeicherte Filter mit einer Verneinung („ist nicht“, „ist keiner von“, „enthält nicht den Text“ und die verneinten Datumsbedingungen) in die Form um, die das Filter-Panel jetzt schreibt: Sie behalten die Features ohne Wert, eine Karte mit einem solchen Filter kann also mehr Features zeigen als zuvor.
+
+Die Migration schreibt zuerst die neuen Spalten fest und wandelt danach die Stile um, während die laufende Version weiter antwortet. Hält eine lang laufende Transaktion eine der Tabellen, bricht die Migration nach wenigen Sekunden mit einem Lock-Timeout ab und ändert nichts weiter: Führen Sie das Update dann erneut aus.
+
 ## Logs {#logs}
 
 ```bash

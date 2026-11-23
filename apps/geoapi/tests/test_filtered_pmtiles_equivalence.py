@@ -347,15 +347,21 @@ INNER = {"type": "Polygon", "coordinates": [_area(cx, cy, 0.02, 4)]}
 
 @dataclass(frozen=True)
 class Case:
-    """A tile request's filter: attributes, areas for s_intersects, bbox."""
+    """A tile request's filter: attributes, areas for s_intersects, areas for
+    `not s_intersects` (outside), bbox."""
 
     name: str
     attributes: dict | None = None
     areas: tuple[dict, ...] = ()
     bbox: list[float] | None = None
+    outside: tuple[dict, ...] = ()
 
     def cql(self, area_op: str = "s_intersects") -> dict | None:
         tests = [op(area_op, prop("geometry"), area) for area in self.areas]
+        tests += [
+            op("not", op("s_intersects", prop("geometry"), area))
+            for area in self.outside
+        ]
         if self.attributes is not None:
             tests.insert(0, self.attributes)
         if not tests:
@@ -364,6 +370,7 @@ class Case:
         return {"filter": text, "lang": "cql2-json"}
 
 
+NAME_EMPTY = {"op": "isNull", "args": prop("name")}
 ATTRIBUTE_CASES = [
     Case("n < 30", op("<", prop("n"), 30)),
     Case("n <> 50", op("<>", prop("n"), 50)),
@@ -384,6 +391,27 @@ ATTRIBUTE_CASES = [
     Case("not or", op("not", op("or", op("<", prop("n"), 10), op(">", prop("d"), 9)))),
     Case("id in", op("in", prop("id"), [1, 2, 3, 50, 77, 250, 499])),
     Case("and", op("and", op(">=", prop("n"), 50), op("like", prop("name"), "%str%"))),
+    # The negations as the web app writes them: with the empty value as an alternative.
+    Case(
+        "is not, or empty",
+        op("or", op("!=", prop("name"), "Hauptstraße"), NAME_EMPTY),
+    ),
+    Case(
+        "excludes, or empty",
+        op(
+            "or",
+            op(
+                "and",
+                op("!=", prop("name"), "Hauptstraße"),
+                op("!=", prop("name"), "Bahnhofstraße"),
+            ),
+            NAME_EMPTY,
+        ),
+    ),
+    Case(
+        "does not contain, or empty",
+        op("or", op("not", op("like", prop("name"), "%weg%")), NAME_EMPTY),
+    ),
 ]
 AREA_CASES = [
     Case("district", areas=(DISTRICT,)),
@@ -397,6 +425,14 @@ AREA_CASES = [
     ),
     Case("like in inner and bbox", op("like", prop("name"), "%str%"), (INNER,), BBOX),
     Case("d >= 5 and bbox", op(">=", prop("d"), 5), bbox=BBOX),
+]
+OUTSIDE_CASES = [
+    Case("outside district", outside=(DISTRICT,)),
+    Case("outside two parts", outside=(TWO_PARTS,)),
+    Case("n < 50 outside district", op("<", prop("n"), 50), outside=(DISTRICT,)),
+    Case("outside inner and two parts", outside=(INNER, TWO_PARTS)),
+    Case("in district, outside inner", areas=(DISTRICT,), outside=(INNER,)),
+    Case("outside inner, in bbox", bbox=BBOX, outside=(INNER,)),
 ]
 
 
@@ -480,7 +516,7 @@ def test_lines_and_polygons_are_cut_from_the_stored_tiles(city: City) -> None:
 
 
 @pytest.mark.parametrize(
-    "case", ATTRIBUTE_CASES + AREA_CASES, ids=lambda case: case.name
+    "case", ATTRIBUTE_CASES + AREA_CASES + OUTSIDE_CASES, ids=lambda case: case.name
 )
 async def test_the_point_leaves_hold_the_ids_duckdb_keeps(
     case: Case, city: City, service: TileService
@@ -524,5 +560,82 @@ async def test_area_filters_on_lines_and_polygons(
     # area's border is missing from the tiles where its piece misses the area
     # (spec 6.3). Over all tiles of a zoom it is there: its piece in the tile
     # where it meets the area meets the area.
+    tiles = _tiles_over(city, layer, CUT_ZOOM)
+    assert await _tile_ids(service, layer, case, tiles) == expected
+
+
+@pytest.mark.parametrize("case", OUTSIDE_CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("kind", ["lines", "polygons"])
+async def test_outside_area_filters_on_lines_and_polygons(
+    kind: str, case: Case, city: City, service: TileService
+) -> None:
+    layer = city.layers[kind]
+    expected = _duckdb_ids(city, layer, case)
+    # The features of the rest of the filter that meet an outside area, less
+    # those lying inside one: the ones crossing its border
+    rest = Case(case.name, case.attributes, case.areas, case.bbox)
+    crossing = (
+        _duckdb_ids(city, layer, rest)
+        if rest.cql() or rest.bbox
+        else set(range(1, layer.rows + 1))
+    ) - expected
+    for area in case.outside:
+        crossing -= _duckdb_ids(city, layer, Case("inside", areas=(area,)), inside=True)
+    assert crossing
+
+    # The mirror of an area: a feature crossing the border is in the tiles
+    # where its piece misses the area, and only such a feature is extra.
+    tiles = _tiles_over(city, layer, CUT_ZOOM)
+    found = await _tile_ids(service, layer, case, tiles)
+    assert expected <= found
+    assert found - expected <= crossing
+
+
+# =====================================================================
+#  Filters DuckDB skips
+# =====================================================================
+
+# DuckDB's query builder drops a CQL filter naming a field the layer lacks
+# (saved before the column was dropped), its other tests too, and keeps the
+# bbox; the stored tiles answer the same.
+GONE = op("=", prop("dropped_column"), "a")
+SKIPPED_CASES = [
+    Case("missing field", GONE),
+    Case("missing field beside n < 30", op("and", op("<", prop("n"), 30), GONE)),
+    Case("missing field and bbox", GONE, bbox=BBOX),
+]
+
+
+def _ids_duckdb_keeps(city: City, layer: Layer, case: Case) -> set[int]:
+    """The ids of the WHERE clause GOAT's dynamic tiles use, which may be none."""
+    names = [c["name"] for c in layer.columns]
+    where = build_filters(bbox=case.bbox, cql_filter=case.cql(), column_names=names)
+    sql = f"SELECT rowid + 1 FROM {layer.table}"
+    if where.clauses:
+        sql += f" WHERE {where.to_full_where()}"
+    return {row[0] for row in city.con.execute(sql, where.params).fetchall()}
+
+
+@pytest.mark.parametrize("case", SKIPPED_CASES, ids=lambda case: case.name)
+async def test_a_filter_duckdb_skips_keeps_the_point_leaves_duckdb_keeps(
+    case: Case, city: City, service: TileService
+) -> None:
+    points = city.layers["points"]
+    expected = _ids_duckdb_keeps(city, points, case)
+    # every point, or those in the bbox: the CQL filter is dropped
+    names = [c["name"] for c in points.columns]
+    assert not build_filters(cql_filter=case.cql(), column_names=names).clauses
+
+    assert await _tile_ids(service, points, case, list(points.leaves)) == expected
+
+
+@pytest.mark.parametrize("case", SKIPPED_CASES, ids=lambda case: case.name)
+@pytest.mark.parametrize("kind", ["lines", "polygons"])
+async def test_a_filter_duckdb_skips_on_lines_and_polygons(
+    kind: str, case: Case, city: City, service: TileService
+) -> None:
+    layer = city.layers[kind]
+    expected = _ids_duckdb_keeps(city, layer, case)
+
     tiles = _tiles_over(city, layer, CUT_ZOOM)
     assert await _tile_ids(service, layer, case, tiles) == expected

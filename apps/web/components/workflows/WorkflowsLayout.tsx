@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MapProvider } from "react-map-gl/maplibre";
 import { useDispatch, useSelector } from "react-redux";
+import { toast } from "react-toastify";
 import { v4 as uuidv4 } from "uuid";
 
 import { useWorkflows } from "@/lib/api/workflows";
@@ -21,7 +22,7 @@ import {
   selectWorkflows,
 } from "@/lib/store/workflow/selectors";
 import { addNode, selectWorkflow, setWorkflows } from "@/lib/store/workflow/slice";
-import { parseCQLQueryToObject } from "@/lib/transformers/filter";
+import { droppedDatasetNode } from "@/lib/utils/workflowDatasets";
 import type { Project, ProjectLayer, ProjectLayerGroup } from "@/lib/validations/project";
 import { createIfNode, isDrawableWorkflowConfig } from "@/lib/validations/workflow";
 import type { WorkflowNode } from "@/lib/validations/workflow";
@@ -105,7 +106,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
     nodeExecutionInfo,
     tempLayerIds,
     exportedLayerIds,
-    tempLayerProperties,
+    tempLayerStyles,
     nodeErrors,
     execute,
     cancel,
@@ -280,41 +281,14 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
       if (nodeType === "dataset") {
         // Check if this is a layer drag (has layerId) or empty dataset drag
         if (layerId && layerName) {
-          // Convert layer's CQL filter to workflow filter format (one-way copy)
-          let inheritedFilter: { op: string; expressions: unknown[] } | undefined;
-          if (layerCql) {
-            try {
-              const expressions = parseCQLQueryToObject(layerCql);
-              if (expressions.length > 0) {
-                inheritedFilter = {
-                  op: layerCql.op,
-                  expressions,
-                };
-              }
-            } catch {
-              // Ignore parse errors, just don't inherit filter
-            }
-          }
-
-          // Create dataset node pre-populated with layer data and inherited filter
-          dispatch(
-            addNode({
-              id: `dataset-${uuidv4()}`,
-              type: "dataset",
-              position,
-              data: {
-                type: "dataset",
-                label: layerName,
-                projectLayerId: projectLayerId,
-                layerId: layerId,
-                layerName: layerName,
-                geometryType: geometryType || undefined,
-                layerType: (layerType as "feature" | "table" | "raster") || undefined,
-                filter: inheritedFilter,
-                filterInitialized: true, // Mark as initialized so settings panel doesn't re-copy
-              },
-            })
+          // A dataset node pre-populated with the layer and its filter; a raster layer is refused.
+          const node = droppedDatasetNode(
+            { projectLayerId, layerId, layerName, geometryType, layerType, layerCql },
+            position,
+            `dataset-${uuidv4()}`
           );
+          if (node) dispatch(addNode(node));
+          else toast.info(t("workflow_raster_not_supported"));
         } else {
           // Empty dataset node
           dispatch(
@@ -375,7 +349,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
         nodeExecutionInfo={nodeExecutionInfo}
         tempLayerIds={tempLayerIds}
         exportedLayerIds={exportedLayerIds}
-        tempLayerProperties={tempLayerProperties}
+        tempLayerStyles={tempLayerStyles}
         onSaveNode={finalizeNode}>
         <WorkflowIssuesProvider value={issuesValue}>
           <Box
@@ -443,8 +417,9 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
               {/* Bottom Data Panel - Table/Map view */}
               <WorkflowDataPanel
                 selectedNode={selectedNode}
+                projectLayers={projectLayers}
                 tempLayerIds={tempLayerIds}
-                tempLayerProperties={tempLayerProperties}
+                tempLayerStyles={tempLayerStyles}
                 workflowId={selectedWorkflow?.id}
               />
             </Box>

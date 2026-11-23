@@ -27,6 +27,8 @@ import {
   setSelectedMeasurementId,
   updateMeasurement,
 } from "@/lib/store/map/slice";
+import { projectGeometryLayerIds } from "@/lib/style/render/viewLayers";
+import { drawEvents } from "@/lib/utils/map/drawEvents";
 import {
   formatArea as formatAreaByUnit,
   formatDistance as formatDistanceByUnit,
@@ -62,11 +64,6 @@ const SNAP_INDICATOR_SOURCE_ID = "__measure-snap-indicator";
 const SNAP_INDICATOR_LAYER_ID = "__measure-snap-indicator-layer";
 const EMPTY_FC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
-// Project layers are added to the map style at numeric ids ("123") with
-// optional "stroke-123" / "text-label-123" / "highlight-123" variants.
-// Basemap and internal (gl-draw-*, __measure-*) layers don't match this.
-const PROJECT_LAYER_ID_RE = /^(?:stroke-|text-label-|highlight-)?\d+$/;
-
 export const MeasureProvider = ({ children }: { children: ReactNode }) => {
   const { map } = useMap();
   const { drawControl } = useDraw();
@@ -79,8 +76,8 @@ export const MeasureProvider = ({ children }: { children: ReactNode }) => {
   const { i18n } = useTranslation();
   const locale = i18n.language || "en-US";
 
-  // Candidate map style layer ids: derived directly from the rendered map
-  // style by filtering against PROJECT_LAYER_ID_RE.
+  // Candidate map style layer ids: the project layers' geometry, from the
+  // renderer's registry (basemap, labels and internal layers are left out).
   const [candidateSnapLayerIds, setCandidateSnapLayerIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -88,11 +85,7 @@ export const MeasureProvider = ({ children }: { children: ReactNode }) => {
     const m = map.getMap();
 
     const refresh = () => {
-      const layers = m.getStyle()?.layers ?? [];
-      const ids: string[] = [];
-      for (const l of layers) {
-        if (PROJECT_LAYER_ID_RE.test(l.id)) ids.push(l.id);
-      }
+      const ids = projectGeometryLayerIds(m);
       setCandidateSnapLayerIds((prev) => {
         if (prev.length === ids.length && prev.every((id, i) => id === ids[i])) return prev;
         return ids;
@@ -775,19 +768,19 @@ export const MeasureProvider = ({ children }: { children: ReactNode }) => {
     if (!map || !drawControl) return;
 
     // Always listen for selection and update events when there are measurements
-    map.on(MapboxDraw.constants.events.SELECTION_CHANGE, handleSelectionChange);
-    map.on(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
+    drawEvents(map).on(MapboxDraw.constants.events.SELECTION_CHANGE, handleSelectionChange);
+    drawEvents(map).on(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
 
     // Only listen for create when actively measuring
     if (activeTool) {
-      map.on(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
+      drawEvents(map).on(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
     }
 
     return () => {
-      map.off(MapboxDraw.constants.events.SELECTION_CHANGE, handleSelectionChange);
-      map.off(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
+      drawEvents(map).off(MapboxDraw.constants.events.SELECTION_CHANGE, handleSelectionChange);
+      drawEvents(map).off(MapboxDraw.constants.events.UPDATE, handleFeatureUpdate);
       if (activeTool) {
-        map.off(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
+        drawEvents(map).off(MapboxDraw.constants.events.CREATE, handleFeatureCreate);
       }
     };
   }, [map, drawControl, activeTool, handleFeatureCreate, handleSelectionChange, handleFeatureUpdate]);
@@ -886,13 +879,13 @@ export const MeasureProvider = ({ children }: { children: ReactNode }) => {
     };
 
     map.on("mousemove", handleMouseMove);
-    map.on("mouseleave", handleMouseLeave);
+    map.on("mouseout", handleMouseLeave);
     map.on("mousedown", handleMouseDown);
     map.on("click", handleClick);
 
     return () => {
       map.off("mousemove", handleMouseMove);
-      map.off("mouseleave", handleMouseLeave);
+      map.off("mouseout", handleMouseLeave);
       map.off("mousedown", handleMouseDown);
       map.off("click", handleClick);
       map.getCanvas().style.cursor = "";

@@ -16,6 +16,8 @@ except ImportError:
     )
     raise
 
+from goatlib.utils.layer_address import text_without_keys, without_key
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,7 +146,9 @@ class WFSReader:
         )
 
         if cleaned_url != url:
-            logger.debug("Cleaned WFS URL: %s -> %s", url, cleaned_url)
+            logger.debug(
+                "Cleaned WFS URL: %s -> %s", without_key(url), without_key(cleaned_url)
+            )
 
         return cleaned_url
 
@@ -166,7 +170,9 @@ class WFSReader:
 
         # Log the XML content for debugging
         logger.info(
-            "Created WFS datasource XML at %s with content:\n%s", xml_path, xml_content
+            "Created WFS datasource XML at %s with content:\n%s",
+            xml_path,
+            text_without_keys(xml_content),
         )
         return xml_path
 
@@ -189,7 +195,9 @@ class WFSReader:
             RuntimeError: If WFS connection or layer discovery fails
         """
         if not self.can_handle(url):
-            raise ValueError(f"URL does not appear to be a WFS endpoint: {url}")
+            raise ValueError(
+                f"URL does not appear to be a WFS endpoint: {without_key(url)}"
+            )
 
         connection_string = f"WFS:{url}"
 
@@ -200,7 +208,8 @@ class WFSReader:
 
         except Exception as e:
             raise RuntimeError(
-                f"Failed to get layers from WFS service {url}: {e}"
+                f"Failed to get layers from WFS service {without_key(url)}: "
+                f"{text_without_keys(str(e))}"
             ) from e
 
     def _open_wfs_datasource(self: WFSReader, connection_string: str) -> ogr.DataSource:
@@ -213,7 +222,8 @@ class WFSReader:
         if datasource is None:
             error_msg = gdal.GetLastErrorMsg()
             raise RuntimeError(
-                f"Failed to open WFS datasource. GDAL error: {error_msg or 'Unknown error'}"
+                "Failed to open WFS datasource. GDAL error: "
+                f"{text_without_keys(error_msg) or 'Unknown error'}"
             )
 
         return datasource

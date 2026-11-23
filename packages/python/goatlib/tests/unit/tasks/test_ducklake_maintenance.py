@@ -679,3 +679,43 @@ class TestMain:
                 main(DuckLakeMaintenanceParams())
 
             instance.close.assert_called_once()
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Data snapshot tracker (GOAT Style spec 12): runs before snapshots expire,
+# so no data change expires unseen
+# ────────────────────────────────────────────────────────────────────────
+
+
+class TestDataSnapshotTracker:
+    @staticmethod
+    def _run(dry_run: bool) -> _FakeConn:
+        con = _FakeConn(
+            before_snaps=10,
+            after_snaps=4,
+            before_bytes=0,
+            after_bytes=0,
+            would_expire=6,
+            orphan_paths=[],
+        )
+        task = _make_task(con)
+        task.settings.customer_schema = "customer"
+        task.settings.ducklake_catalog_schema = "ducklake"
+        task.run(DuckLakeMaintenanceParams(retention_days=1, dry_run=dry_run))
+        return con
+
+    def test_the_tracker_runs_before_snapshots_expire(self) -> None:
+        con = self._run(dry_run=False)
+        tracker = next(
+            i for i, c in enumerate(con.calls) if "postgres_execute('pg'" in c
+        )
+        expire = next(
+            i for i, c in enumerate(con.calls) if "CALL ducklake_expire_snapshots" in c
+        )
+        assert tracker < expire
+        assert "customer.data_snapshot_cursor" in con.calls[tracker]
+        assert "ducklake.ducklake_snapshot_changes" in con.calls[tracker]
+
+    def test_a_dry_run_does_not_run_the_tracker(self) -> None:
+        con = self._run(dry_run=True)
+        assert not _has(con.calls, "postgres_execute")

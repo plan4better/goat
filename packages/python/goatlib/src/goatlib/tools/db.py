@@ -12,6 +12,8 @@ to avoid code duplication in Windmill scripts.
 import json
 import logging
 import uuid as uuid_module
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from enum import Enum
 from typing import Any, Literal, Self
 
@@ -23,7 +25,9 @@ from goatlib.models.bundle import (
     BundleStatus,
     BundleTypeName,
 )
-from goatlib.tools.style import get_default_style
+from goatlib.style.defaults import default_style
+from goatlib.style.migrate import context_for
+from goatlib.tools.style_rows import insert_dataset_default, insert_first_style
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +105,6 @@ class LayerRecord(BaseModel):
     feature_layer_geometry_type: FeatureGeometryType | None = None
     extent_wkt: str | None = None
     size: int = 0
-    properties: dict[str, Any] | None = None
     other_properties: dict[str, Any] | None = None
     thumbnail_url: str | None = None
     tool_type: str | None = None
@@ -125,7 +128,6 @@ class LayerProjectRecord(BaseModel):
     project_id: uuid_module.UUID
     name: str = Field(min_length=1, max_length=255)
     order: int = 0
-    properties: dict[str, Any] | None = None
     other_properties: dict[str, Any] | None = None
 
 
@@ -149,6 +151,17 @@ class ToolDatabaseService:
         """
         self.pool = pool
         self.schema = schema
+
+    @asynccontextmanager
+    async def _transaction(self: Self) -> AsyncIterator[Any]:
+        """A connection in a transaction: one from the pool, or the connection
+        this service was built on (then a savepoint in the caller's transaction)."""
+        if hasattr(self.pool, "acquire"):
+            async with self.pool.acquire() as conn, conn.transaction():
+                yield conn
+        else:
+            async with self.pool.transaction():
+                yield self.pool
 
     async def _resolve_folder_space_id(self: Self, folder_id: str) -> uuid_module.UUID:
         """Look up the space a folder belongs to.
@@ -198,6 +211,31 @@ class ToolDatabaseService:
             action,
         )
         return bool(row and row["ok"])
+
+    async def get_active_style(
+        self: Self, layer_project_id: int, layer_id: str, user_id: str
+    ) -> dict[str, Any] | None:
+        """The active style (else the first) of a project layer of `layer_id`,
+        when the user may read its project; None otherwise."""
+        row = await self.pool.fetchrow(
+            f"""
+            SELECT lp.project_id, coalesce(
+                a.document,
+                (SELECT s.document FROM {self.schema}.layer_style s
+                 WHERE s.layer_project_id = lp.id ORDER BY s.position LIMIT 1)
+            ) AS document
+            FROM {self.schema}.layer_project lp
+            LEFT JOIN {self.schema}.layer_style a ON a.id = lp.active_style_id
+            WHERE lp.id = $1 AND lp.layer_id = $2
+            """,
+            layer_project_id,
+            uuid_module.UUID(layer_id),
+        )
+        if row is None or not await self.user_can(
+            "project", str(row["project_id"]), user_id, "read"
+        ):
+            return None
+        return _decode_jsonb(row["document"])
 
     async def workflow_in_project(
         self: Self, workflow_id: str, project_id: str
@@ -254,13 +292,14 @@ class ToolDatabaseService:
         extent_wkt: str | None = None,
         feature_count: int = 0,
         size: int = 0,
-        properties: dict[str, Any] | None = None,
+        style: dict[str, Any] | None = None,
         other_properties: dict[str, Any] | None = None,
         thumbnail_url: str | None = "/assets/img/goat_new_dataset_thumbnail.png",
         tool_type: str | None = None,
         job_id: str | None = None,
+        data_snapshot: int | None = None,
     ) -> dict[str, Any] | None:
-        """Create a layer record in customer.layer.
+        """Create a layer record in customer.layer, with its default style.
 
         Args:
             layer_id: UUID for the new layer
@@ -273,15 +312,18 @@ class ToolDatabaseService:
             extent_wkt: Spatial extent as WKT string
             feature_count: Number of features
             size: Size of the layer data in bytes
-            properties: Layer properties (style, etc.)
+            style: The layer's default style (a GOAT Style document); None
+                gives the default style for its geometry. Tables get none.
             other_properties: Additional properties
             thumbnail_url: Layer thumbnail URL (defaults to the standard
                 thumbnail the web app ships, root-relative)
             tool_type: Tool type that created this layer (e.g., "catchment_area")
             job_id: Windmill job ID that created this layer
+            data_snapshot: The DuckLake snapshot that wrote the layer's data, which
+                the fingerprint of its computed style values names (spec 12)
 
         Returns:
-            The properties dict used (either provided or generated default)
+            The default style written, None for a table
         """
         # Normalize geometry type (POINT -> point, LINESTRING -> line, etc.)
         normalized_geom = normalize_geometry_type(geometry_type)
@@ -302,62 +344,62 @@ class ToolDatabaseService:
             feature_layer_geometry_type=normalized_geom,
             extent_wkt=extent_wkt,
             size=size,
-            properties=properties,
             other_properties=other_properties,
             thumbnail_url=thumbnail_url,
             tool_type=tool_type,
             job_id=uuid_module.UUID(job_id) if job_id else None,
         )
 
-        # Generate default style if no properties provided
-        if properties is None and normalized_geom:
-            properties = get_default_style(normalized_geom)
-
-        # Convert dicts to JSON strings for JSONB columns
-        properties_json = json.dumps(properties) if properties else None
+        if record.type != "table" and style is None:
+            style = default_style(
+                context_for(record.type, normalized_geom, None), seed=layer_id
+            )
         other_props_json = json.dumps(other_properties) if other_properties else None
 
-        await self.pool.execute(
-            f"""
-            INSERT INTO {self.schema}.layer (
-                id, user_id, folder_id, space_id, name, type, feature_layer_type,
-                feature_layer_geometry_type, extent,
-                size, properties, other_properties, thumbnail_url,
-                tool_type, job_id, created_at, updated_at
-            ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7,
-                $8,
-                CASE WHEN $9::text IS NOT NULL
-                    THEN ST_Multi(ST_GeomFromText($9::text, 4326))
-                    ELSE NULL
-                END,
-                $10, $11::jsonb, $12::jsonb, $13, $14, $15,
-                NOW(), NOW()
+        async with self._transaction() as conn:
+            await conn.execute(
+                f"""
+                INSERT INTO {self.schema}.layer (
+                    id, user_id, folder_id, space_id, name, type,
+                    feature_layer_type, feature_layer_geometry_type, extent,
+                    size, other_properties, thumbnail_url,
+                    tool_type, job_id, data_snapshot, created_at, updated_at
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7,
+                    $8,
+                    CASE WHEN $9::text IS NOT NULL
+                        THEN ST_Multi(ST_GeomFromText($9::text, 4326))
+                        ELSE NULL
+                    END,
+                    $10, $11::jsonb, $12, $13, $14, $15,
+                    NOW(), NOW()
+                )
+                """,
+                record.id,
+                record.user_id,
+                record.folder_id,
+                record.space_id,
+                record.name,
+                record.type,
+                record.feature_layer_type,
+                record.feature_layer_geometry_type.value
+                if record.feature_layer_geometry_type
+                else None,
+                record.extent_wkt,
+                record.size,
+                other_props_json,
+                record.thumbnail_url,
+                record.tool_type,
+                record.job_id,
+                data_snapshot,
             )
-            """,
-            record.id,
-            record.user_id,
-            record.folder_id,
-            record.space_id,
-            record.name,
-            record.type,
-            record.feature_layer_type,
-            record.feature_layer_geometry_type.value
-            if record.feature_layer_geometry_type
-            else None,
-            record.extent_wkt,
-            record.size,
-            properties_json,
-            other_props_json,
-            record.thumbnail_url,
-            record.tool_type,
-            record.job_id,
-        )
+            if record.type != "table":
+                await insert_dataset_default(conn, self.schema, record.id, style)
         logger.info(
             f"Created layer: {layer_id} ({name}) in folder {folder_id} "
             f"with {feature_count} features, size={size} bytes"
         )
-        return properties
+        return style if record.type != "table" else None
 
     async def get_bundle_name(self: Self, bundle_id: str) -> str | None:
         """Return the bundle's display name (customer.bundle.name)."""
@@ -922,21 +964,20 @@ class ToolDatabaseService:
         layer_id: str,
         project_id: str,
         name: str,
-        properties: dict[str, Any] | None = None,
         other_properties: dict[str, Any] | None = None,
         group_id: int | None = None,
         order: int | None = None,
     ) -> int:
         """Link a layer to a project.
 
-        Creates a record in customer.layer_project and updates the
-        project's layer_order to include the new layer at the top.
+        Creates a record in customer.layer_project, its first style (a copy of
+        the dataset's default, active) and updates the project's layer_order to
+        include the new layer at the top.
 
         Args:
             layer_id: Layer UUID to link
             project_id: Project UUID to link to
             name: Display name for the layer in this project
-            properties: Layer properties for this project context
             other_properties: Additional properties
             group_id: Layer group to place the link in (e.g. a bundle-backed
                 group); None leaves the layer at the project root
@@ -953,11 +994,9 @@ class ToolDatabaseService:
             layer_id=uuid_module.UUID(layer_id),
             project_id=uuid_module.UUID(project_id),
             name=name,
-            properties=properties,
             other_properties=other_properties,
         )
 
-        properties_json = json.dumps(properties) if properties else None
         other_props_json = json.dumps(other_properties) if other_properties else None
 
         # An explicitly ordered layer belongs at the bottom (it is placing itself
@@ -968,45 +1007,44 @@ class ToolDatabaseService:
             else "array_prepend($1, COALESCE(layer_order, ARRAY[]::int[]))"
         )
 
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                # Going to the top means making room for itself first, exactly as
-                # a bundle group does. Writing 0 without shifting would leave two
-                # rows at the same position.
-                if order is None:
-                    await self._make_room_at_top(conn, record.project_id, 1)
+        async with self._transaction() as conn:
+            # Going to the top means making room for itself first, exactly as
+            # a bundle group does. Writing 0 without shifting would leave two
+            # rows at the same position.
+            if order is None:
+                await self._make_room_at_top(conn, record.project_id, 1)
 
-                # Create the layer_project link ("order" is non-nullable)
-                row = await conn.fetchrow(
-                    f"""
-                    INSERT INTO {self.schema}.layer_project (
-                        layer_id, project_id, name, "order", properties,
-                        other_properties, layer_project_group_id,
-                        created_at, updated_at
-                    )
-                    VALUES ($1, $2, $3, $7, $4::jsonb, $5::jsonb, $6, NOW(), NOW())
-                    RETURNING id
-                    """,
-                    record.layer_id,
-                    record.project_id,
-                    record.name,
-                    properties_json,
-                    other_props_json,
-                    group_id,
-                    order if order is not None else 0,
+            # Create the layer_project link ("order" is non-nullable)
+            row = await conn.fetchrow(
+                f"""
+                INSERT INTO {self.schema}.layer_project (
+                    layer_id, project_id, name, "order",
+                    other_properties, layer_project_group_id,
+                    created_at, updated_at
                 )
-                layer_project_id = row["id"]
+                VALUES ($1, $2, $3, $6, $4::jsonb, $5, NOW(), NOW())
+                RETURNING id
+                """,
+                record.layer_id,
+                record.project_id,
+                record.name,
+                other_props_json,
+                group_id,
+                order if order is not None else 0,
+            )
+            layer_project_id = row["id"]
+            await insert_first_style(conn, self.schema, layer_project_id)
 
-                await conn.execute(
-                    f"""
-                    UPDATE {self.schema}.project
-                    SET layer_order = {placement},
-                        updated_at = NOW()
-                    WHERE id = $2
-                    """,
-                    layer_project_id,
-                    record.project_id,
-                )
+            await conn.execute(
+                f"""
+                UPDATE {self.schema}.project
+                SET layer_order = {placement},
+                    updated_at = NOW()
+                WHERE id = $2
+                """,
+                layer_project_id,
+                record.project_id,
+            )
 
         logger.info(
             f"Added layer {layer_id} to project {project_id} "

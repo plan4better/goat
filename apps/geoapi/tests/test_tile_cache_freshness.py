@@ -56,7 +56,7 @@ class _FakePipeline:
 
 @pytest.mark.asyncio
 async def test_regenerated_tiles_are_not_served_from_the_cache(tmp_path: Path) -> None:
-    pmtiles = tmp_path / "t_abc.pmtiles"
+    pmtiles = tmp_path / "t_abc00000000000000000000000000000.pmtiles"
     pmtiles.write_bytes(b"pmtiles")
     service = TileService()
     reads = AsyncMock(side_effect=[(b"old tile", True), (b"new tile", True)])
@@ -68,12 +68,18 @@ async def test_regenerated_tiles_are_not_served_from_the_cache(tmp_path: Path) -
         patch.object(service, "_get_tile_from_pmtiles_path", new=reads),
         patch("geoapi.tile_cache.get_redis_client", return_value=_FakeRedis()),
     ):
-        first = await service.get_tile_from_pmtiles_by_layer_id("abc", 3, 4, 2)
-        again = await service.get_tile_from_pmtiles_by_layer_id("abc", 3, 4, 2)
+        first = await service.get_tile_from_pmtiles_by_layer_id(
+            "abc00000000000000000000000000000", 3, 4, 2
+        )
+        again = await service.get_tile_from_pmtiles_by_layer_id(
+            "abc00000000000000000000000000000", 3, 4, 2
+        )
 
         later = pmtiles.stat().st_mtime_ns + 5_000_000_000
         os.utime(pmtiles, ns=(later, later))
-        regenerated = await service.get_tile_from_pmtiles_by_layer_id("abc", 3, 4, 2)
+        regenerated = await service.get_tile_from_pmtiles_by_layer_id(
+            "abc00000000000000000000000000000", 3, 4, 2
+        )
 
     assert first == (b"old tile", True, "pmtiles")
     assert again == (b"old tile", True, "pmtiles-cached")
@@ -94,11 +100,11 @@ async def test_tiles_regenerated_at_another_path_are_found_again(
     """A cached path whose file is gone (deleted for regeneration, or written
     at another path since) must not lose the fast path for good: the lookup
     runs again and finds the flat ``t_x.pmtiles``."""
-    stale = tmp_path / "user_abc" / "t_abc.pmtiles"
+    stale = tmp_path / "user_abc" / "t_abc00000000000000000000000000000.pmtiles"
     service = _service_over(tmp_path)
-    service._pmtiles_path_cache["abc"] = stale
+    service._pmtiles_path_cache["abc00000000000000000000000000000"] = stale
 
-    flat = tmp_path / "t_abc.pmtiles"
+    flat = tmp_path / "t_abc00000000000000000000000000000.pmtiles"
     flat.write_bytes(b"pmtiles")
     read_from: list[Path] = []
 
@@ -110,7 +116,9 @@ async def test_tiles_regenerated_at_another_path_are_found_again(
         patch.object(service, "_get_tile_from_pmtiles_path", new=read),
         patch("geoapi.tile_cache.get_redis_client", return_value=_FakeRedis()),
     ):
-        result = await service.get_tile_from_pmtiles_by_layer_id("abc", 3, 4, 2)
+        result = await service.get_tile_from_pmtiles_by_layer_id(
+            "abc00000000000000000000000000000", 3, 4, 2
+        )
 
     assert result == (b"tile", True, "pmtiles")
     assert read_from == [flat]
@@ -120,8 +128,8 @@ async def test_tiles_regenerated_at_another_path_are_found_again(
 async def test_label_tiles_follow_a_regenerated_anchor_file(tmp_path: Path) -> None:
     """Label tiles merge in the separate ``_anchor.pmtiles`` file, which is
     regenerated on its own (sync_pmtiles, catalog materialize)."""
-    pmtiles = tmp_path / "t_abc.pmtiles"
-    anchor = tmp_path / "t_abc_anchor.pmtiles"
+    pmtiles = tmp_path / "t_abc00000000000000000000000000000.pmtiles"
+    anchor = tmp_path / "t_abc00000000000000000000000000000_anchor.pmtiles"
     pmtiles.write_bytes(b"pmtiles")
     anchor.write_bytes(b"anchors")
     service = _service_over(tmp_path)
@@ -137,12 +145,12 @@ async def test_label_tiles_follow_a_regenerated_anchor_file(tmp_path: Path) -> N
         patch("geoapi.tile_cache.get_redis_client", return_value=_FakeRedis()),
     ):
         first = await service.get_tile_from_pmtiles_by_layer_id(
-            "abc", 3, 4, 2, label=True
+            "abc00000000000000000000000000000", 3, 4, 2, label=True
         )
         later = anchor.stat().st_mtime_ns + 5_000_000_000
         os.utime(anchor, ns=(later, later))
         regenerated = await service.get_tile_from_pmtiles_by_layer_id(
-            "abc", 3, 4, 2, label=True
+            "abc00000000000000000000000000000", 3, 4, 2, label=True
         )
 
     assert first == (b"old labels", True, "pmtiles")
@@ -153,17 +161,20 @@ def test_lookup_by_layer_id_never_lists_the_tiles_directory(tmp_path: Path) -> N
     """The tiles directory holds tens of thousands of files and is only ever
     probed by path: a schema-nested copy is not searched for, and listing the
     directory is not attempted at all."""
-    nested = tmp_path / "user_abc" / "t_abc.pmtiles"
+    nested = tmp_path / "user_abc" / "t_abc00000000000000000000000000000.pmtiles"
     nested.parent.mkdir()
     nested.write_bytes(b"pmtiles")
     service = _service_over(tmp_path)
 
     with patch.object(Path, "glob", side_effect=AssertionError("tiles dir listed")):
-        assert service._find_pmtiles_by_layer_id("abc") is None
+        assert (
+            service._find_pmtiles_by_layer_id("abc00000000000000000000000000000")
+            is None
+        )
 
-    flat = tmp_path / "t_abc.pmtiles"
+    flat = tmp_path / "t_abc00000000000000000000000000000.pmtiles"
     flat.write_bytes(b"pmtiles")
-    assert service._find_pmtiles_by_layer_id("abc") == flat
+    assert service._find_pmtiles_by_layer_id("abc00000000000000000000000000000") == flat
 
 
 @pytest.mark.asyncio
@@ -185,11 +196,15 @@ async def test_temp_tree_search_runs_once_off_the_event_loop(tmp_path: Path) -> 
     with patch.object(Path, "glob", recording_glob):
         found = await asyncio.gather(
             *(
-                service._find_pmtiles_by_layer_id_async("abc", search_temp=True)
+                service._find_pmtiles_by_layer_id_async(
+                    "abc00000000000000000000000000000", search_temp=True
+                )
                 for _ in range(5)
             )
         )
-        again = await service._find_pmtiles_by_layer_id_async("abc", search_temp=True)
+        again = await service._find_pmtiles_by_layer_id_async(
+            "abc00000000000000000000000000000", search_temp=True
+        )
 
     assert found == [None] * 5 and again is None
     assert len(walks) == 1
@@ -204,15 +219,21 @@ async def test_workflow_tiles_written_later_are_found_after_invalidation(
     temp.mkdir(parents=True)
     service = _service_over(tmp_path / "tiles")
     assert (
-        await service._find_pmtiles_by_layer_id_async("abc", search_temp=True) is None
+        await service._find_pmtiles_by_layer_id_async(
+            "abc00000000000000000000000000000", search_temp=True
+        )
+        is None
     )
 
-    tiles = temp / "t_abc.pmtiles"
+    tiles = temp / "t_abc00000000000000000000000000000.pmtiles"
     tiles.write_bytes(b"pmtiles")
-    service.invalidate_pmtiles_path_cache("abc")
+    service.invalidate_pmtiles_path_cache("abc00000000000000000000000000000")
 
     assert (
-        await service._find_pmtiles_by_layer_id_async("abc", search_temp=True) == tiles
+        await service._find_pmtiles_by_layer_id_async(
+            "abc00000000000000000000000000000", search_temp=True
+        )
+        == tiles
     )
 
 
@@ -223,8 +244,13 @@ async def test_a_layer_without_tiles_never_walks_the_temp_tree(tmp_path: Path) -
     the tree is searched just for workflow results (`search_temp`)."""
     temp = tmp_path / "temporary" / "user_u" / "w_w" / "n_n"
     temp.mkdir(parents=True)
-    (temp / "t_abc.pmtiles").write_bytes(b"pmtiles")
+    (temp / "t_abc00000000000000000000000000000.pmtiles").write_bytes(b"pmtiles")
     service = _service_over(tmp_path / "tiles")
 
     with patch.object(Path, "glob", side_effect=AssertionError("temp tree walked")):
-        assert await service._find_pmtiles_by_layer_id_async("abc") is None
+        assert (
+            await service._find_pmtiles_by_layer_id_async(
+                "abc00000000000000000000000000000"
+            )
+            is None
+        )

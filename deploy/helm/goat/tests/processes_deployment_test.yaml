@@ -93,3 +93,27 @@ tests:
           path: spec.template.spec.volumes
       - notExists:
           path: spec.template.spec.containers[0].volumeMounts
+
+  - it: tells the project archive jobs where core is, the in-cluster Service
+    template: processes/configmap.yaml
+    asserts:
+      - equal:
+          path: data.CORE_URL
+          value: http://RELEASE-NAME-goat-core
+
+  - it: keeps a CORE_URL set in processes.config
+    template: processes/configmap.yaml
+    set:
+      processes.config.CORE_URL: http://core.other.svc
+    asserts:
+      - equal:
+          path: data.CORE_URL
+          value: http://core.other.svc
+
+  - it: has no CORE_URL without the chart's core
+    template: processes/configmap.yaml
+    set:
+      core.enabled: false
+    asserts:
+      - notExists:
+          path: data.CORE_URL

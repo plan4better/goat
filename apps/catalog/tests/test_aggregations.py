@@ -6,9 +6,14 @@ Aggregations must apply the exact same predicates as Item Search (via
 owns that rule (see ``catalog.services.search``).
 """
 
+from pathlib import Path
+
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+from catalog.app import create_app
+from catalog.config import CatalogSettings
 from catalog.errors import ApiError
 from catalog.services.aggregations import (
     aggregation_names,
@@ -357,3 +362,39 @@ class TestSingleScan:
                 continue
             bucket_sum = sum(b["frequency"] for b in aggregation["buckets"])
             assert bucket_sum <= total, name
+
+
+def _published_dataset_types(catalog_dir: Path) -> None:
+    """Give the fixture's datasets the `goat:layerType` goat-data publishes on
+    them: `bundle` for the multi-layer `src-1`, the layer's kind otherwise."""
+    target = catalog_dir / "mirror_collections.parquet"
+    tmp = catalog_dir / "collections_typed.parquet"
+    duckdb.execute(
+        f"""COPY (SELECT *, CASE WHEN id = 'src-1' THEN 'bundle' ELSE 'feature'
+                  END AS "goat:layerType" FROM read_parquet('{target}'))
+            TO '{tmp}' (FORMAT PARQUET)"""
+    )
+    tmp.replace(target)
+
+
+def test_the_type_of_a_dataset_is_the_kinds_of_its_layers(catalog_dir: Path) -> None:
+    """`bundle` is how a dataset is packed, not what its data is: the type
+    filter and its counts read the layers, so a bundle is found by them."""
+    _published_dataset_types(catalog_dir)
+    store = CatalogStore(CatalogSettings(data_dir=catalog_dir))
+    store.ensure_current()
+    counts = run_aggregations(
+        store, SearchParams(collections=["src-1"]), ["type_count"], "collections"
+    )
+    buckets = {b["key"]: b["frequency"] for b in counts["aggregations"][0]["buckets"]}
+    assert buckets == {"feature": 1}
+
+    with TestClient(create_app(CatalogSettings(data_dir=catalog_dir, auth=False))) as c:
+
+        def ids(kind: str) -> set[str]:
+            found = c.get("/stac/collections", params={"type": kind, "limit": 500})
+            assert found.status_code == 200, found.text
+            return {col["id"] for col in found.json()["collections"]}
+
+        assert "src-1" in ids("feature")
+        assert "src-1" not in ids("bundle")

@@ -12,6 +12,13 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlsplit
 
+#: Where core keeps uploaded files (icons, images, documents) in the data
+#: bucket when it serves them itself: their stored key
+#: (`uploaded_asset.s3_key`) has no prefix, the object is at this prefix plus
+#: the key. Otherwise they sit in the assets bucket at the key itself. Only
+#: core reads and writes them.
+ASSETS_PREFIX = "assets/"
+
 
 def use_path_style(provider: str | None, force_path_style: bool) -> bool:
     return bool(force_path_style) or (provider or "").lower() == "minio"

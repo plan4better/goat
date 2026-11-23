@@ -113,7 +113,7 @@ If certificates in your network come from a private certificate authority, for e
 GOAT_CA_BUNDLE=/certs/company-ca.pem
 ```
 
-Apply the change with `docker compose up -d`. GOAT's web server, the job workers including the PDF print worker, the AI assistant (for model servers, GOAT's services and Keycloak), and the senders of email (GOAT and the bundled Keycloak) then trust the CA in addition to the public ones. `GOAT_CA_BUNDLE` holds one file, which may contain several certificates. In `internal` mode `setup.sh` uses it for Caddy's root certificate; to trust a company CA as well, put both certificates into one file in `./certs`.
+Apply the change with `docker compose up -d`. GOAT's web server, the job workers including the PDF print worker, the AI assistant (for model servers, GOAT's services and Keycloak), geoapi and processes (for raster files and S3 on hosts with such a certificate, for example an object store listed in `RASTER_PRIVATE_HOSTS`), and the senders of email (GOAT and the bundled Keycloak) then trust the CA in addition to the public ones. `GOAT_CA_BUNDLE` holds one file, which may contain several certificates. In `internal` mode `setup.sh` uses it for Caddy's root certificate; to trust a company CA as well, put both certificates into one file in `./certs`.
 
 ## HSTS and security headers {#hsts}
 

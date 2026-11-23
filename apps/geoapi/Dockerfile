@@ -24,9 +24,10 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ===== STAGE 2: Python environment ====
-# geoapi only uses goatlib's light "serving" surface (storage/query/models), so
-# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels,
-# manby (the `manby` program that cuts tiles from stored ones) among them.
+# geoapi only uses goatlib's light "serving" surface (storage/query/models) and
+# its `raster` extra, so no system GDAL, routing or build toolchain is needed —
+# all deps ship manylinux wheels (rasterio's bundles its own GDAL), manby (the
+# `manby` program that cuts tiles from stored ones) among them.
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv

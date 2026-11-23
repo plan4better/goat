@@ -7,13 +7,13 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from core.core.config import settings
 from fastapi import HTTPException, status
-from goatlib.storage.s3_config import boto_client_kwargs
+from goatlib.storage.s3_config import ASSETS_PREFIX, boto_client_kwargs
 
 logger = logging.getLogger(__name__)
 
-# Where assets live in the data bucket with ASSETS_SERVED_BY_CORE. The route
-# that serves them signs keys under this prefix only, never user uploads.
-ASSETS_PREFIX = "assets/"
+# ASSETS_PREFIX (goatlib's storage.s3_config): where assets live in the data
+# bucket with ASSETS_SERVED_BY_CORE. The route that serves them signs keys
+# under this prefix only, never user uploads.
 # Lifetime of the signed URL the asset route redirects to; browsers cache the
 # redirect for half of it, so a cached one never points at an expired URL.
 ASSET_URL_EXPIRES = 3600

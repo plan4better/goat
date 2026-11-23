@@ -77,7 +77,7 @@ Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus 
 
 - **Neuer Ordner**, um Inhalte so zu gruppieren, wie es Ihnen passt
 - **Leeres Projekt** oder **Projekt importieren**
-- **Datensatz hochladen**, um eine Datei von Ihrem Gerät hochzuladen (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
+- **Datensatz hochladen**, um eine Datei von Ihrem Gerät hochzuladen (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
 - **Daten abrufen / verbinden**, um einen externen Layer per URL hinzuzufügen (WFS, WMS, WMTS, XYZ-Kacheln oder COG)
 - **Dokument hochladen**, für eine Datei, die zur Arbeit gehört, ohne selbst Daten zu sein
 
@@ -130,9 +130,11 @@ Sie können ein Projekt importieren, das aus GOAT als `.zip`-Datei exportiert wu
   <img src={require('/img/workspace/projects/project_import_de.webp').default} alt="Ein Projekt in GOAT importieren" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+Ein Projekt aus einem neueren GOAT, dessen Stile etwas nutzen, das dieses GOAT noch nicht kennt, wird nicht importiert: Der Job bricht ab, bevor etwas angelegt wird, und seine Meldung nennt die GOAT-Style-Version, die das Projekt braucht. Aktualisieren Sie GOAT und importieren Sie das Projekt dann erneut.
+
 ### Einen Datensatz hochladen
 
-GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet** und **COG**-Dateien sowie **GTFS**-Archive (`gtfs.zip`) für [ÖPNV-Netze](../data/dataset_types.md#öpnv-netze) und **Overture**-Archive (`overture.zip`) für [Straßennetze](../data/dataset_types.md#straßennetze).
+GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **GML**, **CSV**, **XLSX**, **ZIP**, **Parquet** und **COG**-Dateien sowie **GTFS**-Archive (`gtfs.zip`) für [ÖPNV-Netze](../data/dataset_types.md#öpnv-netze), **Overture**-Archive (`overture.zip`) für [Straßennetze](../data/dataset_types.md#straßennetze) und **XPlanGML**-Dateien (`.gml`) für [XPlan-Pläne](../data/dataset_types.md#xplan-pläne).
 
 <div class="step">
   <div class="step-number">1</div>
@@ -178,7 +180,9 @@ Ein Dienst, der die Daten bereits veröffentlicht, etwa ein **Web Feature Servic
 Nach dem Hinzufügen erscheint ein verbundener Layer auf dieser Seite wie jeder andere Datensatz, mit zwei Unterschieden, die die Herkunft der Daten kennzeichnen:
 
 - Ein **`Verbunden`**-Tag bedeutet, dass der Layer **live vom externen Dienst gezeichnet** wird und nicht in GOAT gespeichert ist. Sein Inhalt kann sich ändern oder verschwinden, wenn sich der Dienst ändert.
-- Eine **Quellenzeile** zeigt Format und Host an, zum Beispiel `WMS, verbunden mit wms.nrw.de`. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Aus WFS importiert (wfs.nrw.de)`.
+- Eine **`Quelle`** in den `Einzelheiten`, zum Beispiel `Externe Datei (COG) · maplibre.org` oder `Kartendienst (WMS) · wms.nrw.de`: woher der Layer kommt, und sein Host. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Kopie aus WFS · wfs.nrw.de`.
+
+Geöffnet zeigt der Datensatz dieselbe `Quelle` und seine `Adresse`, mit einer Schaltfläche zum Kopieren, wie der Reiter `Metadaten` eines Layers in der Karte. Den Teil der Adresse nach einem `?`, in dem ein Schlüssel oder eine Signatur stehen kann, sieht nur, wer den Datensatz bearbeiten darf: im geöffneten Datensatz sein Eigentümer, in der Karte Eigentümer und Bearbeiter des Projekts, für ihre eigenen Datensätze und die des Projekteigentümers.
 
 ## Mit einem Datensatz arbeiten
 

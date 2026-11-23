@@ -4,74 +4,61 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWidgetLayerTree } from "@/components/builder/widgets/information/useWidgetLayerTree";
 
 /**
- * In the editor a widget's tree update is shown at once and saved; with
- * `persist: false` it is only shown, so quick steps (play, slider drags) do not
- * each write the project.
+ * In the editor a widget's visibility change is shown at once and written as
+ * map state; with `persist: false` it is only shown, so quick steps (play,
+ * slider drags) do not each write the project.
  */
 
-const updateProjectLayerTree = vi.fn().mockResolvedValue(undefined);
-const mutateLayers = vi.fn();
-const mutateGroups = vi.fn();
-
-const layers = [
-  { id: 1, order: 4, layer_project_group_id: 7, properties: { visibility: true } },
-  { id: 2, order: 5, layer_project_group_id: 7, properties: { visibility: false } },
-];
+const onLayerStateChange = vi.fn().mockResolvedValue(undefined);
+const previewLayerState = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("next/navigation", () => ({ useParams: () => ({ projectId: "p" }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("react-toastify", () => ({ toast: { error: vi.fn() } }));
-vi.mock("@/hooks/store/ContextHooks", () => ({
-  useAppDispatch: () => vi.fn(),
-  useAppSelector: () => [],
+vi.mock("@/hooks/store/ContextHooks", () => ({ useAppSelector: () => [] }));
+vi.mock("@/hooks/map/useMapLayers", () => ({
+  useMapLayers: () => ({ layers: [], map: undefined }),
+  withMapGroups: (groups: unknown[]) => groups,
 }));
-vi.mock("@/hooks/map/LayerPanelHooks", () => ({
-  useFilteredProjectLayers: () => ({ mutate: mutateLayers }),
+vi.mock("@/hooks/map/useLayerTreeState", () => ({
+  useLayerTreeState: () => ({ onLayerStateChange, previewLayerState }),
 }));
 vi.mock("@/lib/api/projects", () => ({
-  updateProjectLayerTree: (...args: unknown[]) => updateProjectLayerTree(...args),
-  useProjectLayers: () => ({ layers }),
-  useProjectLayerGroups: () => ({ layerGroups: [], mutate: mutateGroups }),
+  useProjectLayerGroups: () => ({ layerGroups: [] }),
 }));
 
-const payload = {
-  items: [
-    { id: 1, type: "layer" as const, order: 0, parent_id: null, properties: { visibility: false } },
-    { id: 2, type: "layer" as const, order: 1, parent_id: null, properties: { visibility: true } },
-  ],
-};
+const changes = [
+  { id: 1, visible: false },
+  { id: 2, visible: true },
+];
 
 beforeEach(() => {
-  updateProjectLayerTree.mockClear();
-  mutateLayers.mockClear();
+  onLayerStateChange.mockClear();
+  previewLayerState.mockClear();
 });
 
 describe("useWidgetLayerTree", () => {
-  it("shows and saves an update, keeping the saved order and group", async () => {
+  it("shows and writes a change", async () => {
     const { result } = renderHook(() => useWidgetLayerTree(false));
 
-    await act(() => result.current.updateTree(payload));
+    await act(() => result.current.setVisibility(changes));
 
-    expect(mutateLayers).toHaveBeenCalledTimes(1);
-    expect(updateProjectLayerTree).toHaveBeenCalledWith("p", {
-      items: [
-        expect.objectContaining({ id: 1, order: 4, parent_id: 7 }),
-        expect.objectContaining({ id: 2, order: 5, parent_id: 7 }),
-      ],
-    });
+    expect(previewLayerState.mock.calls).toEqual([
+      [1, { visible: false }],
+      [2, { visible: true }],
+    ]);
+    expect(onLayerStateChange.mock.calls).toEqual([
+      [1, { visible: false }],
+      [2, { visible: true }],
+    ]);
   });
 
-  it("only shows an update with persist: false", async () => {
+  it("only shows a change with persist: false", async () => {
     const { result } = renderHook(() => useWidgetLayerTree(false));
 
-    await act(() => result.current.updateTree(payload, { persist: false }));
+    await act(() => result.current.setVisibility(changes, { persist: false }));
 
-    expect(mutateLayers).toHaveBeenCalledTimes(1);
-    expect(
-      mutateLayers.mock.calls[0][0].map(
-        (l: { properties: { visibility: boolean } }) => l.properties.visibility
-      )
-    ).toEqual([false, true]);
-    expect(updateProjectLayerTree).not.toHaveBeenCalled();
+    expect(previewLayerState).toHaveBeenCalledTimes(2);
+    expect(onLayerStateChange).not.toHaveBeenCalled();
   });
 });

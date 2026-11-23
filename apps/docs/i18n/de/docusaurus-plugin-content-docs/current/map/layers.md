@@ -31,7 +31,7 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 
 **Neue Daten**
 
-- **Datensatz hochladen**: ein Datensatz von Ihrem Gerät (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
+- **Datensatz hochladen**: ein Datensatz von Ihrem Gerät (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
 - **Layer erstellen**: ein neuer, leerer Layer, in den Sie zeichnen
 - **Daten abrufen / verbinden**: ein Layer, der über WFS, WMS, WMTS, XYZ-Kacheln oder COG bereitgestellt wird, per URL eingebunden, Features aus OpenStreetMap oder Overture Maps für ein Gebiet, oder das Straßennetz oder ÖPNV-Netz von GOAT für ein Gebiet als Datenpaket
 
@@ -141,7 +141,7 @@ Sie können Layer aus [verschiedenen Quellen](../data/dataset_types) zu Ihrer Ka
 
   <TabItem value="XYZ" label="XYZ" className="tabItemBox">
     <div class="step">
-      <div class="content"><p>Ein <strong>XYZ-Kacheln</strong>-Layer ist jede Kachel-URL mit <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code>-Platzhaltern. Die Adresse ist der Layer, es gibt also keine Layerliste zur Auswahl &mdash; prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.</p></div>
+      <div class="content"><p>Ein <strong>XYZ-Kacheln</strong>-Layer ist jede Kachel-URL mit <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code>-Platzhaltern. Zählt ein Dienst seine Kachelzeilen von Süden (TMS), schreiben Sie <code>&#123;-y&#125;</code> statt <code>&#123;y&#125;</code>; <code>&#123;s&#125;</code> verteilt die Anfragen auf die Subdomains a, b und c, <code>&#123;switch:1,2,3&#125;</code> auf die genannten (höchstens 16). Die Adresse ist der Layer, es gibt also keine Layerliste zur Auswahl; prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.</p></div>
     </div>
   </TabItem>
 
@@ -165,7 +165,7 @@ GOAT hält eine Kopie von [OpenStreetMap](https://www.openstreetmap.org) und [Ov
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Legen Sie das <code>Gebiet</code> fest: den <code>Kartenausschnitt</code>, bei dem Sie die Karte verschieben und zoomen, bis der gestrichelte Rahmen das Gebiet zeigt, oder eine <code>Region</code>, einen <code>Puffer</code> oder ein <code>Polygon</code>, jeweils über <code>Wählen</code>. Hinzugefügt wird jedes Feature, das das Gebiet berührt, auch eines, das über seine Grenze hinausreicht.</div>
+  <div class="content"><p>Legen Sie das <code>Gebiet</code> fest. Es beginnt als <code>Kartenausschnitt</code>: Verschieben und zoomen Sie die Karte, bis der gestrichelte Rahmen das Gebiet zeigt. Unter <code>Zum Gebiet hinzufügen</code> wählen Sie stattdessen <code>Regionen</code> aus einer durchsuchbaren Liste, <code>Polygon zeichnen</code> auf der Karte (Eckpunkte anklicken, mit Doppelklick abschließen) oder setzen <code>Punkt und Umkreis</code> (Mittelpunkt anklicken, dann den Umkreis darunter einstellen; über sein Stiftsymbol lassen sich Mittelpunkt und Rand auf der Karte ziehen). Regionen, Polygone und Kreise lassen sich zu einem Gebiet kombinieren; der Kartenausschnitt ersetzt sie, und sie ersetzen den Kartenausschnitt. Einen Teil entfernen Sie mit dem Kreuz in seiner Zeile; <code>Abbrechen</code> oder die Esc-Taste beendet das Zeichnen.</p>Hinzugefügt wird jedes Feature, das das Gebiet berührt, auch eines, das über seine Grenze hinausreicht.</div>
 </div>
 
 <div class="step">

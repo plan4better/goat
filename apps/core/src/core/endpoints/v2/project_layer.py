@@ -31,7 +31,7 @@ from core.schemas.project import (
 from core.schemas.project import (
     request_examples as project_request_examples,
 )
-from core.services.processes import execute_process
+from core.services.processes import submit_each
 
 logger = logging.getLogger("project_layer")
 
@@ -201,6 +201,7 @@ async def add_catalog_items_to_project(
         promote,
         read_items,
         resolve_item_ids,
+        service_layer,
     )
     from starlette.concurrency import run_in_threadpool
 
@@ -226,6 +227,7 @@ async def add_catalog_items_to_project(
     )
     layer_ids: List[UUID4] = []
     reused_link_ids: List[int] = []
+    to_materialize: List[dict] = []
     # What a user picks is a dataset; what promotes is a layer. A single-layer
     # dataset's Collection id is not its item's id, so the ids are resolved
     # against the mirror before anything is promoted.
@@ -245,6 +247,13 @@ async def add_catalog_items_to_project(
     refusal = catalog_batch_refusal(requested=len(item_ids), existing=existing_layers)
     if refusal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
+    # A WMS or WMTS whose link cannot be drawn is refused before anything is
+    # promoted, so a batch is added whole or not at all.
+    for catalog_id in item_ids:
+        try:
+            service_layer(items[catalog_id])
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     conn = await asyncpg.connect(
         dsn,
@@ -268,9 +277,12 @@ async def add_catalog_items_to_project(
             # again heals it. The rules live in `services.materialize_heal` —
             # including how old a `pending` or `running` has to be before it
             # counts as lost.
-            should_enqueue = result["created"]
+            # A WMS/WMTS has nothing to copy, new or healed: a raster with no
+            # file is what it is, not a lost copy.
+            copies_data = result.get("materialize", True)
+            should_enqueue = result["created"] and copies_data
             add_link = True
-            if not should_enqueue:
+            if not should_enqueue and copies_data:
                 row = await conn.fetchrow(
                     f"""
                     SELECT type, other_properties->'catalog_materialize' AS doc
@@ -330,26 +342,21 @@ async def add_catalog_items_to_project(
             if add_link:
                 layer_ids.append(layer_id)
             if should_enqueue:
-                # Enqueued server-side through the processes service (same path
-                # as bundle import and layer/bundle-delete cleanup) so
-                # materialization finishes whether or not the browser stays
-                # open. Best-effort: a processes hiccup leaves the layer at
-                # status=pending, which the next add resolves — so it must not
-                # fail the whole add.
-                try:
-                    await execute_process(
-                        process_id="catalog_materialize",
-                        inputs={"layer_id": result["layer_id"]},
-                        access_token=access_token,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Catalog materialize for layer %s did not start: %s",
-                        result["layer_id"],
-                        e,
-                    )
+                to_materialize.append({"layer_id": result["layer_id"]})
     finally:
         await conn.close()
+
+    # Enqueued server-side through the processes service (same path as bundle
+    # import and layer/bundle-delete cleanup) so materialization finishes
+    # whether or not the browser stays open. Best-effort: a processes hiccup
+    # leaves the layer at status=pending, which the next add resolves, so it
+    # must not fail the whole add. Once processes does not answer, the
+    # remaining layers stay pending without another wait each.
+    await submit_each(
+        process_id="catalog_materialize",
+        inputs=to_materialize,
+        access_token=access_token,
+    )
 
     layers_project = (
         await crud_layer_project.create(

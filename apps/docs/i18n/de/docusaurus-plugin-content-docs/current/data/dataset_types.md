@@ -11,7 +11,7 @@ Auf GOAT können Sie mit Datensätzen aus Plan4Betters Katalog arbeiten, Ihre ei
 
 ### 1.1 Räumliche Features
 
-Feature-Datensätze speichern **räumliche Features wie Punkte, Linien oder Polygone**. Auf GOAT können Sie Daten aus **Shapefiles**, **GeoPackages**, **GeoJSON**, **KML**, **ZIP** oder **Parquet**-Dateien hochladen oder eine **WFS**-externe-URL hinzufügen. Für externe Raster-Quellen (WMS, WMTS, XYZ-Kacheln, COG) siehe [Raster-Datensätze](#raster-datensätze) unten. Sie können diese Datensätze mit den verschiedenen Werkzeugen aus der Werkzeugkiste visualisieren, gestalten und analysieren.
+Feature-Datensätze speichern **räumliche Features wie Punkte, Linien oder Polygone**. Auf GOAT können Sie Daten aus **Shapefiles**, **GeoPackages**, **GeoJSON**, **KML**, **GML**, **ZIP** oder **Parquet**-Dateien hochladen oder eine **WFS**-externe-URL hinzufügen. Für externe Raster-Quellen (WMS, WMTS, XYZ-Kacheln, COG) siehe [Raster-Datensätze](#raster-datensätze) unten. Sie können diese Datensätze mit den verschiedenen Werkzeugen aus der Werkzeugkiste visualisieren, gestalten und analysieren.
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
   <img src={require('/img/data/spatial_de.webp').default} alt="Räumliche Features in GOAT" style={{ maxHeight: "450px", maxWidth: "750px", objectFit: "cover"}}/>
@@ -62,9 +62,22 @@ GOAT verbindet Haltestellen mit Straßen, um den Weg zur und von der Haltestelle
 
 ÖPNV-Netze sind die Grundlage für das [ÖPNV](../routing/public_transport)-Routing in GOAT. Zum Importieren siehe [Inhalte hinzufügen](../workspace/content.md#inhalte-hinzufügen); was das integrierte Netz von GOAT enthält und wie Sie eigene importieren, finden Sie unter [Netz-Datensätze](./builtin_datasets.md#eigene-netze-importieren).
 
+## XPlan-Pläne
+
+Ein **XPlan-Plan** ist ein Bauleitplan (Bebauungsplan, Flächennutzungsplan) im Format **XPlanGML**, dem deutschen Austauschstandard für die Planung. Laden Sie die `.gml`-Datei des Plans hoch oder das Archiv des Plans: eine ZIP-Datei, die den Plan als `xplan.gml` enthält, wie ihn Planungsbüros austauschen (XPlanArchiv). GOAT erkennt einen XPlan-Plan an seinem Inhalt, unabhängig vom Namen der Datei. Aus einem Archiv wird nur der Plan selbst importiert, nicht die beiliegenden Dokumente und gescannten Planblätter. Eine `.gml`-Datei, die kein XPlan ist, oder eine ZIP-Datei ohne `xplan.gml` wird als gewöhnlicher Datensatz importiert.
+
+Der Plan wird zu einem Layer je Art von Planobjekt, die er enthält, benannt nach seiner XPlan-Klasse, zum Beispiel `BP_BaugebietsTeilFlaeche` für Baugebiete oder `BP_BauGrenze` für Baugrenzen. Außerdem macht GOAT den Plan lesbar:
+
+- **Aus Schlüsseln werden Wörter.** XPlanGML speichert die meisten Aussagen als Schlüssel, etwa `1500` für die Art des Baugebiets. Neben jedem Schlüsselfeld legt GOAT ein Feld mit der Endung `Wert` und seiner Bedeutung an, zum Beispiel `besondereArtDerBaulNutzungWert` = `Mischgebiet`.
+- **Festsetzungen stehen an den Flächen.** Viele Regeln, etwa zum Einzelhandel, gibt es nur als textliche Festsetzungen. Jede Fläche trägt den Text der für sie geltenden Festsetzungen in `refTextInhaltWert`, und alle Festsetzungen stehen zusätzlich in einer eigenen Tabelle.
+- **Jedes Objekt nennt seinen Plan.** Felder wie `xpPlanName`, `xpRechtsstand` und `xpAgs` zeigen, aus welchem Plan ein Objekt stammt und in welchem Stand dieser Plan ist.
+- **Der Plan sieht aus wie ein Plan.** Baugebiete sind nach Art der Nutzung eingefärbt und Baugrenzen als blau gestrichelte Linien gezeichnet, nach den Planzeichen der PlanZV.
+
+GOAT liest XPlanGML in den Versionen 5.0 bis 6.1; ein Plan einer anderen Version wird mit einer Meldung abgelehnt, die diese Versionen nennt. GOAT importiert einen Plan so, wie er ist, und prüft ihn nicht gegen die XPlanung-Regeln; dafür gibt es den Validator der XLeitstelle.
+
 ## Datensätze aus mehreren Layern
 
-Straßennetze und ÖPNV-Netze bestehen beide aus **mehreren Layern, die nur gemeinsam sinnvoll sind**. GOAT nennt einen solchen Datensatz **Datenpaket** und verwaltet ihn als Einheit: Seine Layer werden gemeinsam geteilt, sie erscheinen gemeinsam in einem Projekt, und beim Löschen des Datensatzes werden alle entfernt.
+Straßennetze, ÖPNV-Netze und XPlan-Pläne bestehen alle aus **mehreren Layern, die nur gemeinsam sinnvoll sind**. GOAT nennt einen solchen Datensatz **Datenpaket** und verwaltet ihn als Einheit: Seine Layer werden gemeinsam geteilt, sie erscheinen gemeinsam in einem Projekt, und beim Löschen des Datensatzes werden alle entfernt.
 
 Der Begriff begegnet Ihnen bei der Arbeit: Der Upload-Dialog bestätigt, dass eine erkannte Datei *als Datenpaket importiert* wird, der [Katalog](../workspace/catalog.md) kennzeichnet einen Eintrag mit mehreren Layern als `Datenpaket`, und Teilen oder Löschen betrifft immer den gesamten Satz.
 
@@ -73,7 +86,7 @@ Der Begriff begegnet Ihnen bei der Arbeit: Der Upload-Dialog bestätigt, dass ei
 Raster-Datensätze können direkt als **COG (Cloud Optimized GeoTIFF)**-Dateien hochgeladen oder aus externen Quellen über **WMS** (Web Map Service), **WMTS** (Web Map Tile Service), **XYZ-Kacheln** oder eine direkte **COG-URL** (.tif/.tiff-Link) verbunden werden. Sie bieten georeferenzierte Kartenbilder, wie topografische Karten, aber auf GOAT sind sie statisch, daher unterstützen sie keine Analyse oder Bearbeitung.
 
 :::tip Hinweis
-Raster-Styling hängt vom externen Service ab (z.B. GeoServer). Sie können das Farbschema oder die Feature-Darstellung in GOAT nicht ändern.
+Im Stil-Panel stellen Sie eine Rasterdatei mit einer Farbskala, als Kategorien, als Schummerung oder als gespeichertes Bild dar, mit Anpassungen für Helligkeit, Kontrast, Sättigung und Farbton. Ein Kartendienst (WMS, WMTS oder XYZ) liefert fertige Bilder in seinen eigenen Farben, die GOAT ebenso anpasst und, wo der Dienst mehrere Stile anbietet, zwischen ihnen wechselt. Siehe [Raster-Layer und Kartendienste](../map/layer_style/style/styling.md#raster-layer-und-kartendienste).
 :::
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

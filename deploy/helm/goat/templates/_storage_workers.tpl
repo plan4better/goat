@@ -57,8 +57,9 @@ the AWS_* key pair it uses for it).
 {{- end }}
 
 {{/*
-The catalog bucket env of processes (catalog.s3), which reads the open-data
-mirror in it. Unset values render nothing. Params: root, values (the
+The catalog bucket env (catalog.s3) of processes, which reads the open-data
+mirror in it, and of geoapi, which reads catalog items' published tiles and
+rasters for previews. Unset values render nothing. Params: root, values (the
 service's values block).
 */}}
 {{- define "goat.catalogS3.env" -}}

@@ -123,6 +123,28 @@ export type ExportNodeData = z.infer<typeof exportNodeDataSchema>;
 export const IF_TRUE_HANDLE = "true";
 export const IF_FALSE_HANDLE = "false";
 
+/** The kind of a stored filter row: a condition on a field, or an area (`s_intersects` on the geometry). */
+export enum FilterType {
+  Logical = "logical",
+  Spatial = "spatial",
+}
+
+/**
+ * One row of a dataset step's filter (`filter: {op, expressions}`) or of an If
+ * step's simple condition, as the workflow stores it. Not CQL: goatlib's
+ * `workflow_runner.convert_filter_to_cql` turns it into CQL2 when the workflow
+ * runs, and the assistant reads and writes it in this shape.
+ */
+export type FilterExpression = {
+  id: string;
+  type: FilterType;
+  attribute: string;
+  /** The operator by its filter name (`is`, `includes`, `is_between`, ..., `s_intersects`). */
+  expression: string;
+  value: string | number | (string | number)[];
+  metadata?: { intersection?: { label: string; geom_type?: string } };
+};
+
 /**
  * A statistic-style condition row inside the Simple-condition builder.
  * Evaluates an aggregate over the upstream layer (e.g. ``COUNT(*) > 100``,

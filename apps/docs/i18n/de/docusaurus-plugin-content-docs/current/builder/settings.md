@@ -26,6 +26,7 @@ Verfügbare Steuerelemente:
 |---|---|
 | `Standortsuche` | Suchleiste, um einen Ort auf der Karte anzuspringen |
 | `Messen` | Werkzeug zum Messen von Distanzen und Flächen auf der Karte |
+| `3D-Ansicht` | Die Schaltfläche **Ansicht**: Betrachter wechseln zwischen `2D` und `3D`, schalten `Globus beim Herauszoomen` ein und in 3D `Gelände` und `3D-Gebäude`. Ihre Änderungen gelten nur auf ihrem Bildschirm. Neue Dashboards haben sie unten rechts; bestehende Dashboards behalten ihre Steuerelemente, bis Sie sie hinzufügen |
 | `Zoom-Steuerung` | Schaltflächen zum Hinein- und Herauszoomen |
 | `Auswahl Hintergrundkarten` | Dropdown zum Wechseln der Hintergrundkarte |
 | `Vollbildmodus` | Vollbildmodus ein-/ausschalten |

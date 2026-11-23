@@ -1,0 +1,85 @@
+{
+  "limits": {
+    "conditions": 20,
+    "values": 100,
+    "depth": 32,
+    "shapes": 3,
+    "features": 200,
+    "points": 2000,
+    "length": 60000
+  },
+  "operators": {
+    "string": [
+      "is",
+      "is_not",
+      "includes",
+      "excludes",
+      "contains_the_text",
+      "does_not_contains_the_text",
+      "starts_with",
+      "ends_with",
+      "is_blank",
+      "is_not_blank"
+    ],
+    "number": [
+      "is",
+      "is_not",
+      "includes",
+      "excludes",
+      "is_less_than",
+      "is_greater_than",
+      "is_at_most",
+      "is_at_least",
+      "is_between",
+      "is_not_between",
+      "is_blank",
+      "is_not_blank"
+    ],
+    "integer": [
+      "is",
+      "is_not",
+      "includes",
+      "excludes",
+      "is_less_than",
+      "is_greater_than",
+      "is_at_most",
+      "is_at_least",
+      "is_between",
+      "is_not_between",
+      "is_blank",
+      "is_not_blank"
+    ],
+    "boolean": ["is_true", "is_false", "is_blank", "is_not_blank"],
+    "date": [
+      "is_on",
+      "is_not_on",
+      "is_before",
+      "is_after",
+      "is_between",
+      "is_not_between",
+      "in_the_last",
+      "not_in_the_last",
+      "is_blank",
+      "is_not_blank"
+    ],
+    "datetime": [
+      "is_on",
+      "is_not_on",
+      "is_before",
+      "is_after",
+      "is_between",
+      "is_not_between",
+      "in_the_last",
+      "not_in_the_last",
+      "is_blank",
+      "is_not_blank"
+    ]
+  },
+  "cql": {
+    "comparison": ["=", "<>", "<", "<=", ">", ">="],
+    "logical": ["and", "or", "not"],
+    "other": ["in", "like", "between", "isNull"],
+    "spatial": ["s_intersects"],
+    "legacy": ["!="]
+  }
+}

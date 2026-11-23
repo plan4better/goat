@@ -1,23 +1,18 @@
 "use client";
 
-import { cogProtocol } from "@geomatico/maplibre-cog-protocol";
 import { Box, Typography, useTheme } from "@mui/material";
-import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { MapRef } from "react-map-gl/maplibre";
 import { Layer as MapLayer, Map as MapLibre, Source } from "react-map-gl/maplibre";
 
-import type { LngLatBounds } from "@/lib/utils/externalService";
+import type { LngLatBounds, PreviewSource } from "@/lib/utils/externalService";
+import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
 import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
-
-// The project map registers it too; a dialog opened from the datasets page has no map
-// behind it to have done so.
-maplibregl.addProtocol("cog", cogProtocol);
 
 const GERMANY = { longitude: 10.4, latitude: 51.1, zoom: 4.5 };
 
@@ -32,7 +27,7 @@ const ConnectPreview = ({
   bounds,
   height,
 }: {
-  source: { kind: "tiles" | "cog"; url: string } | null;
+  source: PreviewSource | null;
   bounds?: LngLatBounds;
   /** Fills its container when omitted. */
   height?: number;
@@ -62,6 +57,7 @@ const ConnectPreview = ({
         flexShrink: 0,
       }}>
       <MapLibre
+        {...MAPLIBRE_MAP_OPTIONS}
         ref={map}
         // Named: the dialog opens over the project map, inside the same `MapProvider`, and
         // a second id-less map there throws "Multiple maps with the same id: default".
@@ -77,7 +73,12 @@ const ConnectPreview = ({
             id="connect-service-preview-source"
             type="raster"
             tileSize={256}
-            {...(source.kind === "cog" ? { url: source.url } : { tiles: [source.url] })}>
+            {...(source.kind === "cog"
+              ? { url: source.url }
+              : {
+                  tiles: source.tiles ?? [source.url],
+                  ...(source.scheme ? { scheme: source.scheme } : {}),
+                })}>
             <MapLayer id="connect-service-preview-layer" type="raster" />
           </Source>
         )}

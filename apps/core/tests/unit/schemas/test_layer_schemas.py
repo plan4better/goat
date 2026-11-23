@@ -116,3 +116,151 @@ def test_bundle_provenance_survives_because_an_importer_fills_it():
 
     with pytest.raises(ValidationError):
         DatasetProvenance(distributor_email="not-an-email")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+        # TMS row order: the browser draws `{-y}` as `2^z - 1 - y`.
+        "https://tiles.example.org/{z}/{x}/{-y}.png",
+        # A subdomain from a, b and c, or from the list `{switch:...}` names.
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://{switch:a,b,c}.tile.example.org/{z}/{x}/{-y}.png",
+    ],
+)
+def test_an_xyz_layer_keeps_its_tile_address_as_typed(url: str):
+    from core.schemas.layer import IRasterCreate, IRasterUpdate
+
+    created = IRasterCreate(
+        name="Tiles", folder_id=uuid4(), type="raster", data_type="xyz", url=url
+    )
+    assert created.url == url
+    assert IRasterUpdate(url=url).url == url
+    # The row core stores, validated as `crud_layer.create` validates it.
+    stored = Layer(**created.model_dump(), user_id=uuid4(), space_id=uuid4())
+    assert Layer.model_validate(stored.model_dump()).url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "not-a-url",
+        "ftp://tiles.example.org/{z}/{x}/{y}.png",
+        "https://{switch:a,b,c}.tile.example.org:port/{z}/{x}/{y}.png",
+        # A subdomain list holds host labels only, each one checked.
+        "https://{switch:a,evil.example/x?}.tile.example.org/{z}/{x}/{y}.png",
+        "https://{switch:a,b#c}.tile.example.org/{z}/{x}/{y}.png",
+        "https://{switch:}.tile.example.org/{z}/{x}/{y}.png",
+        "{switch:https,ftp}://tiles.example.org/{z}/{x}/{y}.png",
+    ],
+)
+def test_a_raster_layer_address_is_still_checked(url: str):
+    from core.schemas.layer import IRasterCreate
+
+    with pytest.raises(ValidationError):
+        IRasterCreate(
+            name="Tiles", folder_id=uuid4(), type="raster", data_type="xyz", url=url
+        )
+
+
+def test_an_address_longer_than_a_url_is_refused_before_it_is_copied():
+    """A long address with a long subdomain list is refused for its length,
+    without an address built per subdomain."""
+    import tracemalloc
+
+    from core.schemas.layer import IRasterUpdate
+
+    listed = ",".join(f"a{i}" for i in range(2000))
+    url = (
+        f"https://{{switch:{listed}}}.example.org/{'p' * 60_000}/{{z}}/{{x}}/{{y}}.png"
+    )
+    tracemalloc.start()
+    try:
+        with pytest.raises(ValidationError, match="at most 2083 characters"):
+            IRasterUpdate(url=url)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    # A few copies of the address at most, not one per subdomain.
+    assert peak < 2 * 1024 * 1024, peak
+
+
+def test_a_subdomain_list_names_a_few_subdomains_at_most():
+    from core.db.models.layer import MAX_TILE_SUBDOMAINS
+    from core.schemas.layer import IRasterUpdate
+
+    def address(subdomains: int) -> str:
+        listed = ",".join(f"s{i}" for i in range(subdomains))
+        return f"https://{{switch:{listed}}}.tile.example.org/{{z}}/{{x}}/{{y}}.png"
+
+    most = address(MAX_TILE_SUBDOMAINS)
+    assert IRasterUpdate(url=most).url == most
+    with pytest.raises(ValidationError, match="at most 16 subdomains"):
+        IRasterUpdate(url=address(MAX_TILE_SUBDOMAINS + 1))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        123,
+        1.5,
+        True,
+        ["https://a.example/{z}/{x}/{y}.png"],
+        {"a": 1},
+        b"https://a.example/x",
+    ],
+)
+def test_an_address_that_is_no_text_is_a_validation_error(url: object):
+    from core.schemas.layer import IRasterCreate, IRasterUpdate
+
+    with pytest.raises(ValidationError):
+        IRasterUpdate(url=url)
+    with pytest.raises(ValidationError):
+        IRasterCreate(
+            name="Tiles", folder_id=uuid4(), type="raster", data_type="xyz", url=url
+        )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://10.0.0.5:8080\\@tiles.example.org/x.tif",
+        "https://tiles.example.org/{z}/{x}/{y}.png\\@other.example",
+        "https://tiles.example.org/a b/{z}/{x}/{y}.png",
+        "https://tiles.example.org/a\tb/{z}/{x}/{y}.png",
+        "https://tiles.example.org/a\x00b/{z}/{x}/{y}.png",
+        "https://{s}.tiles.example.org\\@other.example/{z}/{x}/{y}.png",
+    ],
+)
+def test_an_address_every_parser_does_not_read_alike_is_refused(url: str):
+    """An address with a backslash, whitespace or a control character inside
+    it is never stored: the server's HTTP client and its URL parser could read
+    another host from it."""
+    from core.schemas.layer import IRasterCreate, IRasterUpdate
+
+    with pytest.raises(ValidationError):
+        IRasterUpdate(url=url)
+    for data_type in ("cog", "xyz"):
+        with pytest.raises(ValidationError):
+            IRasterCreate(
+                name="Tiles",
+                folder_id=uuid4(),
+                type="raster",
+                data_type=data_type,
+                url=url,
+            )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@data.example.org:8443/dem.tif?sig=a%20b",
+        "http://[2001:db8::1]:8080/dem.tif",
+        "https://data.example.org/wms?SERVICE=WMS&BBOX={bbox-epsg-3857}",
+    ],
+)
+def test_ordinary_raster_addresses_are_kept_as_typed(url: str):
+    from core.schemas.layer import IRasterUpdate
+
+    assert IRasterUpdate(url=url).url == url

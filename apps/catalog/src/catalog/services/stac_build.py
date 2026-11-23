@@ -233,6 +233,15 @@ def _is_unservable_link(href: object) -> bool:
 _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 
 
+#: The shape of the documents this API builds from the mirror. Part of every
+#: ETag (see ``CatalogStore._content_digest``): raise it whenever a change here
+#: serves different documents from the same mirror files, or browsers keep the
+#: old answer through 304s.
+#: 2: an item says whether it has published tiles (`goat:tiles`), and a
+#: facet's repeated values all filter (before, only the last one did).
+DOCUMENT_VERSION = 2
+
+
 #: Assets this API serves itself, and the ``/assets`` kind each is served as.
 #:
 #: The harvester publishes these hrefs relative to the static JSON tree
@@ -245,8 +254,17 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #:
 #: The GeoParquet is deliberately not here. It keeps being dropped, which is how
 #: "the harmonised data is not downloadable" stays true by construction rather
-#: than by a permission that could be relaxed.
+#: than by a permission that could be relaxed. The tiles goat-data published
+#: for a layer (`tiles`, a `.pmtiles`) are dropped the same way: they hold the
+#: layer's features, and geoapi reads them for a preview under its own read
+#: rule. The item only says that it has them (`_has_published_tiles`).
 _SERVED_ASSETS = {"thumbnail": "thumbnail", "style": "style"}
+
+
+def _has_published_tiles(assets: object) -> bool:
+    tiles = assets.get("tiles") if isinstance(assets, dict) else None
+    href = tiles.get("href") if isinstance(tiles, dict) else None
+    return str(href or "").lower().endswith(".pmtiles")
 
 
 def _public_assets(
@@ -583,6 +601,8 @@ def record_to_item(
     resolved = collection_id or item.get("collection") or row_collection
     cid = str(resolved) if resolved else None
 
+    if _has_published_tiles(item.get("assets")):
+        item["properties"] = {**(item.get("properties") or {}), "goat:tiles": True}
     item["assets"] = _public_assets(
         item.get("assets"), item_id=item_id, assets_base=assets_base
     )

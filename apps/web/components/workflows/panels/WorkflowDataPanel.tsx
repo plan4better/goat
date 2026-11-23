@@ -29,19 +29,16 @@ import bbox from "@turf/bbox";
 import "maplibre-gl/dist/maplibre-gl.css";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Map, { Layer as MapLayer, Source } from "react-map-gl/maplibre";
-import type { LayerProps, MapRef } from "react-map-gl/maplibre";
+import type { MapRef } from "react-map-gl/maplibre";
 import { useDispatch, useSelector } from "react-redux";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useDataset, useDatasetCollectionItems } from "@/lib/api/layers";
+import { useDatasetStyle } from "@/lib/api/map";
 import { getExtent } from "@/lib/api/processes";
 import { useTempLayerFeatures } from "@/lib/api/workflows";
-import { GEOAPI_BASE_URL } from "@/lib/constants";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
-import { rgbToHex } from "@/lib/utils/helpers";
-import { getMapboxStyleColor } from "@/lib/transformers/layer";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import type { AppDispatch } from "@/lib/store";
 import { selectRequestMapView, selectRequestTableView } from "@/lib/store/workflow/selectors";
@@ -50,15 +47,19 @@ import {
   clearTableViewRequest,
   setActiveDataPanelView,
 } from "@/lib/store/workflow/slice";
-import { createTheCQLBasedOnExpression } from "@/lib/transformers/filter";
+import { defaultStyle } from "@/lib/style/defaults";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { fitBounds } from "@/lib/utils/map/navigate";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
-import type { Expression } from "@/lib/validations/filter";
+import { isRasterDataset } from "@/lib/utils/workflowDatasets";
+import { nodeFilterCql } from "@/lib/utils/workflowFilter";
 import type { DatasetCollectionItems, GetCollectionItemsQueryParams } from "@/lib/validations/layer";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
+import { useFilterFields } from "@/hooks/map/useFilterFields";
 
 import FeatureTable from "@/components/common/FeatureTable";
 import MapViewer from "@/components/map/MapViewer";
@@ -184,15 +185,18 @@ function a11yProps(index: number) {
   };
 }
 
-// Get layer ID from node (either dataset layer ID or tool output layer ID)
-function getNodeDataInfo(
+// Get layer ID from node (either dataset layer ID or tool output layer ID). A dataset node that holds a raster layer
+// (workflows take none) has no data to show: nothing is asked of its layer.
+export function getNodeDataInfo(
   node: WorkflowNode | null,
-  tempLayerIds?: Record<string, string>
+  tempLayerIds?: Record<string, string>,
+  projectLayers?: ProjectLayer[]
 ): {
   hasData: boolean;
   layerId: string | null; // UUID of the layer (for regular layers)
   tempLayerId: string | null; // Temp layer ID format: "workflow_id:node_id" (for temp results)
-  nodeFilter: { op: string; expressions: Expression[] } | null;
+  /** The dataset step's own filter as stored (`{op, expressions}`, or CQL on older steps). */
+  nodeFilter: Record<string, unknown> | null;
 } {
   if (!node) {
     return { hasData: false, layerId: null, tempLayerId: null, nodeFilter: null };
@@ -201,11 +205,11 @@ function getNodeDataInfo(
   // Dataset node - use layerId directly
   if (node.type === "dataset" && node.data.type === "dataset") {
     const layerId = node.data.layerId;
-    if (!layerId) {
+    if (!layerId || isRasterDataset(node.data, projectLayers)) {
       return { hasData: false, layerId: null, tempLayerId: null, nodeFilter: null };
     }
     // Get node's workflow filter
-    const nodeFilter = node.data.filter as { op: string; expressions: Expression[] } | undefined;
+    const nodeFilter = node.data.filter;
     return {
       hasData: true,
       layerId,
@@ -245,15 +249,18 @@ function getNodeDataInfo(
 
 interface WorkflowDataPanelProps {
   selectedNode: WorkflowNode | null;
+  /** The project's layers: a dataset node's layer type as it is now. */
+  projectLayers?: ProjectLayer[];
   tempLayerIds?: Record<string, string>; // Map of node_id -> temp_layer_id for executed workflow
-  tempLayerProperties?: Record<string, Record<string, unknown>>; // Layer style properties by node ID
+  tempLayerStyles?: Record<string, LayerStyle>; // The result's GOAT Style document by node ID
   workflowId?: string; // Current workflow ID
 }
 
 const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
   selectedNode,
+  projectLayers,
   tempLayerIds = {},
-  tempLayerProperties = {},
+  tempLayerStyles = {},
   workflowId: _workflowId, // Available for future use (e.g., refreshing temp data)
 }) => {
   const { t } = useTranslation("common");
@@ -276,61 +283,15 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
   // Get node data info - returns layerId (UUID) or tempLayerId for fetching
   const { hasData, layerId, tempLayerId, nodeFilter } = useMemo(
-    () => getNodeDataInfo(selectedNode, tempLayerIds),
-    [selectedNode, tempLayerIds]
+    () => getNodeDataInfo(selectedNode, tempLayerIds, projectLayers),
+    [selectedNode, tempLayerIds, projectLayers]
   );
 
   // Check if we're viewing a temp layer
   const isTempLayer = !!tempLayerId;
 
-  // Get style properties for the selected temp layer node
-  const nodeProperties = selectedNode ? tempLayerProperties[selectedNode.id] : undefined;
-
-  // Compute MapLibre paint styles from GOAT tool properties
-  // Uses Record<string, unknown> to match MapLibre's dynamic expression types
-  const tempLayerPaint = useMemo((): {
-    fill: Record<string, unknown>;
-    line: Record<string, unknown>;
-    circle: Record<string, unknown>;
-  } | null => {
-    if (!nodeProperties) return null;
-
-    // Create a minimal wrapper object for getMapboxStyleColor()
-    // That function accesses data.properties[...] so we just need { properties: ... }
-    const dataWrapper = { properties: nodeProperties } as Parameters<typeof getMapboxStyleColor>[0];
-
-    const fillColor = getMapboxStyleColor(dataWrapper, "color");
-    const strokeColor = getMapboxStyleColor(dataWrapper, "stroke_color");
-
-    const opacity = typeof nodeProperties.opacity === "number" ? nodeProperties.opacity : 0.7;
-    const filled = nodeProperties.filled !== false;
-    const stroked = nodeProperties.stroked !== false;
-    const strokeWidth = typeof nodeProperties.stroke_width === "number" ? nodeProperties.stroke_width : 2;
-    const radius = typeof nodeProperties.radius === "number" ? nodeProperties.radius : 6;
-
-    // Solid fallback color
-    const solidColor = nodeProperties.color
-      ? rgbToHex(nodeProperties.color as [number, number, number])
-      : undefined;
-
-    return {
-      fill: {
-        "fill-color": fillColor,
-        "fill-opacity": filled ? opacity : 0,
-      },
-      line: {
-        "line-color": stroked ? strokeColor : fillColor,
-        "line-width": stroked ? strokeWidth : 1.5,
-      },
-      circle: {
-        "circle-radius": radius,
-        "circle-color": fillColor,
-        "circle-opacity": filled ? opacity : 0,
-        "circle-stroke-width": stroked ? strokeWidth : 2,
-        "circle-stroke-color": stroked ? strokeColor : (solidColor || "#ffffff"),
-      },
-    };
-  }, [nodeProperties]);
+  // The selected result's style, as the tool wrote it (the geometry's default where there is none)
+  const tempStyle = selectedNode ? tempLayerStyles[selectedNode.id] : undefined;
 
   // Fetch layer data by layerId (only for regular layers, not temp)
   const { dataset: layer } = useDataset(!isTempLayer && layerId ? layerId : "");
@@ -350,20 +311,13 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
   // Build CQL filter from node's workflow filter (only for regular layers)
   // Temp layers don't use CQL filters since they're already filtered by the workflow
-  const cqlFilter = useMemo(() => {
-    if (isTempLayer || !nodeFilter || !nodeFilter.expressions || nodeFilter.expressions.length === 0) {
-      return null;
-    }
-    try {
-      return createTheCQLBasedOnExpression(
-        nodeFilter.expressions,
-        regularFields,
-        nodeFilter.op as "and" | "or"
-      );
-    } catch {
-      return null;
-    }
-  }, [isTempLayer, nodeFilter, regularFields]);
+  const { fields: filterFields, isLoading: areFilterFieldsLoading } = useFilterFields(
+    !isTempLayer ? effectiveLayerId : undefined
+  );
+  const cqlFilter = useMemo(
+    () => (isTempLayer || !nodeFilter ? null : (nodeFilterCql(nodeFilter, filterFields) ?? null)),
+    [isTempLayer, nodeFilter, filterFields]
+  );
 
   // Stringify CQL filter for stable comparison
   const cqlFilterString = useMemo(() => {
@@ -422,13 +376,6 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
   }, [tempLayerId]);
 
   const { layerUuid: tempLayerUuid } = tempLayerParts;
-
-  // Build vector tile URL for temp layer map (same as regular layers, plus temp=true so
-  // geoapi looks for the tiles in the workflow temp storage straight away)
-  const tempTileUrl = useMemo(() => {
-    if (!tempLayerUuid) return null;
-    return `${GEOAPI_BASE_URL}/collections/${tempLayerUuid}/tiles/WebMercatorQuad/{z}/{x}/{y}?temp=true`;
-  }, [tempLayerUuid]);
 
   // Temp layer data (from temp storage) - only for table pagination
   // Use the layer UUID as the collection ID, just add temp=true
@@ -576,7 +523,7 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     }
 
     // Wait for fields to load if there's a filter, so we can generate proper CQL
-    if (nodeFilter && nodeFilter.expressions.length > 0 && areFieldsLoading) {
+    if (cqlFilter && areFilterFieldsLoading) {
       return;
     }
 
@@ -627,8 +574,8 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     tabValue,
     isCollapsed,
     cqlFilterString,
-    nodeFilter,
-    areFieldsLoading,
+    cqlFilter,
+    areFilterFieldsLoading,
     performZoom,
   ]);
 
@@ -710,24 +657,37 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     }
   }, [isCollapsed, tabValue, dispatch]);
 
-  // Layer with visibility and workflow filter for map
-  // Convert Layer to ProjectLayer-like format for MapViewer
-  const layerForMap = useMemo((): ProjectLayer | null => {
-    if (!layer || !hasGeometry) return null;
-
+  // The dataset in its default style with the node's filter; a temporary result in its own style, from the same
+  // tiles (the result's id is a collection of its own).
+  const { style: datasetStyle } = useDatasetStyle(!isTempLayer && layer ? layer.id : null);
+  const tempGeometry = useMemo(() => {
+    const type = (tempTableData?.features?.[0] as { geometry?: { type?: string } } | undefined)?.geometry?.type;
+    if (!type) return undefined;
+    return type.includes("Point") ? "point" : type.includes("Line") ? "line" : "polygon";
+  }, [tempTableData]);
+  const layerForMap = useMemo((): ViewLayer | null => {
+    if (!hasGeometry) return null;
+    if (isTempLayer) {
+      if (!tempLayerUuid) return null;
+      return {
+        id: tempLayerUuid,
+        type: "feature",
+        feature_layer_geometry_type: tempGeometry,
+        temp: true,
+        visible: true,
+        entry: {},
+        style: { document: tempStyle ?? defaultStyle(tempGeometry) },
+      };
+    }
+    if (!layer || !datasetStyle) return null;
     return {
       ...layer,
-      // Add ProjectLayer-specific fields
-      id: 0, // Placeholder - not used for map rendering
-      layer_id: layer.id,
-      folder_id: layer.folder_id,
-      properties: {
-        ...layer.properties,
-        visibility: true,
-      },
+      visible: true,
+      entry: {},
+      style: datasetStyle,
       query: cqlFilter ? { cql: cqlFilter } : undefined,
-    } as ProjectLayer;
-  }, [layer, hasGeometry, cqlFilter]);
+    };
+  }, [hasGeometry, isTempLayer, tempLayerUuid, tempGeometry, tempStyle, layer, datasetStyle, cqlFilter]);
 
   // Don't render if no data available from any node
   if (!hasData) {
@@ -850,19 +810,18 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
 
           {/* Map View */}
           <TabPanel value={tabValue} index={1}>
-            {/* Regular layer map - uses MapViewer with tile-based rendering */}
-            {hasGeometry && !isTempLayer && layerForMap && mapBounds && (
+            {hasGeometry && layerForMap && mapBounds && (
               <MapContainer>
                 <DrawProvider>
                   <MapViewer
+                    key={String(layerForMap.id)}
                     mapRef={mapRef}
                     layers={[layerForMap]}
                     initialViewState={{
                       bounds: mapBounds,
-                      fitBoundsOptions: { padding: 20 },
+                      fitBoundsOptions: { padding: isTempLayer ? 40 : 20 },
                     }}
                     mapStyle={getBasemapUrl("light")}
-                    dragRotate={false}
                     touchZoomRotate={false}
                     containerSx={{
                       position: "relative",
@@ -873,69 +832,6 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
                     }}
                   />
                 </DrawProvider>
-              </MapContainer>
-            )}
-            {/* Temp layer map - uses vector tiles for performance */}
-            {hasGeometry && isTempLayer && tempTileUrl && mapBounds && (
-              <MapContainer>
-                <Map
-                  ref={mapRef}
-                  initialViewState={{
-                    bounds: mapBounds,
-                    fitBoundsOptions: { padding: 40 },
-                  }}
-                  mapStyle={getBasemapUrl("light")}
-                  dragRotate={false}
-                  touchZoomRotate={false}
-                  style={{ width: "100%", height: "100%" }}>
-                  <Source id="temp-layer-source" type="vector" tiles={[tempTileUrl]} maxzoom={14}>
-                    {/* Polygon fill layer */}
-                    <MapLayer
-                      {...({
-                        id: "temp-layer-fill",
-                        type: "fill",
-                        "source-layer": "default",
-                        filter: ["==", ["geometry-type"], "Polygon"],
-                        paint: tempLayerPaint?.fill ?? {
-                          "fill-color": theme.palette.primary.main,
-                          "fill-opacity": 0.3,
-                        },
-                      } as LayerProps)}
-                    />
-                    {/* Polygon outline / line layer */}
-                    <MapLayer
-                      {...({
-                        id: "temp-layer-outline",
-                        type: "line",
-                        "source-layer": "default",
-                        filter: [
-                          "any",
-                          ["==", ["geometry-type"], "Polygon"],
-                          ["==", ["geometry-type"], "LineString"],
-                        ],
-                        paint: tempLayerPaint?.line ?? {
-                          "line-color": theme.palette.primary.main,
-                          "line-width": 2,
-                        },
-                      } as LayerProps)}
-                    />
-                    {/* Point layer */}
-                    <MapLayer
-                      {...({
-                        id: "temp-layer-points",
-                        type: "circle",
-                        "source-layer": "default",
-                        filter: ["==", ["geometry-type"], "Point"],
-                        paint: tempLayerPaint?.circle ?? {
-                          "circle-radius": 6,
-                          "circle-color": theme.palette.primary.main,
-                          "circle-stroke-width": 2,
-                          "circle-stroke-color": "#ffffff",
-                        },
-                      } as LayerProps)}
-                    />
-                  </Source>
-                </Map>
               </MapContainer>
             )}
             {!hasGeometry && (

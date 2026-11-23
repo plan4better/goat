@@ -1,3 +1,4 @@
+import { createTheme } from "@mui/material";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -309,5 +310,45 @@ describe("ContentDetailsPanel", () => {
     renderPanel();
 
     expect(screen.queryByText("anyone_with_link")).not.toBeInTheDocument();
+  });
+
+  it("says where a linked layer comes from as the dataset detail does, the host after it as secondary text", () => {
+    renderPanel({
+      selected: [
+        {
+          ...ownerLayer,
+          layer_type: "raster",
+          data_type: "cog",
+          is_linked: true,
+          source_host: "maplibre.org",
+        },
+      ],
+    });
+
+    const value = screen.getByText("source").nextElementSibling as HTMLElement;
+    expect(value.textContent).toBe('metadata.source_remote_file:{"kind":"COG"} · maplibre.org');
+    expect(getComputedStyle(screen.getByText("· maplibre.org")).color).toBe(
+      createTheme().palette.text.secondary
+    );
+    // The feed sends the host alone (a full address can carry a key): no Address row, no link, no copy. The address
+    // itself is in the opened dataset.
+    expect(screen.queryByText("address")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("says a WFS layer is a copy, with the host it was copied from", () => {
+    renderPanel({
+      selected: [{ ...ownerLayer, data_type: "wfs", is_linked: false, source_host: "www.wfs.nrw.de" }],
+    });
+
+    const value = screen.getByText("source").nextElementSibling as HTMLElement;
+    expect(value.textContent).toBe("metadata.source_wfs_copy · www.wfs.nrw.de");
+  });
+
+  it("says nothing of a source for data GOAT holds", () => {
+    renderPanel();
+
+    expect(screen.queryByText("source")).not.toBeInTheDocument();
+    expect(screen.queryByText("address")).not.toBeInTheDocument();
   });
 });

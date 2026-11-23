@@ -217,3 +217,105 @@ class TestBuildFeaturesJsonQuery:
     def test_default_order_is_rowid(self, con):
         features, _ = run_query(con)
         assert [f["id"] for f in features] == ["1", "2", "3"]
+
+
+class TestGetFeaturesJsonProperties:
+    """`properties` picks the columns; an empty list returns features without properties."""
+
+    @pytest.fixture
+    def run(self, con, monkeypatch):
+        import importlib
+        from unittest.mock import MagicMock
+
+        module = importlib.import_module("geoapi.services.feature_service")
+
+        def execute(_pool, query, params=None, fetch_all=False):
+            cursor = con.execute(query, params or [])
+            return cursor.fetchone(), cursor.description
+
+        monkeypatch.setattr(module, "execute_with_retry", execute)
+
+        def run(properties):
+            fragment, returned, total = module.feature_service.get_features_json(
+                layer_info=MagicMock(full_table_name="feats"),
+                limit=10,
+                properties=properties,
+                column_names=PROP_COLS + ["geometry"],
+                native_column_types=NATIVE_TYPES_FULL,
+            )
+            return json.loads(f"[{fragment}]"), returned, total
+
+        return run
+
+    def test_listed_properties_only(self, run):
+        features, _, _ = run(["name"])
+        assert [f["properties"] for f in features] == [
+            {"name": "alpha"},
+            {"name": "beta"},
+            {"name": "gamma"},
+        ]
+
+    def test_empty_list_returns_no_properties(self, run):
+        features, returned, total = run([])
+        assert (returned, total) == (3, 3)
+        assert [f["properties"] for f in features] == [{}, {}, {}]
+        assert [f["id"] for f in features] == ["1", "2", "3"]
+        assert features[0]["geometry"] == {"type": "Point", "coordinates": [10.0, 52.0]}
+
+    def test_no_list_returns_every_property(self, run):
+        features, _, _ = run(None)
+        assert set(features[0]["properties"]) == set(PROP_COLS)
+
+
+class TestGetTempFeaturesProperties:
+    """A workflow result's features take `properties` as a stored layer's do."""
+
+    @pytest.fixture
+    def run(self, tmp_path, monkeypatch):
+        import importlib
+
+        module = importlib.import_module("geoapi.services.feature_service")
+
+        user = "11111111-2222-3333-4444-555555555555"
+        layer = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        monkeypatch.setattr(
+            module.settings, "DUCKLAKE_DATA_DIR", str(tmp_path / "ducklake")
+        )
+        folder = tmp_path / "temporary" / f"user_{user.replace('-', '')}" / "w_1"
+        folder.mkdir(parents=True)
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        con.execute(
+            "COPY (SELECT * FROM (VALUES ('alpha', 1, ST_Point(10, 52)), "
+            "('beta', 2, ST_Point(11, 53))) t(name, value, geometry)) "
+            f"TO '{folder / ('t_' + layer.replace('-', '') + '.parquet')}' (FORMAT parquet)"
+        )
+
+        def run(properties):
+            return module.feature_service.get_temp_features(
+                user_id=user,
+                layer_uuid=layer,
+                limit=10,
+                offset=0,
+                properties=properties,
+            )
+
+        return run
+
+    def test_listed_properties_only(self, run):
+        features, total = run(["name"])
+        assert total == 2
+        assert [f["properties"] for f in features] == [
+            {"name": "alpha"},
+            {"name": "beta"},
+        ]
+
+    def test_empty_list_returns_no_properties(self, run):
+        features, total = run([])
+        assert total == 2
+        assert [f["properties"] for f in features] == [{}, {}]
+        assert features[0]["geometry"] == {"type": "Point", "coordinates": [10.0, 52.0]}
+
+    def test_no_list_returns_every_property(self, run):
+        features, _ = run(None)
+        assert features[0]["properties"] == {"name": "alpha", "value": 1}

@@ -1,41 +1,79 @@
-import { transformToMapboxLayerStyleSpec } from "@/lib/transformers/layer";
-import type { Layer } from "@/lib/validations/layer";
+// A catalog dataset's preview sample, drawn with its own style through the same compiler as every map (spec 16), so
+// the preview matches the layer the dataset becomes once added. Only a GOAT Style document of major 1 is drawn;
+// anything else (another major, or no geometry type) leaves the caller's plain footprint rendering.
+import type { Geometry } from "@/lib/style/compile/types";
+import type { LayerStyle } from "@/lib/style/generated/types";
+import type { RenderLayer } from "@/lib/style/render/mapLayers";
+import { isDrawableStyle } from "@/lib/style/version";
 
-/** A catalog dataset's own rendering, as MapLibre paint. */
+/** The style asset as served: a GOAT Style document (the catalog upgrades older styles on read). */
+export type CatalogStyle = Record<string, unknown>;
 
-/** The published style object: a layer's `properties`, before it is a layer. */
-export type CatalogStyle = Layer["properties"];
+/** The renderer's key of the sample: its MapLibre layers are `catalog-sample-<part>`. */
+export const CATALOG_SAMPLE_KEY = "catalog-sample";
 
-export type CatalogPaint = {
-  type: string;
-  layout?: Record<string, unknown>;
-  paint: Record<string, unknown>;
-};
+const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
-/**
- * `undefined` when the style cannot be drawn — no geometry type, a type this
- * renderer has no shape for, or a malformed style. Callers fall back to their
- * plain footprint colour, so a bad published style must never throw.
- */
-export const catalogPaint = (
-  style: CatalogStyle | undefined,
-  geometryType: string | undefined
-): CatalogPaint | undefined => {
-  if (!style || !geometryType) return undefined;
-  if (geometryType !== "point" && geometryType !== "line" && geometryType !== "polygon") {
+/** The style without its zoom range: a preview opens framed on the whole dataset, often below the layer's min_zoom. */
+function previewStyle(style: Record<string, unknown>): LayerStyle {
+  const { min_zoom: _min, max_zoom: _max, ...rest } = style;
+  return rest as unknown as LayerStyle;
+}
+
+/** A raster item drawn from geoapi's raster tiles (`catalogRasterSource`), colored by its style as a project draws it. */
+export function catalogRasterLayer(
+  style: unknown,
+  source: { tiles: string; tileset: string; coverage: string } | null
+): RenderLayer | undefined {
+  if (!source || !isDrawableStyle(style) || style.kind !== "raster") return undefined;
+  return {
+    key: CATALOG_SAMPLE_KEY,
+    style: previewStyle(style),
+    entry: { visible: true },
+    source: { type: "raster", id: `src-${CATALOG_SAMPLE_KEY}-raster`, ...source },
+  };
+}
+
+/** The layer's published tiles as a render layer, drawn with its style like a project layer is. */
+export function catalogTilesLayer(
+  style: unknown,
+  geometryType: string | undefined,
+  tilesUrl: string | null,
+  highlight?: number
+): RenderLayer | undefined {
+  if (!tilesUrl || !isDrawableStyle(style) || !geometryType || !GEOMETRIES.has(geometryType)) {
     return undefined;
   }
-  try {
-    // The transformer reads only `properties` and `feature_layer_geometry_type`,
-    // so a catalog style needs no layer — hence the cast rather than a fake one.
-    return transformToMapboxLayerStyleSpec({
-      // `visibility` is a project's layer toggle, and it rides along into the
-      // published style. A preview has no toggle to switch back on, so the
-      // caller's decision to draw the layer is the only visibility there is.
-      properties: { ...style, visibility: true },
-      feature_layer_geometry_type: geometryType,
-    } as unknown as Layer) as CatalogPaint;
-  } catch {
+  return {
+    key: CATALOG_SAMPLE_KEY,
+    style: previewStyle(style),
+    geometry: geometryType as Geometry,
+    entry: { visible: true },
+    source: { type: "tiles", id: `src-${CATALOG_SAMPLE_KEY}-tiles`, tiles: [tilesUrl] },
+    ...(highlight !== undefined ? { highlight } : {}),
+  };
+}
+
+/** The sample as a render layer; features are numbered from 1 so the active one can be highlighted by feature state. */
+export function catalogSampleLayer(
+  style: unknown,
+  geometryType: string | undefined,
+  sample: GeoJSON.FeatureCollection | null,
+  highlight?: number
+): RenderLayer | undefined {
+  if (!sample || !isDrawableStyle(style) || !geometryType || !GEOMETRIES.has(geometryType)) {
     return undefined;
   }
-};
+  const data: GeoJSON.FeatureCollection = {
+    type: "FeatureCollection",
+    features: sample.features.map((feature, i) => ({ ...feature, id: i + 1 })),
+  };
+  return {
+    key: CATALOG_SAMPLE_KEY,
+    style: previewStyle(style),
+    geometry: geometryType as Geometry,
+    entry: { visible: true },
+    source: { type: "points", id: `src-${CATALOG_SAMPLE_KEY}`, data },
+    ...(highlight !== undefined ? { highlight } : {}),
+  };
+}

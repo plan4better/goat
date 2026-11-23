@@ -19,7 +19,14 @@ import type { SelectorItem } from "@/types/map/common";
 import Selector from "@/components/map/panels/common/Selector";
 import TextFieldInput from "@/components/map/panels/common/TextFieldInput";
 
-import { MiniLabel } from "./_shared";
+/** A control's name above it: the panels' caption in the secondary text color. */
+function MiniLabel({ children }: { children: string }) {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+      {children}
+    </Typography>
+  );
+}
 
 // Same ladder the layer-schema FieldEditor exposes, so the format panel
 // speaks the same vocabulary across the app.
@@ -56,7 +63,7 @@ export function FieldFormatPopover({
   onClose,
   sampleValue,
 }: FieldFormatPopoverProps) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const cfg: AttributeFormatConfig = config ?? {};
 
@@ -86,7 +93,7 @@ export function FieldFormatPopover({
   ];
 
   const renderPreview = (v: number) => {
-    let s = formatFieldValue(v, "number", cfg);
+    let s = formatFieldValue(v, "number", cfg, i18n.language);
     if (prefix || suffix) s = `${prefix ?? ""}${s}${suffix ?? ""}`;
     return s;
   };
@@ -179,6 +186,12 @@ export function FieldFormatPopover({
                       label={t("always_show_sign")}
                       checked={cfg.always_show_sign ?? false}
                       onChange={(v) => update({ always_show_sign: v || undefined })}
+                    />
+                    {/* A share of 1 as a percent: 0.73 reads 73 %, in the reader's language. */}
+                    <ToggleRow
+                      label={t("show_as_percent")}
+                      checked={cfg.percent ?? false}
+                      onChange={(v) => update({ percent: v || undefined })}
                     />
                   </Stack>
 

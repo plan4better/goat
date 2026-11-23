@@ -8,9 +8,9 @@ import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import type { CustomDomainConfig } from "@/lib/api/customDomainConfig";
 
+import CopyButton from "@/components/common/CopyButton";
 import SettingsCard from "@/components/settings/common/SettingsCard";
 import SettingsLoadError from "@/components/settings/common/SettingsLoadError";
-import CopyButton from "@/components/settings/whiteLabel/CopyButton";
 
 const OPEN_KEY = "goat.settings.domainsHelpOpen";
 const PLAIN = { interpolation: { escapeValue: false } } as const;

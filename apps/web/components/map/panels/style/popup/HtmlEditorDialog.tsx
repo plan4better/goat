@@ -6,11 +6,13 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import type { StyleIssue } from "@/lib/style/save";
 import type { PopupProperties } from "@/lib/validations/layer";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import { IssueNotice } from "@/components/map/panels/styleEditor/IssueNotice";
 import { PopupContent, PopupHeader } from "@/components/map/popover/MapFeaturePopover";
 import type { LayerField } from "@/components/map/popover/formatFeatureProperties";
 import { PopupHtmlStyles } from "@/components/map/popover/popupStyles";
@@ -30,9 +32,29 @@ interface Props {
   popup: PopupProperties;
   onChange: (patch: Partial<PopupProperties>) => void;
   onClose: () => void;
+  /** The fields to offer in place of the layer's (a raster file's cell has its own). */
+  fields?: LayerField[];
+  /** Saves the draft in place of writing it and closing: the caller closes the dialog once the save is answered. */
+  onSave?: (html: string) => void;
+  /** A save of the draft is waiting for its answer. */
+  saving?: boolean;
+  /** The issues of the popup's HTML, shown above the editor. */
+  issues?: StyleIssue[];
 }
 
-export function HtmlEditorDialog({ open, layerId, layerName, layerIcon, popup, onChange, onClose }: Props) {
+export function HtmlEditorDialog({
+  open,
+  layerId,
+  layerName,
+  layerIcon,
+  popup,
+  onChange,
+  onClose,
+  fields,
+  onSave,
+  saving,
+  issues = [],
+}: Props) {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const { layerFields } = useLayerFields(layerId);
@@ -62,7 +84,9 @@ export function HtmlEditorDialog({ open, layerId, layerName, layerIcon, popup, o
         <AppDialogFooter
           onCancel={onClose}
           primaryLabel={t("save")}
+          primaryLoading={saving}
           onPrimary={() => {
+            if (onSave) return onSave(draftHtml);
             onChange({ html: draftHtml });
             onClose();
           }}
@@ -80,7 +104,18 @@ export function HtmlEditorDialog({ open, layerId, layerName, layerIcon, popup, o
             flexDirection: "column",
             overflow: "hidden",
           }}>
-          <HtmlModeEditor value={draftHtml} onChange={setDraftHtml} fields={layerFields as LayerField[]} />
+          {issues.length > 0 && (
+            <Stack spacing={1} sx={{ mb: 2 }}>
+              {issues.map((issue, i) => (
+                <IssueNotice key={`${issue.code}-${i}`} issue={issue} />
+              ))}
+            </Stack>
+          )}
+          <HtmlModeEditor
+            value={draftHtml}
+            onChange={setDraftHtml}
+            fields={fields ?? (layerFields as LayerField[])}
+          />
         </Box>
 
         {/* Center — preview canvas */}

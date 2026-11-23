@@ -12,6 +12,7 @@ import type { ControlKey, ControlPositions, CornerKey } from "@/lib/validations/
 import { CORNER_KEYS } from "@/lib/validations/project";
 
 const CONFIGURABLE_CONTROLS: ControlKey[] = [
+  "view",
   "location",
   "measure",
   "zoom_controls",
@@ -73,6 +74,7 @@ const MapControlsLayout = ({ controlPositions, onChange }: MapControlsLayoutProp
   const controlLabels: Record<ControlKey, string> = {
     location: t("search"),
     measure: t("measure"),
+    view: t("view3d.control"),
     zoom_controls: t("zoom_controls"),
     basemap: t("basemap"),
     fullscreen: t("fullscreen"),

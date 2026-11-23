@@ -10,7 +10,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-    exclude: ["node_modules", "dist", ".next", "playwright", "**/*.e2e.{ts,tsx}"],
+    // The style lab runs in a real browser, under vitest.lab.config.ts.
+    exclude: ["node_modules", "dist", ".next", "playwright", "**/*.e2e.{ts,tsx}", "**/*.lab.test.tsx"],
     // The dialog suites drive full MUI trees through user-event, and the
     // slowest cases sit near a second locally. The 5s default leaves them no
     // headroom on a two-core CI runner, where they time out at random.

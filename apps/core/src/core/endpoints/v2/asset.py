@@ -40,12 +40,14 @@ ALLOWED_MIME_TYPES = {
         "image/tiff",
         "image/svg+xml",
         "image/x-icon",
+        "image/vnd.microsoft.icon",
     ],
     AssetType.ICON: [
         "image/svg+xml",
         "image/jpeg",
         "image/webp",
         "image/x-icon",
+        "image/vnd.microsoft.icon",
         "image/bmp",
         "image/png",
     ],
@@ -57,6 +59,17 @@ ALLOWED_MIME_TYPES = {
 }
 
 DOCUMENTS_MAX_FILE_SIZE_BYTES: int = settings.DOCUMENTS_MAX_FILE_SIZE
+
+# The public file redirects allow any origin even when the request has none:
+# a browser caches the redirect from a plain <img> request and reuses it for a
+# later anonymous CORS request for the same URL (an icon the map draws onto a
+# canvas). CORSMiddleware only adds these headers when the request has an
+# Origin, so without them that cached redirect would be blocked.
+_PUBLIC_REDIRECT_HEADERS = {
+    "Cache-Control": f"public, max-age={ASSET_URL_EXPIRES // 2}",
+    "Access-Control-Allow-Origin": "*",
+    "Vary": "Origin",
+}
 
 
 async def _check_folder_access(
@@ -81,7 +94,31 @@ async def asset_file(key: str) -> RedirectResponse:
     return RedirectResponse(
         s3_service.asset_download_url(key),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-        headers={"Cache-Control": f"public, max-age={ASSET_URL_EXPIRES // 2}"},
+        headers=_PUBLIC_REDIRECT_HEADERS,
+    )
+
+
+@router.get("/{asset_id}/file", include_in_schema=False)
+async def asset_file_by_id(
+    asset_id: UUID4, async_session: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """An uploaded icon or image by its id: a redirect to its file. Styles name
+    uploaded icons `asset:<id>` (never URLs), so every viewer of a map, public
+    ones included, reaches them here; documents stay behind their key."""
+    s3_key = (
+        await async_session.execute(
+            select(UploadedAsset.s3_key).where(
+                UploadedAsset.id == asset_id,
+                UploadedAsset.asset_type.in_([AssetType.ICON, AssetType.IMAGE]),
+            )
+        )
+    ).scalar_one_or_none()
+    if s3_key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    return RedirectResponse(
+        f"{settings.ASSETS_URL}/{s3_key}",
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        headers=_PUBLIC_REDIRECT_HEADERS,
     )
 
 

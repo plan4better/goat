@@ -40,9 +40,15 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.ducklakeBootstrap.enabled }}
+      {{- $caBundle := include "goat.caBundle.enabled" . }}
+      {{- if or .Values.ducklakeBootstrap.enabled $caBundle }}
       initContainers:
+        {{- if $caBundle }}
+        {{- include "goat.caBundle.trustInit" (dict "root" $ "values" .Values.geoapi) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.ducklakeBootstrap.enabled }}
         {{- include "goat.ducklakeInit.container" (dict "context" $ "component" $component "values" .Values.geoapi) | nindent 8 }}
+        {{- end }}
       {{- end }}
       containers:
         - name: geoapi
@@ -86,6 +92,12 @@ spec:
                    core.config. See goat.auth.backendEnv. */}}
             {{- include "goat.auth.backendEnv" (dict "values" .Values.geoapi "root" $ "fallback" true) | trim | nindent 12 }}
             {{- include "goat.s3.env" (dict "root" $ "values" .Values.geoapi "assets" false) | trim | nindent 12 }}
+            {{- /* The catalog bucket (catalog.s3): previews of catalog items
+                   that are not layers yet, read for signed-in users. */}}
+            {{- include "goat.catalogS3.env" (dict "root" $ "values" .Values.geoapi) | trim | nindent 12 }}
+            {{- /* With global.caBundle: GDAL and boto3 trust the file the
+                   ca-bundle init container builds. */}}
+            {{- include "goat.caBundle.trustEnv" (dict "root" $ "values" .Values.geoapi) | nindent 12 }}
             {{- with .Values.geoapi.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -103,19 +115,26 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- if or .Values.data.enabled .Values.geoapi.extraVolumeMounts }}
+          {{- if or .Values.data.enabled .Values.geoapi.extraVolumeMounts $caBundle }}
           volumeMounts:
             {{- if .Values.data.enabled }}
             {{- include "goat.data.mounts.full" . | nindent 12 }}
+            {{- end }}
+            {{- if $caBundle }}
+            {{- include "goat.caBundle.trustMount" . | nindent 12 }}
             {{- end }}
             {{- with .Values.geoapi.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-      {{- if or .Values.data.enabled .Values.geoapi.extraVolumes }}
+      {{- if or .Values.data.enabled .Values.geoapi.extraVolumes $caBundle }}
       volumes:
         {{- if .Values.data.enabled }}
         {{- include "goat.data.volume" . | nindent 8 }}
+        {{- end }}
+        {{- if $caBundle }}
+        {{- include "goat.caBundle.volume" . | nindent 8 }}
+        {{- include "goat.caBundle.trustVolume" . | nindent 8 }}
         {{- end }}
         {{- with .Values.geoapi.extraVolumes }}
         {{- toYaml . | nindent 8 }}

@@ -11,7 +11,9 @@ vi.mock("@/components/map/popover/sampleFeature", () => ({
   useSampleFeature: () => ({ feature: undefined }),
 }));
 vi.mock("@/components/map/panels/style/popup/HtmlModeEditor", () => ({
-  HtmlModeEditor: () => <div>html editor</div>,
+  HtmlModeEditor: ({ fields }: { fields: Array<{ name: string }> }) => (
+    <div>html editor: {fields.map((f) => f.name).join(", ")}</div>
+  ),
 }));
 vi.mock("@/components/map/panels/style/popup/PopupAppearanceSettings", () => ({
   PopupAppearanceSettings: () => <div>appearance settings</div>,
@@ -73,5 +75,24 @@ describe("HtmlEditorDialog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "cancel" }));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("offers the fields it is given in place of the layer's: a raster file's cell", () => {
+    render(
+      <HtmlEditorDialog
+        open
+        layerId=""
+        layerName="DEM"
+        popup={popup}
+        onChange={vi.fn()}
+        onClose={vi.fn()}
+        fields={[
+          { name: "value", type: "number" },
+          { name: "class", type: "string" },
+          { name: "band_1", type: "number" },
+        ]}
+      />
+    );
+    expect(screen.getByText("html editor: value, class, band_1")).toBeInTheDocument();
   });
 });

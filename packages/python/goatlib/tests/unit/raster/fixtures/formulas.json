@@ -1,0 +1,207 @@
+[
+ {
+  "expression": "(b4 - b1) / (b4 + b1)",
+  "used": [
+   1,
+   4
+  ]
+ },
+ {
+  "expression": "b1 + b2 * 2",
+  "used": [
+   1,
+   2
+  ]
+ },
+ {
+  "expression": "-b1 + 3",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "2 * (b1 - 0.5)",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "b1 - -b1",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "b1 / 2 / 2",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "  b12  ",
+  "used": [
+   12
+  ]
+ },
+ {
+  "expression": "b01*b2",
+  "used": [
+   1,
+   2
+  ]
+ },
+ {
+  "expression": "((b2 - b1)) / 10.25",
+  "used": [
+   1,
+   2
+  ]
+ },
+ {
+  "expression": "b8 - b1",
+  "bands": 8,
+  "used": [
+   1,
+   8
+  ]
+ },
+ {
+  "expression": "b9 - b1",
+  "bands": 8,
+  "used": null
+ },
+ {
+  "expression": "((((((((((((((((((((((((((((((((b1))))))))))))))))))))))))))))))))",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "(((((((((((((((((((((((((((((((((b1)))))))))))))))))))))))))))))))))",
+  "used": null
+ },
+ {
+  "expression": "--------------------------------b1",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "---------------------------------b1",
+  "used": null
+ },
+ {
+  "expression": "b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1",
+  "used": [
+   1
+  ]
+ },
+ {
+  "expression": "b1 +b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1+b1",
+  "used": null
+ },
+ {
+  "expression": "",
+  "used": null
+ },
+ {
+  "expression": "   ",
+  "used": null
+ },
+ {
+  "expression": "b0",
+  "used": null
+ },
+ {
+  "expression": "abs(b1)",
+  "used": null
+ },
+ {
+  "expression": "b1 ** 2",
+  "used": null
+ },
+ {
+  "expression": "b1.real",
+  "used": null
+ },
+ {
+  "expression": "__import__('os')",
+  "used": null
+ },
+ {
+  "expression": "b1 +",
+  "used": null
+ },
+ {
+  "expression": "(b1",
+  "used": null
+ },
+ {
+  "expression": "b1)",
+  "used": null
+ },
+ {
+  "expression": "1e3",
+  "used": null
+ },
+ {
+  "expression": "b1 b2",
+  "used": null
+ },
+ {
+  "expression": "x",
+  "used": null
+ },
+ {
+  "expression": "b1 % 2",
+  "used": null
+ },
+ {
+  "expression": "((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((b1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+  "used": null
+ },
+ {
+  "expression": "b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1 + b1",
+  "used": null
+ },
+ {
+  "expression": "5",
+  "used": null
+ },
+ {
+  "expression": "(2 + 3) * 4",
+  "used": null
+ },
+ {
+  "expression": "B1",
+  "used": null
+ },
+ {
+  "expression": "b",
+  "used": null
+ },
+ {
+  "expression": "b1 - ",
+  "used": null
+ },
+ {
+  "expression": "()",
+  "used": null
+ },
+ {
+  "expression": "b1 (b2)",
+  "used": null
+ },
+ {
+  "expression": ".5 * b1",
+  "used": null
+ },
+ {
+  "expression": "b1 * 5.",
+  "used": null
+ },
+ {
+  "expression": "b1,b2",
+  "used": null
+ }
+]

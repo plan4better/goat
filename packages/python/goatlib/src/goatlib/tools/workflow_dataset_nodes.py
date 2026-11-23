@@ -16,9 +16,9 @@ copied from such a project) are retargeted by layer instead
 (``retarget_unlinked_dataset_nodes``), when no other entry of the project
 could be the one they mean.
 
-An export saves a dataset node's rows in the style the layer has where the
-node found it (``dataset_style``): its entry's in the running project, else
-the layer's own.
+An export saves a dataset node's rows in the active style of the node's
+project entry (``entry_id``), which ``layer_create_filtered`` reads; a node
+without an entry gives them the default style.
 """
 
 import copy
@@ -27,7 +27,9 @@ import uuid
 from typing import Any
 
 
-def _link_id(node: dict[str, Any]) -> int | None:
+def entry_id(node: dict[str, Any]) -> int | None:
+    """The project entry (``layer_project`` id) a dataset node names; None
+    for another node or a dataset node that names none."""
     data = node.get("data") or {}
     if data.get("type") != "dataset":
         return None
@@ -39,7 +41,7 @@ def _link_id(node: dict[str, Any]) -> int | None:
 
 def project_layer_ids(nodes: list[dict[str, Any]]) -> list[int]:
     """The project entries the dataset nodes name, in node order."""
-    return [link_id for node in nodes if (link_id := _link_id(node)) is not None]
+    return [link_id for node in nodes if (link_id := entry_id(node)) is not None]
 
 
 def with_current_layer_ids(
@@ -49,7 +51,7 @@ def with_current_layer_ids(
     layer its entry shows now, where ``current`` knows the entry."""
     resolved = []
     for node in nodes:
-        link_id = _link_id(node)
+        link_id = entry_id(node)
         if link_id is not None and link_id in current:
             node = copy.deepcopy(node)
             node["data"]["layerId"] = current[link_id]
@@ -84,54 +86,6 @@ async def current_layer_ids(
     return {row["id"]: row["layer_id"] for row in rows}
 
 
-def _style(raw: Any) -> dict[str, Any] | None:
-    """A style column's value as a style, None when it holds none."""
-    style = json.loads(raw) if isinstance(raw, str) else raw
-    return style if isinstance(style, dict) and style else None
-
-
-async def dataset_style(
-    conn: Any, schema: str, *, user_id: str, project_id: str, node: dict[str, Any]
-) -> dict[str, Any] | None:
-    """The style of a dataset node's layer, for the rows an export saves
-    from it; None when there is none to read (the saved layer then gets the
-    default style).
-
-    The node's project entry has the style the project shows the layer in,
-    when it is an entry of the running project that shows this layer and
-    ``user_id`` may read the project (as in ``current_layer_ids``). Else the
-    layer's own style, if ``user_id`` may read the layer. Visibility is view
-    state, not style, so the saved layer is shown even when the dataset is
-    hidden in the project (as core's ``initial_link_properties`` does for a
-    layer added to a project a second time).
-    """
-    data = node.get("data") or {}
-    row = await conn.fetchrow(
-        f"""
-        SELECT
-            (SELECT lp.properties::text
-             FROM {schema}.layer_project lp
-             WHERE lp.id = $3::int
-               AND lp.project_id = $1::uuid
-               AND lp.layer_id = $4::uuid
-               AND {schema}.can('project', $1::uuid, $2::uuid, 'read')
-            ) AS entry_style,
-            (SELECT l.properties::text
-             FROM {schema}.layer l
-             WHERE l.id = $4::uuid
-               AND l.deleted_at IS NULL
-               AND {schema}.can('layer', $4::uuid, $2::uuid, 'read')
-            ) AS layer_style
-        """,
-        uuid.UUID(project_id),
-        uuid.UUID(user_id),
-        _link_id(node),
-        uuid.UUID(str(data.get("layerId"))),
-    )
-    style = _style(row["entry_style"]) or _style(row["layer_style"])
-    return {**style, "visibility": True} if style else None
-
-
 def _swap_tool_config_ids(
     nodes: list[dict[str, Any]], old_ids: set[str], layer_id: str
 ) -> None:
@@ -161,7 +115,7 @@ def _retargeted(
     nodes = config.get("nodes") or []
     old_ids: set[str] = set()
     for node in nodes:
-        if _link_id(node) == link_id and node["data"].get("layerId") != layer_id:
+        if entry_id(node) == link_id and node["data"].get("layerId") != layer_id:
             old = node["data"].get("layerId")
             if isinstance(old, str):
                 old_ids.add(old)
@@ -193,7 +147,7 @@ def _unlinked_retargeted(
             continue
         if data.get("layerId") != source_layer_id:
             continue
-        if _link_id(node) in project_link_ids:
+        if entry_id(node) in project_link_ids:
             continue
         data["layerId"] = layer_id
         data["projectLayerId"] = link_id

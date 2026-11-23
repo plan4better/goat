@@ -71,6 +71,19 @@ export const projectLayers = async (
   return (await layers.json()) as { name: string; layer_id: string }[];
 };
 
+/** A project's map request: the map document and every layer's active style (GOAT Style). */
+export const projectMap = async (
+  api: APIRequestContext,
+  projectId: string
+): Promise<{
+  map: { layers: Array<{ type: string; id: number; visible?: boolean }> };
+  styles: Record<string, { active: { id: string; document: Record<string, unknown> } }>;
+}> => {
+  const map = await api.get(`${API_URL}/api/v2/project/${projectId}/map`);
+  expect(map.ok(), await map.text()).toBeTruthy();
+  return map.json();
+};
+
 /** A saved workflow of one dataset feeding a Buffer of 100 m. `staleInput`
  * leaves a layer id in the Buffer's own config for the input the edge feeds,
  * as a workflow keeps after its dataset was replaced: the runner never reads

@@ -26,6 +26,7 @@ import duckdb
 from pydantic import BaseModel, Field
 
 from goatlib.tools.base import SimpleToolRunner
+from goatlib.tools.core_api import CoreAddressInput, CoreSession
 from goatlib.tools.project_schemas import (
     EXTERNAL_DATA_TYPES,
     FORMAT_VERSION,
@@ -35,12 +36,13 @@ from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.layer import (
     quoted_relation,
 )
+from goatlib.utils.layer_address import layer_shown
 from goatlib.utils.workflow_layers import drop_layer_refs, workflow_layer_refs
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectExportParams(ToolInputBase):
+class ProjectExportParams(ToolInputBase, CoreAddressInput):
     """Parameters for project export tool."""
 
     source_instance: str | None = Field(None, description="Source GOAT instance URL")
@@ -55,6 +57,39 @@ class ProjectExportOutput(BaseModel):
     file_name: str = ""  # Filename for download
     file_size: int = 0
     wm_labels: list[str] = Field(default_factory=list)
+
+
+def archive_files(metadata: dict[str, Any]) -> dict[str, Any]:
+    """The archive's JSON files, path -> content, from the gathered metadata.
+
+    Links of layers that are not exported (system layers) are left out.
+    """
+    layers = [
+        {**layer, "is_external": layer.get("data_type") in EXTERNAL_DATA_TYPES}
+        for layer in metadata["layers"]
+    ]
+    kept = {layer["id"] for layer in layers}
+    files: dict[str, Any] = {
+        "project.json": metadata["project_metadata"],
+        "layers/index.json": {"layers": layers},
+        "layer_project_links.json": {
+            "links": [
+                link
+                for link in metadata["layer_project_links"]
+                if link.get("layer_id") in kept
+            ]
+        },
+        "layer_groups.json": {"groups": metadata["layer_groups"]},
+    }
+    for layer in layers:
+        files[f"layers/{layer['id']}/metadata.json"] = layer
+    for wf in metadata["workflows"]:
+        files[f"workflows/{wf['id']}.json"] = wf
+    for rpt in metadata["reports"]:
+        files[f"reports/{rpt['id']}.json"] = rpt
+    if metadata["assets"]:
+        files["assets/index.json"] = {"assets": metadata["assets"]}
+    return files
 
 
 class ProjectExportRunner(SimpleToolRunner):
@@ -96,8 +131,8 @@ class ProjectExportRunner(SimpleToolRunner):
             # 1. Project record
             project_row = await conn.fetchrow(
                 f"""
-                SELECT id, user_id, name, description, basemap, custom_basemaps,
-                       max_extent, builder_config, tags, thumbnail_url
+                SELECT id, user_id, name, description, basemap, locale, custom_basemaps,
+                       max_extent, builder_config, scene, tags, thumbnail_url
                 FROM {schema}.project
                 WHERE id = $1
                 """,
@@ -111,9 +146,11 @@ class ProjectExportRunner(SimpleToolRunner):
                 "name": project_row["name"],
                 "description": project_row["description"],
                 "basemap": project_row["basemap"],
+                "locale": project_row["locale"],
                 "custom_basemaps": project_row["custom_basemaps"],
                 "max_extent": project_row["max_extent"],
                 "builder_config": project_row["builder_config"],
+                "scene": project_row["scene"],
                 "tags": project_row["tags"],
             }
 
@@ -154,10 +191,20 @@ class ProjectExportRunner(SimpleToolRunner):
             # 4. LayerProjectLinks + Layer records
             lp_rows = await conn.fetch(
                 f"""
-                SELECT id, layer_id, project_id, layer_project_group_id,
-                       "order", name, properties, other_properties, query, charts
-                FROM {schema}.layer_project
-                WHERE project_id = $1
+                SELECT lp.id, lp.layer_id, lp.project_id, lp.layer_project_group_id,
+                       lp."order", lp.name, lp.other_properties, lp.query, lp.charts,
+                       lp.visible, lp.position, lp.time_value, lp.legend_expanded,
+                       COALESCE((
+                           SELECT jsonb_agg(jsonb_build_object(
+                               'name', s.name, 'position', s.position,
+                               'document', s.document,
+                               'active', s.id = lp.active_style_id
+                           ) ORDER BY s.position)
+                           FROM {schema}.layer_style s
+                           WHERE s.layer_project_id = lp.id
+                       ), '[]'::jsonb) AS styles
+                FROM {schema}.layer_project lp
+                WHERE lp.project_id = $1
                 """,
                 project_uuid,
             )
@@ -231,25 +278,41 @@ class ProjectExportRunner(SimpleToolRunner):
                 *workflow_only_ids,
             ]
 
-            # Fetch layers in batch
+            # Fetch layers in batch. A remote raster file's address (`url`)
+            # and a WFS copy's source address (`other_properties.url`, also in
+            # its project links) may carry an access key: the archive holds
+            # them whole only for an exporter who may edit that layer (core's
+            # write rule, asked for those two kinds only); anyone else gets
+            # them without query string, fragment and credentials
+            # (`layer_shown`).
             layers_by_id: dict[str, dict[str, Any]] = {}
+            #: Per layer, whether its addresses are shown whole: catalog, can edit.
+            address_rule: dict[str, tuple[bool, bool]] = {}
             layer_rows: list[Any] = []
             if layer_ids:
                 layer_rows = await conn.fetch(
                     f"""
-                    SELECT id, name, description, type, url,
-                           data_type, feature_layer_type,
-                           feature_layer_geometry_type, tool_type, job_id,
-                           properties, other_properties, size,
-                           thumbnail_url, tags, public_read,
-                           user_id, folder_id, field_config
-                    FROM {schema}.layer
-                    WHERE id = ANY($1)
+                    SELECT l.id, l.name, l.description, l.type, l.url,
+                           l.data_type, l.feature_layer_type,
+                           l.feature_layer_geometry_type, l.tool_type, l.job_id,
+                           l.other_properties, l.size,
+                           l.thumbnail_url, l.tags, l.public_read,
+                           l.user_id, l.folder_id, l.field_config,
+                           l.catalog_external_uid IS NOT NULL AS is_catalog,
+                           CASE WHEN l.data_type::text IN ('cog', 'wfs')
+                                THEN {schema}.layer_write_allowed(l.id, $2)
+                           END AS can_edit,
+                           (SELECT d.document FROM {schema}.layer_style d
+                            WHERE d.layer_id = l.id) AS style
+                    FROM {schema}.layer l
+                    WHERE l.id = ANY($1)
                     """,
                     layer_ids,
+                    user_uuid,
                 )
                 for row in layer_rows:
                     lid = str(row["id"])
+                    address_rule[lid] = (bool(row["is_catalog"]), bool(row["can_edit"]))
                     layers_by_id[lid] = {
                         "id": lid,
                         "name": row["name"],
@@ -263,7 +326,7 @@ class ProjectExportRunner(SimpleToolRunner):
                         ],
                         "tool_type": row["tool_type"],
                         "job_id": str(row["job_id"]) if row["job_id"] else None,
-                        "properties": row["properties"],
+                        "style": row["style"],
                         "other_properties": row["other_properties"],
                         "size": row["size"],
                         "thumbnail_url": row["thumbnail_url"],
@@ -278,6 +341,12 @@ class ProjectExportRunner(SimpleToolRunner):
                         # the values but lose the definitions.
                         "field_config": row["field_config"] or {},
                     }
+                    catalog, can_edit = address_rule[lid]
+                    layers_by_id[lid] = dict(
+                        layer_shown(
+                            layers_by_id[lid], catalog=catalog, can_edit=can_edit
+                        )
+                    )
 
             # Exclude system layers (e.g. street_network) from export
             excluded_layer_ids: set[str] = set()
@@ -297,6 +366,18 @@ class ProjectExportRunner(SimpleToolRunner):
             for lp in lp_rows:
                 if str(lp["layer_id"]) in excluded_layer_ids:
                     continue
+                link_other = lp["other_properties"]
+                layer = layers_by_id.get(str(lp["layer_id"]))
+                if layer is not None:
+                    catalog, can_edit = address_rule[layer["id"]]
+                    link_other = layer_shown(
+                        {
+                            "data_type": layer["data_type"],
+                            "other_properties": link_other,
+                        },
+                        catalog=catalog,
+                        can_edit=can_edit,
+                    )["other_properties"]
                 layer_project_links_list.append(
                     {
                         "id": lp["id"],
@@ -305,17 +386,21 @@ class ProjectExportRunner(SimpleToolRunner):
                         "layer_project_group_id": lp["layer_project_group_id"],
                         "order": lp["order"],
                         "name": lp["name"],
-                        "properties": lp["properties"],
-                        "other_properties": lp["other_properties"],
+                        "other_properties": link_other,
                         "query": lp["query"],
                         "charts": lp["charts"],
+                        "styles": lp["styles"],
+                        "visible": lp["visible"],
+                        "position": lp["position"],
+                        "time_value": lp["time_value"],
+                        "legend_expanded": lp["legend_expanded"],
                     }
                 )
 
             # 5. LayerProjectGroups
             group_rows = await conn.fetch(
                 f"""
-                SELECT id, name, "order", properties, project_id, parent_id
+                SELECT id, name, "order", visible, expanded, project_id, parent_id
                 FROM {schema}.layer_project_group
                 WHERE project_id = $1
                 """,
@@ -326,7 +411,8 @@ class ProjectExportRunner(SimpleToolRunner):
                     "id": row["id"],
                     "name": row["name"],
                     "order": row["order"],
-                    "properties": row["properties"],
+                    "visible": row["visible"],
+                    "expanded": row["expanded"],
                     "project_id": str(row["project_id"]),
                     "parent_id": row["parent_id"],
                 }
@@ -356,7 +442,8 @@ class ProjectExportRunner(SimpleToolRunner):
                 for row in rpt_rows
             ]
 
-            # 8. UploadedAssets — scan layer properties for S3 key references.
+            # 8. UploadedAssets: icons the styles name (`asset:<id>`), and
+            # objects other properties name by their S3 key (`_named_uploads`).
             # Icons and images are owned by whoever uploaded them: the exporter,
             # the project owner, or the owner of a layer in the project. All of
             # those are candidates; the reference scan below decides.
@@ -377,41 +464,21 @@ class ProjectExportRunner(SimpleToolRunner):
                 asset_owner_ids,
             )
 
-            # Build a combined string from layer JSONB fields for searching
-            searchable_parts: list[str] = []
-            for layer in layers_by_id.values():
-                for field_name in ("properties", "other_properties"):
-                    field_val = layer.get(field_name)
-                    if field_val is not None:
-                        try:
-                            searchable_parts.append(json.dumps(field_val))
-                        except (TypeError, ValueError):
-                            searchable_parts.append(str(field_val))
-            combined_str = " ".join(searchable_parts)
-
-            referenced_s3_keys: set[str] = set()
-            for asset in asset_rows:
-                if asset["s3_key"] in combined_str:
-                    referenced_s3_keys.add(asset["s3_key"])
-
-            matched_assets: list[dict[str, Any]] = []
-            for asset in asset_rows:
-                if asset["s3_key"] in referenced_s3_keys:
-                    matched_assets.append(
-                        {
-                            "id": str(asset["id"]),
-                            "s3_key": asset["s3_key"],
-                            "file_name": asset["file_name"],
-                            "display_name": asset["display_name"],
-                            "category": asset["category"],
-                            "mime_type": asset["mime_type"],
-                            "file_size": asset["file_size"],
-                            "asset_type": asset["asset_type"],
-                            "content_hash": asset["content_hash"],
-                        }
-                    )
-
-            asset_s3_keys: list[str] = list(referenced_s3_keys)
+            combined_str = json.dumps(
+                [
+                    *(
+                        (layer.get("style"), layer.get("other_properties"))
+                        for layer in layers_by_id.values()
+                    ),
+                    *(
+                        (lk["styles"], lk["other_properties"])
+                        for lk in layer_project_links_list
+                    ),
+                ],
+                default=str,
+            )
+            matched_assets = self._named_uploads(asset_rows, combined_str)
+            asset_s3_keys = [a["s3_key"] for a in matched_assets]
 
             return {
                 "project_metadata": project_metadata,
@@ -427,6 +494,81 @@ class ProjectExportRunner(SimpleToolRunner):
 
         finally:
             await conn.close()
+
+    @staticmethod
+    def _named_uploads(asset_rows: Any, names: str) -> list[dict[str, Any]]:
+        """The asset index: the uploads `names` (the project's styles and
+        properties as JSON) names by id (`asset:<id>`) or by key. Icons and
+        images only, as the archive format has no documents: a named document
+        stays out with a warning."""
+        matched: list[dict[str, Any]] = []
+        for asset in asset_rows:
+            asset_id = str(asset["id"])
+            if f"asset:{asset_id}" not in names and asset["s3_key"] not in names:
+                continue
+            if asset["asset_type"] not in ("icon", "image"):
+                logger.warning(
+                    "Uploaded document %s (%s) is not exported.",
+                    asset_id,
+                    asset["file_name"],
+                )
+                continue
+            matched.append(
+                {
+                    "id": asset_id,
+                    "s3_key": asset["s3_key"],
+                    "file_name": asset["file_name"],
+                    "display_name": asset["display_name"],
+                    "category": asset["category"],
+                    "mime_type": asset["mime_type"],
+                    "file_size": asset["file_size"],
+                    "asset_type": asset["asset_type"],
+                    "content_hash": asset["content_hash"],
+                    "archive_path": (
+                        f"assets/{asset_id}{Path(asset['file_name']).suffix}"
+                    ),
+                }
+            )
+        return matched
+
+    @staticmethod
+    def _fetch_uploads(
+        params: ProjectExportParams, assets: list[dict[str, Any]], archive_dir: Path
+    ) -> None:
+        """The files of the uploads the project uses, into the archive. They are
+        core's: the job fetches each icon and image from core's public file
+        route, with no token. Without core's address, or when a download fails,
+        a file stays out with a warning; the asset index names them all."""
+        if not assets:
+            return
+        if not params.core_url:
+            for asset in assets:
+                logger.warning(
+                    "Uploaded file %s (%s) is not exported: no address of core.",
+                    asset["id"],
+                    asset["file_name"],
+                )
+            return
+        core = CoreSession(params.core_url, None)
+        try:
+            for asset in assets:
+                dest = (archive_dir / asset["archive_path"]).resolve()
+                if not dest.is_relative_to(archive_dir.resolve()):
+                    logger.warning(
+                        "Skipping unsafe asset path: %s", asset["archive_path"]
+                    )
+                    continue
+                try:
+                    core.download_upload(asset["id"], dest)
+                except Exception as e:
+                    logger.warning(
+                        "Uploaded file %s (%s) is not exported: %s",
+                        asset["id"],
+                        asset["file_name"],
+                        e,
+                    )
+        finally:
+            core.close()
 
     def _compute_sha256(self: Self, file_path: Path) -> str:
         """Compute SHA-256 hash of a file."""
@@ -516,9 +658,6 @@ class ProjectExportRunner(SimpleToolRunner):
         metadata = asyncio.run(self._gather_metadata(params.project_id, params.user_id))
 
         project_metadata: dict[str, Any] = metadata["project_metadata"]
-        layers: list[dict[str, Any]] = metadata["layers"]
-        layer_project_links: list[dict[str, Any]] = metadata["layer_project_links"]
-        layer_groups: list[dict[str, Any]] = metadata["layer_groups"]
         workflows: list[dict[str, Any]] = metadata["workflows"]
         reports: list[dict[str, Any]] = metadata["reports"]
         assets: list[dict[str, Any]] = metadata["assets"]
@@ -531,99 +670,53 @@ class ProjectExportRunner(SimpleToolRunner):
 
             checksums: dict[str, str] = {}
 
-            # 2. Write project.json
-            project_path = archive_dir / "project.json"
-            self._write_json(project_metadata, project_path)
+            # 2. The JSON files: project, layers, links, groups, workflows,
+            # reports, the asset index
+            files = archive_files(metadata)
+            for name, content in files.items():
+                self._write_json(content, archive_dir / name)
+            layers = files["layers/index.json"]["layers"]
 
-            # 3. Write layers
+            # 3. Layer data (internal layers only)
             layers_dir = archive_dir / "layers"
             internal_count = 0
             external_count = 0
-
             for layer in layers:
-                layer_id = layer["id"]
-                layer_dir = layers_dir / layer_id
-                layer_dir.mkdir(parents=True, exist_ok=True)
-
-                # metadata.json
-                is_external = layer.get("data_type") in EXTERNAL_DATA_TYPES
-                layer["is_external"] = is_external
-                meta_path = layer_dir / "metadata.json"
-                self._write_json(layer, meta_path)
-
-                # data.parquet (internal layers only)
-                if not is_external:
-                    # `or`, not a dict default: the key is always present now,
-                    # and it is None for an unowned catalog layer.
-                    owner_id = layer.get("user_id") or params.user_id
-                    data_path = layer_dir / "data.parquet"
-                    row_count = self._export_layer_data(
-                        layer_id=layer_id,
-                        owner_id=owner_id,
-                        output_path=data_path,
-                    )
-                    if row_count > 0:
-                        checksums[f"layers/{layer_id}/data.parquet"] = (
-                            self._compute_sha256(data_path)
-                        )
-                    internal_count += 1
-                else:
+                if layer["is_external"]:
                     external_count += 1
+                    continue
+                layer_id = layer["id"]
+                # `or`, not a dict default: the key is always present now,
+                # and it is None for an unowned catalog layer.
+                owner_id = layer.get("user_id") or params.user_id
+                data_path = layers_dir / layer_id / "data.parquet"
+                row_count = self._export_layer_data(
+                    layer_id=layer_id,
+                    owner_id=owner_id,
+                    output_path=data_path,
+                )
+                if row_count > 0:
+                    checksums[f"layers/{layer_id}/data.parquet"] = self._compute_sha256(
+                        data_path
+                    )
+                internal_count += 1
 
-            # 4. Write layers/index.json
-            index_path = layers_dir / "index.json"
-            self._write_json({"layers": layers}, index_path)
-
-            # 4b. Write layer_project_links.json (format 1.1 — list of links).
-            # Excludes any link referencing a system layer that was filtered out
-            # from `layers` (e.g. street_network).
-            kept_layer_ids = {layer["id"] for layer in layers}
-            kept_links = [
-                lk for lk in layer_project_links if lk.get("layer_id") in kept_layer_ids
-            ]
-            links_path = archive_dir / "layer_project_links.json"
-            self._write_json({"links": kept_links}, links_path)
-
-            # 5. Write layer_groups.json
-            groups_path = archive_dir / "layer_groups.json"
-            self._write_json({"groups": layer_groups}, groups_path)
-
-            # 6. Write workflows
-            workflows_dir = archive_dir / "workflows"
-            for wf in workflows:
-                wf_path = workflows_dir / f"{wf['id']}.json"
-                self._write_json(wf, wf_path)
-
-            # 7. Write reports
-            reports_dir = archive_dir / "reports"
-            for rpt in reports:
-                rpt_path = reports_dir / f"{rpt['id']}.json"
-                self._write_json(rpt, rpt_path)
-
-            # 8. Fetch S3 assets
+            # 4. Fetch S3 assets
             assets_dir = archive_dir / "assets"
             if thumbnail_s3_key:
                 self._fetch_s3_asset(
                     thumbnail_s3_key,
                     assets_dir / "thumbnail.png",
                 )
-            for asset_entry in assets:
-                s3_key = asset_entry.get("s3_key", "")
-                archive_name = asset_entry.get("archive_path", "")
-                if s3_key and archive_name:
-                    self._fetch_s3_asset(s3_key, archive_dir / archive_name)
+            # Uploaded icons and images through core's asset route, as the user
+            self._fetch_uploads(params, assets, archive_dir)
 
-            # Write assets/index.json
-            if assets:
-                assets_index_path = assets_dir / "index.json"
-                self._write_json({"assets": assets}, assets_index_path)
-
-            # 9. Compute checksums for JSON files
+            # 5. Compute checksums for JSON files
             for json_file in archive_dir.rglob("*.json"):
                 rel = json_file.relative_to(archive_dir)
                 checksums[str(rel)] = self._compute_sha256(json_file)
 
-            # 10. Write manifest.json
+            # 6. Write manifest.json
             project_name = project_metadata.get("name", "project")
             manifest = ExportManifest(
                 format_version=FORMAT_VERSION,
@@ -640,7 +733,7 @@ class ProjectExportRunner(SimpleToolRunner):
             manifest_path = archive_dir / "manifest.json"
             self._write_json(manifest.model_dump(mode="json"), manifest_path)
 
-            # 11. Assemble ZIP
+            # 7. Assemble ZIP
             safe_name = "".join(
                 c if c.isalnum() or c in "-_" else "_" for c in project_name
             )
@@ -657,7 +750,7 @@ class ProjectExportRunner(SimpleToolRunner):
             file_size = zip_path.stat().st_size
             logger.info("ZIP assembled: %s (%d bytes)", zip_name, file_size)
 
-            # 12. Upload ZIP to S3
+            # 8. Upload ZIP to S3
             s3_key = f"exports/{params.user_id}/{zip_name}"
             with open(zip_path, "rb") as f:
                 self.s3_client.put_object(
@@ -667,7 +760,7 @@ class ProjectExportRunner(SimpleToolRunner):
                     ContentType="application/zip",
                 )
 
-            # 13. Generate presigned URL
+            # 9. Generate presigned URL
             presigned_url = self.s3_public_client.generate_presigned_url(
                 "get_object",
                 Params={

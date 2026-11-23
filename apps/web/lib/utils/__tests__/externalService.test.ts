@@ -46,6 +46,75 @@ describe("detectDirectService", () => {
     });
   });
 
+  it("takes a TMS template, whose rows count from the south, as an XYZ layer", () => {
+    const service = detectDirectService("https://tiles.example.org/tms/{z}/{x}/{-y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tiles.example.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://tiles.example.org/tms/{z}/{x}/{-y}.png",
+      tiles: ["https://tiles.example.org/tms/{z}/{x}/{y}.png"],
+      scheme: "tms",
+    });
+  });
+
+  it("draws a {s} template from the subdomains a, b and c, named after the host", () => {
+    const service = detectDirectService("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tile.openstreetmap.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      tiles: [
+        "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      ],
+    });
+  });
+
+  it("draws a template from the subdomains it lists", () => {
+    const service = detectDirectService("https://{switch:1,2,4}.tiles.example.org/{z}/{x}/{-y}.png");
+    expect(service).toMatchObject({ kind: "xyz", title: "tiles.example.org" });
+    expect(previewSource(service!, [])).toEqual({
+      kind: "tiles",
+      url: "https://{switch:1,2,4}.tiles.example.org/{z}/{x}/{-y}.png",
+      tiles: [
+        "https://1.tiles.example.org/{z}/{x}/{y}.png",
+        "https://2.tiles.example.org/{z}/{x}/{y}.png",
+        "https://4.tiles.example.org/{z}/{x}/{y}.png",
+      ],
+      scheme: "tms",
+    });
+  });
+
+  it("names a template whose placeholder sits inside a host label after its first address", () => {
+    expect(detectDirectService("https://tiles{switch:0,1}.example.org/vt?x={x}&y={y}&z={z}")?.title).toBe(
+      "tiles0.example.org"
+    );
+    expect(detectDirectService("https://tile{s}.example.org/{z}/{x}/{y}.png")?.title).toBe(
+      "tilea.example.org"
+    );
+    expect(detectDirectService("https://{s}/{z}/{x}/{y}.png")?.title).toBe("a");
+    // A placeholder followed by no label is the host itself, not a label to drop.
+    expect(detectDirectService("https://{s}.:8080/{z}/{x}/{y}.png")?.title).toBe("a.");
+    expect(detectDirectService("https://{s}./{z}/{x}/{y}.png")?.title).toBe("a.");
+  });
+
+  it.each([
+    "https://{switch:a,evil.example/x?}.tile.example.org/{z}/{x}/{y}.png",
+    "https://{switch:a,b#c}.tile.example.org/{z}/{x}/{y}.png",
+    "https://{switch:}.tile.example.org/{z}/{x}/{y}.png",
+    "{switch:https,ftp}://tiles.example.org/{z}/{x}/{y}.png",
+  ])("refuses a subdomain list that is more than host labels: %s", (address) => {
+    expect(detectDirectService(address)).toBeNull();
+  });
+
+  it("reads subdomain placeholders in tile templates only, not in a file or WMTS address", () => {
+    expect(detectDirectService("https://{switch:a,b}.example.org/data/dgm1.tif")).toBeNull();
+    expect(
+      detectDirectService("https://{switch:a,b}.example.org/wmts/{TileMatrix}/{TileRow}/{TileCol}.png")
+    ).toBeNull();
+  });
+
   it("leaves a capabilities address to the fetch", () => {
     expect(detectDirectService(WMS_URL)).toBeNull();
   });
@@ -319,6 +388,15 @@ describe("direct services", () => {
     });
   });
 
+  it("stores a template with subdomains and TMS rows as it was typed", () => {
+    const url = "https://{switch:a,b}.tiles.example.org/{z}/{x}/{-y}.png";
+    const service = detectDirectService(url)!;
+    expect(buildLayerRequest(service, [], { name: "TMS", folderId: FOLDER })).toMatchObject({
+      kind: "raster",
+      payload: { data_type: "xyz", url, other_properties: {} },
+    });
+  });
+
   it("previews a COG through the cog protocol", () => {
     const service = detectDirectService("https://example.org/data/dgm1.tif")!;
     expect(previewSource(service, [])).toEqual({
@@ -326,5 +404,43 @@ describe("direct services", () => {
       url: "cog://https://example.org/data/dgm1.tif",
     });
     expect(defaultLayerName(service, [])).toBe("dgm1");
+  });
+});
+
+describe("service styles", () => {
+  const TWO_STYLES = `<?xml version="1.0"?>
+<WMS_Capabilities version="1.3.0" xmlns="http://www.opengis.net/wms" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <Service><Name>WMS</Name><Title>Aerial</Title></Service>
+  <Capability>
+    <Request><GetMap><Format>image/png</Format><DCPType><HTTP><Get><OnlineResource xlink:href="https://wms.example/service?"/></Get></HTTP></DCPType></GetMap></Request>
+    <Layer>
+      <Title>Root</Title><CRS>EPSG:3857</CRS>
+      <Layer>
+        <Name>aerial</Name><Title>Aerial photo</Title>
+        <Style><Name>default</Name><Title>Colors</Title><LegendURL><Format>image/png</Format><OnlineResource xlink:href="https://wms.example/legend-default.png"/></LegendURL></Style>
+        <Style><Name>grey</Name><Title>Grey</Title><LegendURL><Format>image/png</Format><OnlineResource xlink:href="https://wms.example/legend-grey.png"/></LegendURL></Style>
+      </Layer>
+    </Layer>
+  </Capability>
+</WMS_Capabilities>`;
+  const service = parseCapabilities(
+    "https://wms.example/service?SERVICE=WMS&REQUEST=GetCapabilities",
+    TWO_STYLES
+  );
+
+  it("a layer lists every style the service offers, with its legend", () => {
+    expect(service.groups[0].layers[0].styles).toEqual([
+      { name: "default", title: "Colors", legendUrl: "https://wms.example/legend-default.png" },
+      { name: "grey", title: "Grey", legendUrl: "https://wms.example/legend-grey.png" },
+    ]);
+  });
+
+  it("adding one service layer stores its styles", () => {
+    const request = buildLayerRequest(service, ["aerial"], { name: "Aerial", folderId: FOLDER });
+    if (request.kind !== "raster") throw new Error("raster expected");
+    expect(request.payload.other_properties.service_styles).toEqual([
+      { name: "default", title: "Colors", legendUrl: "https://wms.example/legend-default.png" },
+      { name: "grey", title: "Grey", legendUrl: "https://wms.example/legend-grey.png" },
+    ]);
   });
 });

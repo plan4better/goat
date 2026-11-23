@@ -28,9 +28,10 @@ that read `resource_grant` (`effective_role`, `layer_write_allowed`,
 `check_layer`, `check_project`) are installed on a database that is still
 running the previous generation of them: their bodies read `layer.space_id`,
 `folder.parent_id`, the `restricted` columns and `customer.template`, so they
-can only be created once the whole chain has run. `env.py` wraps the upgrade
-in one transaction, so no session sees `0003`'s dropped share-link tables
-while the old function bodies are still installed.
+can only be created once the whole chain has run. `env.py` commits each
+revision on its own, so a database that starts below this revision runs
+without `0003`'s dropped share-link tables, on the old function bodies, until
+this revision commits: upgrade such a database while nothing serves it.
 
 A fresh database is built by `init` from the current models, so every column,
 index, constraint and the `template` table already exist and this revision

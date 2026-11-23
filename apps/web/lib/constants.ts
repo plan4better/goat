@@ -108,6 +108,27 @@ export const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
  */
 export const MAPTILER_KEY = publicEnv(process.env.NEXT_PUBLIC_MAPTILER_KEY);
 
+/** A 3D source setting: unset gives the default, an empty value switches the feature off. */
+const sceneSource = (value: string | undefined, fallback: string): string | undefined =>
+  value === "" ? undefined : (publicEnv(value) ?? fallback);
+
+/**
+ * Terrarium elevation tiles (512 px) of the 3D terrain and its hillshade (3D spec 9). Empty hides Terrain.
+ */
+export const TERRAIN_TILES_URL = sceneSource(
+  process.env.NEXT_PUBLIC_TERRAIN_TILES_URL,
+  "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+);
+
+/**
+ * TileJSON of an OpenMapTiles vector source whose `building` layer gives 3D buildings on basemaps without their own
+ * (raster, solid and custom basemaps). Empty hides 3D buildings there.
+ */
+export const BUILDINGS_TILES_URL = sceneSource(
+  process.env.NEXT_PUBLIC_BUILDINGS_TILES_URL,
+  "https://tiles.openfreemap.org/planet"
+);
+
 /**
  * Base of the static product assets (icons, patterns, artwork, geofences,
  * basemap styles). By default the web app serves them itself from
@@ -125,6 +146,9 @@ export const SYSTEM_LAYERS_IDS = [STREET_NETWORK_LAYER_ID];
 
 export const GEOFENCE_LAYERS_PATH = `${ASSETS_URL}/other/geofence`;
 export const DEFAULT_WKT_EXTENT = "POLYGON((-180 -90, -180 90, 180 90, 180 -90, -180 -90))";
+
+/** Marks a panel that floats over the map (`FloatingPanel`): zoom to layer keeps the layer clear of it. */
+export const MAP_PANEL_ATTR = "data-map-panel";
 
 export const MAX_EDITABLE_LAYER_SIZE = 100 * 1024 * 1024; // 100MB
 

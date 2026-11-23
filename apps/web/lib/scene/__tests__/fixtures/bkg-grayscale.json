@@ -1,0 +1,228 @@
+{
+  "version": 8,
+  "name": "bm_web_gry",
+  "sources": {
+    "smarttiles_de": {
+      "type": "vector",
+      "attribution": "&copy; 2026 basemap.de / BKG | Datenquellen: &copy; GeoBasis-DE",
+      "url": "https://sgx.geodatenzentrum.de/gdz_basemapde_vektor/tiles/v2/bm_web_de_3857/bm_web_de_3857.json"
+    }
+  },
+  "layers": [
+    {
+      "id": "BauwerkF_Schwimmbecken_Fuellung",
+      "type": "fill",
+      "source": "smarttiles_de",
+      "minzoom": 12,
+      "maxzoom": 22,
+      "source-layer": "Bauwerksflaeche",
+      "filter": ["==", "klasse", "Schwimmbecken"],
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "fill-color": "rgb(204,204,204)",
+        "fill-opacity": {
+          "stops": [
+            [12, 0.125],
+            [14, 0.7],
+            [20, 1]
+          ]
+        }
+      }
+    },
+    {
+      "id": "Gebaeude2D_nicht_oeffentlich",
+      "type": "fill",
+      "source": "smarttiles_de",
+      "minzoom": 12,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": [
+        "!in",
+        "klasse",
+        "Tiefgarage",
+        "Rathaus",
+        "Allgemein bildende Schule",
+        "Kirche",
+        "Krankenhaus"
+      ],
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "fill-color": "rgb(178,178,178)",
+        "fill-opacity": 1
+      }
+    },
+    {
+      "id": "Gebaeude2D_Treibhaus",
+      "type": "fill",
+      "source": "smarttiles_de",
+      "minzoom": 12,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": ["in", "klasse", "Treibhaus, Gewächshaus", "Treibhaus", "Gewächshaus, verschiebbar"],
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "fill-color": "rgb(255,255,255)",
+        "fill-opacity": 1
+      }
+    },
+    {
+      "id": "Gebaeude2D_oeffentlich",
+      "type": "fill",
+      "source": "smarttiles_de",
+      "minzoom": 12,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": ["in", "klasse", "Rathaus", "Allgemein bildende Schule", "Kirche", "Krankenhaus"],
+      "layout": {
+        "visibility": "visible"
+      },
+      "paint": {
+        "fill-color": "rgb(102,102,102)",
+        "fill-opacity": 1
+      }
+    },
+    {
+      "id": "Gebaeude_Tiefgarage",
+      "type": "fill",
+      "source": "smarttiles_de",
+      "minzoom": 12,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": ["==", "klasse", "Tiefgarage"],
+      "layout": {
+        "visibility": "none"
+      },
+      "paint": {
+        "fill-color": "rgb(102,102,102)",
+        "fill-opacity": {
+          "stops": [
+            [12, 0.3],
+            [14, 0.3],
+            [20, 0.3]
+          ]
+        }
+      }
+    },
+    {
+      "id": "Gebaeude3D_nicht_oeffentlich",
+      "type": "fill-extrusion",
+      "source": "smarttiles_de",
+      "minzoom": 16,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": [
+        "!in",
+        "klasse",
+        "Kino",
+        "Verwaltungsgebäude",
+        "Parlament",
+        "Rathaus",
+        "Gericht",
+        "Kreisverwaltung",
+        "Bezirksregierung",
+        "Allgemein bildende Schule",
+        "Berufsbildende Schule",
+        "Hochschulgebäude (Fachhochschule, Universität)",
+        "Forschungsinstitut",
+        "Theater, Oper",
+        "Konzertgebäude",
+        "Museum",
+        "Rundfunk, Fernsehen",
+        "Kirche",
+        "Synagoge",
+        "Kapelle",
+        "Gotteshaus",
+        "Moschee",
+        "Tempel",
+        "Krankenhaus",
+        "Polizei",
+        "Feuerwehr",
+        "Hallenbad",
+        "Gebäude für Bildung und Forschung",
+        "Gebäude für öffentliche Zwecke",
+        "Kinderkrippe, Kindergarten, Kindertagesstätte",
+        "Ärztehaus, Poliklinik"
+      ],
+      "layout": {
+        "visibility": "none"
+      },
+      "paint": {
+        "fill-extrusion-color": "rgb(178,178,178)",
+        "fill-extrusion-height": ["get", "hoehe"],
+        "fill-extrusion-opacity": 0.8
+      }
+    },
+    {
+      "id": "Gebaeude3D_oeffentlich",
+      "type": "fill-extrusion",
+      "source": "smarttiles_de",
+      "minzoom": 16,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": [
+        "in",
+        "klasse",
+        "Kino",
+        "Verwaltungsgebäude",
+        "Parlament",
+        "Rathaus",
+        "Gericht",
+        "Kreisverwaltung",
+        "Bezirksregierung",
+        "Allgemein bildende Schule",
+        "Berufsbildende Schule",
+        "Hochschulgebäude (Fachhochschule, Universität)",
+        "Forschungsinstitut",
+        "Theater, Oper",
+        "Konzertgebäude",
+        "Museum",
+        "Rundfunk, Fernsehen",
+        "Kirche",
+        "Synagoge",
+        "Kapelle",
+        "Gotteshaus",
+        "Moschee",
+        "Tempel",
+        "Krankenhaus",
+        "Polizei",
+        "Feuerwehr",
+        "Hallenbad",
+        "Gebäude für Bildung und Forschung",
+        "Gebäude für öffentliche Zwecke",
+        "Kinderkrippe, Kindergarten, Kindertagesstätte",
+        "Ärztehaus, Poliklinik"
+      ],
+      "layout": {
+        "visibility": "none"
+      },
+      "paint": {
+        "fill-extrusion-color": "rgb(102,102,102)",
+        "fill-extrusion-height": ["get", "hoehe"],
+        "fill-extrusion-opacity": 0.8
+      }
+    },
+    {
+      "id": "Gebaeude3D_Treibhaus",
+      "type": "fill-extrusion",
+      "source": "smarttiles_de",
+      "minzoom": 16,
+      "maxzoom": 22,
+      "source-layer": "Gebaeudeflaeche",
+      "filter": ["in", "klasse", "Treibhaus, Gewächshaus", "Treibhaus", "Gewächshaus, verschiebbar"],
+      "layout": {
+        "visibility": "none"
+      },
+      "paint": {
+        "fill-extrusion-color": "rgb(51,51,51)",
+        "fill-extrusion-height": ["get", "hoehe"],
+        "fill-extrusion-opacity": 0.5
+      }
+    }
+  ]
+}

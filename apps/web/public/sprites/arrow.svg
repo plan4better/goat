@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Right-pointing isosceles triangle filling the canvas (no padding) so
-       `decoration_size` in pixels matches the visible arrow extent.
-       Tinted via icon-color when registered as SDF. -->
-  <polygon points="0,0 32,16 0,32" fill="#000000"/>
-</svg>

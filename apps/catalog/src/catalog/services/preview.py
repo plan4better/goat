@@ -314,6 +314,11 @@ class PreviewReader:
         allows and a client can render as a table. One response shape either
         way, so a caller reads the sample the same for both.
         """
+        data = str(row.get("parquet_url") or "")
+        if not data.lower().endswith(".parquet"):
+            # A raster's GeoTIFF or a map service's link: there are no rows to
+            # sample, and reading a TIFF as Parquet only fails (502).
+            raise ApiError(404, "item has no table or vector data to sample")
         settings = self._settings
         url = self.object_url(row)
 

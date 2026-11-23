@@ -7,11 +7,15 @@ import { Icon } from "@p4b/ui/components/Icon";
 
 import { type AtlasPage, resolveAtlasText } from "@/lib/print/atlas-utils";
 import { mmToPx } from "@/lib/print/units";
-import type { ProjectLayer } from "@/lib/validations/project";
+import type { Scene } from "@/lib/style/generated/types";
 import type { ReportElement, ReportElementType } from "@/lib/validations/reportLayout";
 import type { WidgetChartConfig, WidgetElementConfig } from "@/lib/validations/widget";
 import type { chartTypes } from "@/lib/validations/widget";
 import { elementTypes } from "@/lib/validations/widget";
+
+import type { Basemap } from "@/types/map/common";
+
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 
 import WidgetChart from "@/components/builder/widgets/chart/WidgetChart";
 import WidgetElement from "@/components/builder/widgets/elements/WidgetElement";
@@ -50,7 +54,12 @@ interface ElementContentRendererProps {
   height: number;
   zoom?: number;
   basemapUrl?: string | StyleSpecification;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
+  /** The project's number locale (map labels, legend values); the viewer's language without one. */
+  locale?: string;
+  /** The project's 3D scene and basemap, for map elements with a tilted view (3D spec 10). */
+  scene?: Scene | null;
+  basemap?: Basemap;
   allElements?: ReportElement[];
   atlasPage?: AtlasPage | null;
   featureAttributes?: string[];
@@ -213,6 +222,9 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
   zoom = 1,
   basemapUrl,
   projectLayers,
+  locale,
+  scene,
+  basemap,
   allElements,
   atlasPage,
   featureAttributes,
@@ -273,6 +285,9 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
           element={element}
           basemapUrl={basemapUrl}
           layers={projectLayers}
+          locale={locale}
+          scene={scene}
+          basemap={basemap}
           zoom={zoom}
           atlasPage={atlasPage}
           viewOnly={viewOnly}
@@ -299,6 +314,7 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
           element={element}
           projectLayers={projectLayers}
           mapElements={mapElements}
+          locale={locale}
           viewOnly={viewOnly}
           zoom={zoom}
           onElementUpdate={onElementUpdate}

@@ -6,6 +6,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { copyText } from "@/lib/utils/clipboard";
+
 import { headerIconButtonSx } from "@/components/assistant/styles";
 
 const COPIED_MS = 1500;
@@ -25,12 +27,7 @@ export default function CopyAnswer({ text }: { text: string }) {
     <Tooltip title={copied ? t("copied") : t("assistant_copy_answer")}>
       <IconButton
         aria-label={t("assistant_copy_answer")}
-        onClick={() =>
-          void navigator.clipboard
-            ?.writeText(text)
-            .then(() => setCopied(true))
-            .catch(() => undefined)
-        }
+        onClick={() => void copyText(text).then((ok) => ok && setCopied(true))}
         sx={headerIconButtonSx(theme)}>
         <Icon
           iconName={copied ? ICON_NAME.CHECK : ICON_NAME.COPY}

@@ -8,13 +8,24 @@ Hilbert-ordered so spatial queries prune row groups — to::
     {DATA_DIR}/catalog/layers/t_<layer_id>.parquet
 
 plus PMTiles at the shared flat tiles location. The file is written next to
-its final name and moved into place, so a re-run (or a crash mid-way)
-overwrites cleanly; the job is idempotent.
+its final name and moved into place, so a crash mid-way leaves no partial
+file. A re-run keeps a file that is already in place: the layer's feature ids
+are its rows' positions in it (`file_row_number`), and written again the rows
+could come out in another order (a changed sort, ties broken differently).
+The re-run redoes the tiles and the layer row; the job is idempotent.
 
 Dispatch is by format so the catalog is not limited to vectors: a handler per
-``FormatProfile`` key, of which ``vector`` is the only one implemented. A
-future COG or bundle handler is a new entry here, nothing else changes —
-core only ever says "materialize layer X" and reads the status back.
+``FormatProfile`` key, ``vector`` and ``raster``. A raster item's data asset is
+a GeoTIFF, copied as it is to::
+
+    {DATA_DIR}/catalog/layers/t_<layer_id>.tif
+
+because the catalog bucket is private: the copy is the file GOAT stores for
+the layer (``goatlib.utils.layer.stored_raster_file``, named from the layer's
+id), which geoapi and processes read. The row becomes a raster file layer
+(``data_type`` ``cog``) without a ``url``: no address of the file exists. A
+future bundle handler is a new entry here, nothing else changes — core only ever
+says "materialize layer X" and reads the status back.
 
 Status lives in ``other_properties.catalog_materialize`` on the layer row
 (``pending`` → ``running`` → ``ready`` | ``failed``), merged so the
@@ -26,7 +37,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import posixpath
 import tempfile
 import uuid as uuid_module
 from datetime import datetime, timezone
@@ -36,7 +46,13 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 import duckdb
 from pydantic import Field
 
+from goatlib.catalog.item import (
+    RASTER_SUFFIXES,
+    bucket_key_for,
+    published_tiles_keys,
+)
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.spatial_order import hilbert_key
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
@@ -45,6 +61,7 @@ from goatlib.utils.layer import (
     catalog_tiles_dir,
     catalog_view_sql,
     layer_id_to_table_name,
+    stored_raster_file,
 )
 
 if TYPE_CHECKING:
@@ -53,24 +70,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+#: The handler for each layer type: its data asset's format.
+HANDLERS = {"feature": "vector", "table": "vector", "raster": "raster"}
+
+
 class CatalogMaterializeParams(ToolInputBase):
     """Parameters for the catalog materialize job."""
 
     layer_id: str = Field(..., description="Promoted layer UUID to materialize")
 
 
-def bucket_key_for(parquet_url: str) -> str:
-    """The catalog-bucket key for an item's data asset.
+#: The first bytes of a TIFF and a BigTIFF, in either byte order.
+TIFF_SIGNATURES = (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
-    The published href is relative to the item's place in the bucket's JSON
-    tree (``../../../data/<uuid>.parquet`` — contract C8), so only its
-    basename is meaningful here; the data prefix is fixed by the bucket
-    layout (contract §1).
-    """
-    name = posixpath.basename(parquet_url or "")
-    if not name.endswith(".parquet"):
-        raise ValueError(f"Not a parquet data asset: {parquet_url!r}")
-    return f"data/{name}"
+
+def is_hilbert_sorted(
+    con: duckdb.DuckDBPyConnection, parquet_path: Path, geometry_column: str
+) -> bool:
+    """Whether the rows are in the order GOAT stores a layer's rows in
+    (``hilbert_key``: Hilbert order within the layer's extent, rows without a
+    location last)."""
+    source = f"read_parquet('{parquet_path}')"
+    key = hilbert_key('"' + geometry_column.replace('"', '""') + '"', source)
+    (out_of_order,) = con.execute(
+        f"""SELECT count(*) FROM (
+                SELECT k, lag(k) OVER (ORDER BY file_row_number) AS prev
+                FROM (SELECT coalesce(({key})::BIGINT, 4294967296) AS k,
+                             file_row_number
+                      FROM read_parquet('{parquet_path}', file_row_number = true)))
+            WHERE k < prev"""
+    ).fetchone()
+    return out_of_order == 0
 
 
 def catalog_layers_dir() -> Path:
@@ -136,6 +166,34 @@ def generate_catalog_pmtiles(
         geometry_column=geometry_column,
         exclude_columns=["rowid"],
     )
+
+
+def _feature_count_and_bounds(
+    con: duckdb.DuckDBPyConnection, path: Path, geom_col: str | None
+) -> tuple[int, tuple[float, float, float, float] | None]:
+    """The features a tool can use, and their bounds.
+
+    Tools read the rows that have a geometry, and the workflow check compares
+    this count with their limits. A table without a geometry counts every row.
+    """
+    # Double any embedded quote of the untrusted name so it stays inside its
+    # "..." quoting.
+    geom = f'"{geom_col.replace(chr(34), chr(34) * 2)}"' if geom_col else None
+    stats = con.execute(
+        f"SELECT count({geom or '*'}) FROM read_parquet('{path}')"
+    ).fetchone()
+    feature_count = int(stats[0]) if stats else 0
+    if not geom or not feature_count:
+        return feature_count, None
+    b = con.execute(f"""
+        SELECT MIN(ST_XMin({geom})), MIN(ST_YMin({geom})),
+               MAX(ST_XMax({geom})), MAX(ST_YMax({geom}))
+        FROM read_parquet('{path}')
+        WHERE {geom} IS NOT NULL
+    """).fetchone()
+    if not b or b[0] is None:
+        return feature_count, None
+    return feature_count, (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
 
 
 class CatalogMaterializeRunner(SimpleToolRunner):
@@ -241,12 +299,67 @@ class CatalogMaterializeRunner(SimpleToolRunner):
             await pool.close()
         await self._set_status(layer_id, "ready", {"feature_count": feature_count})
 
+    async def _finish_raster(self: Self, layer_id: str, out_path: Path) -> None:
+        """The row as a raster file layer (``data_type = 'cog'``), then `ready`.
+
+        Without a ``url``: the catalog bucket is private, so the file has no
+        address (and core reads a layer's url as an http(s) address); geoapi
+        and processes read `out_path`, the layer's `stored_raster_file`. The
+        extent stays the item's bbox, which promote wrote.
+        """
+        pool = await self.get_postgres_pool()
+        try:
+            await pool.execute(
+                f"""
+                UPDATE {self.settings.customer_schema}.layer
+                SET data_type = 'cog', url = NULL, size = $2
+                WHERE id = $1
+                """,
+                uuid_module.UUID(layer_id),
+                out_path.stat().st_size,
+            )
+        finally:
+            await pool.close()
+        await self._set_status(layer_id, "ready")
+
+    def _materialize_raster(self: Self, layer_id: str, href: str) -> Path:
+        """Bucket GeoTIFF → `t_<id>.tif` beside the parquet copies, unchanged.
+
+        Only its signature is checked: whatever GDAL reads is served as it is,
+        and an object that is no TIFF (an error page, a parquet under a wrong
+        name) fails here rather than on every tile.
+        """
+        bucket = os.environ.get("CATALOG_S3_BUCKET", "")
+        if not bucket:
+            raise RuntimeError("CATALOG_S3_BUCKET is not configured")
+        key = bucket_key_for(href, RASTER_SUFFIXES)
+
+        out_path = stored_raster_file(layer_id)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=out_path.parent) as tmp:
+            staged = Path(tmp) / "source.tif"
+            self._catalog_s3().download_file(bucket, key, str(staged))
+            with staged.open("rb") as f:
+                if f.read(4) not in TIFF_SIGNATURES:
+                    raise ValueError(f"The catalog object {key} is no GeoTIFF")
+            logger.info(
+                "Downloaded s3://%s/%s (%d bytes)", bucket, key, staged.stat().st_size
+            )
+            # Same-directory rename, as for the parquet: atomic.
+            os.replace(staged, out_path)
+        return out_path
+
     def _materialize_vector(
-        self: Self, layer_id: str, parquet_url: str
-    ) -> tuple[Path, int, tuple[float, float, float, float] | None, str | None]:
+        self: Self, layer_id: str, parquet_url: str, keep_sorted: bool = False
+    ) -> tuple[Path, int, tuple[float, float, float, float] | None, str | None, bool]:
         """Bucket parquet → Hilbert-ordered local GeoParquet + PMTiles.
 
-        Returns (path, feature_count, bounds, geometry_column).
+        With ``keep_sorted`` (goat-data published tiles for it), a file already
+        in Hilbert order keeps its row order (rewritten with GOAT's parquet
+        settings): those tiles number features by row, and sorting again may
+        reorder rows with equal keys.
+
+        Returns (path, feature_count, bounds, geometry_column, kept_order).
         """
         bucket = os.environ.get("CATALOG_S3_BUCKET", "")
         if not bucket:
@@ -261,6 +374,13 @@ class CatalogMaterializeRunner(SimpleToolRunner):
         set_memory_share(con, JOB_WORK_MEMORY_SHARE)
         try:
             con.execute("INSTALL spatial; LOAD spatial;")
+            if out_path.exists():
+                # Written by an earlier run: its row order is the layer's
+                # feature ids (module docstring).
+                logger.info("Keeping the materialized file %s", out_path)
+                geom_col = parquet_geometry_column(con, out_path)
+                count, bounds = _feature_count_and_bounds(con, out_path, geom_col)
+                return out_path, count, bounds, geom_col, False
             with tempfile.TemporaryDirectory(dir=out_dir) as tmp:
                 src = Path(tmp) / "source.parquet"
                 self._catalog_s3().download_file(bucket, key, str(src))
@@ -277,45 +397,82 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 geom_col_sql = geom_col.replace('"', '""') if geom_col else None
 
                 staged = Path(tmp) / "staged.parquet"
-                if geom_col_sql:
+                kept_order = bool(
+                    keep_sorted and geom_col and is_hilbert_sorted(con, src, geom_col)
+                )
+                if geom_col_sql and not kept_order:
+                    source = f"read_parquet('{src}')"
+                    order = hilbert_key(f'"{geom_col_sql}"', source)
                     con.execute(f"""
-                        COPY (
-                            SELECT * FROM read_parquet('{src}')
-                            ORDER BY ST_Hilbert("{geom_col_sql}")
-                        ) TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
+                        COPY (SELECT * FROM {source} ORDER BY {order})
+                        TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
                 else:
+                    # In the file's own order: DuckDB keeps it on a plain copy.
                     con.execute(f"""
                         COPY (SELECT * FROM read_parquet('{src}'))
                         TO '{staged}' {parquet_copy_options('COMPRESSION ZSTD')}
                     """)
 
-                # The features a tool can use: tools read the rows that have a
-                # geometry, and the workflow check compares this count with
-                # their limits. A table without a geometry counts every row.
-                counted = f'"{geom_col_sql}"' if geom_col_sql else "*"
-                stats = con.execute(
-                    f"SELECT count({counted}) FROM read_parquet('{staged}')"
-                ).fetchone()
-                feature_count = int(stats[0]) if stats else 0
-                bounds = None
-                if geom_col_sql and feature_count:
-                    b = con.execute(f"""
-                        SELECT MIN(ST_XMin("{geom_col_sql}")), MIN(ST_YMin("{geom_col_sql}")),
-                               MAX(ST_XMax("{geom_col_sql}")), MAX(ST_YMax("{geom_col_sql}"))
-                        FROM read_parquet('{staged}')
-                        WHERE "{geom_col_sql}" IS NOT NULL
-                    """).fetchone()
-                    if b and b[0] is not None:
-                        bounds = (float(b[0]), float(b[1]), float(b[2]), float(b[3]))
+                feature_count, bounds = _feature_count_and_bounds(con, staged, geom_col)
 
                 # Same-directory rename: atomic, and a crash leaves only the
                 # TemporaryDirectory to clean up, never a half-written target.
                 os.replace(staged, out_path)
 
-            return out_path, feature_count, bounds, geom_col
+            return out_path, feature_count, bounds, geom_col, kept_order
         finally:
             con.close()
+
+    def _use_published_tiles(
+        self: Self, layer_id: str, keys: tuple[str, str | None], polygon: bool
+    ) -> bool:
+        """Copy goat-data's tiles where GOAT's own build puts them, when
+        ``sync_pmtiles`` would count them in sync (``stale_reason``: built by
+        manby with the current recipe of their kind, from no snapshot); False,
+        leaving nothing behind, when they cannot be used and the job should
+        build them.
+
+        A polygon needs its label points too: without them it is built whole.
+        """
+        from goatlib.io.pmtiles import PMTilesConfig, PMTilesGenerator
+
+        if not (self.settings and self.settings.pmtiles_enabled):
+            return False
+        main_key, anchor_key = keys
+        if polygon and not anchor_key:
+            return False
+        generator = PMTilesGenerator(
+            tiles_data_dir=catalog_tiles_dir(), config=PMTilesConfig()
+        )
+        targets = [(main_key, generator.get_pmtiles_path(layer_id))]
+        if anchor_key:
+            targets.append((anchor_key, generator.get_anchor_pmtiles_path(layer_id)))
+        bucket = os.environ.get("CATALOG_S3_BUCKET", "")
+        parts: list[Path] = []
+        try:
+            s3 = self._catalog_s3()
+            for key, target in targets:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                part = target.with_name(target.name + ".part")
+                parts.append(part)
+                s3.download_file(bucket, key, str(part))
+                # A catalog layer's parquet has no snapshot, as sync_pmtiles
+                # judges its tiles.
+                stale = generator.stale_reason(part, None)
+                if stale is not None:
+                    logger.info("Published tiles %s are not used: %s", key, stale)
+                    return False
+            # Written after the parquet: sync_pmtiles counts older tiles stale.
+            for (_, target), part in zip(targets, parts):
+                os.replace(part, target)
+            return True
+        except Exception as e:  # noqa: BLE001 - the job builds them instead
+            logger.warning("Published tiles for %s not used: %s", layer_id, e)
+            return False
+        finally:
+            for part in parts:
+                part.unlink(missing_ok=True)
 
     def _generate_catalog_pmtiles(
         self: Self, layer_id: str, parquet_path: Path, geom_col: str
@@ -362,9 +519,9 @@ class CatalogMaterializeRunner(SimpleToolRunner):
             # the status writes: a layer left at `pending` shows "preparing"
             # forever and core's self-heal re-enqueues it every time it is
             # re-added — a loop that never reaches the `failed` caption.
-            handler_key = "vector" if layer["type"] in ("feature", "table") else None
+            handler_key = HANDLERS.get(layer["type"])
             problem: str | None = None
-            if handler_key != "vector":
+            if handler_key is None:
                 problem = f"No materialize handler for layer type {layer['type']!r}"
             elif not parquet_url:
                 problem = "Layer's catalog_item snapshot has no parquet_url to fetch"
@@ -375,9 +532,34 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 raise ValueError(problem)
 
             loop.run_until_complete(self._set_status(params.layer_id, "running"))
+            if handler_key == "raster":
+                try:
+                    raster_path = self._materialize_raster(params.layer_id, parquet_url)
+                    loop.run_until_complete(
+                        self._finish_raster(params.layer_id, raster_path)
+                    )
+                except Exception as e:
+                    loop.run_until_complete(
+                        self._set_status(
+                            params.layer_id, "failed", {"error": str(e)[:500]}
+                        )
+                    )
+                    raise
+                return {
+                    "layer_id": params.layer_id,
+                    "status": "ready",
+                    "path": str(raster_path),
+                    "wm_labels": [params.triggered_by_email]
+                    if params.triggered_by_email
+                    else [],
+                }
+
+            published = published_tiles_keys(item)
             try:
-                out_path, count, bounds, geom_col = self._materialize_vector(
-                    params.layer_id, parquet_url
+                out_path, count, bounds, geom_col, kept_order = (
+                    self._materialize_vector(
+                        params.layer_id, parquet_url, keep_sorted=published is not None
+                    )
                 )
                 # Ready the moment the DATA is on disk: geoapi serves tiles
                 # dynamically until the PMTiles cache exists, so a big layer
@@ -392,7 +574,27 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 raise
 
             tiles_error: str | None = None
-            if geom_col:
+            tiles_source: str | None = None
+            if (
+                geom_col
+                and published
+                and kept_order
+                and self._use_published_tiles(
+                    params.layer_id,
+                    published,
+                    layer.get("feature_layer_geometry_type") == "polygon",
+                )
+            ):
+                tiles_source = "published"
+                loop.run_until_complete(
+                    self._set_status(
+                        params.layer_id,
+                        "ready",
+                        {"feature_count": count, "tiles": tiles_source},
+                    )
+                )
+            elif geom_col:
+                tiles_source = "built"
                 try:
                     self._generate_catalog_pmtiles(params.layer_id, out_path, geom_col)
                 except Exception as e:  # noqa: BLE001 - data is served either way
@@ -414,6 +616,7 @@ class CatalogMaterializeRunner(SimpleToolRunner):
                 "path": str(out_path),
                 "feature_count": count,
                 "geometry_column": geom_col,
+                "tiles": tiles_source,
                 "wm_labels": [params.triggered_by_email]
                 if params.triggered_by_email
                 else [],

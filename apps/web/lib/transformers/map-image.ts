@@ -1,11 +1,5 @@
 import type { MapRef } from "react-map-gl/maplibre";
 
-import type { PatternImage } from "@/lib/constants/pattern-images";
-import type { FeatureLayerPointProperties } from "@/lib/validations/layer";
-
-// Image prefix for marker images is needed to avoid
-// name conflicts with other images from mapbox basemaps
-export const PATTERN_IMAGE_PREFIX = "goat-pattern-";
 
 // Track which image name→url is already loaded (and in-flight) per map, so that
 // repeated loadImage() calls — panel re-renders, layer toggles, duplicate
@@ -14,12 +8,9 @@ export const PATTERN_IMAGE_PREFIX = "goat-pattern-";
 // GC'd with the map). Presence is gated by hasImage() so a basemap style swap
 // (which wipes all images) still triggers a reload; a changed url also reloads.
 const loadedImageUrls = new WeakMap<object, Map<string, string>>();
-const inFlightImageUrls = new WeakMap<object, Map<string, string>>();
+const inFlightImageLoads = new WeakMap<object, Map<string, { url: string; done: Promise<void> }>>();
 
-function trackFor(
-  store: WeakMap<object, Map<string, string>>,
-  key: object
-): Map<string, string> {
+function trackFor<V>(store: WeakMap<object, Map<string, V>>, key: object): Map<string, V> {
   let m = store.get(key);
   if (!m) {
     m = new Map();
@@ -36,7 +27,7 @@ function trackFor(
  * @param width number
  * @param height number
  * @param sdf boolean
- * @returns void
+ * @returns a promise that settles once the image is on the map or failed to load
  */
 export const loadImage = (
   map: MapRef | null | undefined,
@@ -44,25 +35,27 @@ export const loadImage = (
   marker_name: string,
   sdf?: boolean,
   targetWidth = 200, // default
-  targetHeight = 200 // default
-) => {
-  if (!map) return;
+  targetHeight = 200, // default
+  /** Draw at this pixel ratio instead of the screen's (GOAT Style images are drawn at 4 for sharp scaling). */
+  imagePixelRatio?: number
+): Promise<void> => {
+  if (!map) return Promise.resolve();
 
   // Idempotency guard: skip if this exact image (name→url) is already on the map
   // or currently loading. A style-swap wipe (hasImage false) or a url change
   // both fall through and reload.
   const glMap = (typeof map.getMap === "function" ? map.getMap() : map) as object;
   const loaded = trackFor(loadedImageUrls, glMap);
-  const inFlight = trackFor(inFlightImageUrls, glMap);
+  const inFlight = trackFor(inFlightImageLoads, glMap);
   let present = false;
   try {
     present = !!map.hasImage(marker_name);
   } catch {
     present = false;
   }
-  if (present && loaded.get(marker_name) === url) return;
-  if (inFlight.get(marker_name) === url) return;
-  inFlight.set(marker_name, url);
+  if (present && loaded.get(marker_name) === url) return Promise.resolve();
+  const pending = inFlight.get(marker_name);
+  if (pending?.url === url) return pending.done;
 
   const addOrUpdateImage = (
     image:
@@ -85,14 +78,12 @@ export const loadImage = (
     } catch (error) {
       // Map may have been unmounted or style not loaded yet - ignore silently
       console.debug(`Failed to add/update map image "${marker_name}":`, error);
-    } finally {
-      inFlight.delete(marker_name);
     }
   };
 
   const rasterizeToCanvas = (img: HTMLImageElement, targetW: number, targetH: number) => {
     // Cap at 2 to prevent print contexts (DPI 300+ → devicePixelRatio 3.125+) from inflating icons
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelRatio = imagePixelRatio ?? Math.min(window.devicePixelRatio || 1, 2);
     const canvas = document.createElement("canvas");
     canvas.width = targetW * pixelRatio;
     canvas.height = targetH * pixelRatio;
@@ -116,54 +107,24 @@ export const loadImage = (
   };
 
   // Create an Image object for all formats the browser supports
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.src = url;
-  img.onload = () => {
-    rasterizeToCanvas(img, targetWidth, targetHeight);
-  };
-  img.onerror = (err) => {
-    inFlight.delete(marker_name);
-    console.error(`Failed to load image: ${url}`, err);
-  };
-};
-
-/**
- * Add or update marker images on the map
- * @param properties FeatureLayerPointProperties
- * @param map MapRef
- * @returns void
- */
-export function addOrUpdateMarkerImages(
-  id: number,
-  properties: FeatureLayerPointProperties,
-  map: MapRef | null
-) {
-  if (map && properties.custom_marker) {
-    const markers = [properties.marker];
-    properties.marker_mapping?.forEach((markerMap) => {
-      if (markerMap && markerMap[1]) markers.push(markerMap[1]);
-    });
-    markers.forEach((marker) => {
-      if (marker && marker.url && marker.name) {
-        const name = `${id}-${marker.name}`;
-        const sdf = marker.source === "library" ? true : false;
-        loadImage(map, marker.url, name, sdf);
+  const done = new Promise<void>((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        rasterizeToCanvas(img, targetWidth, targetHeight);
+      } finally {
+        resolve();
       }
-    });
-  }
-}
-
-/**
- * Add pattern images on the map
- * @param patterns PatternImage[]
- * @param map MapRef
- */
-export function addPatternImages(patterns: PatternImage[], map: MapRef | null) {
-  if (map && patterns) {
-    patterns.forEach((pattern) => {
-      const name = `${PATTERN_IMAGE_PREFIX}${pattern.name}`;
-      loadImage(map, pattern.url, name, false, pattern.width, pattern.height);
-    });
-  }
-}
+    };
+    img.onerror = (err) => {
+      console.error(`Failed to load image: ${url}`, err);
+      resolve();
+    };
+    img.src = url;
+  }).finally(() => {
+    if (inFlight.get(marker_name)?.done === done) inFlight.delete(marker_name);
+  });
+  inFlight.set(marker_name, { url, done });
+  return done;
+};

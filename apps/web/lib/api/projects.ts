@@ -178,6 +178,47 @@ export const useProjectLayerAggregationStats = (
   };
 };
 
+// Read when called, not when the module loads, as the other requests of this file read it.
+const histogramUrl = () => `${PROCESSES_API_BASE_URL}/histogram/execution`;
+
+const histogramBody = (layerId: string, queryParams: HistogramStatsQueryParams) => ({
+  inputs: {
+    collection: layerId,
+    column: queryParams.column_name,
+    num_bins: queryParams.num_bins || 10,
+    method: queryParams.method || "equal_interval",
+    custom_breaks: queryParams.custom_breaks,
+    filter: queryParams.query,
+  },
+});
+
+async function fetchHistogram([url, body]: [string, object]): Promise<HistogramStatsResponse> {
+  const response = await apiRequestAuth(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail?.detail || error.detail || "Failed to get histogram stats");
+  }
+  const result = await response.json();
+  // Response already matches expected format (bins with range and count)
+  return {
+    bins:
+      result.bins?.map((bin: { range: [number, number]; count: number }) => ({
+        range: bin.range,
+        count: bin.count,
+      })) || [],
+    missing_count: result.missing_count || 0,
+    total_rows: result.total_rows || 0,
+  };
+}
+
+/** A layer's histogram statistics (GeoAPI OGC Processes), the request useProjectLayerHistogramStats makes. */
+export const getHistogramStats = (layerId: string, queryParams: HistogramStatsQueryParams) =>
+  fetchHistogram([histogramUrl(), histogramBody(layerId, queryParams)]);
+
 /**
  * Hook to get histogram statistics for a layer using GeoAPI OGC Processes
  * @param layerId - The layer UUID (not layer_project_id)
@@ -187,43 +228,8 @@ export const useProjectLayerHistogramStats = (layerId?: string, queryParams?: Hi
   const shouldFetch = layerId && queryParams?.column_name;
 
   const { data, isLoading, error, mutate, isValidating } = useSWR<HistogramStatsResponse>(
-    shouldFetch
-      ? [
-          `${PROCESSES_API_BASE_URL}/histogram/execution`,
-          {
-            inputs: {
-              collection: layerId,
-              column: queryParams.column_name,
-              num_bins: queryParams.num_bins || 10,
-              method: queryParams.method || "equal_interval",
-              custom_breaks: queryParams.custom_breaks,
-              filter: queryParams.query,
-            },
-          },
-        ]
-      : null,
-    async ([url, body]) => {
-      const response = await apiRequestAuth(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail?.detail || error.detail || "Failed to get histogram stats");
-      }
-      const result = await response.json();
-      // Response already matches expected format (bins with range and count)
-      return {
-        bins:
-          result.bins?.map((bin: { range: [number, number]; count: number }) => ({
-            range: bin.range,
-            count: bin.count,
-          })) || [],
-        missing_count: result.missing_count || 0,
-        total_rows: result.total_rows || 0,
-      };
-    },
+    shouldFetch ? [histogramUrl(), histogramBody(layerId, queryParams)] : null,
+    fetchHistogram,
     {
       keepPreviousData: true,
     }
@@ -251,16 +257,33 @@ export const updateProjectInitialViewState = async (projectId: string, payload: 
   return await response.json();
 };
 
-export const updateProjectLayer = async (projectId: string, layerId: number, payload: ProjectLayer) => {
+/** What a project layer's PUT writes: the link's own fields (styles and map state have their own routes). */
+const LAYER_CHANGE_KEYS = ["name", "query", "other_properties", "charts"] as const;
+export type ProjectLayerChanges = Partial<Pick<ProjectLayer, (typeof LAYER_CHANGE_KEYS)[number]>>;
+
+/** Writes the fields of a project layer given in `changes`; the others stay as they are. */
+export const updateProjectLayer = async (
+  projectId: string,
+  layerId: number,
+  changes: ProjectLayerChanges
+) => {
+  const body = Object.fromEntries(
+    LAYER_CHANGE_KEYS.filter((key) => key in changes).map((key) => [key, changes[key]])
+  );
   const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}/layer/${layerId}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw Error(`Failed to update project layer ${layerId}`);
+    // The status and core's `detail` (a text, or a validation error's list) go with it, for the caller to show.
+    const reply = await response.json().catch(() => undefined);
+    throw Object.assign(new Error(`Failed to update project layer ${layerId}`), {
+      status: response.status,
+      detail: reply?.detail,
+    });
   }
   return await response.json();
 };
@@ -294,10 +317,10 @@ export const projectLayerGroupsKey = (projectId: string) => [`${PROJECTS_API_BAS
  */
 export const addCatalogLayersToProject = async (projectId: string, catalogIds: string[]) => {
   const params = catalogIds.map((id) => `catalog_ids=${encodeURIComponent(id)}`).join("&");
-  const response = await apiRequestAuth(
-    `${PROJECTS_API_BASE_URL}/${projectId}/layer-catalog?${params}`,
-    { method: "POST", headers: { "Content-Type": "application/json" } }
-  );
+  const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}/layer-catalog?${params}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
   if (!response.ok) {
     // The server's own words when it has them: a refusal here says how many
     // layers were asked for and what the limit is, which the generic message

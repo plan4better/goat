@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     # Schemas
     # ------------------------------------------------------------------
     SCHEMA: str = "customer"
+    # The Postgres schema of DuckLake's catalog (geoapi and processes read the
+    # same variable). core reads its change log when a map loads, to mark styles
+    # whose data changed (GOAT Style spec 12).
+    DUCKLAKE_CATALOG_SCHEMA: str = "ducklake"
     #: Schema of the AI assistant's tables (apps/assistant). Owned by this
     #: migration chain, read and written only by the assistant service.
     ASSISTANT_SCHEMA: str = "assistant"
@@ -127,7 +131,8 @@ class Settings(BaseSettings):
     # derives from DATA_DIR so a whole-volume mount keeps working unconfigured.
     CATALOG_DATA_DIR: str = os.path.join(os.getenv("DATA_DIR", "/app/data"), "catalog")
     # Where the catalog_materialize job writes a promoted catalog layer's
-    # parquet copy, resolved as the job and geoapi resolve it (an explicit
+    # parquet copy (or a raster's stored file, goatlib's stored_raster_file),
+    # resolved as the job and geoapi resolve it (an explicit
     # CATALOG_LAYERS_DIR wins). Inside the catalog subtree by default, so the
     # mount above covers it. Core only checks that a copy exists, when a
     # dataset is added again (`services.materialize_heal`).
@@ -148,6 +153,12 @@ class Settings(BaseSettings):
     # arrive from private addresses, and those are never geolocated. Unset on
     # hosted GOAT, where callers come from everywhere.
     DEFAULT_PROJECT_VIEW_STATE: str | None = None
+    # The 3D sources the browser loads, the same values as the web's
+    # NEXT_PUBLIC_ twins. Core only checks a project's scene against them:
+    # empty means this installation has no such source, so a scene asking for
+    # terrain (or the building overlay) gets a `scene_source_missing` warning.
+    TERRAIN_TILES_URL: str | None = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"
+    BUILDINGS_TILES_URL: str | None = "https://tiles.openfreemap.org/planet"
     # Plan and quotas applied to organizations when no billing system is
     # configured (self-hosted deployments). With billing enabled these come
     # from the billing provider instead.
@@ -417,6 +428,13 @@ class Settings(BaseSettings):
     @property
     def processes_url(self) -> str | None:
         return self.GOAT_PROCESSES_URL or self.GOAT_GEOAPI_HOST
+
+    # ------------------------------------------------------------------
+    # GeoAPI service, in-cluster address. Core asks it for a COG's bounds when
+    # it creates a raster layer (core has no raster reader). Unset, such a
+    # layer is stored without an extent and the web asks geoapi instead.
+    # ------------------------------------------------------------------
+    GOAT_GEOAPI_URL: str | None = None
 
     # ------------------------------------------------------------------
     # Custom domains (white label)

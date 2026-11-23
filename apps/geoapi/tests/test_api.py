@@ -367,7 +367,28 @@ class TestFeatureFieldValidation:
 
     @patch("geoapi.routers.features.feature_service")
     @patch("geoapi.routers.features.layer_service")
-    def test_unknown_property_is_rejected(
+    def test_unknown_property_is_left_out(
+        self,
+        mock_layer_service,
+        mock_feature_service,
+        test_client,
+        sample_layer_metadata,
+    ):
+        """A style can name a field its dataset no longer has (spec `unknown_field`):
+        its points still load, without that field."""
+        mock_layer_service.get_layer_metadata = AsyncMock(
+            return_value=sample_layer_metadata
+        )
+        mock_feature_service.get_features_json = MagicMock(return_value=("", 0, 0))
+
+        response = test_client.get(f"{self.COLLECTION}?properties=name,nope")
+        assert response.status_code == 200
+        kwargs = mock_feature_service.get_features_json.call_args.kwargs
+        assert kwargs["properties"] == ["name"]
+
+    @patch("geoapi.routers.features.feature_service")
+    @patch("geoapi.routers.features.layer_service")
+    def test_empty_properties_ask_for_none(
         self,
         mock_layer_service,
         mock_feature_service,
@@ -377,13 +398,23 @@ class TestFeatureFieldValidation:
         mock_layer_service.get_layer_metadata = AsyncMock(
             return_value=sample_layer_metadata
         )
-        mock_feature_service.get_features_json = MagicMock(
-            side_effect=AssertionError("query must not run for an unknown field")
+        mock_feature_service.get_features_json = MagicMock(return_value=("", 0, 0))
+
+        test_client.get(f"{self.COLLECTION}?properties=")
+        assert (
+            mock_feature_service.get_features_json.call_args.kwargs["properties"] == []
         )
 
-        response = test_client.get(f"{self.COLLECTION}?properties=name,nope")
-        assert response.status_code == 400
-        assert "nope" in response.json()["detail"]
+        test_client.get(f"{self.COLLECTION}?properties=nope")
+        assert (
+            mock_feature_service.get_features_json.call_args.kwargs["properties"] == []
+        )
+
+        test_client.get(f"{self.COLLECTION}")
+        assert (
+            mock_feature_service.get_features_json.call_args.kwargs["properties"]
+            is None
+        )
 
     @patch("geoapi.routers.features.feature_service")
     @patch("geoapi.routers.features.layer_service")

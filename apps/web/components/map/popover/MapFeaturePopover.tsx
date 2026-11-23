@@ -45,6 +45,9 @@ export interface MapFeaturePopoverProps {
    * reasonable single icon (e.g. complex categorical legends).
    */
   layerIcon?: ReactNode;
+  /** A hover popup: it lets the pointer through to the map, which keeps the moves that move it along (it sits near
+   * the pointer and would otherwise catch it). */
+  passive?: boolean;
 }
 
 export function MapFeaturePopover(props: MapFeaturePopoverProps) {
@@ -79,7 +82,9 @@ export function MapFeaturePopover(props: MapFeaturePopoverProps) {
       closeOnClick={false}
       onClose={props.onClose}
       maxWidth="340px"
-      className="goat-feature-popup">
+      // A passive popup's content lets the pointer through too (MapLibre gives popup content pointer events): the map
+      // host styles `goat-popup-passive`.
+      className={props.passive ? "goat-feature-popup goat-popup-passive" : "goat-feature-popup"}>
       {body}
     </Popup>
   );

@@ -4,6 +4,7 @@ templates:
   - geoapi/configmap.yaml
   - processes/deployment.yaml
   - processes/configmap.yaml
+  - core/configmap.yaml
 tests:
   - it: geoapi gets a ducklake-init init container in its own image, on by default
     template: geoapi/deployment.yaml
@@ -239,7 +240,23 @@ tests:
           path: data.DUCKLAKE_CATALOG_SCHEMA
           value: ducklake
 
-  - it: ducklakeBootstrap.dataDir / catalogSchema drive both ConfigMaps
+  - it: core ConfigMap carries the same catalog schema (it reads DuckLake's change log)
+    template: core/configmap.yaml
+    asserts:
+      - equal:
+          path: data.DUCKLAKE_CATALOG_SCHEMA
+          value: ducklake
+
+  - it: a core.config DUCKLAKE_CATALOG_SCHEMA wins and renders once
+    template: core/configmap.yaml
+    set:
+      core.config.DUCKLAKE_CATALOG_SCHEMA: own
+    asserts:
+      - equal:
+          path: data.DUCKLAKE_CATALOG_SCHEMA
+          value: own
+
+  - it: ducklakeBootstrap.dataDir / catalogSchema drive every ConfigMap
     set:
       ducklakeBootstrap.dataDir: /app/data/lake2
       ducklakeBootstrap.catalogSchema: lake2
@@ -260,6 +277,10 @@ tests:
           path: data.DUCKLAKE_CATALOG_SCHEMA
           value: lake2
         template: processes/configmap.yaml
+      - equal:
+          path: data.DUCKLAKE_CATALOG_SCHEMA
+          value: lake2
+        template: core/configmap.yaml
 
   - it: a component's own config key wins over ducklakeBootstrap.*
     set:

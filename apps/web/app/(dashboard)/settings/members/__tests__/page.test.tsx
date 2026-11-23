@@ -455,7 +455,8 @@ describe("Members page", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("says the address could not be copied when there is no clipboard", async () => {
+  it("says the address could not be copied when the browser offers no way to copy", async () => {
+    // No Clipboard API (plain http) and, in jsdom, no `execCommand` to fall back on.
     clipboard(undefined);
     renderPage();
     await copyEmailOf("Emil Muster");

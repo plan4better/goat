@@ -11,6 +11,7 @@ from goatlib.analysis.schemas.statistics import (
     UniqueValuesResult,
 )
 from goatlib.analysis.statistics.columns import quote_identifier, require_column
+from goatlib.utils.column_types import column_types
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,17 @@ def calculate_unique_values(
     Raises:
         ValueError: If `attribute` is not a column of the table.
     """
-    attribute = require_column(con, table_name, attribute, "attribute")
+    types = column_types(con, table_name)
+    attribute = require_column(con, table_name, attribute, "attribute", set(types))
     attr_col = quote_identifier(attribute)
+    # A 32-bit float is written as the double it holds, the number vector tiles
+    # and the map read (and a filter on it matches), not as the float's short
+    # text: DuckDB writes REAL 30745.38 as "30745.38", the value is 30745.380859375.
+    text_of = (
+        f"CAST({attr_col} AS DOUBLE)"
+        if types[attribute].strip().upper() == "FLOAT"
+        else attr_col
+    )
 
     # Add null check to where clause
     full_where = f"({where_clause}) AND {attr_col} IS NOT NULL"
@@ -64,9 +74,10 @@ def calculate_unique_values(
     limit, offset = max(int(limit), 0), max(int(offset), 0)
 
     # Get unique values with counts
-    # Cast value to VARCHAR for consistent string formatting with aggregation_stats
+    # Values as text, as aggregation_stats writes its groups (it writes a 32-bit
+    # float as the float's short text)
     data_query = f"""
-        SELECT CAST({attr_col} AS VARCHAR) AS value, COUNT(*) AS cnt
+        SELECT CAST({text_of} AS VARCHAR) AS value, COUNT(*) AS cnt
         FROM {table_name}
         WHERE {full_where}
         GROUP BY {attr_col}

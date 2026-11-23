@@ -1,0 +1,72 @@
+from goatlib.style.models.base import StyleModel
+from goatlib.style.models.values import ByAttributeColor
+from goatlib.style.parse import parse
+from goatlib.style.pointer import parse_pointer, to_pointer
+
+
+class Item(StyleModel):
+    id: str
+    n: int
+
+
+class Holder(StyleModel):
+    items: list[Item]
+
+
+def test_unknown_key_path_points_at_the_key() -> None:
+    _, issues = parse(
+        ByAttributeColor, {"field": "x", "palette": "d3:viridis", "revers": True}
+    )
+    assert [(i.code, i.path) for i in issues] == [("unknown_key", "/revers")]
+
+
+def test_a_key_a_model_refuses_says_why() -> None:
+    from goatlib.style.parse import parse_for_write
+
+    raster = {"version": "1.0.0", "kind": "raster"}
+    popup = {"trigger": "click", "highlight_active_feature": True}
+    _, issues = parse_for_write({**raster, "popup": popup})
+    assert ("unknown_key", "/popup/highlight_active_feature") in [
+        (i.code, i.path) for i in issues
+    ]
+    [message] = [i.message for i in issues if i.code == "unknown_key"]
+    assert message == "A raster has no feature to highlight."
+    ramp = {"type": "continuous", "domain": [0, 9]}
+    _, issues = parse_for_write({**raster, "render": ramp, "brightness": 0.2})
+    assert [(i.code, i.message) for i in issues] == [
+        (
+            "unknown_key",
+            "brightness, contrast, saturation and hue apply to image renders only.",
+        )
+    ]
+    color = {"field": "x", "palette": "d3:viridis", "revers": True}
+    _, issues = parse(ByAttributeColor, color)
+    assert [i.message for i in issues] == ['"revers" is not a key here.']
+
+
+def test_missing_required_key() -> None:
+    _, issues = parse(ByAttributeColor, {"palette": "d3:viridis"})
+    assert [(i.code, i.path) for i in issues] == [("missing_required", "/field")]
+
+
+def test_list_items_with_ids_are_addressed_by_id() -> None:
+    _, issues = parse(Holder, {"items": [{"id": "a", "n": 1}, {"id": "b", "n": "x"}]})
+    assert [(i.code, i.path) for i in issues] == [("invalid_value", "/items/b/n")]
+
+
+def test_items_without_ids_are_addressed_by_index() -> None:
+    _, issues = parse(Holder, {"items": [{"n": 1}]})
+    assert [(i.code, i.path) for i in issues] == [("missing_required", "/items/0/id")]
+
+
+def test_pointer_escaping_round_trips() -> None:
+    assert (
+        to_pointer(["symbol", "a/b", "c~d", "Straße 1"]) == "/symbol/a~1b/c~0d/Straße 1"
+    )
+    assert parse_pointer("/symbol/a~1b/c~0d/Straße 1") == [
+        "symbol",
+        "a/b",
+        "c~d",
+        "Straße 1",
+    ]
+    assert to_pointer([]) == ""

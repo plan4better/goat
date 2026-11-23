@@ -151,7 +151,7 @@ When a **dataset node** is selected, the dataset panel appears with two availabl
 
 **Source Tab**: View metadata from the data source and access table and map views. You can also change the dataset assigned to the node from this tab.
 
-An empty dataset node shows <code>Add dataset</code>, with two sources: <code>From Project</code> and <code>My datasets</code>. Once a dataset is set, use <code>Change Dataset</code> to pick another.
+An empty dataset node shows <code>Add dataset</code>, with two sources: <code>From Project</code> and <code>My datasets</code>. Once a dataset is set, use <code>Change Dataset</code> to pick another. Workflows use feature layers and tables; raster layers are not offered and can't be dropped onto the canvas.
 
 **Filter Tab**: Apply filters specific to the workflow without affecting the original layer.
 

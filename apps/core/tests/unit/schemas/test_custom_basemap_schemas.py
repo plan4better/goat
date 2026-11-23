@@ -45,6 +45,33 @@ def test_raster_custom_basemap_requires_xyz_placeholders():
     assert parsed.attribution == "© Example"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://tiles.example.org/{z}/{x}/{-y}.png",
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://{switch:a,b}.tiles.example.org/{z}/{x}/{-y}.png",
+    ],
+)
+def test_raster_custom_basemap_accepts_tms_rows_and_subdomains(url: str) -> None:
+    data = {**_base_fields(), "type": "raster", "url": url}
+    assert CUSTOM_BASEMAP_ADAPTER.validate_python(data).url == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://{switch:a,evil.example/x?}.tiles.example.org/{z}/{x}/{y}.png",
+        "https://{switch:}.tiles.example.org/{z}/{x}/{y}.png",
+        "https://tiles.example.org:port/{z}/{x}/{y}.png",
+    ],
+)
+def test_raster_custom_basemap_checks_every_address(url: str) -> None:
+    data = {**_base_fields(), "type": "raster", "url": url}
+    with pytest.raises(ValidationError):
+        CUSTOM_BASEMAP_ADAPTER.validate_python(data)
+
+
 def test_raster_custom_basemap_rejects_missing_placeholder():
     data = {
         **_base_fields(),

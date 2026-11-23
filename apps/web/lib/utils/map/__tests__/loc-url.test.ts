@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { getLocFromUrl, parseLoc, serializeLoc, writeLocToUrl, writeMapLocToUrl } from "../loc-url";
+import {
+  getLocFromUrl,
+  getStylesFromUrl,
+  parseLoc,
+  serializeLoc,
+  writeLocToUrl,
+  writeMapLocToUrl,
+  writeStylesToUrl,
+} from "../loc-url";
 
 describe("serializeLoc", () => {
   it("serializes lat,lng,zoom with z suffix and trimmed trailing zeros", () => {
@@ -94,12 +102,6 @@ describe("parseLoc", () => {
     ["garbage", "not a loc"],
     ["1,2", "too few tokens"],
     ["1,2,3z,45b,30p,9x", "too many tokens"],
-    ["91,2,3z", "latitude out of range"],
-    ["-91,2,3z", "latitude out of range negative"],
-    ["1,181,3z", "longitude out of range"],
-    ["1,2,25z", "zoom out of range"],
-    ["1,2,-1z", "zoom negative"],
-    ["1,2,3z,61p", "pitch out of range"],
     ["1,2,3z,45x", "unknown suffix"],
     ["1,2,3z,45b,90b", "duplicate bearing"],
     ["1,2,3z,30p,40p", "duplicate pitch"],
@@ -111,6 +113,28 @@ describe("parseLoc", () => {
     ["48.13,11.57,1e1z", "scientific notation zoom"],
   ])("returns null for invalid input %s (%s)", (raw, _description) => {
     expect(parseLoc(raw as string | null | undefined)).toBeNull();
+  });
+
+  it("keeps a 3D tilt up to 85 and brings a steeper one inside", () => {
+    expect(parseLoc("48.1,11.5,14z,75p")).toMatchObject({ pitch: 75 });
+    expect(parseLoc("48.1,11.5,14z,85p")).toMatchObject({ pitch: 85 });
+    expect(parseLoc("48.1,11.5,14z,86p")).toMatchObject({ pitch: 85 });
+  });
+
+  it("brings a camera a zoomed-out globe left past the limits inside instead of refusing it", () => {
+    expect(parseLoc("90,-151.07329,-3.54z")).toEqual({
+      latitude: 85.051129,
+      longitude: -151.07329,
+      zoom: 0,
+      bearing: 0,
+      pitch: 0,
+    });
+    expect(parseLoc("-91,200,25z")).toMatchObject({ latitude: -85.051129, longitude: -160, zoom: 24 });
+    expect(parseLoc("1,2,3z,-5p")).toMatchObject({ pitch: 0 });
+  });
+
+  it("writes a camera inside the limits", () => {
+    expect(serializeLoc({ latitude: 90, longitude: 200, zoom: -3.54, pitch: 0 })).toBe("85.05113,-160,0z");
   });
 });
 
@@ -186,5 +210,19 @@ describe("writeMapLocToUrl", () => {
       getPitch: () => 0,
     });
     expect(new URLSearchParams(window.location.search).get("loc")).toBe("48.13,11.57,10z,45b");
+  });
+});
+
+describe("getStylesFromUrl / writeStylesToUrl", () => {
+  it("a public viewer's style choices travel as styles=<layer>:<style>,… next to loc", () => {
+    window.history.replaceState(null, "", "/map/public/p?loc=48.1,11.5,12z");
+    expect(getStylesFromUrl()).toEqual({});
+    writeStylesToUrl({ "12": "7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f", "13": "a" });
+    expect(window.location.search).toBe("?loc=48.1,11.5,12z&styles=12:7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f,13:a");
+    expect(getStylesFromUrl()).toEqual({ "12": "7f3a91c2-0d4e-4c8a-9b1f-2a3b4c5d6e7f", "13": "a" });
+    writeStylesToUrl({});
+    expect(window.location.search).toBe("?loc=48.1,11.5,12z");
+    window.history.replaceState(null, "", "/map/public/p?styles=x:,12:b,:c,13");
+    expect(getStylesFromUrl()).toEqual({ "12": "b" });
   });
 });

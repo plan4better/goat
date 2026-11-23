@@ -23,7 +23,6 @@ import asyncio
 import logging
 from uuid import UUID, uuid4
 
-from goatlib.tools.style import get_default_style
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +30,7 @@ from core.core.config import settings
 from core.db.models.folder import Folder
 from core.db.models.layer import Layer
 from core.db.session import session_manager
+from core.services.style import insert_dataset_default
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,6 @@ DATASETS: tuple[dict[str, object], ...] = (
         "type": "feature",
         "feature_layer_type": "standard",
         "feature_layer_geometry_type": "point",
-        "properties": get_default_style("point"),
         "extent": _EXTENT,
     },
     {"name": "E2E Table", "type": "table"},
@@ -75,15 +74,19 @@ async def seed_e2e(session: AsyncSession, user_id: UUID) -> None:
         ).scalar_one_or_none()
         if exists is not None:
             continue
+        layer_id = uuid4()
         session.add(
             Layer(
-                id=uuid4(),
+                id=layer_id,
                 user_id=user_id,
                 folder_id=home.id,
                 space_id=home.space_id,
                 **dataset,
             )
         )
+        await session.commit()
+        if dataset["type"] == "feature":
+            await insert_dataset_default(session, layer_id)
         logger.info("Seeded dataset %s", dataset["name"])
     await session.commit()
 

@@ -9,30 +9,39 @@ import React from "react";
 import { Provider } from "react-redux";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { predictNodeSchema } from "@/lib/api/workflows";
 import { workflowReducer } from "@/lib/store/workflow/slice";
 import type { WorkflowNode } from "@/lib/validations/workflow";
 
 import { makeIssue } from "@/components/workflows/issues/__tests__/issueFixtures";
 import WorkflowNodeSettings from "@/components/workflows/panels/WorkflowNodeSettings";
 
-const { issuesByNode, focusState, processState } = vi.hoisted(() => ({
+const { issuesByNode, focusState, processState, projectState, canvas, inputProps } = vi.hoisted(() => ({
   issuesByNode: new Map<string, unknown[]>(),
   focusState: { request: null as null | { nodeId: string; field: string | null; seq: number } },
-  processState: { process: undefined as unknown },
+  processState: { process: undefined as unknown, objectFields: [] as unknown[] },
+  // The project's layers, as the panel reads them.
+  projectState: { layers: [] as unknown[] },
+  // The canvas around the step: its edges (its nodes are in the store).
+  canvas: { edges: [] as Array<{ id: string; source: string; target: string; targetHandle?: string }> },
+  // The dataset of each layer input, as the inputs (their field pickers) are given it.
+  inputProps: { layerDatasetIds: [] as Array<Record<string, string> | undefined> },
 }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ projectId: "p1" }) }));
-vi.mock("@xyflow/react", () => ({ useEdges: () => [] }));
+vi.mock("@xyflow/react", () => ({ useEdges: () => canvas.edges }));
 vi.mock("@/i18n/utils", () => ({ useDateFnsLocale: () => undefined }));
 vi.mock("@/lib/api/workflows", () => ({
   predictNodeSchema: vi.fn(),
   useTempLayerFeatures: () => ({ data: undefined }),
   useWorkflowMetadata: () => ({ metadata: undefined }),
 }));
-vi.mock("@/hooks/map/LayerPanelHooks", () => ({ useFilteredProjectLayers: () => ({ layers: [] }) }));
+vi.mock("@/hooks/map/LayerPanelHooks", () => ({
+  useFilteredProjectLayers: () => ({ layers: projectState.layers }),
+}));
 vi.mock("@/hooks/map/useOgcProcesses", () => ({
   useProcessDescription: () => ({ process: processState.process, isLoading: false }),
 }));
@@ -47,7 +56,16 @@ vi.mock("@/components/workflows/context/WorkflowExecutionContext", () => ({
 }));
 // The inputs themselves are covered elsewhere; here each is a plain field named by its title.
 vi.mock("@/components/workflows/inputs/VariableAwareInput", () => ({
-  default: ({ input }: { input: { title: string } }) => <input aria-label={input.title} />,
+  default: ({
+    input,
+    layerDatasetIds,
+  }: {
+    input: { title: string };
+    layerDatasetIds?: Record<string, string>;
+  }) => {
+    inputProps.layerDatasetIds.push(layerDatasetIds);
+    return <input aria-label={input.title} />;
+  },
 }));
 vi.mock("@/components/workflows/panels/DatasetNodeSettings", () => ({ default: () => null }));
 vi.mock("@/components/workflows/panels/IfNodeSettings", () => ({ default: () => null }));
@@ -92,7 +110,7 @@ vi.mock("@/components/map/panels/toolbox/generic/inputs/OevStationConfigInput", 
 }));
 vi.mock("@/components/map/panels/toolbox/generic/inputs/RepeatableObjectInput", () => ({
   getObjectDefaults: () => ({}),
-  processObjectProperties: () => [],
+  processObjectProperties: () => processState.objectFields,
 }));
 vi.mock("@/components/workflows/issues/WorkflowIssuesContext", () => ({
   useStepIssues: (nodeId: string) => issuesByNode.get(nodeId) ?? [],
@@ -279,5 +297,144 @@ describe("WorkflowNodeSettings issues", () => {
     expect(field).toHaveTextContent("Pick the dataset the rows are added to.");
     expect(screen.queryByTestId("step-issues")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("enter_dataset_name")).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkflowNodeSettings of a tool fed by a dataset step", () => {
+  const RASTER_ID = "22222222-2222-4222-8222-222222222222";
+  const STOPS_ID = "11111111-1111-4111-8111-111111111111";
+
+  const datasetStep = (layerId: string, layerType: string) =>
+    ({
+      id: "dataset-1",
+      type: "dataset",
+      position: { x: 0, y: 0 },
+      data: { type: "dataset", label: "Input", layerId, layerType },
+    }) as WorkflowNode;
+
+  const renderFedBy = (step: WorkflowNode, ...others: WorkflowNode[]) => {
+    const workflow = {
+      ...workflowReducer(undefined, { type: "init" }),
+      selectedWorkflowId: "wf-1",
+      nodes: [step, ...others, toolNode],
+    };
+    render(
+      <Provider
+        store={configureStore({ reducer: { workflow: workflowReducer }, preloadedState: { workflow } })}>
+        <WorkflowNodeSettings node={toolNode} onBack={vi.fn()} />
+      </Provider>
+    );
+  };
+
+  beforeEach(() => {
+    issuesByNode.clear();
+    focusState.request = null;
+    processState.process = buffer;
+    processState.objectFields = [];
+    projectState.layers = [];
+    canvas.edges = [{ id: "e1", source: "dataset-1", target: "tool-1", targetHandle: "input_layer_id" }];
+    inputProps.layerDatasetIds = [];
+    vi.mocked(predictNodeSchema).mockReset();
+    vi.mocked(predictNodeSchema).mockResolvedValue({ columns: {} } as never);
+  });
+
+  it("gives the field pickers the dataset of a feature layer's step", () => {
+    renderFedBy(datasetStep(STOPS_ID, "feature"));
+    expect(screen.getByLabelText("Distance")).toBeInTheDocument();
+    expect(inputProps.layerDatasetIds.at(-1)).toMatchObject({ input_layer_id: STOPS_ID });
+  });
+
+  it("gives them no dataset for a raster step, so no fields are asked of it", () => {
+    renderFedBy(datasetStep(RASTER_ID, "raster"));
+    expect(screen.getByLabelText("Distance")).toBeInTheDocument();
+    expect(Object.values(inputProps.layerDatasetIds.at(-1) ?? {})).not.toContain(RASTER_ID);
+  });
+
+  // A heatmap-style tool: opportunity layers on numbered handles, each with its own fields.
+  const heatmap = {
+    id: "heatmap_gravity",
+    title: "Heatmap",
+    description: "",
+    "x-ui-sections": [{ id: "configuration", order: 1, label: "Configuration", icon: "settings" }],
+    inputs: {
+      opportunity_layer_1_id: {
+        title: "Opportunities",
+        schema: { type: "string", "x-ui": { widget: "layer-selector", hidden: true } },
+        minOccurs: 0,
+        maxOccurs: 1,
+        keywords: [],
+        metadata: [],
+      },
+      opportunities: {
+        title: "Opportunities",
+        schema: { type: "array", items: { $ref: "#/$defs/Opportunity" }, "x-ui": { hidden: true } },
+        minOccurs: 0,
+        maxOccurs: 1,
+        keywords: [],
+        metadata: [],
+      },
+    },
+    $defs: { Opportunity: { type: "object", properties: {} } },
+    outputs: {},
+  };
+  const potential = { name: "potential_field", title: "Potential", inputType: "field", schema: {} };
+
+  const opportunityIds = () =>
+    inputProps.layerDatasetIds.map((ids) => ids?.input_path).filter((id): id is string => !!id);
+
+  it("an opportunity's field picker reads a feature layer's step", () => {
+    processState.process = heatmap;
+    processState.objectFields = [potential];
+    canvas.edges = [
+      { id: "e1", source: "dataset-1", target: "tool-1", targetHandle: "opportunity_layer_1_id" },
+    ];
+    renderFedBy(datasetStep(STOPS_ID, "feature"));
+    expect(screen.getByLabelText("Potential")).toBeInTheDocument();
+    expect(opportunityIds()).toContain(STOPS_ID);
+  });
+
+  it("an opportunity's field picker gets no dataset from a raster step", () => {
+    processState.process = heatmap;
+    processState.objectFields = [potential];
+    canvas.edges = [
+      { id: "e1", source: "dataset-1", target: "tool-1", targetHandle: "opportunity_layer_1_id" },
+    ];
+    renderFedBy(datasetStep(RASTER_ID, "raster"));
+    expect(screen.getByLabelText("Potential")).toBeInTheDocument();
+    expect(opportunityIds()).not.toContain(RASTER_ID);
+  });
+
+  // A tool before this one: its columns are predicted from the steps it reads.
+  const upstream = {
+    id: "tool-a",
+    type: "tool",
+    position: { x: 0, y: 0 },
+    data: { type: "tool", processId: "buffer", label: "Buffer", config: {}, status: "idle" },
+  } as WorkflowNode;
+  const chain = [
+    { id: "e0", source: "dataset-1", target: "tool-a", targetHandle: "input_layer_id" },
+    { id: "e1", source: "tool-a", target: "tool-1", targetHandle: "input_layer_id" },
+  ];
+  const predictedLayers = () =>
+    vi
+      .mocked(predictNodeSchema)
+      .mock.calls.flatMap(([, request]) =>
+        Object.values(request.input_schemas).map((schema) => schema.layer_id)
+      );
+
+  it("predicts a tool's columns from a feature layer's step before it", async () => {
+    projectState.layers = [{ id: 5, layer_id: STOPS_ID, name: "Stops", type: "feature" }];
+    canvas.edges = chain;
+    renderFedBy(datasetStep(STOPS_ID, "feature"), upstream);
+    await waitFor(() => expect(predictNodeSchema).toHaveBeenCalled());
+    expect(predictedLayers()).toContain(STOPS_ID);
+  });
+
+  it("does not send a raster step's layer to the column prediction", async () => {
+    projectState.layers = [{ id: 6, layer_id: RASTER_ID, name: "DEM", type: "raster" }];
+    canvas.edges = chain;
+    renderFedBy(datasetStep(RASTER_ID, "raster"), upstream);
+    await waitFor(() => expect(predictNodeSchema).toHaveBeenCalled());
+    expect(predictedLayers()).not.toContain(RASTER_ID);
   });
 });

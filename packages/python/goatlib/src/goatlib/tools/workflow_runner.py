@@ -13,17 +13,19 @@ Usage:
 import asyncio
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import asyncpg
 import wmill
 from pydantic import BaseModel, Field
 
-from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node
+from goatlib.filter.normalize import days_ago
+from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node, layer_field_types
 from goatlib.tools.workflow_dataset_nodes import (
     current_layer_ids,
-    dataset_style,
+    entry_id,
     project_layer_ids,
     with_current_layer_ids,
 )
@@ -415,21 +417,108 @@ def mark_skipped_descendants(
     return newly_skipped
 
 
-# Mapping from frontend expression names to CQL2 operators
+# The rows' comparisons and the CQL2 operator each writes
 _EXPRESSION_TO_CQL_OP = {
     "is": "=",
-    "is_not": "!=",
     "is_at_least": ">=",
     "is_at_most": "<=",
     "is_less_than": "<",
     "is_greater_than": ">",
-    "is_empty_string": "=",
-    "is_not_empty_string": "!=",
+    "is_before": "<",
+    "is_after": ">",
 }
+# The comparisons only a date field offers: their values are dates
+_DATE_EXPRESSIONS = frozenset(
+    {"is_on", "is_not_on", "is_before", "is_after", "in_the_last", "not_in_the_last"}
+)
+_RANGE_EXPRESSIONS = frozenset({"is_between", "is_not_between"})
+# The rows whose CQL2 depends on their field's type (`_convert_expression_to_cql`)
+_TYPED_EXPRESSIONS = frozenset({"is_blank", "is_not_blank"})
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+_MOMENT = re.compile(r"\d{4}-\d{2}-\d{2}T.*")
+# A number range older steps store as `low-high` text
+_RANGE_TEXT = re.compile(r"\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*")
 
 
-def _convert_expression_to_cql(expression: dict) -> dict | None:
-    """Convert a single frontend Expression object to a CQL2-JSON node."""
+def _or_empty(prop: dict, negation: dict) -> dict:
+    """A negation with the empty value as an alternative.
+
+    `x <> v` is unknown, not true, where x is empty, so on its own a negation
+    drops the rows without a value. The web app's filter writes its negations
+    the same way.
+    """
+    alternatives = negation["args"] if negation["op"] == "or" else [negation]
+    return {"op": "or", "args": [*alternatives, {"op": "isNull", "args": [prop]}]}
+
+
+def _date_literal(value: Any, field_type: str | None) -> Any:
+    """A date as the web's filter writes it: a day as `{"date"}` on a date
+    field, elsewhere as the start of the day in UTC (a DATE column compares
+    with the day of a moment, so that also holds where the type is not known);
+    a moment as `{"timestamp"}`; any other value as it is."""
+    if isinstance(value, str):
+        if _DAY.fullmatch(value):
+            if field_type == "date":
+                return {"date": value}
+            return {"timestamp": f"{value}T00:00:00Z"}
+        if _MOMENT.fullmatch(value):
+            return {"timestamp": value}
+    return value
+
+
+def _day_of(attribute: str, value: Any) -> str:
+    """The day a date or moment falls on, as its text gives it."""
+    if isinstance(value, str) and (_DAY.fullmatch(value) or _MOMENT.fullmatch(value)):
+        day = value[:10]
+        try:
+            datetime.strptime(day, "%Y-%m-%d")
+            return day
+        except ValueError:
+            pass
+    raise ValueError(f"{attribute} is compared with {value!r}, which is no date.")
+
+
+def range_bounds(attribute: str, value: Any) -> tuple[Any, Any]:
+    """A range's two bounds: a pair, or a number range as older steps store it."""
+    if isinstance(value, list) and len(value) == 2:
+        return value[0], value[1]
+    text = _RANGE_TEXT.fullmatch(value) if isinstance(value, str) else None
+    if text:
+        return float(text[1]), float(text[2])
+    raise ValueError(f"The range of {attribute} takes two values, not {value!r}.")
+
+
+def _since(attribute: str, value: Any, field_type: str | None, now: datetime) -> dict:
+    """The start of "the last N days": the start (UTC) of the day N days
+    before the day of `now`, as the layer filter's relative day reads
+    (`goatlib.filter.normalize.days_ago`). A step saves the number of days and
+    a run writes them once (`dataset_filters_as_cql`), so every step counts
+    back from the same day."""
+    try:
+        days = int(str(value).strip())
+    except ValueError:
+        days = 0
+    since = days_ago(days, now)
+    if since is None:
+        raise ValueError(f"{attribute} needs a number of days, not {value!r}.")
+    if field_type == "date":
+        return {"date": since["timestamp"][:10]}
+    return since
+
+
+def _convert_expression_to_cql(
+    expression: dict,
+    field_types: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+) -> dict | None:
+    """One stored row as the CQL2 the web's filter writes for it (`rows.ts`).
+
+    `field_types` are the layer's fields by the kind of value they hold
+    (`goatlib.utils.column_types.type_class`). Where a field's type is not
+    known, a row is written in a form that keeps the same rows whatever the
+    type, but "is empty" and "is not empty" then only test for no value. `now`
+    is the moment "in the last N days" counts back from.
+    """
     expr_type = expression.get("expression")
     attribute = expression.get("attribute")
     value = expression.get("value")
@@ -438,11 +527,29 @@ def _convert_expression_to_cql(expression: dict) -> dict | None:
         return None
 
     prop = {"property": attribute}
+    field_type = (field_types or {}).get(attribute)
+    blank = {"op": "isNull", "args": [prop]}
 
+    def literal(v: Any) -> Any:
+        dated = expr_type in _DATE_EXPRESSIONS or field_type in ("date", "datetime")
+        # A range on a field of unknown type: dates are the bounds only a date
+        # field takes, a number stays a number.
+        dated = dated or (field_type is None and expr_type in _RANGE_EXPRESSIONS)
+        return _date_literal(v, field_type) if dated else v
+
+    # Text is empty also where it holds the empty text; a field of another
+    # type has no empty text to compare with.
     if expr_type == "is_blank":
-        return {"op": "isNull", "args": prop}
+        if field_type == "string":
+            return {"op": "or", "args": [blank, {"op": "=", "args": [prop, ""]}]}
+        return blank
     if expr_type == "is_not_blank":
-        return {"op": "not", "args": [{"op": "isNull", "args": prop}]}
+        not_blank = {"op": "not", "args": [blank]}
+        if field_type == "string":
+            return {"op": "and", "args": [not_blank, {"op": "<>", "args": [prop, ""]}]}
+        return not_blank
+    if expr_type in ("is_true", "is_false"):
+        return {"op": "=", "args": [prop, expr_type == "is_true"]}
     if expr_type == "starts_with":
         return {"op": "like", "args": [prop, f"{value}%"]}
     if expr_type == "ends_with":
@@ -450,52 +557,87 @@ def _convert_expression_to_cql(expression: dict) -> dict | None:
     if expr_type == "contains_the_text":
         return {"op": "like", "args": [prop, f"%{value}%"]}
     if expr_type == "does_not_contains_the_text":
-        return {
-            "op": "not",
-            "args": [{"op": "like", "args": [prop, f"%{value}%"]}],
+        return _or_empty(
+            prop,
+            {"op": "not", "args": [{"op": "like", "args": [prop, f"%{value}%"]}]},
+        )
+    if expr_type in _RANGE_EXPRESSIONS:
+        low, high = (literal(v) for v in range_bounds(attribute, value))
+        if expr_type == "is_between":
+            return {"op": "between", "args": [prop, low, high]}
+        outside = [{"op": "<", "args": [prop, low]}, {"op": ">", "args": [prop, high]}]
+        return _or_empty(prop, {"op": "or", "args": outside})
+    if expr_type in ("is_on", "is_not_on"):
+        # A date field holds days, a timestamp field moments: "on" is the
+        # day's range, which on a date field is the day itself.
+        day = _day_of(attribute, value)
+        if field_type == "date":
+            on = {
+                "op": "=" if expr_type == "is_on" else "<>",
+                "args": [prop, literal(day)],
+            }
+            return on if expr_type == "is_on" else _or_empty(prop, on)
+        start = {"timestamp": f"{day}T00:00:00Z"}
+        end = {
+            "timestamp": (
+                datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)
+            ).strftime("%Y-%m-%dT00:00:00Z")
         }
-    if expr_type == "is_between":
-        parts = str(value).split("-")
-        v1, v2 = float(parts[0]), float(parts[1])
-        return {
-            "op": "and",
-            "args": [
-                {"op": ">=", "args": [prop, v1]},
-                {"op": "<=", "args": [prop, v2]},
-            ],
-        }
+        if expr_type == "is_on":
+            return {
+                "op": "and",
+                "args": [
+                    {"op": ">=", "args": [prop, start]},
+                    {"op": "<", "args": [prop, end]},
+                ],
+            }
+        outside = [
+            {"op": "<", "args": [prop, start]},
+            {"op": ">=", "args": [prop, end]},
+        ]
+        return _or_empty(prop, {"op": "or", "args": outside})
+    if expr_type in ("in_the_last", "not_in_the_last"):
+        since = _since(attribute, value, field_type, now or datetime.now(UTC))
+        if expr_type == "in_the_last":
+            return {"op": ">=", "args": [prop, since]}
+        return _or_empty(prop, {"op": "<", "args": [prop, since]})
     if expr_type == "s_intersects":
         import json as _json
 
         geom = _json.loads(value) if isinstance(value, str) else value
         return {"op": "s_intersects", "args": [prop, geom]}
-    if expr_type == "includes":
+    if expr_type in ("includes", "excludes"):
         values = value if isinstance(value, list) else [value]
-        args = [{"op": "=", "args": [prop, v]} for v in values]
-        return {"op": "or", "args": args}
-    if expr_type == "excludes":
-        values = value if isinstance(value, list) else [value]
-        args = [{"op": "!=", "args": [prop, v]} for v in values]
-        return {"op": "and", "args": args}
+        inside = {"op": "in", "args": [prop, [literal(v) for v in values]]}
+        if expr_type == "includes":
+            return inside
+        return _or_empty(prop, {"op": "not", "args": [inside]})
+    # Rows of the If step's older editor
     if expr_type in ("is_empty_string", "is_not_empty_string"):
-        op = "=" if expr_type == "is_empty_string" else "!="
+        op = "=" if expr_type == "is_empty_string" else "<>"
         return {"op": op, "args": [prop, ""]}
+    if expr_type == "is_not":
+        return _or_empty(prop, {"op": "<>", "args": [prop, literal(value)]})
 
-    # Simple comparison operators (is, is_not, is_at_least, etc.)
     cql_op = _EXPRESSION_TO_CQL_OP.get(expr_type)
     if cql_op:
-        return {"op": cql_op, "args": [prop, value]}
+        return {"op": cql_op, "args": [prop, literal(value)]}
 
     return None
 
 
-def convert_filter_to_cql(filter_config: dict) -> dict | None:
-    """Convert frontend Expression-format filter to CQL2-JSON format.
+def convert_filter_to_cql(
+    filter_config: dict,
+    field_types: Mapping[str, str] | None = None,
+    now: datetime | None = None,
+) -> dict | None:
+    """A dataset step's filter or an If step's rows as CQL2-JSON.
 
-    Frontend stores filters as:
+    The steps store their rows as the web's filter panel edits them:
         {op: "and", expressions: [{attribute, expression, value, ...}, ...]}
-    Backend expects CQL2-JSON:
-        {op: "and", args: [{op: "=", args: [{property: "field"}, value]}, ...]}
+    and each row becomes the CQL2 the layer filter saves for the same
+    condition (`_convert_expression_to_cql`, which takes `field_types` and
+    `now`), so the steps keep the rows a layer filter would.
 
     If already in CQL2-JSON format (has 'args' key), returns as-is.
     """
@@ -511,9 +653,10 @@ def convert_filter_to_cql(filter_config: dict) -> dict | None:
         return None
 
     logical_op = filter_config.get("op", "and")
+    when = now or datetime.now(UTC)
     cql_args = []
     for expr in expressions:
-        cql_node = _convert_expression_to_cql(expr)
+        cql_node = _convert_expression_to_cql(expr, field_types, when)
         if cql_node:
             cql_args.append(cql_node)
 
@@ -522,6 +665,52 @@ def convert_filter_to_cql(filter_config: dict) -> dict | None:
     if len(cql_args) == 1:
         return cql_args[0]
     return {"op": logical_op, "args": cql_args}
+
+
+def _needs_field_types(filter_config: dict) -> bool:
+    return any(
+        isinstance(e, dict) and e.get("expression") in _TYPED_EXPRESSIONS
+        for e in filter_config.get("expressions") or []
+    )
+
+
+def dataset_filters_as_cql(
+    nodes: list[dict[str, Any]], user_id: str, now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """The nodes with each dataset step's filter rows as CQL2, written once
+    for the run, so that "in the last N days" counts back from the same
+    moment in every step that reads the dataset.
+
+    "Is empty" and "is not empty" are written by the field's type, so only for
+    those rows is the layer's schema read. A filter whose rows cannot be
+    written (a range that is not two values) stays as it was stored, for the
+    step that reads it to fail with the reason.
+    """
+    when = now or datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for node in nodes:
+        data = node.get("data", {})
+        raw = data.get("filter")
+        if (
+            data.get("type") != "dataset"
+            or not isinstance(raw, dict)
+            or "expressions" not in raw
+        ):
+            out.append(node)
+            continue
+        layer_id = data.get("layerId")
+        types = (
+            layer_field_types(str(layer_id), user_id)
+            if layer_id and _needs_field_types(raw)
+            else None
+        )
+        try:
+            cql = convert_filter_to_cql(raw, field_types=types, now=when)
+        except ValueError:
+            out.append(node)
+            continue
+        out.append({**node, "data": {**data, "filter": cql}})
+    return out
 
 
 def if_input_source(
@@ -587,8 +776,8 @@ def export_style(
     remembered = export_data.get("outputStyle")
     if isinstance(remembered, dict) and remembered:
         return remembered
-    source_properties = (source_result or {}).get("properties")
-    return source_properties if isinstance(source_properties, dict) else None
+    tool_style = (source_result or {}).get("style")
+    return tool_style if isinstance(tool_style, dict) else None
 
 
 def tool_arguments(
@@ -908,8 +1097,8 @@ def copy_passed_on_dataset(
     Only a tool step writes its result to a temp folder; a dataset step
     delivers its layer as it is, with its filter, and an If passes both on
     (`dataset_filter_for_source`). `layer_create_filtered` in temp mode reads
-    the layer with that filter and writes the rows there, with the dataset
-    layer's style (`dataset_layer_style`) in their temp metadata.
+    the layer with that filter and writes the rows there, with the active
+    style of the dataset step's project entry in their temp metadata.
     """
     dataset = passed_on_step(step, edges, all_nodes) or step
     inputs = add_run_context(
@@ -917,7 +1106,7 @@ def copy_passed_on_dataset(
             "source_layer_id": layer_id,
             # The tool takes a filter; an empty one keeps every row.
             "cql_filter": dataset_filter_for_source(step, edges, all_nodes) or {},
-            "source_properties": dataset_layer_style(params, dataset),
+            "source_layer_project_id": entry_id(dataset),
         },
         step,
         user_id=params.user_id,
@@ -977,42 +1166,6 @@ def resolve_dataset_layers(params: WorkflowRunnerParams) -> list[dict[str, Any]]
         return params.nodes
     nodes: list[dict[str, Any]] = with_current_layer_ids(params.nodes, current)
     return nodes
-
-
-def dataset_layer_style(
-    params: WorkflowRunnerParams, dataset_node: dict[str, Any]
-) -> dict[str, Any] | None:
-    """The style an export saves a dataset step's rows in (``dataset_style``);
-    None gives the saved layer the default style, also when the look-up
-    fails: the style must not fail the export."""
-    if not (dataset_node.get("data") or {}).get("layerId"):
-        return None
-
-    async def lookup() -> dict[str, Any] | None:
-        conn, schema = await _connect()
-        try:
-            return await dataset_style(
-                conn,
-                schema,
-                user_id=params.user_id,
-                project_id=params.project_id,
-                node=dataset_node,
-            )
-        finally:
-            await conn.close()
-
-    try:
-        return asyncio.run(lookup())
-    except Exception as e:
-        # Only the error type: job output is shown to the user (see
-        # resolve_dataset_layers).
-        message = (
-            f"Could not look up the style of dataset node {dataset_node['id']} "
-            f"({type(e).__name__}); its rows are saved in the default style"
-        )
-        logger.warning(message)
-        print(f"[workflow_runner] {message}")
-        return None
 
 
 def cleanup_previous_results(params: WorkflowRunnerParams) -> None:
@@ -1167,6 +1320,8 @@ def main(
     # Dataset nodes read what their project entry shows now: a re-run may
     # have put a new layer behind an entry the node still names by old id.
     nodes = resolve_dataset_layers(params)
+    # Their filters as CQL2, the same for every step that reads them.
+    nodes = dataset_filters_as_cql(nodes, params.user_id)
     params.nodes = nodes
 
     # Clean up previous temp results for this workflow
@@ -1403,9 +1558,9 @@ def main(
                     "overwrite_previous": overwrite_previous,
                 }
 
-                properties = export_style(export_data, source_result)
-                if properties:
-                    finalize_inputs["properties"] = properties
+                style = export_style(export_data, source_result)
+                if style:
+                    finalize_inputs["style"] = style
 
                 job_id, result = run_tool_node(
                     export_node_id, "finalize_layer", finalize_inputs

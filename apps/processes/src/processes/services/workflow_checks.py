@@ -40,6 +40,7 @@ from goatlib.tools.workflow_runner import (
     VARIABLE_PATTERN,
     convert_filter_to_cql,
     mark_skipped_descendants,
+    range_bounds,
     resolve_variables,
     variable_map,
 )
@@ -81,8 +82,17 @@ DEFAULT_TARGET_HANDLE = "input_layer_id"
 CONNECTED = "__connected__"
 # Logical If rows that compare with nothing (`_convert_expression_to_cql`).
 VALUELESS_EXPRESSIONS = frozenset(
-    {"is_blank", "is_not_blank", "is_empty_string", "is_not_empty_string"}
+    {
+        "is_blank",
+        "is_not_blank",
+        "is_empty_string",
+        "is_not_empty_string",
+        "is_true",
+        "is_false",
+    }
 )
+# Logical If rows that compare with a range, two values (`range_bounds`).
+RANGE_EXPRESSIONS = frozenset({"is_between", "is_not_between"})
 # Pydantic puts the kind of a validator's error before its text.
 VALIDATOR_PREFIXES = ("Value error, ", "Assertion failed, ")
 FIELD_WIDGET = "field-selector"
@@ -122,6 +132,13 @@ def _data(node: dict[str, Any]) -> dict[str, Any]:
 def _config(node: dict[str, Any]) -> dict[str, Any]:
     config = _data(node).get("config")
     return config if isinstance(config, dict) else {}
+
+
+def _raster(node: dict[str, Any]) -> bool:
+    """Whether a dataset step holds a raster layer (its `layerType`), which
+    workflows do not take: it is an issue, and its layer has no fields or
+    features to look up."""
+    return _data(node).get("layerType") == "raster"
 
 
 def _kind(node: dict[str, Any]) -> str:
@@ -251,7 +268,8 @@ def _row_complete(row: Any) -> bool:
     row without method, operator, value or (except for a count) field. A
     logical row needs its operator and field (`_convert_expression_to_cql`)
     and, unless the operator compares with nothing, a value: without one the
-    row compares with NULL and the If silently takes its false branch.
+    row compares with NULL and the If silently takes its false branch. A
+    range takes two values; the run fails on another number of them.
     """
     if not isinstance(row, dict):
         return False
@@ -261,6 +279,12 @@ def _row_complete(row: Any) -> bool:
         )
     if not row.get("expression") or not row.get("attribute"):
         return False
+    if row.get("expression") in RANGE_EXPRESSIONS:
+        try:
+            bounds = range_bounds(str(row["attribute"]), row.get("value"))
+        except ValueError:
+            return False
+        return not any(map(_is_empty, bounds))
     return row.get("expression") in VALUELESS_EXPRESSIONS or not _is_empty(
         row.get("value")
     )
@@ -584,6 +608,18 @@ class _WorkflowCheck:
                     "layer_not_chosen",
                     "error",
                     f"{step}: no layer is chosen.",
+                    (str(node["id"]),),
+                    params={"step": step},
+                )
+            ]
+        if _raster(node):
+            step = self._step_name(node)
+            return [
+                Issue(
+                    "layer_raster_not_supported",
+                    "error",
+                    f"{step}: workflows cannot use raster layers; choose a feature "
+                    "layer or a table.",
                     (str(node["id"]),),
                     params={"step": step},
                 )
@@ -1152,6 +1188,8 @@ class _WorkflowCheck:
         layer_id = data.get("layerId")
         if self.layer_feature_count is None or data.get("unresolved") is True:
             return None
+        if _raster(node):
+            return None
         if not isinstance(layer_id, str) or not layer_id:
             return None
         if str(node["id"]) in self.unreadable_steps:
@@ -1226,7 +1264,7 @@ class _WorkflowCheck:
         """A dataset step's fields; None for a layer the caller may not read
         (never looked up) or whose fields are unknown."""
         layer_id = _data(node).get("layerId")
-        if not isinstance(layer_id, str) or not layer_id:
+        if not isinstance(layer_id, str) or not layer_id or _raster(node):
             return None
         if str(node["id"]) in self.unreadable_steps:
             return None

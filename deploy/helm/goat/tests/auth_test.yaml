@@ -427,14 +427,14 @@ tests:
             value: http://placeholder-keycloak
 
   # ── Explicit <svc>.config / extraEnv wins, rendered exactly once ───────
-  - it: civitas shape — AUTH + Keycloak set in geoapi.config/processes.config render once, with those values
+  - it: AUTH + Keycloak set per service in geoapi.config/processes.config render once, with those values
     set:
       geoapi.config.AUTH: "true"
-      geoapi.config.KEYCLOAK_SERVER_URL: https://idm.civitas.test
-      geoapi.config.REALM_NAME: cc-loc
+      geoapi.config.KEYCLOAK_SERVER_URL: https://idm.example.test
+      geoapi.config.REALM_NAME: goat
       processes.config.AUTH: "true"
-      processes.config.KEYCLOAK_SERVER_URL: https://idm.civitas.test
-      processes.config.REALM_NAME: cc-loc
+      processes.config.KEYCLOAK_SERVER_URL: https://idm.example.test
+      processes.config.REALM_NAME: goat
     asserts:
       - template: geoapi/configmap.yaml
         equal:
@@ -443,11 +443,11 @@ tests:
       - template: geoapi/configmap.yaml
         equal:
           path: data.KEYCLOAK_SERVER_URL
-          value: https://idm.civitas.test
+          value: https://idm.example.test
       - template: geoapi/configmap.yaml
         equal:
           path: data.REALM_NAME
-          value: cc-loc
+          value: goat
       - template: geoapi/deployment.yaml
         notContains:
           path: spec.template.spec.containers[0].env
@@ -473,11 +473,11 @@ tests:
       - template: processes/configmap.yaml
         equal:
           path: data.KEYCLOAK_SERVER_URL
-          value: https://idm.civitas.test
+          value: https://idm.example.test
       - template: processes/configmap.yaml
         equal:
           path: data.REALM_NAME
-          value: cc-loc
+          value: goat
       - template: processes/deployment.yaml
         notContains:
           path: spec.template.spec.containers[0].env
@@ -491,18 +491,18 @@ tests:
             name: KEYCLOAK_SERVER_URL
           any: true
 
-  - it: civitas shape still wins once they also turn on global auth with a Secret
+  - it: AUTH + Keycloak set per service still win once global auth is on with a Secret
     set:
       global.auth.enabled: true
       global.auth.existingSecret: kc
       geoapi.config.AUTH: "true"
-      geoapi.config.KEYCLOAK_SERVER_URL: https://idm.civitas.test
-      geoapi.config.REALM_NAME: cc-loc
+      geoapi.config.KEYCLOAK_SERVER_URL: https://idm.example.test
+      geoapi.config.REALM_NAME: goat
     asserts:
       - template: geoapi/configmap.yaml
         equal:
           path: data.KEYCLOAK_SERVER_URL
-          value: https://idm.civitas.test
+          value: https://idm.example.test
       - template: geoapi/deployment.yaml
         notContains:
           path: spec.template.spec.containers[0].env

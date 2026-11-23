@@ -115,8 +115,9 @@ export interface BundleTypeDef {
   labelKey: string;
   /** Short format label for the "supported formats" hint. */
   uploadHint: string;
-  /** Whether an uploaded file is this bundle type. */
-  matches: (file: File) => boolean;
+  /** Whether an uploaded file is this bundle type. May read the file: an XPlan
+   *  plan is a `.gml` or a `.zip` like any other, and only its content tells. */
+  matches: (file: File) => boolean | Promise<boolean>;
   /** Whether the upload must name a street network bundle to link. Follows the
    *  type's own required dependency: a GTFS feed's stop-to-street linkage is
    *  computed against a street network. */
@@ -130,6 +131,99 @@ export interface BundleTypeDef {
    *  checked here so nobody uploads a file only to have it refused. */
   maxSizeMiB?: number;
 }
+
+/** How much of a `.gml` is read to tell an XPlan plan from other GML: the
+ *  namespace is declared on the root element, in the first lines. */
+const XPLAN_SNIFF_BYTES = 65536;
+
+/** The XPlanGML namespace as a file declares it, with or without a prefix, in
+ *  either quotes. A declaration, not the bare address, which another GML may
+ *  mention in a comment. Same rule as the backend's `XPlanImporter.matches_source`. */
+const XPLAN_NAMESPACE = /xmlns(?::[\w.-]+)?\s*=\s*["']http:\/\/www\.xplanung\.de\/xplangml\/\d+\/\d+["']/;
+
+/** The name of the plan object (`BP_Plan`, `FP_Plan`, ...), not of a Bereich before it. */
+const XPLAN_PLAN_NAME =
+  /<(?:[\w.-]+:)?\w+_Plan\b[^>]*>[\s\S]*?<(?:[\w.-]+:)?name>([^<]+)<\/(?:[\w.-]+:)?name>/;
+
+/** The start of an XML file as text, in the encoding its declaration names: older
+ *  exports are ISO-8859-1, whose umlauts are not UTF-8. */
+const decodeXml = (bytes: ArrayBuffer): string => {
+  const declared = /<\?xml[^>]*encoding\s*=\s*["']([\w.:-]+)["']/.exec(
+    new TextDecoder("latin1").decode(bytes.slice(0, 200))
+  );
+  try {
+    return new TextDecoder(declared?.[1] ?? "utf-8").decode(bytes);
+  } catch {
+    return new TextDecoder().decode(bytes);
+  }
+};
+
+const XML_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+const unescapeXml = (text: string): string =>
+  text.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (entity, code: string) => {
+    if (code[0] !== "#") return XML_ENTITIES[code] ?? entity;
+    const hex = code[1].toLowerCase() === "x";
+    return String.fromCodePoint(parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10));
+  });
+
+/** Whether a file is an XPlan plan, and the plan's name when the start of the
+ *  file holds it, to suggest as the bundle's name. A file that cannot be read is
+ *  no plan here (its upload then fails with a message of its own), and a name
+ *  that cannot be decoded is no suggestion. */
+export const sniffXPlan = async (file: File): Promise<{ isXPlan: boolean; planName: string | null }> => {
+  let head: string;
+  try {
+    head = decodeXml(await file.slice(0, XPLAN_SNIFF_BYTES).arrayBuffer());
+  } catch {
+    return { isXPlan: false, planName: null };
+  }
+  if (!XPLAN_NAMESPACE.test(head)) return { isXPlan: false, planName: null };
+  const name = XPLAN_PLAN_NAME.exec(head);
+  try {
+    return { isXPlan: true, planName: name ? unescapeXml(name[1]).trim() : null };
+  } catch {
+    return { isXPlan: true, planName: null };
+  }
+};
+
+/** How much of the end of a ZIP is read for its directory: a plan's archive holds a handful of members. */
+const ZIP_DIRECTORY_BYTES = 262144;
+const ZIP_END_OF_DIRECTORY = 0x06054b50;
+const ZIP_DIRECTORY_ENTRY = 0x02014b50;
+
+/** The names of a ZIP archive's members, from the directory at its end: no member is read or unpacked. Empty for a
+ *  file that is no ZIP, that cannot be read, or whose directory is larger than what is read here. */
+export const zipMemberNames = async (file: File): Promise<string[]> => {
+  let tail: DataView;
+  try {
+    tail = new DataView(await file.slice(Math.max(0, file.size - ZIP_DIRECTORY_BYTES)).arrayBuffer());
+  } catch {
+    return [];
+  }
+  // The record that ends the directory, searched from the end: a comment may follow it.
+  let end = tail.byteLength - 22;
+  while (end >= 0 && tail.getUint32(end, true) !== ZIP_END_OF_DIRECTORY) end -= 1;
+  if (end < 0) return [];
+  const names: string[] = [];
+  const decoder = new TextDecoder();
+  // The directory's place in the file, as a place in what was read.
+  let at = tail.getUint32(end + 16, true) - (file.size - tail.byteLength);
+  for (let n = tail.getUint16(end + 10, true); n > 0 && at >= 0 && at + 46 <= end; n -= 1) {
+    if (tail.getUint32(at, true) !== ZIP_DIRECTORY_ENTRY) break;
+    const nameLength = tail.getUint16(at + 28, true);
+    names.push(decoder.decode(new Uint8Array(tail.buffer, tail.byteOffset + at + 46, nameLength)));
+    at += 46 + nameLength + tail.getUint16(at + 30, true) + tail.getUint16(at + 32, true);
+  }
+  return names;
+};
+
+/** The plan in a plan's archive (XPlanArchiv). Same rule as the backend's `XPlanImporter.matches_source`. */
+const XPLAN_ARCHIVE_PLAN = "xplan.gml";
+
+/** Whether a ZIP is a plan's archive: it holds the plan as `xplan.gml`. Its content is the backend's to check. */
+const isXPlanArchive = async (file: File): Promise<boolean> =>
+  (await zipMemberNames(file)).some((name) => name.split("/").pop()?.toLowerCase() === XPLAN_ARCHIVE_PLAN);
 
 export const BUNDLE_TYPES: BundleTypeDef[] = [
   {
@@ -158,14 +252,30 @@ export const BUNDLE_TYPES: BundleTypeDef[] = [
       return name.endsWith(".zip") && name.includes("overture");
     },
   },
+  {
+    type: "xplan",
+    labelKey: "xplan",
+    uploadHint: "XPlanGML (.gml, .zip)",
+    uploadNoteKey: "bundle_upload_note_xplan",
+    matches: async (file) => {
+      const name = file.name.toLowerCase();
+      if (name.endsWith(".zip")) return isXPlanArchive(file);
+      return name.endsWith(".gml") && (await sniffXPlan(file)).isXPlan;
+    },
+  },
 ];
 
 /**
  * Detect which bundle type an uploaded file is, or null when it's a
  * plain single-layer dataset.
  */
-export const detectBundleType = (file: File | null | undefined): BundleTypeDef | null =>
-  file ? (BUNDLE_TYPES.find((t) => t.matches(file)) ?? null) : null;
+export const detectBundleType = async (file: File | null | undefined): Promise<BundleTypeDef | null> => {
+  if (!file) return null;
+  for (const type of BUNDLE_TYPES) {
+    if (await type.matches(file)) return type;
+  }
+  return null;
+};
 
 /**
  * True when a content tile is a bundle rather than a layer. The layer

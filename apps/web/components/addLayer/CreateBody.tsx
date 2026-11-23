@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  Box,
-  Stack,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Box, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, useTheme } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -66,19 +58,9 @@ const CreateBody = ({ controller }: { controller: CreateFlow }) => {
           // Clicking the active button sends null; the choice is not clearable.
           onChange={(_, value) => value && create.setGeometry(value as GeometryChoice)}>
           {GEOMETRY_OPTIONS.map((option) => (
-            <ToggleButton key={option.value} value={option.value} sx={{ textTransform: "none", py: 1 }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Icon
-                  iconName={option.icon}
-                  style={{ fontSize: 14 }}
-                  htmlColor={
-                    create.geometry === option.value
-                      ? theme.palette.primary.main
-                      : theme.palette.text.secondary
-                  }
-                />
-                <Typography variant="body2">{t(option.labelKey)}</Typography>
-              </Stack>
+            <ToggleButton key={option.value} value={option.value} sx={{ gap: 1.5 }}>
+              <Icon iconName={option.icon} style={{ fontSize: 14 }} htmlColor="inherit" />
+              {t(option.labelKey)}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>

@@ -17,6 +17,7 @@ class FileFormat(StrEnum):
     GEOJSON = ".geojson"
     JSON = ".json"
     GPKG = ".gpkg"
+    GML = ".gml"
     SHP = ".shp"
     ZIP = ".zip"
     KML = ".kml"
@@ -35,6 +36,7 @@ VECTOR_EXTS: FrozenSet[str] = frozenset(
         FileFormat.GEOJSON,
         FileFormat.JSON,
         FileFormat.GPKG,
+        FileFormat.GML,
         FileFormat.SHP,
         FileFormat.ZIP,
         FileFormat.KML,
@@ -74,12 +76,18 @@ READ_DRIVERS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         # A `.json` may also be ESRI JSON or TopoJSON.
         FileFormat.JSON: ("GeoJSON", "GeoJSONSeq", "ESRIJSON", "TopoJSON"),
         FileFormat.GPKG: ("GPKG",),
+        FileFormat.GML: ("GML",),
         FileFormat.SHP: ("ESRI Shapefile",),
         FileFormat.KML: ("KML",),
         FileFormat.GPX: ("GPX",),
         FileFormat.XLSX: ("XLSX",),
     }
 )
+
+#: Read through `io/gml.py` alone, which names the drivers above itself: a GML
+#: has several classes, is read from a directory of its own and its first read
+#: runs in a process of its own. No plain `ST_Read` is built for it.
+OWN_READER_EXTS: FrozenSet[str] = frozenset({FileFormat.GML})
 
 #: Read without GDAL: text tables (the delimiter sniffed, so `.dsv` too) and
 #: parquet by DuckDB's own readers, archives by unpacking their members.
@@ -111,6 +119,8 @@ def allowed_drivers_sql(suffix: str) -> str:
     drivers = READ_DRIVERS.get(suffix)
     if not drivers:
         raise _unsupported(suffix)
+    if suffix in OWN_READER_EXTS:
+        raise ValueError("A GML file is read by goatlib.io.gml, not by a plain read")
     return "allowed_drivers=ARRAY[{}]".format(", ".join(map(sql_literal, drivers)))
 
 

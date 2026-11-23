@@ -1,47 +1,4 @@
-import type { FeatureLayerPointProperties, Layer } from "@/lib/validations/layer";
 import type { ProjectLayer } from "@/lib/validations/project";
-
-export const getLayerKey = (layer: ProjectLayer | Layer) => {
-  let id = layer.id.toString();
-  if (layer.type === "feature") {
-    const geometry_type = layer.feature_layer_geometry_type;
-    if (geometry_type === "point") {
-      const pointFeature = layer.properties as FeatureLayerPointProperties;
-      const renderAs =
-        pointFeature.custom_marker && (pointFeature.marker?.name || pointFeature.marker_field)
-          ? "marker"
-          : "circle";
-      id = `${id}-${renderAs}`;
-    }
-  }
-  return id;
-};
-
-/**
- * Which layers `Layers.tsx` may turn into MapLibre sources and layers.
- *
- * Drops the system layers (rendered through their own path, e.g. the
- * street-network layer carried across a basemap swap) and, per D7, a
- * `locked` project layer: its `properties` are blanked by the backend, so
- * it carries no style to draw, and it must never be requested as a tile
- * source, legend, or extent — a locked row simply never reaches the map.
- */
-export function selectDataLayers(
-  layers: (ProjectLayer | Layer)[] | undefined,
-  systemLayerIds: readonly string[]
-): (ProjectLayer | Layer)[] {
-  const dataLayers: (ProjectLayer | Layer)[] = [];
-  (layers ?? []).forEach((layer) => {
-    // Only a ProjectLayer can be `locked` (a bare Layer, e.g. the thumbnail
-    // and report renderers' input, was never added to a project link).
-    if ("locked" in layer && layer.locked) return;
-    const layerId = "layer_id" in layer ? layer.layer_id : layer.id;
-    if (systemLayerIds.indexOf(layerId) === -1) {
-      dataLayers.push(layer);
-    }
-  });
-  return dataLayers;
-}
 
 /**
  * The predicate `useFilteredProjectLayers` applies for every layer picker
