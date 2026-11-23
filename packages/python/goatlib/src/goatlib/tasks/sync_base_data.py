@@ -2,10 +2,9 @@
 
 The routing and public-transport tools read global data sets from fixed paths
 under ``${DATA_DIR}``: the street network (``street_network/{edges,nodes}``),
-the GTFS extract and PT network (``gtfs/``, ``pt_network/``), and, for the
-legacy heatmaps, the travel-time matrices. Nothing in a fresh install
-produces them. This task fetches them from a published source and keeps them
-current.
+the PT network (``pt_network/``), and, for the legacy heatmaps, the
+travel-time matrices. Nothing in a fresh install produces them. This task
+fetches them from a published source and keeps them current.
 
 **Source layout.** A source is a folder, served over HTTPS (the default,
 ``https://goat-base-data.plan4better.de/``), from S3 (``s3://bucket/prefix/``)
@@ -48,14 +47,15 @@ machine with internet access with the ``mirror`` command::
 A CDN serves no directory listings, so a generic copy tool cannot do this;
 the mirror follows ``channels.json`` and the manifests.
 
-A ``public_transport`` version holds the feed (``gtfs/``), its timetable
-(``pt_network/gtfs.bin``) and access/egress tables, and the feed as GTFS
-tables a cut is made from (``pt_network/gtfs_tables/``); at its root, the
-network's coverage mask (``pt_geofence_mask.geojson``), and in its manifest
-the dates its timetable covers (``service_start``, ``service_days``), which
-the processes service serves to the client. New versions are
-built and published outside this repository (the goat-data pipeline), in the
-layout above: the files, then ``manifest.json``, then the version's entry in
+A ``public_transport`` version holds its timetable (``pt_network/gtfs.bin``)
+and access/egress tables, and the feed as GTFS tables
+(``pt_network/gtfs_tables/``), which a cut is made from and trip count and
+ÖV-Güteklassen count from. At its root it may hold the network's coverage
+mask (``pt_geofence_mask.geojson``), which the processes service serves to
+the dialog that cuts the network, and its manifest may state the dates the
+timetable covers (``service_start``, ``service_days``). New versions are built
+and published outside this repository (the goat-data pipeline), in the layout
+above: the files, then ``manifest.json``, then the version's entry in
 ``channels.json``.
 
 Windmill deployment: registered in `goatlib.tasks.registry` as
@@ -129,7 +129,7 @@ class DatasetSpec:
 #: In install order: public_transport is built against a street network.
 DATASETS: dict[str, DatasetSpec] = {
     "street_network": DatasetSpec(1, {"street_network": ""}),
-    "public_transport": DatasetSpec(1, {"gtfs": "gtfs", "pt_network": "pt_network"}),
+    "public_transport": DatasetSpec(1, {"pt_network": "pt_network"}),
     "traveltime_matrices": DatasetSpec(1, {"traveltime_matrices": ""}),
     "nuts": DatasetSpec(1, {"catalog/nuts.parquet": "nuts.parquet"}),
     "geoip": DatasetSpec(1, {"geoip": ""}),

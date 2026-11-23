@@ -157,6 +157,13 @@ Both network fetches create their bundle through
 `BundleImportRunner.create_bundle_from_layers`, so a cut is created, ingested,
 built and rolled back as an import is.
 
+Trip count and ÖV-Güteklassen count departures from the same tables, for one
+date: a bundle's own on the date picked, the default network's on the anchor
+date of the kind of day picked (`analysis/pt_time.py`). The default network is
+cut to the area and the date first (`cut_network_tables` in
+`tools/pt_network.py`), as a count joined across a continent's stop times
+would not fit a worker.
+
 ## Copies behind a project entry
 
 Two tools replace the layer a `layer_project` entry shows instead of adding a

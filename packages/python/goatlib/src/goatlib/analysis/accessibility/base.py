@@ -591,70 +591,18 @@ class PTToolBase(AnalysisTool):
         self.con.execute("INSTALL h3 FROM community; LOAD h3;")
         logger.debug("H3 extension loaded for PT tool.")
 
-    def _import_gtfs_stops(self: Self, stops_path: str) -> None:
-        """Import GTFS stops parquet.
-
-        Creates a view 'gtfs_stops' with standardized columns:
-        - stop_id, stop_name, stop_lat, stop_lon, location_type,
-          parent_station, h3_3, geom
-
-        Args:
-            stops_path: Path to GTFS stops parquet file.
-        """
-        self.con.execute(f"""
-            CREATE OR REPLACE VIEW gtfs_stops AS
-            SELECT
-                stop_id,
-                stop_name,
-                stop_lat,
-                stop_lon,
-                location_type,
-                parent_station,
-                h3_3,
-                ST_Point(stop_lon, stop_lat) AS geom
-            FROM read_parquet('{stops_path}')
-            WHERE location_type IS NULL OR location_type = '0' OR location_type = ''
-        """)
-
-    def _import_gtfs_stop_times(self: Self, stop_times_path: str) -> None:
-        """Import GTFS stop_times parquet.
-
-        Creates a view 'gtfs_stop_times' with standardized columns:
-        - stop_id, route_type, arrival_time, is_weekday, is_saturday,
-          is_sunday, h3_3
-
-        Args:
-            stop_times_path: Path to GTFS stop_times parquet file.
-        """
-        self.con.execute(f"""
-            CREATE OR REPLACE VIEW gtfs_stop_times AS
-            SELECT
-                stop_id,
-                route_type,
-                arrival_time,
-                is_weekday,
-                is_saturday,
-                is_sunday,
-                h3_3
-            FROM read_parquet('{stop_times_path}')
-        """)
-
-    # -- GTFS from an uploaded bundle --------------------------------------
+    # -- The feed's GTFS tables -------------------------------------------
     #
-    # The shipped feed arrives pre-digested: `stop_times_optimized` carries the
-    # route type, an h3 cell and three booleans for an *average* weekday,
-    # Saturday and Sunday. A bundle carries the feed as published, so the same
-    # columns are derived here — and for one real date rather than an average,
-    # which is what the user picks. Service on a date is what `calendar` says
-    # for that weekday within its window, plus or minus what `calendar_dates`
-    # says about that date specifically.
+    # A bundle's tables as published, or the default network's cut to the
+    # area and the date (``tools/pt_network.py``): the feed as GTFS states it,
+    # so the columns the counting needs are derived here, for one real date.
+    # Service on a date is what `calendar` says for that weekday within its
+    # window, plus or minus what `calendar_dates` says about that date.
 
-    def _import_bundle_gtfs_stops(self: Self, stops_path: str) -> None:
-        """`gtfs_stops` from a bundle's stops layer.
-
-        The same view the shipped feed produces, with `h3_3` computed here: the
-        published file has no such column, and the join in `_count_pt_services`
-        is on it as well as the stop id.
+    def _import_gtfs_stops(self: Self, stops_path: str) -> None:
+        """`gtfs_stops` from the feed's stops table: the stops a vehicle
+        stops at (no stations, entrances or nodes), with `h3_3` computed here,
+        as the join in `_count_pt_services` is on it as well as the stop id.
         """
         self.con.execute("INSTALL h3 FROM community; LOAD h3;")
         self.con.execute(f"""
@@ -676,7 +624,7 @@ class PTToolBase(AnalysisTool):
                    OR CAST(location_type AS VARCHAR) IN ('0', ''))
         """)
 
-    def _import_bundle_gtfs_stop_times(
+    def _import_gtfs_stop_times(
         self: Self,
         stop_times_path: str,
         trips_path: str,
@@ -685,7 +633,7 @@ class PTToolBase(AnalysisTool):
         calendar_path: str | None = None,
         calendar_dates_path: str | None = None,
     ) -> None:
-        """`gtfs_stop_times` for one date, from a bundle's published tables.
+        """`gtfs_stop_times` for one date, from the feed's tables.
 
         `service_date` is ``YYYY-MM-DD``. The three day booleans survive because
         everything downstream filters on them, and all three are set: the rows

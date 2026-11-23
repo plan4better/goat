@@ -1,21 +1,30 @@
-"""What every transit tool shares about an uploaded public-transport bundle.
+"""What every transit tool shares about the public transport network it reads.
 
 The field that asks which bundle, the field that asks which date to route on,
 and the step that hands the bundle's timetable and linkage to the analysis
 params. Each tool used to carry its own copy of all three.
+
+For the tools that count departures (trip count, ÖV-Güteklassen), the GTFS
+tables they count from: a bundle's own, or the default network's cut to the
+area and the date (``gtfs_tables_for_count``).
 """
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import duckdb
 from pydantic import Field
 
-from goatlib.analysis.pt_time import parse_pt_date
+from goatlib.analysis.accessibility.base import active_services_sql
+from goatlib.analysis.pt_time import DEFAULT_NETWORK_ANCHORS, parse_pt_date
 from goatlib.analysis.schemas.pt_network import PTNetworkOverride
 from goatlib.analysis.schemas.ui import ui_field
 from goatlib.bundles.artifacts.base import ArtifactSource
 from goatlib.bundles.artifacts.gtfs import fetch_pt_linkage, fetch_pt_timetable
+from goatlib.bundles.importers.base import bound_duckdb
+from goatlib.bundles.importers.pt_network.store import read_store, tables_dir
+from goatlib.io.config import parquet_copy_options
 
 
 def pt_date_field(field_order: int) -> Any:
@@ -134,7 +143,7 @@ def fetch_gtfs_tables(
 
 
 def cut_network_tables(
-    tables_dir: "str | Path",
+    tables: "str | Path",
     reference_area_path: "str | Path",
     service_date: str,
     workdir: "str | Path",
@@ -145,19 +154,13 @@ def cut_network_tables(
 
     The network is a continent's: read whole, the count joins hundreds of
     millions of stop times to every trip and route. So the cut goes first,
-    smallest table first: the area's stops and the date's services, then only
-    their stop times, and only the trips and routes those name. Services are
-    resolved to the date here, so what is returned states them as added on it
-    (``calendar_dates``), whichever calendar file the network used.
+    smallest table first: the area's stops (and their stations) and the date's
+    services, then only their stop times, and only the trips and routes those
+    name. Services are resolved to the date here, so what is returned states
+    them as added on it (``calendar_dates``), whichever calendar file the
+    network used.
     """
-    import duckdb
-
-    from goatlib.analysis.accessibility.base import active_services_sql
-    from goatlib.bundles.importers.base import bound_duckdb
-    from goatlib.bundles.importers.pt_network.store import read_store
-    from goatlib.io.config import parquet_copy_options
-
-    info = read_store(tables_dir)
+    info = read_store(tables)
     src = {t["role"]: t["path"].replace("'", "''") for t in info["tables"]}
     missing = [r for r in ("stops", "stop_times", "trips", "routes") if r not in src]
     if missing:
@@ -210,6 +213,16 @@ def cut_network_tables(
               AND ST_Intersects(
                   ST_Point(CAST(s.stop_lon AS DOUBLE), CAST(s.stop_lat AS DOUBLE)), a.geom)
         """)
+        # And their stations, which name a stop's results and place them (a
+        # station can lie just outside the area its platforms are in).
+        con.execute(f"""
+            INSERT INTO area_stops
+            SELECT * FROM read_parquet('{src["stops"]}')
+            WHERE stop_id IN (
+                SELECT parent_station FROM area_stops
+                WHERE coalesce(CAST(parent_station AS VARCHAR), '') <> '')
+              AND stop_id NOT IN (SELECT stop_id FROM area_stops)
+        """)
         con.execute(f"""
             CREATE TEMP TABLE day_trips AS
             SELECT trip_id, route_id, service_id FROM read_parquet('{src["trips"]}')
@@ -243,6 +256,40 @@ def cut_network_tables(
         return paths
     finally:
         con.close()
+
+
+def gtfs_tables_for_count(
+    source: Any,
+    *,
+    bundle_id: "str | None",
+    user_id: str,
+    pt_date: Any,
+    weekday: Any,
+    reference_area_path: "str | Path",
+    pt_network_base_path: str,
+    workdir: "str | Path",
+) -> "tuple[dict[str, str], str]":
+    """The GTFS tables a count reads, by role, and the date it counts on.
+
+    A bundle is counted from its own tables, on the date the user picked. The
+    default network from its tables cut to the area and the date
+    (``cut_network_tables``), on the anchor date of the kind of day picked
+    (``analysis/pt_time.py``): a date picked for a bundle chosen earlier is
+    not this network's, and is left out.
+    """
+    if bundle_id:
+        ensure_pt_date(bundle_id, pt_date)
+        return fetch_gtfs_tables(source, bundle_id, user_id), str(pt_date)
+    kind = str(getattr(weekday, "value", weekday))
+    day = DEFAULT_NETWORK_ANCHORS.get(kind, DEFAULT_NETWORK_ANCHORS["weekday"])
+    date = day.isoformat()
+    tables = cut_network_tables(
+        tables_dir(pt_network_base_path).resolve(),
+        reference_area_path,
+        date,
+        workdir,
+    )
+    return tables, date
 
 
 def ensure_pt_date(bundle_id: "str | None", pt_date: Any) -> None:

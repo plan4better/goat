@@ -3,7 +3,7 @@
 A fake zone (channels.json + versioned data sets with manifests) is served over
 real HTTP with range support, or read as a plain folder, and synced into a
 temporary data dir. What is under test is the contract the tools rely on: the
-legacy paths (`street_network/`, `gtfs/`, ...) resolve to a verified version,
+legacy paths (`street_network/`, `pt_network/`, ...) resolve to a verified version,
 switching versions never exposes a partial one, and a bad publication never
 replaces a good install.
 """
@@ -89,7 +89,7 @@ STREET_V1 = {
     "nodes/h3_3=8097/data_0.parquet": b"nodes-8097-v1",
 }
 PT_V1 = {
-    "gtfs/stops.parquet": b"stops-v1",
+    "pt_network/gtfs_tables/stops.parquet": b"stops-v1",
     "pt_network/gtfs.bin": b"timetable-v1" * 100,
 }
 
@@ -166,7 +166,9 @@ def run(url: str, data_dir: Path, **kwargs: Any) -> dict[str, Any]:
 
 def installed(data_dir: Path, dataset: str) -> str:
     """The version a legacy path currently resolves to."""
-    link = {"street_network": "street_network", "public_transport": "gtfs"}[dataset]
+    link = {"street_network": "street_network", "public_transport": "pt_network"}[
+        dataset
+    ]
     return Path(os.readlink(data_dir / link)).parts[2]
 
 
@@ -195,9 +197,11 @@ def test_fresh_install_links_the_legacy_paths_to_the_version(
     assert (
         data_dir / "street_network/edges/h3_3=8097/data_0.parquet"
     ).read_bytes() == b"edges-8097-v1"
-    assert (data_dir / "gtfs/stops.parquet").read_bytes() == b"stops-v1"
+    assert (
+        data_dir / "pt_network/gtfs_tables/stops.parquet"
+    ).read_bytes() == b"stops-v1"
     assert (data_dir / "pt_network/gtfs.bin").read_bytes() == b"timetable-v1" * 100
-    for link in ("street_network", "gtfs", "pt_network"):
+    for link in ("street_network", "pt_network"):
         assert (data_dir / link).is_symlink()
 
 
@@ -387,7 +391,7 @@ def test_public_transport_needs_the_street_network_it_was_built_against(
         run(server.url, data_dir)
 
     assert installed(data_dir, "street_network") == "2026-09-17"
-    assert not (data_dir / "gtfs").exists()
+    assert not (data_dir / "pt_network").exists()
 
 
 def test_an_existing_directory_is_left_alone_without_adopt(

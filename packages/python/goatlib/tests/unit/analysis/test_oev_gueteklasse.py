@@ -1,5 +1,6 @@
 """Tests for OevGueteklasseTool (ÖV-Güteklassen / Public Transport Quality Classes)."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import duckdb
@@ -26,17 +27,6 @@ def test_data_dir() -> Path:
 
 
 @pytest.fixture
-def gtfs_data_dir() -> Path:
-    """Return the GTFS data directory."""
-    # Data is at /app/data/gtfs (root data folder)
-    return (
-        Path(__file__).parent.parent.parent.parent.parent.parent.parent
-        / "data"
-        / "gtfs"
-    )
-
-
-@pytest.fixture
 def result_dir() -> Path:
     """Return the result directory for test outputs."""
     # Use global test result folder at /app/packages/python/goatlib/tests/result/
@@ -51,22 +41,46 @@ def munich_districts_path(test_data_dir: Path) -> Path:
     return test_data_dir / "munich_districts.geojson"
 
 
-@pytest.fixture
-def stops_path(gtfs_data_dir: Path) -> Path:
-    """Return path to GTFS stops parquet."""
-    path = gtfs_data_dir / "stops.parquet"
-    if not path.exists():
-        pytest.skip(f"GTFS stops file not found: {path}")
-    return path
+@pytest.fixture(scope="module")
+def network_tables(tmp_path_factory: pytest.TempPathFactory) -> Callable[[str], dict]:
+    """The analysis params' GTFS fields for a kind of day: the default network's
+    tables, cut to the Munich districts on that kind of day's anchor date, as
+    the tool cuts them. Skipped where no network with tables is installed."""
+    from goatlib.analysis.pt_time import DEFAULT_NETWORK_ANCHORS
+    from goatlib.bundles.importers.pt_network.store import tables_dir
+    from goatlib.config.settings import settings
+    from goatlib.tools.pt_network import cut_network_tables
 
+    tables = tables_dir(settings.routing.pt_network_base_path)
+    if not (tables / "info.json").is_file():
+        pytest.skip(f"No PT network tables installed: {tables}")
+    work = tmp_path_factory.mktemp("network_tables")
+    area = work / "munich_districts.parquet"
+    districts = (
+        Path(__file__).parent.parent.parent / "data/analysis/munich_districts.geojson"
+    )
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        f"COPY (SELECT * FROM ST_Read('{districts}')) TO '{area}' (FORMAT PARQUET)"
+    )
+    cuts: dict[str, dict] = {}
 
-@pytest.fixture
-def stop_times_path(gtfs_data_dir: Path) -> Path:
-    """Return path to GTFS stop_times parquet."""
-    path = gtfs_data_dir / "stop_times_optimized.parquet"
-    if not path.exists():
-        pytest.skip(f"GTFS stop_times file not found: {path}")
-    return path
+    def fields(kind: str) -> dict:
+        if kind not in cuts:
+            day = DEFAULT_NETWORK_ANCHORS[kind].isoformat()
+            paths = cut_network_tables(tables, area, day, work / kind)
+            cuts[kind] = {
+                "stops_path": paths["stops"],
+                "stop_times_path": paths["stop_times"],
+                "trips_path": paths["trips"],
+                "routes_path": paths["routes"],
+                "calendar_dates_path": paths["calendar_dates"],
+                "service_date": day,
+            }
+        return cuts[kind]
+
+    return fields
 
 
 @pytest.fixture
@@ -353,8 +367,7 @@ class TestOevGueteklasseTool:
     def test_oev_gueteklasse_weekday(
         self,
         munich_districts_path: Path,
-        stops_path: Path,
-        stop_times_path: Path,
+        network_tables: Callable[[str], dict],
         time_window_weekday: PTTimeWindow,
         result_dir: Path,
     ):
@@ -366,8 +379,7 @@ class TestOevGueteklasseTool:
 
         params = OevGueteklasseParams(
             reference_area_path=str(munich_districts_path),
-            stops_path=str(stops_path),
-            stop_times_path=str(stop_times_path),
+            **network_tables("weekday"),
             time_window=time_window_weekday,
             output_path=str(output_path),
             stations_output_path=str(stations_output_path),
@@ -437,8 +449,7 @@ class TestOevGueteklasseTool:
     def test_oev_gueteklasse_network_catchment(
         self,
         munich_districts_path: Path,
-        stops_path: Path,
-        stop_times_path: Path,
+        network_tables: Callable[[str], dict],
         time_window_weekday: PTTimeWindow,
         result_dir: Path,
     ):
@@ -457,8 +468,7 @@ class TestOevGueteklasseTool:
             OevGueteklasseTool().run(
                 OevGueteklasseParams(
                     reference_area_path=str(munich_districts_path),
-                    stops_path=str(stops_path),
-                    stop_times_path=str(stop_times_path),
+                    **network_tables("weekday"),
                     time_window=time_window_weekday,
                     output_path=str(output_path),
                     catchment_type=catchment_type,
@@ -487,8 +497,7 @@ class TestOevGueteklasseTool:
     def test_oev_gueteklasse_saturday(
         self,
         munich_districts_path: Path,
-        stops_path: Path,
-        stop_times_path: Path,
+        network_tables: Callable[[str], dict],
         time_window_saturday: PTTimeWindow,
         result_dir: Path,
     ):
@@ -497,8 +506,7 @@ class TestOevGueteklasseTool:
 
         params = OevGueteklasseParams(
             reference_area_path=str(munich_districts_path),
-            stops_path=str(stops_path),
-            stop_times_path=str(stop_times_path),
+            **network_tables("saturday"),
             time_window=time_window_saturday,
             output_path=str(output_path),
         )
@@ -518,8 +526,7 @@ class TestOevGueteklasseTool:
     def test_oev_gueteklasse_custom_config(
         self,
         munich_districts_path: Path,
-        stops_path: Path,
-        stop_times_path: Path,
+        network_tables: Callable[[str], dict],
         time_window_weekday: PTTimeWindow,
         result_dir: Path,
     ):
@@ -557,8 +564,7 @@ class TestOevGueteklasseTool:
 
         params = OevGueteklasseParams(
             reference_area_path=str(munich_districts_path),
-            stops_path=str(stops_path),
-            stop_times_path=str(stop_times_path),
+            **network_tables("weekday"),
             time_window=time_window_weekday,
             output_path=str(output_path),
             station_config=custom_config,
@@ -583,8 +589,7 @@ class TestOevGueteklasseEdgeCases:
     def test_evening_time_window(
         self,
         munich_districts_path: Path,
-        stops_path: Path,
-        stop_times_path: Path,
+        network_tables: Callable[[str], dict],
         result_dir: Path,
     ):
         """Test with evening time window when services are less frequent."""
@@ -598,8 +603,7 @@ class TestOevGueteklasseEdgeCases:
 
         params = OevGueteklasseParams(
             reference_area_path=str(munich_districts_path),
-            stops_path=str(stops_path),
-            stop_times_path=str(stop_times_path),
+            **network_tables("weekday"),
             time_window=time_window,
             output_path=str(output_path),
         )
