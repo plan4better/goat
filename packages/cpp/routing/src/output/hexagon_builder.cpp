@@ -48,7 +48,8 @@ int64_t materialize_hexagon_features_table(ReachabilityField const &field,
         return 0;
 
     // Build (x, y, cost) samples using the shared field sampler.
-    auto const samples = geometry::sample_reachability_field(field, budget);
+    auto const samples = geometry::sample_reachability_field(
+        field, budget, cfg.cost_type == CostType::Distance);
 
     con.Query("DROP TABLE IF EXISTS hex_sample_points");
     con.Query("CREATE TEMP TABLE hex_sample_points (x DOUBLE, y DOUBLE, cost DOUBLE)");
