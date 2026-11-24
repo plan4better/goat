@@ -13,6 +13,7 @@ import {
   fixedChoice,
   writeCompound,
 } from "@/lib/style/editor/forms";
+import { perLayerPath } from "@/lib/style/editor/sources";
 import { setIn } from "@/lib/style/editor/store";
 import { compoundOptions } from "@/lib/style/editor/summaries";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -39,7 +40,9 @@ export function LabelLinesEditor({ base, count }: { base: string; count: number 
   const store = useEditor();
   const popover = usePopover();
   const { geometry } = useStyleData();
-  const value = useStyleValue<unknown>(`${base}.lines`);
+  // The lines' styles are one for the layer, wherever they are set (spec 6.1).
+  const linesPath = useStyleSelector((doc) => perLayerPath(doc, `${base}.lines`));
+  const value = useStyleValue<unknown>(linesPath);
   const labelValue = useStyleValue<unknown>(base);
   const classified = useStyleSelector((doc) =>
     compoundKeys(LABEL_FONT_CHOICE).some((key) => classificationFor(doc, key, geometry) !== undefined)
@@ -51,8 +54,8 @@ export function LabelLinesEditor({ base, count }: { base: string; count: number 
     store.update((doc) => {
       const all = Array.from({ length: Math.max(lines.length, i + 1) }, (_, j) => lines[j] ?? {});
       all[i] = change(all[i]);
-      return setIn(doc, `${base}.lines`, trimmed(all));
-    }, `${base}.lines.${i}.${key}`);
+      return setIn(doc, linesPath, trimmed(all));
+    }, `${linesPath}.${i}.${key}`);
   const write = (i: number, key: string, next: unknown) =>
     update(i, key, (line) => setIn(line, key, next) as JsonObject);
   // The label's own font leaves the line to the label; another font is the line's, both keys written.
@@ -96,7 +99,7 @@ export function LabelLinesEditor({ base, count }: { base: string; count: number 
                     anchorEl: anchor,
                     render: () => (
                       <PathColorPicker
-                        path={`${base}.lines.${i}.color`}
+                        path={`${linesPath}.${i}.color`}
                         write={(color) => write(i, "color", color)}
                       />
                     ),

@@ -554,9 +554,9 @@ export function classifyShape(doc: LayerStyle, geometry?: Geometry): string {
 export const recordPathOf = (scope: Scope): Path =>
   "rule" in scope
     ? `rules.${scope.index}`
-    : scope.key === "other"
-      ? `classify.${scope.classify}.other`
-      : `classify.${scope.classify}.classes.${scope.key}`;
+    : typeof scope.key === "number"
+      ? `classify.${scope.classify}.classes.${scope.key}`
+      : `classify.${scope.classify}.${scope.key}`;
 
 const PART_KEYS = new Set(["fill", "outline", "extrude", "line", "casing", "arrows", "marker", "label"]);
 

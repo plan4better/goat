@@ -11,7 +11,7 @@ import type { StyleIssue, StyleSaver } from "@/lib/style/save";
 /** The class the panel edits on its own (spec 5.5): a class of `classify[classify]`, or its `other`. */
 export interface ClassScope {
   classify: number;
-  key: number | "other";
+  key: number | "other" | "no_data";
 }
 
 /** A rule whose matching features the panel styles (spec 6): its id, and where it is now. */
@@ -159,7 +159,7 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
   private idsAt(scope: Scope): { classify?: string; key?: string } {
     if (isRuleScope(scope)) return {};
     const c = getIn(this.current, `classify.${scope.classify}`);
-    const record = scope.key === "other" ? undefined : getIn(c, `classes.${scope.key}`);
+    const record = typeof scope.key === "number" ? getIn(c, `classes.${scope.key}`) : undefined;
     const id = (node: unknown) => (isObject(node) && typeof node.id === "string" ? node.id : undefined);
     return { classify: id(c), key: id(record) };
   }
@@ -213,8 +213,10 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
       id === undefined ? at : items.findIndex((item) => isObject(item) && item.id === id);
     const classify = indexOf(list(getIn(this.current, "classify")), ids.classify, scope.classify);
     const c = getIn(this.current, `classify.${classify}`);
-    const key = scope.key === "other" ? "other" : indexOf(list(getIn(c, "classes")), ids.key, scope.key);
-    const path = key === "other" ? `classify.${classify}.other` : `classify.${classify}.classes.${key}`;
+    const key =
+      typeof scope.key === "number" ? indexOf(list(getIn(c, "classes")), ids.key, scope.key) : scope.key;
+    const path =
+      typeof key === "number" ? `classify.${classify}.classes.${key}` : `classify.${classify}.${key}`;
     if (classify < 0 || key === -1 || !isObject(getIn(this.current, path))) {
       this.currentScope = null;
       this.scopeIds = null;

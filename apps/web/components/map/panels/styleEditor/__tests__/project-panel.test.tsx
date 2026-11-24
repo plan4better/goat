@@ -294,7 +294,9 @@ describe("the style panel on the project page", () => {
       );
       await panel.show(raster(32, { type: "continuous", palette: "goat:elevation", band: 2 }));
       await waitFor(() =>
-        expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ id: "dataset-32", breaksBand: 2 }))
+        expect(styleData).toHaveBeenLastCalledWith(
+          expect.objectContaining({ id: "dataset-32", breaksBand: 2 })
+        )
       );
       const asked = styleData.mock.calls
         .map(([arg]) => arg as { id: string; breaksBand?: number | string })

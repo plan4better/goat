@@ -816,9 +816,10 @@ describe("style and map steps", () => {
     expect(summary([styleRead(1)], deTranslate)).toBe("Einen Stil gelesen");
     expect(summary([styleRead(1), styleRead(2)], deTranslate)).toBe("2 Stile gelesen");
     expect(summary([catalog()])).toBe("Looked up palettes and icons");
-    expect(summary([catalog(), catalog()])).toBe("Looked up palettes and icons 2 times");
+    // The count of lookups says nothing to the reader: several read as one.
+    expect(summary([catalog(), catalog()])).toBe("Looked up palettes and icons");
     expect(summary([catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
-    expect(summary([catalog(), catalog()], deTranslate)).toBe("Paletten und Icons 2-mal nachgeschlagen");
+    expect(summary([catalog(), catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
   });
 });
 
