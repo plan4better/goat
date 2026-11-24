@@ -342,7 +342,7 @@ asked with a value of its own first had the right card refused as a repeat. A ca
 the same answer named, and no answered card of the current chain offered, is therefore no repeat
 (`asks.repeated_question`), so a user who kept the layer earlier and asks again later gets the card again. As a refusal it showed the user a failed step before any question; the dock labels this step as
 a check of what the removal affects instead. Filter rows are read and written as the Filter tab does it
-(`goatlib.filter.rows`), and an area (`set_area`) is built from regions, features of another polygon layer or the
+(`goatlib.filter.rows`), and an area (the filter operation's `area`, beside its rows) is built from regions, features of another polygon layer or the
 current view exactly as the tab builds it (`goatlib.filter.areas`, held to the web's code by a shared fixture), so the
 tab shows and edits what the assistant wrote; what an operation does not touch (switched-off and custom rows, the notes)
 is written back as stored. The outlines come from where the tab reads them (`maps/area_sources.py`): a region's from the
@@ -352,7 +352,7 @@ reaches first) is simplified to fit, several outlines of one call sharing the ro
 simplified. The simplification is pure Python, since the production image has no shapely, and its cost grows faster
 than an outline's positions: a very detailed outline is thinned first (`THIN_ABOVE` in `maps/filter_area.py`), and a
 plan that builds an area runs off the event loop, so other answers keep streaming. The assistant draws no shape and
-switches no row or area on or off; those stay the tab's. As in the tab, `set_area` with `add` keeps a switched-off area
+switches no row or area on or off; those stay the tab's. As in the tab, an `area` with `add` keeps a switched-off area
 switched off, and an area that replaces one (without `add`) is switched on, which the result says. The view is not saved by the tool: it is the user's own (core
 keeps a view per user), so the result hands the page one target, the page moves its map and stores the view as when
 the user moves it, and a call that only sets a view reaches no core route, which lets a viewer have it too. Undo leaves

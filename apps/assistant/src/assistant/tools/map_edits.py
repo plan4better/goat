@@ -46,7 +46,7 @@ from assistant.maps.area_sources import (
     read_area_sources,
 )
 from assistant.maps.filter_area import SetArea, layer_labels
-from assistant.maps.filter_rows import apply_filter_ops, brief
+from assistant.maps.filter_rows import AREA_REFUSED, apply_filter_ops, brief
 from assistant.maps.operations import (
     AddGroup,
     FilterLayer,
@@ -319,7 +319,7 @@ class Facts:
     #: layouts, which the answer names; None when they were not read.
     workflows: Sequence[Any] | None = None
     layouts: Sequence[Any] | None = None
-    #: filter with set_area: the outlines it is built from, by the index of
+    #: filter that sets an area: the outlines it is built from, by the index of
     #: the operation, or the refusal of reading them (``read_area_sources``).
     areas: AreaFacts = field(default_factory=dict)
 
@@ -702,23 +702,20 @@ def _plan_filter(running: _Running, op: FilterLayer, index: int) -> Step:
     fields = running.facts.fields.get(link)
     if fields is None:
         raise ToolFailed(NO_FIELDS.format(name=name))
-    number, area = next(
-        ((n, item) for n, item in enumerate(op.rows, 1) if isinstance(item, SetArea)),
-        (0, None),
-    )
+    area = op.area
     sources = None
-    if area is not None:
+    if isinstance(area, SetArea):
         if row.get("type") == "table":
             raise ToolFailed(NO_TABLE_AREA.format(name=name))
         if area.features_of is not None:
             try:
                 running.known(area.features_of.layer_project_id)
             except InputInvalid as exc:
-                raise InputInvalid(f"Row operation {number}: {exc.message}") from None
+                raise InputInvalid(f"{AREA_REFUSED}{exc.message}") from None
             refiltered = _refiltered(running, area.features_of.layer_project_id)
             if refiltered is not None:
                 raise InputInvalid(
-                    f"Row operation {number}: an earlier operation of this call "
+                    f"{AREA_REFUSED}an earlier operation of this call "
                     f"changes the filter of {refiltered!r}, and features_of reads "
                     "its features as the saved filter keeps them before this "
                     "call. Set this area in a new call after this one."
@@ -727,10 +724,10 @@ def _plan_filter(running: _Running, op: FilterLayer, index: int) -> Step:
         if isinstance(found, InputInvalid | ToolFailed):
             raise found
         if found is None:
-            raise ValueError("the outlines of a set_area were not read")
+            raise ValueError("the outlines of an area were not read")
         sources = found
     before = layer["query"]
-    change = apply_filter_ops(before, op.rows, fields, sources=sources)
+    change = apply_filter_ops(before, op.rows, fields, area=area, sources=sources)
     written = change.query
     summary = _filter_summary(name, written, fields, layer_labels(running.state.rows))
     part = Part(
@@ -1738,7 +1735,7 @@ MAP_UPDATE: ToolSpec[MapUpdateInput, MapUpdated] = ToolSpec(
         "row, with the row numbers project_get_layers shows; put every row "
         "change of a layer in one filter operation, whose row numbers all name "
         "the rows as read: a filter change renumbers the rows, so read the "
-        "layers again before the next one; set_area limits it to an area "
+        "layers again before the next one; area beside rows limits it to "
         "inside or outside regions from catalog_find_region, features of "
         "another polygon layer or the current view), move (the order of layers and "
         "groups, into and out of groups), add_group, rename_group, set_group, "

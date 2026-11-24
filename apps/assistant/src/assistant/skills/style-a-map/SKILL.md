@@ -507,13 +507,14 @@ left in a new call.
   leave it, or remove it when the user asks. A switched-off row (`on` false)
   stays. Say how many features the filter keeps now (`count_before`,
   `count_after`).
-- **Areas.** `set_area` keeps what lies inside a place (`outside`: outside
-  it): `regions` (a place name: its id from catalog_find_region first),
-  `features_of` (features of another polygon layer, picked by a `filter`:
-  "only inside these districts"), `view` ("only what I see"). `add` keeps the
-  area there is, switched off if it was; without it the new area replaces it,
-  switched on. Never guess coordinates; a shape is the user's to draw.
-  `clear_area` removes the area, `clear` keeps it.
+- **Areas.** A filter's `area`, beside `rows`, keeps what lies inside a
+  place (`outside`: outside it): `regions` (a place name: its id from
+  catalog_find_region first), `features_of` (features of another polygon
+  layer, picked by a `filter`: "only inside these districts"), `view` ("only
+  what I see"). `add` keeps the area there is, switched off if it was;
+  without it the new area replaces it, switched on. Never guess coordinates;
+  a shape is the user's to draw. `"area": "clear"` removes the area, the row
+  `clear` keeps it.
 - **Groups.** A group this call adds has no id yet: later operations name it
   `"new:<index>"`, the index of its `add_group` in `operations`, from 0.
 - **The view.** `set_view` takes `center` and `zoom`, or
@@ -536,7 +537,7 @@ left in a new call.
 
 <!-- call: map_update -->
 ```json
-{"operations": [{"op": "filter", "layer_project_id": 13, "rows": [{"do": "add", "conditions": [{"field": "category", "op": "!=", "value": "park"}]}, {"do": "set_area", "regions": ["DE212"]}]}]}
+{"operations": [{"op": "filter", "layer_project_id": 13, "rows": [{"do": "add", "conditions": [{"field": "category", "op": "!=", "value": "park"}]}], "area": {"regions": ["DE212"]}}]}
 ```
 
 <!-- call: map_update -->
@@ -546,7 +547,7 @@ left in a new call.
 
 <!-- call: map_update -->
 ```json
-{"operations": [{"op": "filter", "layer_project_id": 14, "rows": [{"do": "set_area", "features_of": {"layer_project_id": 12, "filter": {"conditions": [{"field": "name", "op": "in", "value": ["North", "Harbour"]}]}}}]}, {"op": "filter", "layer_project_id": 15, "rows": [{"do": "set_area", "view": true}]}]}
+{"operations": [{"op": "filter", "layer_project_id": 14, "area": {"features_of": {"layer_project_id": 12, "filter": {"conditions": [{"field": "name", "op": "in", "value": ["North", "Harbour"]}]}}}}, {"op": "filter", "layer_project_id": 15, "area": {"view": true}}]}
 ```
 
 <!-- call: map_update -->

@@ -7,6 +7,7 @@ of its region route."""
 
 import asyncio
 import copy
+import hashlib
 import json
 import re
 import threading
@@ -151,12 +152,8 @@ async def _run(services: _Services, *operations: dict[str, Any]) -> MapUpdated:
     return result
 
 
-def _area(link: int, **set_area: Any) -> dict[str, Any]:
-    return {
-        "op": "filter",
-        "layer_project_id": link,
-        "rows": [{"do": "set_area", **set_area}],
-    }
+def _area(link: int, **area: Any) -> dict[str, Any]:
+    return {"op": "filter", "layer_project_id": link, "area": area}
 
 
 def _expected(pieces: Any, rows: Rows | None = None, *, outside: bool = False) -> Any:
@@ -234,7 +231,7 @@ async def test_an_unknown_region_is_refused_with_the_lookup_hint_and_nothing_wri
     with pytest.raises(InputInvalid) as raised:
         await _run(services, hide, _area(32, regions=["DEZ01", "DEZ99"]))
     assert raised.value.message == (
-        "operations[1] (filter): Row operation 1: There is no region 'DEZ99'. "
+        "operations[1] (filter): Area: There is no region 'DEZ99'. "
         "Look the region's id up with catalog_find_region."
     )
     assert services.writes() == [] and state.snapshot() == before
@@ -248,7 +245,7 @@ async def test_a_region_read_that_fails_refuses_the_call() -> None:
     with pytest.raises(ToolFailed) as raised:
         await _run(services, _area(32, regions=["DEZ01"]))
     assert (
-        "operations[0] (filter): Row operation 1: The region outlines could not be loaded"
+        "operations[0] (filter): Area: The region outlines could not be loaded"
         in raised.value.message
     )
     assert services.writes() == [] and state.snapshot() == before
@@ -374,7 +371,7 @@ async def test_features_of_a_layer_an_earlier_operation_filters_is_refused() -> 
             },
             _area(40, features_of={"layer_project_id": 31}),
         )
-    assert "operations[1] (filter): Row operation 1:" in raised.value.message
+    assert "operations[1] (filter): Area:" in raised.value.message
     assert "new call" in raised.value.message
     assert services.writes() == []
 
@@ -482,7 +479,7 @@ async def test_another_layer_the_panel_does_not_offer_is_refused(
     with pytest.raises(error) as raised:
         await _run(services, _area(34, features_of={"layer_project_id": link}))
     assert words in str(raised.value)
-    assert str(raised.value).startswith("operations[0] (filter): Row operation 1: ")
+    assert str(raised.value).startswith("operations[0] (filter): Area: ")
     assert services.writes() == [] and state.snapshot() == before
     # More features than an area takes are refused before they are fetched.
     assert all(params["limit"] == "1" for params in services.items())
@@ -569,7 +566,7 @@ async def test_the_view_is_the_pages_and_refused_without_it() -> None:
     blind = _Services(state, bbox=None)
     with pytest.raises(ToolFailed) as raised:
         await _run(blind, _area(35, view=True))
-    assert raised.value.message == f"operations[0] (filter): Row operation 1: {NO_VIEW}"
+    assert raised.value.message == f"operations[0] (filter): Area: {NO_VIEW}"
     assert blind.writes() == [] and state.snapshot() == before
 
 
@@ -579,7 +576,7 @@ async def test_a_raster_has_no_area() -> None:
         await _run(services, _area(37, view=True))
 
 
-async def test_add_keeps_the_drawn_shape_and_clear_area_keeps_the_rows() -> None:
+async def test_add_keeps_the_drawn_shape_and_clearing_the_area_keeps_the_rows() -> None:
     state = MapState()
     services = _Services(state)
     result = await _run(services, _area(34, regions=["DEZ01"], add=True))
@@ -590,7 +587,7 @@ async def test_add_keeps_the_drawn_shape_and_clear_area_keeps_the_rows() -> None
     assert rows.rows == stored.rows
     cleared = await _run(
         services,
-        {"op": "filter", "layer_project_id": 34, "rows": [{"do": "clear_area"}]},
+        {"op": "filter", "layer_project_id": 34, "area": "clear"},
     )
     after = read_rows(state.layers[34]["query"], {})
     assert after.area is None and after.rows == stored.rows
@@ -662,7 +659,7 @@ async def test_undo_puts_back_an_area_a_changed_area_and_a_cleared_area() -> Non
     after_change = copy.deepcopy(state.layers[34]["query"])
     cleared = await _run(
         services,
-        {"op": "filter", "layer_project_id": 34, "rows": [{"do": "clear_area"}]},
+        {"op": "filter", "layer_project_id": 34, "area": "clear"},
     )
     records = [json.loads(json.dumps(r.undo())) for r in (first, changed, cleared)]
     assert await _restore(state, records[2]) == (_back(layers=[34]), [])
@@ -727,7 +724,7 @@ AREA_TASKS = {
         },
     ),
     "map-40": _area(36, view=True),
-    "map-41": {"op": "filter", "layer_project_id": 34, "rows": [{"do": "clear_area"}]},
+    "map-41": {"op": "filter", "layer_project_id": 34, "area": "clear"},
 }
 
 
@@ -832,9 +829,7 @@ async def test_a_failed_feature_read_refuses_the_call(status: int, words: str) -
     services = _Services(state, geoapi=_Proxy(handler))
     with pytest.raises(ToolFailed) as raised:
         await _run(services, _area(40, features_of={"layer_project_id": 31}))
-    assert raised.value.message.startswith(
-        f"operations[0] (filter): Row operation 1: {words}"
-    )
+    assert raised.value.message.startswith(f"operations[0] (filter): Area: {words}")
     assert services.writes() == [] and state.snapshot() == before
 
 
@@ -865,9 +860,188 @@ async def test_outlines_that_cannot_share_the_room_write_nothing() -> None:
     with pytest.raises(InputInvalid) as raised:
         await _run(services, hide, _area(32, regions=ids))
     assert raised.value.message == (
-        "operations[1] (filter): Row operation 1: The 50 outlines asked for do "
+        "operations[1] (filter): Area: The 50 outlines asked for do "
         "not fit the filter's size limit together, also not each simplified to "
         "an equal share of it. Ask for fewer of them, or for larger units (a "
         "region one level up)."
     )
     assert services.writes() == [] and state.snapshot() == before
+
+
+# ---- the call's shape: area beside rows -------------------------------------------
+
+_PARK = {"field": "use", "op": "=", "value": "park"}
+_OFF_36 = {
+    "ui": {
+        "v": 1,
+        "area": {
+            **LAND_USE_QUERY["ui"]["area"],
+            "off": LAND_USE_QUERY["cql"]["args"][0],
+        },
+    }
+}
+
+#: Calls in the area-beside-rows shape: (layer, the layer's stored query at
+#: the start (None: the eval fixture's), the filter operation's fields).
+SHAPE_CASES: dict[str, tuple[int, Any, dict[str, Any]]] = {
+    "region": (32, None, {"area": {"regions": ["DEZ01"]}}),
+    "two_regions": (32, None, {"area": {"regions": ["DEZ01", "DEZ02"]}}),
+    "features": (
+        34,
+        None,
+        {"area": {"features_of": {"layer_project_id": 31, "filter": NAMED}}},
+    ),
+    "view": (36, None, {"area": {"view": True}}),
+    "together": (
+        40,
+        None,
+        {
+            "area": {
+                "regions": ["DEZ01"],
+                "features_of": {"layer_project_id": 31, "filter": NAMED},
+                "view": True,
+            }
+        },
+    ),
+    "add": (34, None, {"area": {"regions": ["DEZ01"], "add": True}}),
+    "outside": (32, None, {"area": {"regions": ["DEZ01"], "outside": True}}),
+    "replaces_off": (36, _OFF_36, {"area": {"view": True}}),
+    "adds_to_off": (36, _OFF_36, {"area": {"view": True, "add": True}}),
+    "clear": (34, None, {"area": "clear"}),
+    "clear_off": (36, _OFF_36, {"area": "clear"}),
+    "rows_and_area": (
+        34,
+        None,
+        {
+            "rows": [{"do": "add", "conditions": [_PARK]}],
+            "area": {"regions": ["DEZ01"]},
+        },
+    ),
+    "rows_cleared_and_area_cleared": (
+        34,
+        None,
+        {"rows": [{"do": "clear"}], "area": "clear"},
+    ),
+}
+
+
+def _digest(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value).encode()).hexdigest()[:24]
+
+
+async def _shape_case(
+    name: str, operation: dict[str, Any]
+) -> tuple[str, list[str], str]:
+    """The stored query's digest, the summaries and the undo record's digest
+    of one case, the filter operation given whole."""
+    link, start, _ = SHAPE_CASES[name]
+    state = MapState()
+    if start is not None:
+        state.layers[link]["query"] = copy.deepcopy(start)
+    services = _Services(state)
+    result = await _run(services, operation)
+    return (
+        _digest(state.layers[link]["query"]),
+        [applied.summary for applied in result.applied],
+        _digest(result.undo()),
+    )
+
+
+#: The bytes each case stores, says and records for undo: the stored query
+#: and the undo record as sha256 prefixes of their JSON, the summaries whole.
+SHAPE_PINNED: dict[str, tuple[str, list[str], str]] = {
+    "add": (
+        "cefcc15d918bd88ae0baccbd",
+        [
+            '\'Land use\': the filter\'s rows are now 1. area_m2 is greater than 5000; 2. use is "industrial" (switched off); 3. custom (a feature passes every switched-on row). Area: a drawn shape "Study area"; regions: "Auental" (DEZ01).'
+        ],
+        "a589d871e4a7617c53eba33b",
+    ),
+    "adds_to_off": (
+        "faf5b6e5adb3749720617e3d",
+        [
+            "'Buildings': the filter has no rows now. Area: switched off: a drawn shape \"Study area\"; the map view."
+        ],
+        "6bee7cdbed14983edf2a7457",
+    ),
+    "clear": (
+        "285f7eb0fcb4da1e8e7125ad",
+        [
+            "'Land use': the filter's rows are now 1. area_m2 is greater than 5000; 2. use is \"industrial\" (switched off); 3. custom (a feature passes every switched-on row)."
+        ],
+        "9b0446bfe50197ccc9dcf4cc",
+    ),
+    "clear_off": (
+        "74234e98afe7498fb5daf1f3",
+        ["'Buildings' has no filter now: every feature is shown."],
+        "0a2312d1a412a41646f0563f",
+    ),
+    "features": (
+        "6b53c34234edb5e5f6dce2e4",
+        [
+            '\'Land use\': the filter\'s rows are now 1. area_m2 is greater than 5000; 2. use is "industrial" (switched off); 3. custom (a feature passes every switched-on row). Area: features of layer "Districts" (31): 2.'
+        ],
+        "f5cd95d5551fbf081f237d09",
+    ),
+    "outside": (
+        "515df3d32852cf43974d2f07",
+        [
+            "'Points of interest': the filter has no rows now. Area: outside: regions: \"Auental\" (DEZ01)."
+        ],
+        "53169c4fcd1297ffe0702760",
+    ),
+    "region": (
+        "a84e1d38e29d902636a897a5",
+        [
+            "'Points of interest': the filter has no rows now. Area: regions: \"Auental\" (DEZ01)."
+        ],
+        "f649faf6d34e4250263de9f1",
+    ),
+    "replaces_off": (
+        "b443b1f06c0a63b9ea57da18",
+        [
+            "'Buildings': the filter has no rows now. Area: the map view. The area the filter had was switched off in the Filter tab; the new area replaces it and is switched on."
+        ],
+        "64e8b064b4e008ba5c4a443e",
+    ),
+    "rows_and_area": (
+        "6e3ceaffa322f04ac435ebdf",
+        [
+            '\'Land use\': the filter\'s rows are now 1. area_m2 is greater than 5000; 2. use is "industrial" (switched off); 3. custom; 4. use is "park" (a feature passes every switched-on row). Area: regions: "Auental" (DEZ01).'
+        ],
+        "3f13a752a2536a472c979cdd",
+    ),
+    "rows_cleared_and_area_cleared": (
+        "74234e98afe7498fb5daf1f3",
+        ["'Land use' has no filter now: every feature is shown."],
+        "f4531623fdf66e43ff460fad",
+    ),
+    "together": (
+        "dab3d5ce4ae95a68dc78da00",
+        [
+            '\'Stations\': the filter has no rows now. Area: regions: "Auental" (DEZ01); features of layer "Districts" (31): 2; the map view.'
+        ],
+        "d0fac512c9ba062fb5a673f1",
+    ),
+    "two_regions": (
+        "ba18c8c27b67b7c56a9686d9",
+        [
+            '\'Points of interest\': the filter has no rows now. Area: regions: "Auental" (DEZ01), "Bergfeld" (DEZ02).'
+        ],
+        "9dd4798d17d1a8bcb818fa6a",
+    ),
+    "view": (
+        "b443b1f06c0a63b9ea57da18",
+        ["'Buildings': the filter has no rows now. Area: the map view."],
+        "b6347fd7a203520fccdcee02",
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(SHAPE_CASES))
+async def test_an_area_beside_the_rows_stores_says_and_records_the_pinned_bytes(
+    name: str,
+) -> None:
+    link, _, fields = SHAPE_CASES[name]
+    operation = {"op": "filter", "layer_project_id": link, **fields}
+    assert await _shape_case(name, operation) == SHAPE_PINNED[name]

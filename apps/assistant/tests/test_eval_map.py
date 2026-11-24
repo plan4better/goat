@@ -1742,7 +1742,7 @@ async def test_a_typed_undo_changes_nothing_and_points_to_the_undo_button(
             {
                 "op": "filter",
                 "layer_project_id": 32,
-                "rows": [{"do": "clear_area"}],
+                "area": "clear",
             }
         ]
     }

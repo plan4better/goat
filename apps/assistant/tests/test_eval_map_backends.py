@@ -921,7 +921,7 @@ async def test_the_catalogs_regions_set_an_area_through_map_update(
                     {
                         "op": "filter",
                         "layer_project_id": 32,
-                        "rows": [{"do": "set_area", "regions": ["DEZ01", "DEZ02"]}],
+                        "area": {"regions": ["DEZ01", "DEZ02"]},
                     }
                 ]
             },

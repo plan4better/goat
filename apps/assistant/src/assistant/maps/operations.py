@@ -21,6 +21,7 @@ from pydantic import (
     model_validator,
 )
 
+from assistant.maps.filter_area import AreaChange
 from assistant.maps.filter_rows import RowOp
 from assistant.tools.filters import _decoded
 
@@ -33,6 +34,17 @@ MAX_SCENE_OPERATIONS = 20
 MAX_NAME = 255
 
 _NEW_GROUP = re.compile(r"new:(\d{1,2})")
+#: The refusal of an area given as a row operation or on the filter
+#: operation itself.
+AREA_BESIDE_ROWS = (
+    'The area goes in the filter operation\'s area, beside rows: "area": '
+    '{"regions": [...]} (or features_of, view, with outside and add) sets it, '
+    '"area": "clear" removes it.'
+)
+#: The ``do`` values and the fields that name an area, refused anywhere but
+#: in ``area``.
+_AREA_DOS = frozenset({"set_area", "clear_area"})
+_AREA_FIELDS = ("regions", "features_of", "view", "outside", "add")
 NOT_A_STYLE_ID = (
     "active_style_id is a style's id from project_get_layers (style.id, or an "
     "id of style.others)."
@@ -150,23 +162,51 @@ class SetLayer(_Operation):
 
 class FilterLayer(_Operation):
     op: Literal["filter"] = Field(
-        description=(
-            "Change a layer's saved filter row by row, and its area: set_area "
-            "keeps only what lies inside (or outside) regions by id from "
-            "catalog_find_region, features of another polygon layer or the "
-            "current map view; clear_area removes it."
-        )
+        description="Change a layer's saved filter: its rows, its area or both."
     )
     layer_project_id: LayerNumber = Field(description=_LAYER)
     rows: list[RowOp] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=MAX_ROW_OPERATIONS,
         description=(
-            f"1 to {MAX_ROW_OPERATIONS} row operations, applied in order. Row "
+            f"Up to {MAX_ROW_OPERATIONS} row operations, applied in order. Row "
             "numbers are the ones project_get_layers shows in the layer's "
             "filter."
         ),
     )
+    area: AreaChange | None = Field(
+        default=None,
+        description=(
+            "Applied after rows. An object keeps only what lies inside (or "
+            "outside) regions by id from catalog_find_region, features of "
+            'another polygon layer or the current map view; "clear" removes '
+            "the area. The rows stay."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _area_beside_rows(cls, data: Any) -> Any:
+        """An area sent as a row operation or on the operation itself is
+        refused with where it goes; rows sent as null are no rows."""
+        if not isinstance(data, dict):
+            return data
+        rows = data.get("rows")
+        if rows is None:
+            data = {key: value for key, value in data.items() if key != "rows"}
+        elif isinstance(rows, list) and any(
+            isinstance(row, dict) and row.get("do") in _AREA_DOS for row in rows
+        ):
+            raise ValueError(AREA_BESIDE_ROWS)
+        if data.get("do") in _AREA_DOS or any(name in data for name in _AREA_FIELDS):
+            raise ValueError(AREA_BESIDE_ROWS)
+        return data
+
+    @model_validator(mode="after")
+    def _changes_something(self) -> "FilterLayer":
+        if not self.rows and self.area is None:
+            raise ValueError("filter takes rows, area or both.")
+        return self
 
 
 class ItemRef(_Operation):

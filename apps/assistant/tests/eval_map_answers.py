@@ -1082,7 +1082,7 @@ ANSWERS: dict[str, Answer] = {
                                 {
                                     "op": "filter",
                                     "layer_project_id": 32,
-                                    "rows": [{"do": "set_area", "regions": ["DEZ01"]}],
+                                    "area": {"regions": ["DEZ01"]},
                                 }
                             ]
                         },
