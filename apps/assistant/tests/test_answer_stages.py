@@ -274,6 +274,11 @@ async def _answer(
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
             ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/map"): {
+                "map": {"version": "1.0.0", "layers": []},
+                "styles": {},
+                "unpublished": [],
+            },
             **(core_routes or {}),
         }
     )
@@ -638,11 +643,7 @@ SHOWN_IN: dict[Stage, tuple[list[Response], int]] = {
 
 
 def test_the_display_tools_are_the_card_tools() -> None:
-    assert DISPLAY_TOOLS == {
-        "core_show_items",
-        "catalog_show_records",
-        "map_propose_view",
-    }
+    assert DISPLAY_TOOLS == {"core_show_items", "catalog_show_records"}
     assert DISPLAY_TOOLS <= set(BY_WIRE_NAME)
 
 

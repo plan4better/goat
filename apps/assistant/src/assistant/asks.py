@@ -8,7 +8,11 @@ stored transcript the web reads leave them out (``public_args``), and the model
 gets the value back with the user's answer (``answer_lines``). ``user_chose``
 and ``picked_ids`` read the stored history, never the model's words; only
 ``picked_ids`` reads ``adds``, so an option's ``adds`` never stands for a value
-such as a workflow run's.
+such as a workflow run's. A value a tool takes as consent to something the
+undo button does not bring back or a whole replacement (``CONSENT_PREFIXES``)
+is offered only as a tool of the same answer named it, beside an option that
+keeps what it would change (``consent_problem``), and counts only as picked in
+the current chain of picks without text of the user's own (``consented``).
 """
 
 import re
@@ -446,6 +450,46 @@ class AskHistory:
         return replace(self, answering=None, chain=frozenset())
 
 
+def _free_texts(answer: CardAnswer) -> list[str]:
+    return [
+        reply.other.strip()
+        for reply in answer.answers
+        if reply.other is not None and reply.other.strip()
+    ]
+
+
+def typed_texts(
+    messages: Sequence[Mapping[str, Any]], text: str, answer: CardAnswer | None
+) -> tuple[str, ...]:
+    """What the user typed in the conversation, from ``Repository.list_messages``
+    rows and the message being answered (``text``, ``answer``): the text of a
+    message without a card answer, and the free text of a card answer. The
+    text that comes with a card answer lists the labels of the picked
+    options, which the model wrote, so it is left out."""
+    typed: list[str] = []
+    for message in messages:
+        if message.get("role") != "user":
+            continue
+        parts = [part for part in message.get("parts") or [] if isinstance(part, dict)]
+        answers = [part for part in parts if part.get("type") == "answer"]
+        if not answers:
+            typed.extend(
+                str(part["text"])
+                for part in parts
+                if part.get("type") == "user_text" and part.get("text")
+            )
+        for part in answers:
+            try:
+                typed.extend(_free_texts(CardAnswer.model_validate(part.get("answer"))))
+            except ValidationError:
+                continue
+    if answer is None:
+        typed.append(text)
+    else:
+        typed.extend(_free_texts(answer))
+    return tuple(typed)
+
+
 def _picked_options(history: AskHistory) -> Iterator[tuple[str, AskOption]]:
     """The options the user picked in the answered cards of this conversation,
     each with its card id, in the order the cards were answered. A typed reply
@@ -559,7 +603,10 @@ def _asked_again(earlier: _Answered) -> str:
 
 
 def repeated_question(
-    history: AskHistory, card: AskUserInput, used_cards: Collection[str] = ()
+    history: AskHistory,
+    card: AskUserInput,
+    used_cards: Collection[str] = (),
+    confirm_values: Collection[str] = (),
 ) -> str | None:
     """Why ``card`` asks again what the user answered in this conversation,
     naming the answer, or None when it does not. A header names a topic
@@ -573,6 +620,10 @@ def repeated_question(
     the option picked there again. A question the user left open, in a card
     they answered or one they replied to in their message instead, may be
     asked again, and so may a question that offers a workflow run.
+    So may a question with an option of ``confirm_values`` (the values a
+    tool of this answer asked the user's pick for) that no answered question
+    of the chain offered: no answer to this request gave the pick the tool
+    takes.
     ``used_cards``: as ``_answers``."""
     answered = [
         earlier
@@ -584,8 +635,18 @@ def repeated_question(
         for earlier in answered
         if history.chain is None or earlier.card_id in history.chain
     ]
+    # An answer before the user's last typed message gave no pick for a
+    # request typed after it.
+    offered = {
+        option.value for earlier in chained for option in earlier.question.options
+    }
     for question in card.questions:
         if _offers_run(question):
+            continue
+        if any(
+            option.value in confirm_values and option.value not in offered
+            for option in question.options
+        ):
             continue
         header = [
             earlier
@@ -619,6 +680,90 @@ def user_chose(history: AskHistory, value: str) -> bool:
     """Whether an answered card of this conversation offered an option with
     ``value`` and the user picked it."""
     return bool(chosen_cards(history, value))
+
+
+#: The option values a tool reads as the user's consent (``consented``):
+#: removing a layer and replacing a style whole.
+CONSENT_PREFIXES = ("remove_layer:", "replace_style:")
+CONSENT_UNNAMED = (
+    "The option value {value} lets a tool remove a layer or replace a style, "
+    "and no tool of this answer asked for it. Call that tool first (map_update "
+    "with remove_layer, or style_update): its answer names the value to offer."
+)
+CONSENT_TWICE = (
+    "The value {value} is on more than one option of a question. Put it on the "
+    "one option that agrees, and give the option that keeps the layer or the "
+    "style no value."
+)
+CONSENT_NO_KEEP = (
+    "A question that offers {value} needs an option without such a value that "
+    "keeps the layer or the style."
+)
+CONSENT_MULTI = (
+    "A question that offers {value} is single-select (multi_select false): the "
+    "user picks either that option or the one that keeps the layer or the style."
+)
+
+
+def _consent_value(value: str | None) -> bool:
+    return value is not None and value.startswith(CONSENT_PREFIXES)
+
+
+def _consent_question_problem(question: AskQuestion) -> str | None:
+    """Why the consent values of ``question`` say nothing: a question the
+    user may pick several options of, one on several of its options, or no
+    option without one."""
+    values = [o.value for o in question.options if _consent_value(o.value)]
+    if values and question.multi_select:
+        return CONSENT_MULTI.format(value=values[0])
+    for value in dict.fromkeys(values):
+        if values.count(value) > 1:
+            return CONSENT_TWICE.format(value=value)
+    if values and len(values) == len(question.options):
+        return CONSENT_NO_KEEP.format(value=values[0])
+    return None
+
+
+def consent_problem(card: AskUserInput, named: Collection[str]) -> str | None:
+    """Why ``card`` cannot ask for consent: an option value of
+    ``CONSENT_PREFIXES`` that no tool of this answer named (``named``,
+    ``ToolEnv.confirm_values``), one on several options of its question, or
+    a question with no option that keeps the layer or the style. None when
+    it can."""
+    for question in card.questions:
+        for option in question.options:
+            if _consent_value(option.value) and option.value not in named:
+                return CONSENT_UNNAMED.format(value=option.value)
+        problem = _consent_question_problem(question)
+        if problem is not None:
+            return problem
+    return None
+
+
+def consented(history: AskHistory, value: str) -> bool:
+    """Whether the user gave ``value`` (``CONSENT_PREFIXES``) as consent: an
+    answered card of the current chain of picks (``AskHistory.chain``; every
+    answered card for a history not read from a conversation) whose question
+    offered it on one option beside one that keeps, and where the user
+    picked that option alone and wrote no answer of their own to the
+    question."""
+    for card_id, answer in history.answers.items():
+        card = history.cards.get(card_id)
+        if card is None or (history.chain is not None and card_id not in history.chain):
+            continue
+        for reply in answer.answers:
+            if reply.question >= len(card.questions) or (reply.other or "").strip():
+                continue
+            question = card.questions[reply.question]
+            if _consent_question_problem(question) is not None:
+                continue
+            if (
+                len(reply.options) == 1
+                and reply.options[0] < len(question.options)
+                and question.options[reply.options[0]].value == value
+            ):
+                return True
+    return False
 
 
 def recent_picked_ids(history: AskHistory) -> list[str]:

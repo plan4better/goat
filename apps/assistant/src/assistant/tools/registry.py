@@ -12,9 +12,11 @@ from assistant.tools.ask import ASK_USER
 from assistant.tools.catalog import CATALOG_TOOLS
 from assistant.tools.core import CORE_TOOLS
 from assistant.tools.docs import DOCS_READ
+from assistant.tools.map_edits import MAP_TOOLS
 from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.runtime import ToolSpec
 from assistant.tools.skills import SKILLS_LOAD
+from assistant.tools.styles import STYLE_TOOLS
 from assistant.tools.workflow_edits import WORKFLOW_EDIT_TOOLS
 from assistant.tools.workflow_runs import WORKFLOW_RUN_TOOLS
 from assistant.tools.workflow_tools import TOOL_CATALOG_TOOLS
@@ -29,6 +31,8 @@ ALL_TOOLS: tuple[ToolSpec[Any, Any], ...] = tuple(
             DOCS_READ,
             *CATALOG_TOOLS,
             *PROJECT_TOOLS,
+            *STYLE_TOOLS,
+            *MAP_TOOLS,
             *TOOL_CATALOG_TOOLS,
             *WORKFLOW_TOOLS,
             *WORKFLOW_RUN_TOOLS,

@@ -172,6 +172,8 @@ def test_to_ui_message_names_the_answers_run_and_whether_it_was_undone() -> None
     }
     undone = to_ui_message("m1", "assistant", parts, run_id="r1", undone=True)
     assert undone["metadata"] == {"run_id": "r1", "undone": True}
+    undoable = to_ui_message("m1", "assistant", parts, run_id="r1", undoable=True)
+    assert undoable["metadata"] == {"run_id": "r1", "undoable": True}
     assert "metadata" not in to_ui_message("m1", "assistant", parts)
 
 

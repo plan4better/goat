@@ -1,8 +1,7 @@
 """The read-only project pack (spec §7.2, §9.1.1, §10).
 
 The read tools take a project ID, defaulting to the project of the page, so other
-projects the user can open are readable as sources. The map-view proposal is the
-exception: it only targets the project that is open.
+projects the user can open are readable as sources.
 
 Layers are always resolved through core's layer list of that project, with the
 user's token: core checks the project and marks layers the user cannot read as
@@ -17,14 +16,20 @@ import asyncio
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, overload
 from uuid import UUID
 
+from goatlib.filter.rows import read_rows
+from goatlib.style.summary import summarize
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.context import ProjectMapContext, project_of
+from assistant.context import BasemapInfo, ProjectMapContext, project_of
+from assistant.maps.filter_area import layer_labels
+from assistant.maps.filter_rows import CUSTOM, FilterBrief, brief
+from assistant.maps.state import MapRead, read_map
+from assistant.maps.state import core_read as _core
 from assistant.surfaces import Surface
 from assistant.tools.filters import (
     FILTER_EXAMPLES,
@@ -34,17 +39,6 @@ from assistant.tools.filters import (
     field_kind,
     to_cql2,
     unknown_field,
-)
-from assistant.tools.http import SIGN_IN_EXPIRED, ServiceError, sign_in_expired
-from assistant.tools.proposals import (
-    MapCamera,
-    MapViewPayload,
-    Proposal,
-    ProposalRow,
-    ProposalShown,
-    ProposalTarget,
-    proposal_row,
-    show,
 )
 from assistant.tools.runtime import InputInvalid, ToolEnv, ToolSpec
 from assistant.workflows.tool_info import JOINED_PREFIX
@@ -62,10 +56,6 @@ SAMPLE_FIELDS_MAX = 20
 _SAMPLE_VALUE_CHARS = 200
 #: Values listed per categorical field.
 UNIQUE_VALUES = 50
-#: A server extent narrower than this (a single point, or features on one
-#: meridian or parallel) is widened to it before it becomes a map view, because
-#: a zero-sized box cannot be fitted. In degrees, roughly 200 m.
-_MIN_EXTENT_DEGREES = 0.004
 #: A catalog layer whose copy into GOAT is queued or running
 #: (``other_properties.catalog_materialize.status`` of core's layer row) has no
 #: data to read yet.
@@ -107,6 +97,15 @@ class FilteredLayerInput(LayerInput):
         default=None,
         description=f"Only features matching this filter. {FILTER_EXAMPLES}",
     )
+    as_drawn: bool = Field(
+        default=False,
+        description=(
+            "true: only the features the map draws, under the layer's saved "
+            "filter (its rows and area that are switched on), area included; "
+            "with filter, both apply. A layer without a saved filter is read "
+            "whole."
+        ),
+    )
 
 
 def _project_id(env: ToolEnv, given: UUID | None) -> UUID:
@@ -120,20 +119,6 @@ def _project_id(env: ToolEnv, given: UUID | None) -> UUID:
     return current
 
 
-async def _core(env: ToolEnv, path: str) -> Any:
-    try:
-        return await env.call("core", "GET", f"/api/v2/project{path}")
-    except ServiceError as exc:
-        if sign_in_expired(exc):
-            raise ToolFailed(SIGN_IN_EXPIRED) from exc
-        # Core's authorization answers 401 for "no access" too.
-        if exc.status in (401, 403, 404):
-            raise ToolFailed(
-                "The project does not exist or the user cannot open it."
-            ) from exc
-        raise
-
-
 @dataclass(frozen=True)
 class _Layer:
     project_id: UUID
@@ -141,6 +126,10 @@ class _Layer:
     layer_id: str
     name: str
     geometry_type: str | None
+    #: The layer's saved filter as core stores it (``query``), and how an
+    #: area's summary names the project's layers (``layer_labels``).
+    query: Any = field(default=None, compare=False)
+    labels: Mapping[str, str] = field(default_factory=dict, compare=False)
 
 
 def _copy_status(row: Mapping[str, Any]) -> str | None:
@@ -170,7 +159,8 @@ async def _readable_layer(
 
 async def _listed_layer(env: ToolEnv, args: LayerInput) -> _Layer:
     project_id = _project_id(env, args.project_id)
-    for row in await _core(env, f"/{project_id}/layer"):
+    rows = await _core(env, f"/{project_id}/layer")
+    for row in rows:
         if row.get("id") != args.layer_project_id:
             continue
         name = str(row.get("name") or f"layer {args.layer_project_id}")
@@ -190,6 +180,10 @@ async def _listed_layer(env: ToolEnv, args: LayerInput) -> _Layer:
             str(row["layer_id"]),
             name,
             row.get("feature_layer_geometry_type"),
+            query=row.get("query"),
+            labels=layer_labels(
+                {r["id"]: r for r in rows if isinstance(r.get("id"), int)}
+            ),
         )
     raise InputInvalid(
         f"There is no layer {args.layer_project_id} in project {project_id}. "
@@ -291,6 +285,63 @@ async def _cql(
     )
 
 
+def saved_filter(query_cql: Any) -> dict[str, Any] | None:
+    """A layer's saved filter as the map draws it (``query.cql``: its rows and
+    area that are switched on): an object with keys, else none (the web's
+    ``isCql``)."""
+    return query_cql if isinstance(query_cql, dict) and query_cql else None
+
+
+def _saved(layer: _Layer, as_drawn: bool) -> dict[str, Any] | None:
+    """The layer's saved filter when ``as_drawn`` asks for it."""
+    query = layer.query if as_drawn else None
+    return saved_filter(query.get("cql")) if isinstance(query, dict) else None
+
+
+def _drawn_words(layer: _Layer, fields: Mapping[str, str]) -> str:
+    """The saved filter the map draws, in the words project_get_layers shows
+    it: the rows that are on, joined by its match, and the area when it is
+    on."""
+    shown = brief(layer.query, fields, layers=layer.labels)
+    parts: list[str] = []
+    if shown is not None:
+        joined = (" and " if shown.match == "all" else " or ").join(
+            row.text for row in shown.rows if row.on
+        )
+        if joined:
+            parts.append(joined)
+        notes = read_rows(layer.query, None).area_notes
+        if shown.area is not None and not (isinstance(notes, dict) and "off" in notes):
+            parts.append(f"area: {shown.area}")
+    return f"the layer's filter as the map draws it ({'; '.join(parts)})"
+
+
+def _where(
+    layer: _Layer,
+    fields: Mapping[str, str],
+    feature_filter: FeatureFilter | None,
+    as_drawn: bool,
+) -> tuple[dict[str, Any] | None, str]:
+    """The filter the services take, as a CQL2-JSON object (None: every
+    feature), and its words for the answer: the given filter checked against
+    the layer's fields, and with ``as_drawn`` the layer's saved filter as
+    core stores it, both under ``and``."""
+    given = None if feature_filter is None else to_cql2(feature_filter, fields)
+    words = describe_filter(feature_filter)
+    saved = _saved(layer, as_drawn)
+    if saved is None:
+        return given, words
+    drawn = _drawn_words(layer, fields)
+    if given is None:
+        return saved, drawn
+    return {"op": "and", "args": [saved, given]}, f"{drawn} and {words}"
+
+
+def _text(where: dict[str, Any] | None) -> str | None:
+    """A filter as the CQL2-JSON text the services take."""
+    return None if where is None else json.dumps(where)
+
+
 def _distinct_total(result: Any) -> int:
     """The ``total`` of a unique-values answer. A missing or malformed one is an
     error, never zero: zero would pass for a field with few values."""
@@ -312,6 +363,26 @@ async def _analytics(env: ToolEnv, process: str, inputs: dict[str, Any]) -> Any:
 # -- project.get_layers --------------------------------------------------------
 
 
+class NamedStyle(BaseModel):
+    id: str
+    name: str
+
+
+class StyleBrief(BaseModel):
+    """The style the map draws for a layer."""
+
+    id: str
+    name: str
+    #: The look in one line (``goatlib.style.summary.summarize``).
+    summary: str
+    #: The issues core sent with it, by level: ``error`` and ``damaged`` are
+    #: errors; ``info`` is not counted.
+    errors: int = 0
+    warnings: int = 0
+    #: The layer's other named styles.
+    others: list[NamedStyle] = []
+
+
 class LayerInfo(BaseModel):
     layer_project_id: int
     name: str
@@ -326,24 +397,70 @@ class LayerInfo(BaseModel):
     #: The dataset's bounding box [west, south, east, north] in degrees,
     #: rounded to EXTENT_DECIMALS, when core has one.
     extent: list[float] | None = None
-    #: The layer's filter in this project (CQL2-JSON), when it has one.
-    filter: dict[str, Any] | None = None
     #: The layer selected on the map the user sent this message from; set on
     #: that layer only (None is left out of the result).
     selected: bool | None = None
+    #: Shown on the map (in the layer panel; a hidden group hides it too).
+    visible: bool | None = None
+    position: Literal["top", "below_labels", "below_roads"] | None = None
+    group_id: int | None = None
+    #: The place among its siblings in the layer tree, 0 on top.
+    order: int | None = None
+    #: None for a locked layer or a table.
+    style: StyleBrief | None = None
+    #: The layer's filter in this project, row by row, when it has one.
+    filter: FilterBrief | None = None
 
 
 class GroupInfo(BaseModel):
     id: int
     name: str
     parent_id: int | None = None
+    #: Shown on the map; a hidden group hides its layers whatever their own
+    #: flag says.
+    visible: bool | None = None
+    #: The place among its siblings in the layer tree, 0 on top.
+    order: int | None = None
+
+
+class BasemapBrief(BaseModel):
+    """A basemap by id; name, tone and imagery when the page offers it."""
+
+    id: str
+    name: str | None = None
+    tone: Literal["light", "dark"] | None = None
+    imagery: bool | None = None
+
+
+class ViewInfo(BaseModel):
+    #: [longitude, latitude].
+    center: list[float] | None = None
+    zoom: float | None = None
+    pitch: float | None = None
+    bearing: float | None = None
+    mode: Literal["2d", "3d"] | None = None
+    projection: Literal["mercator", "globe"] | None = None
+
+
+class MapBrief(BaseModel):
+    """The open map: what the page shows now, else what core stores."""
+
+    basemap: BasemapBrief | None
+    #: The basemaps the project offers, as the page lists them.
+    basemaps: list[BasemapBrief]
+    view: ViewInfo | None
+    #: The 3D settings; "automatic" when the project has none.
+    scene: Literal["automatic"] | dict[str, Any]
 
 
 class ProjectLayers(BaseModel):
     project_id: UUID
     name: str
     groups: list[GroupInfo]
+    #: In the layer tree's order, top first.
     layers: list[LayerInfo]
+    #: The open map; only for the project of the map page.
+    map: MapBrief | None = None
 
 
 #: Decimals a layer's extent keeps: a hundredth of a degree (about a kilometre)
@@ -382,61 +499,227 @@ def layer_extent(row: Mapping[str, Any]) -> list[float] | None:
     return [round(value, EXTENT_DECIMALS) for value in (west, south, east, north)]
 
 
+def _style_brief(read: MapRead, layer_project_id: int) -> StyleBrief | None:
+    styles = read.styles.get(layer_project_id) or {}
+    active = styles.get("active")
+    if not isinstance(active, dict) or active.get("id") is None:
+        return None
+    issues = [issue for issue in active.get("issues") or [] if isinstance(issue, dict)]
+    document = active.get("document")
+    return StyleBrief(
+        id=str(active["id"]),
+        name=str(active.get("name") or ""),
+        summary=summarize(document) if isinstance(document, dict) else "",
+        errors=sum(issue.get("level") in ("error", "damaged") for issue in issues),
+        warnings=sum(issue.get("level") == "warning" for issue in issues),
+        others=[
+            NamedStyle(id=str(other["id"]), name=str(other.get("name") or ""))
+            for other in styles.get("others") or []
+            if isinstance(other, dict) and other.get("id") is not None
+        ],
+    )
+
+
+def _all_custom(stored: FilterBrief) -> FilterBrief:
+    return stored.model_copy(
+        update={
+            "rows": [row.model_copy(update={"text": CUSTOM}) for row in stored.rows]
+        }
+    )
+
+
+async def _filter_briefs(
+    env: ToolEnv, project_id: UUID, rows: Mapping[int, Mapping[str, Any]]
+) -> dict[int, FilterBrief]:
+    """Each filtered layer's filter in words. The words need the layer's
+    field types: one fields read per filtered layer, all at once; a layer
+    whose read fails shows its rows as "custom". A locked layer is never
+    read, and its filter is withheld as core withholds its other details.
+    An area's features are named by their layer's name and number."""
+    layers = layer_labels(rows)
+    stored = {
+        link: found
+        for link, row in rows.items()
+        if not row.get("locked")
+        and (found := brief(row.get("query"), {}, layers=layers)) is not None
+    }
+
+    async def worded(link: int) -> FilterBrief:
+        row = rows[link]
+        try:
+            fields = await _fields(
+                env,
+                _Layer(
+                    project_id,
+                    link,
+                    str(row["layer_id"]),
+                    str(row.get("name") or ""),
+                    row.get("feature_layer_geometry_type"),
+                ),
+            )
+        # A refused or unreadable answer, or a row without its dataset.
+        except (ToolFailed, KeyError, AttributeError, TypeError):
+            return _all_custom(stored[link])
+        return brief(row.get("query"), fields, layers=layers) or stored[link]
+
+    links = list(stored)
+    return dict(zip(links, await asyncio.gather(*map(worded, links)), strict=True))
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _view(page: ProjectMapContext, document: Mapping[str, Any]) -> ViewInfo | None:
+    """The page's live view; the view core stores for the user when the page
+    sends none."""
+    if page.viewport is not None:
+        port = page.viewport
+        return ViewInfo(
+            center=list(port.center),
+            zoom=port.zoom,
+            pitch=port.pitch,
+            bearing=port.bearing,
+            mode=page.view_mode,
+            projection=page.projection,
+        )
+    stored = document.get("view")
+    stored = stored if isinstance(stored, dict) else {}
+    center = stored.get("center")
+    mode, projection = stored.get("mode"), stored.get("projection")
+    view = ViewInfo(
+        center=[float(n) for n in center]
+        if isinstance(center, list)
+        and len(center) == 2
+        and all(_number(n) is not None for n in center)
+        else None,
+        zoom=_number(stored.get("zoom")),
+        pitch=_number(stored.get("pitch")),
+        bearing=_number(stored.get("bearing")),
+        mode=page.view_mode or (mode if mode in ("2d", "3d") else None),
+        projection=page.projection
+        or (projection if projection in ("mercator", "globe") else None),
+    )
+    return view if view.model_dump(exclude_none=True) else None
+
+
+def _offered(basemap: BasemapInfo) -> BasemapBrief:
+    return BasemapBrief(
+        id=basemap.id, name=basemap.name, tone=basemap.tone, imagery=basemap.imagery
+    )
+
+
+def _map_brief(page: ProjectMapContext, read: MapRead) -> MapBrief:
+    offered = [_offered(basemap) for basemap in page.basemaps]
+    shown = read.project.get("basemap")
+    basemap = (
+        next((b for b in offered if b.id == shown), BasemapBrief(id=shown))
+        if isinstance(shown, str) and shown
+        else None
+    )
+    scene = read.document.get("scene")
+    return MapBrief(
+        basemap=basemap,
+        basemaps=offered,
+        view=_view(page, read.document),
+        scene=scene if isinstance(scene, dict) else "automatic",
+    )
+
+
 async def _get_layers(env: ToolEnv, args: ProjectInput) -> ProjectLayers:
     project_id = _project_id(env, args.project_id)
-    project, rows, groups = await asyncio.gather(
-        _core(env, f"/{project_id}"),
-        _core(env, f"/{project_id}/layer"),
-        _core(env, f"/{project_id}/group"),
-    )
-    group_names = {group["id"]: group["name"] for group in groups}
-    # Only the open project has a selection; a source project read by its ID has none.
-    selected = (
-        env.page.selected_layer_project_id
+    read = await read_map(env, project_id)
+    group_names = {group["id"]: group["name"] for group in read.groups}
+    # Only the open project has a selection and a map; a source project read
+    # by its ID has neither.
+    page = (
+        env.page
         if isinstance(env.page, ProjectMapContext) and env.page.project_id == project_id
         else None
     )
+    selected = page.selected_layer_project_id if page is not None else None
+    filters = await _filter_briefs(env, project_id, read.rows)
+    # The tree's order; a row the document does not list yet (a layer just
+    # added) comes last, without map state.
+    tree = read.tree()
+    placed = [
+        item for item in tree if item["type"] == "layer" and item["id"] in read.rows
+    ]
+    tree_order = {item["id"]: item["order"] for item in tree if item["type"] == "group"}
+    group_entries = read.group_entries()
+    listed = {item["id"] for item in placed}
+    order = [(item["id"], item) for item in placed] + [
+        (link, None) for link in read.rows if link not in listed
+    ]
     layers: list[LayerInfo] = []
-    # In the project's layer order already (core sorts by layer_order).
-    for row in rows:
+    for link, item in order:
+        row = read.rows[link]
+        entry = read.entry(link) if item is not None else None
         locked = bool(row.get("locked"))
+        group_id = (
+            item["parent_id"] if item is not None else row.get("layer_project_group_id")
+        )
         layers.append(
             LayerInfo(
-                layer_project_id=row["id"],
-                name=row.get("name") or f"layer {row['id']}",
+                layer_project_id=link,
+                name=row.get("name") or f"layer {link}",
                 type=row.get("type") or "unknown",
                 geometry_type=row.get("feature_layer_geometry_type"),
-                group=group_names.get(row.get("layer_project_group_id")),
+                group=group_names.get(group_id),
                 locked=locked,
                 # Withheld for a locked layer, as core withholds its other
                 # details.
                 feature_count=None if locked else _recorded_feature_count(row),
                 extent=None if locked else layer_extent(row),
-                filter=(row.get("query") or {}).get("cql"),
-                selected=True
-                if selected is not None and row["id"] == selected
-                else None,
+                selected=True if selected is not None and link == selected else None,
+                visible=bool(entry.get("visible", True)) if entry is not None else None,
+                position=entry.get("position", "top") if entry is not None else None,
+                group_id=group_id,
+                order=item["order"] if item is not None else None,
+                style=None
+                if locked or row.get("type") == "table" or item is None
+                else _style_brief(read, link),
+                filter=filters.get(link),
             )
         )
     return ProjectLayers(
         project_id=project_id,
-        name=project.get("name") or str(project_id),
+        name=read.project.get("name") or str(project_id),
         groups=[
-            GroupInfo(id=g["id"], name=g["name"], parent_id=g.get("parent_id"))
-            for g in groups
+            GroupInfo(
+                id=g["id"],
+                name=g["name"],
+                parent_id=g.get("parent_id"),
+                # Core writes a group's flag always; an absent one reads as
+                # the default, shown.
+                visible=bool(entry.get("visible", True))
+                if (entry := group_entries.get(g["id"])) is not None
+                else None,
+                order=tree_order.get(g["id"]),
+            )
+            for g in read.groups
         ],
         layers=layers,
+        map=_map_brief(page, read) if page is not None else None,
     )
 
 
 GET_LAYERS: ToolSpec[ProjectInput, ProjectLayers] = ToolSpec(
     name="project.get_layers",
     description=(
-        "List a project's layers and groups: names, types, geometry types, each "
-        "layer's filter, its extent (bounding box) and feature count when known, "
-        "which layers the user cannot read (locked) and which one is selected on "
-        "the map. Call this first; other project tools take the layer_project_id "
-        "it returns."
+        "List a project's layers and groups in the layer tree's order: names, "
+        "types, geometry types, each layer's extent (bounding box) and feature "
+        "count when known, which layers the user cannot read (locked) and which "
+        "one is selected on the map. Each layer also shows its map state: shown "
+        "or hidden, position, place in the tree, its drawn style in one line with "
+        "its other named styles, and its filter as numbered rows in words; groups "
+        "show whether they are shown and their place. A layer is drawn only when "
+        "it and its group are shown. On the "
+        "map page it also names the basemap, the basemaps on offer, the view and "
+        "the 3D scene. Call this first; other project tools take the "
+        "layer_project_id it returns."
     ),
     input_model=ProjectInput,
     output_model=ProjectLayers,
@@ -501,15 +784,19 @@ class FeatureCount(BaseModel):
 
 async def _count(env: ToolEnv, args: FilteredLayerInput) -> FeatureCount:
     layer = await _readable_layer(env, args)
-    names = await _names(env, layer, needed=args.filter is not None)
+    names = await _names(
+        env,
+        layer,
+        needed=args.filter is not None or _saved(layer, args.as_drawn) is not None,
+    )
     feature_filter = names.filter(args.filter)
-    cql = await _cql(env, layer, feature_filter, names.fields)
+    where, words = _where(layer, names.fields, feature_filter, args.as_drawn)
     result = await _analytics(
-        env, "feature-count", {"collection": layer.layer_id, "filter": cql}
+        env, "feature-count", {"collection": layer.layer_id, "filter": _text(where)}
     )
     return FeatureCount(
         layer=layer.name,
-        filter=describe_filter(feature_filter),
+        filter=words,
         count=int(result["count"]),
         note=_note(*names.notes()),
     )
@@ -519,8 +806,8 @@ COUNT_FEATURES: ToolSpec[FilteredLayerInput, FeatureCount] = ToolSpec(
     name="project.count_features",
     description=(
         "Count a layer's features, optionally only those matching a filter. The "
-        "layer's own filter in the project is not applied; pass it as a filter if "
-        "the count should match what the map shows."
+        "layer's saved filter in the project applies only with as_drawn true, "
+        "which counts what the map shows."
     ),
     input_model=FilteredLayerInput,
     output_model=FeatureCount,
@@ -532,14 +819,36 @@ COUNT_FEATURES: ToolSpec[FilteredLayerInput, FeatureCount] = ToolSpec(
 # -- project.field_statistics --------------------------------------------------
 
 
+#: The class break methods: a style's (``goatlib.style.models.classify.
+#: NUMERIC_METHODS``) and the analytics endpoint's ``standard_deviation``
+#: (``goatlib.analysis.schemas.statistics.ClassBreakMethod``, which imports
+#: DuckDB and so is not read here).
+StatisticsMethod = Literal[
+    "quantile",
+    "equal_interval",
+    "natural_breaks",
+    "std_dev",
+    "standard_deviation",
+    "heads_and_tails",
+    "geometric_interval",
+]
+#: The endpoint reads a method it does not know as quantile.
+_ENDPOINT_METHODS: dict[str, str] = {"std_dev": "standard_deviation"}
+_STYLE_METHODS: dict[str, str] = {"standard_deviation": "std_dev"}
+
+
 class StatisticsInput(FilteredLayerInput):
     field: str = Field(
         description="The field to describe, as project_get_fields lists it."
     )
-    method: Literal[
-        "quantile", "equal_interval", "standard_deviation", "heads_and_tails"
-    ] = Field(
-        default="quantile", description="Classification method for numeric fields."
+    method: StatisticsMethod = Field(
+        default="quantile",
+        description=(
+            "Classification method for numeric fields, by the style's method "
+            "names: quantile, equal_interval, natural_breaks, std_dev, "
+            "heads_and_tails or geometric_interval (standard_deviation is read "
+            "as std_dev)."
+        ),
     )
     breaks: int = Field(
         default=5,
@@ -560,6 +869,10 @@ class FieldStatistics(BaseModel):
     field: str
     kind: Literal["numeric", "categorical"]
     filter: str
+    #: The features the filter keeps that have a value in the field, and
+    #: those that have none.
+    count: int
+    empty: int
     min: float | None = None
     max: float | None = None
     mean: float | None = None
@@ -571,6 +884,15 @@ class FieldStatistics(BaseModel):
     note: str | None = None
 
 
+def _features(result: Any, key: str) -> int:
+    """A number of features in an analytics answer; a missing or malformed
+    one is an error, never zero."""
+    value = result.get(key) if isinstance(result, dict) else None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ToolFailed("The analytics service answered without a feature count.")
+    return value
+
+
 async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatistics:
     layer = await _readable_layer(env, args)
     names = await _names(env, layer)
@@ -579,51 +901,93 @@ async def _field_statistics(env: ToolEnv, args: StatisticsInput) -> FieldStatist
     if field not in fields:
         raise InputInvalid(unknown_field(field, fields))
     feature_filter = names.filter(args.filter)
-    cql = _compile(feature_filter, fields)
-    described = describe_filter(feature_filter)
+    where, described = _where(layer, fields, feature_filter, args.as_drawn)
+    cql = _text(where)
     note = _note(*names.notes())
     if fields[field] in _NUMERIC:
-        result = await _analytics(
-            env,
-            "class-breaks",
-            {
-                "collection": layer.layer_id,
-                "attribute": field,
-                "method": args.method,
-                # Internal break points: ``breaks + 1`` classes.
-                "breaks": args.breaks,
-                "filter": cql,
-            },
+        # The histogram counts the features and those without a value in
+        # one request; one bin is the least it computes besides.
+        result, counted = await asyncio.gather(
+            _analytics(
+                env,
+                "class-breaks",
+                {
+                    "collection": layer.layer_id,
+                    "attribute": field,
+                    "method": _ENDPOINT_METHODS.get(args.method, args.method),
+                    # Internal break points: ``breaks + 1`` classes.
+                    "breaks": args.breaks,
+                    "filter": cql,
+                },
+            ),
+            _analytics(
+                env,
+                "histogram",
+                {
+                    "collection": layer.layer_id,
+                    "column": field,
+                    "num_bins": 1,
+                    "filter": cql,
+                },
+            ),
         )
+        total = _features(counted, "total_rows")
+        empty = _features(counted, "missing_count")
+        method = result.get("method")
         return FieldStatistics(
             layer=layer.name,
             field=field,
             kind="numeric",
             filter=described,
+            count=total - empty,
+            empty=empty,
             min=result.get("min"),
             max=result.get("max"),
             mean=result.get("mean"),
             std_dev=result.get("std_dev"),
-            method=result.get("method"),
+            method=_STYLE_METHODS.get(method, method)
+            if isinstance(method, str)
+            else None,
             breaks=result.get("breaks"),
             note=note,
         )
-    result = await _analytics(
-        env,
-        "unique-values",
-        {
-            "collection": layer.layer_id,
-            "attribute": field,
-            "order": "descendent",
-            "limit": UNIQUE_VALUES,
-            "filter": cql,
-        },
+    # unique-values leaves out the features without a value: two counts,
+    # all features and those without a value, as the legend counts them.
+    without = {"op": "isNull", "args": [{"property": field}]}
+    result, all_counted, empty_counted = await asyncio.gather(
+        _analytics(
+            env,
+            "unique-values",
+            {
+                "collection": layer.layer_id,
+                "attribute": field,
+                "order": "descendent",
+                "limit": UNIQUE_VALUES,
+                "filter": cql,
+            },
+        ),
+        _analytics(env, "feature-count", {"collection": layer.layer_id, "filter": cql}),
+        _analytics(
+            env,
+            "feature-count",
+            {
+                "collection": layer.layer_id,
+                "filter": json.dumps(
+                    without
+                    if where is None
+                    else {"op": "and", "args": [where, without]}
+                ),
+            },
+        ),
     )
+    empty = _features(empty_counted, "count")
     return FieldStatistics(
         layer=layer.name,
         field=field,
         kind="categorical",
         filter=described,
+        count=max(0, _features(all_counted, "count") - empty),
+        empty=empty,
         distinct_count=_distinct_total(result),
         values=[
             ValueCount(
@@ -640,10 +1004,18 @@ FIELD_STATISTICS: ToolSpec[StatisticsInput, FieldStatistics] = ToolSpec(
     name="project.field_statistics",
     description=(
         "Describe one field of a layer. Numeric fields: minimum, maximum, mean, "
-        "standard deviation and class breaks computed by GOAT (use these breaks for "
-        "classes, do not invent your own). Other fields: the number of distinct "
-        f"values and the {UNIQUE_VALUES} most frequent ones with their counts. Values "
-        "come back as text, whatever the field's type."
+        "standard deviation and class breaks computed by GOAT (breaks N gives N "
+        "break points, so N + 1 classes). The breaks describe the distribution and "
+        "may serve, rounded, as limits for manual classes or for workflow "
+        "settings; do not invent limits without them. A style with a computed "
+        "method takes the method and the count, and the server computes its "
+        "classes. Other fields: the number of distinct values and the "
+        f"{UNIQUE_VALUES} most frequent ones with their counts. Values come back "
+        "as text, whatever the field's type. Both answers carry count (the "
+        "features with a value) and empty (those without one) under the given "
+        "filter, so no separate count is needed. The layer's saved filter in the "
+        "project applies only with as_drawn true: read a filtered layer's numbers "
+        "with it to class what the map shows."
     ),
     input_model=StatisticsInput,
     output_model=FieldStatistics,
@@ -703,13 +1075,18 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
             f"Area statistics need a polygon layer; {layer.name!r} has {layer.geometry_type} features."
         )
     names = await _names(
-        env, layer, needed=args.group_by is not None or args.filter is not None
+        env,
+        layer,
+        needed=args.group_by is not None
+        or args.filter is not None
+        or _saved(layer, args.as_drawn) is not None,
     )
     group_by = names.name(args.group_by)
     if group_by is not None and group_by not in names.fields:
         raise InputInvalid(unknown_field(group_by, names.fields))
     feature_filter = names.filter(args.filter)
-    cql = await _cql(env, layer, feature_filter, names.fields)
+    where, words = _where(layer, names.fields, feature_filter, args.as_drawn)
+    cql = _text(where)
     total, smallest, largest = await asyncio.gather(
         *(
             _analytics(
@@ -747,7 +1124,7 @@ async def _area_statistics(env: ToolEnv, args: AreaStatisticsInput) -> AreaStati
             )
     return AreaStatistics(
         layer=layer.name,
-        filter=describe_filter(feature_filter),
+        filter=words,
         feature_count=count,
         total_area=area,
         mean_area=area / count if area is not None and count else None,
@@ -817,8 +1194,9 @@ async def _sample(env: ToolEnv, args: SampleInput) -> FeatureSample:
         "limit": max(1, min(args.limit, SAMPLE_MAX)),
         "properties": selected,
     }
-    if args.filter is not None:
-        params["filter"] = _compile(args.filter, fields)
+    where, words = _where(layer, fields, args.filter, args.as_drawn)
+    if where is not None:
+        params["filter"] = json.dumps(where)
         params["filter-lang"] = "cql2-json"
     body = await env.call(
         "geoapi", "GET", f"/collections/{layer.layer_id}/items", params=params
@@ -835,7 +1213,7 @@ async def _sample(env: ToolEnv, args: SampleInput) -> FeatureSample:
     ]
     return FeatureSample(
         layer=layer.name,
-        filter=describe_filter(args.filter),
+        filter=words,
         number_matched=body.get("numberMatched"),
         features=features,
     )
@@ -855,188 +1233,6 @@ SAMPLE_FEATURES: ToolSpec[SampleInput, FeatureSample] = ToolSpec(
     surfaces=PROJECT_SURFACES,
 )
 
-
-# -- map.propose_view ----------------------------------------------------------
-
-
-class ProposeViewInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    title: str = Field(
-        min_length=1,
-        max_length=80,
-        description="A short title for the card, in the user's language.",
-    )
-    bbox: list[float] | None = Field(
-        default=None,
-        min_length=4,
-        max_length=4,
-        description="[west, south, east, north] in WGS84.",
-    )
-    center: list[float] | None = Field(
-        default=None, min_length=2, max_length=2, description="[longitude, latitude]."
-    )
-    zoom: float | None = Field(
-        default=None, ge=0, le=22, description="Zoom level, with center."
-    )
-    bearing: float = Field(
-        default=0, ge=-180, le=180, description="Map rotation in degrees, with center."
-    )
-    pitch: float = Field(
-        default=0, ge=0, le=85, description="Map tilt in degrees, with center."
-    )
-    fit_layer_project_id: int | None = Field(
-        default=None,
-        ge=1,
-        description=(
-            "Fit the view to this layer's features (GOAT computes the extent); "
-            "a layer with geometry, not a table. Give the layer_project_id of a "
-            "layer of the open project."
-        ),
-    )
-    filter: FeatureFilter | None = Field(
-        default=None,
-        description=(
-            "With fit_layer_project_id: fit only the features matching this filter. "
-            f"{FILTER_EXAMPLES}"
-        ),
-    )
-
-
-def _check_bbox(bbox: list[float]) -> tuple[float, float, float, float]:
-    west, south, east, north = bbox
-    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
-        raise InputInvalid(
-            "bbox must be [west, south, east, north] with west < east and south < north in WGS84."
-        )
-    return west, south, east, north
-
-
-def _widen(
-    low: float, high: float, floor: float, ceiling: float
-) -> tuple[float, float]:
-    """``low..high`` at least ``_MIN_EXTENT_DEGREES`` wide, kept inside the bounds."""
-    if high - low >= _MIN_EXTENT_DEGREES:
-        return low, high
-    middle = (low + high) / 2
-    low, high = middle - _MIN_EXTENT_DEGREES / 2, middle + _MIN_EXTENT_DEGREES / 2
-    if low < floor:
-        return floor, floor + _MIN_EXTENT_DEGREES
-    if high > ceiling:
-        return ceiling - _MIN_EXTENT_DEGREES, ceiling
-    return low, high
-
-
-def _extent_bbox(raw: list[float]) -> tuple[float, float, float, float]:
-    """A layer's extent as a map view. One feature that is a point, or features
-    on one meridian or parallel, give a box with no width or height: it is
-    widened (the model's own bbox stays strictly checked)."""
-    try:
-        west, south, east, north = (float(value) for value in raw)
-        if not (west <= east and south <= north):
-            raise ValueError
-        west, east = _widen(west, east, -180.0, 180.0)
-        south, north = _widen(south, north, -90.0, 90.0)
-        return _check_bbox([west, south, east, north])
-    except (ValueError, InputInvalid) as exc:
-        raise ToolFailed("The layer's extent cannot be shown as a map view.") from exc
-
-
-async def _propose_view(env: ToolEnv, args: ProposeViewInput) -> ProposalShown:
-    modes = [
-        args.bbox is not None,
-        args.center is not None,
-        args.fit_layer_project_id is not None,
-    ]
-    if sum(modes) != 1:
-        raise InputInvalid(
-            "Pass exactly one of bbox, center with zoom, or fit_layer_project_id."
-        )
-    if args.filter is not None and args.fit_layer_project_id is None:
-        raise InputInvalid("filter goes with fit_layer_project_id.")
-    if args.center is None and (args.zoom is not None or args.bearing or args.pitch):
-        raise InputInvalid("zoom, bearing and pitch go with center.")
-    # Only the project that is open can be moved, so the layer is looked up there.
-    project_id = project_of(env.page)
-    if project_id is None:
-        raise InputInvalid("No project is open on this page.")
-    rows: list[ProposalRow] = []
-    camera: MapCamera | None = None
-    bbox: tuple[float, float, float, float] | None = None
-    if args.center is not None:
-        if args.zoom is None:
-            raise InputInvalid("center needs a zoom.")
-        longitude, latitude = args.center
-        if not (-180 <= longitude <= 180 and -85.06 <= latitude <= 85.06):
-            raise InputInvalid("center must be [longitude, latitude] in WGS84.")
-        camera = MapCamera(
-            center=(longitude, latitude),
-            zoom=args.zoom,
-            bearing=args.bearing,
-            pitch=args.pitch,
-        )
-        rows += [
-            proposal_row("center", f"{longitude:.5f}, {latitude:.5f}"),
-            proposal_row("zoom", f"{args.zoom:g}"),
-        ]
-    elif args.bbox is not None:
-        bbox = _check_bbox(args.bbox)
-        rows.append(proposal_row("bbox", ", ".join(f"{value:.5f}" for value in bbox)))
-    elif args.fit_layer_project_id is not None:
-        layer = await _readable_layer(
-            env,
-            LayerInput(
-                project_id=project_id, layer_project_id=args.fit_layer_project_id
-            ),
-        )
-        if layer.geometry_type is None:
-            # A table: the services have no extent to compute for it.
-            raise ToolFailed(
-                f"{layer.name!r} has no geometry to show on the map. Fit the view "
-                "to a layer with geometry, or pass bbox or center with zoom."
-            )
-        cql = await _cql(env, layer, args.filter)
-        extent = await _analytics(
-            env, "extent", {"collection": layer.layer_id, "filter": cql}
-        )
-        if not extent.get("bbox"):
-            raise ToolFailed("No features match, so there is nothing to show.")
-        bbox = _extent_bbox(list(extent["bbox"]))
-        rows.append(proposal_row("layer", layer.name))
-        if args.filter is not None:
-            rows.append(proposal_row("filter", describe_filter(args.filter)))
-    project = await _core(env, f"/{project_id}")
-    name = project.get("name")
-    rows.insert(0, proposal_row("project", name or str(project_id)))
-    proposal = Proposal(
-        kind="map.view",
-        surface="project.map",
-        target=ProposalTarget(project_id=project_id, name=name),
-        title=args.title,
-        rows=rows,
-        payload=MapViewPayload(
-            project_id=project_id,
-            camera=camera,
-            bbox=bbox,
-            layer_project_id=args.fit_layer_project_id,
-        ),
-    )
-    return await show(env, proposal)
-
-
-PROPOSE_VIEW: ToolSpec[ProposeViewInput, ProposalShown] = ToolSpec(
-    name="map.propose_view",
-    description=(
-        "Suggest a map view of the open project: a bounding box, a center and zoom, "
-        "or the extent of one of its layers' features. Shows a card; the map moves "
-        "only if the user applies it."
-    ),
-    input_model=ProposeViewInput,
-    output_model=ProposalShown,
-    run=_propose_view,
-    surfaces=frozenset({"project.map"}),
-    risk="propose",
-)
 
 # -- project.get_workflows / project.get_layouts -------------------------------
 
@@ -1224,7 +1420,7 @@ class ShareOf(BaseModel):
         default=None,
         description=(
             "Its own filter, for the denominator only (the first layer's filter "
-            "does not apply to it). " + FILTER_EXAMPLES
+            "and as_drawn do not apply to it). " + FILTER_EXAMPLES
         ),
     )
 
@@ -1440,7 +1636,8 @@ async def _group_statistics(
     then_by = names.name(args.then_by)
     feature_filter = names.filter(args.filter)
     _need_fields(names.fields, layer, args.operation, field, group_by, then_by)
-    cql = await _cql(env, layer, feature_filter, names.fields)
+    where, words = _where(layer, names.fields, feature_filter, args.as_drawn)
+    cql = _text(where)
     read_as = names.notes()
     by_share = args.order_by == "share"
     # Ranked by share, the groups are read in processes' order (by value),
@@ -1673,7 +1870,7 @@ async def _group_statistics(
         field=field,
         group_by=group_by,
         then_by=then_by,
-        filter=describe_filter(feature_filter),
+        filter=words,
         rows=rows,
         groups=(int(total_items) if isinstance(total_items, int) else read)
         + len(zeros),
@@ -1703,7 +1900,8 @@ GROUP_STATISTICS: ToolSpec[GroupStatisticsInput, GroupStatistics] = ToolSpec(
         "rows then come by share, a group of share_of.group_by with no features "
         "at 0 (count or sum), the groups without a share last, so a small group "
         "with the highest share comes first, not far down a list sorted by "
-        "value."
+        "value. The layer's saved filter in the project applies only with "
+        "as_drawn true."
     ),
     input_model=GroupStatisticsInput,
     output_model=GroupStatistics,
@@ -1719,7 +1917,6 @@ PROJECT_TOOLS: tuple[ToolSpec[Any, Any], ...] = (
     GROUP_STATISTICS,
     AREA_STATISTICS,
     SAMPLE_FEATURES,
-    PROPOSE_VIEW,
     GET_WORKFLOWS,
     GET_LAYOUTS,
 )

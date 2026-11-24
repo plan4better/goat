@@ -37,7 +37,7 @@ from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
 from assistant.tools.catalog import SHOW_RECORDS
 from assistant.tools.core import SHOW_ITEMS
 from assistant.tools.http import service_failed
-from assistant.tools.project import PROJECT_TOOLS, PROPOSE_VIEW
+from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.registry import ALL_TOOLS, BY_WIRE_NAME, tools_for
 from assistant.tools.runtime import (
     InputInvalid,
@@ -138,14 +138,12 @@ RESULT_READ_TOOLS = frozenset(
     ]
 )
 
-#: The tools that show the user what the answer found as cards (a map view
-#: as a card to apply): small results, no look-up. They run in every stage
-#: and past the tool-call limit, so an answer ends with its cards; past the
-#: look-ups in one step only, since each call is followed by a model call of
-#: the whole context (``_stage_allows``, ``RunDeps.shown_steps``).
-DISPLAY_TOOLS = frozenset(
-    {SHOW_ITEMS.wire_name, SHOW_RECORDS.wire_name, PROPOSE_VIEW.wire_name}
-)
+#: The tools that show the user what the answer found as cards: small
+#: results, no look-up. They run in every stage and past the tool-call limit,
+#: so an answer ends with its cards; past the look-ups in one step only,
+#: since each call is followed by a model call of the whole context
+#: (``_stage_allows``, ``RunDeps.shown_steps``).
+DISPLAY_TOOLS = frozenset({SHOW_ITEMS.wire_name, SHOW_RECORDS.wire_name})
 
 #: Responses of a run with neither text nor a tool call (only reasoning, only
 #: whitespace, or nothing) that end its look-ups: the next call is the answer
@@ -239,28 +237,35 @@ def _forget_results(
     arguments: dict[str, Any],
     *,
     landed: bool,
+    stale: frozenset[str] | None = None,
 ) -> None:
     """Drops from an answer's earlier results those a call of ``spec`` with
     ``arguments`` may have made stale (``ToolSpec.invalidates``): of the tools
     it names, the calls that name what it names, with the same values for
-    the arguments both take (a call that shares none, a listing, always). A
+    the arguments both take (a call that shares none, a listing, always), or
+    for those of them ``ToolSpec.same`` names when the tool sets it. A
     read's, whatever the write answered: a write that failed can still have
     found what the read shows changed elsewhere. A write's (the summary a
     repeated run returns) only once the write landed: a new run then runs
     what the write changed, and any other would run the same again. Nothing
-    when the arguments do not validate: nothing ran."""
+    when the arguments do not validate: nothing ran. ``stale``: the tools of
+    ``invalidates`` the returned result can have made stale
+    (``ToolSpec.stale``); None for all of them."""
     written = _arguments(spec, arguments) if spec.invalidates else None
     if written is None:
         return
     for key in list(results):
         tool, _, stored = key.partition(" ")
-        if tool not in spec.invalidates:
+        if tool not in spec.invalidates or (stale is not None and tool not in stale):
             continue
         invalidated = BY_WIRE_NAME.get(tool)
         if not landed and invalidated is not None and invalidated.risk != "read":
             continue
         named = json.loads(stored) if stored else {}
-        if all(named[name] == written[name] for name in named.keys() & written.keys()):
+        compared = named.keys() & written.keys()
+        if spec.same is not None:
+            compared &= spec.same
+        if all(named[name] == written[name] for name in compared):
             del results[key]
 
 
@@ -405,6 +410,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
             if spec.wire_name == RUN.wire_name:
                 _note_run(ctx, arguments)
             landed = False
+            stale: frozenset[str] | None = None
             try:
                 result = await execute(
                     spec,
@@ -414,6 +420,8 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     check_result=check,
                 )
                 landed = True
+                if spec.stale is not None:
+                    stale = spec.stale(result)
             except ResultOverCap as exc:
                 # Its text asks for a narrower call, and the look-ups go on:
                 # only the same call is refused again without running.
@@ -433,7 +441,11 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 raise
             finally:
                 _forget_results(
-                    ctx.deps.earlier_results, spec, arguments, landed=landed
+                    ctx.deps.earlier_results,
+                    spec,
+                    arguments,
+                    landed=landed,
+                    stale=stale,
                 )
             if spec.wire_name == ASK_TOOL:
                 ctx.deps.asked = True

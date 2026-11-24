@@ -60,9 +60,27 @@ class Creates(Protocol):
 class Undoes(Protocol):
     """The result of a write tool that changed a document that exists: what
     takes the change back, for its audit row (the ``undo`` column), or None
-    when it changed nothing."""
+    when it changed nothing. A call that ends without a result after a write
+    landed leaves the record its ``ToolEnv.landed`` holds instead."""
 
     def undo(self) -> dict[str, Any] | None: ...
+
+
+class LandedUndo:
+    """A write tool's undo record while the call runs: the tool hands over
+    how to build it as soon as its first write landed, built from the
+    tool's own state, so it follows the writes that land after. ``execute``
+    gives each call its own and writes it into the audit row when the call
+    ends without a result (a Stop, the answer's clock, any exception)."""
+
+    def __init__(self) -> None:
+        self._record: Callable[[], dict[str, Any] | None] | None = None
+
+    def keep(self, record: Callable[[], dict[str, Any] | None]) -> None:
+        self._record = record
+
+    def read(self) -> dict[str, Any] | None:
+        return self._record() if self._record is not None else None
 
 
 class EmitData(Protocol):
@@ -123,6 +141,16 @@ class ToolEnv:
     #: The conversation's cards and their answers, for tools that act only on
     #: what the user picked in a card (``assistant.asks.user_chose``).
     asks: AskHistory = field(default_factory=AskHistory)
+    #: What the user typed in this conversation, this message included
+    #: (``assistant.asks.typed_texts``): a new style needs the user's words
+    #: from it. None over MCP and in tests that give none.
+    typed: tuple[str, ...] | None = None
+    #: The skills whose instructions this conversation loaded
+    #: (``assistant.tools.skills.loaded_skills``); ``skills_load`` adds to it.
+    #: None over MCP and in tests that give none.
+    skills: set[str] | None = None
+    #: The notes given once per answer that this answer gave already.
+    notes_given: set[str] = field(default_factory=set)
     #: The answer's clock, for a tool that waits (a workflow run); None over
     #: MCP and in tests that give none.
     clock: AnswerClock | None = None
@@ -144,9 +172,21 @@ class ToolEnv:
     #: page id and section, at most ``MAX_PAGES_PER_ANSWER`` pages and
     #: ``MAX_PARTS_PER_ANSWER`` parts.
     docs_read: list[tuple[str, str]] = field(default_factory=list)
+    #: The style changes this answer made, by ``layer_project_id``
+    #: (``assistant.tools.styles``): from the third of one layer on, the
+    #: result says to finish.
+    style_changes: dict[int, int] = field(default_factory=dict)
+    #: The card values this answer's map changes asked the user's pick for
+    #: (``MapUpdated.confirm``, ``assistant.tools.map_edits``): a question
+    #: that offers one asks no answered question again
+    #: (``assistant.asks.repeated_question``).
+    confirm_values: set[str] = field(default_factory=set)
     #: Whether the service is shutting down, so a cancelled tool knows it was
     #: not the user's Stop (a workflow run then goes on).
     stopping: Callable[[], bool] = field(default=_not_stopping, repr=False)
+    #: The undo record of the call's landed writes (``LandedUndo``);
+    #: ``execute`` sets a new one on the copy each call gets.
+    landed: LandedUndo = field(default_factory=LandedUndo, repr=False)
 
     def secrets(self) -> list[str]:
         """Everything to mask in this run's errors, logs and audit rows."""
@@ -197,10 +237,11 @@ class ToolSpec(Generic[In, Out]):
     run: Callable[[ToolEnv, In], Awaitable[BaseModel]]
     #: Where it is loaded (spec §6.3).
     surfaces: frozenset[Surface]
-    #: Spec §8.1: read, propose (a card the user applies) or write (creates
-    #: something new; a workflow run replaces a workflow's previous results,
-    #: and a workflow edit changes a workflow; nothing else changes or
-    #: deletes).
+    #: Spec §8.1: read, propose (a card the user applies) or write. A write
+    #: creates something new, or changes what exists in a way the user takes
+    #: back with the dock's undo (a workflow edit, a style change, a change
+    #: of the map); a workflow run replaces the workflow's previous results,
+    #: which no undo brings back.
     risk: Risk = "read"
     #: Published over MCP (spec §9.1).
     mcp: bool = False
@@ -228,6 +269,16 @@ class ToolSpec(Generic[In, Out]):
     #: instead of getting its earlier result: a read's whatever the call
     #: answered, a write's once it landed (``assistant.tools.toolset``).
     invalidates: frozenset[str] = frozenset()
+    #: Set on a write tool: the arguments that name what this write changes;
+    #: an earlier result of a tool in ``invalidates`` is stale when it agrees
+    #: on these, whatever else it took. None compares every argument both
+    #: calls take; an empty set compares none, so every earlier result of
+    #: those tools is stale.
+    same: frozenset[str] | None = None
+    #: Set on a write tool: which of ``invalidates`` its returned result (as
+    #: ``execute`` returns it) can have made stale; None: all of them. A call
+    #: that ended without a result counts as one that can have changed all.
+    stale: Callable[[dict[str, Any]], frozenset[str]] | None = None
     #: Set on a tool whose result the answer reports before it asks: whether
     #: its result (as ``execute`` returns it) is one to report (a finished
     #: workflow run). After such a result, ``ask_user`` is refused in that
@@ -346,13 +397,18 @@ async def execute(
     size = 0
     created: dict[str, Any] | None = None
     undo: dict[str, Any] | None = None
+    landed = LandedUndo()
+    #: Whether the undo record came from the returned result.
+    undo_read = False
     try:
         try:
             args = spec.input_model.model_validate(dict(raw_args))
         except ValidationError as exc:
             raise InputInvalid(_describe(exc)) from exc
         # Each call its own copy: calls of one answer run concurrently.
-        result = await spec.run(replace(env, tool_call_id=tool_call_id), args)
+        result = await spec.run(
+            replace(env, tool_call_id=tool_call_id, landed=landed), args
+        )
         # Recorded whatever happens next: what a write created exists even
         # when its result is then too large to send.
         if isinstance(result, Creates):
@@ -365,6 +421,7 @@ async def execute(
         if isinstance(result, Undoes):
             try:
                 undo = result.undo()
+                undo_read = True
             except Exception:
                 # The change is saved either way and the model must see it:
                 # only its undo is lost.
@@ -415,6 +472,14 @@ async def execute(
             "The tool failed unexpectedly. Try again or answer without it."
         ) from exc
     finally:
+        if not undo_read:
+            # The call ended without a result after a write landed, or its
+            # result's record could not be read: what landed is taken back
+            # from what the tool kept as its writes landed.
+            try:
+                undo = landed.read()
+            except Exception:
+                logger.exception("Reading the kept undo of %s failed", spec.wire_name)
         await _audit(
             env,
             spec,

@@ -33,7 +33,9 @@ DESCRIPTIONS: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))[
 SKILL = BUILT_IN["build-a-workflow"]
 TEXTS = {"SKILL.md": SKILL.instructions, **SKILL.files}
 NUMBERED = re.compile(r"^opportunity_[123]_(?P<name>[a-z_]+)$")
-TOOL_NAME = re.compile(r"\b(?:workflow|project|catalog|core|ask|skills)_[a-z_]+\b")
+TOOL_NAME = re.compile(
+    r"\b(?:workflow|project|catalog|core|map|style|ask|skills)_[a-z_]+\b"
+)
 #: The recipe files, one per kind of question, and the sections each holds,
 #: in order. Every section sits in exactly one file, so a question loads one.
 RECIPE_SECTIONS = {

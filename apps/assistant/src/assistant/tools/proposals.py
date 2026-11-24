@@ -1,5 +1,5 @@
-"""Page-state proposals (spec §8.2, kind 1): a suggestion card the page applies
-to its own state when the user clicks Apply. The assistant saves nothing.
+"""Page-state proposals (spec §8.2): a suggestion card the page applies to its
+own state when the user clicks Apply. The assistant saves nothing.
 
 The ``proposal`` data part is a contract with the web app's surface adapters
 (plan 4); ``version`` changes when its shape does.
@@ -10,7 +10,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.surfaces import Surface
@@ -22,20 +22,12 @@ from assistant.tools.runtime import ToolEnv
 #: as the catalog page labels that filter. Rows are built only by ``proposal_row`` and
 #: ``facet_row``.
 ProposalRowKey = Literal[
-    # catalog.filters
     "q",
     "from",
     "to",
     "nuts",
     "sortby",
     "number_matched",
-    # map.view
-    "project",
-    "center",
-    "zoom",
-    "bbox",
-    "layer",
-    "filter",
 ]
 
 
@@ -72,38 +64,16 @@ class CatalogFiltersPayload(BaseModel):
     number_matched: int
 
 
-class MapCamera(BaseModel):
-    center: tuple[float, float]
-    zoom: float
-    bearing: float = 0
-    pitch: float = 0
-
-
-class MapViewPayload(BaseModel):
-    """Exactly one of ``camera`` and ``bbox`` is set."""
-
-    project_id: UUID
-    camera: MapCamera | None = None
-    bbox: tuple[float, float, float, float] | None = None
-    layer_project_id: int | None = None
-
-    @model_validator(mode="after")
-    def _one_view(self) -> "MapViewPayload":
-        if (self.camera is None) == (self.bbox is None):
-            raise ValueError("exactly one of camera and bbox must be set")
-        return self
-
-
 class Proposal(BaseModel):
     version: Literal[1] = 1
-    kind: Literal["catalog.filters", "map.view"]
+    kind: Literal["catalog.filters"]
     #: The surface whose adapter applies it.
     surface: Surface
     #: The project it applies to (spec §10: proposals always name their target).
     target: ProposalTarget | None
     title: str
     rows: list[ProposalRow]
-    payload: CatalogFiltersPayload | MapViewPayload
+    payload: CatalogFiltersPayload
 
 
 class ProposalShown(BaseModel):

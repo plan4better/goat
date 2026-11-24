@@ -446,7 +446,8 @@ async def test_a_run_on_home_offers_the_project_and_catalog_tools(
 ) -> None:
     """Decision T16: on Home the agent can read another project by its ID. The
     public catalog is searchable from every page, and its filter suggestion
-    (a card that opens the catalog) is offered too; only the map view is not."""
+    (a card that opens the catalog) is offered too; the tools that change the
+    map are not."""
     script = ScriptedModel()
     manager = RunManager(
         repo,
@@ -463,7 +464,7 @@ async def test_a_run_on_home_offers_the_project_and_catalog_tools(
     offered = {tool.name for tool in script.infos[0].function_tools}
     assert "project_get_layers" in offered and "core_find" in offered
     assert {"catalog_search", "catalog_propose_filters"} <= offered
-    assert "map_propose_view" not in offered
+    assert "map_update" not in offered and "style_update" not in offered
 
 
 async def test_a_422_never_echoes_the_refresh_token(

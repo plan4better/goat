@@ -477,6 +477,35 @@ async def test_the_tools_check_counts_calls(backends: Backends) -> None:
     ]
 
 
+async def test_the_tools_check_bounds_the_calls_of_several_tools_together(
+    backends: Backends,
+) -> None:
+    """A key that joins tools with "+" bounds their calls in sum, failed
+    calls included."""
+    task = _check_task(
+        '{"kind": "tools", "at_most": '
+        '{"project_count_features+project_group_statistics": 1, "style_update": 2}}'
+    )
+
+    def calls(*names: str) -> list[ToolCall]:
+        return [ToolCall(name, {}, None, False) for name in names]
+
+    async def passed(made: list[ToolCall]) -> tuple[bool, str]:
+        [graded] = await grade(task, _transcript(made), backends)
+        return graded.passed, graded.detail
+
+    assert (await passed(calls("project_count_features", "style_update")))[0]
+    assert (await passed(calls("style_update", "style_update")))[0]
+    together, detail = await passed(
+        calls("project_count_features", "project_group_statistics")
+    )
+    assert not together
+    assert "project_count_features+project_group_statistics" in detail
+    failed = [ToolCall("project_group_statistics", {}, None, True)]
+    assert not (await passed(calls("project_count_features") + failed))[0]
+    assert not (await passed(calls("style_update", "style_update", "style_update")))[0]
+
+
 # What the delivered tools need from the fixture backends beyond the brief.
 
 
