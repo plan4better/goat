@@ -6,12 +6,12 @@ import { type Path, getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { withRuleIds } from "@/lib/style/ids";
 import { deepEqual, isObject } from "@/lib/style/json";
-import type { StyleSaver } from "@/lib/style/save";
+import type { StyleIssue, StyleSaver } from "@/lib/style/save";
 
 /** The class the panel edits on its own (spec 5.5): a class of `classify[classify]`, or its `other`. */
 export interface ClassScope {
   classify: number;
-  key: number | "other";
+  key: number | "other" | "no_data";
 }
 
 /** A rule whose matching features the panel styles (spec 6): its id, and where it is now. */
@@ -124,6 +124,30 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
     this.replace(next);
   }
 
+  /** A newer stored style that was changed elsewhere (the assistant): one undo step back to the document as it is
+   * now, unsaved edits included, then the saver takes the stored style as its base with those edits on top. An
+   * older or equal revision changes nothing, nor does a saver that takes no stored document (the scene's). */
+  takeOutside(stored: { document: LayerStyle; revision: number; issues?: StyleIssue[] }): void {
+    const saver: DocumentSaver<LayerStyle> & Partial<Pick<StyleSaver, "revision" | "receive">> = this.saver;
+    if (typeof saver.receive !== "function" || typeof saver.revision !== "number") return;
+    if (stored.revision <= saver.revision) return;
+    const before = this.current;
+    const future = this.future;
+    // Recorded first: subscribers read the history when the saver tells of the received style.
+    this.past.push(before);
+    this.future = [];
+    saver.receive(stored);
+    this.fromSaver();
+    if (this.current === before) {
+      // The same document at a newer revision is no step.
+      this.past.pop();
+      this.future = future;
+      return;
+    }
+    if (this.past.length > HISTORY) this.past.shift();
+    this.lastKey = null;
+  }
+
   setScope(scope: Scope | null): void {
     if (deepEqual(scope, this.currentScope)) return;
     this.currentScope = scope;
@@ -135,7 +159,7 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
   private idsAt(scope: Scope): { classify?: string; key?: string } {
     if (isRuleScope(scope)) return {};
     const c = getIn(this.current, `classify.${scope.classify}`);
-    const record = scope.key === "other" ? undefined : getIn(c, `classes.${scope.key}`);
+    const record = typeof scope.key === "number" ? getIn(c, `classes.${scope.key}`) : undefined;
     const id = (node: unknown) => (isObject(node) && typeof node.id === "string" ? node.id : undefined);
     return { classify: id(c), key: id(record) };
   }
@@ -189,8 +213,10 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
       id === undefined ? at : items.findIndex((item) => isObject(item) && item.id === id);
     const classify = indexOf(list(getIn(this.current, "classify")), ids.classify, scope.classify);
     const c = getIn(this.current, `classify.${classify}`);
-    const key = scope.key === "other" ? "other" : indexOf(list(getIn(c, "classes")), ids.key, scope.key);
-    const path = key === "other" ? `classify.${classify}.other` : `classify.${classify}.classes.${key}`;
+    const key =
+      typeof scope.key === "number" ? indexOf(list(getIn(c, "classes")), ids.key, scope.key) : scope.key;
+    const path =
+      typeof key === "number" ? `classify.${classify}.classes.${key}` : `classify.${classify}.${key}`;
     if (classify < 0 || key === -1 || !isObject(getIn(this.current, path))) {
       this.currentScope = null;
       this.scopeIds = null;

@@ -167,6 +167,108 @@ async def test_a_cancelled_call_is_audited_as_cancelled(
     assert (row["status"], row["error"]) == ("error", "cancelled")
 
 
+class _Rows:
+    """The audit rows a call leaves, in memory."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+
+    async def insert_tool_call(self, **row: Any) -> None:
+        self.rows.append(row)
+
+
+class _Written(BaseModel):
+    echoed: str
+
+    def undo(self) -> dict[str, Any] | None:
+        return {"kind": "test", "from": "result"}
+
+
+def _landing(stop: BaseException | None) -> Any:
+    """A write tool whose first write lands, then ``stop`` ends the call (None:
+    it returns its result)."""
+
+    async def run(env: ToolEnv, args: EchoIn) -> _Written:
+        env.landed.keep(lambda: {"kind": "test", "from": "holder", "text": args.text})
+        if stop is not None:
+            raise stop
+        return _Written(echoed=args.text)
+
+    return run
+
+
+@pytest.mark.parametrize(
+    ("stop", "raised"),
+    [
+        (asyncio.CancelledError(), asyncio.CancelledError),
+        (ToolFailed("core refused the second write"), ToolFailed),
+        (RuntimeError("boom"), ToolFailed),
+        (InputInvalid("a late refusal"), InputInvalid),
+    ],
+)
+async def test_a_call_that_ends_after_a_landed_write_keeps_its_undo_record(
+    stop: BaseException, raised: type[BaseException]
+) -> None:
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(raised):
+        await execute(_spec(_landing(stop), _Written), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] == {"kind": "test", "from": "holder", "text": "a"}
+    assert row["status"] in ("error", "invalid")
+
+
+async def test_a_returned_result_s_undo_record_comes_before_the_holder() -> None:
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    await execute(_spec(_landing(None), _Written), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] == {"kind": "test", "from": "result"}
+
+
+async def test_a_call_stopped_before_any_write_leaves_no_undo_record() -> None:
+    async def _stopped(env: ToolEnv, args: EchoIn) -> EchoOut:
+        raise asyncio.CancelledError()
+
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(asyncio.CancelledError):
+        await execute(_spec(_stopped), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] is None
+
+
+async def test_each_call_gets_its_own_undo_holder() -> None:
+    seen: list[Any] = []
+
+    async def _sees(env: ToolEnv, args: EchoIn) -> EchoOut:
+        seen.append(env.landed)
+        return EchoOut(echoed="a")
+
+    env = tool_env(fake_clients())
+    await execute(_spec(_sees), env, {"text": "a"})
+    await execute(_spec(_sees), env, {"text": "a"})
+    assert seen[0] is not seen[1] and seen[0] is not env.landed
+
+
+async def test_a_holder_that_fails_to_build_its_record_does_not_fail_the_audit() -> (
+    None
+):
+    async def _broken_holder(env: ToolEnv, args: EchoIn) -> EchoOut:
+        def broken() -> dict[str, Any]:
+            raise KeyError("x")
+
+        env.landed.keep(broken)
+        raise asyncio.CancelledError()
+
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(asyncio.CancelledError):
+        await execute(_spec(_broken_holder), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] is None and row["error"] == "cancelled"
+
+
 def test_long_arguments_are_shortened_for_the_audit() -> None:
     summary = summarize_args(
         {

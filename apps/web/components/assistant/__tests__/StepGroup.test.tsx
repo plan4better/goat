@@ -200,6 +200,134 @@ describe("StepGroup", () => {
   });
 });
 
+describe("repeated writes in a group", () => {
+  const styleChange = (input: unknown = { layer_project_id: 1, operations: [] }) =>
+    call("style_update", input, "output-available", {
+      project_id: "p1",
+      layer_project_id: 1,
+      style_id: "s1",
+      created: false,
+      revision_before: 1,
+      revision_after: 2,
+    });
+  const lines = () => screen.getAllByRole("button").map((button) => button.textContent);
+
+  it("shows adjacent finished writes with the same label as one line with their count", () => {
+    const steps = [styleChange(), styleChange(), styleChange(), styleChange(), styleChange()];
+    render(<StepGroup steps={steps} open={false} running={false} />);
+    expect(lines()).toEqual(["Changed the style · 5 times"]);
+  });
+
+  it("shows a single write as before, without a count", () => {
+    render(<StepGroup steps={[search("a"), styleChange(), search("b")]} open={false} running={false} />);
+    expect(lines()).toEqual(["Searched the catalog 2 times", "Changed the style"]);
+  });
+
+  it("keeps writes with different labels apart", () => {
+    const created = call("style_update", { layer_project_id: 1, operations: [] }, "output-available", {
+      style_id: "s2",
+      created: true,
+      name: "Bunt",
+    });
+    render(<StepGroup steps={[created, styleChange(), styleChange()]} open={false} running={false} />);
+    expect(lines()).toEqual(["Created the style “Bunt”", "Changed the style · 2 times"]);
+  });
+
+  it("breaks the run at a failed or running step, which shows on its own", () => {
+    const broken = call("map_update", { operations: [] }, "output-error");
+    const { unmount } = render(
+      <StepGroup steps={[styleChange(), styleChange(), broken, styleChange()]} open={false} running={false} />
+    );
+    expect(lines()).toEqual(["Changed the style · 2 times", "Changed the map · Failed", "Changed the style"]);
+    unmount();
+    const busy = call("style_update", { layer_project_id: 1, operations: [] }, "input-available");
+    render(<StepGroup steps={[styleChange(), styleChange(), busy]} open running />);
+    expect(lines()).toEqual(["Changed the style · 2 times", "Changing the style…"]);
+  });
+
+  it("counts writes as repeated when the read steps between them fold into the summary", () => {
+    render(
+      <StepGroup
+        steps={[styleChange(), search("a"), search("b"), styleChange()]}
+        open={false}
+        running={false}
+      />
+    );
+    expect(lines()).toEqual(["Searched the catalog 2 times", "Changed the style · 2 times"]);
+    // Open, the list shows every step in the answer's order: the reads between the writes end the run.
+    fireEvent.click(summaryButton());
+    expect(lines()).toEqual([
+      "Searched the catalog 2 times",
+      "Changed the style",
+      "Searched the catalog for “a” · 3 datasets",
+      "Searched the catalog for “b” · 3 datasets",
+      "Changed the style",
+    ]);
+  });
+
+  it("ends a run at a visible failed step between the writes, which keeps its place", () => {
+    const steps = [
+      styleChange(),
+      call("style_get", { layer_project_id: 1 }, "output-available", { style_id: "s1" }),
+      styleChange(),
+      call("project_field_statistics", { layer_project_id: 1, field: "type" }, "output-error"),
+      call("style_get", { layer_project_id: 1 }, "output-available", { style_id: "s1" }),
+      styleChange(),
+      ...Array.from({ length: 6 }, (_, index) =>
+        call("project_count_features", { layer_project_id: index + 1 }, "output-available", { count: 3 })
+      ),
+      call("style_catalog", { kind: "palettes" }, "output-available", {}),
+      ...Array.from({ length: 5 }, (_, index) =>
+        call(
+          "project_group_statistics",
+          { layer_project_id: 1, group_by: `f${index}` },
+          "output-available",
+          {}
+        )
+      ),
+      styleChange(),
+      call("project_get_layers", {}, "output-available", { layers: [] }),
+      call("style_get", { layer_project_id: 1 }, "output-available", { style_id: "s1" }),
+      styleChange(),
+    ];
+    render(<StepGroup steps={steps} open={false} running={false} />);
+    const [summary, ...rest] = lines();
+    expect(summary).toMatch(/^Read a style, counted features 6 times/);
+    expect(rest).toHaveLength(3);
+    expect(rest[0]).toBe("Changed the style · 2 times");
+    expect(rest[1]).toMatch(/ · Failed$/);
+    expect(rest[2]).toBe("Changed the style · 3 times");
+  });
+
+  it("shows the reads between writes one by one while the group is open, and folds the writes when it closes", () => {
+    const steps = [styleChange(), search("a"), search("b"), styleChange()];
+    const { rerender } = render(<StepGroup steps={steps} open running />);
+    expect(lines()).toEqual([
+      "Changed the style",
+      "Searched the catalog for “a” · 3 datasets",
+      "Searched the catalog for “b” · 3 datasets",
+      "Changed the style",
+    ]);
+    rerender(<StepGroup steps={steps} open={false} running />);
+    expect(lines()).toEqual(["Searched the catalog 2 times", "Changed the style · 2 times"]);
+  });
+
+  it("opens the details of every call the line stands for, in their order", () => {
+    const steps = [
+      styleChange({ layer_project_id: 1, operations: [{ color: "red" }] }),
+      styleChange({ layer_project_id: 1, operations: [{ color: "blue" }] }),
+    ];
+    const { container } = render(<StepGroup steps={steps} open={false} running={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Changed the style/ }));
+    const details = container.querySelector("pre")?.textContent ?? "";
+    expect(details.match(/style_update/g)).toHaveLength(1);
+    expect(details.match(/^Input$/gm)).toHaveLength(2);
+    expect(details.match(/^Result$/gm)).toHaveLength(2);
+    expect(details.indexOf("red")).toBeGreaterThan(-1);
+    expect(details.indexOf("blue")).toBeGreaterThan(details.indexOf("red"));
+  });
+});
+
 describe("StepGroup in the transcript", () => {
   it("counts a call that names the open project of the question as the open project", () => {
     const project = "3731e570-0000-4000-8000-000000000001";

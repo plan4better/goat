@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { DynamicToolUIPart, UIMessageChunk } from "ai";
 import { StrictMode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { refreshConversationLists } from "@/lib/assistant/conversations";
 import { AssistantRequestError } from "@/lib/assistant/errors";
+import { type MapBridge, registerMapBridge } from "@/lib/assistant/mapBridge";
 import {
   getAskChoices,
   getDockState,
@@ -16,6 +17,8 @@ import {
 } from "@/lib/assistant/store";
 import { fetchConversation } from "@/lib/assistant/transport";
 import type { AssistantMessage, ConversationDetail } from "@/lib/assistant/types";
+import { StyleStoreRegistry } from "@/lib/style/editor/registry";
+import type { LayerStyle } from "@/lib/style/generated/types";
 
 import ChatView, { type ChatViewProps, STOP_GRACE_MS } from "@/components/assistant/ChatView";
 import { DockActionsContext } from "@/components/assistant/DockActions";
@@ -1168,6 +1171,46 @@ describe("ChatView ask cards", () => {
     expect(sendMessages).toHaveBeenCalledTimes(1);
   });
 
+  it("sends a card's answer once the map page's pending style saves are stored, once also when pressed twice", async () => {
+    act(() => {
+      registerSurface({
+        surface: "project.map",
+        project: { id: "p1", name: "Eins" },
+        getContext: () => ({ surface: "project.map", project_id: "p1" }),
+      });
+    });
+    let saved: () => void = () => undefined;
+    const settle = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    const unregister = registerMapBridge({
+      projectId: "p1",
+      isEditor: true,
+      followStyles: vi.fn(),
+      settle,
+      followMap: vi.fn(),
+      applyView: vi.fn(),
+    });
+    try {
+      vi.mocked(fetchConversation).mockResolvedValue(stored(asked));
+      sendMessages.mockResolvedValue(stream([...REPLY, ...text("Thanks"), ...FINISH]));
+      renderChat({ initialMessages: asked });
+      fireEvent.click(screen.getByRole("radio", { name: /Schools \(catalog\)/ }));
+      const button = cardSend();
+      act(() => {
+        button.click();
+        button.click();
+      });
+      await waitFor(() => expect(settle).toHaveBeenCalledTimes(1));
+      expect(sendMessages).not.toHaveBeenCalled();
+      await act(async () => saved());
+      await screen.findByText("Thanks");
+      expect(fetchConversation).toHaveBeenCalledTimes(1);
+      expect(settle).toHaveBeenCalledTimes(1);
+      expect(sendMessages).toHaveBeenCalledTimes(1);
+    } finally {
+      unregister();
+    }
+  });
+
   /** The stored conversation's read, held until the test lets it answer. */
   const heldRead = () => {
     let respond: (detail: ConversationDetail) => void = () => undefined;
@@ -1776,5 +1819,144 @@ describe("ChatView created workflows", () => {
     await screen.findByText("Created.");
     await waitFor(() => expect(actions.openCreatedWorkflow).toHaveBeenCalledWith("p1", "w-new"));
     expect(actions.openCreatedWorkflow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ChatView waits for the map page's pending style saves", () => {
+  const PROJECT = "p1";
+  /** The map page's bridge, whose settle resolves when the test says so. */
+  let bridge: MapBridge & { settle: ReturnType<typeof vi.fn> };
+  let stored: () => void;
+  let unregister: () => void = () => undefined;
+  const registerBridge = (next: Partial<MapBridge> = {}) => {
+    bridge = {
+      projectId: PROJECT,
+      isEditor: true,
+      followStyles: vi.fn(async () => undefined),
+      settle: vi.fn(() => new Promise<void>((resolve) => (stored = resolve))),
+      ...next,
+    } as typeof bridge;
+    unregister = registerMapBridge(bridge);
+  };
+  const sentTexts = () =>
+    sendMessages.mock.calls.map(([options]) => {
+      const user = (options as { messages: AssistantMessage[] }).messages.at(-1);
+      const part = user?.parts.find((p) => p.type === "text");
+      return part && "text" in part ? part.text : null;
+    });
+
+  beforeEach(() => {
+    sendMessages.mockReset();
+    sendMessages.mockResolvedValue(stream([...START, ...text("Antwort")], "hang"));
+    act(() => {
+      registerSurface({
+        surface: "project.map",
+        project: { id: PROJECT, name: "Eins" },
+        getContext: () => ({ surface: "project.map", project_id: PROJECT }),
+      });
+    });
+  });
+  afterEach(() => unregister());
+
+  it("a message waits for settle and is sent once", async () => {
+    registerBridge();
+    renderChat();
+    send("Mach die Schulen rot");
+    expect(bridge.settle).toHaveBeenCalledTimes(1);
+    // The input is cleared as before; nothing goes out and no run is pending while the saves go.
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe("");
+    expect(getDockState().pending).toHaveLength(0);
+    // Send again on the empty input, and a further message typed meanwhile: it waits in the queue.
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    send("und die Kitas blau");
+    expect(within(queuedItem()).getByText("und die Kitas blau")).toBeTruthy();
+    // Send now waits for the message ahead of it.
+    fireEvent.click(within(queuedItem()).getByRole("button", { name: "assistant_send_now" }));
+    await act(async () => undefined);
+    expect(sendMessages).not.toHaveBeenCalled();
+    await act(async () => stored());
+    await screen.findByText("Antwort");
+    expect(sentTexts()).toEqual(["Mach die Schulen rot"]);
+    expect(bridge.settle).toHaveBeenCalledTimes(1);
+    expect(getDockState().pending).toHaveLength(1);
+    expect(within(queuedItem()).getByText("und die Kitas blau")).toBeTruthy();
+  });
+
+  it("a message is sent although settle timed out", async () => {
+    // The page's store has a save the server never answers: settle gives up after its time.
+    const registry = new StyleStoreRegistry({
+      createTransport: () => ({
+        save: () => new Promise(() => undefined),
+        load: () => new Promise(() => undefined),
+      }),
+      win: new EventTarget(),
+    });
+    const doc = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
+    const store = registry.acquire(
+      { projectId: PROJECT, layerProjectId: 7, styleId: "s1" },
+      { document: doc, revision: 1 }
+    );
+    store.set("symbol.fill.color", "#ff0000");
+    registerBridge({ settle: vi.fn(() => registry.settle(20)) });
+    renderChat();
+    send("Welche Layer?");
+    await screen.findByText("Antwort");
+    expect(store.saver.pending).toBe(true);
+    expect(sentTexts()).toEqual(["Welche Layer?"]);
+    store.saver.dispose();
+  });
+
+  it("a message is sent although settle failed", async () => {
+    registerBridge({ settle: vi.fn(async () => Promise.reject(new Error("broken"))) });
+    renderChat();
+    send("Welche Layer?");
+    await screen.findByText("Antwort");
+    expect(sentTexts()).toEqual(["Welche Layer?"]);
+  });
+
+  it("on a page without a map bridge a message goes out at once", async () => {
+    renderChat();
+    send("Welche Layer?");
+    // No wait: the run is pending in the same event.
+    expect(getDockState().pending).toHaveLength(1);
+    await screen.findByText("Antwort");
+    expect(sentTexts()).toEqual(["Welche Layer?"]);
+  });
+
+  it("waits for no map page of another project", async () => {
+    registerBridge({ projectId: "p2" });
+    renderChat();
+    send("Welche Layer?");
+    expect(getDockState().pending).toHaveLength(1);
+    await screen.findByText("Antwort");
+    expect(bridge.settle).not.toHaveBeenCalled();
+  });
+
+  it("waits for no map page on a page without a project", async () => {
+    registerBridge();
+    act(() => {
+      registerSurface({
+        surface: "catalog",
+        getContext: () => ({ surface: "catalog", q: "rad", facets: { themes: ["transportation"] } }),
+      });
+    });
+    renderChat();
+    send("Welche Layer?");
+    expect(getDockState().pending).toHaveLength(1);
+    await screen.findByText("Antwort");
+    expect(bridge.settle).not.toHaveBeenCalled();
+  });
+
+  it("still sends a message whose wait outlived the chat", async () => {
+    registerBridge();
+    const { unmount } = renderChat();
+    send("Mach die Schulen rot");
+    expect(bridge.settle).toHaveBeenCalledTimes(1);
+    // The dock closed (or expanded and mounted the chat again) during the wait.
+    unmount();
+    await act(async () => stored());
+    await waitFor(() => expect(sendMessages).toHaveBeenCalledTimes(1));
+    expect(sentTexts()).toEqual(["Mach die Schulen rot"]);
+    expect(getDockState().pending).toHaveLength(1);
   });
 });

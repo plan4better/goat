@@ -12,14 +12,15 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 23
+EVAL_SET_VERSION = 30
 
 HERE = Path(__file__).resolve().parent
-Suite = Literal["catalog", "project", "workflow"]
+Suite = Literal["catalog", "project", "workflow", "map"]
 TASK_FILES: dict[Suite, Path] = {
     "catalog": HERE / "catalog_tasks.jsonl",
     "project": HERE / "project_tasks.jsonl",
     "workflow": HERE / "workflow_tasks.jsonl",
+    "map": HERE / "map_tasks.jsonl",
 }
 
 
@@ -107,7 +108,8 @@ class TextCheck(_Check):
 
 class AnswerCheck(_Check):
     """The answer names one of ``any_of``, all of ``all_of`` and none of
-    ``none_of`` (whole words, case-insensitive)."""
+    ``none_of`` (whole words, case-insensitive), and is at most ``max_chars``
+    characters long."""
 
     kind: Literal["answer"]
     any_of: list[str] = Field(default_factory=list)
@@ -118,6 +120,9 @@ class AnswerCheck(_Check):
     #: part of the answer, for all three lists: the prompt has the model show
     #: those items as cards and not list them again in the text.
     with_shown_items: bool = False
+    #: The longest answer that passes, in characters, as the dock shows it
+    #: (the text before tool calls included).
+    max_chars: int | None = Field(default=None, ge=1)
 
 
 class ToolsCheck(_Check):
@@ -130,8 +135,15 @@ class ToolsCheck(_Check):
     tried: list[str] = Field(default_factory=list)
     #: Not called at all, not even in a call that failed.
     not_called: list[str] = Field(default_factory=list)
-    #: The most calls a tool may get, e.g. one try of a write the user may not make.
+    #: The most calls a tool may get, e.g. one try of a write the user may not
+    #: make. A key joining tools with "+" bounds their calls together.
     at_most: dict[str, int] = Field(default_factory=dict)
+    #: Each with a call that succeeded, the first such call of each after
+    #: that of the one before it.
+    in_order: list[str] = Field(default_factory=list)
+    #: Reference files of a skill, each returned by a skills_load call that
+    #: succeeded (its ``file``).
+    loaded: list[str] = Field(default_factory=list)
 
 
 class DocsCheck(_Check):
@@ -144,11 +156,158 @@ class DocsCheck(_Check):
 
 
 class ViewCheck(_Check):
-    """The last map.view proposal frames this layer, or contains this point."""
+    """The view the answer's map_update calls left the page with (their
+    results' ``view``, applied in order): it frames this layer (the last
+    ``set_view`` that moves the map fits it), contains this point, is in this
+    mode, tilted at least this far."""
 
     kind: Literal["view"]
     layer_project_id: int | None = None
     contains: tuple[float, float] | None = None
+    mode: Literal["2d", "3d"] | None = None
+    min_pitch: float | None = None
+
+
+class PathRule(_Check):
+    """The value at a JSON pointer into a style document (a classification
+    also by its field: ``/classify/density/...``) or the scene. ``exists``
+    counts a part switched off (``false``) or null as absent."""
+
+    path: str
+    equals: Any = None
+    one_of: list[Any] | None = None
+    exists: bool | None = None
+    #: A number smaller than this.
+    below: float | None = None
+    #: A number larger than this.
+    above: float | None = None
+    #: A text this regular expression finds (``re.search``).
+    pattern: str | None = None
+
+    @model_validator(mode="after")
+    def _says_what_it_expects(self) -> "PathRule":
+        rules = (self.one_of, self.exists, self.below, self.above, self.pattern)
+        if "equals" not in self.model_fields_set and all(r is None for r in rules):
+            raise ValueError(f"{self.path}: the rule expects nothing")
+        return self
+
+
+class ClassRule(_Check):
+    """The classification of ``field`` in the checked style (a raster's
+    ``/render/classify``, whatever the field): its method, number of
+    classes as stored, the kind of its palette and the property it sets
+    (``target``, by default the geometry's main color). The method
+    ``by_attribute`` also accepts a value by attribute of the field at the
+    target (spec 4.3), which has no classes."""
+
+    field: str
+    target: str | None = None
+    methods: list[str] = Field(min_length=1)
+    min_classes: int = 2
+    max_classes: int = 12
+    palette_kind: Literal["sequential", "diverging", "qualitative"] | None = None
+
+
+class LegendRule(_Check):
+    """Shares of the classification's classes over the layer's features
+    under its saved filter."""
+
+    #: No class holds more than this share.
+    max_share: float | None = None
+    #: The share in no class.
+    max_other: float | None = None
+
+
+class StyleCheck(_Check):
+    """The style the layer draws after the answer, as core stored it: it
+    differs from the style active before (computed stamps aside), has no
+    error, and meets every condition. ``where`` says which style that is:
+    "same", the style active before, edited in place, and no style made for
+    the layer; "new", a style made in the answer; "any", either of them.
+    For a layer the answer added (a run's result), the style before is the
+    one the layer arrived with."""
+
+    kind: Literal["style"]
+    layer_project_id: int
+    where: Literal["same", "new", "any"]
+    #: Styles made for the layer in the answer, at least.
+    variants: int | None = None
+    #: The style the layer draws after the answer is this one of the styles
+    #: made for it in the answer, counted from 1 in the order they were made.
+    active_variant: int | None = Field(default=None, ge=1)
+    classification: ClassRule | None = None
+    paths: list[PathRule] = Field(default_factory=list)
+    #: At least one of these holds.
+    paths_any: list[PathRule] = Field(default_factory=list)
+    legend: LegendRule | None = None
+    #: Pointers whose value equals the one in the style active before.
+    unchanged: list[str] = Field(default_factory=list)
+    #: The fields the popup names (attributes, a block's field, ``{{ }}``).
+    popup_fields: list[str] = Field(default_factory=list)
+    #: The eval user's Undo (the task's ``undo``) brought back the layer's
+    #: styles and active style as they were before.
+    undone: bool = False
+
+
+class AreaRule(_Check):
+    """A layer filter's area, switched on, as its notes describe it: exactly
+    these region ids, features of exactly these layers (layer_project_id),
+    the map view or not, drawn shapes or not, inside or outside."""
+
+    regions: list[str] = Field(default_factory=list)
+    layers: list[int] = Field(default_factory=list)
+    #: The features picked from those layers together, when given.
+    features: int | None = None
+    view: bool = False
+    shapes: bool = False
+    outside: bool = False
+
+
+class LayerRule(_Check):
+    """A layer of the map project after the answer."""
+
+    #: As drawn: the layer and every group around it shown.
+    visible: bool | None = None
+    position: str | None = None
+    name: str | None = None
+    #: The name of the group it is in, "" for the top level.
+    group: str | None = None
+    #: The name of its active style.
+    active_style: str | None = None
+    #: Features its stored filter keeps, counted on the fixture's table.
+    filter_count: int | None = None
+    #: Condition rows of the stored filter (a drawn area and the switched-off
+    #: rows aside).
+    filter_rows: int | None = None
+    #: Switched-off rows the filter keeps in its notes (``ui.off``).
+    off_rows: int | None = None
+    #: The drawn area and its notes are as they were.
+    area_kept: bool | None = None
+    #: The filter's area ("none": the filter has none).
+    area: AreaRule | Literal["none"] | None = None
+    #: The filter's rows (switched-off ones included) and match are as they
+    #: were.
+    rows_kept: bool | None = None
+
+
+class MapCheck(_Check):
+    """The map project as core held it after the answer."""
+
+    kind: Literal["map"]
+    layers: dict[int, LayerRule] = Field(default_factory=dict)
+    #: (a, b): a is drawn above b.
+    above: list[tuple[int, int]] = Field(default_factory=list)
+    basemap: str | None = None
+    scene: list[PathRule] = Field(default_factory=list)
+    removed: list[int] = Field(default_factory=list)
+    kept: list[int] = Field(default_factory=list)
+    #: The state after equals the state before, computed stamps aside.
+    writes: Literal["none"] | None = None
+    #: The eval user's Undo brought the whole map project back as it was.
+    undone: bool = False
+    #: Graded on the state when the card was shown, before the eval user
+    #: answered it (a task with ``answer_card``).
+    before_answer: bool = False
 
 
 class NotSentCheck(_Check):
@@ -239,6 +398,8 @@ Check = Annotated[
     | AskedCheck
     | WorkflowCreatedCheck
     | WorkflowUpdatedCheck
+    | StyleCheck
+    | MapCheck
     | JudgeCheck,
     Field(discriminator="kind"),
 ]
@@ -256,7 +417,7 @@ class Turn(BaseModel):
 class EvalTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^(cat|proj|wf)-\d{2}$")
+    id: str = Field(pattern=r"^(cat|proj|wf|map)-\d{2}$")
     suite: Suite
     #: The page context as the dock sends it (plan 3's wire format); its
     #: surface decides which tools the agent gets.
@@ -273,6 +434,9 @@ class EvalTask(BaseModel):
     #: first option, the recommended one when there is one; then the next
     #: turn runs with that answer, as the dock sends it.
     answer_card: bool = False
+    #: With ``answer_card``: in every question that offers it, the eval user
+    #: picks the option with this value (``remove_layer:39``) instead.
+    answer_value: str | None = None
     #: The eval user presses Undo under the last answer once it ended, as
     #: the dock does (``assistant.undo``); the transcript says how it went.
     undo: bool = False
@@ -284,11 +448,14 @@ class EvalTask(BaseModel):
             "catalog": surface in ("catalog", "none"),
             "project": surface.startswith("project.") or surface == "none",
             "workflow": surface in ("project.map", "project.workflows"),
+            "map": surface == "project.map",
         }[self.suite]
         if not allowed:
             raise ValueError(
                 f"surface {surface!r} does not belong to the {self.suite} suite"
             )
+        if self.answer_value is not None and not self.answer_card:
+            raise ValueError("answer_value needs answer_card")
         return self
 
 

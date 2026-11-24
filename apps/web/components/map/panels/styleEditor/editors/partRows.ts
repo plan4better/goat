@@ -391,3 +391,18 @@ export function choiceValues(key: string): readonly string[] | undefined {
           if ((row.type === "choice" || row.type === "pattern") && row.key === sub) return row.values;
   return OTHER_CHOICES[key];
 }
+
+/** Keys of a point marker that its Icon group edits; the rest are its Fill's (and Size's). */
+const ICON_KEYS = new Set(["icon", "icon_color", "shape", "rotation", "anchor", "allow_overlap"]);
+
+/** The label key of a part as the symbol section names it for `geometry`: heights "Height", a polygon's or a line's
+ * marker "Marker"; a point marker "Icon" when `node` sets only icon keys, else "Fill". */
+export function partLabelKey(part: string, geometry: Geometry | undefined, node?: unknown): string {
+  if (part === "extrude") return "style_editor.height";
+  if (part !== "marker") return `style_editor.part_${part}`;
+  if (geometry !== "point") return "style_editor.part_marker";
+  const keys = node && typeof node === "object" ? Object.keys(node) : [];
+  return keys.length && keys.every((key) => ICON_KEYS.has(key))
+    ? "style_editor.part_icon"
+    : "style_editor.part_fill";
+}

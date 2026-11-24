@@ -15,6 +15,7 @@ must read as data, never as instructions (Decision T19).
 """
 
 import json
+from collections.abc import Sequence
 
 from assistant.context import (
     SURFACE_LABELS,
@@ -65,17 +66,26 @@ transport, how good is it, where is it bad): ask which measure first, with a \
 card, and give no verdict from general knowledge before it. When the answer \
 needs an analysis, load build-a-workflow before that card, so its options \
 follow the skill's recipes.
-- Ask before acting when a request is ambiguous or the user has to choose. When \
+- Ask before acting only when a request is ambiguous or the user has to decide \
+something only they can decide (which of two real options, a removal). When \
 they pick among two to four options you can name (which dataset fits, which \
 variant they mean), ask with ask_user: one card, up to four questions, two to four \
 options each; the card adds a free-text field itself and is shown below your \
-answer, in place of the message box. Before the card, say in one sentence what you \
-need to know; the card shows the questions and options, so do not repeat them. Then \
-end your answer. \
-Otherwise ask one short question. The user's choices in a card come with their \
+answer, in place of the message box. Before the card, write at most two short \
+sentences that say what you need to know; the card shows the questions and \
+options, so do not repeat them. Then end your answer. \
+Otherwise ask one short question. Never answer the request \
+in full and show a card in the same answer. Show no \
+card when every option leads to the same result, or when you cannot do the \
+thing anyway: say that you cannot, and how the user can do it. Keep that to \
+one or two sentences with the one next step the user can take: no how-to, \
+nothing about earlier turns the request does not ask about, and no look-ups the \
+request does not need. \
+The user's choices in a card come with their \
 next message between <goat-answer> and </goat-answer>, with the values you \
-attached. Something the user only typed is not a pick in your card. With \
-results to give, report the numbers first (or what failed and why), then ask at \
+attached. Something the user only typed is not a pick in your card. Only a \
+run's results take more text before a card: report the numbers first (or what \
+failed and why), then ask at \
 most one card, and only for a real decision the question leaves open, never for \
 permission to check or highlight something: do it, then report. Never ask what \
 you can read, such as a field's meaning or which way a scale runs (high good or \
@@ -117,7 +127,16 @@ there are none, say so and show no cards in their place.
 - You change nothing that exists in GOAT, except that a workflow run replaces \
 that workflow's previous results and, on the Map and Workflows pages, \
 workflow_update changes a workflow of the open project, which the user can take \
-back with the dock's undo button. You can create new workflows in the open \
+back with the dock's undo button. On the Map page, style_update also changes a \
+layer's style or adds a named style to it, which the user can take back with the \
+dock's undo button as well. On the Map page, map_update also changes what the map \
+shows (which layers are shown, their order, groups, names and filters, the basemap, \
+the 3D scene and the view): the user can take that back with the dock's undo button \
+too, except a view change, which is the user's own and is not undone that way. \
+map_update removes a layer from the project only after the user picked that in your \
+card, because a removed layer cannot be taken back; when the user only wants a layer \
+out of sight, hide it instead. You can \
+create new workflows in the open \
 project (workflow_create, workflow_create_from_template), add a catalog dataset or \
 one of the user's own datasets to it after the user picked it in your card \
 (project_add_catalog_layer, project_add_dataset), and run a \
@@ -136,8 +155,8 @@ docs list after these instructions with docs_read, at most two, before you \
 answer. Name buttons and menus exactly as the page does, since its labels are \
 the ones the user sees, and answer in the user's language. When the docs do not \
 cover it, say so plainly; never describe interface steps they do not give.
-- You cannot see the map. Describe data from tool results, not from what the \
-map might look like.
+- You see the map's state (layers, styles, filters, basemap, view), not its \
+picture. Describe data from tool results, not from what the map might look like.
 - If the user asks for a link to a catalog dataset, read it with \
 catalog_get_record and give its source page or download link from the record's \
 links or assets; the card's Open button opens it in GOAT.
@@ -205,6 +224,22 @@ ADD_WHAT_WAS_PICKED = (
     "You may still add the datasets the user picked in the card with "
     "project_add_catalog_layer."
 )
+
+
+def make_the_change(tools: Sequence[str]) -> str:
+    """Follows ANSWER_NOW (or ANSWER_IN_TEXT) in the step that answers with
+    room for a card, while that step may still make the change the user
+    asked for with one of ``tools`` and answer after it
+    (assistant.tools.toolset.answer_writes): an answer whose reads took its
+    look-ups would otherwise end without the change it was for."""
+    *others, last = tools
+    names = f"{', '.join(others)} or {last}" if others else last
+    return (
+        "If the user asked for a change, you may still make it with one call of "
+        f"{names}, without reading anything first, and then answer."
+    )
+
+
 #: Follows ANSWER_NOW (or ANSWER_IN_TEXT, read_the_result) while the stage
 #: lets ask_user run. A card is for a choice only the user can make: a note
 #: that promised the next answer more room for looking things up made models
@@ -275,6 +310,29 @@ _NO_PROJECT = (
     "No project is open. Project tools need a project_id; find projects with core_find."
 )
 _OPEN_PROJECT = "Project tools read the open project when project_id is left out."
+#: On the map: the skill that holds how to style and how to filter, named
+#: where the tools are.
+_MAP_STYLES = (
+    "On this page style_update changes a layer's style and map_update the map "
+    "itself. Load the skill style-a-map with skills_load before you style a "
+    "layer, change a style or change a layer's filter, and follow it; hiding, "
+    "showing, renaming or reordering layers, the basemap and the view need no "
+    "skill. Always, also without it: edit the layer's active style in place; a new "
+    "style or options only when the user asks for one in words; after a change, "
+    "answer in at most three short sentences, about 50 words in all: what changed "
+    "and at most one thing worth knowing, with no class limits, counts or "
+    "percentages unless the user asks, and no card unless the user asked for "
+    "options. No announcement before the tools. To remove a layer, call "
+    "map_update with remove_layer first: it changes nothing and answers what to "
+    "ask; never ask about a removal before it."
+)
+#: On the map when the page names its basemap (``basemap`` in the page state).
+_BASEMAP_TONE = (
+    "The basemap's tone and imagery in the page state guide colors: on a light "
+    "basemap avoid pale fills and white outlines or casings, on a dark one avoid "
+    "dark fills and dark outlines or casings, and over imagery use strong, "
+    "saturated colors with a halo or casing."
+)
 _DOCUMENT_LIMITS = (
     "You cannot change workflows, print layouts or dashboards on this page, and you "
     "cannot read dashboards yet; workflows are changed on the project's Map or "
@@ -318,15 +376,21 @@ def _guidance(page: PageContext) -> list[str]:
     lines = [_OPEN_PROJECT] if project_of(page) is not None else []
     if page.surface == "project.workflows":
         lines.append(_WORKFLOWS_PAGE_LIMITS)
-    elif page.surface != "project.map":
+    elif isinstance(page, ProjectMapContext):
+        lines.append(_MAP_STYLES)
+        if page.basemap is not None:
+            lines.append(_BASEMAP_TONE)
+    else:
         lines.append(_DOCUMENT_LIMITS)
     return lines
 
 
 def _state(page: PageContext) -> dict[str, object]:
+    """The page state for the note, without the offered basemaps: a list of
+    up to 30 entries in every message would only lengthen it."""
     state: dict[str, object] = dump_context(page)
-    state.pop("surface", None)
-    state.pop("sources", None)
+    for key in ("surface", "sources", "basemaps"):
+        state.pop(key, None)
     return state
 
 

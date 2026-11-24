@@ -27,12 +27,22 @@ def item_key(item: Any, index: int) -> str:
     return str(index)
 
 
+#: The most digits a list index segment has.
+_MAX_INDEX_DIGITS = 9
+
+
 def find_index(items: list[Any], segment: str) -> int | None:
-    """The index of the list item a segment addresses (an id first, then an index)."""
+    """The index of the list item a segment addresses (an id first, then an index).
+    An index is ASCII digits, at most `_MAX_INDEX_DIGITS` of them."""
     for i, item in enumerate(items):
         if isinstance(item, dict) and item.get("id") == segment:
             return i
-    if segment.isdigit() and int(segment) < len(items):
+    if (
+        segment.isascii()
+        and segment.isdigit()
+        and len(segment) <= _MAX_INDEX_DIGITS
+        and int(segment) < len(items)
+    ):
         return int(segment)
     return None
 

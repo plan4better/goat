@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { classifyCount } from "@/lib/style/editor/classify";
 import { symbolShown } from "@/lib/style/editor/parts";
+import { recordPaths } from "@/lib/style/editor/sources";
 import { isObject } from "@/lib/style/json";
 
 import {
@@ -21,7 +22,7 @@ import {
 } from "@/components/map/panels/styleEditor/context";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import { VisibleEditor } from "@/components/map/panels/styleEditor/editors/VisibleEditor";
-import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
+import { type PartRow, partLabelKey } from "@/components/map/panels/styleEditor/editors/partRows";
 import {
   type Position,
   dropOffer,
@@ -58,13 +59,14 @@ export function VisibleRow() {
   const from = useStyleValue<unknown>("min_zoom");
   const until = useStyleValue<unknown>("max_zoom");
   const symbol = useStyleValue<unknown>("symbol");
-  // Parts that show at fewer zooms than the layer: "Fill: From zoom 12".
+  const { geometry } = useStyleData();
+  // Parts that show at fewer zooms than the layer, named as the symbol section names them: "Marker: From zoom 12".
   const parts = isObject(symbol)
     ? Object.entries(symbol).flatMap(([part, value]) =>
         isObject(value) && (value.min_zoom !== undefined || value.max_zoom !== undefined)
           ? [
               t("style_editor.part_zooms", {
-                part: t(`style_editor.part_${part === "marker" ? "fill" : part}`),
+                part: t(partLabelKey(part, geometry, value)),
                 zooms: zoomText(t, value.min_zoom, value.max_zoom),
                 ...PLAIN,
               }),
@@ -72,11 +74,21 @@ export function VisibleRow() {
           : []
       )
     : [];
+  // Classes and rules that show their features, or a part of them, at other zooms (spec 3.5).
+  const varies = useStyleSelector((doc) =>
+    recordPaths(doc).some(({ record }) =>
+      [record, ...Object.values(record).filter(isObject)].some(
+        (node) => node.min_zoom !== undefined || node.max_zoom !== undefined
+      )
+    )
+  );
   const label = t("style_editor.visible");
   return (
     <NavRow
       label={label}
-      value={[zoomText(t, from, until), ...parts].join(" · ")}
+      value={[zoomText(t, from, until), ...parts, ...(varies ? [t("style_editor.zooms_vary")] : [])].join(
+        " · "
+      )}
       onOpen={(anchor) =>
         popover.open(next, {
           key: "layer:visible",

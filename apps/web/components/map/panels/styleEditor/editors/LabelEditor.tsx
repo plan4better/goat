@@ -27,7 +27,8 @@ import {
   templateField,
   templateFields,
 } from "@/lib/style/editor/labels";
-import type { Path } from "@/lib/style/editor/store";
+import { perLayerPath } from "@/lib/style/editor/sources";
+import { type Path, getIn } from "@/lib/style/editor/store";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
@@ -152,8 +153,11 @@ function TextRows({ base }: { base: Path }) {
   const textPath = scopedText.writePath;
   const text = scopedText.value;
   const issues = useIssueAt(textPath);
-  const format = useStyleValue<NumberFormatSpec | undefined>(`${base}.format`);
-  const formats = useStyleValue<Record<string, NumberFormatSpec> | undefined>(`${base}.formats`);
+  // Number formats are one for the layer, wherever they are set (spec 6.1).
+  const formatPath = useStyleSelector((doc) => perLayerPath(doc, `${base}.format`));
+  const formatsPath = useStyleSelector((doc) => perLayerPath(doc, `${base}.formats`));
+  const format = useStyleValue<NumberFormatSpec | undefined>(formatPath);
+  const formats = useStyleValue<Record<string, NumberFormatSpec> | undefined>(formatsPath);
   const template = typeof text === "string" ? text : "";
   const field = templateField(template);
   // "Custom text" is a panel choice: a template of one field still shows as a template once picked.
@@ -297,7 +301,7 @@ function TextRows({ base }: { base: Path }) {
                 key: `label:format:${name}`,
                 title: t("style_editor.numbers_in", { field: fieldLabel(name), ...PLAIN }),
                 anchorTop: anchorTopOf(anchor),
-                render: () => <NumberFormatEditor path={`${base}.formats.${name}`} />,
+                render: () => <NumberFormatEditor path={`${formatsPath}.${name}`} />,
               })
             }
           />
@@ -332,7 +336,7 @@ function TextRows({ base }: { base: Path }) {
               key: "label:format",
               title: t("style_editor.number_format"),
               anchorTop: anchorTopOf(anchor),
-              render: () => <NumberFormatEditor path={`${base}.format`} />,
+              render: () => <NumberFormatEditor path={formatPath} />,
             })
           }
         />
@@ -345,7 +349,8 @@ function PriorityRow({ base }: { base: Path }) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { fields } = useStyleData();
-  const path = `${base}.priority`;
+  // One for the layer, wherever it is set (spec 6.1).
+  const path = useStyleSelector((doc) => perLayerPath(doc, `${base}.priority`));
   const priority = useStyleValue<unknown>(path);
   const current = isObject(priority) ? `${String(priority.top)}:${String(priority.field)}` : "";
   const label = t("style_editor.priority");
@@ -399,8 +404,12 @@ function TextStyleRows({ base }: { base: Path }) {
 
 function PositionRows({ base }: { base: Path }) {
   const { geometry } = useStyleData();
-  const overlap = useStyleValue<unknown>(`${base}.allow_overlap`);
-  const placed = useStyleValue<unknown>(`${base}.placement`);
+  const overlap = useStyleSelector((doc) => getIn(doc, perLayerPath(doc, `${base}.allow_overlap`)) === true);
+  // One placement for the layer, wherever it is set (spec 6.1).
+  const placed = useStyleSelector((doc) => {
+    const value = getIn(doc, perLayerPath(doc, `${base}.placement`));
+    return typeof value === "string" ? value : undefined;
+  });
   const scoped = useScope() !== null;
   // Polygon labels of a layer with a height sit on the roofs (3D spec 7.5): said under the placement.
   const extruded = useStyleSelector((doc) => extrudes(doc as unknown as JsonObject));
@@ -416,7 +425,7 @@ function PositionRows({ base }: { base: Path }) {
       {placement && <PropertyRow row={placement} base={base} />}
       <OffsetRows base={base} rangeKey="label.offset" />
       {repeats && <PropertyRow row={SPACING} base={base} />}
-      {overlap !== true && !scoped && <PriorityRow base={base} />}
+      {!overlap && !scoped && <PriorityRow base={base} />}
       <PropertyRow row={OVERLAP} base={base} />
       <PropertyRow row={PADDING} base={base} />
     </>

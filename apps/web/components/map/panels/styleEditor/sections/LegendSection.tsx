@@ -7,8 +7,10 @@ import { useTranslation } from "react-i18next";
 
 import { classifyCount } from "@/lib/style/editor/classify";
 import { formatNumberText } from "@/lib/style/editor/labels";
+import { symbolShown } from "@/lib/style/editor/parts";
 import { setIn } from "@/lib/style/editor/store";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import { legendGroups } from "@/lib/style/legend";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 
 import {
@@ -62,7 +64,16 @@ export function LegendSection() {
   const popover = usePopover();
   const next = useNextLevel();
   const legend = useStyleValue<unknown>("legend");
-  const count = useStyleSelector<number>(classifyCount);
+  const { geometry } = useStyleData();
+  // A vector legend's blocks of classes: none while a heatmap or H3 hides the points, one for classifications of a
+  // field it merges (`legendGroups`); a raster's classes.
+  const count = useStyleSelector<number>((doc) =>
+    doc.kind === "raster"
+      ? classifyCount(doc)
+      : symbolShown(doc)
+        ? legendGroups(doc as unknown as JsonObject, geometry ?? "point").length
+        : 0
+  );
   const raster = useStyleValue<unknown>("kind") === "raster";
   const render = useStyleValue<unknown>("render");
   const shown = legend !== false && !(isObject(legend) && legend.show === false);

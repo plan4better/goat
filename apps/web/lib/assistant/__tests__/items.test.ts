@@ -6,6 +6,7 @@ import {
   MAX_CARDS,
   type ResultItem,
   SHOW_TOOLS,
+  WRITE_TOOLS,
   ownThumbnail,
   shownGroups,
   uniqueGroups,
@@ -236,5 +237,15 @@ describe("card thumbnails", () => {
     expect(ownThumbnail(own)).toBe(own);
     expect(ownThumbnail(null)).toBeUndefined();
     expect(ownThumbnail(undefined)).toBeUndefined();
+  });
+});
+
+describe("write tools", () => {
+  it("count the style and map changes as writes, so their steps never fold into a summary", () => {
+    expect(WRITE_TOOLS).toContain("style_update");
+    expect(WRITE_TOOLS).toContain("map_update");
+    // The reads stay foldable.
+    expect(WRITE_TOOLS).not.toContain("style_get");
+    expect(WRITE_TOOLS).not.toContain("style_catalog");
   });
 });

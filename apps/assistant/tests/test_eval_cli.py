@@ -205,12 +205,13 @@ def test_a_run_writes_a_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 def test_promotion_is_refused_below_the_score() -> None:
-    # 67 of 79 (0.848): below the score, while each suite stays at 0.8 or more
-    # (catalog 29 of 36, project 27 of 30, workflow 11 of 13).
+    # 101 of 120 (0.842): below the score, while each suite stays at 0.8 or more
+    # (catalog 29 of 36, project 23 of 26, workflow 11 of 13, map 38 of 45).
     plain = (
         _plain_ids("catalog", False, 7)
         + _plain_ids("project", False, 3)
         + _plain_ids("workflow", False, 2)
+        + _plain_ids("map", False, 7)
     )
     refusal = promotion_refusal(_report(fail=tuple(plain)))
     assert refusal is not None and "score" in refusal
@@ -243,10 +244,11 @@ def test_promotion_goes_by_the_task_records_not_the_summary() -> None:
         _plain_ids("catalog", False, 7)
         + _plain_ids("project", False, 3)
         + _plain_ids("workflow", False, 2)
+        + _plain_ids("map", False, 7)
     )
     report = _report(fail=plain)
     report["summary"] = {
-        "tasks": 79,
+        "tasks": 120,
         "score": 1.0,
         "undecided": 0,
         "critical_failed": [],

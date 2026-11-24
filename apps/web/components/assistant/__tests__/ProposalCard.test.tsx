@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { fakeMap } from "@/lib/assistant/__tests__/fakeMap";
 import {
   createSurfaceOwner,
   hasProposalUndo,
@@ -12,6 +13,8 @@ import {
 import { useAssistantSurface } from "@/lib/assistant/surface";
 import type { AssistantSurfaceAdapter, Proposal } from "@/lib/assistant/types";
 
+import { useProjectAssistantSurface } from "@/hooks/assistant/useProjectAssistantSurface";
+
 import { DockActionsContext } from "@/components/assistant/DockActions";
 import { dockActions } from "@/components/assistant/__tests__/helpers";
 import ProposalCard from "@/components/assistant/messages/ProposalCard";
@@ -19,7 +22,32 @@ import ProposalCard from "@/components/assistant/messages/ProposalCard";
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
 vi.mock("react-toastify", () => ({ toast: { error: toastError } }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en", exists: () => false } }),
+}));
+// The project page's surface reads the selected layer, the basemaps and the view from the app's store.
+vi.mock("@/hooks/store/ContextHooks", () => ({
+  useAppSelector: (select: (state: unknown) => unknown) =>
+    select({
+      layers: { activeLayerId: null },
+      workflow: { selectedWorkflowId: null },
+      map: {
+        basemaps: [
+          {
+            source: "builtin",
+            type: "vector",
+            value: "light",
+            url: "https://tiles.example.org/styles/light",
+            title: "Light",
+            subtitle: "",
+            thumbnail: "",
+          },
+        ],
+        activeBasemap: undefined,
+        activeBasemapProjectId: undefined,
+        view: undefined,
+      },
+    }),
+  useAppDispatch: () => vi.fn(),
 }));
 
 const actions = dockActions();
@@ -412,5 +440,35 @@ describe("ProposalCard", () => {
       bindConversationId: undefined,
       projectName: "Radnetz",
     });
+  });
+
+  it("a stored map.view card still applies", async () => {
+    // A conversation from before the assistant changed maps itself holds such a card: on its project's map page
+    // the page's own surface applies it and takes it back.
+    const map = fakeMap({ lng: 11.5, lat: 48.1, zoom: 9, bearing: 10, pitch: 20 });
+    function Page() {
+      useProjectAssistantSurface({
+        project: { id: "p1", name: "Radnetz" },
+        mapRef: { current: map },
+        mapMode: "data",
+        isEditor: false,
+      });
+      return null;
+    }
+    render(<Page />);
+    card(view("p1"), { conversationProjectId: "p1" });
+    expect(screen.getByText("assistant_proposal_tag_map_view")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "assistant_proposal_apply_map" }));
+    await screen.findByText("assistant_proposal_applied");
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      [
+        [13.1, 52.3],
+        [13.8, 52.7],
+      ],
+      { padding: 48, duration: 800 }
+    );
+    fireEvent.click(screen.getByRole("button", { name: "undo" }));
+    expect(map.flyTo).toHaveBeenCalledWith({ center: [11.5, 48.1], zoom: 9, bearing: 10, pitch: 20 });
+    expect(screen.getByRole("button", { name: "assistant_proposal_apply_map" })).toBeTruthy();
   });
 });

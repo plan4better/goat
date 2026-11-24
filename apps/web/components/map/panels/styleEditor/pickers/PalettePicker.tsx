@@ -22,6 +22,9 @@ export interface PalettePickerProps {
   onReverse?: (reverse: boolean) => void;
   steps?: number;
   kinds: PaletteKind[];
+  /** The picker of a categories classification: one's own colors repeat in order, as the server colors categories,
+   * and All lists the palettes kind by kind in the order of `kinds`. */
+  categories?: boolean;
 }
 
 /** A strip of `colors`: blended, or in equal blocks for classes. */
@@ -37,15 +40,15 @@ export function stripBackground(colors: string[], stepped: boolean): string {
 const ordered = (colors: string[], reverse?: boolean) => (reverse ? [...colors].reverse() : colors);
 
 /** The colors a strip shows: in classes, the colors `steps` classes get from the palette (`paletteSteps`, as the
- * classes are colored; a list in a picker of qualitative palettes only, the categories', repeats in order); else the
- * palette's own colors. Turned round where `reverse` says so. */
+ * classes are colored; a list in the categories' picker repeats in order); else the palette's own colors. Turned round
+ * where `reverse` says so. */
 function stripColors(
   value: string | string[],
-  { steps, reverse, kinds }: { steps?: number; reverse?: boolean; kinds: PaletteKind[] }
+  { steps, reverse, categories }: { steps?: number; reverse?: boolean; categories?: boolean }
 ): string[] {
   if (steps === undefined) return ordered(Array.isArray(value) ? value : paletteColors(value), reverse);
-  const qualitative = Array.isArray(value) && kinds.length === 1 && kinds[0] === "qualitative";
-  return paletteSteps(value, steps, { reverse, kind: qualitative ? "qualitative" : undefined });
+  const repeated = Array.isArray(value) && categories;
+  return paletteSteps(value, steps, { reverse, kind: repeated ? "qualitative" : undefined });
 }
 
 function Strip({
@@ -91,20 +94,28 @@ function Strip({
   );
 }
 
-export function PalettePicker({ value, reverse, onChange, onReverse, steps, kinds }: PalettePickerProps) {
+export function PalettePicker({
+  value,
+  reverse,
+  onChange,
+  onReverse,
+  steps,
+  kinds,
+  categories,
+}: PalettePickerProps) {
   const { t } = useTranslation("common");
   const [kind, setKind] = useState<PaletteKind | "all">("all");
   const [hover, setHover] = useState<string | null>(null);
-  // All palettes: a group of the catalogue (the science ramps) first, under its own heading; a kind lists every
-  // palette of it in the catalogue's order.
+  // All palettes: a group of the catalogue (the science ramps) first, under its own heading; in the categories'
+  // picker kind by kind, in the order of `kinds`. A kind lists every palette of it in the catalogue's order.
   const shown = useMemo(() => {
     const fitting = Object.entries(PALETTES).filter(
       ([, p]) => kinds.includes(p.kind) && (kind === "all" || p.kind === kind)
     );
-    return kind === "all"
-      ? [...fitting.filter(([, p]) => p.group), ...fitting.filter(([, p]) => !p.group)]
-      : fitting;
-  }, [kinds, kind]);
+    if (kind !== "all") return fitting;
+    const grouped = [...fitting.filter(([, p]) => p.group), ...fitting.filter(([, p]) => !p.group)];
+    return categories ? kinds.flatMap((k) => grouped.filter(([, p]) => p.kind === k)) : grouped;
+  }, [kinds, kind, categories]);
   /** The heading over a palette in All palettes: its group's, else its kind's, where it starts a run of them. */
   const sectionOf = (p: (typeof PALETTES)[string]) =>
     p.group ? `style_editor.palette_group_${p.group}` : `style_editor.palette_kind_${p.kind}`;
@@ -135,7 +146,8 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
 
   return (
     <Box>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 3, pt: 1 }}>
+      {/* Four tabs with Reverse can be wider than the picker: they wrap rather than cut a name. */}
+      <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, px: 3, pt: 1 }}>
         {(["all", ...kinds] as const).map((k) => (
           <Chip
             key={k}
@@ -201,7 +213,7 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
             {kind === "all" && heading(t("style_editor.palette_yours"))}
             <Strip
               name={t("style_editor.my_colors")}
-              colors={stripColors(custom, { steps, reverse, kinds })}
+              colors={stripColors(custom, { steps, reverse, categories })}
               stepped={stepped}
               selected
               onPick={() => onChange(custom)}
@@ -216,7 +228,7 @@ export function PalettePicker({ value, reverse, onChange, onReverse, steps, kind
               heading(t(sectionOf(palette)))}
             <Strip
               name={palette.name}
-              colors={stripColors(id, { steps, reverse, kinds })}
+              colors={stripColors(id, { steps, reverse, categories })}
               stepped={stepped}
               selected={value === id}
               onPick={() => onChange(id)}

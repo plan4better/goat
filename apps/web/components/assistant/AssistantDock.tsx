@@ -35,6 +35,7 @@ import {
 import { openCreatedWorkflow, workflowHref } from "@/lib/assistant/createdWorkflows";
 import { assistantErrorKey } from "@/lib/assistant/errors";
 import { conversationTitle, provisionalTitle } from "@/lib/assistant/history";
+import { followMapChange, followStyleChanges } from "@/lib/assistant/mapBridge";
 import {
   getActiveSurface,
   getDockState,
@@ -267,6 +268,9 @@ export default function AssistantDock({
           requestReload: (id, revision) => appStore.dispatch(requestWorkflowReload({ id, revision })),
           refreshList: refreshWorkflowList,
         }),
+      // The map page follows them through its bridge, when it shows their project.
+      followStyleChanges: (changes) => followStyleChanges(changes),
+      followMapChange: (change) => followMapChange(change),
       unsavedWorkflowChanges: (workflowIds) => {
         // A pan alone does not count: it is saved after the change is loaded.
         const { selectedWorkflowId, contentDirty } = appStore.getState().workflow;

@@ -19,12 +19,16 @@ tools with the same instructions, and the note on the stage comes after the
 conversation (``assistant.agent.StageNote``), so the calls that end an answer
 read the prefix from the cache as a look-up does. Each is sized at its whole
 context, from the run's messages (``next_call``), at the cache reads of the
-newest call (``call_cost``); a provider that reports none pays the whole
-context. One more look-up is allowed only while two such calls still fit after
-it, a step that reads what the look-up returned and the answer step
+newest call, or of the call before it when that read more: a provider can
+serve one call without its cache, and one miss after a hit is not the rule
+(``NextCall.cached``, ``call_cost``). A provider that reports none pays the
+whole context. One more look-up is allowed only while two such calls still
+fit after it, a step that reads what the look-up returned and the answer step
 (``RunBudget.spent``): a look-up that runs a workflow leaves room to read its
 result. A step that reads a run's result past the look-ups comes while
-those two fit before it (``RunBudget.read_fits``); the card while the answer
+those two fit before it (``RunBudget.read_fits``), and so does a step that
+answers and still makes the change the user asked for
+(``assistant.tools.toolset.answer_writes``); the card while the answer
 step fits, since a card ends the answer (``runs/turn.py``), and otherwise the
 step answers in text (``RunBudget.can_ask``). Within a step, each call is held
 to the tool-call limit and each result to the room the answer step needs, as
@@ -132,6 +136,20 @@ class NextCall:
     #: The largest step between the inputs of two of the run's calls in a
     #: row, as the provider counted them; 0 before the run's second call.
     growth: int
+    #: The usage of the call before the newest; empty before the run's
+    #: second call.
+    before: RequestUsage = field(default_factory=RequestUsage)
+
+    @property
+    def cached(self) -> int:
+        """The cache reads the calls after the newest are planned at: the
+        newest call's, or the call's before it when that read more. A
+        provider can serve one call without its cache (another server took
+        it, an entry was evicted) and writes the cache as it serves it, so
+        the call after it reads from the cache again; two misses in a row
+        are taken as the rule. ``RunLimits`` keeps room for one planned call
+        that misses."""
+        return max(self.newest.cache_read_tokens, self.before.cache_read_tokens)
 
 
 def _pending_text(part: ModelRequestPart) -> str:
@@ -167,7 +185,8 @@ def next_call(messages: Sequence[ModelMessage], run_id: str | None) -> NextCall:
     newest = responses[-1]
     raw = newest.input_tokens + newest.output_tokens + pending
     steps = [b.input_tokens - a.input_tokens for a, b in zip(responses, responses[1:])]
-    return NextCall(newest=newest, raw=raw, growth=max(steps, default=0))
+    before = responses[-2] if len(responses) > 1 else RequestUsage()
+    return NextCall(newest=newest, raw=raw, growth=max(steps, default=0), before=before)
 
 
 @dataclass(repr=False, kw_only=True)
@@ -178,7 +197,8 @@ class RunLimits(UsageLimits):
 
     The limit is the planned budget and a margin for one call that misses
     the provider's cache. The calls that end an answer are planned at the
-    cache reads of the newest call (``RunBudget._answering``); a provider
+    cache reads of the newest call, or of the call before it when that read
+    more (``NextCall.cached``, ``RunBudget._answering``); a provider
     that misses its cache on such a call charges those tokens in full, so the
     call costs more than the plan left room for. The margin is that
     difference for the most one call of the run read from the cache so far:
@@ -271,13 +291,12 @@ class RunBudget:
             return True
         if usage.requests == 0:
             return False
-        # An assumption: the look-up reads from the cache what the newest call
-        # read (nothing on a provider without caching), and its output is like
-        # the newest call's. A look-up that misses the cache costs more than
-        # this; the next check counts what it did cost, so the miss is absorbed
-        # there.
-        newest = call.newest
-        look_up = call_cost(call.raw, newest.cache_read_tokens) + newest.output_tokens
+        # An assumption: the look-up reads from the cache what the newest calls
+        # read (``NextCall.cached``; nothing on a provider without caching),
+        # and its output is like the newest call's. A look-up that misses the
+        # cache costs more than this; the next check counts what it did cost,
+        # so the miss is absorbed there.
+        look_up = call_cost(call.raw, call.cached) + call.newest.output_tokens
         # After it, the read step and the answer step start from a context
         # larger by up to the run's largest step.
         after = self._answering(
@@ -315,10 +334,10 @@ class RunBudget:
     def _answering(context: int, call: NextCall, calls: int) -> float:
         """What ``calls`` calls that end an answer cost from a context of
         ``context`` tokens. They offer the tools and instructions of the calls
-        before them, so each reads from the cache what the newest call read
-        (``call_cost``; the newest call of ``call``), and the card's share is
-        in ``ANSWER_ALLOWANCE``."""
-        each = call_cost(context, call.newest.cache_read_tokens)
+        before them, so each reads from the cache what the newest calls read
+        (``call_cost``, ``NextCall.cached``), and the card's share is in
+        ``ANSWER_ALLOWANCE``."""
+        each = call_cost(context, call.cached)
         return calls * each + ANSWER_ALLOWANCE
 
     def usage_limits(self) -> UsageLimits:
@@ -349,8 +368,9 @@ class StepGuard:
     the run's tool-call limit does not run, and a result that would leave the
     answer step too little room is not sent and ends the run's look-ups
     (``assistant.tools.toolset.answer_step``). The answer step is sized as
-    ``RunBudget`` sizes it: at the cache reads of the step's own call. Every call let run counts
-    toward the limit, failed and invalid ones too, so a model that repeats a
+    ``RunBudget`` sizes it: at the cache reads the step's own call is planned
+    at (``NextCall.cached``). Every call let run counts toward the limit,
+    failed and invalid ones too, so a model that repeats a
     failing call reaches it. The step's other calls go on, and the next model
     call answers with what the run found instead of the run failing at a
     limit, where the answer step still fits after the run's first call: that
@@ -372,7 +392,8 @@ class StepGuard:
     #: The context the next call starts from before the step's results: the
     #: step's model call's input and output.
     context: int
-    #: The tokens the step's model call read from the provider's cache.
+    #: The cache reads of the step's model call as ``NextCall.cached`` plans
+    #: them.
     cached: int = 0
     #: Tokens of the step's results sent so far.
     results: int = 0

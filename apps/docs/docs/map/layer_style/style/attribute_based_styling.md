@@ -170,7 +170,7 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 ## Color palettes {#color-palettes}
 
-The palette picker opens from <code>Palette</code> or <code>Colors</code>. It shows GOAT's palettes by kind (<code>All</code>, <code>Sequential</code>, <code>Diverging</code> and <code>Categories</code>), the palettes <code>In use</code> in this style, and your own (<code>Yours</code>). Under <code>All</code>, <code>Science and terrain</code> comes first: the perceptual ramps Viridis, Magma, Cividis, Inferno and Plasma, and ramps for elevation and vegetation (Elevation, Terrain, Hypsometric tints, NDVI), for rasters and number fields alike. <code>Reverse</code> turns the colors around.
+The palette picker opens from <code>Palette</code> or <code>Colors</code>. It shows GOAT's palettes by kind (<code>All</code>, <code>Sequential</code>, <code>Diverging</code> and <code>Categories</code>), the palettes <code>In use</code> in this style, and your own (<code>Yours</code>). Under <code>All</code>, <code>Science and terrain</code> comes first: the perceptual ramps Viridis, Magma, Cividis, Inferno and Plasma, and ramps for elevation and vegetation (Elevation, Terrain, Hypsometric tints, NDVI), for rasters and number fields alike. For the method <code>Categories</code> the picker lists the <code>Categories</code> palettes first and every other kind after them, so a set of ordered categories, such as travel times, can take a sequential palette. <code>Reverse</code> turns the colors around.
 
 | Kind | Example | Description |
 | :--: | ------- | ----------- |

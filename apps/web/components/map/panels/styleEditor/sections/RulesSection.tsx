@@ -8,15 +8,22 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import type { Geometry } from "@/lib/style/compile/types";
 import { symbolShown } from "@/lib/style/editor/parts";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
-import { useEditor, useStyleSelector, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useStyleData,
+  useStyleSelector,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import {
   NewRuleEditor,
   RuleEditor,
   useRuleLabel,
 } from "@/components/map/panels/styleEditor/editors/RuleEditor";
+import { partLabelKey } from "@/components/map/panels/styleEditor/editors/partRows";
 import {
   anchorTopOf,
   useNextLevel,
@@ -25,15 +32,15 @@ import {
 import { NavRow, PanelSection } from "@/components/map/panels/styleEditor/rows";
 import { zoomText } from "@/components/map/panels/styleEditor/sections/LayerSection";
 
-const PARTS = ["fill", "outline", "line", "casing", "arrows", "marker", "label"];
+const PARTS = ["fill", "outline", "extrude", "line", "casing", "arrows", "marker", "label"];
 
-const effectsOf = (rule: JsonObject, t: TFunction) => {
+/** What a rule changes, each part named as the symbol section names it for the geometry. */
+const effectsOf = (rule: JsonObject, t: TFunction, geometry?: Geometry) => {
   const out: string[] = [];
   if (rule.visible === false) out.push(t("style_editor.effect_hidden"));
   if (rule.min_zoom !== undefined || rule.max_zoom !== undefined)
     out.push(zoomText(t, rule.min_zoom, rule.max_zoom));
-  for (const part of PARTS)
-    if (part in rule) out.push(t(`style_editor.part_${part === "marker" ? "fill" : part}`));
+  for (const part of PARTS) if (part in rule) out.push(t(partLabelKey(part, geometry, rule[part])));
   return out.length ? out.join(" · ") : t("style_editor.effect_none");
 };
 
@@ -60,6 +67,7 @@ function RuleRow({
 }) {
   const { t } = useTranslation("common");
   const label = useRuleLabel();
+  const { geometry } = useStyleData();
   const value = useStyleValue<unknown>(`rules.${index}`);
   if (!isObject(value)) return null;
   const rule = value;
@@ -68,7 +76,7 @@ function RuleRow({
     <Box data-rule-row>
       <NavRow
         value={label(rule)}
-        note={effectsOf(rule, t)}
+        note={effectsOf(rule, t, geometry)}
         onOpen={(anchor) => onOpen(id, anchorTopOf(anchor))}
         // Both moves on every row of a list (the ends disabled), so the fields of the rules end at one place.
         actions={

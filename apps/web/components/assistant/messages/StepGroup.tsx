@@ -10,8 +10,11 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { plainTranslate } from "@/lib/assistant/chips";
 import {
   type StepNames,
+  type StepRow,
+  foldRepeatedWrites,
   groupSummary,
   staysVisible,
+  stepNames,
   stepRows,
   stepRunning,
 } from "@/lib/assistant/stepLabels";
@@ -24,7 +27,9 @@ import { focusRing, mutedText, shimmerSx } from "@/components/assistant/styles";
  * steps (`open`) it lists them as they come; then it closes into one summary
  * line that opens the full list. Writes, failures and, once the answer ended,
  * steps it left without a result stay visible next to the summary as lines of
- * their own. A group with fewer than two steps to fold
+ * their own. Writes that say the same and end up next to each other on screen
+ * show as one line with their count: closed, the reads between them fold away
+ * and no longer part them. A group with fewer than two steps to fold
  * shows its lines as they are.
  */
 export default function StepGroup({
@@ -51,8 +56,10 @@ export default function StepGroup({
   const [expanded, setExpanded] = useState(false);
   const rows = stepRows(steps);
   const visible = rows.filter((row) => staysVisible(row, running));
+  // Repeated writes fold among the lines shown: a line between two of them ends their run.
+  const shown = (lines: StepRow[]) => foldRepeatedWrites(lines, names ?? stepNames(steps), plainTranslate(t));
   if (open || rows.length - visible.length < 2) {
-    return <StepList steps={steps} rows={rows} running={running} names={names} />;
+    return <StepList steps={steps} rows={shown(rows)} running={running} names={names} />;
   }
 
   const failed = rows.filter((row) => row.step.state === "output-error").length;
@@ -94,10 +101,10 @@ export default function StepGroup({
         id={listId}
         hidden={!expanded}
         sx={{ ml: "10px", pl: "6px", borderLeft: 1, borderColor: "divider" }}>
-        {expanded && <StepList steps={steps} rows={rows} running={running} names={names} />}
+        {expanded && <StepList steps={steps} rows={shown(rows)} running={running} names={names} />}
       </Box>
       {!expanded && visible.length > 0 && (
-        <StepList steps={steps} rows={visible} running={running} names={names} />
+        <StepList steps={steps} rows={shown(visible)} running={running} names={names} />
       )}
     </Stack>
   );

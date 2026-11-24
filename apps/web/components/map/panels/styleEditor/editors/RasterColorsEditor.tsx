@@ -111,7 +111,7 @@ export function RasterColorsEditor() {
     : typeof classify?.count === "number"
       ? classify.count
       : classes.length || CLASS_COUNT;
-  const colored = !hillshade || render.palette !== undefined;
+  const colored = !hillshade || render.palette != null;
   // Only a continuous palette, equal intervals and manual breaks take a range; every other method classifies the
   // band's values themselves. With values outside left out, classes end at their outer ends (`classEnds`, the rule
   // the map draws by): those are the range, typed as a whole. Equal intervals keep splitting their range instead.

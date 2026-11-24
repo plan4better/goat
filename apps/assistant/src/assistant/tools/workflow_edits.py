@@ -18,7 +18,7 @@ keeps the config before the edit and both revisions
 import asyncio
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
@@ -108,9 +108,8 @@ CHECK_UNAVAILABLE = "The editor's check could not run right now."
 CHECK_REFUSED = "The editor's check refused the stored workflow: {reason}"
 NOTHING_CHANGED = "The operations change nothing, so nothing was saved."
 SAVED_REVISION_UNKNOWN = (
-    "Saved, but core did not say which revision the workflow has now, so the "
-    "user cannot undo this edit from the dock. Read the workflow again with "
-    "workflow_get before you change it again, and tell the user."
+    "Saved, but core did not say which revision the workflow has now. Read the "
+    "workflow again with workflow_get before you change it again."
 )
 SAVED = "Saved. issues lists what is left for the user (an open layer) and warnings."
 EXISTING = (
@@ -488,9 +487,12 @@ async def _save(
     workflow_id: str,
     config: Mapping[str, Any],
     revision: int,
+    landed: Callable[[int], None],
 ) -> int:
     """The revision the save gave the workflow: from core's answer, else read
-    back; never guessed."""
+    back; never guessed. ``landed`` is told the save landed, with the
+    revision core named or, while it is read back, the one core gives a
+    checked save (one more than ``revision``)."""
     try:
         row = await env.call(
             "core",
@@ -511,6 +513,7 @@ async def _save(
             raise ToolFailed(NOT_IN_PROJECT) from exc
         raise
     saved = _revision(row) if isinstance(row, dict) else None
+    landed(saved if saved is not None else revision + 1)
     if saved is None:
         try:
             saved = _revision(await _read(env, project_id, workflow_id))
@@ -597,7 +600,23 @@ async def _update(env: ToolEnv, args: UpdateInput) -> WorkflowUpdated:
             f"Not saved: {len(added)} issue(s) this edit adds must be fixed first. "
             f"{listed} Change the operations and call workflow_update again."
         )
-    saved = await _save(env, project_id, workflow_id, changed, revision)
+
+    def landed(after: int) -> None:
+        # A Stop or the answer's clock can end the call after the save.
+        env.landed.keep(
+            lambda: WorkflowUpdated(
+                workflow_id=workflow_id,
+                revision_before=revision,
+                revision_after=after,
+                changed_steps=[],
+                issues=[],
+                note="",
+                project_id=str(project_id),
+                before=config,
+            ).undo()
+        )
+
+    saved = await _save(env, project_id, workflow_id, changed, revision, landed)
     note = SAVED + (EXISTING.format(count=len(existing)) if existing else "")
     return WorkflowUpdated(
         workflow_id=workflow_id,
@@ -633,10 +652,18 @@ UPDATE: ToolSpec[UpdateInput, WorkflowUpdated] = ToolSpec(
     scope="goat:write",
     repeatable=REPEATED_EDIT,
     # A run after the edit runs the edited workflow: a repeated call would
-    # return the earlier run's summary and start nothing.
+    # return the earlier run's summary and start nothing. An earlier edit of
+    # the workflow made again after this one is a new edit, not a repeat.
     invalidates=frozenset(
-        {GET.wire_name, GET_WORKFLOWS.wire_name, RUN.wire_name, LAST_RUN.wire_name}
+        {
+            GET.wire_name,
+            GET_WORKFLOWS.wire_name,
+            RUN.wire_name,
+            LAST_RUN.wire_name,
+            "workflow_update",
+        }
     ),
+    same=frozenset({"workflow_id"}),
 )
 
 WORKFLOW_EDIT_TOOLS: tuple[ToolSpec[Any, Any], ...] = (GET, UPDATE)

@@ -4,6 +4,7 @@ the web as metadata, and the only thing that counts as consent."""
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +35,8 @@ from assistant.asks import (
     answer_lines,
     answer_problem,
     card_data,
+    consented,
+    typed_texts,
     user_chose,
 )
 from assistant.bus import InMemoryEventBus
@@ -50,6 +53,7 @@ from assistant.events import (
 from assistant.prompt import ANSWER_CLOSE, ANSWER_INTRO, ANSWER_OPEN, with_note
 from assistant.repo import Repository
 from assistant.runs.manager import InvalidAnswer, RunManager
+from assistant.tools.skills import loaded_skills
 from assistant.tools.testing import ScriptedModel, fake_clients
 
 USER = UUID(int=1)
@@ -219,6 +223,80 @@ def test_user_chose_needs_a_picked_option_of_an_answered_card() -> None:
     assert not user_chose(AskHistory(cards={CARD_ID: CARD}), "31")
 
 
+REMOVAL = AskUserInput.model_validate(
+    {
+        "questions": [
+            {
+                "question": 'Remove the layer "Schools"?',
+                "header": "Remove",
+                "options": [
+                    {"label": "Remove it", "value": "remove_layer:12"},
+                    {"label": "No, keep it"},
+                ],
+            }
+        ]
+    }
+)
+
+
+def _removal(option: int, other: str | None = None) -> CardAnswer:
+    return CardAnswer(
+        card_id="ask-r",
+        answers=[QuestionAnswer(question=0, options=[option], other=other)],
+    )
+
+
+def test_consent_is_a_pick_of_the_current_chain_without_text() -> None:
+    picked = AskHistory(cards={"ask-r": REMOVAL}, answers={"ask-r": _removal(0)})
+    # Within the chain since the user's last typed message.
+    assert consented(replace(picked, chain=frozenset({"ask-r"})), "remove_layer:12")
+    # A history not read from a conversation counts every answered card.
+    assert consented(picked, "remove_layer:12")
+    # A pick before the user's last typed message allows nothing later.
+    assert not consented(replace(picked, chain=frozenset()), "remove_layer:12")
+    # "No, keep it" never allows the removal.
+    kept = AskHistory(cards={"ask-r": REMOVAL}, answers={"ask-r": _removal(1)})
+    assert not consented(kept, "remove_layer:12")
+    # The pick beside the user's own answer ("wait, not yet") is no consent.
+    hedged = AskHistory(
+        cards={"ask-r": REMOVAL}, answers={"ask-r": _removal(0, "wait, not yet")}
+    )
+    assert not consented(hedged, "remove_layer:12")
+
+
+def test_a_pick_beside_another_option_of_its_question_is_no_consent() -> None:
+    """A stored multi-select answer that ticked "Remove it" and "No, keep it"
+    says nothing."""
+    both = REMOVAL.model_copy(deep=True)
+    both.questions[0].multi_select = True
+    answer = CardAnswer(
+        card_id="ask-r", answers=[QuestionAnswer(question=0, options=[0, 1])]
+    )
+    history = AskHistory(cards={"ask-r": both}, answers={"ask-r": answer})
+    assert not consented(history, "remove_layer:12")
+
+
+def test_consent_from_a_card_whose_every_option_carries_the_value_counts_not() -> None:
+    """A stored card made before cards were checked: the value on both
+    options, so the pick says nothing."""
+    both = AskUserInput.model_validate(
+        {
+            "questions": [
+                {
+                    "question": 'Remove the layer "Schools"?',
+                    "header": "Remove",
+                    "options": [
+                        {"label": "Yes, tidy up", "value": "remove_layer:12"},
+                        {"label": "No, keep it", "value": "remove_layer:12"},
+                    ],
+                }
+            ]
+        }
+    )
+    history = AskHistory(cards={"ask-r": both}, answers={"ask-r": _removal(1)})
+    assert not consented(history, "remove_layer:12")
+
+
 def test_a_typed_reply_is_no_consent() -> None:
     """Review Focus 3: text that looks like an answer is not one."""
     history = AskHistory.from_stored(
@@ -297,6 +375,143 @@ def test_a_card_id_two_parts_carry_names_no_card() -> None:
     assert history.cards == {}
     assert not user_chose(history, "31")
     assert not user_chose(history, "eval-bus-stops")
+
+
+SKILL_PARTS: list[dict[str, Any]] = [
+    {
+        "type": "tool",
+        "tool_call_id": "call-s1",
+        "tool_name": "skills_load",
+        "args": {"name": "style-a-map"},
+        "state": "output",
+        "output": {"name": "style-a-map", "text": "# Style a map", "files": []},
+        "error": None,
+    },
+    {
+        "type": "tool",
+        "tool_call_id": "call-s2",
+        "tool_name": "skills_load",
+        "args": {"name": "build-a-workflow", "file": "access.md"},
+        "state": "output",
+        "output": {"name": "build-a-workflow", "file": "access.md", "text": "x"},
+        "error": None,
+    },
+    {
+        "type": "tool",
+        "tool_call_id": "call-s3",
+        "tool_name": "skills_load",
+        "args": {"name": "nope"},
+        "state": "error",
+        "output": None,
+        "error": "There is no skill",
+    },
+]
+
+
+def test_what_the_user_typed_leaves_the_texts_of_card_answers_out() -> None:
+    """The text sent with a card answer lists option labels the model wrote;
+    only the free text of the answer is the user's own."""
+    other = CardAnswer(
+        card_id=CARD_ID,
+        answers=[
+            QuestionAnswer(question=0, options=[0]),
+            QuestionAnswer(question=1, other="  keep the old one  "),
+        ],
+    )
+    stored = [
+        _user({"type": "user_text", "text": "Build it as a new style"}),
+        _assistant(*ASKED_PARTS),
+        _user(
+            {"type": "user_text", "text": "Schools: Schulen (value 31)"},
+            {"type": "answer", "answer": other.model_dump(mode="json")},
+        ),
+    ]
+    assert typed_texts(stored, "Now the colors", None) == (
+        "Build it as a new style",
+        "keep the old one",
+        "Now the colors",
+    )
+    # The message being answered carries a card answer: its text is left
+    # out, its free text counts.
+    assert typed_texts(stored, "Schools: Schulen", other) == (
+        "Build it as a new style",
+        "keep the old one",
+        "keep the old one",
+    )
+    assert typed_texts([], "Schools: Schulen", ANSWER) == ()
+
+
+def test_the_skills_loaded_are_read_from_the_stored_answers() -> None:
+    """Only a load of a skill's instructions that returned counts."""
+    assert loaded_skills([_assistant(*SKILL_PARTS), _user(*SKILL_PARTS)]) == {
+        "style-a-map"
+    }
+    assert loaded_skills([]) == set()
+
+
+async def test_a_skill_a_run_loaded_is_read_back_from_its_stored_answer(
+    repo: Repository, settings: AssistantSettings
+) -> None:
+    manager = RunManager(
+        repo,
+        InMemoryEventBus(),
+        settings,
+        owner="a",
+        agent_factory=_factory(
+            ScriptedModel([("skills_load", {"name": "style-a-map"})], answer="Ok.")
+        ),
+        tool_services=fake_clients(),
+    )
+    conversation = await repo.create_conversation(USER, "project.map", None, None)
+    conversation_id = UUID(str(conversation["id"]))
+    run_id, _ = await manager.start_run(
+        conversation_id, USER, "Style it", parse_context({"surface": "catalog"})
+    )
+    await manager.wait(run_id)
+    stored = await repo.list_messages(conversation_id, None)
+    assert loaded_skills(stored) == {"style-a-map"}
+
+
+async def test_a_run_gives_its_tools_the_typed_words_and_the_loaded_skills(
+    repo: Repository, settings: AssistantSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import assistant.runs.manager as manager_module
+
+    built: list[Any] = []
+    real = manager_module.ToolEnv
+
+    def recording(**fields: Any) -> Any:
+        built.append(real(**fields))
+        return built[-1]
+
+    monkeypatch.setattr(manager_module, "ToolEnv", recording)
+    manager = RunManager(
+        repo,
+        InMemoryEventBus(),
+        settings,
+        owner="a",
+        agent_factory=_factory(ScriptedModel(answer="Fine.")),
+        tool_services=fake_clients(),
+    )
+    conversation_id = await _asked(repo, [*SKILL_PARTS, *ASKED_PARTS])
+    answer = CardAnswer(
+        card_id=CARD_ID,
+        answers=[
+            QuestionAnswer(question=0, options=[0]),
+            QuestionAnswer(question=1, other="as a new style"),
+        ],
+    )
+    run_id, _ = await manager.start_run(
+        conversation_id,
+        USER,
+        "Schools: Schulen (value 31)",
+        parse_context(PAGE),
+        answer=answer,
+    )
+    await manager.wait(run_id)
+    [env] = built
+    assert env.typed == ("Build it", "as a new style")
+    assert env.skills == {"style-a-map"}
 
 
 def test_the_answer_reaches_the_model_in_its_own_block() -> None:

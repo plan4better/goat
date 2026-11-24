@@ -1,9 +1,11 @@
 // Part-level edits of a document (spec 3, 3.3, 8): which parts are drawn, the marker's shape, what `render` hides,
 // and the cluster symbol the panel edits.
+import { isSet, setValues } from "@/lib/style/compile/cascade";
 import { DEFAULT_CLUSTER_SYMBOL } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
 import { switchMode, targetsOf } from "@/lib/style/editor/forms";
-import { getIn, setIn } from "@/lib/style/editor/store";
+import { perLayerPath, recordPaths } from "@/lib/style/editor/sources";
+import { type Path, getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
@@ -27,30 +29,49 @@ export const markerFilled = (marker: unknown): boolean =>
 /** Clusters are computed in the browser up to this many features (goatlib's default `cluster_feature_limit`). */
 export const CLUSTER_FEATURE_LIMIT = 100_000;
 
-/** Whether the layer's marker is more than a plain circle: it has an icon or a shape (the Icon editor's switch). */
+/** Whether the layer's markers are more than plain circles anywhere: the base, a class, `other`, `no_data` or a rule
+ * gives them an icon or a shape other than the circle (a shape by zoom in one of its stops), as the map reads them (the
+ * Icon editor's switch). Markers switched off draw none. */
 export function markerOn(doc: LayerStyle): boolean {
-  const marker = getIn(doc, MARKER);
-  if (!isObject(marker)) return false;
-  return marker.icon !== undefined || (marker.shape !== undefined && marker.shape !== "circle");
+  if (getIn(doc, MARKER) === false) return false;
+  const style = doc as unknown as JsonObject;
+  return isSet(style, "marker.icon") || setValues(style, "marker.shape").some((shape) => shape !== "circle");
 }
 
-/** `render` for clusters: points that draw an icon (theirs or a classification's) or a shape other than a plain
- * circle cluster like the points with the count on a badge; plain circles cluster as circles by count (spec 8.2). */
+/** `render` for clusters: points that draw an icon or a shape other than a plain circle, in any record, cluster like
+ * the points with the count on a badge; plain circles cluster as circles by count (spec 8.2). */
 export function clusterRender(doc: LayerStyle): JsonObject {
-  const icons = (getIn(doc, "classify") as unknown[] | undefined)?.some(
-    (c) =>
-      isObject(c) &&
-      Array.isArray(c.classes) &&
-      c.classes.some((k) => isObject(k) && isObject(k.marker) && k.marker.icon !== undefined)
-  );
-  return markerOn(doc) || icons ? { type: "cluster", look: "points", count: "badge" } : { type: "cluster" };
+  return markerOn(doc) ? { type: "cluster", look: "points", count: "badge" } : { type: "cluster" };
 }
 
-/** What switching the layer's icon off takes from its marker: the icon and what only an icon uses, the shape, and the
- * classifications that set the icon. `restoreIcon` puts them back. */
+/** What switching the layer's icon off takes from its markers: the base marker's icon, shape and what only an icon
+ * uses; the classifications that set the icon or the shape, with their place in the list; and the icon and shape of
+ * every other class and rule record (their icon color and anchor stay, unused). `restoreIcon` puts them back. */
 export interface IconSettings {
   marker: JsonObject;
-  classify: JsonObject[];
+  classify: Array<{ index: number; classification: JsonObject }>;
+  records: Array<{ path: Path; id: unknown; values: JsonObject }>;
+}
+
+/** What a class or rule record's marker loses with the icon: the icon, and a shape other than the circle. */
+function recordIcon(marker: JsonObject): JsonObject {
+  const out: JsonObject = {};
+  if (marker.icon !== undefined) out.icon = clone(marker.icon);
+  if (marker.shape !== undefined && marker.shape !== "circle") out.shape = clone(marker.shape);
+  return out;
+}
+
+/** Whether a classification sets the icon or the shape (`target`). */
+const setsIcon = (c: unknown, geometry?: Geometry): c is JsonObject =>
+  isObject(c) && (targetsOf(c, geometry).includes("marker.icon") || c.target === "marker.shape");
+
+/** A record's id, else its classification's field (a rule's own path): what `restoreIcon` checks before it writes
+ * into the record at the same path. */
+function recordId(doc: LayerStyle, path: Path): unknown {
+  const record = getIn(doc, path);
+  if (isObject(record) && record.id !== undefined) return record.id;
+  const at = /^classify\.(\d+)\./.exec(path);
+  return at ? getIn(doc, `classify.${at[1]}.field`) : path;
 }
 
 export function iconSettings(doc: LayerStyle, geometry: Geometry = "point"): IconSettings {
@@ -58,30 +79,61 @@ export function iconSettings(doc: LayerStyle, geometry: Geometry = "point"): Ico
   const own = isObject(marker) ? marker : {};
   const kept: JsonObject = {};
   for (const key of ICON_KEYS) if (own[key] !== undefined) kept[key] = clone(own[key]);
-  if (own.shape !== undefined && own.shape !== "circle") kept.shape = clone(own.shape);
+  if (own.shape !== undefined) kept.shape = clone(own.shape);
   const all = getIn(doc, "classify");
-  const classify = (Array.isArray(all) ? all : [])
-    .filter((c): c is JsonObject => isObject(c) && targetsOf(c, geometry).includes("marker.icon"))
-    .map((c) => clone(c));
-  return { marker: kept, classify };
+  const classify = (Array.isArray(all) ? all : []).flatMap((c, index) =>
+    setsIcon(c, geometry) ? [{ index, classification: clone(c) }] : []
+  );
+  const records = recordPaths(doc).flatMap(({ path, record }) => {
+    const at = /^classify\.(\d+)\./.exec(path);
+    if (at && setsIcon(getIn(doc, `classify.${at[1]}`), geometry)) return [];
+    if (!isObject(record.marker)) return [];
+    const values = recordIcon(record.marker);
+    return Object.keys(values).length ? [{ path, id: recordId(doc, path), values }] : [];
+  });
+  return { marker: kept, classify, records };
 }
 
-/** The layer's icon and shape back as `kept` had them (a pin without an icon stays without); with nothing kept, the
- * default marker icon. */
+/** The layer's markers as plain circles (the Icon switch off): no icon or shape other than the circle in the base or
+ * in any record, and none of the classifications that set the icon or the shape. `iconSettings`, taken before, keeps
+ * what goes. */
+export function iconOff(doc: LayerStyle, ctx: { mapZoom: number; geometry?: Geometry }): LayerStyle {
+  let next = setIn(setMarkerIcon(doc, `${MARKER}.icon`, undefined, ctx), `${MARKER}.shape`, undefined);
+  const all = getIn(next, "classify");
+  if (Array.isArray(all) && all.some((c) => setsIcon(c, ctx.geometry))) {
+    const kept = all.filter((c) => !setsIcon(c, ctx.geometry));
+    next = setIn(next, "classify", kept.length ? kept : undefined);
+  }
+  for (const { path, record } of recordPaths(next)) {
+    if (!isObject(record.marker)) continue;
+    for (const key of Object.keys(recordIcon(record.marker)))
+      next = setIn(next, `${path}.marker.${key}`, undefined);
+  }
+  return next;
+}
+
+/** The layer's icons and shapes back as `kept` had them (a pin without an icon stays without); with nothing to bring
+ * back, the default marker icon. */
 export function restoreIcon(doc: LayerStyle, kept?: IconSettings): LayerStyle {
   const marker = kept?.marker ?? {};
-  const nothing = marker.icon === undefined && marker.shape === undefined;
-  let next = nothing ? setIn(doc, `${MARKER}.icon`, DEFAULT_ICON) : doc;
-  if (marker.icon !== undefined) next = setIn(next, `${MARKER}.icon`, marker.icon);
-  for (const key of ["icon_color", "anchor", "shape"])
+  let next = doc;
+  for (const key of ["icon", "icon_color", "anchor", "shape"])
     if (marker[key] !== undefined) next = setIn(next, `${MARKER}.${key}`, marker[key]);
   if (kept?.classify.length) {
     const all = getIn(next, "classify");
-    const current = (Array.isArray(all) ? all : []).filter(isObject);
-    const ids = new Set(current.map((c) => c.id));
-    next = setIn(next, "classify", [...current, ...kept.classify.filter((c) => !ids.has(c.id))]);
+    const back = (Array.isArray(all) ? all : []).filter(isObject);
+    const ids = new Set(back.map((c) => c.id));
+    for (const { index, classification } of kept.classify)
+      if (classification.id === undefined || !ids.has(classification.id))
+        back.splice(Math.min(index, back.length), 0, classification);
+    next = setIn(next, "classify", back);
   }
-  return next;
+  // Records still where they were get their icon keys back.
+  for (const { path, id, values } of kept?.records ?? []) {
+    if (!isObject(getIn(next, path)) || recordId(next, path) !== id) continue;
+    for (const [key, value] of Object.entries(values)) next = setIn(next, `${path}.marker.${key}`, value);
+  }
+  return markerOn(next) ? next : setIn(next, `${MARKER}.icon`, DEFAULT_ICON);
 }
 
 /** Whether the point symbol is drawn: a heatmap or H3 hides it unless it hands over at `points_from_zoom` (spec 8). */
@@ -172,7 +224,9 @@ export function setMarkerIcon(
 /** The arrows with icon `ref` at `path` (spec 3.2), GOAT's arrow for undefined: the arrow turns with the line, any
  * other icon stays upright until the user turns it (`turn_with_line`). */
 export function setArrowsIcon(doc: LayerStyle, path: string, ref: string | undefined): LayerStyle {
-  const turn = path.replace(/icon$/, "turn_with_line");
+  // `turn_with_line` is one for the layer too (spec 6.1): written where a record holds it, else beside the icon.
+  const held = perLayerPath(doc, "symbol.arrows.turn_with_line");
+  const turn = getIn(doc, held) !== undefined ? held : path.replace(/icon$/, "turn_with_line");
   return ref === undefined || ref === DEFAULTS["arrows.icon"]
     ? setIn(setIn(doc, path, undefined), turn, undefined)
     : setIn(setIn(doc, path, ref), turn, false);

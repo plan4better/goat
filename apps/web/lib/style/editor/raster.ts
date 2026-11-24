@@ -446,7 +446,7 @@ export function noDataApplies(render: JsonObject, info: RasterInfo | undefined):
   const type = render.type ?? "image";
   if (type === "image") return !info?.colorTable;
   if (type === "categorical") return Array.isArray(render.classes) && render.classes.length > 0;
-  if (type === "hillshade") return render.palette !== undefined;
+  if (type === "hillshade") return render.palette != null;
   return true;
 }
 

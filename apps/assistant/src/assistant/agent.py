@@ -61,6 +61,7 @@ from assistant.prompt import (
     RUN_WHAT_YOU_BUILT,
     answer_in_language,
     as_note,
+    make_the_change,
     read_the_result,
     static_instructions,
 )
@@ -71,6 +72,7 @@ from assistant.tools.toolset import (
     TOOL_RETRIES,
     Stage,
     answer_step,
+    answer_writes,
     card_failed,
     goat_toolset,
     pickable_datasets,
@@ -201,7 +203,9 @@ class RunDeps:
     #: a step that reads a run's result and the answer step still fit
     #: (``assistant.budget.RunBudget.read_fits``), decided with the stage:
     #: only then may the step run a workflow this answer built, so its result
-    #: is read before the answer (``assistant.tools.toolset.runnable_workflows``).
+    #: is read before the answer (``assistant.tools.toolset.runnable_workflows``),
+    #: or make the change the user asked for and answer after it
+    #: (``assistant.tools.toolset.answer_writes``).
     run_room: dict[str | None, int] = field(default_factory=dict)
     #: By run id: the workflows this answer started a run of, each with its
     #: step, whatever came of the run (``assistant.tools.toolset._note_run``).
@@ -314,6 +318,8 @@ def stage_note(ctx: RunContext[RunDeps]) -> str:
             lead = f"{lead} {RUN_WHAT_YOU_BUILT}"
         if pickable_datasets(ctx):
             lead = f"{lead} {ADD_WHAT_WAS_PICKED}"
+        if writes := answer_writes(ctx):
+            lead = f"{lead} {make_the_change(writes)}"
     # Named only while the stage lets the card run (assistant.tools.toolset),
     # always with the text before it: a card that comes alone leaves the user
     # a question with nothing said before it.

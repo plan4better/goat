@@ -1,9 +1,15 @@
-"""The dock's Undo of an answer's workflow edits.
+"""The dock's Undo of what an answer changed: its workflow edits, its
+style changes (``assistant.undo_styles``) and its changes of the map
+(``assistant.undo_map``).
 
-``workflow_update`` keeps each landed edit's before-content and revisions in
-its audit row (``tool_call.undo``). Undo writes the content back through
-core's save, under the user's own sign-in, so core decides whether they may
-still change the workflow.
+A write tool keeps what takes each landed change back in its audit row
+(``tool_call.undo``), by kind. Undo writes that back through core, under the
+user's own sign-in, so core decides whether they may still change the
+project. The rows of every kind are marked under way together, before the
+first write, and each group of them (a workflow, a style, a project's map)
+is marked undone once it went back, or freed again when it did not.
+
+``workflow_update`` keeps each landed edit's before-content and revisions.
 
 Per workflow, the answer's records are taken together: the oldest
 before-content is saved on the newest record's ``revision_after``. Saving
@@ -11,13 +17,13 @@ record by record, newest first, would make the second save a conflict with
 the first. When the records do not chain (a save landed between two of the
 answer's edits), and when core reports a save after the answer's last edit,
 the user is asked first: ``force`` then saves on top of the revision core
-holds. A workflow under way is marked in its records (``undoing_at``), and
-one that went back too (``undone_at``), so a second Undo of it is refused
-and one at the same time is told it is under way.
+holds. A record under way is marked (``undoing_at``), and one whose change
+went back too (``undone_at``), so a second Undo of it is refused and one at
+the same time is told it is under way.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +31,23 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.repo import Repository
 from assistant.tools.http import ServiceClients, ServiceError, call_service
+from assistant.undo_map import (
+    ChangedMap,
+    MapChanges,
+    RestoredMap,
+    map_groups,
+    restore_map,
+)
+from assistant.undo_styles import (
+    ChangedStyle,
+    CreatedStyle,
+    RestoredStyle,
+    StyleEdits,
+    UnrestoredStyle,
+    remove_created,
+    restore_style,
+    style_groups,
+)
 
 
 @dataclass(frozen=True)
@@ -114,8 +137,66 @@ class Changed:
 
 @dataclass(frozen=True)
 class UndoOutcome:
+    """What one Undo did, kind by kind: what went back, and what the user is
+    asked about first."""
+
+    #: Workflows.
     restored: list[Restored]
     changed: list[Changed]
+    styles: list[RestoredStyle] = field(default_factory=list)
+    changed_styles: list[ChangedStyle] = field(default_factory=list)
+    #: What did not come back and is not asked about, by a word per kind of
+    #: thing: "style" for a style core stored nothing of, "layer_removed" for
+    #: a layer the answer removed, "group_in_use" for a group it added that
+    #: holds something now, "map_refused" for a change of the map core
+    #: refused to take back.
+    not_restored: list[str] = field(default_factory=list)
+    #: The map, per project.
+    maps: list[RestoredMap] = field(default_factory=list)
+    changed_map: list[ChangedMap] = field(default_factory=list)
+
+
+#: What an Undo takes back as one: the records of one workflow, of one style,
+#: or of one project's map.
+UndoGroup = WorkflowEdits | CreatedStyle | StyleEdits | MapChanges
+
+
+def _removals_only(group: MapChanges) -> bool:
+    """Whether a project's map changes are removed layers alone, which no
+    Undo brings back."""
+    return all(change["object"] == "layer_removed" for change in group.changes)
+
+
+def undo_groups(records: Sequence[tuple[UUID, dict[str, Any]]]) -> list[UndoGroup]:
+    """The records of a run as the Undo takes them back, in its order:
+    workflows, then created styles, then edited styles, then the map. A
+    project's map whose newest change is newer than every style change comes
+    before the styles instead: its switch of a layer's style goes back to
+    the style the answer made active, which the style's Undo then takes back
+    to the one the layer drew before the answer (a style the answer created
+    still exists while the map goes back to it). A record no kind takes is
+    left out, and so are a project's map changes that are removed layers
+    alone: nothing of them comes back."""
+    edited, created = style_groups(records)
+    styles: list[CreatedStyle | StyleEdits] = [*created, *edited]
+    maps = [group for group in map_groups(records) if not _removals_only(group)]
+    made = {row: index for index, (row, _) in enumerate(records)}
+
+    def newest(group: CreatedStyle | StyleEdits | MapChanges) -> int:
+        return max(made.get(row, -1) for row in group.rows)
+
+    last_style = max((newest(group) for group in styles), default=-1)
+    first = [group for group in maps if newest(group) > last_style]
+    then = [group for group in maps if newest(group) <= last_style]
+    return [*workflow_edits(records), *first, *styles, *then]
+
+
+def _layers_removed(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
+    return any(
+        change["object"] == "layer_removed"
+        for group in map_groups(records)
+        for change in group.changes
+    )
 
 
 class UndoRefused(Exception):  # noqa: N818
@@ -133,16 +214,20 @@ class UndoUnderWay(Exception):  # noqa: N818
 
 
 class NothingToUndo(Exception):  # noqa: N818
-    """The run has no edits, or all of them were undone already."""
+    """The run changed nothing an Undo takes back, or all of it was undone
+    already. ``removed``: what it changed is removed layers alone."""
 
-    def __init__(self, undone: bool) -> None:
+    def __init__(self, undone: bool, removed: bool = False) -> None:
         super().__init__("already undone" if undone else "nothing to undo")
         self.undone = undone
+        self.removed = removed
 
 
-NOT_ALLOWED = "You cannot change this workflow, so its changes cannot be undone."
+NOT_ALLOWED = (
+    "You cannot change this project's content, so these changes cannot be undone."
+)
 SIGNED_OUT = "Your sign-in expired. Sign in again."
-UNAVAILABLE = "The workflow could not be saved right now. Try again later."
+UNAVAILABLE = "The changes could not be undone right now. Try again later."
 
 
 def _changed(edits: WorkflowEdits, error: ServiceError | None) -> Changed:
@@ -251,6 +336,53 @@ def _refusal(error: ServiceError) -> UndoRefused:
     return UndoRefused(503, "undo_unavailable", UNAVAILABLE)
 
 
+async def _take_back(
+    clients: ServiceClients,
+    bearer: str | None,
+    group: UndoGroup,
+    force: bool,
+    outcome: UndoOutcome,
+) -> bool:
+    """Takes one group back and notes in ``outcome`` how it went. Whether
+    its rows are done with: a workflow or a style that is gone counts, since
+    nothing is left to undo; one the user is asked about, or that did not
+    come back, does not. A map's rows are done with once nothing of it is
+    left to ask about."""
+    if isinstance(group, WorkflowEdits):
+        workflow = await _restore(clients, bearer, group, force)
+        if isinstance(workflow, Changed):
+            outcome.changed.append(workflow)
+            return False
+        if workflow is not None:
+            outcome.restored.append(workflow)
+        return True
+    if isinstance(group, MapChanges):
+        went_back, asked = await restore_map(clients, bearer, group, force)
+        outcome.changed_map.extend(asked)
+        if went_back is not None:
+            outcome.maps.append(went_back)
+            outcome.not_restored.extend(
+                word
+                for word in went_back.not_restored
+                if word not in outcome.not_restored
+            )
+        return not asked
+    if isinstance(group, CreatedStyle):
+        style = await remove_created(clients, bearer, group, force)
+    else:
+        style = await restore_style(clients, bearer, group, force)
+    if isinstance(style, ChangedStyle):
+        outcome.changed_styles.append(style)
+        return False
+    if isinstance(style, UnrestoredStyle):
+        if "style" not in outcome.not_restored:
+            outcome.not_restored.append("style")
+        return False
+    if style is not None:
+        outcome.styles.append(style)
+    return True
+
+
 async def undo_run(
     repo: Repository,
     clients: ServiceClients,
@@ -259,54 +391,69 @@ async def undo_run(
     *,
     force: bool,
 ) -> UndoOutcome:
-    """Writes back what the run's edits replaced, workflow by workflow. Each
-    workflow is marked under way before its save; the mark becomes "undone"
-    when the save landed and is taken off when it did not, so of two
-    requests at once one saves and the other is told it is under way."""
-    edits = workflow_edits(await repo.undo_records(run_id))
-    pending = [item for item in edits if not item.undone]
+    """Writes back what the run's changes replaced, group by group
+    (``undo_groups``). Every row not yet undone is marked under way in one
+    step before the first write, so of two requests at once one writes and
+    the other is told it is under way. A group's mark becomes "undone" when
+    it went back and is taken off when it did not, as are the marks of the
+    groups a refusal kept the Undo from reaching."""
+    records = await repo.undo_records(run_id)
+    groups = undo_groups(records)
+    pending = _pending(groups)
     if not pending:
-        raise NothingToUndo(undone=bool(edits))
-    restored: list[Restored] = []
-    changed: list[Changed] = []
-    claimed_any = False
-    for item in pending:
-        claimed = await repo.claim_undo(item.rows)
-        if len(claimed) != len(item.rows):
-            # Another request took this workflow.
-            await repo.release_undo(claimed)
-            continue
-        claimed_any = True
-        kept = False
-        try:
-            outcome = await _restore(clients, bearer, item, force)
-            # A workflow that is gone counts as undone: nothing is left to undo.
-            kept = not isinstance(outcome, Changed)
-        except ServiceError as error:
-            raise _refusal(error) from error
-        except ToolFailed as error:
-            # Core did not answer in time, or could not be reached.
-            raise UndoRefused(503, "undo_unavailable", UNAVAILABLE) from error
-        finally:
-            if kept:
-                await repo.finish_undo(claimed)
-            else:
-                await repo.release_undo(claimed)
-        if isinstance(outcome, Changed):
-            changed.append(outcome)
-        elif outcome is not None:
-            restored.append(outcome)
-    if not claimed_any:
-        # Every workflow was taken by another request: done by now, or under way.
-        now = workflow_edits(await repo.undo_records(run_id))
-        if all(item.undone for item in now):
+        raise NothingToUndo(undone=bool(groups), removed=_layers_removed(records))
+    wanted = [row for group in pending for row in group.rows]
+    held = await repo.claim_undo(wanted)
+    if len(held) != len(wanted):
+        # Another request took them: done by now, or under way.
+        if held:
+            await repo.release_undo(held)
+        now = undo_groups(await repo.undo_records(run_id))
+        if all(group.undone for group in now):
             raise NothingToUndo(undone=True)
         raise UndoUnderWay()
-    return UndoOutcome(restored=restored, changed=changed)
+    # A removal beside what goes back is named, as nothing brings it back.
+    outcome = UndoOutcome(
+        restored=[],
+        changed=[],
+        not_restored=["layer_removed"] if _layers_removed(records) else [],
+    )
+    try:
+        for group in pending:
+            kept = False
+            try:
+                kept = await _take_back(clients, bearer, group, force, outcome)
+            except ServiceError as error:
+                raise _refusal(error) from error
+            except ToolFailed as error:
+                # Core did not answer in time, or could not be reached.
+                raise UndoRefused(503, "undo_unavailable", UNAVAILABLE) from error
+            finally:
+                held = [row for row in held if row not in group.rows]
+                if kept:
+                    await repo.finish_undo(group.rows)
+                else:
+                    await repo.release_undo(group.rows)
+    finally:
+        if held:
+            await repo.release_undo(held)
+    return outcome
+
+
+def _pending(groups: list[UndoGroup]) -> list[UndoGroup]:
+    """The groups an Undo takes back now: those not undone yet."""
+    return [group for group in groups if not group.undone]
+
+
+def undoable(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
+    """Whether an answer's Undo has something to take back: ``undo_run``
+    answers ``NothingToUndo`` exactly when this is false, so an answer whose
+    changes are removed layers alone, or were all undone, is not undoable."""
+    return bool(_pending(undo_groups(records)))
 
 
 def undone(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
-    """Whether an answer reads Undone: every edit an Undo takes went back.
+    """Whether an answer reads Undone: every change an Undo takes went back.
     The same records as ``undo_run`` reads, by the same rule."""
-    edits = workflow_edits(records)
-    return bool(edits) and all(item.undone for item in edits)
+    groups = undo_groups(records)
+    return bool(groups) and all(group.undone for group in groups)

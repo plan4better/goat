@@ -395,7 +395,8 @@ function ClassRow({
       }
       count={count !== undefined ? formatNumberText(count, {}, i18n.language) : undefined}
       style={
-        record === "no_data" ? undefined : (
+        // No data is styled like a class once it has a record of its own.
+        record === "no_data" && !isObject(value) ? undefined : (
           <Tooltip title={t("style_editor.style_this_class")}>
             <IconButton
               size="small"

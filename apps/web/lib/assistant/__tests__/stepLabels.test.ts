@@ -7,6 +7,7 @@ import { type Translate, plainTranslate } from "@/lib/assistant/chips";
 import {
   ARGUMENT_CHARS,
   clip,
+  foldRepeatedWrites,
   groupSummary,
   staysVisible,
   stepLabel,
@@ -661,6 +662,167 @@ describe("added datasets", () => {
   });
 });
 
+describe("style and map steps", () => {
+  const summary = (steps: DynamicToolUIPart[], t: Translate = enTranslate) =>
+    groupSummary(stepRows(steps), t, false);
+  const de = (step: DynamicToolUIPart) => stepLabel(step, stepNames([step]), deTranslate);
+  const running = (step: DynamicToolUIPart, t: Translate = enTranslate) =>
+    stepLabel(step, stepNames([step]), t, true);
+  const styleRead = (layer: number, part?: string) =>
+    call("style_get", { layer_project_id: layer, ...(part && { part }) }, { layer_project_id: layer });
+  const catalog = () =>
+    call("style_catalog", { kind: "palettes" }, { kind: "palettes", results: [], total: 0 });
+  const styleChange = call(
+    "style_update",
+    { layer_project_id: 1, operations: [] },
+    { layer_project_id: 1, style_id: "s1", name: "Default", created: false, active: true }
+  );
+  const mapChange = call(
+    "map_update",
+    { operations: [{ op: "set_layer", layer_project_id: 1, visible: false }] },
+    { applied: [{ index: 0, op: "set_layer", layer_project_id: 1, fields: ["visible"], summary: "hidden" }] }
+  );
+
+  it("labels the four new tools in both languages, finished and running", () => {
+    expect(label(styleRead(1))).toBe("Read the style");
+    expect(de(styleRead(1))).toBe("Stil gelesen");
+    expect(label(catalog())).toBe("Looked up palettes and icons");
+    expect(de(catalog())).toBe("Paletten und Icons nachgeschlagen");
+    expect(label(styleChange)).toBe("Changed the style");
+    expect(de(styleChange)).toBe("Stil geändert");
+    expect(label(mapChange)).toBe("Changed the map");
+    expect(de(mapChange)).toBe("Karte geändert");
+
+    expect(running(call("style_get", { layer_project_id: 1 }))).toBe("Reading the style…");
+    expect(running(call("style_get", { layer_project_id: 1 }), deTranslate)).toBe("Liest den Stil…");
+    expect(running(call("style_catalog", { kind: "icons" }))).toBe("Looking up palettes and icons…");
+    expect(running(call("style_catalog", { kind: "icons" }), deTranslate)).toBe(
+      "Schlägt Paletten und Icons nach…"
+    );
+    const changingStyle = call("style_update", { layer_project_id: 1, new_style: { name: "Dichte" } });
+    expect(running(changingStyle)).toBe("Changing the style…");
+    expect(running(changingStyle, deTranslate)).toBe("Ändert den Stil…");
+    const changingMap = call("map_update", { operations: [] });
+    expect(running(changingMap)).toBe("Changing the map…");
+    expect(running(changingMap, deTranslate)).toBe("Ändert die Karte…");
+    // A failed change keeps the plain label.
+    expect(label(failed("style_update", { layer_project_id: 1 }))).toBe("Changed the style");
+    expect(label(failed("map_update", { operations: [] }))).toBe("Changed the map");
+  });
+
+  it("says Created the style with its name when the result created one", () => {
+    const created = (name: unknown) =>
+      call(
+        "style_update",
+        { layer_project_id: 1, new_style: { name: "x" } },
+        { layer_project_id: 1, style_id: "s2", name, created: true, active: true }
+      );
+    expect(label(created("Population density"))).toBe("Created the style “Population density”");
+    expect(de(created("Bevölkerungsdichte"))).toBe("Stil „Bevölkerungsdichte“ erstellt");
+    // A long name is cut, as every argument of a label is.
+    const long = "y".repeat(60);
+    expect(label(created(long))).toBe(`Created the style “${clip(long)}”`);
+    // Without a name, or for a style changed in place, the plain label.
+    expect(label(created(""))).toBe("Changed the style");
+    expect(label(styleChange)).toBe("Changed the style");
+  });
+
+  it("says Moved the map view for a change that only moved the view", () => {
+    const moved = call(
+      "map_update",
+      { operations: [{ op: "set_view", zoom: 12 }] },
+      // The tool lists the view among what it applied.
+      {
+        applied: [{ index: 0, op: "set_view", summary: "The page shows the view: zoom 12." }],
+        view: { camera: { zoom: 12 } },
+      }
+    );
+    expect(label(moved)).toBe("Moved the map view");
+    expect(de(moved)).toBe("Kartenansicht bewegt");
+    // A view beside other changes, or no view at all: the map label.
+    const both = call(
+      "map_update",
+      { operations: [] },
+      { applied: [{ index: 0, op: "set_basemap", summary: "light" }], view: { camera: { zoom: 3 } } }
+    );
+    expect(label(both)).toBe("Changed the map");
+    expect(label(call("map_update", { operations: [] }, { applied: [], view: null }))).toBe(
+      "Changed the map"
+    );
+    expect(running(call("map_update", { operations: [{ op: "set_view", zoom: 12 }] }))).toBe(
+      "Changing the map…"
+    );
+  });
+
+  it("says Checked what removing the layer affects for a removal that waits for the user", () => {
+    const ask = (layer: number) => ({
+      layer_project_id: layer,
+      name: `Layer ${layer}`,
+      value: `remove_layer:${layer}`,
+      facts: { used_by_workflows: [] },
+    });
+    const asked = (confirm: unknown, applied: unknown[] = []) =>
+      call(
+        "map_update",
+        { operations: [{ op: "remove_layer", layer_project_id: 1 }] },
+        { project_id: "p1", applied, confirm }
+      );
+    expect(label(asked([ask(1)]))).toBe("Checked what removing the layer affects");
+    expect(de(asked([ask(1)]))).toBe("Geprüft, was das Entfernen des Layers betrifft");
+    expect(label(asked([ask(1), ask(2)]))).toBe("Checked what removing the layers affects");
+    expect(de(asked([ask(1), ask(2)]))).toBe("Geprüft, was das Entfernen der Layer betrifft");
+    // It asks before the view: a view beside the question does not make it a move.
+    const askedWithView = call(
+      "map_update",
+      { operations: [] },
+      {
+        project_id: "p1",
+        applied: [{ index: 1, op: "set_view", summary: "The page shows the view: zoom 12." }],
+        confirm: [ask(1)],
+        view: { camera: { zoom: 12 } },
+      }
+    );
+    expect(label(askedWithView)).toBe("Checked what removing the layer affects");
+    // Something applied, or nothing to ask: the labels it has without the question.
+    const hiddenOp = {
+      index: 0,
+      op: "set_layer",
+      layer_project_id: 2,
+      fields: ["visible"],
+      summary: "hidden",
+    };
+    expect(label(asked([], [hiddenOp]))).toBe("Changed the map");
+    expect(label(asked([ask(1)], [hiddenOp]))).toBe("Changed the map");
+    expect(label(asked([]))).toBe("Changed the map");
+    expect(label(asked(null))).toBe("Changed the map");
+    expect(running(call("map_update", { operations: [{ op: "remove_layer", layer_project_id: 1 }] }))).toBe(
+      "Changing the map…"
+    );
+  });
+
+  it("never folds style_update and map_update into a summary", () => {
+    const rows = stepRows([styleRead(1), styleChange, catalog(), mapChange]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([
+      styleChange,
+      mapChange,
+    ]);
+    expect(groupSummary(rows, enTranslate, false)).toBe("Read a style, looked up palettes and icons");
+  });
+
+  it("counts style_get and style_catalog under their own kinds", () => {
+    // Two reads of one style (another part of it) are one style read.
+    expect(summary([styleRead(1), styleRead(1, "/popup"), styleRead(2)])).toBe("Read 2 styles");
+    expect(summary([styleRead(1)])).toBe("Read a style");
+    expect(summary([styleRead(1)], deTranslate)).toBe("Einen Stil gelesen");
+    expect(summary([styleRead(1), styleRead(2)], deTranslate)).toBe("2 Stile gelesen");
+    expect(summary([catalog()])).toBe("Looked up palettes and icons");
+    // The count of lookups says nothing to the reader: several read as one.
+    expect(summary([catalog(), catalog()])).toBe("Looked up palettes and icons");
+    expect(summary([catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
+    expect(summary([catalog(), catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
+  });
+});
+
 describe("step results", () => {
   it("write counts with the UI language's thousands separator", () => {
     const counted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: 4766 });
@@ -679,5 +841,103 @@ describe("step results", () => {
     expect(stepResult(counted, deTranslate)).toBeUndefined();
     const uncounted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: null });
     expect(stepResult(uncounted, enTranslate)).toBeUndefined();
+  });
+});
+
+describe("repeated writes", () => {
+  const styleChange = () =>
+    call(
+      "style_update",
+      { layer_project_id: 1, operations: [] },
+      {
+        project_id: "p1",
+        layer_project_id: 1,
+        style_id: "s1",
+        created: false,
+        revision_before: 1,
+        revision_after: 2,
+      }
+    );
+  const styleCreate = (name: string) =>
+    call("style_update", { layer_project_id: 1, operations: [] }, { style_id: "s2", created: true, name });
+  const read = (workflow: string, name: string) =>
+    call("workflow_get", { workflow_id: workflow }, { workflow_id: workflow, name, revision: 4 });
+  const edit = (workflow: string) =>
+    call(
+      "workflow_update",
+      { workflow_id: workflow, operations: [] },
+      { workflow_id: workflow, revision_before: 4, revision_after: 5, changed_steps: [] }
+    );
+  const search = (q: string) => call("catalog_search", { q }, { numberMatched: 3 });
+  /** Each row as its call and the further calls it stands for. */
+  const shape = (steps: DynamicToolUIPart[]) =>
+    foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate).map((row) => [
+      row.step.toolCallId,
+      (row.repeats ?? []).map((step) => step.toolCallId),
+    ]);
+
+  it("fold adjacent finished writes with the same label into the first one's row", () => {
+    const steps = [styleChange(), styleChange(), styleChange(), styleChange(), styleChange()];
+    const [first, ...rest] = steps;
+    expect(shape(steps)).toEqual([[first.toolCallId, rest.map((step) => step.toolCallId)]]);
+  });
+
+  it("keep writes with different labels apart", () => {
+    const a = edit("w1");
+    const b = edit("w2");
+    const steps = [read("w1", "A"), read("w2", "B"), a, b];
+    expect(shape(steps).slice(2)).toEqual([
+      [a.toolCallId, []],
+      [b.toolCallId, []],
+    ]);
+    const changed = styleChange();
+    const created = styleCreate("X");
+    expect(shape([created, changed])).toEqual([
+      [created.toolCallId, []],
+      [changed.toolCallId, []],
+    ]);
+    // The same workflow's name twice is the same label.
+    const again = edit("w1");
+    expect(shape([read("w1", "A"), a, again]).slice(1)).toEqual([[a.toolCallId, [again.toolCallId]]]);
+  });
+
+  it("break a run at a failed, running or other step, and keep failed and running writes on their own", () => {
+    const [one, two, three] = [styleChange(), styleChange(), styleChange()];
+    const broken = failed("style_update", { layer_project_id: 1, operations: [] });
+    const busy = call("style_update", { layer_project_id: 1, operations: [] });
+    const between = search("a");
+    expect(shape([one, busy, two])).toEqual([
+      [one.toolCallId, []],
+      [busy.toolCallId, []],
+      [two.toolCallId, []],
+    ]);
+    expect(shape([one, between, two, three])).toEqual([
+      [one.toolCallId, []],
+      [between.toolCallId, []],
+      [two.toolCallId, [three.toolCallId]],
+    ]);
+    // A failure followed by a success of the same tool is that call's retry: the retried call stands alone.
+    expect(shape([one, broken, two, three])).toEqual([
+      [one.toolCallId, []],
+      [two.toolCallId, []],
+      [three.toolCallId, []],
+    ]);
+    const lastBroken = failed("style_update", { layer_project_id: 1, operations: [] });
+    expect(shape([one, two, lastBroken])).toEqual([
+      [one.toolCallId, [two.toolCallId]],
+      [lastBroken.toolCallId, []],
+    ]);
+  });
+
+  it("never fold reads, and leave the summary and the visible lines of a group as they were", () => {
+    const [a, b] = [search("a"), search("a")];
+    expect(shape([a, b])).toEqual([
+      [a.toolCallId, []],
+      [b.toolCallId, []],
+    ]);
+    const steps = [search("a"), styleChange(), styleChange(), search("b")];
+    const rows = foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate);
+    expect(groupSummary(rows, enTranslate, false)).toBe(groupSummary(stepRows(steps), enTranslate, false));
+    expect(rows.filter((row) => staysVisible(row, false))).toHaveLength(1);
   });
 });

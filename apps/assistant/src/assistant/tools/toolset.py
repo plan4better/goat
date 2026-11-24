@@ -37,7 +37,8 @@ from assistant.tools.ask import REPEATED_CARD, REPORT_FIRST
 from assistant.tools.catalog import SHOW_RECORDS
 from assistant.tools.core import SHOW_ITEMS
 from assistant.tools.http import service_failed
-from assistant.tools.project import PROJECT_TOOLS, PROPOSE_VIEW
+from assistant.tools.map_edits import MAP_UPDATE
+from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.registry import ALL_TOOLS, BY_WIRE_NAME, tools_for
 from assistant.tools.runtime import (
     InputInvalid,
@@ -47,6 +48,8 @@ from assistant.tools.runtime import (
     execute,
     refuse,
 )
+from assistant.tools.styles import UPDATE_STYLE
+from assistant.tools.workflow_edits import UPDATE
 from assistant.tools.workflow_runs import RUN
 from assistant.tools.workflow_tools import DESCRIBE_TOOL
 from assistant.tools.workflows import ADD_CATALOG_LAYER, catalog_picked
@@ -138,14 +141,12 @@ RESULT_READ_TOOLS = frozenset(
     ]
 )
 
-#: The tools that show the user what the answer found as cards (a map view
-#: as a card to apply): small results, no look-up. They run in every stage
-#: and past the tool-call limit, so an answer ends with its cards; past the
-#: look-ups in one step only, since each call is followed by a model call of
-#: the whole context (``_stage_allows``, ``RunDeps.shown_steps``).
-DISPLAY_TOOLS = frozenset(
-    {SHOW_ITEMS.wire_name, SHOW_RECORDS.wire_name, PROPOSE_VIEW.wire_name}
-)
+#: The tools that show the user what the answer found as cards: small
+#: results, no look-up. They run in every stage and past the tool-call limit,
+#: so an answer ends with its cards; past the look-ups in one step only,
+#: since each call is followed by a model call of the whole context
+#: (``_stage_allows``, ``RunDeps.shown_steps``).
+DISPLAY_TOOLS = frozenset({SHOW_ITEMS.wire_name, SHOW_RECORDS.wire_name})
 
 #: Responses of a run with neither text nor a tool call (only reasoning, only
 #: whitespace, or nothing) that end its look-ups: the next call is the answer
@@ -239,28 +240,35 @@ def _forget_results(
     arguments: dict[str, Any],
     *,
     landed: bool,
+    stale: frozenset[str] | None = None,
 ) -> None:
     """Drops from an answer's earlier results those a call of ``spec`` with
     ``arguments`` may have made stale (``ToolSpec.invalidates``): of the tools
     it names, the calls that name what it names, with the same values for
-    the arguments both take (a call that shares none, a listing, always). A
+    the arguments both take (a call that shares none, a listing, always), or
+    for those of them ``ToolSpec.same`` names when the tool sets it. A
     read's, whatever the write answered: a write that failed can still have
     found what the read shows changed elsewhere. A write's (the summary a
     repeated run returns) only once the write landed: a new run then runs
     what the write changed, and any other would run the same again. Nothing
-    when the arguments do not validate: nothing ran."""
+    when the arguments do not validate: nothing ran. ``stale``: the tools of
+    ``invalidates`` the returned result can have made stale
+    (``ToolSpec.stale``); None for all of them."""
     written = _arguments(spec, arguments) if spec.invalidates else None
     if written is None:
         return
     for key in list(results):
         tool, _, stored = key.partition(" ")
-        if tool not in spec.invalidates:
+        if tool not in spec.invalidates or (stale is not None and tool not in stale):
             continue
         invalidated = BY_WIRE_NAME.get(tool)
         if not landed and invalidated is not None and invalidated.risk != "read":
             continue
         named = json.loads(stored) if stored else {}
-        if all(named[name] == written[name] for name in named.keys() & written.keys()):
+        compared = named.keys() & written.keys()
+        if spec.same is not None:
+            compared &= spec.same
+        if all(named[name] == written[name] for name in compared):
             del results[key]
 
 
@@ -405,6 +413,7 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
             if spec.wire_name == RUN.wire_name:
                 _note_run(ctx, arguments)
             landed = False
+            stale: frozenset[str] | None = None
             try:
                 result = await execute(
                     spec,
@@ -414,6 +423,8 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     check_result=check,
                 )
                 landed = True
+                if spec.stale is not None:
+                    stale = spec.stale(result)
             except ResultOverCap as exc:
                 # Its text asks for a narrower call, and the look-ups go on:
                 # only the same call is refused again without running.
@@ -433,7 +444,11 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                 raise
             finally:
                 _forget_results(
-                    ctx.deps.earlier_results, spec, arguments, landed=landed
+                    ctx.deps.earlier_results,
+                    spec,
+                    arguments,
+                    landed=landed,
+                    stale=stale,
                 )
             if spec.wire_name == ASK_TOOL:
                 ctx.deps.asked = True
@@ -601,7 +616,7 @@ def _step_guard(ctx: "RunContext[RunDeps]") -> StepGuard | None:
             step=step,
             calls=ctx.deps.admitted_calls,
             context=call.raw,
-            cached=call.newest.cache_read_tokens,
+            cached=call.cached,
         )
         ctx.deps.step = guard
     return guard
@@ -665,6 +680,12 @@ CARDS_SHOWN = (
     "This call did not run: this answer has shown its cards already. Answer "
     "from what you found."
 )
+#: The writes that make the change a user asks for on a page, which the step
+#: that answers still makes while it and the answer after it fit
+#: (``answer_writes``): reads that took an answer's look-ups must not leave
+#: it without the change it was for. In the order the note names them.
+ANSWER_WRITES = (UPDATE_STYLE.wire_name, MAP_UPDATE.wire_name, UPDATE.wire_name)
+
 #: In place of ``STAGE_REFUSALS["answer or ask"]`` for the tools that step
 #: still runs for some calls (``_answer_step_allows``).
 ANSWER_STEP_REFUSALS: dict[str, str] = {
@@ -677,6 +698,13 @@ ANSWER_STEP_REFUSALS: dict[str, str] = {
         "options the user picked in the card this message answers. "
         f"{_ANSWER_OR_ASK}"
     ),
+    **{
+        name: (
+            f"{_NO_ROOM} or for {name}: the change and the answer after it no "
+            f"longer fit. Say what you would change. {_ANSWER_OR_ASK}"
+        )
+        for name in ANSWER_WRITES
+    },
 }
 
 
@@ -731,17 +759,20 @@ async def _answer_step_allows(
     ctx: "RunContext[RunDeps]", spec: ToolSpec[Any, Any], arguments: dict[str, Any]
 ) -> bool:
     """What the step that answers, with room for a card, still runs besides
-    the card: a run of a workflow this answer built (``runnable_workflows``),
-    and the add of a dataset the user picked in the card the message
-    answers, as the add tool's own check reads that pick (a value or an id
-    in adds, or a member of a bundle one names: ``catalog_picked``). Asking
-    whether to run what the answer built, or whether to add what the user
-    just picked, would take the user a turn for a choice already made. A
-    call of either whose arguments do not validate goes on to ``execute``,
-    which says what to fix before anything runs."""
+    the card: the change the user asked for (``answer_writes``), a run of a
+    workflow this answer built (``runnable_workflows``), and the add of a
+    dataset the user picked in the card the message answers, as the add
+    tool's own check reads that pick (a value or an id in adds, or a member
+    of a bundle one names: ``catalog_picked``). Asking whether to make the
+    change, to run what the answer built, or to add what the user just
+    picked, would take the user a turn for a choice already made. A run or
+    an add whose arguments do not validate goes on to ``execute``, which
+    says what to fix before anything runs."""
     env = ctx.deps.env
     if env is None:
         return False
+    if spec.wire_name in ANSWER_WRITES:
+        return spec.wire_name in answer_writes(ctx)
     if spec.wire_name == RUN.wire_name:
         workflow = _argument(spec, arguments, "workflow_id")
         return workflow is None or workflow in runnable_workflows(ctx)
@@ -836,6 +867,22 @@ def runnable_workflows(ctx: "RunContext[RunDeps]") -> list[str]:
     ):
         return []
     return sorted(item for item in env.workflows_created if not _ran(ctx, item))
+
+
+def answer_writes(ctx: "RunContext[RunDeps]") -> list[str]:
+    """The writes of ``ANSWER_WRITES`` the page offers that the step that
+    answers may still make: while that step and the answer step after it
+    fit as the step was prepared (``RunBudget.read_fits``,
+    ``RunDeps.run_room``). A write's result is short and needs no read, so
+    the step after it answers. Decided with the stage, so the note that
+    offers the change and the call agree; each later step decides again.
+    None once the look-ups ended for good (``_ended``): a result refused for
+    its size, or responses without text or a tool call, end in the answer."""
+    env = ctx.deps.env
+    if env is None or ctx.deps.run_room.get(ctx.run_id) != ctx.run_step or _ended(ctx):
+        return []
+    offered = {spec.wire_name for spec in tools_for(env.page.surface)}
+    return [name for name in ANSWER_WRITES if name in offered]
 
 
 def pickable_datasets(ctx: "RunContext[RunDeps]") -> list[str]:

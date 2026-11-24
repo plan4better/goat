@@ -609,13 +609,9 @@ def test_a_map_service_popup_names_each_wrong_key_once(contexts: dict) -> None:
         return [(i.code, i.path) for i in validate(doc, contexts["wms"])]
 
     # Keys parsing refuses already are refused as on a raster file, not a second time.
-    assert popup_issues({"foo": 1}) == [
-        ("invalid_value", "/popup"),
-        ("unknown_key", "/popup/foo"),
-    ]
+    assert popup_issues({"foo": 1}) == [("unknown_key", "/popup/foo")]
     assert popup_issues({"highlight_active_feature": True}) == [
-        ("invalid_value", "/popup"),
-        ("unknown_key", "/popup/highlight_active_feature"),
+        ("unknown_key", "/popup/highlight_active_feature")
     ]
     # A null reads as unset.
     assert popup_issues({"trigger": "click", "blocks": None}) == []

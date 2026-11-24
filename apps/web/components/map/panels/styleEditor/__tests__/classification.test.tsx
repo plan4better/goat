@@ -304,6 +304,9 @@ describe("classification editor", () => {
   it("a palette picked for computed classes takes every class, also a color picked by hand", async () => {
     const { store, saves } = shell(doc([QUANTILE]));
     await userEvent.click(screen.getByText("OrRd"));
+    // Ordered classes are offered the sequential and diverging palettes only.
+    expect(screen.queryByRole("button", { name: "style_editor.palette_kind_qualitative" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Set2" })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Blues" }));
     expect(store.get("classify.0.palette")).toBe("colorbrewer:Blues");
     expect(store.get("classify.0.classes.0.fill")).toBeUndefined();
@@ -715,6 +718,51 @@ describe("categories picked by hand", () => {
       });
     }
   );
+
+  // Travel times as categories, colored along YlGn as goatlib's `sample_colors` gives five classes.
+  const TRAVEL_TIMES = {
+    id: "minutes",
+    field: "population",
+    method: "categories",
+    palette: "colorbrewer:YlGn",
+    classes: ["#ffffcc", "#c2e699", "#78c679", "#31a354", "#006837"].map((color, i) => ({
+      id: `c${i + 1}`,
+      values: [String((i + 1) * 3)],
+      fill: { color },
+    })),
+  };
+
+  const fillColors = (store: { get(path: string): unknown }) =>
+    (store.get("classify.0.classes") as Array<{ fill?: { color?: string } }>).map((k) => k.fill?.color);
+
+  it("categories offer every palette; a sequential one picked colors the classes as the server samples it", async () => {
+    const { store } = shell(doc([TRAVEL_TIMES]), { ci: 0 }, withValues);
+    await userEvent.click(screen.getByText("YlGn"));
+    for (const kind of ["qualitative", "sequential", "diverging"])
+      expect(screen.getByRole("button", { name: `style_editor.palette_kind_${kind}` })).toBeDefined();
+    // The palette in use is among them, pressed; under All the palettes for categories come first.
+    expect(screen.getByRole("button", { name: "YlGn", pressed: true }).getAttribute("title")).toBe("YlGn");
+    const accent = screen.getByRole("button", { name: "Accent" });
+    const viridis = screen.getByRole("button", { name: "Viridis" });
+    expect(accent.compareDocumentPosition(viridis) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "OrRd" }));
+    expect(store.get("classify.0.palette")).toBe("colorbrewer:OrRd");
+    expect(fillColors(store)).toEqual(["#fef0d9", "#fdcc8a", "#fc8d59", "#e34a33", "#b30000"]);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.reverse" }));
+    expect(store.get("classify.0.reverse")).toBe(true);
+    expect(fillColors(store)).toEqual(["#b30000", "#e34a33", "#fc8d59", "#fdcc8a", "#fef0d9"]);
+    expect(screen.queryByText("style_editor.palette_custom")).toBeNull();
+  });
+
+  it("a diverging palette picked for computed categories takes every class; the server colors them", async () => {
+    const { store, saves } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
+    // The server recorded writing no color: the two the classes hold read as picked by hand.
+    await userEvent.click(screen.getByText("style_editor.palette_custom"));
+    await userEvent.click(screen.getByRole("button", { name: "RdBu" }));
+    expect(store.get("classify.0.palette")).toBe("colorbrewer:RdBu");
+    expect(store.get("classify.0.classes.0.fill")).toBeUndefined();
+    expect(saves).toHaveLength(1);
+  });
 
   it("a class dragged to another row's place moves there; the classes are picked by hand from then on", async () => {
     const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);

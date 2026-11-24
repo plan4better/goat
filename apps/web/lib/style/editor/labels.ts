@@ -6,9 +6,9 @@ import type { TFunction } from "i18next";
 import { type NumberFormatSpec, parseTemplate } from "@/lib/style/compile/labels";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
-import { scopedView } from "@/lib/style/editor/classify";
 import { LABEL_FONT_CHOICE, keyOf, modeOf } from "@/lib/style/editor/forms";
 import { type Path, getIn } from "@/lib/style/editor/paths";
+import { isPerLayer, perLayerPath, summaryView } from "@/lib/style/editor/sources";
 import type { Scope } from "@/lib/style/editor/store";
 import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -98,16 +98,6 @@ export interface LabelSummaryContext {
   language: string;
 }
 
-/** The document a summary reads: the layer's, or in scope what the class or rule draws (its record over the layer's),
- * read by the shape of each value, as the record holds fixed values and values by zoom. */
-function shownDoc(doc: LayerStyle, scope: Scope | null): LayerStyle {
-  if (!scope) return doc;
-  const view: JsonObject = { ...(scopedView(doc, scope).view as unknown as JsonObject) };
-  delete view.classify;
-  delete view.rules;
-  return view as unknown as LayerStyle;
-}
-
 const TEXT_NUMBERS = ["letter_spacing", "line_height", "max_width"] as const;
 
 /** The Text style row in short words, named as its rows: the font first ("Regular", "Medium italic"), then what
@@ -120,10 +110,20 @@ export function labelTextStyleSummary(
   t: TFunction,
   ctx: LabelSummaryContext
 ): string {
-  const shown = shownDoc(doc, scope);
+  // Each value as the scoped features draw it (`summaryView`); one a later record draws over varies. A key set once
+  // for the layer (line height) is read where it is set.
   const at = (key: string) => {
     const path = `${base}.${key}`;
-    return { value: getIn(shown, path), fixed: modeOf(shown, path, ctx.geometry) === "fixed", path };
+    // One value for the layer: read on the whole document, wherever a record holds it, in any scope.
+    const held = perLayerPath(doc, path);
+    if (held !== path || isPerLayer(keyOf(path)))
+      return { value: getIn(doc, held), fixed: modeOf(doc, held, ctx.geometry) === "fixed", path };
+    const { doc: shown, later } = summaryView(doc, scope, path);
+    return {
+      value: getIn(shown, path),
+      fixed: !later && modeOf(shown, path, ctx.geometry) === "fixed",
+      path,
+    };
   };
   const parts: string[] = [];
   const weight = at("font.weight");
@@ -156,12 +156,14 @@ export function labelHaloSummary(
   t: TFunction,
   ctx: LabelSummaryContext
 ): { text: string; swatch: string } {
-  const shown = shownDoc(doc, scope);
   const width = `${base}.halo.width`;
-  const swatch = swatchOf(shown, `${base}.halo.color`, ctx.geometry, { scoped: scope !== null });
-  const value = getIn(shown, width);
-  const none = modeOf(shown, width, ctx.geometry) === "fixed" && value === 0;
-  return { text: none ? t("style_editor.halo_none") : summarize(shown, width, t, ctx), swatch };
+  const color = `${base}.halo.color`;
+  const swatch = swatchOf(summaryView(doc, scope, color).doc, color, ctx.geometry, {
+    scoped: scope !== null,
+  });
+  const { doc: shown, later } = summaryView(doc, scope, width);
+  const none = !later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0;
+  return { text: none ? t("style_editor.halo_none") : summarize(doc, width, t, { ...ctx, scope }), swatch };
 }
 
 const DEFAULT_PLACEMENT: Record<Geometry, string> = { point: "auto", line: "line", polygon: "auto" };
@@ -173,7 +175,8 @@ export function labelPositionSummary(
   t: TFunction,
   ctx: LabelSummaryContext
 ): { placement: string; text: string } {
-  const set = getIn(doc, `${base}.placement`);
+  // One for the layer, wherever it is set: the base, or the first class or rule record that sets it (spec 6.1).
+  const set = getIn(doc, perLayerPath(doc, `${base}.placement`));
   const placement = typeof set === "string" ? set : DEFAULT_PLACEMENT[ctx.geometry ?? "point"];
   const roof = ctx.geometry === "polygon" && extrudes(doc as unknown as JsonObject);
   return {

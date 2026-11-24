@@ -5,7 +5,9 @@ A task with ``answer_card`` runs a second turn when the first showed a card:
 the eval user answers it (``auto_answer``) and the turn gets the answer the
 way the app renders it (``assistant.asks.answer_lines``). A task with
 ``undo`` has the eval user press Undo under the last answer, as the dock does
-(``assistant.undo``), over the audit rows the answer's calls left."""
+(``assistant.undo``), over the audit rows the answer's calls left. A task on
+the map project (``map_states``) records the project as core held it before
+the run, when a card was answered, after the run and after the Undo."""
 
 import asyncio
 import json
@@ -58,6 +60,8 @@ from assistant.tools.toolset import earlier_writes
 from assistant.undo import NothingToUndo, UndoRefused, UndoUnderWay, undo_run
 from assistant.workflows.runs import ConversationRuns
 from evals.backends import Backends
+from evals.map_backends import MapState
+from evals.map_fixture import MAP_PROJECT_ID, MAP_VIEW_PROJECT_ID
 from evals.tasks import EvalTask
 
 #: The eval user; the fixed backends answer for anyone.
@@ -98,8 +102,18 @@ class Transcript:
     reasoning_only: int = 0
     retries: int = 0
     #: How the eval user's Undo went (a task with ``undo``): "undone",
-    #: "changed_since", "nothing_to_undo" or the code of a refusal.
+    #: "changed_since", "not_restored" (something did not come back: a style
+    #: core stored nothing of, a removed layer, an added group in use, a
+    #: change of the map core refused),
+    #: "nothing_to_undo" or the code of a refusal.
     undo: str | None = None
+    #: The map project as core held it (``MapState.snapshot``) before the
+    #: run, when the eval user answered a card (before the answer), after
+    #: the run, and after the eval user's Undo.
+    map_before: dict[str, Any] | None = None
+    map_before_answer: dict[str, Any] | None = None
+    map_after: dict[str, Any] | None = None
+    map_undone: dict[str, Any] | None = None
 
 
 class AuditRows:
@@ -162,7 +176,9 @@ async def press_undo(audit: AuditRows, services: Any, run_id: UUID) -> str:
         return "undo_in_progress"
     except UndoRefused as exc:
         return exc.code
-    return "changed_since" if outcome.changed else "undone"
+    if outcome.changed or outcome.changed_styles or outcome.changed_map:
+        return "changed_since"
+    return "not_restored" if outcome.not_restored else "undone"
 
 
 def _text(messages: Iterable[ModelMessage]) -> str:
@@ -303,21 +319,52 @@ def _history(task: EvalTask, page: PageContext) -> list[ModelMessage]:
     return messages
 
 
-def auto_answer(card_id: str, card: AskUserInput) -> tuple[CardAnswer, str]:
-    """The eval user's answer to a card: every question with its first
-    option, the recommended one when there is one (``AskQuestion`` puts it
-    first), and the text the dock sends with it."""
+def auto_answer(
+    card_id: str, card: AskUserInput, value: str | None = None
+) -> tuple[CardAnswer, str]:
+    """The eval user's answer to a card: every question with the option of
+    ``value`` where it offers one, else its first option, the recommended one
+    when there is one (``AskQuestion`` puts it first), and the text the dock
+    sends with it."""
+    picks = [
+        next(
+            (
+                index
+                for index, option in enumerate(question.options)
+                if value is not None and option.value == value
+            ),
+            0,
+        )
+        for question in card.questions
+    ]
     answer = CardAnswer(
         card_id=card_id,
         answers=[
-            QuestionAnswer(question=index, options=[0])
-            for index in range(len(card.questions))
+            QuestionAnswer(question=index, options=[pick])
+            for index, pick in enumerate(picks)
         ],
     )
     text = ". ".join(
-        f"{question.header}: {question.options[0].label}" for question in card.questions
+        f"{question.header}: {question.options[pick].label}"
+        for question, pick in zip(card.questions, picks, strict=True)
     )
     return answer, text
+
+
+def map_states(task: EvalTask) -> tuple[dict[str, MapState], MapState | None]:
+    """Fresh states of the map project and of its viewer copy for a task,
+    and the one the task works on: that of the project its page names, the
+    map project's for any other task of the map suite, None for a task off
+    the map project. That state starts on the basemap the page shows."""
+    states = {MAP_PROJECT_ID: MapState(), MAP_VIEW_PROJECT_ID: MapState()}
+    project_id = str(task.context.get("project_id", ""))
+    watched = states.get(project_id)
+    if watched is None and task.suite == "map":
+        watched = states[MAP_PROJECT_ID]
+    basemap = task.context.get("basemap")
+    if watched is not None and isinstance(basemap, dict) and basemap.get("id"):
+        watched.basemap = str(basemap["id"])
+    return states, watched
 
 
 def _shown_card(calls: list[ToolCall]) -> tuple[str, AskUserInput] | None:
@@ -336,7 +383,8 @@ async def run_task(
     task: EvalTask, model: Model, backends: Backends, settings: AssistantSettings
 ) -> Transcript:
     page = parse_context(task.context)
-    services, requests, saved = backends.clients()
+    maps, watched = map_states(task)
+    services, requests, saved = backends.clients(maps=maps)
     events: list[RunEvent] = []
 
     async def emit(event: RunEvent) -> None:
@@ -359,10 +407,20 @@ async def run_task(
     #: What the conversation created and ran, shared by its turns as the
     #: stored conversation is in the app (ConversationRuns.from_stored).
     runs = ConversationRuns()
+    #: What the eval user typed: the task's turns and its prompt; the text
+    #: sent with a card answer lists the options, which the model wrote.
+    typed = (*(turn.user for turn in task.history), task.prompt)
+    #: The skills the conversation loaded, shared by its turns as the stored
+    #: conversation keeps them in the app (loaded_skills).
+    skills: set[str] = set()
     #: The audit rows of the task's calls, and the run of the last answer.
     audit = AuditRows()
     last_run: UUID | None = None
     undo: str | None = None
+    map_before = watched.snapshot() if watched is not None else None
+    map_before_answer: dict[str, Any] | None = None
+    map_after: dict[str, Any] | None = None
+    map_undone: dict[str, Any] | None = None
 
     async def turn(
         prompt: str,
@@ -387,6 +445,8 @@ async def run_task(
             repo=cast(Repository, audit),
             extra_secrets=client_secrets(settings),
             asks=asks,
+            typed=typed,
+            skills=skills,
             clock=clock,
             runs=runs,
         )
@@ -447,7 +507,9 @@ async def run_task(
         shown = _shown_card(first) if task.answer_card else None
         if shown is not None:
             card_id, card = shown
-            answer, text = auto_answer(card_id, card)
+            answer, text = auto_answer(card_id, card, task.answer_value)
+            if watched is not None:
+                map_before_answer = watched.snapshot()
             await turn(
                 text,
                 messages,
@@ -456,12 +518,19 @@ async def run_task(
                 answer_lines(card, answer),
                 _written(first),
             )
+        if watched is not None:
+            map_after = watched.snapshot()
         if task.undo and last_run is not None:
             undo = await press_undo(audit, services, last_run)
+            if watched is not None:
+                map_undone = watched.snapshot()
     except Exception as exc:  # a failed run is a failed task, not a failed eval
         error = f"{type(exc).__name__}: {exc}"
     finally:
         await services.aclose()
+    if watched is not None and map_after is None:
+        # A run that failed: what it stored before it failed.
+        map_after = watched.snapshot()
     providers, cost = answered_by(answered)
     reasoning_only, retries = stalls(answered)
     return Transcript(
@@ -484,4 +553,8 @@ async def run_task(
         reasoning_only=reasoning_only,
         retries=retries,
         undo=undo,
+        map_before=map_before,
+        map_before_answer=map_before_answer,
+        map_after=map_after,
+        map_undone=map_undone,
     )

@@ -677,8 +677,8 @@ const classValues = (c: JsonObject) => JSON.stringify(list(c.classes).map((k) =>
 function legendClassifications(
   style: JsonObject,
   geometry: Geometry
-): Array<{ c: JsonObject; targets: string[]; key: string }> {
-  const out: Array<{ c: JsonObject; targets: string[]; key: string }> = [];
+): Array<{ c: JsonObject; targets: string[]; key: string; indices: number[] }> {
+  const out: Array<{ c: JsonObject; targets: string[]; key: string; indices: number[] }> = [];
   for (const [index, c] of list(style.classify).entries()) {
     if (c.legend === false || !legendDraws(c)) continue;
     const same = out.find(
@@ -688,9 +688,10 @@ function legendClassifications(
         classValues(o) === classValues(c)
     );
     if (!same) {
-      out.push({ c, targets: [targetOf(c, geometry)], key: itemKey(c, index) });
+      out.push({ c, targets: [targetOf(c, geometry)], key: itemKey(c, index), indices: [index] });
       continue;
     }
+    same.indices.push(index);
     same.c = {
       ...same.c,
       classes: list(same.c.classes).map((k, i) => mergeRecords(k, list(c.classes)[i]) ?? k),
@@ -713,6 +714,11 @@ export function legendBlocks(
     targets,
   }));
 }
+
+/** The classifications (by index in `classify`) each block of the legend shows, in legend order: one of a field merges
+ * the later classifications of that field with the same classes (`legendClassifications`). */
+export const legendGroups = (style: JsonObject, geometry: Geometry): number[][] =>
+  legendClassifications(style, geometry).map(({ indices }) => indices);
 
 /** The rules the legend lists (spec 7.2): those with a name, not left out; a rule that hides its features draws
  * nothing, so it has no entry either. An entry's id is its rule's `itemKey` among these. */

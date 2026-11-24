@@ -234,7 +234,9 @@ def _typed(field: str, kind: str, value: Scalar) -> Any:
     return {"timestamp": parsed.isoformat()}
 
 
-def _condition(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any]:
+def condition_cql(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any]:
+    """CQL2-JSON for one condition, as the web's filter panel writes its row.
+    Raises ``InputInvalid`` with a fixable message."""
     if condition.field not in fields:
         raise InputInvalid(unknown_field(condition.field, fields))
     kind = fields[condition.field]
@@ -313,7 +315,7 @@ def _condition(condition: Condition, fields: Mapping[str, str]) -> dict[str, Any
 def to_cql2(feature_filter: FeatureFilter, fields: Mapping[str, str]) -> dict[str, Any]:
     """CQL2-JSON for the filter. ``fields`` maps the layer's field names to their
     kinds (``field_kind``). Raises ``InputInvalid`` with a fixable message."""
-    args = [_condition(condition, fields) for condition in feature_filter.conditions]
+    args = [condition_cql(condition, fields) for condition in feature_filter.conditions]
     if len(args) == 1:
         return args[0]
     return {"op": "and" if feature_filter.match == "all" else "or", "args": args}
