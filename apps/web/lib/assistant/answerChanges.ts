@@ -1,7 +1,9 @@
-import { type MapChange, layerRemoval, mapEdits } from "@/lib/assistant/mapEdits";
-import { type StyleChange, answerStyleEdits } from "@/lib/assistant/styleEdits";
+import type { DynamicToolUIPart } from "ai";
+
+import { type MapChange, layerRemoval, mapEdit, mapEdits } from "@/lib/assistant/mapEdits";
+import { type StyleChange, answerStyleEdits, styleEdit } from "@/lib/assistant/styleEdits";
 import type { AssistantMessage } from "@/lib/assistant/types";
-import { type WorkflowEdit, answerEdits } from "@/lib/assistant/workflowEdits";
+import { type WorkflowEdit, answerEdits, workflowEdit } from "@/lib/assistant/workflowEdits";
 
 /** What an answer saved, by kind, in order: the dock's Undo shows only for an answer with some. */
 export interface AnswerChanges {
@@ -36,3 +38,9 @@ export function answerChanges(message: AssistantMessage): AnswerChanges {
 
 export const hasChanges = (changes: AnswerChanges): boolean =>
   changes.workflows.length > 0 || changes.styles.length > 0 || changes.map.length > 0;
+
+/** Whether a step saved one of the changes `answerChanges` counts: its line is one that Undo takes back. */
+export const savesChange = (part: DynamicToolUIPart): boolean =>
+  workflowEdit(part) !== null ||
+  styleEdit(part) !== null ||
+  (!!mapEdit(part)?.change && layerRemoval(part) !== "only");

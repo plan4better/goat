@@ -506,8 +506,8 @@ UNDO_CHANGES: ToolSpec[UndoChangesInput, ChangesUndone] = ToolSpec(
     name="undo.changes",
     description=(
         "Take back what the last answer that changed something changed (its "
-        "style changes, map changes and workflow edits), as the dock's undo "
-        "button under that answer does; one answer per request, a second call "
+        "style changes, map changes and workflow edits), as the Undo at the "
+        "end of that answer's change line does; one answer per request, a second call "
         "in the same answer takes back nothing more, and an added dataset, a "
         "removed layer, a workflow run or the view do not come back. Call it "
         "when the user asks in words to undo, revert or take back what the "

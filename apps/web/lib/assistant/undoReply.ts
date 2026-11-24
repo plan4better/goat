@@ -166,6 +166,25 @@ export const runsUndoneByWords = (messages: AssistantMessage[]): Set<string> =>
     )
   );
 
+/**
+ * What the typed undos of `messages` wrote back, by the run whose answer they
+ * took back (`undoneByStep`, in order): that answer says what of it went back
+ * and what did not, as after a press on its Undo.
+ */
+export const typedRestores = (messages: AssistantMessage[]): Map<string, Restored[]> => {
+  const byRun = new Map<string, Restored[]>();
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    for (const part of message.parts) {
+      if (part.type !== "dynamic-tool") continue;
+      const runId = typedUndo(part)?.runId;
+      const restored = undoneByStep(part);
+      if (runId && restored) byRun.set(runId, [...(byRun.get(runId) ?? []), restored]);
+    }
+  }
+  return byRun;
+};
+
 /** What the page does to follow what an Undo wrote back (the dock's actions). */
 export interface FollowUndoneDeps {
   followWorkflowChanges: (changes: WorkflowChange[]) => void;

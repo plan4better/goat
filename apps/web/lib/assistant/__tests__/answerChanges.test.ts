@@ -1,7 +1,7 @@
 import type { DynamicToolUIPart } from "ai";
 import { describe, expect, it } from "vitest";
 
-import { answerChanges, hasChanges } from "@/lib/assistant/answerChanges";
+import { answerChanges, hasChanges, savesChange } from "@/lib/assistant/answerChanges";
 import type { AssistantMessage } from "@/lib/assistant/types";
 
 const step = (toolName: string, output: unknown, toolCallId = "call-1"): DynamicToolUIPart =>
@@ -147,5 +147,26 @@ describe("what an answer changed", () => {
     expect(answerChanges(reply([step("map_update", mapSaved([hidden]))], "user")).map).toEqual([]);
     const running = { ...step("map_update", undefined), state: "input-available" } as DynamicToolUIPart;
     expect(answerChanges(reply([running])).map).toEqual([]);
+  });
+
+  it("names as change lines exactly the steps whose changes it lists", () => {
+    const removed = { index: 0, op: "remove_layer", layer_project_id: 12, summary: "Removed" };
+    const cases: Array<[DynamicToolUIPart, boolean]> = [
+      [step("workflow_update", workflowSaved, "w1"), true],
+      [step("workflow_update", { ...workflowSaved, revision_after: 2 }, "w0"), false],
+      [step("style_update", styleSaved, "s1"), true],
+      [step("style_update", { ...styleSaved, revision_after: 4 }, "s0"), false],
+      [step("map_update", mapSaved([hidden]), "m1"), true],
+      [step("map_update", mapSaved([removed, hidden]), "m2"), true],
+      [step("map_update", mapSaved([removed]), "m3"), false],
+      [step("map_update", mapSaved([moved], { view: { zoom: 12 } }), "m4"), false],
+      [step("undo_changes", { status: "undone", run_id: "r1", workflows: [], styles: [] }, "u1"), false],
+      [{ ...step("style_update", styleSaved, "s9"), state: "input-available" } as DynamicToolUIPart, false],
+    ];
+    for (const [part, saves] of cases) {
+      expect(savesChange(part), part.toolCallId).toBe(saves);
+      const changes = answerChanges(reply([part]));
+      expect(hasChanges(changes), part.toolCallId).toBe(saves);
+    }
   });
 });
