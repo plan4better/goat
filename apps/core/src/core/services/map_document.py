@@ -117,7 +117,8 @@ async def map_for_project(
         )
     ).all()
     # The active style, else the first by position (spec 10). A link the caller has
-    # no access to of his own (LOCKED, D7) gets no style: there is nothing to draw.
+    # no access to of his own (LOCKED, D7) gets no style, filter or time value: its
+    # entry keeps its place in the tree and its map state, nothing of its content.
     layers = (
         await session.execute(
             text(
@@ -192,8 +193,8 @@ async def map_for_project(
                 order=row.order,
                 visible=row.visible,
                 position=row.position,
-                query=row.query,
-                time_value=row.time_value,
+                query=None if row.locked else row.query,
+                time_value=None if row.locked else row.time_value,
                 legend_expanded=row.legend_expanded,
                 style_id=style_id,
             )
