@@ -163,8 +163,12 @@ class AssistantSettings(BaseSettings):
     #: take up to ``MAX_RESULT_READS`` + 1 more (``assistant.budget``).
     run_max_tool_calls: int = 40
     #: Tokens per answer, input and output; tokens read from the provider's
-    #: cache count at a tenth (``assistant.budget.CACHE_READ_WEIGHT``).
-    run_max_tokens: int = 200_000
+    #: cache count at a tenth (``assistant.budget.CACHE_READ_WEIGHT``). Sized
+    #: for the map page, whose calls carry many tool definitions and a loaded
+    #: skill: an answer whose calls miss the cache, or runs on a provider
+    #: without one, still has room for several look-ups. Together with
+    #: ``run_max_tool_calls`` it bounds a runaway answer.
+    run_max_tokens: int = 400_000
     run_max_seconds: int = 900
     #: How long in all an answer may take that waits for a workflow run
     #: (``assistant.clock.AnswerClock``); the run itself goes on after it.

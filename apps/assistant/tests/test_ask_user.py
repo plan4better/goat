@@ -2704,7 +2704,7 @@ LOOK_UPS_THEN_RUN: list[Usage] = [
 async def test_at_the_default_budget_an_answer_that_ran_its_workflow_looks_on() -> None:
     """After the run's call, about 67,800 weighted tokens in, one more
     look-up and the read step and the answer step after it still fit (about
-    117,700 of 200,000): each reads the answer so far from the cache, so the
+    117,700 of 400,000): each reads the answer so far from the cache, so the
     answer reads its result with every tool."""
     defaults = AssistantSettings.model_fields
     budget = RunBudget(

@@ -15,6 +15,7 @@ must read as data, never as instructions (Decision T19).
 """
 
 import json
+from collections.abc import Sequence
 
 from assistant.context import (
     SURFACE_LABELS,
@@ -223,6 +224,22 @@ ADD_WHAT_WAS_PICKED = (
     "You may still add the datasets the user picked in the card with "
     "project_add_catalog_layer."
 )
+
+
+def make_the_change(tools: Sequence[str]) -> str:
+    """Follows ANSWER_NOW (or ANSWER_IN_TEXT) in the step that answers with
+    room for a card, while that step may still make the change the user
+    asked for with one of ``tools`` and answer after it
+    (assistant.tools.toolset.answer_writes): an answer whose reads took its
+    look-ups would otherwise end without the change it was for."""
+    *others, last = tools
+    names = f"{', '.join(others)} or {last}" if others else last
+    return (
+        "If the user asked for a change, you may still make it with one call of "
+        f"{names}, without reading anything first, and then answer."
+    )
+
+
 #: Follows ANSWER_NOW (or ANSWER_IN_TEXT, read_the_result) while the stage
 #: lets ask_user run. A card is for a choice only the user can make: a note
 #: that promised the next answer more room for looking things up made models

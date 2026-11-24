@@ -484,16 +484,20 @@ way. So the run ends instead (`agent.StageNote.after_node_run`): after a step no
 that step wrote, which the user has already seen; after a first such step without text, or with a card call that
 failed (one more step for the corrected call), the run answers (`RunDeps.insisted`), and a second ends it with the
 text written so far, or, when there is none, with a short closing text in the interface language
-(`agent.CLOSING_TEXT`) in place of the model call. The step that answers with room for a card still runs two kinds
+(`agent.CLOSING_TEXT`) in place of the model call. The step that answers with room for a card still runs three kinds
 of calls besides the card, since a card that asks whether to do them takes the user a turn for a choice already
-made: `workflow_run` of a workflow the answer created and has not run, while a read step and the answer step still
-fit and no other result waits to be written about, so its result is read before the answer; and
+made: the change the user asked for (`style_update`, `map_update`, `workflow_update` where the page offers them,
+`toolset.ANSWER_WRITES`), while that step and the answer step after it fit and the look-ups did not end for good
+(a result refused for its size, responses without text), so reads that took an answer's look-ups never leave it
+without the change it was for; `workflow_run` of a workflow the answer created and has not run, while
+a read step and the answer step still fit and no other result waits to be written about, so its result is read
+before the answer; and
 `project_add_catalog_layer` of a dataset the user picked in the card that came with the message, as the add tool's
 own check reads that pick (an id in a picked option's value or `adds`, or a member of a bundle one names;
 `asks.answered_pick`). Nothing else: a workflow from an earlier answer, a second run in the step, a workflow whose
 run the answer already started, whatever came of it (`RunDeps.run_attempts`), or a dataset picked in an earlier card
 is refused (`ANSWER_STEP_REFUSALS`). The note offers them only when they apply, and the room for the run is decided
-with the stage (`RunDeps.run_room`), so the note and the call agree.
+with the stage (`RunDeps.run_room`), so the note and the call agree; the room for a change is the same.
 The note on the stage is the last content of the call, after the conversation, and goes only into what the model is
 sent, not into the history (`agent.StageNote`); the stored request records its stage in its metadata instead
 (`agent.STAGE_KEY`). An answer step that changed the tools and the instructions made the provider read almost none of
@@ -518,17 +522,25 @@ note names no budget, and says a card ends the answer: models repeated the word 
 the next answer a fresh budget made them ask with a card for permission to go on. The instructions name it as a third
 kind of GOAT note, after the language and page notes, to follow and never to quote, and tell answers to leave out how
 the assistant works (budgets, limits, stages, its look-up steps).
+`ASSISTANT_RUN_MAX_TOKENS` is sized for the map page: every call there carries the definitions of about 40 tools and,
+once loaded, the `style-a-map` skill, so a call is several times larger than on the pages the budget was first sized for. Read
+from the cache, an answer stays far below it; at half the size, an answer whose calls missed the cache, or that ran on
+a provider without one, ended its look-ups after about three calls. With `ASSISTANT_RUN_MAX_TOOL_CALLS` it still
+bounds a runaway answer.
 `ASSISTANT_RUN_MAX_TOKENS` counts tokens read from the provider's cache at a tenth, roughly what they cost: every call
 rereads the cached prefix, and counting it fully stopped answers on cheap rereads. The budget and the
 hard limit count the same way, and the hard limit leaves room beyond the budget for one call that misses the
-provider's cache (`budget.RunLimits`): the calls that end an answer are planned at the newest call's cache reads, a
-miss charges those tokens in full, and such an overshoot costs tokens while a run failed at the limit costs the answer.
+provider's cache (`budget.RunLimits`): the calls that end an answer are planned at the newest call's cache reads, or
+the call's before it when that read more (`budget.NextCall.cached`), a miss charges those tokens in full, and such an overshoot costs tokens while a run failed at the limit costs the answer.
 A provider that read nothing from its cache in the run gets room for one call of the newest call's context instead:
 a call more than planned (a card refused until the result is written about, a call its stage refused) costs that
 much.
 The calls that end an answer are sized at their whole context, read from the run's messages (the newest call's input and
 output plus the tool results the next call sends), with what the newest call read from the cache counted as cached
-(`budget.call_cost`); a provider that reports no cache reads pays the whole context for each. One more look-up is
+(`budget.call_cost`), or what the call before it read when the newest read less: a provider can serve one call
+without its cache and writes the cache as it does, and planning every later call as a miss after one ended the
+look-ups of a long conversation before the change it asked for. Two misses in a row are planned as misses, and a
+provider that reports no cache reads pays the whole context for each. One more look-up is
 allowed only while, after it, the read step and the answer step still fit with the run's largest step added; the card
 while the answer step fits, since a card ends the answer, and otherwise the step answers in text. Within a step, calls
 past the run's tool-call limit are refused as they run, and
