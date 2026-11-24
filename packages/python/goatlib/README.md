@@ -579,16 +579,35 @@ the area or not, so a trip still runs end to end. Every other table keeps a
 row only where each id it names is kept, so no reference is left dangling
 (`io/fetch/pt_network.py`).
 
+Finding a cut's lines and reading their rows would otherwise read every stop
+time and shape point of the network, tens of seconds on a worker's one CPU
+for any area. So the tables are indexed for the cut (`index_store` in
+`bundles/importers/pt_network/store.py`, schema 2): which line serves which
+stop, and every line numbered along a Hilbert curve through its stops'
+centre, with `stop_times` and `shapes` sorted by that number. An area's rows
+then lie together, and DuckDB reads only the row groups of the kept lines'
+numbers. The number is a column because DuckDB skips row groups by column
+statistics, not by row position; the cut leaves it out of what it writes.
+Tables written outside `build_store` are indexed on their own with
+`--index`, before the version's manifest is made. Schema 1 tables still cut,
+the slow way.
+
 Both network fetches create their bundle through
-`BundleImportRunner.create_bundle_from_layers`, so a cut is created, ingested,
-built and rolled back as an import is.
+`BundleImportRunner.create_bundle_from_layers`: created and ingested as an
+import is, and in the project as soon as its layers are. Its artifacts (a
+timetable and the stops' links to the streets, or a routable graph) take
+about as long again, so they are built by a `bundle_artifact_rebuild` job of
+their own, started as a top-level job so it shows in the jobs list. Until then
+they read as building, which keeps the routing tools off the bundle; a build
+that fails, or cannot be started, leaves them failed and the bundle offers a
+rebuild. A failed ingest still rolls the whole bundle back.
 
 Trip count and ÖV-Güteklassen count departures from the same tables, for one
 date: a bundle's own on the date picked, the default network's on the anchor
 date of the kind of day picked (`analysis/pt_time.py`). The default network is
 cut to the area and the date first (`cut_network_tables` in
 `tools/pt_network.py`), as a count joined across a continent's stop times
-would not fit a worker.
+would not fit a worker; indexed tables are read only in the area's lines.
 
 ## Copies behind a project entry
 
