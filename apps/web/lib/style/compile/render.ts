@@ -5,7 +5,7 @@ import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import { cascade, categoryLabels, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS, TILE_MAXZOOM } from "@/lib/style/compile/constants";
-import { derivedValue } from "@/lib/style/compile/derived";
+import { RULES, derivedValue, ruleOf } from "@/lib/style/compile/derived";
 import { colorText, concat, numberText } from "@/lib/style/compile/imageNames";
 import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compile/labels";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
@@ -606,15 +606,18 @@ export function h3Scale(render: JsonObject, resolution: number): H3Scale {
   return { kind: "ramp", colors: all, min: cells.min, max: cells.max };
 }
 
-function scaleExpr(scale: H3Scale): Expr {
+function scaleExpr(scale: H3Scale, map: (color: string) => string): Expr {
   const value: Expr = ["to-number", ["get", "value"], 0];
-  if (scale.kind === "color") return scale.color;
-  if (scale.kind === "classes")
+  if (scale.kind === "color") return map(scale.color);
+  if (scale.kind === "classes") {
+    const colors = scale.colors.map(map);
     // One class (every cell holds the same value) has no breaks to step through.
     return scale.breaks.length
-      ? ["step", value, scale.colors[0], ...scale.breaks.flatMap((b, i) => [b, scale.colors[i + 1]])]
-      : scale.colors[0];
-  const { colors, min, max } = scale;
+      ? ["step", value, colors[0], ...scale.breaks.flatMap((b, i) => [b, colors[i + 1]])]
+      : colors[0];
+  }
+  const { min, max } = scale;
+  const colors = scale.colors.map(map);
   return [
     "interpolate",
     ["linear"],
@@ -623,8 +626,9 @@ function scaleExpr(scale: H3Scale): Expr {
   ];
 }
 
-/** The hexagons' fill color: one scale per computed resolution, chosen by the hexagon's `resolution`. */
-function h3Color(render: JsonObject): Expr {
+/** The hexagons' fill color: one scale per computed resolution, chosen by the hexagon's `resolution`; `map` turns each
+ * of its colors (into a darker shade, say). */
+function h3Color(render: JsonObject, map: (color: string) => string = (color) => color): Expr {
   const fallback = h3Scale({ ...render, computed: undefined }, 0);
   const computed =
     isObject(render.computed) && isObject(render.computed.resolutions) ? render.computed.resolutions : {};
@@ -634,14 +638,14 @@ function h3Color(render: JsonObject): Expr {
     .sort((a, b) => a - b)
     .map((res) => [res, h3Scale(render, res)] as const)
     .filter(([, scale]) => scale.kind !== "color");
-  if (isObject(render.classify) && render.classify.method === "manual") return scaleExpr(fallback);
-  if (!byResolution.length) return scaleExpr(fallback);
-  if (byResolution.length === 1) return scaleExpr(byResolution[0][1]);
+  if (isObject(render.classify) && render.classify.method === "manual") return scaleExpr(fallback, map);
+  if (!byResolution.length) return scaleExpr(fallback, map);
+  if (byResolution.length === 1) return scaleExpr(byResolution[0][1], map);
   return [
     "match",
     ["get", "resolution"],
-    ...byResolution.flatMap(([res, scale]) => [res, scaleExpr(scale)]),
-    scaleExpr(fallback),
+    ...byResolution.flatMap(([res, scale]) => [res, scaleExpr(scale, map)]),
+    scaleExpr(fallback, map),
   ];
 }
 
@@ -721,8 +725,13 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
   const outline = isObject(render.outline) ? render.outline : {};
   const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
   if (width > 0) {
+    const rule = ruleOf("h3.outline.color", outline.color);
     const linePaint: Record<string, unknown> = {
-      "line-color": typeof outline.color === "string" ? outline.color : DEFAULTS["h3.outline.color"],
+      "line-color": rule
+        ? h3Color(render, (color) => RULES[rule](color, {}))
+        : typeof outline.color === "string"
+          ? outline.color
+          : DEFAULTS["h3.outline.color"],
       "line-width": width,
     };
     const layer = layerOpacity(ctx);

@@ -691,7 +691,7 @@
       "pattern": "none"
      },
      "outline": {
-      "color": "#6c7279",
+      "color": "#9aa3ad",
       "width": 2,
       "opacity": 1,
       "dash": "solid"
@@ -2566,7 +2566,7 @@
     "swatch": {
      "geometry": "line",
      "casing": {
-      "color": "#6c7279",
+      "color": "#9aa3ad",
       "width": 1,
       "opacity": 1
      },
@@ -4482,7 +4482,7 @@
       "icon_color": "#ffffff"
      },
      "outline": {
-      "color": "#6c7279",
+      "color": "#9aa3ad",
       "width": 2,
       "opacity": 1,
       "dash": "solid"
@@ -4949,7 +4949,7 @@
       "icon": "goat:park"
      },
      "outline": {
-      "color": "#6c7279",
+      "color": "#9aa3ad",
       "width": 2,
       "opacity": 1,
       "dash": "solid"

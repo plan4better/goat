@@ -2,7 +2,7 @@
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { classTexts } from "@/lib/style/categoryTexts";
 import { perLayer } from "@/lib/style/compile/cascade";
-import { derivedColor, followedKey, isDerivedWord } from "@/lib/style/compile/derived";
+import { derivedColor, followedKey, isDerivedWord, ruleOf } from "@/lib/style/compile/derived";
 import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
 import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale, pointsSymbol } from "@/lib/style/compile/render";
@@ -284,6 +284,14 @@ function fieldStops(form: unknown): Array<[number, unknown]> | null {
 /** Whether a value follows a field, at every zoom (spec 4.3) or in its zoom stops (spec 4.4): no one value to show. */
 const followsField = (form: unknown): boolean => byField(form) || fieldStops(form) !== null;
 
+/** A field's value used as it is (spec 4.3: no palette, no range). */
+const asRead = (value: unknown): boolean => byField(value) && !("palette" in value) && !("range" in value);
+
+/** Whether a value uses a field's value as it is, at every zoom or in a zoom stop: a color known only when drawn,
+ * which a rule cannot turn (spec 4.5). */
+const readsField = (form: unknown): boolean =>
+  asRead(form) || (fieldStops(form)?.some(([, value]) => asRead(value)) ?? false);
+
 /** The stops a value by zoom reads at `zoom`, as the compiler's `valueAt` reads them: the first or the last beyond
  * them, the one the zoom is on or a step holds, else the two around the zoom. */
 function stopsAround<T>(stops: Array<[number, T]>, zoom: number, step: boolean): Array<[number, T]> {
@@ -399,12 +407,16 @@ function swatch(
   const out: Swatch = { geometry };
   const at = (path: string) => (images.has(path) ? Math.floor(zoom) : zoom);
   let mainColor: unknown;
+  let mainRead = false;
   for (const part of PARTS[geometry]) {
     const base = symbol[part];
     const over = override?.[part];
     const used = part === MAIN[geometry] || isObject(base) || isObject(over);
     const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
-    if (part === MAIN[geometry]) mainColor = resolve(merged.color, `${part}.color`, at(`${part}.color`));
+    if (part === MAIN[geometry]) {
+      mainColor = resolve(merged.color, `${part}.color`, at(`${part}.color`));
+      mainRead = readsField(merged.color);
+    }
     if (!used || over === false || base === false) continue;
     // A main color by attribute has no one color to show (its ramp stands beside the entries): neutral grey.
     if (part === MAIN[geometry] && followsField(merged.color)) merged.color = LEGEND_NEUTRAL;
@@ -442,14 +454,14 @@ function swatch(
     out[part] = resolved;
   }
   // An outline's or a casing's word ("fill", "auto"): from the color the main part shows, drawn or not (the casing
-  // comes before the line).
+  // comes before the line); a main color read from a field stands as it is.
   for (const part of ["outline", "casing"] as const) {
     const own = out[part];
     const key = `${part}.color`;
     const follows = followedKey(key, geometry);
     if (!own || !follows || !isDerivedWord(key, own.color)) continue;
     const main = out[follows.split(".")[0] as "fill" | "line" | "marker"]?.color ?? mainColor;
-    own.color = derivedColor(key, own.color, main ?? DEFAULTS[follows]);
+    own.color = derivedColor(key, own.color, main ?? DEFAULTS[follows], { raw: mainRead });
   }
   if (geometry === "line") {
     const arrows = arrowsSwatch(style, symbol.arrows, override?.arrows, out.line?.color, zoom);
@@ -1142,6 +1154,16 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
   const value = isObject(render.value) ? render.value : {};
   const field = value.op !== "count" && typeof value.field === "string" ? { field: value.field } : {};
   const opacity = renderOpacity(render.opacity, DEFAULTS["h3.opacity"] as number, zoom);
+  // An Auto outline carries each class's shade, so the swatches draw it; flat hexagons only, and not at width 0.
+  const outline = isObject(render.outline) ? render.outline : {};
+  const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
+  const shaded =
+    !isObject(render.extrude) && width > 0 && ruleOf("h3.outline.color", outline.color) !== undefined;
+  const cell = (color: string): Swatch => ({
+    geometry: "polygon",
+    fill: { color, opacity },
+    ...(shaded ? { outline: { color: derivedColor("h3.outline.color", outline.color, color), width } } : {}),
+  });
   if (scale.kind === "ramp")
     return [
       {
@@ -1165,7 +1187,7 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
           {
             id: "0",
             extra: "h3",
-            swatch: { geometry: "polygon" as const, fill: { color: scale.color, opacity } },
+            swatch: cell(scale.color),
           },
         ],
       },
@@ -1183,7 +1205,7 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
           ...(i > 0 ? { from: scale.breaks[i - 1] } : {}),
           ...(i < n - 1 ? { to: scale.breaks[i] } : {}),
         },
-        swatch: { geometry: "polygon" as const, fill: { color, opacity } },
+        swatch: cell(color),
       })),
       ...(scale.domain ? { domain: scale.domain } : {}),
     },

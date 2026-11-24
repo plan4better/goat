@@ -4,8 +4,10 @@ The Python implementation is the reference: the server stores the colors and
 numbers a classification resolves to, and the compiler and legend read them.
 """
 
+import json
 import math
 import re
+from importlib import resources
 from typing import Any
 
 from goatlib.style.catalog import palettes
@@ -139,6 +141,20 @@ def on_color(hex_color: Any) -> str:
     if not _is_hex(hex_color):
         return LIGHT
     return LIGHT if _luminance(hex_color) < ON_COLOR_LUMINANCE else DARK
+
+
+#: The rules a color key's `"auto"` follows (spec 18.10).
+AUTO_RULES = ("shade", "label_text", "label_halo", "on_color")
+
+#: Every key that holds a color, a list of colors or a palette (spec 18.10), by
+#: the table's name: `auto` is its rule (`AUTO_RULES`) or None where `"auto"` is
+#: not offered; a rule has the color it `follows` and whether the models take
+#: `"auto"` there yet (`accepted`). The web's derived colors are tested against it.
+COLOR_KEYS: dict[str, dict[str, Any]] = json.loads(
+    resources.files("goatlib.style")
+    .joinpath("data", "color_keys.json")
+    .read_text(encoding="utf-8")
+)
 
 
 def _lab(hex_color: str) -> tuple[float, float, float]:

@@ -8,9 +8,13 @@ from pydantic_core import PydanticCustomError
 from goatlib.style import limits
 from goatlib.style.models.base import StyleModel
 from goatlib.style.models.classify import ColorClassification
-from goatlib.style.models.parts import LabelPart, MarkerPart, OutlinePart
+from goatlib.style.models.parts import (
+    H3OutlineColor,
+    LabelPart,
+    MarkerPart,
+    OutlinePart,
+)
 from goatlib.style.models.values import (
-    Color,
     Domain,
     PaletteRef,
     Px,
@@ -116,7 +120,7 @@ class H3Value(StyleModel):
 
 
 class H3Outline(StyleModel):
-    color: Color | None = None
+    color: H3OutlineColor | None = None
     width: Px | None = None
 
 

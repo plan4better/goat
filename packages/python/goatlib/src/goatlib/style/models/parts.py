@@ -65,6 +65,8 @@ IconRef = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*:[A-Za-z0-9._-]+$")]
 OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|fill|auto)$")]
 #: A casing color: a color or `"auto"` (a darker shade of the line's color).
 CasingColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
+#: An H3 outline color: a color or `"auto"` (a darker shade of each hexagon's color).
+H3OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
 XY = Annotated[tuple[float, float], LAX]
 
 ColorValue = value_type(
