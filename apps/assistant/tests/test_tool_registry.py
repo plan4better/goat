@@ -126,8 +126,8 @@ def test_packs_per_surface_follow_the_spec() -> None:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
         # carry the workflows pack (with runs, edits and both add tools), the
         # card, the skills and the user docs, and the map its style and map
-        # tools, at most 40 on the map. Raising this again is a decision, not
-        # a fix.
+        # tools, at most 40 on the map, counted with the tools a skill brings
+        # (``SKILL_TOOLS``). Raising this again is a decision, not a fix.
         assert len(tools_for(surface)) <= 40
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
@@ -296,6 +296,7 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
         _NO_PROJECT,
         _OPEN_PROJECT,
         _WORKFLOWS_PAGE_LIMITS,
+        MAP_WORKFLOWS,
     )
 
     text = " ".join(
@@ -304,6 +305,7 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
             _DOCUMENT_LIMITS,
             _WORKFLOWS_PAGE_LIMITS,
             _MAP_STYLES,
+            MAP_WORKFLOWS,
             _NO_PROJECT,
             _OPEN_PROJECT,
         )

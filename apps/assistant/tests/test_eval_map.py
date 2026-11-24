@@ -1481,8 +1481,11 @@ HALF_TRANSPARENT = {
 
 
 def _built_and_run(*more: tuple[str, dict[str, Any]], answer: str) -> ScriptedModel:
+    """On the map page the workflow tools come with the skill
+    build-a-workflow (``SKILL_TOOLS``): it is loaded first."""
     return ScriptedModel(
         calls=[
+            ("skills_load", {"name": "build-a-workflow"}),
             ("workflow_create", {"draft": CATCHMENT_DRAFT}),
             ("workflow_run", {"workflow_id": CREATED}),
             *more,
@@ -1508,7 +1511,7 @@ async def test_a_finished_run_puts_its_result_on_the_map_with_the_tools_look(
     assert not any(call.failed for call in transcript.tool_calls), [
         (call.name, call.result) for call in transcript.tool_calls if call.failed
     ]
-    create, run, layers, style = (call.result for call in transcript.tool_calls)
+    _, create, run, layers, style = (call.result for call in transcript.tool_calls)
     assert [row["project_id"] for row in transcript.saved] == [MAP_PROJECT_ID]
     assert run["status"] == "succeeded", run
     [saved] = run["saved"]

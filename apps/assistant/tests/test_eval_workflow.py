@@ -1449,9 +1449,15 @@ async def test_an_open_opportunitys_left_out_field_is_created_open(
         "routing_mode": "walking",
         "opportunity_1_potential_type": "field",
     }
-    model = ScriptedModel(calls=[("workflow_create", {"draft": draft})])
+    # wf-02 is on the map page, where the workflow tools come with the skill.
+    model = ScriptedModel(
+        calls=[
+            ("skills_load", {"name": "build-a-workflow"}),
+            ("workflow_create", {"draft": draft}),
+        ]
+    )
     transcript = await run_task(_task("wf-02"), model.model, backends, settings)
-    [create] = transcript.tool_calls
+    _, create = transcript.tool_calls
     assert not create.failed, create.result
     assert sorted(
         (issue["code"], issue["message"].split(": ")[1])

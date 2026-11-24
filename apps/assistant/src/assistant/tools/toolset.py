@@ -3,13 +3,16 @@ adapters; the MCP adapter is ``assistant.mcp_server``).
 
 Every tool is registered once with its input model's JSON schema; validation,
 the size cap and the audit happen in ``execute``. A filter keeps the tools of
-the run's surface, in registry order, the same in every step of an answer: a
-provider reads the tool definitions as part of the cached prefix. Near the
-run's limits the stage of the step (``answer_step``) decides which calls run,
-as they run, by tool and, in the step that answers, by what a call names
-(``_answer_step_allows``); the cards that show what the answer found run in
-every stage (``DISPLAY_TOOLS``). A run without a tool environment (the run
-machinery's own tests) is offered none.
+the run's surface in a fixed order (``registry.offered_tools``): a provider
+reads the tool definitions as part of the cached prefix. A request leaves out
+the tools of a skill the conversation has not loaded (``withheld_now``,
+``assistant.agent.SkillTools``), so the list grows once in the answer that
+loads it; a call of a tool left out is refused with the skill to load
+(``skill_first``). Near the run's limits the stage of the step
+(``answer_step``) decides which calls run, as they run, by tool and, in the
+step that answers, by what a call names (``_answer_step_allows``); the cards
+that show what the answer found run in every stage (``DISPLAY_TOOLS``). A run
+without a tool environment (the run machinery's own tests) is offered none.
 """
 
 import json
@@ -39,7 +42,13 @@ from assistant.tools.core import SHOW_ITEMS
 from assistant.tools.http import service_failed
 from assistant.tools.map_edits import MAP_UPDATE
 from assistant.tools.project import PROJECT_TOOLS
-from assistant.tools.registry import ALL_TOOLS, BY_WIRE_NAME, tools_for
+from assistant.tools.registry import (
+    ALL_TOOLS,
+    BY_WIRE_NAME,
+    offered_tools,
+    skill_of,
+    withheld_tools,
+)
 from assistant.tools.runtime import (
     InputInvalid,
     ResultOverCap,
@@ -82,6 +91,17 @@ REPEATED_WRITE = (
     "(Add to project in the catalog), and you create a workflow again under a "
     "changed name."
 )
+
+
+def skill_first(tool: str, skill: str) -> str:
+    """The failure of a call of a tool its request left out because the
+    conversation has not loaded the skill that brings it
+    (``registry.SKILL_TOOLS``): the call did not run."""
+    return (
+        f"This call did not run: {tool} comes with the skill {skill}, which this "
+        f"conversation has not loaded. Load {skill} with skills_load and follow "
+        "it; its tools are offered after that."
+    )
 
 
 #: The failure of a call past the run's tool-call limit (``assistant.budget``):
@@ -309,6 +329,25 @@ def _tool(spec: ToolSpec[Any, Any]) -> "Tool[RunDeps]":
                     _stage_refusal(stage, spec),
                     tool_call_id=ctx.tool_call_id,
                 )
+        withheld = ctx.deps.withheld.get(ctx.run_id)
+        if withheld is not None and (
+            withheld[0] == ctx.run_step and spec.wire_name in withheld[1]
+        ):
+            # Not offered in this step's request: counted like a call that
+            # ran, as a refusal of the stage is.
+            if past:
+                _note_stage_call(ctx, ran=False)
+            refusing = _step_guard(ctx)
+            if refusing is not None:
+                refusing.admit_call(past_limit=True)
+            skill = skill_of(env.page.surface, spec.wire_name) or ""
+            await refuse(
+                spec,
+                env,
+                arguments,
+                skill_first(spec.wire_name, skill),
+                tool_call_id=ctx.tool_call_id,
+            )
         if spec.wire_name == ASK_TOOL and _unreported(ctx):
             # A card held back until the result is written about waits for
             # the text: the model was told what to do, and did not insist.
@@ -881,7 +920,7 @@ def answer_writes(ctx: "RunContext[RunDeps]") -> list[str]:
     env = ctx.deps.env
     if env is None or ctx.deps.run_room.get(ctx.run_id) != ctx.run_step or _ended(ctx):
         return []
-    offered = {spec.wire_name for spec in tools_for(env.page.surface)}
+    offered = {spec.wire_name for spec in offered_tools(env.page.surface, env.skills)}
     return [name for name in ANSWER_WRITES if name in offered]
 
 
@@ -1009,17 +1048,39 @@ def _size(result: dict[str, Any]) -> int:
 async def _surface_tools(
     ctx: "RunContext[RunDeps]", tool_defs: list[ToolDefinition]
 ) -> list[ToolDefinition]:
-    """The tools of the run's surface, whatever the stage: near the run's
-    limits the stage refuses calls as they run (``_stage_allows``), so the
-    tool definitions stay the provider's cached prefix."""
+    """The tools of the run's surface in the order a request offers them
+    (``registry.offered_tools``), whatever the stage: near the run's limits
+    the stage refuses calls as they run (``_stage_allows``), so the tool
+    definitions stay the provider's cached prefix. All of them, also the
+    tools of a skill not loaded yet: a request leaves those out
+    (``withheld_now``), and a call that names one anyway reaches ``call``,
+    which says which skill to load."""
     env = ctx.deps.env
     if env is None:
         return []
     # After a card the model ends its answer and waits for the user's.
     if ctx.deps.asked:
         return []
-    loaded = {spec.wire_name for spec in tools_for(env.page.surface)}
-    return [tool_def for tool_def in tool_defs if tool_def.name in loaded]
+    by_name = {tool_def.name: tool_def for tool_def in tool_defs}
+    return [
+        by_name[spec.wire_name]
+        for spec in offered_tools(env.page.surface)
+        if spec.wire_name in by_name
+    ]
+
+
+def withheld_now(ctx: "RunContext[RunDeps]") -> frozenset[str]:
+    """The tools the model call being prepared leaves out: those of a skill
+    the conversation has not loaded so far, this answer's earlier steps
+    included (``ToolEnv.skills``, ``registry.withheld_tools``). Kept with the
+    step (``RunDeps.withheld``): the step's calls of them are refused as
+    they run, also when the same response loaded the skill."""
+    env = ctx.deps.env
+    withheld = (
+        frozenset() if env is None else withheld_tools(env.page.surface, env.skills)
+    )
+    ctx.deps.withheld[ctx.run_id] = (ctx.run_step, withheld)
+    return withheld
 
 
 def goat_toolset() -> "AbstractToolset[RunDeps]":

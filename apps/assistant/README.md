@@ -421,6 +421,22 @@ looks that could mean an analysis and for popups beyond a list of fields. Its te
 apply every example's operations with goatlib, validate every example document, check every palette, icon and tool it
 names, and keep `SKILL.md` within 34,500 bytes, since a loaded skill is resent with every later call.
 
+A page can offer some of its tools only once the conversation loaded a skill (`tools/registry.SKILL_TOOLS`): every
+call sends the definitions of every tool it offers, and when a call misses the provider's cache they count in full
+against the answer's budget. On the Map page the tools that build, check, change and run workflows come with
+`build-a-workflow`, about a quarter of that page's definitions, which a conversation about styling never calls. The
+reads of workflows stay, since they answer questions without building anything. Until the skill is loaded the call
+leaves those tools out (`agent.SkillTools`), and the page note says they come with it; the call after `skills_load`
+offers them, in the same answer or a later one (`ToolEnv.skills`). They follow the other tools
+(`registry.offered_tools`), so the definitions before them stay as they were. The call after the load still misses
+the cache once. Its request is marked (`budget.TOOLS_ADDED_KEY`), and the budget plans the calls after it at the input
+it wrote to the cache: an answer whose first call also read nothing (a cache that expired between messages) would
+otherwise see two misses in a row, take them as a provider without a cache, and stop looking things up right after
+loading the skill. The run's tool
+manager keeps them, so a model that names one anyway is told which skill to load (`toolset.skill_first`) rather than
+that the tool is unknown. Where the skills are not known (over `/mcp`, which lists its own tools) nothing is left
+out, and the Workflows page offers its workflow tools from the start.
+
 **User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
 are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such
 questions, the assistant said it could not see the interface, after half a minute of unrelated tool calls. The pages
@@ -451,8 +467,9 @@ far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves;
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,
 page, filters) travels in each user message (`prompt.with_note`), not in the instructions: it changes when the user
 moves or filters, and anything that changed ahead of the conversation would make every call read it again. For the
-same reason every call of an answer offers the same tools, and the note on the answer's stage near the run's limits
-comes after the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
+same reason every call of an answer offers the same tools, except that the call after loading a skill that brings
+tools adds them after the others (Skills, above), and the note on the answer's stage near the run's limits comes after
+the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
 details.
 
 OpenRouter sends one model to many providers, which differ in price, speed and precision (some serve 4-bit weights),

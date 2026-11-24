@@ -39,6 +39,7 @@ from assistant.agent import STAGE_KEY, RunDeps, build_agent
 from assistant.budget import (
     MAX_RESULT_READS,
     TOOL_CALL_RESERVE,
+    TOOLS_ADDED_KEY,
     NextCall,
     RunBudget,
     next_call,
@@ -46,7 +47,7 @@ from assistant.budget import (
 )
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
-from assistant.context import parse_context
+from assistant.context import PageContext, parse_context
 from assistant.history import (
     KEPT_READ_CHARS,
     KEPT_READS,
@@ -65,7 +66,7 @@ from assistant.prompt import (
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
 from assistant.tools.http import ServiceClients
-from assistant.tools.registry import BY_WIRE_NAME
+from assistant.tools.registry import BY_WIRE_NAME, SKILL_TOOLS
 from assistant.tools.testing import (
     Recorder,
     ScriptedModel,
@@ -698,6 +699,36 @@ def test_the_next_calls_are_planned_at_the_newest_two_calls_cache_reads(
     assert next_call(messages, "r2").cached == planned
 
 
+@pytest.mark.parametrize(
+    ("reads", "planned"),
+    [
+        # The call that offered more tools read nothing, nor did the cold
+        # call before it: planned at its input, which it wrote to the cache.
+        ([0, 0], 51_000),
+        # It read part of its input: still its whole input.
+        ([45_000, 20_000], 51_000),
+        # A miss after it as well: no cache.
+        ([0, 0, 0], 0),
+    ],
+)
+def test_a_call_that_offered_more_tools_is_planned_as_written_to_the_cache(
+    reads: list[int], planned: int
+) -> None:
+    """The call after loading a skill that brings tools offers a longer tool
+    list (``assistant.agent.SkillTools``) and misses the provider's cache for
+    that: its request is marked (``TOOLS_ADDED_KEY``), and the calls after it
+    read from the cache what it wrote."""
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content="next")], run_id="r2"),
+    ]
+    for n, read in enumerate(reads):
+        if n == 1:
+            messages[-1].metadata = {TOOLS_ADDED_KEY: True}
+        messages.append(_cached(50_000 + n * 1_000, read, "r2"))
+        messages.append(_returns(1_000, "r2"))
+    assert next_call(messages, "r2").cached == planned
+
+
 def test_a_run_that_continues_a_conversation_has_no_call_of_its_own_yet() -> None:
     messages: list[ModelMessage] = [
         ModelRequest(parts=[UserPromptPart(content="q")], run_id="r1"),
@@ -935,6 +966,7 @@ class _Provider(FunctionModel):
         look_up: str = "core_page_context",
         parallel: dict[int, int] | None = None,
         tools: dict[int, str] | None = None,
+        args: dict[int, str] | None = None,
     ) -> None:
         super().__init__(stream_function=self._stream)
         self.start, self.growth, self.cached, self.asks = start, growth, cached, asks
@@ -942,6 +974,8 @@ class _Provider(FunctionModel):
         self.look_up = look_up
         self.parallel = parallel or {}
         self.tools = tools or {}
+        #: The arguments of the calls in call ``n``, as JSON; ``{}`` otherwise.
+        self.args = args or {}
         #: Per call: the tools offered, the instructions, the note on the
         #: stage (None in a look-up step), and (input tokens, cache reads,
         #: output tokens).
@@ -981,7 +1015,7 @@ class _Provider(FunctionModel):
         elif self.look_up in names:
             tool = self.tools.get(n, self.look_up)
             yield {
-                i: _delta(tool, "{}", f"call-{n}-{i}")
+                i: _delta(tool, self.args.get(n, "{}"), f"call-{n}-{i}")
                 for i in range(self.parallel.get(n, 1))
             }
         else:
@@ -1020,10 +1054,12 @@ async def _run(
     settings: AssistantSettings,
     model: FunctionModel,
     services: ServiceClients | None = None,
+    context: PageContext | None = None,
     **limits: int,
 ) -> dict[str, Any]:
     """A run through the run manager on ``model`` (and the tools on
-    ``services``) with the settings changed by ``limits``; the run as stored."""
+    ``services``) on the page ``context`` (the catalog's when None) with the
+    settings changed by ``limits``; the run as stored."""
     manager = RunManager(
         repo,
         InMemoryEventBus(),
@@ -1032,14 +1068,58 @@ async def _run(
         agent_factory=lambda _: build_agent(model),
         tool_services=services or fake_clients(),
     )
-    conversation = await repo.create_conversation(USER, "catalog", None, None)
+    surface = context.surface if context is not None else "catalog"
+    conversation = await repo.create_conversation(USER, surface, None, None)
     run_id, _ = await manager.start_run(
-        UUID(str(conversation["id"])), USER, "which schools?", None
+        UUID(str(conversation["id"])), USER, "which schools?", context
     )
     await manager.wait(run_id)
     run = await repo.get_run(run_id)
     assert run is not None
     return dict(run)
+
+
+@pytest.mark.parametrize("start", [40_000, 60_000])
+async def test_loading_a_skill_that_brings_tools_costs_one_miss_and_no_look_ups(
+    repo: Repository, settings: AssistantSettings, start: int
+) -> None:
+    """On the map page build-a-workflow brings the workflow tools
+    (``SKILL_TOOLS``): the call after skills_load offers a longer tool list
+    and misses the provider's cache. Also in an answer whose first call read
+    nothing from the cache either, the calls after the miss are planned at
+    what it wrote to the cache (``TOOLS_ADDED_KEY``): with the default limits
+    the answer's steps after loading the skill stay look-ups that call the
+    workflow tools, and they read from the cache again. The calls themselves
+    fail on the stand-in services; what counts is that they are offered and
+    let run."""
+    model = _Provider(
+        start=start,
+        growth=3_000,
+        tools={
+            0: "skills_load",
+            1: "workflow_tools",
+            2: "workflow_describe_tool",
+            3: "workflow_check_draft",
+            4: "workflow_create",
+            5: "workflow_run",
+        },
+        args={0: json.dumps({"name": "build-a-workflow"})},
+    )
+    page = parse_context({"surface": "project.map", "project_id": str(UUID(int=7))})
+    run = await _run(repo, settings, model, context=page)
+    assert run["status"] == "succeeded", run["error"]
+    deferred = SKILL_TOOLS["project.map"]["build-a-workflow"]
+    assert not deferred & set(model.offered[0])
+    assert deferred <= set(model.offered[1])
+    # The miss: the call after skills_load reads nothing from the cache, the
+    # ones after it read again.
+    assert model.usages[1][1] == 0
+    assert all(cached > 0 for _, cached, _ in model.usages[2:])
+    # Every call up to the one that runs the workflow was a look-up: no note
+    # to answer, and each named tool was offered when it was called.
+    assert model.notes[:7] == [None] * 7
+    for n in range(1, 6):
+        assert model.tools[n] in model.offered[n]
 
 
 async def test_the_answer_step_reads_from_the_cache_like_the_look_ups(
