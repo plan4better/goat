@@ -1,8 +1,8 @@
 """Create a street network bundle from GOAT's own routing network, for an area.
 
 The cut itself is in `goatlib.io.fetch.street_network`; this stores
-it as a street_network bundle with its routable artifact, which routes on the
-network's slope.
+it as a street_network bundle. Its routable artifact, which routes on the
+network's slope, is built by a job of its own once its layers are in.
 """
 
 import logging

@@ -25,6 +25,7 @@ from goatlib.bundles.artifacts.gtfs import fetch_pt_linkage, fetch_pt_timetable
 from goatlib.bundles.importers.base import bound_duckdb
 from goatlib.bundles.importers.pt_network.store import read_store, tables_dir
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.fetch.pt_network import on_lines
 
 
 def pt_date_field(field_order: int) -> Any:
@@ -158,7 +159,8 @@ def cut_network_tables(
     services, then only their stop times, and only the trips and routes those
     name. Services are resolved to the date here, so what is returned states
     them as added on it (``calendar_dates``), whichever calendar file the
-    network used.
+    network used. Indexed tables (``store.index_store``) are read only in the
+    row groups of the area's lines.
     """
     info = read_store(tables)
     src = {t["role"]: t["path"].replace("'", "''") for t in info["tables"]}
@@ -228,10 +230,23 @@ def cut_network_tables(
             SELECT trip_id, route_id, service_id FROM read_parquet('{src["trips"]}')
             WHERE service_id IN ({active})
         """)
+        stop_times = f"read_parquet('{src['stop_times']}')"
+        index = info["index"]
+        if index:
+            # Indexed tables: only the row groups of the lines at the area's
+            # stops are read, instead of every stop time of the network.
+            stop_times = on_lines(
+                con,
+                stop_times,
+                "line_numbers",
+                f"""SELECT route_id FROM read_parquet('{index["stop_lines"]}')
+                    WHERE stop_id IN (SELECT stop_id FROM area_stops)""",
+                index,
+            )
         con.execute(f"""
             CREATE TEMP TABLE area_stop_times AS
             SELECT trip_id, stop_id, arrival_time
-            FROM read_parquet('{src["stop_times"]}')
+            FROM {stop_times}
             WHERE stop_id IN (SELECT stop_id FROM area_stops)
               AND trip_id IN (SELECT trip_id FROM day_trips)
         """)
