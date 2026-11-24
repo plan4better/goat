@@ -69,6 +69,7 @@ from typing import Any, Dict, List, Optional
 from goatlib.bundles.importers.base import ExtractedLayer, bound_duckdb
 from goatlib.bundles.importers.pt_network.gtfs import GtfsImporter
 from goatlib.io.config import parquet_copy_options
+from goatlib.io.sql import sql_literal
 
 logger = logging.getLogger(__name__)
 
@@ -272,14 +273,13 @@ def _write_index(
         staged[name] = os.path.join(workdir, name)
         return staged[name].replace("'", "''")
 
-    copy = parquet_copy_options("COMPRESSION ZSTD")
     con.execute("INSTALL spatial; LOAD spatial;")
     stop_lines = out(INDEX_FILES["stop_lines"])
     con.execute(f"""
         COPY (SELECT DISTINCT st.stop_id, t.route_id
               FROM {rel("stop_times")} st JOIN {rel("trips")} t USING (trip_id)
               ORDER BY stop_id, route_id)
-        TO '{stop_lines}' {copy}
+        TO '{stop_lines}' {parquet_copy_options('COMPRESSION ZSTD')}
     """)
     # The curve runs through the network's own extent, so any network spreads
     # over its whole length.
@@ -302,7 +302,7 @@ def _write_index(
                   LEFT JOIN {rel("stops")} s USING (stop_id)
                   GROUP BY 1)
             ORDER BY {LINE_NO}
-        ) TO '{line_numbers}' {copy}
+        ) TO '{line_numbers}' {parquet_copy_options('COMPRESSION ZSTD')}
     """)
     trip_columns = {
         r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {rel('trips')}").fetchall()
@@ -320,7 +320,7 @@ def _write_index(
         con.execute(f"""
             COPY (SELECT shape_id, min({LINE_NO}) AS {LINE_NO} FROM trip_line
                   WHERE shape_id IS NOT NULL GROUP BY 1 ORDER BY 1)
-            TO '{shape_numbers}' {copy}
+            TO '{shape_numbers}' {parquet_copy_options('COMPRESSION ZSTD')}
         """)
         con.execute(
             f"CREATE TEMP TABLE shape_line AS SELECT * FROM read_parquet('{shape_numbers}')"
@@ -362,7 +362,7 @@ def _write_index(
                             WHERE {LINE_NO} BETWEEN {low} AND {high}) l
                       USING ({key})
                       ORDER BY l.{LINE_NO}, {order})
-                TO '{part.replace("'", "''")}' {copy}
+                TO {sql_literal(part)} {parquet_copy_options('COMPRESSION ZSTD')}
             """)
             parts.append(part)
         # The rows of no line (a shape no trip uses, a stop time of a trip
@@ -378,7 +378,7 @@ def _write_index(
                 COPY (SELECT CAST(NULL AS INTEGER) AS {LINE_NO}, x.* FROM {rel(role)} x
                       SEMI JOIN no_line USING ({key})
                       ORDER BY {order})
-                TO '{part.replace("'", "''")}' {copy}
+                TO {sql_literal(part)} {parquet_copy_options('COMPRESSION ZSTD')}
             """)
             parts.append(part)
         # One file again, the slices in order: read in insertion order, so
@@ -387,7 +387,7 @@ def _write_index(
         listed = ", ".join("'" + p.replace("'", "''") + "'" for p in parts)
         con.execute("SET preserve_insertion_order = true")
         con.execute(
-            f"COPY (SELECT * FROM read_parquet([{listed}])) TO '{out(name)}' {copy}"
+            f"COPY (SELECT * FROM read_parquet([{listed}])) TO '{out(name)}' {parquet_copy_options('COMPRESSION ZSTD')}"
         )
         (kept,) = con.execute(
             "SELECT count(*) FROM read_parquet(?)", [staged[name]]
