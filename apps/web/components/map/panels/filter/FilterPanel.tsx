@@ -49,6 +49,7 @@ import {
   MAIN_MAP,
 } from "@/components/map/panels/filter/area/host";
 import { useAreaOutline } from "@/components/map/panels/filter/area/outline";
+import { drawnOutline } from "@/components/map/panels/filter/area/pieces";
 import {
   type DraftAction,
   type DraftActions,
@@ -132,7 +133,7 @@ function useFilterAreaHost(store: DraftStore, actions: DraftActions, fields: Fie
  * panel stays mounted, hidden. */
 function AreaOutline({ shown }: { shown: boolean }) {
   const { outline, cancelDraw } = useAreaTools();
-  useAreaOutline(shown ? outline : undefined);
+  useAreaOutline(drawnOutline(outline, shown));
   useEffect(() => {
     if (!shown) cancelDraw();
   }, [shown, cancelDraw]);
@@ -232,6 +233,7 @@ export function FilterPanel({
         store={store}
         actions={actions}
         resultAction={resultAction}
+        shown={shown}
       />
     </PopoverProvider>
   );
@@ -275,6 +277,7 @@ function FilterBody({
   store,
   actions,
   resultAction,
+  shown,
 }: {
   model: FilterModel;
   issues: FilterIssues;
@@ -288,6 +291,7 @@ function FilterBody({
   store: DraftStore;
   actions: DraftActions;
   resultAction?: ReactNode;
+  shown: boolean;
 }) {
   const { t } = useTranslation("common");
   const popover = usePopover();
@@ -372,7 +376,11 @@ function FilterBody({
         onClear={canEdit && (rows.length > 0 || draft.area) ? clear : undefined}
         actions={resultAction}
       />
-      {area ? <AreaSection canEdit={canEdit} canSwitch={canSwitch} /> : <SavedArea canEdit={canEdit} />}
+      {area ? (
+        <AreaSection canEdit={canEdit} canSwitch={canSwitch} shown={shown} />
+      ) : (
+        <SavedArea canEdit={canEdit} />
+      )}
       <PanelSection
         title={t("filter_panel.title")}
         scope={

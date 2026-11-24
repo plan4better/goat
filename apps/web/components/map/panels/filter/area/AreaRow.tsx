@@ -27,6 +27,8 @@ export interface AreaRowProps {
   onRemove: () => void;
   /** Takes the current map view for the map view piece; given while the map is off it. */
   onUseView?: () => void;
+  /** The names of the project's layers by dataset id: the row names the layer picked features are of. */
+  layers?: ReadonlyMap<string, string>;
 }
 
 export const AreaRow = memo(function AreaRow({
@@ -36,9 +38,10 @@ export const AreaRow = memo(function AreaRow({
   onToggle,
   onRemove,
   onUseView,
+  layers,
 }: AreaRowProps) {
   const { t } = useTranslation("common");
-  const summary = useMemo(() => (area ? areaSummary(area, t) : undefined), [area, t]);
+  const summary = useMemo(() => (area ? areaSummary(area, t, layers) : undefined), [area, t, layers]);
   const useView = t("filter_panel.area_use_view");
   return (
     <RowShell

@@ -6,6 +6,7 @@ import { type AreaPiece, type FilterArea, type PolygonCoords, viewPolygon } from
 import {
   areaSummary,
   circlePiece,
+  drawnOutline,
   editable,
   viewStale,
   withFeature,
@@ -65,6 +66,53 @@ describe("the area's summary", () => {
     expect(areaSummary(area([VIEW], "outside"), t)).toBe(
       'filter_panel.area_outside_of{"area":"filter_panel.area_view","interpolation":{"escapeValue":false}}'
     );
+  });
+
+  describe("names the layer the features are of", () => {
+    const LAYERS = new Map([
+      ["layer-1", "Districts"],
+      ["layer-2", "Parks"],
+    ]);
+    const features = (source: string, ...names: Array<string | undefined>): AreaPiece => ({
+      kind: "features",
+      source,
+      features: names.map((name, i) => ({ id: `${source}-${i}`, ...(name && { name }), n: 1 })),
+      polygons: names.map((_, i) => square(20 + i)),
+    });
+    const OF_DISTRICTS =
+      'filter_panel.area_features_of{"count":81,"layer":"Districts","interpolation":{"escapeValue":false}}';
+    const many = (source: string) => features(source, ...Array.from({ length: 81 }, () => undefined));
+
+    it("inside and outside", () => {
+      expect(areaSummary(area([many("layer-1")]), t, LAYERS)).toBe(OF_DISTRICTS);
+      expect(areaSummary(area([many("layer-1")], "outside"), t, LAYERS)).toBe(
+        `filter_panel.area_outside_of{"area":${JSON.stringify(OF_DISTRICTS)},"interpolation":{"escapeValue":false}}`
+      );
+    });
+
+    it("beside regions and shapes, which are no layer", () => {
+      expect(areaSummary(area([regions("Bayern"), many("layer-1"), VIEW]), t, LAYERS)).toBe(
+        `Bayern, ${OF_DISTRICTS}, filter_panel.area_view`
+      );
+    });
+
+    it("not for a layer the project does not have, one without a name, or without names", () => {
+      expect(areaSummary(area([many("layer-9")]), t, LAYERS)).toBe('filter_panel.area_features{"count":81}');
+      expect(areaSummary(area([many("layer-1")]), t, new Map([["layer-1", ""]]))).toBe(
+        'filter_panel.area_features{"count":81}'
+      );
+      expect(areaSummary(area([many("layer-1")]), t)).toBe('filter_panel.area_features{"count":81}');
+    });
+
+    it("not for features of several layers", () => {
+      expect(areaSummary(area([features("layer-1", "A", "B"), features("layer-2", "C")]), t, LAYERS)).toBe(
+        'filter_panel.area_features{"count":2}, C'
+      );
+    });
+
+    it("not for one named feature, which keeps its name alone", () => {
+      expect(areaSummary(area([features("layer-1", "Old town")]), t, LAYERS)).toBe("Old town");
+    });
   });
 });
 
@@ -180,5 +228,16 @@ describe("a circle around a point", () => {
 
   it("keeps its name", () => {
     expect(circlePiece([11, 48], 10, "School")).toMatchObject({ center: [11, 48], km: 10, label: "School" });
+  });
+});
+
+describe("the outline the map draws", () => {
+  it("is the area while the panel is on screen and the area has a polygon", () => {
+    const shown = area([VIEW]);
+    expect(drawnOutline(shown, true)).toBe(shown);
+    expect(drawnOutline(shown, false)).toBeUndefined();
+    expect(drawnOutline(undefined, true)).toBeUndefined();
+    // The piece being edited is left out of the outline: an area of it alone has nothing to draw.
+    expect(drawnOutline(area([{ ...POLYGON, polygons: [] }]), true)).toBeUndefined();
   });
 });
