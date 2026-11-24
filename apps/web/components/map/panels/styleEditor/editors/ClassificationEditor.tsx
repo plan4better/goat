@@ -131,7 +131,8 @@ function ClassPalettePicker({
       value={current}
       reverse={reverse === true}
       steps={steps}
-      kinds={categories ? ["qualitative"] : ["sequential", "diverging"]}
+      kinds={categories ? ["qualitative", "sequential", "diverging"] : ["sequential", "diverging"]}
+      categories={categories}
       onChange={(next) => write(next, reverse === true)}
       onReverse={(next) => write(current, next)}
     />
