@@ -1,5 +1,5 @@
 ---
-description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, suggests map views and filters, builds, changes and runs workflows, and explains GOAT itself from this documentation. Answers of GOAT AI use AI credits."
+description: "Ask GOAT AI, the AI assistant, about your projects and data: it finds datasets in your workspace and the catalog, reads layers and statistics, styles layers and changes the map, builds, changes and runs workflows, and explains GOAT itself from this documentation. Answers of GOAT AI use AI credits."
 sidebar_position: 2.5
 ---
 
@@ -9,13 +9,13 @@ sidebar_position: 2.5
   <Video src={require('/img/goat_ai/goat_ai.mp4').default} alt="GOAT AI answering a planning question in a project" />
 </div>
 
-GOAT AI is the **AI assistant built into GOAT**. Ask it in your own words to find projects and datasets, explain what a layer contains, compute statistics, or build and run an analysis as a workflow. It works with your own GOAT permissions, so it only sees and changes what you could.
+GOAT AI is the **AI assistant built into GOAT**. Ask it in your own words to find projects and datasets, explain what a layer contains, compute statistics, style layers and change the map, or build and run an analysis as a workflow. It works with your own GOAT permissions, so it only sees and changes what you could.
 
 ## 1. Explanation
 
-The assistant opens in a panel next to the page you are working on, the **dock**. You write a message, and the assistant answers in text, with cards for what it found and suggestions you can apply. To answer, it uses GOAT's own tools: it searches your workspace and the data catalog, reads the layers of a project and builds workflows from the tools of the Toolbox. Everything it says about your data, such as names, counts and values, comes from these tools. General questions, for example about planning terms or places, it answers from its own knowledge.
+The assistant opens in a panel next to the page you are working on, the **dock**. You write a message, and the assistant answers in text, with cards for what it found and, where it fits, changes it makes for you or suggestions you can apply. To answer, it uses GOAT's own tools: it searches your workspace and the data catalog, reads and styles the layers of a project, changes its map and builds workflows from the tools of the Toolbox. Everything it says about your data, such as names, counts and values, comes from these tools. General questions, for example about planning terms or places, it answers from its own knowledge.
 
-- **It works with your permissions.** Every step runs with your sign-in: the assistant only finds what you can open and only changes what you may edit. In a project you can only view, it answers questions but creates and changes nothing.
+- **It works with your permissions.** Every step runs with your sign-in: the assistant only finds what you can open and only changes what you may edit. In a project you can only view, it answers questions and can move your map view, but creates and changes nothing.
 - **It knows the page you are on.** Each message tells the assistant which page, project and view it was sent from, and what is selected there. In a project it answers about that project's layers; on the Catalog page about the catalog.
 - **Your organization decides how it works.** Organization admins switch AI on or off and choose the model connection (see [AI settings](./workspace/settings.md#ai)). Where your organization uses **GOAT AI (included)**, answers use [AI credits](#ai-credits).
 
@@ -45,11 +45,11 @@ The assistant answers in the language you write in.
 
 ### Answers {#answers}
 
-While the assistant works, the answer shows the **steps** it takes, such as a search in the catalog or a count of features, each with what it found. Then comes the answer's text, followed by **cards** for what it points to and, where it suggests a change, a **suggestion card** (see [What GOAT AI can do](#capabilities)).
+While the assistant works, the answer shows the **steps** it takes, such as a search in the catalog or a count of features, each in one line with what it found. The same change made several times in a row shows as one line that says how often, for example <code>3 times</code>. Then comes the answer's text, followed by **cards** for what it points to and, where it suggests a change, a **suggestion card** (see [What GOAT AI can do](#capabilities)).
 
 Below the newest answer, and below older ones when you point at them, you find:
 
-- <code>Undo</code>, when the answer changed workflows (see [Change a workflow with the AI assistant](./workflows/workflow_interface.md#change-a-workflow-with-the-ai-assistant)).
+- <code>Undo</code>, when the answer changed layer styles, the map or workflows (see [Style layers and change the map](#style-and-map) and [Change a workflow with the AI assistant](./workflows/workflow_interface.md#change-a-workflow-with-the-ai-assistant)).
 - <code>Copy answer</code>, to copy the answer's text.
 - <code>Answer details</code>: for an answer of GOAT AI, the AI credits it used (where your organization's AI credits are counted), its <code>Steps</code> and, where it is known, where the model runs, for example <code>Runs on a model hosted in the EU.</code> For an answer from your organization's own connection, the <code>Model</code>, the <code>Provider</code> and the token counts.
 - <code>Good answer</code> and <code>Bad answer</code>, to rate the answer. After <code>Bad answer</code> you can say what could be better. Click the chosen button again to remove your rating.
@@ -103,19 +103,30 @@ The numbers come from GOAT, not from the model: statistics, shares and totals ar
 
 Outside a project, you can ask about any project you can open, or add it as a source with <code>@ Add source</code>.
 
+### Style layers and change the map {#style-and-map}
+
+In the `Map` view of a project you can edit, the assistant changes how layers look and what the map shows. Ask, for example, <code>Color the districts by population density</code>, <code>Label the stations with their name from zoom 13</code> or <code>Show only the schools in Pasing</code>. It can:
+
+- **style layers by their data**: colors by a field, in classes or as a smooth ramp, the most frequent categories with the rest in grey, sizes by a number, heights for the 3D view, points as a heatmap, clusters or hexagons, and the colors of raster layers. It reads a field's values before it styles by it, chooses classes and palettes that suit the data, and picks colors that stand out against the current basemap, whether light, dark or satellite imagery;
+- **add labels and icons**: labels from a field, from a zoom level you choose, and icons from GOAT's library or emoji;
+- **set popups, legend texts and zoom ranges**: which fields a popup shows, the legend's titles and class names, and from which zoom a layer or a label shows;
+- **filter layers by condition**, for example <code>population greater than 5,000</code>, **and by area**: inside or outside regions it looks up by name, features of another polygon layer of the project (for example some districts), or the current map view. It writes the filter as the layer's <code>Filter</code> tab does, so you see and change it there (see [Filter](./map/filter.md)). A very detailed outline, such as that of a large region, is simplified to fit the filter's size limit, and the answer says so;
+- **hide, show, rename, order and group layers**, and switch a layer to another of its [named styles](./map/layer_style/style/styling.md#named-styles);
+- **change the basemap, the view and the 3D scene**: another basemap, terrain, 3D buildings, sky and fog, a move to a place or to a layer, and 2D or 3D.
+
+**Changes are applied directly.** The assistant shows no card for them; its steps say what changed, for example <code>Changed the style</code> or <code>Changed the map</code>. <code>Undo</code> below the answer takes back its changes of styles and of the map. If someone changed the same style or the map since, <code>Undo</code> asks first, and <code>Undo anyway</code> takes back those later changes too. A change of the view is your own and is not saved for the project, so <code>Undo</code> leaves it: <code>Back to the previous view</code> below the answer's steps moves the map back.
+
+**It edits the current style.** The assistant changes the style the layer shows, also for a large change such as a whole new look, and <code>Undo</code> is the way back. It creates a new named style only when you ask for one, for example <code>as a new style</code> or <code>keep the current one</code>, and two or three variants to choose from when you ask for options, for example <code>give me two options</code>. For variants it then asks in a card which style the map should show; the others stay in the layer's named styles. A layer keeps up to 10 named styles; when it has 10, the assistant asks which one to replace. An open request such as <code>Make it look better</code> gets one change and a short answer.
+
+**Removing a layer asks first.** To take a layer out of sight, ask the assistant to hide it. When you ask to remove a layer, the assistant first asks in a card and says what goes with it, such as its styles and filter, and where the layer is still used, for example in the dashboard, a workflow or a print layout. Only after you pick the removal does it remove the layer. A removed layer does not come back with <code>Undo</code>.
+
+**What it cannot do.** It cannot switch a filter condition or an area on or off, or draw a shape for an area: use the layer's <code>Filter</code> tab for these. When it adds to an area you switched off, the area stays switched off; an area it sets in place of yours is switched on. It does not change the default style of a dataset, since a style it changes belongs to the layer in this project. It cannot delete a style, upload data or edit features and their values. It reads the map's layers, styles, filters and view, not the picture of the map.
+
 ### Suggestions you apply {#suggestions}
 
-Some answers suggest a change to the page in a **suggestion card**. Nothing changes until you apply it.
+Some answers suggest a change to the page in a **suggestion card**. Nothing changes until you apply it. The assistant suggests a search and filters for the catalog in such a card: on the Catalog page, <code>Apply to page</code> sets them; elsewhere, <code>Open in catalog</code> opens the catalog with them.
 
-- **Map view**: in the `Map` view, the assistant can suggest a view, such as the extent of a layer or of the features it found. <code>Apply to map</code> moves the map there.
-- **Catalog filters**: the assistant can suggest a search and filters for the catalog. On the Catalog page, <code>Apply to page</code> sets them; elsewhere, <code>Open in catalog</code> opens the catalog with them.
-
-After you apply a suggestion, <code>Undo</code> on the card takes it back. <code>Discard</code> dismisses it. A suggestion for another project offers <code>Open in project to review</code> instead.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/goat_ai/suggestion.webp').default} alt="A map view suggestion card" style={{ maxWidth: "400px", objectFit: "cover"}}/>
-  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>A suggestion card for a map view: <code>Apply to map</code> moves the map there, <code>Discard</code> dismisses it.</p>
-</div>
+After you apply a suggestion, <code>Undo</code> on the card takes it back. <code>Discard</code> dismisses it. A map view suggested in an earlier conversation can still be applied in the project's `Map` view with <code>Apply to map</code>.
 
 ### Build, change and run workflows
 
@@ -129,9 +140,9 @@ The workflow pages describe each of these in detail: [Build a workflow with the 
 
 ### Ask you when there is a choice
 
-When only you can decide, for example which of several datasets to use, the assistant asks you in a card with up to four questions, each with a few options. The option it suggests is marked <code>Recommended</code>. Pick an option or <code>Type your own answer</code>, then <code>Send answer</code>; with several questions, <code>Next</code> and <code>Review</code> lead you through them. To answer in the message field instead, click <code>Reply in text instead</code>.
+When only you can decide, for example which of several datasets to use or whether to remove a layer, the assistant asks you in a card with up to four questions, each with a few options. The option it suggests is marked <code>Recommended</code>. Pick an option or <code>Type your own answer</code>, then <code>Send answer</code>; with several questions, <code>Next</code> and <code>Review</code> lead you through them. To answer in the message field instead, click <code>Reply in text instead</code>.
 
-The assistant adds a dataset to your project only when you pick it in such a card, never because it read about it somewhere.
+The assistant adds a dataset to your project only when you pick it in such a card, never because it read about it somewhere. It shows no card when it can simply make the change you asked for.
 
 ## 5. Conversations {#conversations}
 
@@ -145,7 +156,7 @@ A conversation started in a project belongs to that project and can only be cont
 
 ## 6. Permissions and data
 
-- **Your permissions.** The assistant uses your sign-in for every step. It finds only content you can open, never reads a locked layer, and creates or changes workflows and adds datasets only in a project you may edit. It never deletes a project, dataset or workflow.
+- **Your permissions.** The assistant uses your sign-in for every step. It finds only content you can open, never reads a locked layer, and changes styles, the map and workflows, creates workflows and adds datasets only in a project you may edit. It never deletes a project, dataset or workflow. It removes a layer from a project only after you confirm.
 - **What reaches the model.** Your messages and the data the assistant reads to answer them are sent to the AI model your organization uses: anything you can see in GOAT, including sample rows and query results. An organization whose data should not go to GOAT AI's model switches AI off, or uses a connection of its own without the fallback to GOAT AI, under [AI settings](./workspace/settings.md#ai).
 - **Which model.** <code>GOAT AI (included)</code> is GOAT's own model connection. An organization can instead use a connection of its own, with its own provider and key; requests to it are covered by the organization's agreement with that provider. If that provider fails and the organization allows it, an answer can fall back to GOAT AI, and the answer then says so.
 

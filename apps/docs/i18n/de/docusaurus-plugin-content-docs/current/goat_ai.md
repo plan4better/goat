@@ -1,5 +1,5 @@
 ---
-description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, schlägt Kartenansichten und Filter vor, erstellt, ändert und startet Workflows und erklärt GOAT selbst anhand dieser Dokumentation. Antworten von GOAT AI verbrauchen KI-Credits."
+description: "Fragen Sie GOAT AI, den KI-Assistenten, zu Ihren Projekten und Daten: Er findet Datensätze in Ihrem Workspace und im Katalog, liest Layer und Statistiken, gestaltet Layer und ändert die Karte, erstellt, ändert und startet Workflows und erklärt GOAT selbst anhand dieser Dokumentation. Antworten von GOAT AI verbrauchen KI-Credits."
 sidebar_position: 2.5
 ---
 
@@ -9,13 +9,13 @@ sidebar_position: 2.5
   <Video src={require('/img/goat_ai/goat_ai_de.mp4').default} alt="GOAT AI beantwortet eine Planungsfrage in einem Projekt" />
 </div>
 
-GOAT AI ist der **in GOAT integrierte KI-Assistent**. Bitten Sie ihn in Ihren eigenen Worten, Projekte und Datensätze zu finden, zu erklären, was ein Layer enthält, Statistiken zu berechnen oder eine Analyse als Workflow zu erstellen und auszuführen. Er arbeitet mit Ihren eigenen GOAT-Berechtigungen und sieht und ändert daher nur, was auch Sie sehen und ändern dürften.
+GOAT AI ist der **in GOAT integrierte KI-Assistent**. Bitten Sie ihn in Ihren eigenen Worten, Projekte und Datensätze zu finden, zu erklären, was ein Layer enthält, Statistiken zu berechnen, Layer zu gestalten und die Karte zu ändern oder eine Analyse als Workflow zu erstellen und auszuführen. Er arbeitet mit Ihren eigenen GOAT-Berechtigungen und sieht und ändert daher nur, was auch Sie sehen und ändern dürften.
 
 ## 1. Erklärung
 
-Der Assistent öffnet sich in einer Seitenleiste neben der Seite, auf der Sie arbeiten. Sie schreiben eine Nachricht, und der Assistent antwortet mit Text, mit Karten für das, was er gefunden hat, und mit Vorschlägen, die Sie anwenden können. Für seine Antworten nutzt er GOATs eigene Werkzeuge: Er durchsucht Ihren Workspace und den Daten-Katalog, liest die Layer eines Projekts und erstellt Workflows aus den Werkzeugen der Toolbox. Alles, was er über Ihre Daten sagt, etwa Namen, Anzahlen und Werte, stammt aus diesen Werkzeugen. Allgemeine Fragen, zum Beispiel zu Planungsbegriffen oder Orten, beantwortet er aus seinem eigenen Wissen.
+Der Assistent öffnet sich in einer Seitenleiste neben der Seite, auf der Sie arbeiten. Sie schreiben eine Nachricht, und der Assistent antwortet mit Text, mit Karten für das, was er gefunden hat, und, wo es passt, mit Änderungen, die er für Sie vornimmt, oder Vorschlägen, die Sie anwenden können. Für seine Antworten nutzt er GOATs eigene Werkzeuge: Er durchsucht Ihren Workspace und den Daten-Katalog, liest und gestaltet die Layer eines Projekts, ändert dessen Karte und erstellt Workflows aus den Werkzeugen der Toolbox. Alles, was er über Ihre Daten sagt, etwa Namen, Anzahlen und Werte, stammt aus diesen Werkzeugen. Allgemeine Fragen, zum Beispiel zu Planungsbegriffen oder Orten, beantwortet er aus seinem eigenen Wissen.
 
-- **Er arbeitet mit Ihren Berechtigungen.** Jeder Schritt läuft mit Ihrer Anmeldung: Der Assistent findet nur, was Sie öffnen können, und ändert nur, was Sie bearbeiten dürfen. In einem Projekt, das Sie nur ansehen können, beantwortet er Fragen, erstellt und ändert aber nichts.
+- **Er arbeitet mit Ihren Berechtigungen.** Jeder Schritt läuft mit Ihrer Anmeldung: Der Assistent findet nur, was Sie öffnen können, und ändert nur, was Sie bearbeiten dürfen. In einem Projekt, das Sie nur ansehen können, beantwortet er Fragen und kann Ihre Kartenansicht bewegen, erstellt und ändert aber nichts.
 - **Er kennt die Seite, auf der Sie sind.** Jede Nachricht teilt dem Assistenten mit, von welcher Seite, aus welchem Projekt und welcher Ansicht sie kommt und was dort ausgewählt ist. In einem Projekt antwortet er zu dessen Layern, auf der Seite Katalog zum Katalog.
 - **Ihre Organisation legt fest, wie er arbeitet.** Administratoren der Organisation schalten KI ein oder aus und wählen die Modellverbindung (siehe [KI-Einstellungen](./workspace/settings.md#ki)). Nutzt Ihre Organisation **GOAT AI (inklusive)**, verbrauchen Antworten [KI-Credits](#ai-credits).
 
@@ -45,11 +45,11 @@ Der Assistent antwortet in der Sprache, in der Sie schreiben.
 
 ### Antworten {#answers}
 
-Während der Assistent arbeitet, zeigt die Antwort die **Schritte**, die er ausführt, etwa eine Suche im Katalog oder eine Zählung von Features, jeweils mit dem, was er gefunden hat. Danach folgen der Text der Antwort, **Karten** für das, worauf sie verweist, und, wenn er eine Änderung vorschlägt, eine **Vorschlagskarte** (siehe [Was GOAT AI kann](#capabilities)).
+Während der Assistent arbeitet, zeigt die Antwort die **Schritte**, die er ausführt, etwa eine Suche im Katalog oder eine Zählung von Features, jeweils in einer Zeile mit dem, was er gefunden hat. Dieselbe Änderung, mehrmals hintereinander ausgeführt, erscheint als eine Zeile, die sagt, wie oft, zum Beispiel <code>3-mal</code>. Danach folgen der Text der Antwort, **Karten** für das, worauf sie verweist, und, wenn er eine Änderung vorschlägt, eine **Vorschlagskarte** (siehe [Was GOAT AI kann](#capabilities)).
 
 Unter der neuesten Antwort, und unter älteren, wenn Sie auf sie zeigen, finden Sie:
 
-- <code>Rückgängig</code>, wenn die Antwort Workflows geändert hat (siehe [Einen Workflow mit dem KI-Assistenten ändern](./workflows/workflow_interface.md#einen-workflow-mit-dem-ki-assistenten-ändern)).
+- <code>Rückgängig</code>, wenn die Antwort Stile von Layern, die Karte oder Workflows geändert hat (siehe [Layer gestalten und die Karte ändern](#style-and-map) und [Einen Workflow mit dem KI-Assistenten ändern](./workflows/workflow_interface.md#einen-workflow-mit-dem-ki-assistenten-ändern)).
 - <code>Antwort kopieren</code>, um den Text der Antwort zu kopieren.
 - <code>Details zur Antwort</code>: bei einer Antwort von GOAT AI die verbrauchten KI-Credits (wo die KI-Credits Ihrer Organisation gezählt werden), ihre <code>Schritte</code> und, wo bekannt, wo das Modell läuft, zum Beispiel <code>Läuft auf einem Modell, das in der EU gehostet wird.</code> Bei einer Antwort über die eigene Verbindung Ihrer Organisation das <code>Modell</code>, den <code>Anbieter</code> und die Anzahl der Tokens.
 - <code>Gute Antwort</code> und <code>Schlechte Antwort</code>, um die Antwort zu bewerten. Nach <code>Schlechte Antwort</code> können Sie angeben, was besser sein könnte. Ein erneuter Klick auf die gewählte Schaltfläche entfernt Ihre Bewertung.
@@ -103,19 +103,30 @@ Die Zahlen stammen aus GOAT, nicht vom Modell: Statistiken, Anteile und Summen b
 
 Außerhalb eines Projekts können Sie nach jedem Projekt fragen, das Sie öffnen können, oder es mit <code>@ Quelle hinzufügen</code> als Quelle hinzufügen.
 
+### Layer gestalten und die Karte ändern {#style-and-map}
+
+In der Ansicht `Karte` eines Projekts, das Sie bearbeiten dürfen, ändert der Assistent, wie Layer aussehen und was die Karte zeigt. Bitten Sie zum Beispiel: <code>Färbe die Stadtbezirke nach Bevölkerungsdichte</code>, <code>Beschrifte die Haltestellen ab Zoomstufe 13 mit ihrem Namen</code> oder <code>Zeige nur die Schulen in Pasing</code>. Er kann:
+
+- **Layer nach ihren Daten gestalten**: Farben nach einem Feld, in Klassen oder als stufenloser Verlauf, die häufigsten Kategorien und den Rest in Grau, Größen nach einer Zahl, Höhen für die 3D-Ansicht, Punkte als Heatmap, Cluster oder Sechsecke und die Farben von Raster-Layern. Er liest die Werte eines Felds, bevor er danach gestaltet, wählt Klassen und Paletten, die zu den Daten passen, und Farben, die sich von der aktuellen Grundkarte abheben, ob hell, dunkel oder Satellitenbild;
+- **Beschriftungen und Symbole hinzufügen**: Beschriftungen aus einem Feld, ab einer Zoomstufe Ihrer Wahl, und Symbole aus der Bibliothek von GOAT oder Emoji;
+- **Popups, Legendentexte und Zoombereiche festlegen**: welche Felder ein Popup zeigt, die Titel und Klassennamen der Legende und ab welcher Zoomstufe ein Layer oder eine Beschriftung erscheint;
+- **Layer nach Bedingungen filtern**, zum Beispiel <code>Einwohner größer als 5.000</code>, **und nach einem Gebiet**: innerhalb oder außerhalb von Regionen, die er über ihren Namen findet, von Features eines anderen Polygon-Layers des Projekts (zum Beispiel einiger Stadtbezirke) oder des aktuellen Kartenausschnitts. Er schreibt den Filter so, wie ihn der Tab <code>Filtern</code> des Layers schreibt, sodass Sie ihn dort sehen und ändern können (siehe [Filter](./map/filter.md)). Ein sehr detaillierter Umriss, etwa der einer großen Region, wird vereinfacht, damit er in die Größengrenze des Filters passt, und die Antwort sagt das;
+- **Layer ausblenden, einblenden, umbenennen, anordnen und gruppieren** und einen Layer auf einen anderen seiner [benannten Stile](./map/layer_style/style/styling.md#named-styles) umschalten;
+- **Grundkarte, Ansicht und 3D-Szene ändern**: eine andere Grundkarte, Gelände, 3D-Gebäude, Himmel und Nebel, ein Sprung zu einem Ort oder zu einem Layer sowie 2D oder 3D.
+
+**Änderungen werden direkt angewendet.** Dafür fragt der Assistent nicht nach; seine Schritte sagen, was sich geändert hat, zum Beispiel <code>Stil geändert</code> oder <code>Karte geändert</code>. <code>Rückgängig</code> unter der Antwort nimmt ihre Änderungen an Stilen und an der Karte zurück. Hat seitdem jemand denselben Stil oder die Karte geändert, fragt <code>Rückgängig</code> zuerst, und <code>Trotzdem rückgängig machen</code> nimmt auch diese späteren Änderungen zurück. Eine Änderung der Ansicht gehört Ihnen allein und wird nicht für das Projekt gespeichert, daher lässt <code>Rückgängig</code> sie unverändert: <code>Zur vorherigen Ansicht</code> unter den Schritten der Antwort bewegt die Karte zurück.
+
+**Er bearbeitet den aktuellen Stil.** Der Assistent ändert den Stil, den der Layer zeigt, auch bei einer großen Änderung wie einem ganz neuen Aussehen, und <code>Rückgängig</code> ist der Weg zurück. Einen neuen benannten Stil erstellt er nur, wenn Sie darum bitten, zum Beispiel <code>als neuen Stil</code> oder <code>behalte den aktuellen</code>, und zwei oder drei Varianten zur Auswahl, wenn Sie nach Optionen fragen, zum Beispiel <code>gib mir zwei Optionen</code>. Bei Varianten fragt er Sie danach, welcher Stil auf der Karte erscheinen soll; die anderen bleiben unter den benannten Stilen des Layers. Ein Layer hat höchstens 10 benannte Stile; hat er 10, fragt der Assistent, welcher ersetzt werden soll. Eine offene Bitte wie <code>Lass es besser aussehen</code> führt zu einer Änderung und einer kurzen Antwort.
+
+**Das Entfernen eines Layers fragt zuerst.** Soll ein Layer nur nicht mehr zu sehen sein, bitten Sie den Assistenten, ihn auszublenden. Bitten Sie ihn, einen Layer zu entfernen, fragt er Sie zuerst und sagt, was mit dem Layer wegfällt, etwa seine Stile und sein Filter, und wo der Layer noch genutzt wird, zum Beispiel im Dashboard, in einem Workflow oder in einem Drucklayout. Erst wenn Sie das Entfernen wählen, entfernt er den Layer. Ein entfernter Layer kommt mit <code>Rückgängig</code> nicht zurück.
+
+**Was er nicht kann.** Er kann eine Filterbedingung oder ein Gebiet nicht ein- oder ausschalten und keine Form für ein Gebiet zeichnen: Nutzen Sie dafür den Tab <code>Filtern</code> des Layers. Ergänzt er ein Gebiet, das Sie ausgeschaltet haben, bleibt es ausgeschaltet; ein Gebiet, das er an die Stelle Ihres Gebiets setzt, ist eingeschaltet. Er ändert nicht den Standardstil eines Datensatzes, denn ein Stil, den er ändert, gehört zum Layer in diesem Projekt. Er kann keinen Stil löschen, keine Daten hochladen und keine Features oder ihre Werte bearbeiten. Er liest die Layer, Stile, Filter und die Ansicht der Karte, nicht das Bild der Karte.
+
 ### Vorschläge anwenden {#suggestions}
 
-Manche Antworten schlagen in einer **Vorschlagskarte** eine Änderung an der Seite vor. Nichts ändert sich, bis Sie den Vorschlag anwenden.
+Manche Antworten schlagen in einer **Vorschlagskarte** eine Änderung an der Seite vor. Nichts ändert sich, bis Sie den Vorschlag anwenden. In einer solchen Karte schlägt der Assistent eine Suche und Filter für den Katalog vor: Auf der Seite Katalog setzt <code>Auf Seite anwenden</code> sie; an anderer Stelle öffnet <code>Im Katalog öffnen</code> den Katalog damit.
 
-- **Kartenansicht**: In der Ansicht `Karte` kann der Assistent eine Ansicht vorschlagen, etwa die Ausdehnung eines Layers oder der gefundenen Features. <code>Auf Karte anwenden</code> bewegt die Karte dorthin.
-- **Katalog-Filter**: Der Assistent kann eine Suche und Filter für den Katalog vorschlagen. Auf der Seite Katalog setzt <code>Auf Seite anwenden</code> sie; an anderer Stelle öffnet <code>Im Katalog öffnen</code> den Katalog damit.
-
-Nachdem Sie einen Vorschlag angewendet haben, nimmt <code>Rückgängig</code> auf der Karte ihn zurück. <code>Verwerfen</code> blendet ihn aus. Ein Vorschlag für ein anderes Projekt bietet stattdessen <code>Im Projekt öffnen und prüfen</code>.
-
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
-  <img src={require('/img/goat_ai/suggestion_de.webp').default} alt="Eine Vorschlagskarte für eine Kartenansicht" style={{ maxWidth: "400px", objectFit: "cover"}}/>
-  <p style={{ textAlign: 'center', fontSize: '0.9em' }}>Eine Vorschlagskarte für eine Kartenansicht: <code>Auf Karte anwenden</code> bewegt die Karte dorthin, <code>Verwerfen</code> verwirft den Vorschlag.</p>
-</div>
+Nachdem Sie einen Vorschlag angewendet haben, nimmt <code>Rückgängig</code> auf der Karte ihn zurück. <code>Verwerfen</code> blendet ihn aus. Eine Kartenansicht, die in einer früheren Unterhaltung vorgeschlagen wurde, lässt sich in der Ansicht `Karte` des Projekts weiterhin mit <code>Auf Karte anwenden</code> anwenden.
 
 ### Workflows erstellen, ändern und ausführen
 
@@ -129,9 +140,9 @@ Die Workflow-Seiten beschreiben all das im Detail: [Einen Workflow mit dem KI-As
 
 ### Sie fragen, wenn es eine Wahl gibt
 
-Wenn nur Sie entscheiden können, etwa welcher von mehreren Datensätzen genutzt werden soll, fragt der Assistent Sie in einer Karte mit bis zu vier Fragen mit jeweils einigen Optionen. Die Option, die er vorschlägt, ist mit <code>Empfohlen</code> markiert. Wählen Sie eine Option oder <code>Eigene Antwort eingeben</code> und dann <code>Antwort senden</code>; bei mehreren Fragen führen <code>Weiter</code> und <code>Überprüfen</code> Sie durch die Fragen. Um stattdessen im Eingabefeld zu antworten, klicken Sie auf <code>Stattdessen als Text antworten</code>.
+Wenn nur Sie entscheiden können, etwa welcher von mehreren Datensätzen genutzt werden soll oder ob ein Layer entfernt werden soll, fragt der Assistent Sie in einer Karte mit bis zu vier Fragen mit jeweils einigen Optionen. Die Option, die er vorschlägt, ist mit <code>Empfohlen</code> markiert. Wählen Sie eine Option oder <code>Eigene Antwort eingeben</code> und dann <code>Antwort senden</code>; bei mehreren Fragen führen <code>Weiter</code> und <code>Überprüfen</code> Sie durch die Fragen. Um stattdessen im Eingabefeld zu antworten, klicken Sie auf <code>Stattdessen als Text antworten</code>.
 
-Der Assistent fügt Ihrem Projekt einen Datensatz nur hinzu, wenn Sie ihn in einer solchen Karte wählen, nie, weil er irgendwo davon gelesen hat.
+Der Assistent fügt Ihrem Projekt einen Datensatz nur hinzu, wenn Sie ihn in einer solchen Karte wählen, nie, weil er irgendwo davon gelesen hat. Er fragt nicht nach, wenn er die gewünschte Änderung einfach vornehmen kann.
 
 ## 5. Unterhaltungen {#conversations}
 
@@ -145,7 +156,7 @@ Eine Unterhaltung, die in einem Projekt begonnen wurde, gehört zu diesem Projek
 
 ## 6. Berechtigungen und Daten
 
-- **Ihre Berechtigungen.** Der Assistent nutzt für jeden Schritt Ihre Anmeldung. Er findet nur Inhalte, die Sie öffnen können, liest nie einen gesperrten Layer und erstellt oder ändert Workflows und fügt Datensätze nur in einem Projekt hinzu, das Sie bearbeiten dürfen. Er löscht nie ein Projekt, einen Datensatz oder einen Workflow.
+- **Ihre Berechtigungen.** Der Assistent nutzt für jeden Schritt Ihre Anmeldung. Er findet nur Inhalte, die Sie öffnen können, liest nie einen gesperrten Layer und ändert Stile, die Karte und Workflows, erstellt Workflows und fügt Datensätze nur in einem Projekt hinzu, das Sie bearbeiten dürfen. Er löscht nie ein Projekt, einen Datensatz oder einen Workflow. Einen Layer entfernt er nur, nachdem Sie es bestätigt haben.
 - **Was das Modell erreicht.** Ihre Nachrichten und die Daten, die der Assistent für die Antwort liest, werden an das KI-Modell übermittelt, das Ihre Organisation nutzt: alles, was Sie in GOAT sehen können, einschließlich Beispielzeilen und Abfrageergebnissen. Eine Organisation, deren Daten nicht an das Modell von GOAT AI gehen sollen, schaltet KI aus oder nutzt eine eigene Verbindung ohne Ausweichen auf GOAT AI, in den [KI-Einstellungen](./workspace/settings.md#ki).
 - **Welches Modell.** <code>GOAT AI (inklusive)</code> ist GOATs eigene Modellverbindung. Eine Organisation kann stattdessen eine eigene Verbindung mit eigenem Anbieter und Schlüssel nutzen; Anfragen daran unterliegen der Vereinbarung der Organisation mit diesem Anbieter. Fällt dieser Anbieter aus und lässt die Organisation es zu, kann eine Antwort auf GOAT AI ausweichen, und die Antwort weist dann darauf hin.
 

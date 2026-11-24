@@ -679,7 +679,7 @@ This glossary lists the English and German labels of the main tools, features an
 | Source | Quelle | Another project the assistant may read, added with @ |
 | Suggestion card | Vorschlag | A change the assistant suggests; nothing happens until you apply it |
 | Apply to page | Auf Seite anwenden | Applies catalog filters suggested by the assistant |
-| Apply to map | Auf Karte anwenden | Moves the map to the view the assistant suggests |
+| Apply to map | Auf Karte anwenden | Button on a view suggestion from an earlier conversation: moves the map to that view |
 | Open in project to review | Im Projekt öffnen und prüfen | Opens the project a suggestion applies to |
 | Answer details | Details zur Antwort | Model, provider and token counts of an answer |
 | Steps | Schritte | The tools the assistant used for an answer |
