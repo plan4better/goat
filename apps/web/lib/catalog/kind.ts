@@ -38,8 +38,6 @@ export const catalogKindOf = (item: CatalogItem, asMember?: boolean): CatalogKin
       const service = item.links?.find((link) => link.rel === "wms" || link.rel === "wmts")?.rel;
       if (service === "wms" || service === "wmts") return service;
       if (typeof props["table:row_count"] === "number") return "table";
-      // A GeoTIFF among a bundle's or a plan's layers: goatlib's `layer_type` reads it the same way.
-      if (/\.tiff?$/i.test(item.assets?.data?.href ?? "")) return "raster";
       return "unknown";
     }
   }

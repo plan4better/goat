@@ -210,7 +210,7 @@ async def test_catalog_layer_and_bundle_are_readable_by_anyone_never_writable(
     assert await role(db_session, "layer", lid, None) == "viewer"
     assert not await can(db_session, "layer", lid, someone.id, "write")
 
-    # A shared catalog bundle (an XPlan plan): no space, no folder, no owner.
+    # A shared catalog bundle: no space, no folder, no owner.
     bid = (
         await db_session.execute(
             text(

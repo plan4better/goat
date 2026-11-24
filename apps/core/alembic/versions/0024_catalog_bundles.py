@@ -1,4 +1,4 @@
-"""Shared catalog bundles (XPlan plans): no owner, space or folder, like a catalog layer.
+"""Shared catalog bundles: no owner, space or folder, like a catalog layer.
 
 Revision ID: 0024_catalog_bundles
 Revises: 0023_filter_empty_values

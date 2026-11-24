@@ -560,10 +560,17 @@ def test_a_bundles_layers_say_what_they_are(tmp_path: Path) -> None:
         "m-tif-wms": "raster",
         "m-table": "table",
         "m-table-wms": "table",
-        # A typed bundle's layers are of its type: the catalog lists the plan as one.
-        "x-poly": "xplan",
-        "x-text": "xplan",
+        # A typed bundle's layers keep their own kind ...
+        "x-poly": "feature",
+        "x-text": "table",
     }
+    # ... and the Data type the catalog filters by is the bundle's type.
+    data_types = dict(
+        check.execute(
+            f"SELECT id, \"goat:dataType\" FROM read_parquet('{out.as_posix()}')"
+        ).fetchall()
+    )
+    assert data_types == {**kinds, "x-poly": "xplan", "x-text": "xplan"}
     # The dataset itself is still a bundle: cards show "Bundle".
     assert check.execute(
         f'SELECT "goat:layerType", "goat:bundleType" '

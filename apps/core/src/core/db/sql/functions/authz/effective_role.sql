@@ -54,7 +54,7 @@ LANGUAGE sql STABLE AS $$
     SELECT l.catalog_external_uid IS NOT NULL FROM customer.layer l WHERE l.id = layer_id
 $$;
 
-/* The same for a shared catalog bundle (an XPlan plan). plpgsql, so 0005 can
+/* The same for a shared catalog bundle. plpgsql, so 0005 can
    install this file before 0024 adds the column. */
 CREATE OR REPLACE FUNCTION customer.bundle_is_catalog(bundle_id UUID)
 RETURNS BOOLEAN

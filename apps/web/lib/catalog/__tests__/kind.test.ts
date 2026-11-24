@@ -47,9 +47,6 @@ describe("catalogKindOf", () => {
       "vector"
     );
     expect(catalogKindOf(item({ "goat:layerType": "bundle", "table:row_count": 12 }), true)).toBe("table");
-    // A plan's layers carry the plan's type; a GeoTIFF among them is a raster.
-    const scan = { ...item({ "goat:layerType": "xplan" }), assets: { data: { href: "../data/a.tif" } } };
-    expect(catalogKindOf(scan as CatalogItem, true)).toBe("raster");
   });
 
   it("reports unknown rather than guessing", () => {

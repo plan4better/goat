@@ -137,9 +137,6 @@ def test_layer_type_wms_is_a_raster(mirror: Path) -> None:
     # A bundle member inherits `bundle`; its own link still says it is a WMS.
     member = {"goat:layerType": "bundle", "links": link}
     assert is_wms(member) and layer_type(member) == ("raster", None)
-    # A plan's member carries the plan's type (mirror v12) and is still a WMS.
-    plan_member = {**member, "goat:layerType": "xplan"}
-    assert is_wms(plan_member) and layer_type(plan_member) == ("raster", None)
     # A vector layer that also offers a WMS view stays a feature.
     vector = {**member, "goat:geometryType": "polygon"}
     assert not is_wms(vector) and layer_type(vector) == ("feature", "polygon")
@@ -247,12 +244,14 @@ def test_a_typed_bundle_is_known_by_its_dataset_and_its_members(mirror: Path) ->
     whatever case the publisher wrote it in; `generic` is only a grouping."""
     con = duckdb.connect()
     con.execute(
-        f"""COPY (SELECT * FROM (VALUES ('dataset-1', 'Generic'), ('dataset-2', 'XPlan'))
-            AS t(id, "goat:bundleType"))
+        f"""COPY (SELECT * FROM (VALUES ('dataset-1', 'Generic', 'Roads', NULL),
+                ('dataset-2', 'XPlan', 'Plan 2', '3'))
+            AS t(id, "goat:bundleType", title, version))
             TO '{mirror.parent / "mirror_collections.parquet"}' (FORMAT PARQUET)"""
     )
     con.close()
-    plan = {"dataset-2": ("xplan", "dataset-2")}
+    # The plan's own version, where goat-data publishes one (STAC Version extension).
+    plan = {"dataset-2": ("xplan", "Plan 2", "3")}
     assert typed_datasets(mirror, {"dataset-1", "dataset-2"}) == plan
     assert typed_datasets(mirror, {"dataset-1"}) == {}
     # A plan's version follows its members: any changed member, a new version.

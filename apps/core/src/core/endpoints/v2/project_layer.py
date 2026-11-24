@@ -232,7 +232,7 @@ async def add_catalog_items_to_project(
     for catalog_id in catalog_ids:
         dataset = (items.get(catalog_id) or {}).get("collection")
         if dataset in typed and catalog_id != dataset:
-            _, title = typed[dataset]
+            title = typed[dataset][1]
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"'{title}' is added whole, not layer by layer.",

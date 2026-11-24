@@ -314,6 +314,8 @@ _INTERNAL_COLUMNS = frozenset(
         "language_code",
         "category",
         "parquet_url",
+        # What the Data type filter reads; the item states its own `goat:layerType`.
+        "goat:dataType",
         "bbox_xmin",
         "bbox_ymin",
         "bbox_xmax",

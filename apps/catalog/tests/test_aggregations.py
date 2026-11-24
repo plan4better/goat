@@ -398,3 +398,19 @@ def test_the_type_of_a_dataset_is_the_kinds_of_its_layers(catalog_dir: Path) -> 
 
         assert "src-1" in ids("feature")
         assert "src-1" not in ids("bundle")
+
+    # A typed bundle (an XPlan plan) is found by its type, not its layers' kinds:
+    # the filter reads `goat:dataType`, which the mirror gives its layers.
+    items = catalog_dir / "mirror_items.parquet"
+    typed = catalog_dir / "items_typed.parquet"
+    duckdb.execute(
+        f"""COPY (SELECT * REPLACE (CASE WHEN collection = 'src-1' THEN 'xplan'
+                  ELSE "goat:dataType" END AS "goat:dataType")
+                  FROM read_parquet('{items}')) TO '{typed}' (FORMAT PARQUET)"""
+    )
+    typed.replace(items)
+    with TestClient(create_app(CatalogSettings(data_dir=catalog_dir, auth=False))) as c:
+        found = c.get("/stac/collections", params={"type": "xplan", "limit": 500})
+        assert {col["id"] for col in found.json()["collections"]} == {"src-1"}
+        found = c.get("/stac/collections", params={"type": "feature", "limit": 500})
+        assert "src-1" not in {col["id"] for col in found.json()["collections"]}

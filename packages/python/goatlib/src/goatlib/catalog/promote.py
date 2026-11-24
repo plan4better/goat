@@ -36,7 +36,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import quote
 from uuid import UUID
 
@@ -217,10 +217,17 @@ def resolve_item_ids(
     return resolved
 
 
+class TypedDataset(NamedTuple):
+    type: str
+    title: str
+    #: The dataset's own `version` (STAC Version extension), where it publishes one.
+    version: str | None
+
+
 def typed_datasets(
     mirror_items_path: str | Path, dataset_ids: set[str]
-) -> dict[str, tuple[str, str]]:
-    """Which of `dataset_ids` are typed bundles (an XPlan plan): `{dataset: (type, title)}`."""
+) -> dict[str, TypedDataset]:
+    """Which of `dataset_ids` are typed bundles (such as an XPlan plan)."""
     collections = Path(mirror_items_path).with_name("mirror_collections.parquet")
     if not dataset_ids or not collections.exists():
         return {}
@@ -234,10 +241,11 @@ def typed_datasets(
         }
         if "goat:bundleType" not in columns:
             return {}
-        title = "coalesce(title, id)" if "title" in columns else "id"
+        version = "version" if "version" in columns else "NULL"
         rows = con.execute(
             f"""
-            SELECT id, lower("goat:bundleType"), {title} FROM read_parquet(?)
+            SELECT id, lower("goat:bundleType"), coalesce(title, id), {version}
+            FROM read_parquet(?)
             WHERE id IN ({", ".join("?" * len(dataset_ids))})
             """,
             [str(collections), *dataset_ids],
@@ -245,8 +253,8 @@ def typed_datasets(
     finally:
         con.close()
     return {
-        dataset: (kind, str(title))
-        for dataset, kind, title in rows
+        dataset: TypedDataset(kind, str(title), str(v) if v is not None else None)
+        for dataset, kind, title, v in rows
         if (kind or "") not in PLAIN_BUNDLE_TYPES
     }
 

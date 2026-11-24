@@ -36,8 +36,8 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     sense as a unit. A bundle bundles those member layers under one
     owner and folder, tagged with a ``bundle_type`` whose spec — in code, see
     ``goatlib.models.bundle`` — describes the roles and artifacts to expect.
-    Deleting a bundle cascades to its layers. A catalog bundle (an XPlan plan)
-    has no owner, space or folder, like a catalog layer.
+    Deleting a bundle cascades to its layers. A shared catalog bundle (such as
+    an XPlan plan) has no owner, space or folder, like a catalog layer.
 
     Inherits ``name`` and ``description`` from ``ContentBaseAttributes`` and
     ``created_at``/``updated_at`` from ``DateTimeBase``.
@@ -96,11 +96,7 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     catalog_external_uid: str | None = Field(
         default=None,
         sa_column=Column(Text, nullable=True),
-        description=(
-            "The catalog dataset a shared bundle (an XPlan plan) was added "
-            "from. With catalog_version unique, like a catalog layer's, so "
-            "every project that adds the same plan version shares one bundle."
-        ),
+        description="The catalog dataset a shared bundle was added from; unique with catalog_version.",
     )
     catalog_version: str | None = Field(
         default=None,

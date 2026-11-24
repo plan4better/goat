@@ -59,7 +59,7 @@ class PromotedItems:
 
 def refuse_unaddable(
     items: dict[str, dict[str, Any]],
-    typed: dict[str, tuple[str, str]],
+    typed: dict[str, tuple[str, str, str | None]],
     *,
     roles_required: bool = False,
     action: str = "added",
@@ -67,7 +67,7 @@ def refuse_unaddable(
     """400 before anything is promoted, so a batch goes in whole or not at all: a
     bundle type that cannot be shared, a role listed twice (or, for an update, a
     member without one), a map service whose link cannot be drawn."""
-    for dataset, (kind, title) in typed.items():
+    for dataset, (kind, title, _) in typed.items():
         # Only a plan is shared whole: a network's artifacts are built per owner.
         if kind != BundleTypeName.xplan.value:
             raise HTTPException(
@@ -98,18 +98,20 @@ def refuse_unaddable(
 
 
 def bundle_versions_of(
-    items: dict[str, dict[str, Any]], typed: dict[str, tuple[str, str]]
+    items: dict[str, dict[str, Any]], typed: dict[str, tuple[str, str, str | None]]
 ) -> dict[str, str]:
-    """Each typed dataset's version, from its members' `(item id, version)`."""
+    """Each typed dataset's version: the one it publishes, else a digest of its
+    members' `(item id, version)`."""
     return {
-        dataset: catalog.bundle_version(
+        dataset: version
+        or catalog.bundle_version(
             [
                 (item_id, item.get("version"))
                 for item_id, item in items.items()
                 if item.get("collection") == dataset
             ]
         )
-        for dataset in typed
+        for dataset, (_, _, version) in typed.items()
     }
 
 
@@ -119,7 +121,7 @@ async def promote_catalog_items(
     item_ids: list[str],
     *,
     mirror: Path,
-    typed: dict[str, tuple[str, str]],
+    typed: dict[str, tuple[str, str, str | None]],
     bundle_versions: dict[str, str],
     project_id: UUID,
 ) -> PromotedItems:
@@ -137,11 +139,7 @@ async def promote_catalog_items(
             mirror_items_path=mirror,
             schema=settings.SCHEMA,
             item=items[catalog_id],
-            version=(
-                f"{items[catalog_id].get('version') or ''}@{version}"
-                if version
-                else None
-            ),
+            version=version,
         )
         layer_id = uuid_module.UUID(result["layer_id"])
         out.layer_ids[catalog_id] = layer_id
@@ -226,7 +224,7 @@ async def promote_catalog_items(
         if should_enqueue:
             out.to_materialize.append({"layer_id": result["layer_id"]})
     for dataset, members in bundle_members.items():
-        kind, title = typed[dataset]
+        kind, title, _ = typed[dataset]
         bundle_id = await catalog.promote_bundle(
             conn,
             schema=settings.SCHEMA,

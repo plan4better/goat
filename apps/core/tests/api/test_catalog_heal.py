@@ -15,6 +15,7 @@ import pytest
 import pytest_asyncio
 from core.core.config import settings
 from core.db.models.layer import Layer
+from core.services.catalog_promote import bundle_versions_of
 from goatlib.catalog.promote import bundle_version
 from httpx import AsyncClient
 from sqlalchemy import text
@@ -358,7 +359,7 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
     )
     monkeypatch.setattr(
         "goatlib.catalog.promote.typed_datasets",
-        lambda mirror, datasets: {"plan": ("xplan", "Bebauungsplan 1")},
+        lambda mirror, datasets: {"plan": ("xplan", "Bebauungsplan 1", None)},
     )
 
     async def project() -> UUID:
@@ -403,7 +404,12 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
     ).scalar_one()
     assert groups == 2, "one locked group in each project, one shared bundle"
     plan_version = bundle_version([(m, "1") for m in members])
-    assert set(keys) == {f"1@{plan_version}"}
+    # A version the publisher gives the plan is used as it is.
+    assert bundle_versions_of(
+        {"m": {"collection": "plan", "version": "1"}},
+        {"plan": ("xplan", "Bebauungsplan 1", "7")},
+    ) == {"plan": "7"}
+    assert set(keys) == {plan_version}
 
     again = await client.post(
         f"{settings.API_V2_STR}/project/{first}/layer-catalog",
