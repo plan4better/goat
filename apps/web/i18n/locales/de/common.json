@@ -3032,6 +3032,7 @@
   "catalog_layers_added": "{{count}} Layer zum Projekt hinzugefügt",
   "catalog_layers_added_other": "{{count}} Layer zum Projekt hinzugefügt",
   "catalog_layer_pending": "Daten werden vorbereitet …",
+  "catalog_update_to_new_version": "Auf die neue Version aktualisieren",
   "catalog_layer_update_available": "Aktualisierung im Katalog verfügbar",
   "catalog_layer_failed": "Datenaufbereitung fehlgeschlagen",
   "catalog_show_my_favourites": "Meine Favoriten anzeigen",

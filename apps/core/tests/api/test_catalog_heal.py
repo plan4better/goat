@@ -327,6 +327,7 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
         db_session.add(layer)
         promoted[item_id] = layer.id
     await db_session.commit()
+    promoted_v1 = dict(promoted)
     monkeypatch.setattr(
         "goatlib.catalog.promote.resolve_item_ids",
         lambda mirror, ids: [m for i in ids for m in (members if i == "plan" else [i])],
@@ -417,3 +418,318 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
     )
     assert member_alone.status_code == 400
     assert "added whole" in member_alone.json()["detail"]
+
+    # A member moves with its bundle, never alone.
+    member_link = (
+        await db_session.execute(
+            text(
+                f"SELECT lp.id FROM {S}.layer_project lp JOIN {S}.layer_project_group g "
+                "ON g.id = lp.layer_project_group_id WHERE g.bundle_id = :b LIMIT 1"
+            ),
+            {"b": bundle_id},
+        )
+    ).scalar_one()
+    alone = await client.post(
+        f"{settings.API_V2_STR}/project/{first}/catalog-update",
+        json={"layer_project_id": member_link},
+    )
+    assert alone.status_code == 400
+    assert "Bebauungsplan 1" in alone.json()["detail"]
+
+    # A newer version moves the whole group by role: m-area changed, m-new
+    # appeared, m-text left. The other project keeps the old version.
+    def member_layer(name: str) -> Layer:
+        return Layer(
+            id=uuid4(),
+            name=name,
+            type="table",
+            other_properties={"catalog_materialize": {"status": "ready"}},
+        )
+
+    new_area, new_new = member_layer("m-area v2"), member_layer("m-new")
+    db_session.add_all([new_area, new_new])
+    await db_session.commit()
+    promoted["m-area"], promoted["m-new"] = new_area.id, new_new.id
+    members_v2 = {"m-area": "BP_BaugebietsTeilFlaeche", "m-new": "BP_GruenFlaeche"}
+    versions_v2 = {"m-area": "2", "m-new": "1"}
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.resolve_item_ids",
+        lambda mirror, ids: [
+            m for i in ids for m in (members_v2 if i == "plan" else [i])
+        ],
+    )
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {
+                "collection": "plan",
+                "goat:role": members_v2[i],
+                "version": versions_v2[i],
+            }
+            for i in ids
+        },
+    )
+
+    async def rows(sql: str, **params: Any) -> list[Any]:
+        return list((await db_session.execute(text(sql), params)).all())
+
+    (group_id,) = (
+        await rows(
+            f"SELECT id FROM {S}.layer_project_group WHERE project_id = :p",
+            p=str(first),
+        )
+    )[0]
+    area_link = (
+        await rows(
+            f"SELECT id FROM {S}.layer_project WHERE project_id = :p AND layer_id = :l",
+            p=str(first),
+            l=str(promoted_v1["m-area"]),
+        )
+    )[0][0]
+    moved = await client.post(
+        f"{settings.API_V2_STR}/project/{first}/catalog-update",
+        json={"group_id": group_id},
+    )
+    assert moved.status_code == 200, moved.text
+    entries = dict(
+        await rows(
+            f"SELECT layer_id, id FROM {S}.layer_project WHERE layer_project_group_id = :g",
+            g=group_id,
+        )
+    )
+    assert set(entries) == {new_area.id, new_new.id}
+    assert entries[new_area.id] == area_link
+    new_bundle = (
+        await rows(
+            f"SELECT bundle_id FROM {S}.layer_project_group WHERE id = :g", g=group_id
+        )
+    )[0][0]
+    assert new_bundle != bundle_id
+    assert (
+        await rows(
+            f"SELECT bundle_id FROM {S}.layer_project_group WHERE project_id = :p",
+            p=str(second),
+        )
+    )[0][0] == bundle_id
+
+    # A version with a member that has no role cannot be matched: refused.
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {
+                "collection": "plan",
+                "goat:role": None if i == "m-new" else members_v2[i],
+                "version": "3",
+            }
+            for i in ids
+        },
+    )
+    roleless = await client.post(
+        f"{settings.API_V2_STR}/project/{first}/catalog-update",
+        json={"group_id": group_id},
+    )
+    assert roleless.status_code == 400
+    assert "role" in roleless.json()["detail"]
+
+    # Two updates at once: the one that finds the group already moved answers 409.
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"collection": "plan", "goat:role": members_v2[i], "version": "3"}
+            for i in ids
+        },
+    )
+
+    async def promote_while_another_moves_it(
+        conn: Any, catalog_id: str, **_: Any
+    ) -> dict[str, Any]:
+        await conn.execute(
+            f"UPDATE {S}.layer_project_group SET bundle_id = $1 WHERE id = $2",
+            bundle_id,
+            group_id,
+        )
+        return {"layer_id": str(promoted[catalog_id]), "created": False}
+
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.promote", promote_while_another_moves_it
+    )
+    late = await client.post(
+        f"{settings.API_V2_STR}/project/{first}/catalog-update",
+        json={"group_id": group_id},
+    )
+    assert late.status_code == 409
+
+
+async def test_a_catalog_layer_moves_to_its_new_version_in_place(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The entry keeps its id, name, order and filter and points at the new
+    version's layer; an untouched style follows the catalog, an edited one is
+    kept; another entry of the same dataset stays; a second update is a 409."""
+    _, promoted, enqueue = catalog
+
+    def catalog_layer(version: str, copy: str = "ready") -> Layer:
+        return Layer(
+            id=uuid4(),
+            name="Radwege",
+            type="feature",
+            feature_layer_type="standard",
+            feature_layer_geometry_type="line",
+            catalog_external_uid="item-u",
+            catalog_version=version,
+            other_properties={
+                "catalog_item": {"id": "item-u", "version": version},
+                "catalog_materialize": {"status": copy},
+                "layers": [f"wms-layer-v{version}"],
+            },
+        )
+
+    # The old copy failed: the entry still moves.
+    old, new = catalog_layer("1", copy="failed"), catalog_layer("2")
+    db_session.add_all([old, new])
+    await db_session.commit()
+    promoted["item-u"] = new.id
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"id": i, "version": "2", "goat:geometryType": "line"} for i in ids
+        },
+    )
+
+    created = await client.post(
+        f"{settings.API_V2_STR}/project",
+        json={"name": "update", "folder_id": str(fixture_get_home_folder["id"])},
+    )
+    project_id = created.json()["id"]
+    links = []
+    for _ in range(2):
+        linked = await client.post(
+            f"{settings.API_V2_STR}/project/{project_id}/layer",
+            params={"layer_ids": [str(old.id)]},
+        )
+        links.append(linked.json()[0]["id"])
+    edited, untouched = links
+
+    async def scalar(sql: str, **params: Any) -> Any:
+        return (await db_session.execute(text(sql), params)).scalar_one()
+
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.layer_style SET document = document || '{{\"edited\": true}}' "
+            f"WHERE id = (SELECT active_style_id FROM {S}.layer_project WHERE id = :l)"
+        ),
+        {"l": edited},
+    )
+    # Written by the system, not the user (a style check): still "untouched".
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.layer_style SET document = document || "
+            f'\'{{"computed": {{"no_data": true}}}}\' '
+            f"WHERE id = (SELECT active_style_id FROM {S}.layer_project WHERE id = :l)"
+        ),
+        {"l": untouched},
+    )
+    await db_session.execute(
+        text(
+            f"INSERT INTO {S}.layer_style (layer_id, name, document) SELECT :new, name, "
+            f"document || '{{\"v\": 2}}' FROM {S}.layer_style WHERE layer_id = :old"
+        ),
+        {"new": str(new.id), "old": str(old.id)},
+    )
+    await db_session.commit()
+    before = await scalar(
+        f'SELECT name || ord::text FROM (SELECT name, "order" AS ord '
+        f"FROM {S}.layer_project WHERE id = :l) x",
+        l=untouched,
+    )
+
+    url = f"{settings.API_V2_STR}/project/{project_id}/catalog-update"
+    for link in (untouched, edited):
+        moved = await client.post(url, json={"layer_project_id": link})
+        assert moved.status_code == 200, moved.text
+        assert [row["id"] for row in moved.json()] == [link]
+        if link == untouched:
+            # The other entry of the same dataset stays on its version.
+            assert (
+                await scalar(
+                    f"SELECT layer_id FROM {S}.layer_project WHERE id = :l", l=edited
+                )
+                == old.id
+            )
+    for link in (untouched, edited):
+        assert (
+            await scalar(
+                f"SELECT layer_id FROM {S}.layer_project WHERE id = :l", l=link
+            )
+            == new.id
+        )
+    after = await scalar(
+        f'SELECT name || ord::text FROM (SELECT name, "order" AS ord '
+        f"FROM {S}.layer_project WHERE id = :l) x",
+        l=untouched,
+    )
+    assert after == before
+
+    def active_style(link: int) -> str:
+        return (
+            f"SELECT s.document FROM {S}.layer_style s JOIN {S}.layer_project lp "
+            f"ON s.id = lp.active_style_id WHERE lp.id = {int(link)}"
+        )
+
+    assert (await scalar(active_style(untouched))).get("v") == 2
+    # What the entry copied from its layer follows the new version too.
+    assert (
+        await scalar(
+            f"SELECT other_properties->'layers' FROM {S}.layer_project WHERE id = :l",
+            l=untouched,
+        )
+    ) == ["wms-layer-v2"]
+    assert (await scalar(active_style(edited))).get("edited") is True
+    assert enqueue.await_count >= 1
+
+    again = await client.post(url, json={"layer_project_id": untouched})
+    assert again.status_code == 409
+
+    # Two updates at once: the one that finds the entry already moved answers 409.
+    raced = (
+        await client.post(
+            f"{settings.API_V2_STR}/project/{project_id}/layer",
+            params={"layer_ids": [str(old.id)]},
+        )
+    ).json()[0]["id"]
+
+    async def promote_while_another_moves_it(
+        conn: Any, catalog_id: str, **_: Any
+    ) -> dict[str, Any]:
+        await conn.execute(
+            f"UPDATE {S}.layer_project SET layer_id = $1 WHERE id = $2", new.id, raced
+        )
+        return {"layer_id": str(new.id), "created": False}
+
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.promote", promote_while_another_moves_it
+    )
+    late = await client.post(url, json={"layer_project_id": raced})
+    assert late.status_code == 409
+
+    # A new version of another kind (line to polygon) is refused: the kept
+    # style and filter would not fit it.
+    reshaped = (
+        await client.post(
+            f"{settings.API_V2_STR}/project/{project_id}/layer",
+            params={"layer_ids": [str(old.id)]},
+        )
+    ).json()[0]["id"]
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"id": i, "version": "3", "goat:geometryType": "polygon"} for i in ids
+        },
+    )
+    other_kind = await client.post(url, json={"layer_project_id": reshaped})
+    assert other_kind.status_code == 400
+    assert "add it again" in other_kind.json()["detail"]

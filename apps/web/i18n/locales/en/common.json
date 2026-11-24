@@ -3032,6 +3032,7 @@
   "catalog_layers_added": "{{count}} layer added to the project",
   "catalog_layers_added_other": "{{count}} layers added to the project",
   "catalog_layer_pending": "Preparing data …",
+  "catalog_update_to_new_version": "Update to the new version",
   "catalog_layer_update_available": "Update available in the catalog",
   "catalog_layer_failed": "Data preparation failed",
   "catalog_show_my_favourites": "Show my favourites",
