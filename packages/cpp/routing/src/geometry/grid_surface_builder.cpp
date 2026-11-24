@@ -1,6 +1,7 @@
 #include "grid_surface_builder.h"
 
 #include "../kernel/kdtree.h"
+#include "field_sampler.h"
 
 #include <algorithm>
 #include <cmath>
@@ -48,18 +49,22 @@ double snap_radius_for_step(double step)
     return std::max(kHaloMeters, step * 8.0);
 }
 
-// Interpolate sample points along edge geometries stored in C++ Edge structs.
-// Used for active mobility modes where geometry is loaded upfront.
+// Sample points along edge geometries stored in C++ Edge structs, each costed
+// by edge_point_cost. Used for active mobility modes where
+// geometry is loaded upfront.
 void split_edges_cpp(
     ReachabilityField const &field,
     double split_distance,
     double budget,
+    bool use_distance,
     std::vector<SamplePoint> &out)
 {
     if (!field.network)
         return;
 
     auto const &net = *field.network;
+    auto const splits_by_edge = index_splits(net);
+    std::vector<EdgeAnchor> anchors;
     for (size_t i = 0; i < net.edges.size(); ++i)
     {
         int32_t src = net.source[i];
@@ -69,9 +74,11 @@ void split_edges_cpp(
             tgt >= static_cast<int32_t>(field.costs.size()))
             continue;
 
-        double src_cost = field.costs[src];
-        double tgt_cost = field.costs[tgt];
-        if (!std::isfinite(src_cost) || !std::isfinite(tgt_cost))
+        edge_anchors(field, i, splits_by_edge, anchors);
+        bool reached = false;
+        for (auto const &a : anchors)
+            reached = reached || std::isfinite(a.cost);
+        if (!reached)
             continue;
 
         auto const &geom = net.edges[i].geometry;
@@ -82,6 +89,8 @@ void split_edges_cpp(
         if (total_length <= 0.0)
             continue;
 
+        double const fwd = net.cost[i];
+        double const rev = net.reverse_cost[i];
         double prev_agg = 0.0;
         for (size_t g = 0; g + 1 < geom.size(); ++g)
         {
@@ -98,7 +107,8 @@ void split_edges_cpp(
                 double x = geom[g].x + frac_seg * dx;
                 double y = geom[g].y + frac_seg * dy;
                 double frac_edge = (prev_agg + d) / total_length;
-                double cost = src_cost + frac_edge * (tgt_cost - src_cost);
+                double cost = edge_point_cost(anchors, frac_edge, fwd, rev,
+                                              use_distance);
                 if (cost <= budget)
                     out.push_back({x, y, cost});
             }
@@ -106,7 +116,8 @@ void split_edges_cpp(
             if (g + 2 < geom.size())
             {
                 double frac_edge = agg / total_length;
-                double cost = src_cost + frac_edge * (tgt_cost - src_cost);
+                double cost = edge_point_cost(anchors, frac_edge, fwd, rev,
+                                              use_distance);
                 if (cost <= budget)
                     out.push_back({geom[g + 1].x, geom[g + 1].y, cost});
             }
@@ -117,7 +128,8 @@ void split_edges_cpp(
 }
 
 std::vector<SamplePoint> collect_field_samples(
-    ReachabilityField const &field, double split_distance, double budget)
+    ReachabilityField const &field, double split_distance, double budget,
+    bool use_distance)
 {
     std::vector<SamplePoint> samples;
     if (!field.network || field.costs.empty())
@@ -132,7 +144,7 @@ std::vector<SamplePoint> collect_field_samples(
         auto const &c = net.node_coords[i];
         samples.push_back({c.x, c.y, cost});
     }
-    split_edges_cpp(field, split_distance, budget, samples);
+    split_edges_cpp(field, split_distance, budget, use_distance, samples);
     return samples;
 }
 
@@ -146,7 +158,8 @@ std::vector<FieldCluster> cluster_field(
     double const step = mercator_pixel_size(zoom);
     double const link_distance = 2.0 * snap_radius_for_step(step);
 
-    auto samples = collect_field_samples(field, step, cfg.cost_budget());
+    auto samples = collect_field_samples(field, step, cfg.cost_budget(),
+                                         cfg.cost_type == CostType::Distance);
     if (samples.empty())
         return result;
 
