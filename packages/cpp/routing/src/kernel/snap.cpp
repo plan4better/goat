@@ -200,6 +200,8 @@ namespace routing::kernel
         net.length_3857.push_back(dist_to_src);
         net.edges.push_back({-3, {}});
 
+        net.splits.push_back({static_cast<int32_t>(edge_idx), proj_node, frac});
+
         return origin_node;
     }
 
