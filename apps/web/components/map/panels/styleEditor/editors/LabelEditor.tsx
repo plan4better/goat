@@ -15,6 +15,7 @@ import { extrudes } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
 import { recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import { LABEL_FONT_CHOICE } from "@/lib/style/editor/forms";
+import { issueText } from "@/lib/style/editor/issues";
 import {
   type LabelSummaryContext,
   fieldToken,
@@ -462,6 +463,7 @@ function SummaryRow({
   tooltip?: boolean;
   render: () => ReactNode;
 }) {
+  const { t } = useTranslation("common");
   const popover = usePopover();
   const next = useNextLevel();
   const scope = useScope();
@@ -480,7 +482,7 @@ function SummaryRow({
       glyph={glyph}
       tooltip={tooltip ? value : undefined}
       overrideDot={own}
-      warn={issues[0]?.message}
+      warn={issues[0] && issueText(t, issues[0])}
       active={open}
       onOpen={(anchor) => popover.open(next, { key, title: label, anchorTop: anchorTopOf(anchor), render })}
     />

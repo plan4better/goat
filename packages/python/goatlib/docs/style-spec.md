@@ -1505,7 +1505,7 @@ formula of their own.
 
 | Method | Breaks |
 |---|---|
-| `quantile` | the k/count quantiles, k = 1 to count - 1 (linear interpolation, as numpy's default); equal breaks merge, so fewer classes can result (info `classes_merged`) |
+| `quantile` | the k/count quantiles, k = 1 to count - 1 (linear interpolation, as numpy's default); where many values are the same, breaks fall together or onto the minimum or maximum and merge, so fewer classes can result (info `classes_merged`) |
 | `equal_interval` | min + k x (max - min) / count, over the data's min and max (not the domain) |
 | `natural_breaks` | Jenks (Fisher's exact optimization) on at most 10,000 values, sampled by feature id when there are more |
 | `std_dev` | classes one standard deviation wide around the mean; an even count puts a break at the mean, an odd count centers the middle class on it (mean +- 0.5 sd); the outer classes are open |
@@ -2854,7 +2854,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 - `level`: `error` (blocks the write), `warning`, `info`, or `damaged` (a stored style that a later data change broke);
 - `code`;
 - `path`: a JSON pointer, which may use ids (`/classify/density/classes/2`);
-- `message`;
+- `message` (English) and, for an editor that words the issue in its own language, `params`: the facts it names;
 - where possible a `fix` and `allowed` (the valid choices, at most 20).
 
 ```json
@@ -2923,7 +2923,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `not_supported_yet` | error | a construct this deployment cannot render yet (section 19) |
 | `classify_target_conflict` | warning | a later classification covers every feature and sets the same keys (5.7) |
 | `classify_partial_overlap` | info | a later classification sets the same keys for some features |
-| `classes_merged` | info | a classification has fewer classes than its count: equal breaks merged, or geometric intervals over values at or below 0 |
+| `classes_merged` | info | a classification has fewer classes than its count, with why: geometric intervals over values at or below 0 (`case` `not_above_zero`), every value the same (`one_value`), a quantile over repeated values (`repeated_values`), or a class that would be empty or hold one value joined to the next (`joined`); `params` `asked` and `made` |
 | `no_values` | info | a computed classification or value form whose field has no values (an empty dataset, or every value empty) |
 | `classes_stale` | warning | stored classes from an older data fingerprint that could not be recomputed |
 | `too_many_classes`, `too_many_categories` | warning | more than 7 numeric classes or 12 categories |

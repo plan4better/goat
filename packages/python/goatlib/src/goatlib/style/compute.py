@@ -644,7 +644,10 @@ def _categories(
 
 def _no_values(path: list[str], field: str) -> Issue:
     return make_issue(
-        "no_values", to_pointer(path), f'"{field}" has no values in this dataset.'
+        "no_values",
+        to_pointer(path),
+        f'"{field}" has no values in this dataset.',
+        params={"field": field},
     )
 
 
@@ -793,27 +796,56 @@ def _apply_h3(doc: dict[str, Any], stats: StatResults, stamp: dict[str, Any]) ->
 
 
 def _fewer_classes(c: dict[str, Any], b: Breaks, pointer: str) -> Issue | None:
-    """The note of numeric classes fewer than asked (5.8): geometric intervals
-    over values at or below 0 make one class, and equal breaks merge."""
+    """The note of numeric classes fewer than asked (5.8), saying why and what
+    helps; `params` name the case and the classes asked for and made.
+    Geometric intervals over values at or below 0 make one class. Otherwise a
+    break on another break or on the data's edge would leave a class empty or
+    with one value, and it is joined to the next: a quantile's breaks meet only
+    where values repeat, those of the other methods (and breaks rounded to
+    whole numbers) also without."""
     asked = _count(c) or DEFAULT_COUNT
     if c.get("method") == "geometric_interval" and b.min is not None and b.min <= 0:
         return make_issue(
             "classes_merged",
             pointer,
-            f"Geometric intervals need values above 0: 1 class instead of {asked}.",
+            f"Geometric intervals need every value above 0: 1 class instead of {asked}. "
+            "Choose another method.",
+            params={"case": "not_above_zero", "asked": asked, "made": 1},
         )
     if not b.merged:
         return None
-    n = len(b.breaks) + 1
-    got = "1 class" if n == 1 else f"{n} classes"
+    made = len(b.breaks) + 1
+    got = "1 class" if made == 1 else f"{made} classes"
+    advice = "Choose fewer classes or another method."
+    if b.min == b.max:
+        case = "one_value"
+        message = f"All values are the same: 1 class instead of {asked}."
+    elif c.get("method") == "quantile":
+        case = "repeated_values"
+        message = (
+            "Many values are the same, so some class limits fell on the same value: "
+            f"{got} instead of {asked}. {advice}"
+        )
+    else:
+        case = "joined"
+        message = (
+            "Some classes would be empty or hold a single value, so they were joined: "
+            f"{got} instead of {asked}. {advice}"
+        )
     return make_issue(
-        "classes_merged", pointer, f"Equal breaks merged: {got} instead of {asked}."
+        "classes_merged",
+        pointer,
+        message,
+        params={"case": case, "asked": asked, "made": made},
     )
 
 
 def _no_band_values(path: list[str]) -> Issue:
     return make_issue(
-        "no_values", to_pointer(path), "The band has no values in this raster."
+        "no_values",
+        to_pointer(path),
+        "The band has no values in this raster.",
+        params={"case": "band"},
     )
 
 

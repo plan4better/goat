@@ -1,12 +1,13 @@
 "use client";
 
 // Issues in the panel: rows read theirs with useIssueAt (a dot and the message), an editor shows an issue with its
-// fix button, and issues about data that changed under a stored style show one notice at the top.
+// fix button, and issues about data that changed under a stored style show one notice at the top. Each message is in
+// the panel's language where it words the issue's code (issueText), else the server's.
 import { Alert, Box, Button, Typography } from "@mui/material";
 import { type ReactNode, createContext, useContext, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { applyFix, issueTarget } from "@/lib/style/editor/issues";
+import { applyFix, issueTarget, issueText } from "@/lib/style/editor/issues";
 import type { Path } from "@/lib/style/editor/store";
 import type { StyleIssue } from "@/lib/style/save";
 
@@ -78,7 +79,7 @@ export function IssueNotice({ issue }: { issue: StyleIssue }) {
           </Button>
         )
       }>
-      {issue.message}
+      {issueText(t, issue)}
     </Alert>
   );
 }
@@ -94,7 +95,7 @@ export function DamagedNotice() {
       <Box component="ul" sx={{ m: 0, pl: 4 }}>
         {damaged.map((issue, i) => (
           <Typography component="li" variant="caption" key={`${issue.path}-${i}`}>
-            {issue.message}
+            {issueText(t, issue)}
           </Typography>
         ))}
       </Box>

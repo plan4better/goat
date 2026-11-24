@@ -231,9 +231,12 @@ async def style_check(
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=STYLE_CHECK_TIMEOUT_S)
         ) as session:
+            # Asks for the issues' `params`, what the panel words them from; a
+            # processes that does not know the ask ignores the query parameter.
             async with session.post(
                 url,
                 json={"inputs": inputs},
+                params={"issue_params": "true"},
                 headers={"Authorization": f"Bearer {access_token}"},
             ) as response:
                 if (

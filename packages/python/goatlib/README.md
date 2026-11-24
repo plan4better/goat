@@ -141,7 +141,12 @@ READMEs means section N of that file.
   JSON pointer (list items addressed by their `id`): the models (`parse.py`),
   rules about the document as a whole (`check.py`), and rules against the data
   (`data_check.py`), which read a `DataContext` built by whoever can see the data.
-  `validate.py` runs all three.
+  `validate.py` runs all three. The message is English, for people and the AI
+  alike. The issues the style panel words also carry `params`, the facts their
+  message names, so the panel shows them in the user's language; for any other
+  code it shows the message. A service reads another's issues with
+  `read_issue`, which leaves out keys it does not know, so a newer sender never
+  fails an older reader.
 - **Versions are three numbers** (`style/version.py`, spec 14 and 21), one for
   layer styles and the map document. A written document gets the lowest
   version its keys need (`stamp`, which every writer calls: core's saves,

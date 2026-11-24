@@ -26,6 +26,7 @@ import {
   writeCompound,
   writeCompoundStops,
 } from "@/lib/style/editor/forms";
+import { issueText } from "@/lib/style/editor/issues";
 import { laterSetter, perLayerPath, summaryView } from "@/lib/style/editor/sources";
 import { type Path, type Scope, getIn, setIn } from "@/lib/style/editor/store";
 import {
@@ -338,7 +339,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
         curve={mode === "zoom" && !swatch}
         mode={modeButton}
         active={editorOpen}
-        warn={issues[0]?.message}
+        warn={issues[0] && issueText(t, issues[0])}
         onOpen={(anchor) => {
           if (mode === "classes") {
             const ci = classify.indexOf(owner);

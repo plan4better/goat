@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { classifyShape, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import { MAIN_COLOR, modeOf, targetsOf } from "@/lib/style/editor/forms";
+import { issueText } from "@/lib/style/editor/issues";
 import { templateField } from "@/lib/style/editor/labels";
 import { markerFilled, partOn, symbolShown } from "@/lib/style/editor/parts";
 import {
@@ -173,7 +174,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
       label={label}
       off={!on && !some}
       overrideDot={overridden}
-      warn={issues[0]?.message ?? (invisible ? t("style_editor.marker_invisible") : undefined)}
+      warn={issues[0] ? issueText(t, issues[0]) : invisible ? t("style_editor.marker_invisible") : undefined}
       value={iconValue ?? text}
       glyph={glyph}
       swatch={swatch ? { background: swatch, wide: swatch.startsWith("linear-gradient") } : undefined}

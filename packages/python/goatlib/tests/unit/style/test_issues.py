@@ -1,5 +1,5 @@
 import pytest
-from goatlib.style.issues import CODES, Issue, make_issue
+from goatlib.style.issues import CODES, Issue, make_issue, read_issue
 from pydantic import ValidationError
 
 SPEC_CODES = {  # GOAT Style spec, section 11, code table (code: default level)
@@ -77,6 +77,28 @@ def test_make_issue_uses_the_default_level_and_rejects_unknown_codes() -> None:
     assert make_issue("unknown_field", "/x", "m", level="damaged").level == "damaged"
     with pytest.raises(KeyError):
         make_issue("no_such_code", "/", "m")
+
+
+def test_params_name_the_facts_and_stay_out_of_the_json_without_them() -> None:
+    issue = make_issue(
+        "classes_merged", "/classify/v", "m", params={"asked": 6, "made": 5}
+    )
+    assert issue.params == {"asked": 6, "made": 5}
+    as_json = issue.model_dump(mode="json", exclude_none=True)
+    assert as_json["params"] == {"asked": 6, "made": 5}
+    assert Issue.model_validate(as_json) == issue
+    assert "params" not in make_issue("low_opacity", "/opacity", "m").model_dump(
+        mode="json", exclude_none=True
+    )
+
+
+def test_an_issue_sent_by_another_service_is_read_without_unknown_keys() -> None:
+    sent = {"level": "info", "code": "classes_merged", "path": "/v", "message": "m"}
+    assert read_issue(sent) == Issue(**sent)
+    with_params = {**sent, "params": {"asked": 6, "made": 5}}
+    assert read_issue(with_params).params == {"asked": 6, "made": 5}
+    # A key a newer sender adds is left out instead of failing the reader.
+    assert read_issue({**with_params, "severity_hint": 3}) == read_issue(with_params)
 
 
 def test_allowed_is_capped_at_20() -> None:

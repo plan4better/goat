@@ -7,6 +7,7 @@ import { Box, Button, Typography } from "@mui/material";
 import { useCallback, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
+import { issueText } from "@/lib/style/editor/issues";
 import type { StyleSaver } from "@/lib/style/save";
 
 export function useSaverState(saver: StyleSaver) {
@@ -41,7 +42,7 @@ export function StatusLine({ saver, problemsOnly = false }: { saver: StyleSaver;
   const { status, reason } = state;
   if (problemsOnly && status !== "stopped") return null;
   const text = t(statusKey(state));
-  const refusal = saver.stopIssues.map((issue) => issue.message).join(" ");
+  const refusal = saver.stopIssues.map((issue) => issueText(t, issue)).join(" ");
   return (
     // Beside the style's name the status is announced already: this line only spells out why saving stopped.
     <Box
