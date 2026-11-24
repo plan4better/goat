@@ -9,7 +9,7 @@ from typing import Any
 
 from assistant.language import answer_language
 from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
-from evals.harness import ToolCall, Transcript
+from evals.harness import ToolCall, Transcript, refused_for_room, turn_view
 from evals.map_graders import grade_map, grade_style, grade_view
 from evals.tasks import (
     AnswerCheck,
@@ -314,18 +314,37 @@ async def _grade_one(
             if c.name == "skills_load" and not c.failed
         }
         unloaded = [f for f in check.loaded if f not in files]
+        loads = Counter(
+            str(c.args.get("name"))
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed and not c.args.get("file")
+        )
+        reloaded = {
+            skill: loads[skill]
+            for skill, most in check.skill_loads.items()
+            if loads[skill] > most
+        }
+        refused = (
+            refused_for_room(transcript.tool_calls)
+            if check.not_refused_for_room
+            else []
+        )
         return (
             not missing_tools
             and not untried
             and not forbidden
             and not over
             and ordered
-            and not unloaded,
+            and not unloaded
+            and not reloaded
+            and not refused,
             f"no successful call of {missing_tools}, called {forbidden}"
             + (f", never tried {untried}" if untried else "")
             + (f", too often {over}" if over else "")
             + ("" if ordered else f", not {' before '.join(check.in_order)}")
-            + (f", never loaded {unloaded}" if unloaded else ""),
+            + (f", never loaded {unloaded}" if unloaded else "")
+            + (f", skill loaded too often {reloaded}" if reloaded else "")
+            + (f", refused for lack of room {refused}" if refused else ""),
         )
     if isinstance(check, DocsCheck):
         read = {
@@ -571,7 +590,11 @@ async def grade(
                 )
             )
             continue
-        passed, detail = await _grade_one(check, transcript, backends)
+        graded = turn_view(transcript, check.turn)
+        if graded is None:
+            grades.append(Grade(check.kind, False, f"no turn {check.turn}"))
+            continue
+        passed, detail = await _grade_one(check, graded, backends)
         grades.append(Grade(check.kind, passed, detail))
     return grades
 
