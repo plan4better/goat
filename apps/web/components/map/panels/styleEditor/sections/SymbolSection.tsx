@@ -77,8 +77,9 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   // features beyond the value its classification gives it.
   const { value } = useScoped(base);
   const scope = useScope();
-  // A part the layer switches off (`false`) is off for all features, in every class too; one the layer leaves out
-  // reads by what turns it on for some features (classes or rules), else None.
+  // A part the layer switches off (`false`) is off for all features, in every class too: for all features its row reads
+  // None, in a class or a rule "Off for all", since the record cannot turn it on. One the layer leaves out reads by
+  // what turns it on for some features (classes or rules), else None.
   const offForAll = useStyleSelector((doc) => getIn(doc, base) === false);
   // The summary reads the classifications (a color by classes) and the main color ("Same as fill").
   const geometry = data.geometry ?? "polygon";
@@ -127,7 +128,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     ? summarize(store.document, summaryPath, t, sctx)
     : some
       ? setterSummary(t, some, data.fields)
-      : t(offForAll ? "style_editor.part_off_for_all" : "style_editor.none");
+      : t(offForAll && scope ? "style_editor.part_off_for_all" : "style_editor.none");
   const swatch =
     on && group.swatch
       ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null })

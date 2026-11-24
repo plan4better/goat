@@ -141,7 +141,7 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu. A class can switch off a part the layer shows, but a part switched off for the whole layer, for example the fill, stays off in every class: its switch is greyed out with <code>Off for the layer</code>, and the class keeps its settings for when you turn the part on for all features. The layer's row for such a part reads <code>Off for all</code>. For any part but the main one (the fill of polygons, the line of lines, the marker of points), the class editor offers <code>Allow per class</code>: the part stays off for all features, and classes can turn it on.</div>
+  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu. A class can switch off a part the layer shows, but a part switched off for the whole layer, for example the fill, stays off in every class: its switch is greyed out with <code>Off for the layer</code>, and the class keeps its settings for when you turn the part on for all features. While a class is selected, the row of such a part reads <code>Off for all</code>. For any part but the main one (the fill of polygons, the line of lines, the marker of points), the class editor offers <code>Allow per class</code>: the part stays off for all features, and classes can turn it on.</div>
 </div>
 
 <div class="step">

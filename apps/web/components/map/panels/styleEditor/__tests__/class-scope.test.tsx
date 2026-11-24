@@ -436,13 +436,14 @@ describe("class scope", () => {
     expect(store.get("classify.0.classes.0.outline")).toEqual({ width: 3 });
   });
 
-  it("the row of a part off for the layer reads Off for all; a part never turned on reads None", () => {
+  it("the row of a part off for the layer reads None for all features and Off for all in a class", () => {
     const { store } = setup();
     act(() => store.set("symbol.outline", false));
+    expect(within(rowOf("style_editor.part_outline")).getByText("style_editor.none")).toBeDefined();
     expect(
-      within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
-    ).toBeDefined();
-    // In class scope too: the class cannot draw it.
+      within(rowOf("style_editor.part_outline")).queryByText("style_editor.part_off_for_all")
+    ).toBeNull();
+    // In class scope: the class cannot draw it.
     act(() => store.setScope({ classify: 0, key: 0 }));
     expect(
       within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
