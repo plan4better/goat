@@ -453,6 +453,40 @@ async def test_an_edit_that_adds_an_error_is_not_saved_and_the_failure_names_pat
     assert [method for method, _ in services.calls()] == ["GET", "POST"]
 
 
+@pytest.mark.parametrize(
+    ("value", "line"),
+    [
+        (
+            {"blocks": [{"id": "b1", "type": "text", "text": "Lines: {lines}"}]},
+            '/popup/blocks/b1/text: "text" is not a key here. '
+            "Keys here: id, type, html.",
+        ),
+        (
+            {"title": "Station"},
+            '/popup/title: "title" is not a key here. Keys here: enabled, trigger, '
+            "mode, blocks, html, layout, anchor, width, max_height, header, "
+            "highlight_active_feature.",
+        ),
+        (5, "/popup: Input should be an object or false."),
+    ],
+)
+async def test_a_refused_popup_names_the_keys_of_its_place_and_only_the_form_it_has(
+    value: Any, line: str
+) -> None:
+    services = _Services(MapState())
+    with pytest.raises(ToolFailed) as raised:
+        await _update(
+            services,
+            layer_project_id=40,
+            operations=[{"op": "set", "path": "/popup", "value": value}],
+        )
+    assert raised.value.message == (
+        f"Not saved: 1 issue(s) this edit adds must be fixed first. {line} "
+        "Change the operations and call style_update again."
+    )
+    assert services.writes() == []
+
+
 def test_a_refusal_lists_five_issues_with_their_allowed_values_and_fixes() -> None:
     issues: list[dict[str, Any]] = [
         {

@@ -1,7 +1,10 @@
+from typing import Literal, Union
+
 from goatlib.style.models.base import StyleModel
 from goatlib.style.models.values import ByAttributeColor
 from goatlib.style.parse import parse
 from goatlib.style.pointer import parse_pointer, to_pointer
+from pydantic import Field, create_model
 
 
 class Item(StyleModel):
@@ -41,7 +44,10 @@ def test_a_key_a_model_refuses_says_why() -> None:
     ]
     color = {"field": "x", "palette": "d3:viridis", "revers": True}
     _, issues = parse(ByAttributeColor, color)
-    assert [i.message for i in issues] == ['"revers" is not a key here.']
+    assert [i.message for i in issues] == [
+        '"revers" is not a key here. Keys here: field, palette, reverse, scale, '
+        "domain, no_data, title, computed."
+    ]
 
 
 def test_missing_required_key() -> None:
@@ -70,3 +76,94 @@ def test_pointer_escaping_round_trips() -> None:
         "Straße 1",
     ]
     assert to_pointer([]) == ""
+
+
+POINT = {"version": "1.0.0", "kind": "vector", "geometry": "point"}
+
+
+def test_an_unknown_key_in_a_block_names_the_keys_of_the_blocks_type() -> None:
+    from goatlib.style.parse import parse_for_write
+
+    block = {"id": "b1", "type": "text", "text": "Opening hours"}
+    _, issues = parse_for_write({**POINT, "popup": {"blocks": [block]}})
+    assert [(i.code, i.path, i.message) for i in issues] == [
+        (
+            "unknown_key",
+            "/popup/blocks/b1/text",
+            '"text" is not a key here. Keys here: id, type, html.',
+        )
+    ]
+
+
+def test_an_unknown_key_in_a_part_names_the_keys_of_the_part() -> None:
+    from goatlib.style.parse import parse_for_write
+
+    _, issues = parse_for_write({**POINT, "popup": {"title": "Station"}})
+    assert [(i.code, i.path, i.message) for i in issues] == [
+        (
+            "unknown_key",
+            "/popup/title",
+            '"title" is not a key here. Keys here: enabled, trigger, mode, blocks, '
+            "html, layout, anchor, width, max_height, header, "
+            "highlight_active_feature.",
+        )
+    ]
+    # A key the model refuses itself is not named; a key with an alias is
+    # named as JSON writes it.
+    raster = {"version": "1.0.0", "kind": "raster"}
+    _, issues = parse_for_write({**raster, "popup": {"title": "Cell"}})
+    [message] = [i.message for i in issues]
+    assert "highlight_active_feature" not in message and "bands" in message
+    _, issues = parse(Aliased, {"from": 1, "upto": 2})
+    assert [i.message for i in issues] == ['"upto" is not a key here. Keys here: from.']
+
+
+class Aliased(StyleModel):
+    from_: int = Field(alias="from")
+
+
+Wide = create_model(  # type: ignore[call-overload]
+    "Wide", __base__=StyleModel, **{f"k{n}": (int | None, None) for n in range(25)}
+)
+
+
+def test_a_long_list_of_keys_is_cut() -> None:
+    _, issues = parse(Wide, {"other": 1})
+    [message] = [i.message for i in issues]
+    keys = ", ".join(f"k{n}" for n in range(20))
+    assert message == f'"other" is not a key here. Keys here: {keys} and 5 more.'
+
+
+class Either(StyleModel):
+    value: Union[Item, Literal[False]] | None = None
+
+
+def test_an_error_inside_one_form_leaves_out_the_forms_the_value_is_not() -> None:
+    _, issues = parse(Either, {"value": {"id": "a", "n": "x"}})
+    assert [(i.code, i.path) for i in issues] == [("invalid_value", "/value/n")]
+    _, issues = parse(Either, {"value": {"id": "a"}})
+    assert [(i.code, i.path) for i in issues] == [("missing_required", "/value/n")]
+
+
+def test_a_value_of_no_form_gets_one_line_naming_the_forms() -> None:
+    from goatlib.style.parse import parse_for_write
+
+    _, issues = parse_for_write({**POINT, "popup": 5})
+    assert [(i.code, i.path, i.message) for i in issues] == [
+        ("invalid_value", "/popup", "Input should be an object or false")
+    ]
+    _, issues = parse(Either, {"value": "yes"})
+    assert [(i.code, i.path, i.message) for i in issues] == [
+        ("invalid_value", "/value", "Input should be an object or false")
+    ]
+
+
+class Pair(StyleModel):
+    value: Union[Item, Holder, Literal["auto"]]
+
+
+def test_each_form_is_named_once() -> None:
+    _, issues = parse(Pair, {"value": 5})
+    assert [(i.code, i.path, i.message) for i in issues] == [
+        ("invalid_value", "/value", "Input should be an object or 'auto'")
+    ]
