@@ -233,12 +233,12 @@ describe("repeated writes in a group", () => {
     expect(lines()).toEqual(["Created the style “Bunt”", "Changed the style · 2 times"]);
   });
 
-  it("breaks the run at a failed or running step, which shows on its own", () => {
+  it("shows a failed or running step on its own, and folds the writes of a label around a failure", () => {
     const broken = call("map_update", { operations: [] }, "output-error");
     const { unmount } = render(
       <StepGroup steps={[styleChange(), styleChange(), broken, styleChange()]} open={false} running={false} />
     );
-    expect(lines()).toEqual(["Changed the style · 2 times", "Changed the map · Failed", "Changed the style"]);
+    expect(lines()).toEqual(["Changed the style · 3 times", "Changed the map · Failed"]);
     unmount();
     const busy = call("style_update", { layer_project_id: 1, operations: [] }, "input-available");
     render(<StepGroup steps={[styleChange(), styleChange(), busy]} open running />);
@@ -265,7 +265,7 @@ describe("repeated writes in a group", () => {
     ]);
   });
 
-  it("ends a run at a visible failed step between the writes, which keeps its place", () => {
+  it("folds the writes of a label across a visible failed step, which keeps its place", () => {
     const steps = [
       styleChange(),
       call("style_get", { layer_project_id: 1 }, "output-available", { style_id: "s1" }),
@@ -293,10 +293,9 @@ describe("repeated writes in a group", () => {
     render(<StepGroup steps={steps} open={false} running={false} />);
     const [summary, ...rest] = lines();
     expect(summary).toMatch(/^Read a style, counted features 6 times/);
-    expect(rest).toHaveLength(3);
-    expect(rest[0]).toBe("Changed the style · 2 times");
+    expect(rest).toHaveLength(2);
+    expect(rest[0]).toBe("Changed the style · 5 times");
     expect(rest[1]).toMatch(/ · Failed$/);
-    expect(rest[2]).toBe("Changed the style · 3 times");
   });
 
   it("shows the reads between writes one by one while the group is open, and folds the writes when it closes", () => {
@@ -325,6 +324,177 @@ describe("repeated writes in a group", () => {
     expect(details.match(/^Result$/gm)).toHaveLength(2);
     expect(details.indexOf("red")).toBeGreaterThan(-1);
     expect(details.indexOf("blue")).toBeGreaterThan(details.indexOf("red"));
+  });
+});
+
+describe("corrected attempts in a group", () => {
+  let attempt = 0;
+  /** A map change that landed, and one the tool refused; each with its own input to find in the details. */
+  const mapChange = () =>
+    call("map_update", { operations: [], attempt: (attempt += 1) }, "output-available", {
+      applied: [{ op: "set_layer" }],
+    });
+  const mapRefused = () => call("map_update", { operations: [], attempt: (attempt += 1) }, "output-error");
+  const layers = () => call("project_get_layers", {}, "output-available", { layers: [] });
+  const count = (id: number) =>
+    call("project_count_features", { layer_project_id: id }, "output-available", { count: 3 });
+  const lines = () => screen.getAllByRole("button").map((button) => button.textContent);
+
+  /** The tester's answer: refused, read, corrected and done, done again, counted, corrected and done. */
+  const testersAnswer = () => [
+    mapRefused(),
+    layers(),
+    mapRefused(),
+    mapChange(),
+    mapChange(),
+    count(1),
+    count(2),
+    mapRefused(),
+    mapChange(),
+  ];
+
+  it("shows the writes of one label as one line with the count of changes, and no failure", () => {
+    render(<StepGroup steps={testersAnswer()} open={false} running={false} />);
+    expect(lines()).toEqual([
+      "Read the layers of a project, counted features 2 times",
+      "Changed the map · 3 times",
+    ]);
+  });
+
+  it("shows refused, refused, a read, invalid, done and done as the read and one line for the map", () => {
+    const steps = [mapRefused(), mapRefused(), layers(), mapRefused(), mapChange(), mapChange()];
+    render(<StepGroup steps={steps} open={false} running={false} />);
+    expect(lines()).toEqual(["Read the project layers · nothing found", "Changed the map · 2 times"]);
+  });
+
+  it("opens the line on every call it stands for, the corrected attempts included, in the answer's order", () => {
+    const steps = testersAnswer();
+    const { container } = render(<StepGroup steps={steps} open={false} running={false} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Changed the map/ }));
+    const details = container.querySelector("pre")?.textContent ?? "";
+    expect(details.match(/^Rejected attempt$/gm)).toHaveLength(3);
+    expect(details.match(/^Result$/gm)).toHaveLength(3);
+    const attempts = [...details.matchAll(/"attempt": (\d+)/g)].map((match) => Number(match[1]));
+    const own = steps.filter((step) => step.toolName === "map_update");
+    expect(attempts).toEqual(own.map((step) => (step.input as { attempt: number }).attempt));
+    // The attempts come before their retries: rejected, then a change, and so on.
+    const blocks = details.split("\n\n").filter((block) => /^(Rejected attempt|Input)$/m.test(block));
+    expect(blocks.map((block) => block.split("\n")[0])).toEqual([
+      "Rejected attempt",
+      "Rejected attempt",
+      "Input",
+      "Input",
+      "Rejected attempt",
+      "Input",
+    ]);
+  });
+
+  it("says that the input was corrected on a line without a count, and in the details only on one with a count", () => {
+    const { unmount } = render(
+      <StepGroup steps={[mapRefused(), layers(), count(1), mapChange()]} open={false} running={false} />
+    );
+    expect(lines()).toEqual([
+      "Read the layers of a project, counted features",
+      "Changed the map · Corrected input and retried",
+    ]);
+    unmount();
+    render(<StepGroup steps={testersAnswer()} open={false} running={false} />);
+    expect(screen.queryByText(/Corrected input and retried/)).toBeNull();
+  });
+
+  it("keeps a write whose last call failed as a failed line, counted as failed", () => {
+    render(
+      <StepGroup
+        steps={[mapRefused(), mapChange(), layers(), count(1), mapRefused()]}
+        open={false}
+        running={false}
+      />
+    );
+    expect(lines()).toEqual([
+      "Read the layers of a project, counted features · 1 failed",
+      "Changed the map · Corrected input and retried",
+      "Changed the map · Failed",
+    ]);
+  });
+
+  it("keeps two labels apart, each on one line", () => {
+    const style = () =>
+      call("style_update", { layer_project_id: 1, operations: [] }, "output-available", { created: false });
+    render(
+      <StepGroup
+        steps={[style(), mapChange(), layers(), count(1), style(), mapRefused(), mapChange()]}
+        open={false}
+        running={false}
+      />
+    );
+    expect(lines()).toEqual([
+      "Read the layers of a project, counted features",
+      "Changed the style · 2 times",
+      "Changed the map · 2 times",
+    ]);
+  });
+
+  it("shows a failed attempt as failed while the answer runs, until a success of its tool takes it in", () => {
+    const refused = mapRefused();
+    const read = layers();
+    const retrying = call("map_update", { operations: [] }, "input-available");
+    const { rerender } = render(<StepGroup steps={[refused, read]} open running />);
+    expect(lines()).toEqual(["Changed the map · Failed", "Read the project layers · nothing found"]);
+    rerender(<StepGroup steps={[refused, read, retrying]} open running />);
+    expect(lines()).toEqual([
+      "Changed the map · Failed",
+      "Read the project layers · nothing found",
+      "Changing the map…",
+    ]);
+    const done = { ...retrying, state: "output-available", output: { applied: [{ op: "set_layer" }] } };
+    rerender(<StepGroup steps={[refused, read, done as DynamicToolUIPart]} open running />);
+    expect(lines()).toEqual([
+      "Read the project layers · nothing found",
+      "Changed the map · Corrected input and retried",
+    ]);
+  });
+
+  it("shows nothing for a group that holds only attempts the answer corrected later", () => {
+    const refused = mapRefused();
+    const answer = [refused, layers(), mapChange()];
+    const { container } = render(
+      <StepGroup steps={[refused]} answerSteps={answer} open={false} running={false} />
+    );
+    expect(container.textContent).toBe("");
+  });
+
+  it("takes in an attempt the answer made before text, and counts no failure", () => {
+    const messages: AssistantMessage[] = [
+      { id: "u", role: "user", parts: [{ type: "text", text: "Filter the layer." }] },
+      {
+        id: "a",
+        role: "assistant",
+        parts: [
+          mapRefused(),
+          { type: "text", text: "That did not fit; I try a smaller change." },
+          layers(),
+          count(1),
+          mapChange(),
+          { type: "text", text: "Done." },
+        ],
+      },
+    ];
+    render(
+      <DockActionsContext.Provider value={dockActions()}>
+        <MessageList
+          messages={messages}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId={null}
+          projectName={null}
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    expect(screen.queryByText(/Failed|failed/)).toBeNull();
+    expect(screen.getByRole("button", { name: /^Changed the map/ }).textContent).toBe(
+      "Changed the map · Corrected input and retried"
+    );
   });
 });
 

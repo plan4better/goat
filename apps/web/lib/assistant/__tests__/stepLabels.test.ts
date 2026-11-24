@@ -289,6 +289,74 @@ describe("step rows", () => {
     ]);
   });
 
+  const mapChange = () => call("map_update", { operations: [] }, { applied: [{ op: "set_layer" }] });
+  const mapFailed = () => failed("map_update", { operations: [] });
+  const layers = () => call("project_get_layers", {}, { layers: [] });
+
+  it("fold a failed write into the next successful call of the same tool, wherever it follows", () => {
+    const [refused, refusedAgain, read, invalid, ok, okAgain] = [
+      mapFailed(),
+      mapFailed(),
+      layers(),
+      mapFailed(),
+      mapChange(),
+      mapChange(),
+    ];
+    expect(shape([refused, refusedAgain, read, invalid, ok, okAgain])).toEqual([
+      [read.toolCallId, []],
+      [ok.toolCallId, [refused.toolCallId, refusedAgain.toolCallId, invalid.toolCallId]],
+      [okAgain.toolCallId, []],
+    ]);
+    // Each success takes the attempts since the previous success of its tool.
+    const [first, second] = [mapFailed(), mapFailed()];
+    const [done, doneAgain] = [mapChange(), mapChange()];
+    expect(
+      shape([first, done, layers(), second, doneAgain]).filter(([, rejected]) => rejected.length)
+    ).toEqual([
+      [done.toolCallId, [first.toolCallId]],
+      [doneAgain.toolCallId, [second.toolCallId]],
+    ]);
+  });
+
+  it("keep a failed write whose tool did not succeed after it, also when it succeeded before", () => {
+    const [ok, read, broken] = [mapChange(), layers(), mapFailed()];
+    expect(shape([ok, read, broken])).toEqual([
+      [ok.toolCallId, []],
+      [read.toolCallId, []],
+      [broken.toolCallId, []],
+    ]);
+    // A later call still running, stopped, or of another write tool is no correction.
+    const busy = call("map_update", { operations: [] });
+    const style = call("style_update", { layer_project_id: 1 }, { created: false });
+    expect(shape([broken, style, busy])).toEqual([
+      [broken.toolCallId, []],
+      [style.toolCallId, []],
+      [busy.toolCallId, []],
+    ]);
+  });
+
+  it("judge a corrected write by the whole answer, and leave its attempt out of the group that holds it", () => {
+    const [refused, ok] = [mapFailed(), mapChange()];
+    const answer = [refused, layers(), ok];
+    // The attempt's group, before text: nothing left. The success's group takes the attempt.
+    expect(stepRows([refused], answer)).toEqual([]);
+    expect(shape([refused])).toEqual([[refused.toolCallId, []]]);
+    expect(stepRows([answer[1], ok], answer).map((row) => ids(row.rejected))).toEqual([
+      [],
+      [refused.toolCallId],
+    ]);
+  });
+
+  it("leave a failed read that a call of the same read tool follows later, not right after it, a failure", () => {
+    const broken = failed("project_count_features", { layer_project_id: 1 });
+    const later = call("project_count_features", { layer_project_id: 2 }, { count: 3 });
+    expect(shape([broken, layers(), later])).toEqual([
+      [broken.toolCallId, []],
+      [expect.any(String), []],
+      [later.toolCallId, []],
+    ]);
+  });
+
   it("does not fold a failure into an earlier success, or a success into nothing", () => {
     const ok = call("core_find", { query: "x" }, {});
     const bad = failed("core_find", { query: "y" });
@@ -916,16 +984,33 @@ describe("repeated writes", () => {
       [between.toolCallId, []],
       [two.toolCallId, [three.toolCallId]],
     ]);
-    // A failure followed by a success of the same tool is that call's retry: the retried call stands alone.
-    expect(shape([one, broken, two, three])).toEqual([
-      [one.toolCallId, []],
-      [two.toolCallId, []],
-      [three.toolCallId, []],
-    ]);
+    // A failure followed by a success of the same tool is that call's corrected attempt, not a row between them.
+    expect(shape([one, broken, two, three])).toEqual([[one.toolCallId, [two.toolCallId, three.toolCallId]]]);
     const lastBroken = failed("style_update", { layer_project_id: 1, operations: [] });
     expect(shape([one, two, lastBroken])).toEqual([
       [one.toolCallId, [two.toolCallId]],
       [lastBroken.toolCallId, []],
+    ]);
+  });
+
+  it("fold the writes of a label wherever they sit when asked to, into the first one's row", () => {
+    const [one, two] = [styleChange(), styleChange()];
+    const map = call("map_update", { operations: [] }, { applied: [{ op: "set_layer" }] });
+    const between = search("a");
+    const rows = (anywhere: boolean) =>
+      foldRepeatedWrites(stepRows([one, between, map, two]), stepNames([]), enTranslate, anywhere).map(
+        (row) => [row.step.toolCallId, (row.repeats ?? []).map((step) => step.toolCallId)]
+      );
+    expect(rows(false)).toEqual([
+      [one.toolCallId, []],
+      [between.toolCallId, []],
+      [map.toolCallId, []],
+      [two.toolCallId, []],
+    ]);
+    expect(rows(true)).toEqual([
+      [one.toolCallId, [two.toolCallId]],
+      [between.toolCallId, []],
+      [map.toolCallId, []],
     ]);
   });
 

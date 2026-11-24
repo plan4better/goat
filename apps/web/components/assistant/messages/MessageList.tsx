@@ -259,10 +259,10 @@ function Answer({
     const partId = part.providerMetadata?.goat?.partId;
     return typeof partId !== "string" || !replaced.has(partId);
   };
-  // What the answer's steps named, for every group: a change names the workflow an earlier group read.
-  const names = stepNames(
-    message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool")
-  );
+  // What the answer's steps named, for every group: a change names the workflow an earlier group read. A
+  // failed write that a later group corrected is part of that group's line.
+  const answerSteps = message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool");
+  const names = stepNames(answerSteps);
   // Only the answer's last list of each show tool becomes cards: a model that
   // names them more than once has refined what it points to. Every workflow
   // the answer created gets its card.
@@ -298,6 +298,7 @@ function Answer({
         running={running}
         openProject={openProject}
         names={names}
+        answerSteps={answerSteps}
       />
     );
     // Below the group, so the way back shows also when the step's line is folded into the summary.

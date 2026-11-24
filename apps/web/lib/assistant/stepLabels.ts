@@ -405,19 +405,49 @@ export const stepRunning = (step: DynamicToolUIPart): boolean => RUNNING_STATES.
 /** One line of the step list: a call, with the rejected attempts it replaced. */
 export interface StepRow {
   step: DynamicToolUIPart;
-  /** Failed calls of the same tool right before `step`, which succeeded: the model corrected its input. */
+  /**
+   * Failed calls the model corrected: of a read, right before `step`; of a write, the failed calls of its tool
+   * since that tool's previous success, anywhere in the answer. A line that stands for `repeats` holds theirs too.
+   */
   rejected: DynamicToolUIPart[];
   /** Finished writes after `step` among the rows shown, same label (`foldRepeatedWrites`): the line stands for them too. */
   repeats?: DynamicToolUIPart[];
 }
 
 /**
- * The step list's rows. A failed call that is immediately followed by a
- * successful call of the same tool is folded into that call (the model fixed
- * its input and retried), so the list shows one step. Any other failure
- * stays a row of its own.
+ * The failed write calls the answer corrected, by the call that succeeded:
+ * each successful write takes the failed calls of its tool since that tool's
+ * previous success. A failed write that no success of its tool follows is no
+ * one's (it stays a failure), and a call still running or stopped is no success.
  */
-export function stepRows(steps: DynamicToolUIPart[]): StepRow[] {
+function correctedWrites(answer: DynamicToolUIPart[]): Map<string, DynamicToolUIPart[]> {
+  const corrected = new Map<string, DynamicToolUIPart[]>();
+  const pending = new Map<string, DynamicToolUIPart[]>();
+  for (const step of answer) {
+    if (!WRITES.has(step.toolName)) continue;
+    const attempts = pending.get(step.toolName) ?? [];
+    if (step.state === "output-error") {
+      pending.set(step.toolName, [...attempts, step]);
+    } else if (step.state === "output-available") {
+      if (attempts.length) corrected.set(step.toolCallId, attempts);
+      pending.delete(step.toolName);
+    }
+  }
+  return corrected;
+}
+
+/**
+ * The step list's rows. A failed read that is immediately followed by a
+ * successful call of the same tool is folded into that call (the model fixed
+ * its input and retried), so the list shows one step. A failed write is folded
+ * into the next successful call of the same tool anywhere in the answer
+ * (`answer`, the group's own steps when absent): the row of that call holds
+ * it, and the group that holds the attempt shows no row for it. Any other
+ * failure stays a row of its own.
+ */
+export function stepRows(steps: DynamicToolUIPart[], answer: DynamicToolUIPart[] = steps): StepRow[] {
+  const corrected = correctedWrites(answer);
+  const taken = new Set([...corrected.values()].flat().map((step) => step.toolCallId));
   const rows: StepRow[] = [];
   let failed: DynamicToolUIPart[] = [];
   const flush = () => {
@@ -425,8 +455,12 @@ export function stepRows(steps: DynamicToolUIPart[]): StepRow[] {
     failed = [];
   };
   for (const step of steps) {
+    if (taken.has(step.toolCallId)) continue;
     if (failed.length && failed[0].toolName !== step.toolName) flush();
-    if (step.state === "output-error") {
+    const attempts = corrected.get(step.toolCallId);
+    if (attempts) {
+      rows.push({ step, rejected: attempts });
+    } else if (step.state === "output-error") {
       failed.push(step);
     } else if (step.state === "output-available" && failed.length) {
       rows.push({ step, rejected: failed });
@@ -568,30 +602,44 @@ const COUNTED_BY: Record<
 export const staysVisible = (row: StepRow, running: boolean): boolean =>
   WRITES.has(row.step.toolName) || row.step.state === "output-error" || (!running && stepRunning(row.step));
 
-/** A write that returned, without rejected attempts: one that a line of repeats may stand for. */
+/** A write that returned: one that a line of repeats may stand for, with the attempts it corrected. */
 const repeatable = (row: StepRow): boolean =>
-  WRITES.has(row.step.toolName) && row.step.state === "output-available" && !row.rejected.length;
+  WRITES.has(row.step.toolName) && row.step.state === "output-available";
 
 /**
- * The step rows with each run of finished writes that say the same ("Changed
- * the style" five times in a row) folded into the run's first row, as its
- * `repeats`: the line shows once, with the count. Only rows right next to each
- * other in `rows` fold; a failed or running step, a read or another label in
- * between ends the run. The caller passes the rows it shows: once reads fold
- * into a group's summary, the writes around them are next to each other.
+ * The step rows with the finished writes that say the same ("Changed the
+ * style" five times) folded into the first one's row: its `repeats` hold the
+ * other calls, its `rejected` the attempts each of them corrected, and the
+ * line shows once, with the count. By default only rows right next to each
+ * other in `rows` fold (a list in the answer's order): a failed or running
+ * step, a read or another label in between ends the run. `anywhere`: every
+ * finished write with the same label folds, wherever it sits in `rows` (the
+ * lines a closed group shows). The caller passes the rows it shows.
  */
-export function foldRepeatedWrites(rows: StepRow[], names: StepNames, t: Translate): StepRow[] {
+export function foldRepeatedWrites(
+  rows: StepRow[],
+  names: StepNames,
+  t: Translate,
+  anywhere = false
+): StepRow[] {
   const folded: StepRow[] = [];
-  let label: string | null = null;
+  // The row each label folds into: with `anywhere` every label's first, else only the last row's.
+  const lines = new Map<string, number>();
   for (const row of rows) {
-    const last = folded.at(-1);
     const own = repeatable(row) ? stepLabel(row.step, names, t) : null;
-    if (last && own !== null && own === label) {
-      folded[folded.length - 1] = { ...last, repeats: [...(last.repeats ?? []), row.step] };
-    } else {
-      folded.push(row);
-      label = own;
+    const at = own === null ? undefined : lines.get(own);
+    if (own !== null && at !== undefined) {
+      const line = folded[at];
+      folded[at] = {
+        ...line,
+        rejected: [...line.rejected, ...row.rejected],
+        repeats: [...(line.repeats ?? []), row.step],
+      };
+      continue;
     }
+    if (!anywhere) lines.clear();
+    if (own !== null) lines.set(own, folded.length);
+    folded.push(row);
   }
   return folded;
 }

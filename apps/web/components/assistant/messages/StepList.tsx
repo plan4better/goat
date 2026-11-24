@@ -104,7 +104,8 @@ function StatusIcon({ state }: { state: StepStatus }) {
  * The tools an answer used (spec §4.7, §10): one line per call with what it
  * found, its input and result on click. The list shows every row it is given;
  * `StepGroup` folds a group's rows behind its summary. A row that stands for
- * repeated writes shows their count and, on click, each call. While the answer runs
+ * repeated writes shows their count and, on click, each call, the attempts it
+ * corrected included, in the answer's order. While the answer runs
  * (`running`), a step that has not returned says what it is doing, with the
  * shimmer of the Answering line; once the answer ended, such a step is marked
  * as stopped, with the same words: it was under way, not done.
@@ -131,6 +132,10 @@ export default function StepList({
   // The labels carry the call's arguments (search words, layer names): React escapes them as text.
   const translate = plainTranslate(t);
   const rows = only ?? foldRepeatedWrites(stepRows(steps), names, translate);
+  // A call's place in the answer; a corrected attempt of an earlier group is not among `steps` and came first.
+  const place = new Map(steps.map((step, index) => [step.toolCallId, index]));
+  const inOrder = (calls: DynamicToolUIPart[]) =>
+    [...calls].sort((a, b) => (place.get(a.toolCallId) ?? -1) - (place.get(b.toolCallId) ?? -1));
 
   return (
     <Stack gap="1px">
@@ -145,9 +150,10 @@ export default function StepList({
           : stopped
             ? t("assistant_step_stopped")
             : stepResult(step, translate);
+        // A line with a count keeps to it: its details show the corrected attempts.
         const extras = [
           result,
-          rejected.length ? t("assistant_step_retried") : null,
+          rejected.length && !repeats.length ? t("assistant_step_retried") : null,
           repeats.length ? t("assistant_step_times", { count: repeats.length + 1 }) : null,
         ].filter(Boolean);
         const status: StepStatus = underWay
@@ -204,14 +210,14 @@ export default function StepList({
                 {[
                   // The tool's own name, for whoever wants to know what ran.
                   step.toolName,
-                  // Rejected attempts first, in the order the model made them. The server's error text
-                  // is English and may quote the service, so only the translated mark is shown.
-                  ...rejected.map(
-                    (attempt) =>
-                      `${t("assistant_step_rejected")}\n${pretty(attempt.input)}\n${t("assistant_step_failed")}`
-                  ),
-                  // Each call the line stands for, in the answer's order.
-                  ...[step, ...repeats].flatMap((call) => {
+                  // Each call the line stands for, its rejected attempts included, in the answer's order. The
+                  // server's error text is English and may quote the service, so only the translated mark is shown.
+                  ...inOrder([...rejected, step, ...repeats]).flatMap((call) => {
+                    if (rejected.includes(call)) {
+                      return [
+                        `${t("assistant_step_rejected")}\n${pretty(call.input)}\n${t("assistant_step_failed")}`,
+                      ];
+                    }
                     const returned = (call as { output?: unknown }).output;
                     return [
                       `${t("assistant_step_input")}\n${pretty(call.input)}`,
