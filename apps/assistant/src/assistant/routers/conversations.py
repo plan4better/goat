@@ -63,6 +63,7 @@ from assistant.undo import (
     undo_run,
     undoable,
     undone,
+    undone_parts,
 )
 
 router = APIRouter(prefix="/conversations")
@@ -766,45 +767,6 @@ class UndoIn(BaseModel):
 CHANGED_SINCE = "Something was changed after this answer edited it."
 
 
-def _undone_parts(outcome: UndoOutcome) -> dict[str, Any]:
-    """What an Undo took back, kind by kind, as the 200 answer names it. A
-    style says ``partial`` only when core restored it in part. ``map`` is
-    the map of the answer's project, None when nothing of it went back."""
-    went_back = next((item for item in outcome.maps if item.went_back), None)
-    return {
-        "workflows": [
-            {
-                "workflow_id": item.workflow_id,
-                "project_id": item.project_id,
-                "revision": item.revision,
-            }
-            for item in outcome.restored
-        ],
-        "styles": [
-            {
-                "project_id": item.project_id,
-                "layer_project_id": item.layer_project_id,
-                "style_id": item.style_id,
-                "revision": item.revision,
-                "removed": item.removed,
-                **({"partial": True} if item.partial else {}),
-            }
-            for item in outcome.styles
-        ],
-        "map": None
-        if went_back is None
-        else {
-            "project_id": went_back.project_id,
-            "layers": went_back.layers,
-            "tree": went_back.tree,
-            "groups": went_back.groups,
-            "basemap": went_back.basemap,
-            "scene": went_back.scene,
-        },
-        "not_restored": list(outcome.not_restored),
-    }
-
-
 def _changed_parts(outcome: UndoOutcome) -> dict[str, Any]:
     """What the user is asked about before an Undo writes over it, kind by
     kind; every list empty when nothing is."""
@@ -893,7 +855,7 @@ async def undo_answer(
         ) from exc
     except UndoRefused as exc:
         raise _refusal(exc.status, exc.code, exc.message) from exc
-    done = _undone_parts(outcome)
+    done = undone_parts(outcome)
     asked = _changed_parts(outcome)
     if any(asked.values()):
         raise _refusal(

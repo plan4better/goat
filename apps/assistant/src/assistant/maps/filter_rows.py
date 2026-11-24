@@ -5,7 +5,8 @@ The filter is stored in the form the web's filter panel writes
 drawn area and the notes that go with them. The model reads it as a
 `FilterBrief`, each row in words or "custom" for a row the panel shows as an
 expression, and the area in words, and changes it row by row (`RowOp`); the
-area is set and cleared by the operations of ``assistant.maps.filter_area``.
+filter operation's area beside the rows sets and clears the area
+(``assistant.maps.filter_area``).
 Whatever an operation does not touch (the area, switched-off and custom rows,
 the notes, `metadata`) is written back as stored.
 
@@ -24,7 +25,7 @@ from goatlib.filter.limits import MAX_CONDITIONS
 from goatlib.filter.rows import Row, read_rows, write_rows
 from pydantic import BaseModel, ConfigDict, Field
 
-from assistant.maps.filter_area import AreaSources, ClearArea, SetArea, build_area
+from assistant.maps.filter_area import AreaChange, AreaSources, build_area
 from assistant.tools.filters import Condition, condition_cql
 from assistant.tools.runtime import InputInvalid
 
@@ -76,6 +77,8 @@ _TEMPORAL = frozenset({"is_on", "is_not_on", "is_before", "is_after"}) | _DAYS
 _LISTED = 5
 _LONGEST = 120
 CUSTOM = "custom"
+#: What starts a refusal of the filter operation's area.
+AREA_REFUSED = "Area: "
 
 
 class FilterRowView(BaseModel):
@@ -104,7 +107,7 @@ class FilterBrief(BaseModel):
         description=(
             "The area in words (regions, features of a layer, the map view, a "
             "drawn shape; outside or switched off when so); None without one. "
-            "set_area and clear_area change it, row operations keep it."
+            "The filter operation's area changes it, row operations keep it."
         ),
     )
 
@@ -158,7 +161,7 @@ class ClearRows(BaseModel):
 
 
 RowOp = Annotated[
-    AddRows | ReplaceRow | RemoveRow | SetMatch | ClearRows | SetArea | ClearArea,
+    AddRows | ReplaceRow | RemoveRow | SetMatch | ClearRows,
     Field(discriminator="do"),
 ]
 
@@ -270,7 +273,7 @@ def _cql(number: int, condition: Condition, fields: Mapping[str, str]) -> Any:
 
 @dataclass(frozen=True)
 class FilterChange:
-    """The query to store after a filter operation's row operations, in the
+    """The query to store after a filter operation's rows and area, in the
     panel's form (None when nothing is left), and what the model should say
     about how an area was built."""
 
@@ -281,8 +284,7 @@ class FilterChange:
 def apply_row_ops(
     query: Any, ops: Sequence[RowOp], fields: Mapping[str, str]
 ) -> dict[str, Any] | None:
-    """The query to store after row operations that set no area
-    (``apply_filter_ops``)."""
+    """The query to store after row operations alone (``apply_filter_ops``)."""
     return apply_filter_ops(query, ops, fields).query
 
 
@@ -291,37 +293,28 @@ def apply_filter_ops(
     ops: Sequence[RowOp],
     fields: Mapping[str, str],
     *,
+    area: AreaChange | None = None,
     sources: AreaSources | None = None,
 ) -> FilterChange:
-    """The query to store after the row operations. ``fields`` maps the
-    layer's field names to their kinds (``field_kind``); ``sources`` holds
-    the outlines of a ``set_area`` (``assistant.maps.area_sources``).
+    """The query to store after the row operations and then ``area``.
+    ``fields`` maps the layer's field names to their kinds (``field_kind``);
+    ``sources`` holds the outlines of an area to set
+    (``assistant.maps.area_sources``).
 
     Every row number names the row as it was before the call; new rows go
-    after the last one in the order given. An area operation works on the
-    rows the call leaves, so its outline fits beside them. Raises
-    ``InputInvalid`` for a row that does not exist, a row two operations
-    change, ``clear`` beside ``remove`` or ``replace``, a condition the
-    layer's fields do not take, more than ``MAX_ROWS`` rows left where the
-    call grew the filter (a filter stored over the limit can still be
-    shrunk), more than one area operation, and an area that cannot be built
-    (``filter_area.build_area``).
+    after the last one in the order given. The area works on the rows the
+    call leaves, so its outline fits beside them. Raises ``InputInvalid``
+    for a row that does not exist, a row two operations change, ``clear``
+    beside ``remove`` or ``replace``, a condition the layer's fields do not
+    take, more than ``MAX_ROWS`` rows left where the call grew the filter (a
+    filter stored over the limit can still be shrunk), and an area that
+    cannot be built (``filter_area.build_area``).
     """
     stored = read_rows(query, _panel_fields(fields))
     count = len(stored.rows)
     clear = next(
         (n for n, op in enumerate(ops, start=1) if isinstance(op, ClearRows)), None
     )
-    areas = [
-        (n, op)
-        for n, op in enumerate(ops, start=1)
-        if isinstance(op, SetArea | ClearArea)
-    ]
-    if len(areas) > 1:
-        raise _refused(
-            areas[1][0],
-            "a filter operation takes at most one set_area or clear_area.",
-        )
     changed: dict[int, int] = {}
     for number, op in enumerate(ops, start=1):
         if not isinstance(op, ReplaceRow | RemoveRow):
@@ -369,16 +362,15 @@ def apply_filter_ops(
         )
     left = replace(stored, match=match, rows=kept)
     said: list[str] = []
-    for number, op in areas:
-        if isinstance(op, ClearArea):
-            left = replace(left, area=None, area_notes=None)
-            continue
+    if area == "clear":
+        left = replace(left, area=None, area_notes=None)
+    elif area is not None:
         if sources is None:
-            raise ValueError("set_area needs the outlines read before the plan")
+            raise ValueError("an area needs the outlines read before the plan")
         try:
-            built = build_area(op, left, sources)
+            built = build_area(area, left, sources)
         except InputInvalid as exc:
-            raise _refused(number, exc.message) from exc
+            raise InputInvalid(f"{AREA_REFUSED}{exc.message}") from exc
         left = replace(left, area=built.node, area_notes=built.notes)
         said = built.said
     return FilterChange(query=write_rows(left), said=said)

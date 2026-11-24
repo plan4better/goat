@@ -1,5 +1,7 @@
 // The issues a save returns (spec 11) in the panel: which section and row a JSON pointer names (list items by id or
-// index), and the fix operations as edits.
+// index), the fix operations as edits, and the issue in the panel's language.
+import type { TFunction } from "i18next";
+
 import { type Path, getIn, setIn } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -97,4 +99,56 @@ export function applyFix(doc: LayerStyle, fix: NonNullable<StyleIssue["fix"]>): 
     default:
       return doc;
   }
+}
+
+/** The issue codes the panel words itself: `style_editor.issue_<code>`, with `_<case>` where the issue's
+ * `params.case` names one. `needs` are the params the text reads, `count` the one its plural follows. Any other code
+ * or case keeps the server's English message. */
+export const WORDED_ISSUES: Record<string, { needs: readonly string[]; count?: string }> = {
+  classes_merged_not_above_zero: { needs: ["asked"] },
+  classes_merged_one_value: { needs: ["asked"] },
+  classes_merged_repeated_values: { needs: ["asked", "made"], count: "made" },
+  classes_merged_joined: { needs: ["asked", "made"], count: "made" },
+  no_values: { needs: ["field"] },
+  no_values_band: { needs: [] },
+  unknown_field: { needs: ["field"] },
+  too_many_classes: { needs: ["classes", "limit"] },
+  too_many_categories: { needs: ["categories", "limit"] },
+  palette_kind_mismatch_ordered: { needs: ["palette"] },
+  palette_kind_mismatch_qualitative: { needs: ["palette"] },
+  palette_too_short: { needs: ["classes", "colors"] },
+  domain_outside_data: { needs: ["min", "max"] },
+  too_many_features_for_render: { needs: ["limit", "features"] },
+  unknown_category: { needs: ["values", "count"], count: "count" },
+  unknown_category_cell: { needs: ["values"] },
+  unclassified_values: { needs: ["values"] },
+  classes_invalid: { needs: [] },
+  low_opacity: { needs: [] },
+  nothing_drawn: { needs: [] },
+  mixed_icon_kinds: { needs: [] },
+  extrude_drops_pattern: { needs: [] },
+  base_above_height: { needs: [] },
+};
+
+/** A param as a text names it: a list as its items separated by commas. */
+const asText = (value: unknown): unknown => (Array.isArray(value) ? value.map(String).join(", ") : value);
+
+/** An issue in the panel's language, built from its params; the server's message for a code or case the panel does
+ * not word, or when a value its text needs is missing. */
+export function issueText(t: TFunction, issue: StyleIssue): string {
+  const params = issue.params ?? {};
+  const key = typeof params.case === "string" ? `${issue.code}_${params.case}` : issue.code;
+  const worded = Object.prototype.hasOwnProperty.call(WORDED_ISSUES, key) ? WORDED_ISSUES[key] : undefined;
+  if (!worded || worded.needs.some((name) => params[name] === undefined || params[name] === null))
+    return issue.message;
+  const values: Record<string, unknown> = Object.fromEntries(
+    worded.needs.map((name) => [name, asText(params[name])])
+  );
+  if (worded.count) values.count = params[worded.count];
+  // React escapes the text it renders, so field and palette names go in as they are.
+  return t(`style_editor.issue_${key}`, {
+    ...values,
+    defaultValue: issue.message,
+    interpolation: { escapeValue: false },
+  });
 }

@@ -14,6 +14,7 @@ import type {
   PageContext,
   Rating,
 } from "@/lib/assistant/types";
+import { restoredOfReply, styleOf } from "@/lib/assistant/undoReply";
 import { ASSISTANT_BASE_URL } from "@/lib/constants";
 
 export interface TransportOptions {
@@ -225,68 +226,6 @@ const textOf = (value: unknown): string | null => (typeof value === "string" ? v
 const numberOf = (value: unknown): number | null => (typeof value === "number" ? value : null);
 const wholeOf = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) ? value : null;
-
-const restoredOf = (value: unknown): UndoneWorkflow[] =>
-  rows(value).flatMap((row) => {
-    const workflowId = textOf(row.workflow_id);
-    const projectId = textOf(row.project_id);
-    return workflowId && projectId ? [{ workflowId, projectId, revision: numberOf(row.revision) }] : [];
-  });
-
-/** The style a row names, or null when it names none. */
-const styleOf = (row: Row): { projectId: string; layerProjectId: number; styleId: string } | null => {
-  const projectId = textOf(row.project_id);
-  const layerProjectId = wholeOf(row.layer_project_id);
-  const styleId = textOf(row.style_id);
-  return projectId && layerProjectId !== null && styleId ? { projectId, layerProjectId, styleId } : null;
-};
-
-const restoredStylesOf = (value: unknown): UndoneStyle[] =>
-  rows(value).flatMap((row) => {
-    const style = styleOf(row);
-    return style
-      ? [
-          {
-            ...style,
-            revision: numberOf(row.revision),
-            removed: row.removed === true,
-            partial: row.partial === true,
-          },
-        ]
-      : [];
-  });
-
-const restoredMapOf = (value: unknown): UndoneMap | null => {
-  if (!isRow(value)) return null;
-  const projectId = textOf(value.project_id);
-  if (!projectId) return null;
-  const layers = Array.isArray(value.layers)
-    ? value.layers.map(wholeOf).filter((id): id is number => id !== null)
-    : [];
-  return {
-    projectId,
-    layers,
-    tree: value.tree === true,
-    groups: value.groups === true,
-    basemap: value.basemap === true,
-    scene: value.scene === true,
-  };
-};
-
-const textsOf = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-
-const restoredOfReply = (
-  workflows: unknown,
-  styles: unknown,
-  map: unknown,
-  notRestored: unknown
-): Restored => ({
-  workflows: restoredOf(workflows),
-  styles: restoredStylesOf(styles),
-  map: restoredMapOf(map),
-  notRestored: textsOf(notRestored),
-});
 
 const changedOf = (value: unknown): ChangedSince[] =>
   rows(value).flatMap((row) => {

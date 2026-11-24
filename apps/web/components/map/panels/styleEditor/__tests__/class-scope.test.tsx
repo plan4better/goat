@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -7,9 +7,13 @@ import { setIn } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
+import { LayerSection } from "@/components/map/panels/styleEditor/sections/LayerSection";
 import { SymbolSection } from "@/components/map/panels/styleEditor/sections/SymbolSection";
 
 import { openGroup, pickColor, renderPanel } from "./renderPanel";
+
+/** The dot's tooltip, as its label. */
+const DOT = "style_editor.differs_for_some_features";
 
 const classes = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
@@ -48,6 +52,8 @@ function setup(n = 4, fill: object = { color: "#cccccc", opacity: 0.8 }, extra: 
 }
 
 const rowOf = (label: string) => screen.getByText(label).parentElement as HTMLElement;
+/** A group row of the section, also while its editor (titled with the same label) is open. */
+const groupRowOf = (label: string) => screen.getAllByText(label)[0].parentElement as HTMLElement;
 
 describe("class scope", () => {
   it("a scoped color edit writes into the class record", async () => {
@@ -133,7 +139,7 @@ describe("class scope", () => {
     expect(store.get("symbol.fill.opacity")).toEqual(byAttribute);
   });
 
-  it("Reset removes the class key and leaves the part on (spec 3)", async () => {
+  it("Reset of the class's last key in a part that is on removes the emptied part (spec 3)", async () => {
     const { store } = setup();
     act(() => store.setScope({ classify: 0, key: 1 }));
     await openGroup("style_editor.part_fill");
@@ -143,8 +149,215 @@ describe("class scope", () => {
     const menu = screen.getByRole("menu");
     expect(within(menu).queryByText("style_editor.mode_classes")).toBeNull();
     await userEvent.click(within(menu).getByText("style_editor.mode_reset"));
-    expect(store.get("classify.0.classes.1.fill")).toEqual({});
+    expect(store.get("classify.0.classes.1.fill")).toBeUndefined();
     expect(store.get("classify.0.classes.1.id")).toBe("c2");
+    expect(within(groupRowOf("style_editor.part_fill")).queryByLabelText(DOT)).toBeNull();
+  });
+
+  it("Reset keeps the emptied part that switches on, for the class, a part the layer leaves out", async () => {
+    const { store } = setup();
+    act(() =>
+      store.update((doc) =>
+        setIn(setIn(doc, "symbol.outline", undefined), "classify.0.classes.1.outline", { color: "#ff0000" })
+      )
+    );
+    act(() => store.setScope({ classify: 0, key: 1 }));
+    await openGroup("style_editor.part_outline");
+    await userEvent.click(
+      within(rowOf("style_editor.color")).getByRole("button", { name: "style_editor.value_mode_aria" })
+    );
+    await userEvent.click(within(screen.getByRole("menu")).getByText("style_editor.mode_reset"));
+    expect(store.get("classify.0.classes.1.outline")).toEqual({});
+    // The class draws an outline all features do not have.
+    expect(within(groupRowOf("style_editor.part_outline")).getByLabelText(DOT)).toBeDefined();
+  });
+
+  describe("the group row's dot says what differs from all features", () => {
+    const scoped = (path?: string, value?: unknown) => {
+      const { store } = setup();
+      if (path) act(() => store.set(path, value));
+      act(() => store.setScope({ classify: 0, key: 1 }));
+      return store;
+    };
+    const dotOn = (label: string) => within(rowOf(label)).queryByLabelText(DOT);
+
+    it("none for the color the classification gives the class; the Color control keeps its own", async () => {
+      scoped();
+      expect(dotOn("style_editor.part_fill")).toBeNull();
+      expect(dotOn("style_editor.part_outline")).toBeNull();
+      await openGroup("style_editor.part_fill");
+      expect(within(rowOf("style_editor.color")).getByLabelText(DOT)).toBeDefined();
+    });
+
+    it("one for the class's own opacity or pattern beside the color", () => {
+      scoped("classify.0.classes.1.fill.opacity", 0.4);
+      expect(dotOn("style_editor.part_fill")).not.toBeNull();
+      cleanup();
+      scoped("classify.0.classes.1.fill.pattern", "hatch_45");
+      expect(dotOn("style_editor.part_fill")).not.toBeNull();
+    });
+
+    it("none for an empty part object over a part that is on", () => {
+      scoped("classify.0.classes.1.fill", {});
+      expect(dotOn("style_editor.part_fill")).toBeNull();
+      cleanup();
+      scoped("classify.0.classes.1.outline", {});
+      expect(dotOn("style_editor.part_outline")).toBeNull();
+    });
+
+    it("one for a part the class switches off", () => {
+      scoped("classify.0.classes.1.outline", false);
+      expect(dotOn("style_editor.part_outline")).not.toBeNull();
+    });
+
+    it("points: none for the marker color the classification gives, one for any other key of the marker", () => {
+      const { store } = renderPanel(
+        <PopoverProvider>
+          <SymbolSection />
+        </PopoverProvider>,
+        {
+          document: {
+            version: "1.0.0",
+            kind: "vector",
+            symbol: { marker: { color: "#cccccc", size: 8 } },
+            classify: [
+              {
+                id: "kind",
+                field: "kind",
+                method: "categories",
+                classes: [
+                  { id: "a", values: ["a"], marker: { color: "#ff0000" } },
+                  { id: "b", values: ["b"], marker: { color: "#00ff00" } },
+                ],
+              },
+            ],
+          } as unknown as LayerStyle,
+          data: { geometry: "point", fields: [{ name: "kind", type: "string", label: "kind" }] },
+        }
+      );
+      act(() => store.setScope({ classify: 0, key: 0 }));
+      expect(dotOn("style_editor.part_fill")).toBeNull();
+      expect(dotOn("style_editor.part_icon")).toBeNull();
+      act(() => store.set("classify.0.classes.0.marker.min_zoom", 12));
+      expect(dotOn("style_editor.part_fill")).not.toBeNull();
+      expect(dotOn("style_editor.part_icon")).not.toBeNull();
+    });
+
+    it("none for a key set once for the layer that the class holds (spec 6.1)", () => {
+      const store = scoped("symbol.label", { text: "{density}" });
+      act(() => store.set("classify.0.classes.1.label", { priority: 3 }));
+      expect(dotOn("style_editor.part_label")).toBeNull();
+    });
+
+    it("none for keys of a part the layer switches off", () => {
+      const store = scoped("symbol.outline", false);
+      act(() => store.set("classify.0.classes.1.outline", { width: 3 }));
+      expect(dotOn("style_editor.part_outline")).toBeNull();
+    });
+
+    it("one for any key of a rule", () => {
+      const { store } = setup();
+      act(() =>
+        store.set("rules", [{ id: "r1", when: { op: "isNull", args: [{ property: "density" }] }, fill: {} }])
+      );
+      act(() => store.setScope({ rule: "r1", index: 0 }));
+      expect(dotOn("style_editor.part_fill")).toBeNull();
+      act(() => store.set("rules.0.fill.color", "#ff0000"));
+      expect(dotOn("style_editor.part_fill")).not.toBeNull();
+    });
+  });
+
+  describe("a row at All features follows the class records' values at its key", () => {
+    const opacityShowsValue = () =>
+      within(rowOf("style_editor.opacity")).queryByRole("textbox") as HTMLInputElement | null;
+
+    it("after Fixed on the row", async () => {
+      const { store } = setup();
+      act(() => store.set("classify.0.classes.1.fill.opacity", 0.4));
+      await openGroup("style_editor.part_fill");
+      expect(opacityShowsValue()).toBeNull();
+      await pickMode("style_editor.opacity", "style_editor.mode_fixed");
+      expect(store.get("classify.0.classes.1.fill.opacity")).toBeUndefined();
+      expect(opacityShowsValue()?.value).toBe("80");
+    });
+
+    it("after a change from outside the row", async () => {
+      const { store } = setup();
+      await openGroup("style_editor.part_fill");
+      expect(opacityShowsValue()?.value).toBe("80");
+      act(() => store.set("classify.0.classes.1.fill.opacity", 0.4));
+      expect(opacityShowsValue()).toBeNull();
+      act(() => store.undo());
+      expect(opacityShowsValue()?.value).toBe("80");
+    });
+
+    it("the Fill editor's Pattern row too", async () => {
+      const { store } = setup();
+      await openGroup("style_editor.part_fill");
+      const pattern = () => rowOf("style_editor.pattern").textContent;
+      const before = pattern();
+      act(() => store.set("classify.0.classes.1.fill.pattern", "hatch_45"));
+      expect(pattern()).not.toBe(before);
+      expect(pattern()).toContain("style_editor.by_field");
+      act(() => store.undo());
+      expect(pattern()).toBe(before);
+    });
+
+    it("the group row too, for a key of its part", () => {
+      const { store } = setup();
+      act(() =>
+        store.set("classify", [
+          {
+            id: "width",
+            field: "density",
+            method: "manual",
+            target: "outline.width",
+            classes: [
+              { id: "a", to: 10, outline: { width: 1 } },
+              { id: "b", from: 10, outline: { width: 2 } },
+            ],
+          },
+        ])
+      );
+      const fill = () => rowOf("style_editor.part_fill").textContent;
+      expect(fill()).toContain("80%");
+      act(() => store.set("classify.0.classes.1.fill", { opacity: 0.4 }));
+      expect(fill()).not.toContain("80%");
+    });
+  });
+
+  describe("the Layer section says it is layer wide while a class or a rule is scoped", () => {
+    const NOTE = "style_editor.section_layer_scope_note";
+    const renderBoth = () =>
+      renderPanel(
+        <PopoverProvider>
+          <LayerSection />
+          <SymbolSection />
+        </PopoverProvider>,
+        {
+          document: {
+            version: "1.0.0",
+            kind: "vector",
+            symbol: { fill: { color: "#cccccc" } },
+            classify: [
+              { id: "density", field: "density", method: "quantile", count: 4, classes: classes(4) },
+            ],
+            rules: [{ id: "r1", when: { op: "isNull", args: [{ property: "density" }] } }],
+          } as unknown as LayerStyle,
+          data: { geometry: "polygon", fields: [{ name: "density", type: "number", label: "density" }] },
+        }
+      ).store;
+
+    it("in class and rule scope, not at All features", () => {
+      const store = renderBoth();
+      expect(screen.queryByText(NOTE)).toBeNull();
+      act(() => store.setScope({ classify: 0, key: 1 }));
+      expect(screen.getByText(NOTE)).toBeDefined();
+      act(() => store.setScope({ rule: "r1", index: 0 }));
+      expect(screen.getByText(NOTE)).toBeDefined();
+      act(() => store.setScope(null));
+      expect(screen.queryByText(NOTE)).toBeNull();
+    });
   });
 
   it("in scope a Visible row gives the class its own zoom range (spec 5.5)", () => {
@@ -223,13 +436,14 @@ describe("class scope", () => {
     expect(store.get("classify.0.classes.0.outline")).toEqual({ width: 3 });
   });
 
-  it("the row of a part off for the layer reads Off for all; a part never turned on reads None", () => {
+  it("the row of a part off for the layer reads None for all features and Off for all in a class", () => {
     const { store } = setup();
     act(() => store.set("symbol.outline", false));
+    expect(within(rowOf("style_editor.part_outline")).getByText("style_editor.none")).toBeDefined();
     expect(
-      within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
-    ).toBeDefined();
-    // In class scope too: the class cannot draw it.
+      within(rowOf("style_editor.part_outline")).queryByText("style_editor.part_off_for_all")
+    ).toBeNull();
+    // In class scope: the class cannot draw it.
     act(() => store.setScope({ classify: 0, key: 0 }));
     expect(
       within(rowOf("style_editor.part_outline")).getByText("style_editor.part_off_for_all")

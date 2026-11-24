@@ -4,7 +4,10 @@ proves that its task can be passed and that the checks read the places the
 answer writes (``test_eval_map.test_every_task_expectation_is_reachable``).
 
 An answer's Undo is written out as the writes that restore the state before
-(``Answer.undo``)."""
+(``Answer.undo``). A task of several messages (``conversation``) is answered
+by a script instead (``Answer.script``): the calls and answer of each run,
+played through the harness and the real tools by a scripted model
+(``played``)."""
 
 import copy
 import json
@@ -23,8 +26,10 @@ from goatlib.filter.areas import (
 )
 from goatlib.filter.rows import Rows, read_rows, write_rows
 
-from evals.backends import AREA_REGIONS, _geometry
-from evals.harness import ToolCall, Transcript, map_states
+from assistant.config import AssistantSettings
+from assistant.tools.testing import TurnModel
+from evals.backends import AREA_REGIONS, Backends, _geometry
+from evals.harness import ToolCall, Transcript, map_states, run_task
 from evals.map_backends import MapState, map_core
 from evals.map_fixture import (
     LAND_USE_QUERY,
@@ -129,6 +134,9 @@ class Api:
 
 
 Step = Callable[[Api], Any]
+#: The calls and the answer of each run of a conversation, in order: a turn
+#: whose card the eval user answers has two runs.
+Script = list[tuple[list[tuple[str, dict[str, Any]]], str]]
 
 
 @dataclass
@@ -143,6 +151,9 @@ class Answer:
     #: The workflows core saved in the answer.
     saved: list[dict[str, Any]] = field(default_factory=list)
     answer: str = "Done: the map shows it now."
+    #: For a task of several messages, the scripted runs instead of the
+    #: fields above.
+    script: Script | None = None
 
 
 def _call(name: str, result: Any = None) -> ToolCall:
@@ -413,6 +424,121 @@ _ICON_CLASSES: list[dict[str, Any]] = [
 def _without_area(api: Api) -> None:
     stored = read_rows(api.state.layers[34]["query"], None)
     api.put_layer(34, query=write_rows(Rows(stored.match, stored.rows)))
+
+
+_STYLE_SKILL = ("skills_load", {"name": "style-a-map"})
+#: The three messages on the points of interest: classes by category, a
+#: popup of two fields, markers that grow with the zoom from zoom 12.
+_STYLING: Script = [
+    (
+        [
+            _STYLE_SKILL,
+            (
+                "style_update",
+                {
+                    "layer_project_id": 32,
+                    "operations": [
+                        {
+                            "op": "set",
+                            "path": "/classify",
+                            "value": [
+                                {
+                                    "field": "category",
+                                    "method": "categories",
+                                    "count": 5,
+                                    "palette": "colorbrewer:Set2",
+                                    "other": {
+                                        "name": "Other",
+                                        "marker": {"color": "#bdbdbd"},
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                },
+            ),
+        ],
+        "The points of interest are colored by their five most common categories, "
+        "the rest in grey.",
+    ),
+    (
+        [
+            (
+                "style_update",
+                {
+                    "layer_project_id": 32,
+                    "operations": [
+                        {
+                            "op": "set",
+                            "path": "/popup",
+                            "value": {
+                                "blocks": [
+                                    {
+                                        "type": "field_list",
+                                        "attributes": [
+                                            {"field": "name", "label": "Name"},
+                                            {
+                                                "field": "opening_year",
+                                                "label": "Opening year",
+                                            },
+                                        ],
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                },
+            )
+        ],
+        "A click on a point of interest shows its name and opening year.",
+    ),
+    (
+        [
+            (
+                "style_update",
+                {
+                    "layer_project_id": 32,
+                    "operations": [
+                        {
+                            "op": "set",
+                            "path": "/symbol/marker/size",
+                            "value": {"zoom": [[12, 6], [16, 14]]},
+                        },
+                        {"op": "set", "path": "/min_zoom", "value": 12},
+                    ],
+                },
+            )
+        ],
+        "The markers grow from zoom 12 on, where they start to show.",
+    ),
+]
+_REMOVE_BOUNDARIES = (
+    "map_update",
+    {"operations": [{"op": "remove_layer", "layer_project_id": 39}]},
+)
+_REMOVE_CARD = (
+    "ask_user",
+    {
+        "questions": [
+            {
+                "question": "Remove the layer Old boundaries from the project?",
+                "header": "Remove",
+                "options": [
+                    {"label": "Remove it", "value": "remove_layer:39"},
+                    {"label": "Keep it"},
+                ],
+            }
+        ]
+    },
+)
+
+
+async def played(
+    task: EvalTask, script: Script, backends: Backends, settings: AssistantSettings
+) -> Transcript:
+    """The transcript of the task answered by ``script`` through the harness
+    and the real tools."""
+    return await run_task(task, TurnModel(script).model, backends, settings)
 
 
 ANSWERS: dict[str, Answer] = {
@@ -923,12 +1049,75 @@ ANSWERS: dict[str, Answer] = {
         answer="The five most common kinds have their own icon on a colored "
         "circle; all other kinds show a grey marker icon.",
     ),
+    "map-48": Answer(script=_STYLING),
+    "map-49": Answer(script=_STYLING),
+    "map-50": Answer(
+        script=[
+            (
+                [
+                    _STYLE_SKILL,
+                    (
+                        "style_update",
+                        {
+                            "layer_project_id": 31,
+                            "operations": [
+                                {
+                                    "op": "set",
+                                    "path": "/symbol/fill/opacity",
+                                    "value": 0.5,
+                                }
+                            ],
+                        },
+                    ),
+                ],
+                "The districts are half transparent now.",
+            ),
+            (
+                [
+                    ("catalog_find_region", {"name": "Auental"}),
+                    (
+                        "map_update",
+                        {
+                            "operations": [
+                                {
+                                    "op": "filter",
+                                    "layer_project_id": 32,
+                                    "area": {"regions": ["DEZ01"]},
+                                }
+                            ]
+                        },
+                    ),
+                ],
+                "The points of interest now show only those in Auental.",
+            ),
+            (
+                [("undo_changes", {})],
+                "I took back the area limit: the points of interest show "
+                "everywhere again, and the districts stay half transparent.",
+            ),
+        ]
+    ),
+    "map-51": Answer(
+        script=[
+            (
+                [_REMOVE_BOUNDARIES, _REMOVE_CARD],
+                "A removed layer cannot be brought back.",
+            ),
+            ([], "I kept the layer Old boundaries."),
+            (
+                [_REMOVE_BOUNDARIES, _REMOVE_CARD],
+                "Please confirm once more: a removed layer cannot be brought back.",
+            ),
+            ([_REMOVE_BOUNDARIES], "The layer Old boundaries is removed."),
+        ]
+    ),
 }
 
 
 def applied(task: EvalTask, answer: Answer) -> Transcript:
     """The transcript of a run that wrote what ``answer`` writes, with the
     snapshots the harness takes."""
+    assert answer.script is None, "a scripted answer is played"
     states, state = map_states(task)
     assert state is not None
     api = Api(state, str(task.context["project_id"]))

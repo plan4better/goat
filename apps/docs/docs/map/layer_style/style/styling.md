@@ -46,7 +46,7 @@ The sections of a vector layer, from top to bottom:
 
 **How a value is set.** To the right of many rows sits a small button with an icon and an arrow. It shows how the value is set and lets you change that: <code>Fixed</code> (one value everywhere), <code>By zoom</code>, <code>By attribute</code>, <code>Field values</code> or <code>By classes</code>. The menu lists only what the property allows. See [Attribute-based styling](./attribute_based_styling.md).
 
-**Switching parts on and off.** Parts you can do without, such as <code>Outline</code>, <code>Casing</code>, <code>Arrows</code>, <code>Label</code> or <code>Icon</code>, have a switch in the header of their editor. A part such as <code>Outline</code>, <code>Casing</code>, <code>Arrows</code>, <code>Label</code> or <code>Marker</code> switched off there shows <code>Off for all</code> in its row; one that was never on shows <code>None</code>. The <code>Icon</code> switch and the points' <code>Fill</code> switch change the marker instead, and their rows show <code>None</code>. Switching it on again brings back its last settings.
+**Switching parts on and off.** Parts you can do without, such as <code>Outline</code>, <code>Casing</code>, <code>Arrows</code>, <code>Label</code> or <code>Icon</code>, have a switch in the header of their editor. A part that is off shows <code>None</code> in its row. The <code>Icon</code> switch and the points' <code>Fill</code> switch change the marker instead, and their rows show <code>None</code> too. Switching it on again brings back its last settings.
 
 **Back to the dataset's style.** While a part differs from the dataset's default style, its editor header shows the button <code>Reset to the dataset's style</code> (a circular arrow). It puts that part back as the dataset's style has it, classes included. <code>Undo</code> takes it back.
 
@@ -78,7 +78,7 @@ The <code>Marker</code> row of polygons and lines is off until you turn it on wi
 
 - The marker draws above the polygon or the line and below the labels. A polygon's label and a line's label at its middle take the label positions around the marker, as on points: <code>Automatic</code> moves them beside it, a fixed side keeps them on that side, <code>In the middle</code> puts them on it. See [Labels](../labels.md#position).
 - The marker has no outline: the <code>Outline</code> of a polygon is its border.
-- To show a marker on some features only, for example an icon on parks, select their class with the class picker at the top of the section and turn <code>Marker</code> on for it. If you turned the marker on and off again for all features, its row reads <code>Off for all</code> and stays off in every class; the class editor then offers <code>Allow per class</code>, which keeps the marker off for all features but lets classes turn it on. A marker never turned on reads <code>None</code> and needs no such step.
+- To show a marker on some features only, for example an icon on parks, select their class with the class picker at the top of the section and turn <code>Marker</code> on for it. If you turned the marker on and off again for all features, it stays off in every class, and its row reads <code>Off for all</code> while a class is selected; the class editor then offers <code>Allow per class</code>, which keeps the marker off for all features but lets classes turn it on. A marker never turned on needs no such step.
 - In the legend, the swatch shows the polygon or the line with its marker. Markers whose size changes show on their own, as for points.
 
 ## Points

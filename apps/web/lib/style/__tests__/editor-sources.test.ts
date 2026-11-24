@@ -22,8 +22,10 @@ import {
   partSetter,
   partState,
   perLayerPath,
+  recordValuesAt,
   rowsOpening,
 } from "@/lib/style/editor/sources";
+import { summarize } from "@/lib/style/editor/summaries";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 const doc = (extra: object) =>
@@ -627,5 +629,165 @@ describe("minor writes and reads from the second review", () => {
         language: "en",
       })
     ).toContain("style_editor.ts_line_height");
+  });
+});
+
+describe("follow-ups: Fixed and the rows agree for rarer documents", () => {
+  const fixedOn = (d: LayerStyle, path: string, geometry: "point" | "line" | "polygon") =>
+    switchMode(d, path, "fixed", { mapZoom: 12, geometry });
+
+  it("a class's font style beside another classification of the font weight: removed", () => {
+    const d = doc({
+      symbol: { fill: { color: "#cccccc" }, label: { text: "{kind}" } },
+      classify: [
+        {
+          id: "k",
+          field: "kind",
+          method: "categories",
+          classes: [
+            { id: "a", values: ["park"], fill: { color: "#00ff00" }, label: { font: { style: "italic" } } },
+          ],
+        },
+        {
+          id: "w",
+          field: "pop",
+          method: "manual",
+          target: "label.font.weight",
+          classes: [{ id: "w1", to: 10, label: { font: { weight: "bold" } } }],
+        },
+      ],
+    });
+    expect(
+      (classifyOf(fixedOn(d, "symbol.fill.color", "polygon")) as Array<{ id: string }>).map((c) => c.id)
+    ).toEqual(["w"]);
+  });
+
+  it("a class arrows color beside an arrows icon a class holds that keeps its colors: removed", () => {
+    const d = doc({
+      symbol: { line: { color: "#333333" }, arrows: {} },
+      classify: [
+        {
+          id: "k",
+          field: "kind",
+          method: "categories",
+          classes: [
+            {
+              id: "a",
+              values: ["park"],
+              line: { color: "#00ff00" },
+              arrows: { icon: "emoji:0023-fe0f-20e3", color: "#ff0000" },
+            },
+          ],
+        },
+      ],
+    });
+    expect(classifyOf(fixedOn(d, "symbol.line.color", "line"))).toBeUndefined();
+  });
+
+  it("classes still to come with another key in No data: removed, the color reads Fixed", () => {
+    const d = doc({
+      symbol: { fill: { color: "#cccccc" }, outline: { width: 1 } },
+      classify: [
+        {
+          id: "q",
+          field: "pop",
+          method: "quantile",
+          count: 5,
+          classes: [],
+          no_data: { fill: { color: "#999999" }, outline: { width: 3 } },
+        },
+      ],
+    });
+    const after = fixedOn(d, "symbol.fill.color", "polygon");
+    expect(classifyOf(after)).toBeUndefined();
+    expect(modeOf(after, "symbol.fill.color", "polygon")).toBe("fixed");
+  });
+});
+
+describe("follow-ups: rule scope with isNull follows the cascade", () => {
+  const t = ((key: string) => key) as never;
+  const ctx = { fields: [], mapZoom: 12, geometry: "polygon" as const, language: "en" };
+  const POP = {
+    id: "p",
+    field: "pop",
+    method: "manual",
+    classes: [{ id: "p1", to: 10, fill: { color: "#111111" } }],
+    no_data: { fill: { color: "#999999" } },
+  };
+  const KIND = {
+    id: "k",
+    field: "kind",
+    method: "categories",
+    classes: [{ id: "k1", values: ["park"], fill: { color: "#00ff00" } }],
+    no_data: { fill: { color: "#888888" } },
+  };
+  const isNullKind = { op: "isNull", args: [{ property: "kind" }] };
+  const scoped = (classify: object[], when: object) =>
+    summarize(
+      doc({
+        symbol: { fill: { color: "#cccccc" } },
+        classify,
+        rules: [{ id: "r", when, outline: { width: 2 } }],
+      }),
+      "symbol.fill.color",
+      t,
+      { ...ctx, scope: { rule: "r", index: 0 } }
+    );
+
+  it("a later field's No data draws over earlier classifications", () => {
+    expect(scoped([POP, KIND], isNullKind)).toBe("#888888 · 100%");
+    expect(scoped([KIND, POP], isNullKind)).toBe("style_editor.by_field");
+  });
+
+  it("isNull inside an and is followed", () => {
+    expect(
+      scoped([POP, KIND], { op: "and", args: [isNullKind, { op: ">", args: [{ property: "pop" }, 1] }] })
+    ).toBe("#888888 · 100%");
+  });
+});
+
+describe("follow-ups: then by a later classification without target still to come", () => {
+  it("counts it for the main color", () => {
+    const d = doc({
+      symbol: { marker: { color: "#cccccc", size: 8 } },
+      classify: [
+        {
+          id: "p",
+          field: "pop",
+          method: "manual",
+          target: "marker.size",
+          classes: [{ id: "p1", to: 10, marker: { size: 4, color: "#123456" } }],
+        },
+        { id: "k", field: "kind", method: "categories", count: 5, classes: [] },
+      ],
+    });
+    expect((laterSetter(d, { classify: 0, key: 0 }, "marker.color") as { id: string }).id).toBe("k");
+  });
+});
+
+describe("the records' values at a key", () => {
+  const d = doc({
+    symbol: { fill: { opacity: 0.8 } },
+    classify: [
+      {
+        id: "a",
+        field: "kind",
+        classes: [{ fill: { color: "#f00" } }, { fill: { opacity: 0.4 } }],
+        other: { fill: {} },
+      },
+    ],
+    rules: [{ id: "r", when: {}, fill: { opacity: 0.1 } }],
+  });
+
+  it("lists classes, Other, No data and rules in cascade order, the same string while nothing changed", () => {
+    expect(recordValuesAt(d, ["fill.opacity"])).toBe("[[null],[0.4],[null],[0.1]]");
+    expect(recordValuesAt(d, ["fill.opacity"])).toBe(recordValuesAt(structuredClone(d), ["fill.opacity"]));
+  });
+
+  it("changes when a record's value at the key changes, not for another key", () => {
+    const other = doc({ ...d, rules: [{ id: "r", when: {}, fill: { opacity: 0.1, color: "#000" } }] });
+    expect(recordValuesAt(other, ["fill.opacity"])).toBe(recordValuesAt(d, ["fill.opacity"]));
+    const changed = doc({ ...d, rules: [{ id: "r", when: {}, fill: { opacity: 0.2 } }] });
+    expect(recordValuesAt(changed, ["fill.opacity"])).not.toBe(recordValuesAt(d, ["fill.opacity"]));
   });
 });

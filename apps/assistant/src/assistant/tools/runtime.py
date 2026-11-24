@@ -245,7 +245,8 @@ class ToolSpec(Generic[In, Out]):
     #: creates something new, or changes what exists in a way the user takes
     #: back with the dock's undo (a workflow edit, a style change, a change
     #: of the map); a workflow run replaces the workflow's previous results,
-    #: which no undo brings back.
+    #: which no undo brings back, and ``undo_changes`` runs that undo itself,
+    #: which nothing takes back.
     risk: Risk = "read"
     #: Published over MCP (spec §9.1).
     mcp: bool = False

@@ -29,30 +29,32 @@ export function OffsetRows({ base, rangeKey }: { base: Path; rangeKey: string })
   const scope = useScope();
   const fieldLabel = (name: string) => fields.find((f) => f.name === name)?.label ?? name;
   const { value: offset, writePath: path } = useScoped(`${base}.offset`);
-  // How the offset varies as the scoped features draw it: by zoom (its stops) or by a classification's field.
+  // How the offset varies as the scoped features draw it: the value's own stops by zoom, and the field of a
+  // classification whose classes have offsets of their own ("<stops>|<field>", empty parts for neither).
   const varies = useStyleSelector((doc) => {
     const at = `${base}.offset`;
     const { doc: shown } = summaryView(doc, scope, at);
-    const mode = modeOf(shown, at, geometry);
-    if (mode === "zoom") {
-      const value = getIn(shown, at);
-      return `zoom:${isObject(value) && Array.isArray(value.zoom) ? value.zoom.length : 0}`;
-    }
-    if (mode === "classes") return `classes:${String(classificationFor(shown, keyOf(at), geometry)?.field)}`;
-    return "";
+    const value = getIn(shown, at);
+    const stops = isObject(value) && Array.isArray(value.zoom) ? value.zoom.length : 0;
+    const field =
+      modeOf(shown, at, geometry) === "classes"
+        ? String(classificationFor(shown, keyOf(at), geometry)?.field)
+        : "";
+    return stops || field ? `${stops}|${field}` : "";
   });
-  if (varies.startsWith("zoom:"))
+  const [stops, classesField] = varies ? varies.split("|") : ["0", ""];
+  const note = classesField
+    ? t("style_editor.offset_classes_note", { field: fieldLabel(classesField), ...PLAIN })
+    : undefined;
+  if (Number(stops) > 0)
     return (
-      <Row label={t("style_editor.offset")}>
+      <Row label={t("style_editor.offset")} note={note}>
         <Typography variant="body2" noWrap>
-          {t("style_editor.by_zoom_stops", { count: Number(varies.slice("zoom:".length)) })}
+          {t("style_editor.by_zoom_stops", { count: Number(stops) })}
         </Typography>
       </Row>
     );
   if (offset !== undefined && !Array.isArray(offset)) return null;
-  const note = varies.startsWith("classes:")
-    ? t("style_editor.offset_classes_note", { field: fieldLabel(varies.slice("classes:".length)), ...PLAIN })
-    : undefined;
   const [x, y] = (Array.isArray(offset) ? offset : [0, 0]) as [number, number];
   const range = SLIDERS[rangeKey] ?? { min: -20, max: 20, step: 1, unit: "px" };
   const write = (next: [number, number]) =>

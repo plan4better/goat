@@ -444,7 +444,9 @@ def _document_of(size: int) -> dict[str, Any]:
     return doc
 
 
-def _post_signed_in(document: dict[str, Any]) -> tuple[Any, list, list]:
+def _post_signed_in(
+    document: dict[str, Any], query: str = ""
+) -> tuple[Any, list, list]:
     """The route's answer for a signed-in caller, the access checks it asked for
     and the checks it ran."""
     from processes.deps.auth import get_optional_user_id
@@ -472,7 +474,7 @@ def _post_signed_in(document: dict[str, Any]) -> tuple[Any, list, list]:
             patch.object(router.analytics_service, "style_check", style_check),
         ):
             response = TestClient(app).post(
-                "/processes/style-check/execution",
+                f"/processes/style-check/execution{query}",
                 json={"inputs": {"collection": LAYER, "document": document}},
             )
     finally:
@@ -512,3 +514,38 @@ def test_a_document_over_the_size_limit_without_a_token_is_still_401() -> None:
         },
     )
     assert response.status_code == 401
+
+
+def test_issues_carry_params_only_for_a_caller_that_asks(catalog_layer) -> None:
+    """A core that does not know `params` reads every issue with a strict model:
+    it gets them without, as before; one that asks gets them."""
+    doc = {**QUANTILE_DOC, "classify": [{**QUANTILE_DOC["classify"][0], "count": 8}]}
+    plain = check(catalog_layer, doc)
+    assert "too_many_classes" in {i["code"] for i in plain["issues"]}
+    assert all("params" not in i for i in plain["issues"])
+    asked = catalog_layer.style_check(
+        collection=LAYER,
+        document=doc,
+        geometry="polygon",
+        fingerprint="ducklake:3",
+        issue_params=True,
+    )
+    [many] = [i for i in asked["issues"] if i["code"] == "too_many_classes"]
+    assert many["params"] == {"classes": 8, "limit": 7}
+
+
+def test_the_route_asks_for_params_with_a_query_parameter() -> None:
+    response, _, checked = _post_signed_in(QUANTILE_DOC, "?issue_params=true")
+    assert response.status_code == 200, response.text
+    assert checked[0]["issue_params"] is True
+    response, _, checked = _post_signed_in(QUANTILE_DOC)
+    assert response.status_code == 200, response.text
+    assert checked[0]["issue_params"] is False
+
+
+def test_a_query_parameter_the_route_does_not_know_is_ignored() -> None:
+    """Why the ask is a query parameter: a processes from before it answers as
+    usual instead of refusing (the inputs model forbids unknown inputs)."""
+    response, _, checked = _post_signed_in(QUANTILE_DOC, "?a_later_ask=true")
+    assert response.status_code == 200, response.text
+    assert len(checked) == 1

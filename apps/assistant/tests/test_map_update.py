@@ -2751,10 +2751,10 @@ async def test_plan_decides_everything_and_apply_only_sends() -> None:
 # ---- the registry, repeats and what a change makes stale -------------------------
 
 
-def test_map_propose_view_is_gone_and_the_map_page_has_forty_tools() -> None:
+def test_map_propose_view_is_gone_and_the_map_page_has_forty_one_tools() -> None:
     assert "map_propose_view" not in BY_WIRE_NAME
     assert BY_WIRE_NAME["map_update"] is MAP_UPDATE
-    assert len(tools_for("project.map")) == 40
+    assert len(tools_for("project.map")) == 41
     assert MAP_UPDATE.name == "map.update"
     assert (MAP_UPDATE.risk, MAP_UPDATE.scope) == ("write", "goat:write")
     assert MAP_UPDATE.surfaces == MAP_SURFACES == frozenset({"project.map"})

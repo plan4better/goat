@@ -33,7 +33,7 @@ from goatlib.style.data_check import referenced_fields
 from goatlib.style.defaults import default_style
 from goatlib.style.fingerprint import fingerprint, is_stale, layer_fingerprint
 from goatlib.style.ids import assign_ids, existing_ids
-from goatlib.style.issues import Issue
+from goatlib.style.issues import Issue, read_issue
 from goatlib.style.map_rows import MAX_DOCUMENT_BYTES, MAX_STYLES, json_bytes
 from goatlib.style.merge import apply, diff, keep_current_where_errors
 from goatlib.style.migrate import context_for, migrate_style
@@ -255,9 +255,7 @@ async def check_document(
             compute=compute,
             stored=False,
         )
-        return result["document"], [
-            Issue.model_validate(i) for i in result.get("issues", [])
-        ]
+        return result["document"], [read_issue(i) for i in result.get("issues", [])]
     return document, await run_in_threadpool(validate, document, ctx)
 
 
@@ -362,7 +360,7 @@ async def read_style(
         )
     except StyleCheckUnavailable:
         return stored.read(document, stale=stale)
-    issues = [Issue.model_validate(i) for i in result.get("issues", [])]
+    issues = [read_issue(i) for i in result.get("issues", [])]
     if not refresh:
         return stored.read(document, issues)
     recomputed, still_stale, equal, stamps_only = await run_in_threadpool(

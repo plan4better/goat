@@ -603,7 +603,7 @@ def test_the_map_examples_cover_what_the_section_teaches() -> None:
         row["do"]
         for operation in operations
         if operation["op"] == "filter"
-        for row in operation["rows"]
+        for row in operation.get("rows", [])
     }
     assert {"add", "replace", "remove"} <= row_operations
     # The view: a layer fitted, and the tilt that shows heights.
@@ -860,21 +860,31 @@ def test_filters_are_changed_row_by_row_and_read_again() -> None:
 
 def test_areas_come_from_regions_layers_or_the_view_never_coordinates() -> None:
     section = _plain(_section("Changing the map"))
-    for word in ("set_area", "regions", "features_of", "view", "outside", "add"):
+    for word in ("area", "rows", "regions", "features_of", "view", "outside", "add"):
         assert word in section, word
+    assert "set_area" not in section and "clear_area" not in section
     assert "catalog_find_region first" in section
     assert "Never guess coordinates" in section
     assert "a shape is the user's to draw" in section
-    assert "clear_area removes the area, clear keeps it" in section
+    assert '"area": "clear" removes the area, the row clear keeps it' in section
     areas = [
-        row
+        operation["area"]
+        for example in _calls("map_update")
+        for operation in example.call["operations"]
+        if operation["op"] == "filter" and isinstance(operation.get("area"), dict)
+    ]
+    assert {key for area in areas for key in area} >= {
+        "regions",
+        "features_of",
+        "view",
+    }
+    # One example sets rows and an area in one filter operation.
+    assert any(
+        operation.get("rows") and operation.get("area")
         for example in _calls("map_update")
         for operation in example.call["operations"]
         if operation["op"] == "filter"
-        for row in operation["rows"]
-        if row["do"] == "set_area"
-    ]
-    assert {key for row in areas for key in row} >= {"regions", "features_of", "view"}
+    )
 
 
 def test_the_view_is_the_users_own_and_never_a_substitute() -> None:

@@ -34,6 +34,7 @@ import { useAutoTilt } from "@/hooks/map/useAutoTilt";
 import {
   useEditor,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -47,10 +48,10 @@ import {
 import {
   HeaderSwitch,
   PartZooms,
-  SetByRow,
   allowPerClass,
   togglePart,
 } from "@/components/map/panels/styleEditor/editors/PartEditor";
+import { SetByRow } from "@/components/map/panels/styleEditor/editors/SetByRow";
 import { ZoomEditor } from "@/components/map/panels/styleEditor/editors/ZoomEditor";
 import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
@@ -122,6 +123,8 @@ function ExtrudeValueRow({ prop, on }: { prop: "height" | "base"; on: boolean })
   const key = `extrude.${prop}`;
   const { value, writePath, scoped, overridden } = useScoped(path);
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // A class or rule record that sets the value makes it read by classes.
+  useRecordValuesAt(path);
   // A height read from a field says its unit.
   useStyleSelector((doc) => String(getIn(doc, unitPath(doc))));
   const label = t(prop === "height" ? "style_editor.height" : "style_editor.base_height");
@@ -466,6 +469,7 @@ export const HeightRow = memo(function HeightRow() {
   const { value: height, overridden, scoped, writePath } = useScoped(`${PART}.height`);
   useStyleSelector((doc) => String(getIn(doc, unitPath(doc))));
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  useRecordValuesAt(`${PART}.height`);
   const { mode, show3d } = useAutoTilt(data.layerId);
   const label = t("style_editor.height");
   // In class scope a class's own value is the class's, whatever the layer's height is.

@@ -40,7 +40,7 @@ def test_names_are_unique_namespaced_and_sorted() -> None:
     assert names == sorted(names) and len(set(names)) == len(names)
     for spec in ALL_TOOLS:
         assert re.fullmatch(
-            r"(core|catalog|project|map|style|ask|skills|docs|workflow)\.[a-z_]+",
+            r"(core|catalog|project|map|style|ask|skills|docs|workflow|undo)\.[a-z_]+",
             spec.name,
         )
         assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", spec.wire_name)
@@ -105,6 +105,9 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "workflow_tools",
         "workflow_update",
     }
+    # The pages whose answers' changes the dock's undo takes back take them
+    # back on a typed request too.
+    undo = {"undo_changes"}
     # Decision T16: Home reads other projects (with an explicit project_id).
     # Only the map page changes the map and reads, looks up and changes styles.
     expected = {
@@ -114,8 +117,9 @@ def test_packs_per_surface_follow_the_spec() -> None:
         | catalog
         | project_read
         | {"map_update", "style_catalog", "style_get", "style_update"}
-        | workflows,
-        "project.workflows": core | catalog | project_read | workflows,
+        | workflows
+        | undo,
+        "project.workflows": core | catalog | project_read | workflows | undo,
         "project.layouts": core | catalog | project_read,
         "project.dashboard": core | catalog | project_read,
     }
@@ -126,9 +130,10 @@ def test_packs_per_surface_follow_the_spec() -> None:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
         # carry the workflows pack (with runs, edits and both add tools), the
         # card, the skills and the user docs, and the map its style and map
-        # tools, at most 40 on the map. Raising this again is a decision, not
-        # a fix.
-        assert len(tools_for(surface)) <= 40
+        # tools, at most 41 on the map, counted with the tools a skill brings
+        # (``SKILL_TOOLS``), and 40 elsewhere. Raising this again is a
+        # decision, not a fix.
+        assert len(tools_for(surface)) <= (41 if surface == "project.map" else 40)
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
         )
@@ -146,14 +151,16 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
 
 
 #: The write tools (spec 2026-10-17 §3): they create, run a workflow or change
-#: one, or change a layer's style or the map; none deletes what exists, beyond
-#: a step removed in a workflow edit, a part removed in a style edit and an
-#: empty group removed from the map.
+#: one, change a layer's style or the map, or take an answer's changes back;
+#: none deletes what exists, beyond a step removed in a workflow edit, a part
+#: removed in a style edit, an empty group removed from the map and a style an
+#: answer created that its undo removes.
 WRITE_TOOLS = {
     "map_update",
     "project_add_catalog_layer",
     "project_add_dataset",
     "style_update",
+    "undo_changes",
     "workflow_create",
     "workflow_create_from_template",
     "workflow_run",
@@ -168,6 +175,14 @@ def test_risk_classes() -> None:
         else:
             assert spec.risk == ("propose" if "propose" in spec.name else "read")
             assert spec.scope == "goat:read"
+
+
+def test_the_typed_undo_takes_no_id_from_the_model() -> None:
+    """Which answer goes back follows from the conversation; the one argument
+    is a card value the tool itself named."""
+    schema = BY_WIRE_NAME["undo_changes"].json_schema()
+    assert set(schema["properties"]) == {"confirm"}
+    assert schema.get("required", []) == []
 
 
 def test_write_tools_take_no_project_id() -> None:
@@ -296,6 +311,7 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
         _NO_PROJECT,
         _OPEN_PROJECT,
         _WORKFLOWS_PAGE_LIMITS,
+        MAP_WORKFLOWS,
     )
 
     text = " ".join(
@@ -304,6 +320,7 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
             _DOCUMENT_LIMITS,
             _WORKFLOWS_PAGE_LIMITS,
             _MAP_STYLES,
+            MAP_WORKFLOWS,
             _NO_PROJECT,
             _OPEN_PROJECT,
         )
@@ -311,7 +328,7 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
     # project_id is an argument, not a tool.
     named = set(
         re.findall(
-            r"\b(?:catalog|core|project|workflow|map|style|ask|skills)_[a-z_]+\b",
+            r"\b(?:catalog|core|project|workflow|map|style|ask|skills|undo)_[a-z_]+\b",
             text,
         )
     ) - {"project_id"}

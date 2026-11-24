@@ -3,7 +3,14 @@
 // domain stay pending until the reply brings them (spec 12, 13.1).
 import type { Geometry } from "@/lib/style/compile/types";
 import { categoryText, numberText } from "@/lib/style/editor/categoryText";
-import { MAIN_COLOR, compoundKeys, compoundOf, targetsOf } from "@/lib/style/editor/forms";
+import {
+  MAIN_COLOR,
+  compoundKeys,
+  compoundOf,
+  isPerLayer,
+  partOn,
+  targetsOf,
+} from "@/lib/style/editor/forms";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
 import type { EditorStore, Scope } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
@@ -612,4 +619,58 @@ export function scopedView(doc: LayerStyle, scope: Scope): ScopedView {
     writePath,
     overridden: (path) => path.startsWith("symbol.") && getIn(doc, writePath(path)) !== undefined,
   };
+}
+
+/** The keys a scoped class takes from its classification (its targets, a compound target's keys with it); none for a
+ * rule. */
+function ownTargets(doc: LayerStyle, scope: Scope, geometry?: Geometry): string[] {
+  if ("rule" in scope) return [];
+  const c = getIn(doc, `classify.${scope.classify}`);
+  if (!isObject(c)) return [];
+  return targetsOf(c, geometry).flatMap((target) => {
+    const compound = compoundOf(target);
+    return compound ? compoundKeys(compound) : [target];
+  });
+}
+
+/** Whether `value` at `prefix` sets a key that is not one of `targets` (a target's parent object is looked into) nor
+ * a key the layer sets once (spec 6.1: it holds for all features wherever it is kept). */
+function setsBeyond(value: JsonObject, prefix: string, targets: string[]): boolean {
+  return Object.entries(value).some(([key, inner]) => {
+    const path = `${prefix}.${key}`;
+    if (targets.includes(path) || isPerLayer(path)) return false;
+    if (isObject(inner) && targets.some((t) => t.startsWith(`${path}.`)))
+      return setsBeyond(inner, path, targets);
+    return inner !== undefined;
+  });
+}
+
+/** Whether the scoped class or rule draws `symbol.<part>` otherwise than all features beyond what its classification
+ * gives it: it switches off a part that is on, switches on a part the base leaves out, or sets a key of the part other
+ * than its classification's targets and the keys the layer sets once. An empty object over a part that is on changes
+ * nothing, and a part the base switches off stays off whatever the record keeps of it (spec 3). */
+export function partDiffers(doc: LayerStyle, scope: Scope, part: string, geometry: Geometry): boolean {
+  const own = getIn(doc, `${recordPathOf(scope)}.${part}`);
+  const base = getIn(doc, `symbol.${part}`);
+  if (base === false) return false;
+  const on = partOn(base, part, geometry);
+  if (own === false) return on;
+  if (!isObject(own)) return false;
+  if (!on) return true;
+  return setsBeyond(own, part, ownTargets(doc, scope, geometry));
+}
+
+/** The document with the scoped record's `part` removed once a reset left it an empty object over a part that is on,
+ * where it changes nothing (spec 3). An empty part over a part the base leaves out or switches off stays: it switches
+ * the part on for the record, now or once the layer allows it. */
+export function withoutEmptyPart(
+  doc: LayerStyle,
+  record: Path,
+  part: string,
+  geometry: Geometry
+): LayerStyle {
+  const path = `${record}.${part}`;
+  const own = getIn(doc, path);
+  if (!isObject(own) || Object.keys(own).length > 0) return doc;
+  return partOn(getIn(doc, `symbol.${part}`), part, geometry) ? setIn(doc, path, undefined) : doc;
 }

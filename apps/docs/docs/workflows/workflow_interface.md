@@ -301,8 +301,8 @@ You can also ask the assistant to change a workflow of the open project, for exa
 - The assistant reads the workflow first and changes only what you asked for: steps, settings, connections and text cards. It never deletes a workflow.
 - It checks the changed workflow with the same check as the editor and doesn't save a change that adds an error. Its answer says what it changed.
 - If the workflow is open in the editor, the canvas shows the change at once. `Ctrl+Z` (`⌘+Z` on macOS) in the canvas takes the change back as one step.
-- An answer that changed a workflow shows <code>Undo</code> below it; on older answers, point at the answer to see it. Click it to take back all the changes of that answer, also when the workflow isn't open. The button then reads <code>Undone</code>.
-- If the workflow was saved again after the answer, <code>Undo</code> asks first and says who changed it and when. <code>Undo anyway</code> takes back those later changes too. If the editor has changes that aren't saved yet, <code>Undo</code> asks as well; after <code>Undo anyway</code>, the notice at the top of the canvas lets you choose which version to keep.
+- An answer that changed a workflow shows <code>Undo</code> at the end of the line that names the change, for example <code>Changed the workflow</code>; on older answers, point at the answer to see it. Click it to take back all the changes of that answer, also when the workflow isn't open. That line then reads <code>Undone</code>.
+- If the workflow was saved again after the answer, <code>Undo</code> asks first; point at the question to see who changed it and when. <code>Undo anyway</code> takes back those later changes too. If the editor has changes that aren't saved yet, <code>Undo</code> asks as well; after <code>Undo anyway</code>, the notice at the top of the canvas lets you choose which version to keep.
 
 ### Run a workflow with the AI assistant
 

@@ -144,7 +144,7 @@ A drawn circle keeps its centre and radius. To move or resize it on the map, cli
   <div class="content">Choose <code>Inside</code> to keep the features in the area, or <code>Outside</code> to keep the ones that do not touch it. A new area starts with <code>Inside</code>.</div>
 </div>
 
-The row under <code>Area</code> names what the area is made of, for example <code>Map view</code>, <code>2 shapes</code> or <code>3 regions</code>, and the outline of the area is drawn on the map while the <code>Filter</code> tab is open.
+The row under <code>Area</code> names what the area is made of, for example <code>Map view</code>, <code>2 shapes</code>, <code>3 regions</code> or <code>12 features of Districts</code> (the layer they are from), and the outline of the area is drawn on the map while the <code>Filter</code> tab is open: <code>Outlined on the map</code> under the row says so.
 
 ### Change, switch off or remove the area
 

@@ -302,6 +302,45 @@ describe("the previous-view button", () => {
     expect(first).not.toHaveBeenCalled();
   });
 
+  it("stays under a line that took in a refused attempt and a read between the moves", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const page = openMap();
+    vi.mocked(page.applyView).mockReturnValueOnce(first).mockReturnValueOnce(second);
+    openSurface();
+    const view = render(chat([asked]));
+    const moved = (toolCallId: string, target: ViewTarget) =>
+      updated("a1", toolCallId, { view: target }).parts[0] as DynamicToolUIPart;
+    const refused = {
+      type: "dynamic-tool",
+      toolName: "map_update",
+      toolCallId: "c-refused",
+      state: "output-error",
+      input: {},
+      errorText: "Too large",
+    } as DynamicToolUIPart;
+    const read = {
+      type: "dynamic-tool",
+      toolName: "project_get_layers",
+      toolCallId: "c-read",
+      state: "output-available",
+      input: {},
+      output: { layers: [] },
+    } as DynamicToolUIPart;
+    const answer: AssistantMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [moved("c1", VIEW), refused, read, moved("c2", { mode: "3d" })],
+    };
+    view.rerender(chat([asked, answer]));
+    expect(screen.getAllByRole("button", { name: /^assistant_tool_map_update/ })).toHaveLength(1);
+    expect(screen.queryByText(/assistant_step_failed/)).toBeNull();
+    expect(screen.getAllByRole("button", { name: "assistant_view_back" })).toHaveLength(1);
+    fireEvent.click(back()!);
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
   it("a view the map refuses leaves no button, and the step's change is still handed over", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const failure = new Error("Invalid LngLat latitude value: must be between -90 and 90");

@@ -54,6 +54,7 @@ import { useComposerContext } from "@/components/assistant/useComposerContext";
 import { useFitRunResults } from "@/components/assistant/useFitRunResults";
 import { useFollowMapEdits } from "@/components/assistant/useFollowMapEdits";
 import { useFollowStyleEdits } from "@/components/assistant/useFollowStyleEdits";
+import { useFollowTypedUndo } from "@/components/assistant/useFollowTypedUndo";
 import { useFollowWorkflowEdits } from "@/components/assistant/useFollowWorkflowEdits";
 import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
 import { useOpenCreatedWorkflows } from "@/components/assistant/useOpenCreatedWorkflows";
@@ -400,6 +401,8 @@ export default function ChatView(props: ChatViewProps) {
   useFollowStyleEdits(messages, props.initialMessages);
   // What the running answer changes of the map is read again by the open map page, and a view it asks for is shown.
   useFollowMapEdits(messages, props.initialMessages);
+  // What a typed undo of the running answer wrote back is followed as the Undo button's reply is.
+  useFollowTypedUndo(messages, props.initialMessages);
   // The page reads the job lists (the Workflows canvas) and layers that a run changes.
   useWorkflowRunRefresh(messages, props.initialMessages);
   // The map shows the result of a run the answer started when it shows none of it yet.

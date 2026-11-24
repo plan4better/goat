@@ -191,7 +191,8 @@ def undo_groups(records: Sequence[tuple[UUID, dict[str, Any]]]) -> list[UndoGrou
     return [*workflow_edits(records), *first, *styles, *then]
 
 
-def _layers_removed(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
+def layers_removed(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
+    """Whether the run removed a layer, which no Undo brings back."""
     return any(
         change["object"] == "layer_removed"
         for group in map_groups(records)
@@ -401,7 +402,7 @@ async def undo_run(
     groups = undo_groups(records)
     pending = _pending(groups)
     if not pending:
-        raise NothingToUndo(undone=bool(groups), removed=_layers_removed(records))
+        raise NothingToUndo(undone=bool(groups), removed=layers_removed(records))
     wanted = [row for group in pending for row in group.rows]
     held = await repo.claim_undo(wanted)
     if len(held) != len(wanted):
@@ -416,7 +417,7 @@ async def undo_run(
     outcome = UndoOutcome(
         restored=[],
         changed=[],
-        not_restored=["layer_removed"] if _layers_removed(records) else [],
+        not_restored=["layer_removed"] if layers_removed(records) else [],
     )
     try:
         for group in pending:
@@ -457,3 +458,43 @@ def undone(records: Sequence[tuple[UUID, dict[str, Any]]]) -> bool:
     The same records as ``undo_run`` reads, by the same rule."""
     groups = undo_groups(records)
     return bool(groups) and all(group.undone for group in groups)
+
+
+def undone_parts(outcome: UndoOutcome) -> dict[str, Any]:
+    """What an Undo took back, kind by kind, as the Undo route's 200 answer
+    and ``undo_changes`` name it. A style says ``partial`` only when core
+    restored it in part. ``map`` is the map of the answer's project, None
+    when nothing of it went back."""
+    went_back = next((item for item in outcome.maps if item.went_back), None)
+    return {
+        "workflows": [
+            {
+                "workflow_id": item.workflow_id,
+                "project_id": item.project_id,
+                "revision": item.revision,
+            }
+            for item in outcome.restored
+        ],
+        "styles": [
+            {
+                "project_id": item.project_id,
+                "layer_project_id": item.layer_project_id,
+                "style_id": item.style_id,
+                "revision": item.revision,
+                "removed": item.removed,
+                **({"partial": True} if item.partial else {}),
+            }
+            for item in outcome.styles
+        ],
+        "map": None
+        if went_back is None
+        else {
+            "project_id": went_back.project_id,
+            "layers": went_back.layers,
+            "tree": went_back.tree,
+            "groups": went_back.groups,
+            "basemap": went_back.basemap,
+            "scene": went_back.scene,
+        },
+        "not_restored": list(outcome.not_restored),
+    }

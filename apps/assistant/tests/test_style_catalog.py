@@ -21,8 +21,10 @@ from assistant.styles.catalog import (
     ICON_ID,
     ICONS_AGAIN,
     ICONS_LISTED,
+    MAX_PER_MANY,
     MAX_PER_SEARCH,
     MAX_RESULTS,
+    MAX_SEARCHES,
     NOTHING_MATCHED,
     NOTHING_MATCHED_EMOJI,
     PASS_THE_EMOJI,
@@ -623,6 +625,84 @@ def test_the_largest_answer_of_several_searches_stays_bounded() -> None:
     assert 10 * per_search + library + 300 < 11_000
 
 
+#: Thirty kinds of point of interest of one layer, as a model asks for them:
+#: the ten above and twenty more, some of which match no icon.
+MANY_KINDS = [
+    *KINDS,
+    "library",
+    "museum",
+    "church",
+    "police",
+    "fire station",
+    "post",
+    "bus",
+    "rail",
+    "parking",
+    "playground",
+    "swimming",
+    "theatre",
+    "cinema",
+    "bakery",
+    "supermarket",
+    "kindergarten",
+    "doctor",
+    "dentist",
+    "fuel",
+    "toilet",
+]
+
+
+def test_thirty_searches_answer_three_rows_each() -> None:
+    assert MAX_SEARCHES == 30 and MAX_PER_MANY == 3 and len(MANY_KINDS) == 30
+    result = _search(kind="icons", queries=MANY_KINDS)
+    assert result.searches is not None and len(result.searches) == 30
+    for search_ in result.searches:
+        alone = _all(kind="icons", query=search_.query)
+        assert search_.total == len(alone)
+        assert search_.results == alone[:3]
+    missed = [s.query for s in result.searches if s.total == 0]
+    assert missed and result.groups == _search(kind="icons").groups
+    assert result.note is not None
+    assert result.note.startswith("Each search shows at most 3 rows. Nothing matched ")
+    assert _size(result) < 9_000
+
+
+def test_eleven_searches_answer_three_rows_and_ten_keep_eight() -> None:
+    eleven = _search(kind="icons", queries=[*KINDS, "solid"])
+    assert eleven.searches is not None
+    assert max(len(s.results) for s in eleven.searches) == 3
+    ten = _search(kind="icons", queries=[*KINDS[:9], "solid"])
+    assert ten.searches is not None
+    solid = ten.searches[-1]
+    assert solid.total > MAX_PER_SEARCH == 8
+    assert solid.results == _all(kind="icons", query="solid")[:8]
+    assert ten.note is not None and ten.note.startswith(
+        "Each search shows at most 8 rows."
+    )
+
+
+def test_thirty_one_searches_are_refused_with_the_limit() -> None:
+    with pytest.raises(ValidationError, match="at most 30 items"):
+        CatalogInput(kind="icons", queries=["park"] * 31)
+    description = CatalogInput.model_fields["queries"].description or ""
+    assert "1 to 30" in description and "3 rows" in description
+
+
+def test_the_largest_answer_of_thirty_searches_stays_bounded() -> None:
+    """Thirty searches each answering the 3 largest icon rows, and the
+    library: more than any real call answers."""
+
+    def size(value: Any) -> int:
+        return len(
+            json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+        )
+
+    rows = sorted((size(r) for r in _all(kind="icons")), reverse=True)
+    per_search = sum(rows[:MAX_PER_MANY]) + 100
+    library = _size(_search(kind="icons"))
+    assert MAX_SEARCHES * per_search + library + 300 < 14_000
+
+
 def test_several_emoji_searches_in_one_call() -> None:
     result = _search(kind="emoji", queries=["fire", "zzzqx", "\U0001f6d2"])
     assert result.searches is not None and result.groups is None
@@ -639,7 +719,7 @@ def test_several_emoji_searches_in_one_call() -> None:
     [
         {"kind": "icons", "query": "bus", "queries": ["park"]},
         {"kind": "icons", "queries": []},
-        {"kind": "icons", "queries": ["x"] * 11},
+        {"kind": "icons", "queries": ["x"] * 31},
         {"kind": "icons", "queries": [""]},
         {"kind": "icons", "queries": ["x" * 61]},
         {"kind": "palettes", "queries": ["blues"]},

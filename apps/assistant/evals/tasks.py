@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 30
+EVAL_SET_VERSION = 32
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow", "map"]
@@ -26,6 +26,20 @@ TASK_FILES: dict[Suite, Path] = {
 
 class _Check(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class _Graded(_Check):
+    """A check of a task. In a task of several messages (``conversation``) it
+    grades the answer to ``prompt`` unless it names another turn."""
+
+    #: The turn graded, counted from 1 over the eval user's messages: the
+    #: conversation's, then the prompt's. A turn holds the answer to the
+    #: message and the answer after the card the eval user answered in it;
+    #: the tools, answer and length checks read that turn, the style and map
+    #: checks the project before and after it. "all" grades the whole
+    #: conversation: every call, and the project before its first turn and
+    #: after its last.
+    turn: Annotated[int, Field(ge=1)] | Literal["all"] | None = None
 
 
 class Oracle(_Check):
@@ -43,7 +57,7 @@ class Oracle(_Check):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-class RecordsCheck(_Check):
+class RecordsCheck(_Graded):
     """The run's catalog tool results contain these records (an item or its dataset)."""
 
     kind: Literal["records"]
@@ -51,7 +65,7 @@ class RecordsCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class ShownCheck(_Check):
+class ShownCheck(_Graded):
     """The datasets the answer showed as cards (``catalog_show_records``): these
     and not those (an item or its dataset)."""
 
@@ -60,7 +74,7 @@ class ShownCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class ShownItemsCheck(_Check):
+class ShownItemsCheck(_Graded):
     """The user's own items the answer showed as cards (``core_show_items``),
     by name: these and not those."""
 
@@ -69,7 +83,7 @@ class ShownItemsCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class FiltersCheck(_Check):
+class FiltersCheck(_Graded):
     """The last catalog.filters proposal sets these filters."""
 
     kind: Literal["filters"]
@@ -79,7 +93,7 @@ class FiltersCheck(_Check):
     nuts: list[str] = Field(default_factory=list)
 
 
-class NumberCheck(_Check):
+class NumberCheck(_Graded):
     """The answer states this number (read in English and German notation)."""
 
     kind: Literal["number"]
@@ -88,7 +102,7 @@ class NumberCheck(_Check):
     tolerance: float = 0.0
 
 
-class NotStatedCheck(_Check):
+class NotStatedCheck(_Graded):
     """The answer does not state this number: a value the model may not have
     read, such as one of a locked layer."""
 
@@ -99,14 +113,14 @@ class NotStatedCheck(_Check):
     tolerance: float = 0.05
 
 
-class TextCheck(_Check):
+class TextCheck(_Graded):
     """The answer names this value (case-insensitive)."""
 
     kind: Literal["text"]
     expected: str | Oracle
 
 
-class AnswerCheck(_Check):
+class AnswerCheck(_Graded):
     """The answer names one of ``any_of``, all of ``all_of`` and none of
     ``none_of`` (whole words, case-insensitive), and is at most ``max_chars``
     characters long."""
@@ -125,7 +139,7 @@ class AnswerCheck(_Check):
     max_chars: int | None = Field(default=None, ge=1)
 
 
-class ToolsCheck(_Check):
+class ToolsCheck(_Graded):
     """Tools (wire names) the run called, or must not have called."""
 
     kind: Literal["tools"]
@@ -144,9 +158,16 @@ class ToolsCheck(_Check):
     #: Reference files of a skill, each returned by a skills_load call that
     #: succeeded (its ``file``).
     loaded: list[str] = Field(default_factory=list)
+    #: The most times each skill's instructions were loaded (a skills_load
+    #: call without ``file`` that succeeded), e.g. once in a conversation.
+    skill_loads: dict[str, int] = Field(default_factory=dict)
+    #: No call was refused because the answer had no room left for it: by
+    #: its stage, its look-ups used up, or a result too large for what was
+    #: left (``evals.harness.refused_for_room``).
+    not_refused_for_room: bool = False
 
 
-class DocsCheck(_Check):
+class DocsCheck(_Graded):
     """The run read one of these pages of GOAT's user docs with docs_read (a
     call that succeeded), by page id: an answer about GOAT's interface comes
     from the page that describes it."""
@@ -155,7 +176,7 @@ class DocsCheck(_Check):
     any_of: list[str] = Field(min_length=1)
 
 
-class ViewCheck(_Check):
+class ViewCheck(_Graded):
     """The view the answer's map_update calls left the page with (their
     results' ``view``, applied in order): it frames this layer (the last
     ``set_view`` that moves the map fits it), contains this point, is in this
@@ -218,7 +239,7 @@ class LegendRule(_Check):
     max_other: float | None = None
 
 
-class StyleCheck(_Check):
+class StyleCheck(_Graded):
     """The style the layer draws after the answer, as core stored it: it
     differs from the style active before (computed stamps aside), has no
     error, and meets every condition. ``where`` says which style that is:
@@ -290,7 +311,7 @@ class LayerRule(_Check):
     rows_kept: bool | None = None
 
 
-class MapCheck(_Check):
+class MapCheck(_Graded):
     """The map project as core held it after the answer."""
 
     kind: Literal["map"]
@@ -310,14 +331,14 @@ class MapCheck(_Check):
     before_answer: bool = False
 
 
-class NotSentCheck(_Check):
+class NotSentCheck(_Graded):
     """No request to geoapi or processes names this layer (a locked one)."""
 
     kind: Literal["not_sent"]
     layer_id: str
 
 
-class LanguageCheck(_Check):
+class LanguageCheck(_Graded):
     """The answer is in this language: the prompt's, whatever language the data
     or the earlier turns are in."""
 
@@ -325,7 +346,7 @@ class LanguageCheck(_Check):
     expected: Literal["en", "de"]
 
 
-class AskedCheck(_Check):
+class AskedCheck(_Graded):
     """The run showed an ask_user card: at least ``questions_min`` questions
     in its first card, and these option values offered (all of ``offers``,
     one of ``offers_any``)."""
@@ -336,7 +357,7 @@ class AskedCheck(_Check):
     offers_any: list[str] = Field(default_factory=list)
 
 
-class WorkflowCreatedCheck(_Check):
+class WorkflowCreatedCheck(_Graded):
     """The run created a workflow that core saved (with ``via`` "template"
     from a template, with "draft" from a draft), and one such workflow meets
     every condition: only the allowed issues are left open, its config holds
@@ -358,7 +379,7 @@ class WorkflowCreatedCheck(_Check):
     area_layers: list[int] = Field(default_factory=list)
 
 
-class WorkflowUpdatedCheck(_Check):
+class WorkflowUpdatedCheck(_Graded):
     """The run changed the workflow ``workflow_id`` with workflow_update, and
     the change core saved meets every condition: each step of a tool in
     ``settings`` has those settings, the workflow has ``notes_added`` more
@@ -374,7 +395,7 @@ class WorkflowUpdatedCheck(_Check):
     undone: bool = False
 
 
-class JudgeCheck(_Check):
+class JudgeCheck(_Graded):
     """Free text, graded by the LLM judge against the rubric (evals.judge)."""
 
     kind: Literal["judge"]
@@ -414,9 +435,47 @@ class Turn(BaseModel):
     assistant: str = Field(min_length=1)
 
 
-class EvalTask(BaseModel):
+class _Reply(BaseModel):
+    """How the eval user and the harness treat the answer to one message."""
+
     model_config = ConfigDict(extra="forbid")
 
+    #: The eval user answers a card the run shows: every question with its
+    #: first option, the recommended one when there is one; then the next
+    #: run answers that answer, as the dock sends it.
+    answer_card: bool = False
+    #: With ``answer_card``: in every question that offers it, the eval user
+    #: picks the option with this value (``remove_layer:39``) instead.
+    answer_value: str | None = None
+    #: With ``answer_card``: in every question that offers it, the eval user
+    #: picks an option without this value (keeps the layer) instead.
+    answer_declines: str | None = None
+    #: Model requests of the answer, counted from 1, whose cache reads the
+    #: harness reports as none (``evals.harness.ColdCacheDouble``): what the
+    #: answer's budget sees when the provider misses its cache there.
+    cold_requests: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _answers_a_card(self) -> "_Reply":
+        if self.answer_value is not None and not self.answer_card:
+            raise ValueError("answer_value needs answer_card")
+        if self.answer_declines is not None and not self.answer_card:
+            raise ValueError("answer_declines needs answer_card")
+        if self.answer_value is not None and self.answer_declines is not None:
+            raise ValueError("answer_value and answer_declines exclude each other")
+        return self
+
+
+class Message(_Reply):
+    """A message the eval user types before the task's prompt. The agent
+    answers it for real, and the next message's answer gets the conversation
+    as the app keeps it: the stored answers with their tool calls and results,
+    the cards and their answers, the skills loaded and the writes made."""
+
+    text: str = Field(min_length=3)
+
+
+class EvalTask(_Reply):
     id: str = Field(pattern=r"^(cat|proj|wf|map)-\d{2}$")
     suite: Suite
     #: The page context as the dock sends it (plan 3's wire format); its
@@ -425,21 +484,35 @@ class EvalTask(BaseModel):
     locale: Locale = "en"
     #: Earlier turns, on the same page, before ``prompt``: a follow-up's answer
     #: can drift into the language or the claims of the conversation so far.
+    #: Text only: no tool call or result of theirs is in the conversation.
     history: list[Turn] = Field(default_factory=list)
+    #: Messages the eval user types after ``history`` and before ``prompt``,
+    #: each answered by the agent (``Message``). The checks grade the answer
+    #: to ``prompt``, the last turn, unless they name another (``turn``).
+    conversation: list[Message] = Field(default_factory=list)
     prompt: str = Field(min_length=3)
     checks: list[Check] = Field(min_length=1)
     #: A model that fails a critical task is not listed as tested, whatever its score.
     critical: bool = False
-    #: The eval user answers a card the run shows: every question with its
-    #: first option, the recommended one when there is one; then the next
-    #: turn runs with that answer, as the dock sends it.
-    answer_card: bool = False
-    #: With ``answer_card``: in every question that offers it, the eval user
-    #: picks the option with this value (``remove_layer:39``) instead.
-    answer_value: str | None = None
     #: The eval user presses Undo under the last answer once it ended, as
     #: the dock does (``assistant.undo``); the transcript says how it went.
     undo: bool = False
+
+    @property
+    def messages(self) -> list[_Reply]:
+        """The messages the agent answers in turn: the conversation's, then
+        the task itself for ``prompt``."""
+        return [*self.conversation, self]
+
+    @model_validator(mode="after")
+    def _turns_exist(self) -> "EvalTask":
+        turns = len(self.conversation) + 1
+        for check in self.checks:
+            if isinstance(check.turn, int) and check.turn > turns:
+                raise ValueError(
+                    f"a {check.kind} check grades turn {check.turn} of {turns}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _surface_fits_suite(self) -> "EvalTask":
@@ -454,8 +527,6 @@ class EvalTask(BaseModel):
             raise ValueError(
                 f"surface {surface!r} does not belong to the {self.suite} suite"
             )
-        if self.answer_value is not None and not self.answer_card:
-            raise ValueError("answer_value needs answer_card")
         return self
 
 

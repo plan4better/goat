@@ -39,7 +39,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.result import FinalResult
 from pydantic_graph import End
 
-from assistant.budget import RunBudget, StepGuard, next_call
+from assistant.budget import TOOLS_ADDED_KEY, RunBudget, StepGuard, next_call
 from assistant.events import DataPart, RunEvent, TextReplaced
 from assistant.history import shorten_earlier_results
 from assistant.language import (
@@ -82,6 +82,7 @@ from assistant.tools.toolset import (
     runnable_workflows,
     silent_responses,
     step_refused,
+    withheld_now,
     written_so_far,
 )
 
@@ -91,6 +92,7 @@ __all__ = [
     "STAGE_KEY",
     "PartIds",
     "RunDeps",
+    "SkillTools",
     "StageNote",
     "build_agent",
     "dev_model",
@@ -232,6 +234,11 @@ class RunDeps:
     #: of failed or refused calls that wrote text still gets one more step,
     #: for the corrected call (``StageNote.after_node_run``).
     failed_cards: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the latest step prepared (its number) and the tools its
+    #: request left out, those of a skill the conversation had not loaded
+    #: (``assistant.tools.toolset.withheld_now``); the step's calls of them
+    #: are refused as they run.
+    withheld: dict[str | None, tuple[int, frozenset[str]]] = field(default_factory=dict)
     #: The step (run id, step number) prepared for reading a finished run's
     #: result past the look-up budget: its reads count as such
     #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
@@ -345,8 +352,9 @@ CLOSING_TEXT: dict[Locale, str] = {
 class StageNote(AbstractCapability[RunDeps]):
     """Sends the note on the run's stage (``stage_note``) as the last content
     of the model call, after the conversation: the instructions and the tools
-    stay the same in every call of an answer, so the provider reads all that
-    comes before the note from its cache.
+    stay the same in every call of an answer (but for the tools a skill
+    brings once loaded, ``SkillTools``), so the provider reads all that comes
+    before the note from its cache.
 
     The note goes into the request the model is sent, not into the run's
     history: a later call, and the next answer, never see an earlier note.
@@ -433,6 +441,52 @@ class StageNote(AbstractCapability[RunDeps]):
         return End(FinalResult(text))
 
 
+@dataclass
+class SkillTools(AbstractCapability[RunDeps]):
+    """Leaves out of the model call the tools of a skill the conversation
+    has not loaded (``assistant.tools.toolset.withheld_now``): the
+    definitions of every offered tool go with every call, and a page can
+    offer some only with a skill (``assistant.tools.registry.SKILL_TOOLS``).
+    Decided at each call, so the call after the one that loaded the skill
+    offers its tools. They follow the others (``registry.offered_tools``):
+    the definitions before them stay as they were. That call misses the
+    provider's cache all the same; its request in the history says so
+    (``assistant.budget.TOOLS_ADDED_KEY``). The run's tool manager
+    keeps them, so a call that names one anyway is refused with the skill
+    to load rather than as an unknown tool."""
+
+    async def wrap_model_request(
+        self,
+        ctx: RunContext[RunDeps],
+        *,
+        request_context: ModelRequestContext,
+        handler: WrapModelRequestHandler,
+    ) -> ModelResponse:
+        previous = ctx.deps.withheld.get(ctx.run_id)
+        withheld = withheld_now(ctx)
+        stored = ctx.messages[-1] if ctx.messages else None
+        if (
+            previous is not None
+            and previous[0] != ctx.run_step
+            and previous[1] - withheld
+            and isinstance(stored, ModelRequest)
+        ):
+            # The budget plans the calls after this one at what it writes to
+            # the provider's cache (``assistant.budget.NextCall.cached``).
+            stored.metadata = {**(stored.metadata or {}), TOOLS_ADDED_KEY: True}
+        if withheld:
+            parameters = request_context.model_request_parameters
+            request_context.model_request_parameters = replace(
+                parameters,
+                function_tools=[
+                    tool
+                    for tool in parameters.function_tools
+                    if tool.name not in withheld
+                ],
+            )
+        return await handler(request_context)
+
+
 #: The grammar words (``assistant.language.clear_language``) an answer needs
 #: at the least for its language to count.
 ANSWER_LANGUAGE_WORDS = 5
@@ -504,7 +558,8 @@ def build_agent(model: Model | str) -> Agent[RunDeps, str]:
     """The assistant's agent on ``model``; a string selects a development model
     (``test`` or ``demo``). Fixed instructions only (cached; the run's note
     travels in the user message, the note on the run's stage after the
-    conversation), GOAT's tools for the run's surface in a fixed order."""
+    conversation), GOAT's tools for the run's surface in a fixed order,
+    without those of a skill the conversation has not loaded (``SkillTools``)."""
     agent: Agent[RunDeps, str] = Agent(
         dev_model(model) if isinstance(model, str) else model,
         deps_type=RunDeps,
@@ -514,6 +569,7 @@ def build_agent(model: Model | str) -> Agent[RunDeps, str]:
             # Earlier answers' long tool results go to the model as counts.
             ProcessHistory(shorten_earlier_results),
             StageNote(),
+            SkillTools(),
         ],
         # Also the budget for a tool name the surface does not offer: a history
         # from another page can make the model call one (spec §4.8).

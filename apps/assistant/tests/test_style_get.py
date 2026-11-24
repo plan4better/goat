@@ -309,6 +309,35 @@ def test_issue_views_keep_fix_and_allowed_and_put_errors_first() -> None:
     assert len(issue_views(many)) == MAX_ISSUES
 
 
+async def test_issues_with_params_or_a_newer_key_read_as_before() -> None:
+    """core passes on the issues' `params` (the panel words them from these) and
+    any key a newer core adds: the tool reads the keys it knows and the model
+    gets the English message."""
+    state = MapState()
+    issue = {
+        "level": "info",
+        "code": "classes_merged",
+        "path": "/a",
+        "message": "Many values are the same.",
+    }
+
+    def edit(request: httpx.Request) -> httpx.Response:
+        response = map_core(state).answer(request)
+        assert response is not None
+        if "/style/" in request.url.path:
+            body = response.json()
+            body["issues"] = [
+                issue,
+                {**issue, "params": {"asked": 6, "made": 5}, "a_later_key": 1},
+            ]
+            return httpx.Response(200, json=body)
+        return response
+
+    result = await _get(_Services(state, core=_Proxy(edit)), layer_project_id=31)
+    assert [i["message"] for i in result["issues"]] == [issue["message"]] * 2
+    assert all("params" not in i and "a_later_key" not in i for i in result["issues"])
+
+
 async def test_more_than_thirty_issues_say_how_many_were_left_out() -> None:
     state = MapState()
 

@@ -19,6 +19,8 @@ import { flushSync } from "react-dom";
 import { type RasterError, loadFormulaSample } from "@/lib/api/rasters";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { scopedView } from "@/lib/style/editor/classify";
+import { keyOf } from "@/lib/style/editor/forms";
+import { recordValuesAt } from "@/lib/style/editor/sources";
 import type { EditorStore, Path, Scope } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type RasterInfo, type ValueSample, sampleOf } from "@/lib/style/raster/metadata";
@@ -177,6 +179,13 @@ export function useStyleValue<T = unknown>(path: Path): T {
   const store = useEditor();
   const read = () => store.get(path) as T;
   return useSyncExternalStore(store.subscribe, read, read);
+}
+
+/** Renders again when a class or rule record sets, changes or drops its value at the keys of these symbol paths: a
+ * row's mode reads them ("By <field>" for a key one record sets) even where no classification targets the key. */
+export function useRecordValuesAt(paths: Path | readonly Path[]): void {
+  const symbol = (Array.isArray(paths) ? paths : [paths]).filter((p: Path) => p.startsWith("symbol."));
+  useStyleSelector((doc) => (symbol.length ? recordValuesAt(doc, symbol.map(keyOf)) : ""));
 }
 
 export const useStyleData = (): StyleData => useContext(DataContext);

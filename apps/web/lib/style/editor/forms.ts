@@ -21,6 +21,20 @@ export const MAIN_COLOR: Record<Geometry, string> = {
   polygon: "fill.color",
 };
 
+/** The part a geometry draws when the symbol leaves it out (spec 3). */
+export const MAIN_PART: Readonly<Record<Geometry, string>> = {
+  polygon: "fill",
+  line: "line",
+  point: "marker",
+};
+
+/** Whether a part is drawn: `false` is off; an absent part is off except the geometry's main part (spec 3). */
+export const partOn = (value: unknown, part: string, geometry: Geometry): boolean =>
+  value === false ? false : value === undefined ? MAIN_PART[geometry] === part : true;
+
+/** A key the layer sets once (spec 6.1): one value for all features, held by the base or a single record. */
+export const isPerLayer = (key: string): boolean => CAPABILITIES[key]?.perFeature === false;
+
 const ZOOM_MIN = 0;
 const ZOOM_MAX = 24;
 
@@ -259,11 +273,12 @@ function leaveClasses(doc: LayerStyle, key: string, geometry?: Geometry): LayerS
   });
   const next = setIn(doc, "classify", kept.length ? kept : undefined);
   if (!frozen.size || !geometry) return next;
-  // A row of another key than the one left; a classification without classes would claim the color again.
+  // A row of another key than the one left; a classification without classes (still to come) would claim the color
+  // again.
   const reachable = kept.filter(
     (c) =>
       !frozen.has(c) ||
-      (classRecords(c).length > 0 && rowsOpening(next, c, geometry).some((row) => row !== key))
+      (list(c.classes).length > 0 && rowsOpening(next, c, geometry).some((row) => row !== key))
   );
   return setIn(doc, "classify", reachable.length ? reachable : undefined);
 }

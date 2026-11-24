@@ -43,17 +43,17 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_26_project_13_workflow_and_47_map_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_26_project_13_workflow_and_51_map_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
     assert sum(t.suite == "project" for t in tasks) == 26
     assert sum(t.suite == "workflow" for t in tasks) == 13
-    assert sum(t.suite == "map" for t in tasks) == 47
+    assert sum(t.suite == "map" for t in tasks) == 51
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
-    assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 9
+    assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 10
 
 
 #: The docs page each how-to task names, in the task's language, and the web

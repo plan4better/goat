@@ -21,9 +21,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Kind = Literal["palettes", "icons", "emoji"]
 
 MAX_RESULTS = 30
-#: The searches one call takes, and the rows each of them answers.
-MAX_SEARCHES = 10
+#: The searches one call takes, and the rows each of them answers: up to
+#: ``FEW_SEARCHES`` searches answer ``MAX_PER_SEARCH`` rows each, more
+#: answer ``MAX_PER_MANY`` each, so the answer stays small.
+MAX_SEARCHES = 30
+FEW_SEARCHES = 10
 MAX_PER_SEARCH = 8
+MAX_PER_MANY = 3
 #: Fewer icons than this found by a query point to the whole list.
 FEW_ICONS = 3
 NOTHING_MATCHED = "Nothing matched. Search with English words, one or two at a time."
@@ -49,7 +53,7 @@ ALL_ICONS = (
     "instead of trying other words"
 )
 PASS_THE_EMOJI = "When the user named an emoji, pass the emoji itself as query."
-SEARCHES_CUT = f"Each search shows at most {MAX_PER_SEARCH} rows."
+SEARCHES_CUT = "Each search shows at most {rows} rows."
 #: The note of icon searches of one call of which some matched nothing, which
 #: answer the whole library once beside them.
 SOME_MATCHED_NOTHING_ICONS = (
@@ -95,10 +99,11 @@ class CatalogInput(BaseModel):
         min_length=1,
         max_length=MAX_SEARCHES,
         description=(
-            "Icons and emoji only: several searches in one call, 1 to 10, each "
-            "read as query, e.g. ['restaurant', 'school', 'park'] for an icon "
-            "per kind. Each search answers its own rows. Pass query or "
-            "queries, not both."
+            f"Icons and emoji only: several searches in one call, 1 to "
+            f"{MAX_SEARCHES}, each read as query, e.g. ['restaurant', 'school', "
+            "'park'] for an icon per kind. Each search answers its own rows: "
+            f"{MAX_PER_SEARCH} each up to {FEW_SEARCHES} searches, "
+            f"{MAX_PER_MANY} rows each beyond. Pass query or queries, not both."
         ),
     )
     palette_kind: Literal["sequential", "diverging", "qualitative"] | None = Field(
@@ -145,7 +150,8 @@ class IconGroup(BaseModel):
 
 class Search(BaseModel):
     query: str
-    #: The search's first ``MAX_PER_SEARCH`` rows, as ``CatalogResult.results``.
+    #: The search's first rows (``MAX_PER_SEARCH``, or ``MAX_PER_MANY`` of
+    #: more than ``FEW_SEARCHES`` searches), as ``CatalogResult.results``.
     results: list[dict[str, Any]]
     #: How many records matched.
     total: int
@@ -327,19 +333,20 @@ def _library(note: str = ICONS_LISTED) -> CatalogResult:
 
 
 def _searches(args: CatalogInput, queries: list[str]) -> CatalogResult:
+    shown = MAX_PER_SEARCH if len(queries) <= FEW_SEARCHES else MAX_PER_MANY
     searches = []
     for text in queries:
         rows = _found(args, text)
         searches.append(
             Search(
                 query=" ".join(text.split()),
-                results=rows[:MAX_PER_SEARCH],
+                results=rows[:shown],
                 total=len(rows),
             )
         )
     notes = []
-    if any(found.total > MAX_PER_SEARCH for found in searches):
-        notes.append(SEARCHES_CUT)
+    if any(found.total > shown for found in searches):
+        notes.append(SEARCHES_CUT.format(rows=shown))
     missed = ", ".join(f'"{found.query}"' for found in searches if not found.total)
     library = None
     if missed and args.kind == "icons":

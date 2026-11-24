@@ -1,6 +1,7 @@
-"""A layer filter's area as the model sets it: the row operations
-``set_area`` and ``clear_area``, and the area built from their sources the
-way the web's filter panel builds it (``goatlib.filter.areas``).
+"""A layer filter's area as the model sets it: the filter operation's
+``area`` beside its rows (``SetArea``, or ``"clear"``), and the area built
+from its sources the way the web's filter panel builds it
+(``goatlib.filter.areas``).
 
 An area is made of regions (catalog region ids), features of another
 polygon layer of the project and the map view the user sees. Each outline
@@ -32,13 +33,20 @@ from goatlib.filter.areas import (
 )
 from goatlib.filter.limits import MAX_FEATURES, MAX_LENGTH, MAX_POINTS
 from goatlib.filter.rows import Rows
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    model_validator,
+)
 
 from assistant.context import NUTS_ID_PATTERN
 from assistant.tools.filters import FILTER_EXAMPLES, FeatureFilter
 from assistant.tools.runtime import InputInvalid
 
-#: Regions one set_area takes.
+#: Regions one area takes.
 MAX_REGIONS = 50
 #: The positions of one outline above which it is thinned (every k-th
 #: position of each ring kept) before it is simplified: the simplification
@@ -77,12 +85,6 @@ class FeaturesOf(BaseModel):
 class SetArea(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    do: Literal["set_area"] = Field(
-        description=(
-            "Limit the layer to an area, as the Filter tab's Area does: only "
-            "features inside it (or outside it) pass. The rows stay."
-        )
-    )
     regions: list[RegionId] | None = Field(
         default=None,
         min_length=1,
@@ -117,17 +119,22 @@ class SetArea(BaseModel):
     def _has_a_source(self) -> "SetArea":
         if not (self.regions or self.features_of is not None or self.view):
             raise ValueError(
-                "set_area takes at least one of regions, features_of and view: true."
+                "area takes at least one of regions, features_of and view: true."
             )
         return self
 
 
-class ClearArea(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+def _area_kind(value: Any) -> str:
+    return "clear" if isinstance(value, str) else "set"
 
-    do: Literal["clear_area"] = Field(
-        description="Remove the filter's area, switched on or off; the rows stay."
-    )
+
+#: What a filter operation does to the area: set it, or ``"clear"`` to
+#: remove it, switched on or off. A string is read as ``"clear"`` and
+#: anything else as an area, so a refusal names only the form that was sent.
+AreaChange = Annotated[
+    Annotated[SetArea, Tag("set")] | Annotated[Literal["clear"], Tag("clear")],
+    Discriminator(_area_kind),
+]
 
 
 @dataclass(frozen=True)
@@ -142,7 +149,7 @@ class Outline:
 
 @dataclass(frozen=True)
 class AreaSources:
-    """The outlines of one set_area, read before the plan: its regions in
+    """The outlines of one area, read before the plan: its regions in
     the order given, the other layer's dataset id and features, and the map
     view (west, south, east, north)."""
 
@@ -285,7 +292,7 @@ def _joining(what: str, outline: Outline, source: str) -> _Joining:
 
 
 def build_area(op: SetArea, rows: Rows, sources: AreaSources) -> BuiltArea:
-    """The area one ``set_area`` sets on a filter whose rows are ``rows`` (as
+    """The area ``op`` sets on a filter whose rows are ``rows`` (as
     the call leaves them, with the area there was). Raises ``InputInvalid``
     for outlines that do not fit even simplified, for an area over a limit
     and for an area without a polygon.

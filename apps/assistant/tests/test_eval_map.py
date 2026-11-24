@@ -60,6 +60,7 @@ from tests.eval_map_answers import (
     _call,
     _symbol,
     applied,
+    played,
 )
 
 
@@ -138,10 +139,10 @@ def _density_check(**changes: Any) -> StyleCheck:
 # ---- the task set ------------------------------------------------------------------
 
 
-def test_the_map_suite_loads_forty_seven_tasks_on_the_map_page() -> None:
+def test_the_map_suite_loads_fifty_one_tasks_on_the_map_page() -> None:
     tasks = load_tasks("map")
-    assert len(tasks) == 47
-    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 48)]
+    assert len(tasks) == 51
+    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 52)]
     assert {t.context["surface"] for t in tasks} == {"project.map"}
     assert {t.context["project_id"] for t in tasks} <= {
         MAP_PROJECT_ID,
@@ -159,8 +160,17 @@ def test_the_map_suite_loads_forty_seven_tasks_on_the_map_page() -> None:
         "map-25",
     ]
     assert sorted(t.id for t in tasks if t.undo) == ["map-20", "map-21", "map-31"]
-    assert [t.id for t in tasks if t.answer_card] == ["map-17", "map-25"]
-    assert EVAL_SET_VERSION == 30
+    assert [t.id for t in tasks if t.answer_card] == ["map-17", "map-25", "map-51"]
+    assert [t.id for t in tasks if t.conversation] == [
+        "map-48",
+        "map-49",
+        "map-50",
+        "map-51",
+    ]
+    assert [t.id for t in tasks if any(r.cold_requests for r in t.messages)] == [
+        "map-49"
+    ]
+    assert EVAL_SET_VERSION == 32
 
 
 def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
@@ -173,7 +183,7 @@ def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
                 wants.setdefault(check.where, []).append(task.id)
     assert "any" not in wants
     assert wants["new"] == ["map-17", "map-21"]
-    assert len(wants["same"]) == 28
+    assert len(wants["same"]) == 32
     prompts = {t.id: t.prompt.casefold() for t in load_tasks("map")}
     assert "as separate styles" in prompts["map-17"]
     assert "two style options" in prompts["map-17"]
@@ -1471,8 +1481,11 @@ HALF_TRANSPARENT = {
 
 
 def _built_and_run(*more: tuple[str, dict[str, Any]], answer: str) -> ScriptedModel:
+    """On the map page the workflow tools come with the skill
+    build-a-workflow (``SKILL_TOOLS``): it is loaded first."""
     return ScriptedModel(
         calls=[
+            ("skills_load", {"name": "build-a-workflow"}),
             ("workflow_create", {"draft": CATCHMENT_DRAFT}),
             ("workflow_run", {"workflow_id": CREATED}),
             *more,
@@ -1498,7 +1511,7 @@ async def test_a_finished_run_puts_its_result_on_the_map_with_the_tools_look(
     assert not any(call.failed for call in transcript.tool_calls), [
         (call.name, call.result) for call in transcript.tool_calls if call.failed
     ]
-    create, run, layers, style = (call.result for call in transcript.tool_calls)
+    _, create, run, layers, style = (call.result for call in transcript.tool_calls)
     assert [row["project_id"] for row in transcript.saved] == [MAP_PROJECT_ID]
     assert run["status"] == "succeeded", run
     [saved] = run["saved"]
@@ -1634,6 +1647,157 @@ def test_the_workflow_projects_keep_their_own_result_layer() -> None:
     assert RESULT not in MapState().layers
 
 
+# ---- conversations -------------------------------------------------------------------
+
+
+def test_the_conversation_tasks_play_their_messages_for_real() -> None:
+    """Three styling messages on one layer, the same with the first request of
+    the last answer missing the cache, a change of topic and a typed undo,
+    and a removal declined and asked for again."""
+    styling, cold = _map_task("map-48"), _map_task("map-49")
+    assert [m.text for m in styling.conversation] == [
+        "Color the points of interest by their category.",
+        "Give them a popup with their name and opening year.",
+    ]
+    assert styling.prompt == cold.prompt
+    assert styling.conversation == cold.conversation
+    assert styling.checks == cold.checks
+    assert (styling.cold_requests, cold.cold_requests) == ([], [1])
+    topic = _map_task("map-50")
+    assert (
+        len(topic.conversation) == 2 and topic.prompt == "Please undo that last change."
+    )
+    removal = _map_task("map-51")
+    [declined] = removal.conversation
+    assert declined.answer_card and declined.answer_declines == "remove_layer:39"
+    assert removal.answer_card and removal.answer_value == "remove_layer:39"
+    for task in (styling, cold, topic, removal):
+        assert ANSWERS[task.id].script is not None, task.id
+
+
+def _script(task_id: str, turn: int, calls: list[Any], answer: str) -> Any:
+    """The task's right answer with the calls and answer of one run replaced."""
+    script = copy.deepcopy(ANSWERS[task_id].script)
+    assert script is not None
+    script[turn] = (calls, answer)
+    return script
+
+
+async def _graded(
+    task_id: str, script: Any, backends: Backends, settings: Any
+) -> tuple[Transcript, dict[str, list[bool | None]]]:
+    task = _map_task(task_id)
+    transcript = await played(task, script, backends, settings)
+    assert transcript.error is None, transcript.error
+    grades: dict[str, list[bool | None]] = {}
+    for grade_ in await grade(task, transcript, backends):
+        grades.setdefault(grade_.check, []).append(grade_.passed)
+    return transcript, grades
+
+
+@pytest.mark.parametrize("task_id", ["map-48", "map-49"])
+async def test_the_styling_conversation_loads_the_skill_once_and_edits_twice_at_most(
+    task_id: str, backends: Backends, settings: Any
+) -> None:
+    right = ANSWERS[task_id].script
+    assert right is not None
+    transcript, grades = await _graded(task_id, right, backends, settings)
+    assert all(all(g) for g in grades.values()), grades
+    assert [turn.runs for turn in transcript.turns] == [1, 1, 1]
+    assert all(turn.refused_for_room == [] for turn in transcript.turns)
+    calls, answer = right[2]
+    # The skill loaded again in the last turn.
+    again = _script(
+        task_id, 2, [("skills_load", {"name": "style-a-map"}), *calls], answer
+    )
+    _, grades = await _graded(task_id, again, backends, settings)
+    assert grades["tools"] == [True, False] and all(grades["style"])
+    # Three edits for the last message.
+    [(_, edit)] = calls
+    thrice = _script(task_id, 2, [("style_update", edit)] * 3, answer)
+    _, grades = await _graded(task_id, thrice, backends, settings)
+    assert grades["tools"] == [False, True] and all(grades["style"])
+    # The zoom range left out.
+    grow = {**edit, "operations": edit["operations"][:1]}
+    _, grades = await _graded(
+        task_id,
+        _script(task_id, 2, [("style_update", grow)], answer),
+        backends,
+        settings,
+    )
+    assert grades["style"] == [False]
+
+
+async def test_a_typed_undo_runs_the_undo_of_the_last_answer(
+    backends: Backends, settings: Any
+) -> None:
+    right = ANSWERS["map-50"].script
+    assert right is not None
+    transcript, grades = await _graded("map-50", right, backends, settings)
+    assert all(g is not False for gs in grades.values() for g in gs), grades
+    assert grades["judge"] == [None]
+    [undo] = transcript.turns[-1].tool_calls
+    assert undo.name == "undo_changes" and not undo.failed
+    assert undo.result["status"] == "undone"
+    assert undo.result["map"]["layers"] == [32]
+    # Taking the area off by hand is not the undo, though the map ends alike.
+    clear = {
+        "operations": [
+            {
+                "op": "filter",
+                "layer_project_id": 32,
+                "area": "clear",
+            }
+        ]
+    }
+    _, grades = await _graded(
+        "map-50",
+        _script("map-50", 2, [("map_update", clear)], "I removed the area again."),
+        backends,
+        settings,
+    )
+    assert grades["map"] == [True, True] and grades["tools"] == [False]
+    assert all(grades["style"])
+    # Pointing to the undo button takes nothing back.
+    _, grades = await _graded(
+        "map-50",
+        _script(
+            "map-50",
+            2,
+            [],
+            "To take back the area, press the undo button under my last answer.",
+        ),
+        backends,
+        settings,
+    )
+    assert grades["map"] == [True, False] and grades["tools"] == [False]
+
+
+async def test_a_removal_declined_needs_a_new_card_when_asked_for_again(
+    backends: Backends, settings: Any
+) -> None:
+    """A typed "remove it after all" is no consent: after the eval user kept
+    the layer, the removal shows a new card before it removes the layer. That
+    a pick of the removal counts only until the next typed message is pinned
+    in ``test_eval_conversation``."""
+    right = ANSWERS["map-51"].script
+    assert right is not None
+    transcript, grades = await _graded("map-51", right, backends, settings)
+    assert all(all(g) for g in grades.values()), grades
+    assert [turn.runs for turn in transcript.turns] == [2, 2]
+    # Removed at once on the typed message: the tool asks instead, and no
+    # card is shown.
+    [remove, _] = right[2][0]
+    wrong = copy.deepcopy(right)[:3]
+    wrong[2] = ([remove], "The layer Old boundaries is removed.")
+    transcript, grades = await _graded("map-51", wrong, backends, settings)
+    assert transcript.turns[-1].runs == 1
+    [again] = transcript.turns[-1].tool_calls
+    assert again.result["applied"] == [] and again.result["confirm"]
+    assert grades["asked"] == [True, False]
+    assert grades["map"] == [True, False, False]
+
+
 # ---- every task can be passed, and none by doing nothing -----------------------------
 
 
@@ -1643,9 +1807,14 @@ def test_every_task_has_a_right_answer() -> None:
 
 @pytest.mark.parametrize("task", load_tasks("map"), ids=lambda t: t.id)
 async def test_every_task_expectation_is_reachable(
-    task: EvalTask, backends: Backends
+    task: EvalTask, backends: Backends, settings: Any
 ) -> None:
-    transcript = applied(task, ANSWERS[task.id])
+    answer = ANSWERS[task.id]
+    transcript = (
+        applied(task, answer)
+        if answer.script is None
+        else await played(task, answer.script, backends, settings)
+    )
     grades = await grade(task, transcript, backends)
     assert all(
         g.passed is True or (g.check == "judge" and g.passed is None) for g in grades

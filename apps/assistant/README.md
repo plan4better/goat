@@ -342,7 +342,7 @@ asked with a value of its own first had the right card refused as a repeat. A ca
 the same answer named, and no answered card of the current chain offered, is therefore no repeat
 (`asks.repeated_question`), so a user who kept the layer earlier and asks again later gets the card again. As a refusal it showed the user a failed step before any question; the dock labels this step as
 a check of what the removal affects instead. Filter rows are read and written as the Filter tab does it
-(`goatlib.filter.rows`), and an area (`set_area`) is built from regions, features of another polygon layer or the
+(`goatlib.filter.rows`), and an area (the filter operation's `area`, beside its rows) is built from regions, features of another polygon layer or the
 current view exactly as the tab builds it (`goatlib.filter.areas`, held to the web's code by a shared fixture), so the
 tab shows and edits what the assistant wrote; what an operation does not touch (switched-off and custom rows, the notes)
 is written back as stored. The outlines come from where the tab reads them (`maps/area_sources.py`): a region's from the
@@ -352,7 +352,7 @@ reaches first) is simplified to fit, several outlines of one call sharing the ro
 simplified. The simplification is pure Python, since the production image has no shapely, and its cost grows faster
 than an outline's positions: a very detailed outline is thinned first (`THIN_ABOVE` in `maps/filter_area.py`), and a
 plan that builds an area runs off the event loop, so other answers keep streaming. The assistant draws no shape and
-switches no row or area on or off; those stay the tab's. As in the tab, `set_area` with `add` keeps a switched-off area
+switches no row or area on or off; those stay the tab's. As in the tab, an `area` with `add` keeps a switched-off area
 switched off, and an area that replaces one (without `add`) is switched on, which the result says. The view is not saved by the tool: it is the user's own (core
 keeps a view per user), so the result hands the page one target, the page moves its map and stores the view as when
 the user moves it, and a call that only sets a view reaches no core route, which lets a viewer have it too. Undo leaves
@@ -367,6 +367,11 @@ before and the state written, and Undo compares them with what the map holds now
 before where the map still holds what the answer wrote, asks first where a person changed it since, and creates a
 removed group again under a new id. A removed layer is recorded only so that the Undo can say it does not come back;
 the view has no record.
+A typed "undo that" runs the same Undo: `undo_changes` (`tools/undo.py`) calls `undo_run` for the newest earlier answer
+whose Undo can still act, so core decides under the user's sign-in as for the button and that answer reads Undone
+afterwards. A model that reversed the change by hand with the other write tools could get it wrong and would leave the
+button offering to undo a change that is already gone. What was changed since is written over only after the user
+picked that in a card (`undo_anyway:<run>`, a consent value like a removal's).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's
@@ -421,6 +426,22 @@ looks that could mean an analysis and for popups beyond a list of fields. Its te
 apply every example's operations with goatlib, validate every example document, check every palette, icon and tool it
 names, and keep `SKILL.md` within 34,500 bytes, since a loaded skill is resent with every later call.
 
+A page can offer some of its tools only once the conversation loaded a skill (`tools/registry.SKILL_TOOLS`): every
+call sends the definitions of every tool it offers, and when a call misses the provider's cache they count in full
+against the answer's budget. On the Map page the tools that build, check, change and run workflows come with
+`build-a-workflow`, about a quarter of that page's definitions, which a conversation about styling never calls. The
+reads of workflows stay, since they answer questions without building anything. Until the skill is loaded the call
+leaves those tools out (`agent.SkillTools`), and the page note says they come with it; the call after `skills_load`
+offers them, in the same answer or a later one (`ToolEnv.skills`). They follow the other tools
+(`registry.offered_tools`), so the definitions before them stay as they were. The call after the load still misses
+the cache once. Its request is marked (`budget.TOOLS_ADDED_KEY`), and the budget plans the calls after it at the input
+it wrote to the cache: an answer whose first call also read nothing (a cache that expired between messages) would
+otherwise see two misses in a row, take them as a provider without a cache, and stop looking things up right after
+loading the skill. The run's tool
+manager keeps them, so a model that names one anyway is told which skill to load (`toolset.skill_first`) rather than
+that the tool is unknown. Where the skills are not known (over `/mcp`, which lists its own tools) nothing is left
+out, and the Workflows page offers its workflow tools from the start.
+
 **User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
 are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such
 questions, the assistant said it could not see the interface, after half a minute of unrelated tool calls. The pages
@@ -451,8 +472,9 @@ far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves;
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,
 page, filters) travels in each user message (`prompt.with_note`), not in the instructions: it changes when the user
 moves or filters, and anything that changed ahead of the conversation would make every call read it again. For the
-same reason every call of an answer offers the same tools, and the note on the answer's stage near the run's limits
-comes after the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
+same reason every call of an answer offers the same tools, except that the call after loading a skill that brings
+tools adds them after the others (Skills, above), and the note on the answer's stage near the run's limits comes after
+the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
 details.
 
 OpenRouter sends one model to many providers, which differ in price, speed and precision (some serve 4-bit weights),

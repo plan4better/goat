@@ -100,8 +100,12 @@ const mount = (undone = false, changes: AnswerChanges = workflowChanges) =>
     wrapper,
   });
 const undoButton = () => screen.getByRole("button", { name: "Undo" });
-/** The done state's hint: the tooltip's title on the disabled button's wrapper. */
-const doneHint = () => screen.getByText("Undone").closest("span[title], [aria-label]")?.getAttribute("title");
+/** The done state's hint: the tooltip's title on the Undone text, "in part" or not. */
+const doneHint = () =>
+  screen
+    .getByText(/^Undone/)
+    .closest("span[title], [aria-label]")
+    ?.getAttribute("title");
 
 let unregister: (() => void) | null = null;
 const bridge = (projectId: string, settle: MapBridge["settle"]): MapBridge => ({
@@ -147,7 +151,9 @@ describe("the Undo of an answer's edits", () => {
     undoAnswer.mockResolvedValueOnce({ kind: "undone", restored });
     mount();
     fireEvent.click(undoButton());
-    expect(await screen.findByText(/changed after this answer edited it \(by Ada Lovelace/)).toBeTruthy();
+    // The question is short; who changed it and when lead the tooltip.
+    expect(await screen.findByText("The workflow was changed after this answer edited it.")).toBeTruthy();
+    expect(screen.getByTitle(/changed after this answer edited it \(by Ada Lovelace/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Undo anyway" }));
     await screen.findByText("Undone");
     expect(undoAnswer).toHaveBeenLastCalledWith("c1", "r1", true);
@@ -211,6 +217,17 @@ describe("the Undo of an answer's edits", () => {
     );
     expect(undoButton()).toBeTruthy();
     expect(actions.followWorkflowChanges).not.toHaveBeenCalled();
+  });
+
+  it("turns into Undone at once when a typed undo took the answer back, without notes of its own", () => {
+    const { rerender } = mount(false, mapChanges);
+    expect(undoButton()).toBeTruthy();
+    rerender(<UndoAnswer conversationId="c1" runId="r1" changes={mapChanges} undone />);
+    expect(screen.getByText("Undone")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(doneHint()).toBe("This answer's changes were undone");
+    expect(document.querySelectorAll("p")).toHaveLength(0);
+    expect(undoAnswer).not.toHaveBeenCalled();
   });
 
   it("keeps Undone after the dock mounts the answer again", async () => {
@@ -319,7 +336,8 @@ describe("the Undo of an answer's edits", () => {
       const view = mount(false, styleChanges);
       fireEvent.click(undoButton());
       expect(await screen.findByText(question)).toBeTruthy();
-      expect(screen.getByText(hint)).toBeTruthy();
+      // The question's tooltip says what Undo anyway does.
+      expect(screen.getByTitle(hint)).toBeTruthy();
       view.unmount();
     };
     await asks([changedStyle("s1")], "The style was changed after this answer edited it.");
@@ -329,11 +347,12 @@ describe("the Undo of an answer's edits", () => {
       "The style was changed while this answer edited it.",
       wholeHint
     );
+    // The question is short; the whole sentence leads the tooltip.
     await asks(
       [changedStyle("s1", { between: true, tooOld: true })],
-      "The style was changed many times since. Undo anyway restores the whole style as it was before this answer.",
-      // The whole style goes back: later changes are taken back too.
-      wholeHint
+      "The style was changed many times since.",
+      // The sentence itself says that the whole style goes back.
+      "The style was changed many times since. Undo anyway restores the whole style as it was before this answer."
     );
   });
 
@@ -347,7 +366,7 @@ describe("the Undo of an answer's edits", () => {
       const view = mount(false, { ...workflowChanges, styles: [styleChange("s1")] });
       fireEvent.click(undoButton());
       await screen.findByRole("button", { name: "Undo anyway" });
-      const hints = [wholeHint, settingsHint, mixedHint].filter((hint) => screen.queryByText(hint));
+      const hints = [wholeHint, settingsHint, mixedHint].filter((hint) => screen.queryByTitle(hint));
       view.unmount();
       return hints;
     };
@@ -571,7 +590,7 @@ describe("the Undo of an answer's edits", () => {
     });
     mount(false, styleChanges);
     fireEvent.click(undoButton());
-    await screen.findByText("Undone");
+    await screen.findByText("Undone, in part");
     expect(
       screen.getByText("A part of the style could not be put back because it no longer fits the data.")
     ).toBeTruthy();
@@ -585,7 +604,7 @@ describe("the Undo of an answer's edits", () => {
     });
     mount(false, styleChanges);
     fireEvent.click(undoButton());
-    await screen.findByText("Undone");
+    await screen.findByText("Undone, in part");
     expect(screen.getByText("Removed layers do not come back.")).toBeTruthy();
     expect(screen.queryByText("A part of the map could not be put back.")).toBeNull();
   });
@@ -604,7 +623,7 @@ describe("the Undo of an answer's edits", () => {
     fireEvent.click(undoButton());
     await screen.findByText("The style was changed after this answer edited it.");
     fireEvent.click(screen.getByRole("button", { name: "Undo anyway" }));
-    await screen.findByText("Undone");
+    await screen.findByText("Undone, in part");
     expect(screen.getByText("A part of the map could not be put back.")).toBeTruthy();
     expect(screen.queryByText("Removed layers do not come back.")).toBeNull();
     expect(toast.error).not.toHaveBeenCalled();
@@ -644,6 +663,20 @@ describe("the Undo of an answer's edits", () => {
     expect(screen.queryByText(styleRefused)).toBeNull();
   });
 
+  it("drops the refused style's line once a typed undo took the answer back", async () => {
+    undoAnswer.mockResolvedValueOnce({
+      kind: "undone",
+      restored: { ...restored, notRestored: ["style"] },
+    });
+    const changes = { ...workflowChanges, styles: [styleChange("s1")] };
+    const { rerender } = mount(false, changes);
+    fireEvent.click(undoButton());
+    expect(await screen.findByText(styleRefused)).toBeTruthy();
+    rerender(<UndoAnswer conversationId="c1" runId="r1" changes={changes} undone />);
+    expect(screen.getByText("Undone")).toBeTruthy();
+    expect(screen.queryByText(styleRefused)).toBeNull();
+  });
+
   it("says what already went back when the rest was changed since, also after the question closes", async () => {
     undoAnswer.mockResolvedValue({
       kind: "changed",
@@ -653,9 +686,9 @@ describe("the Undo of an answer's edits", () => {
     mount(false, { ...mapChanges, styles: [styleChange("s1"), styleChange("s2")] });
     fireEvent.click(undoButton());
     await screen.findByText("The style was changed after this answer edited it.");
-    expect(screen.getByText(partly)).toBeTruthy();
+    // One line, beside the question and after it closes.
+    expect(screen.getAllByText(partly)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    // The popover fades out: its copy of the line goes once it is closed.
     await waitFor(() => expect(screen.getAllByText(partly)).toHaveLength(1));
     expect(screen.queryByRole("button", { name: "Undo anyway" })).toBeNull();
     expect(undoButton()).toBeTruthy();
@@ -739,7 +772,7 @@ describe("the Undo of an answer's edits", () => {
     });
     mount(false, { ...mapChanges, map: [mapChange("p1", { layers: true, groups: true })] });
     fireEvent.click(undoButton());
-    await screen.findByText("Undone");
+    await screen.findByText("Undone, in part");
     expect(actions.followMapChange).toHaveBeenCalledWith(mapChange("p1", { layers: true, groups: true }));
     expect(screen.getByText("Removed layers do not come back.")).toBeTruthy();
     // A group that is no longer empty stays, and a line of its own says so.

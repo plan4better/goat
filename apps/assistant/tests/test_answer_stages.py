@@ -1703,7 +1703,7 @@ def _reads_until_the_note_then_change() -> Act:
 
 
 #: The writes the map page offers that the step that answers may still make.
-MAP_WRITES = ("style_update", "map_update", "workflow_update")
+MAP_WRITES = ("style_update", "map_update", "workflow_update", "undo_changes")
 
 
 @pytest.mark.parametrize(
@@ -1809,7 +1809,9 @@ def test_the_note_names_the_writes_of_the_page() -> None:
         "If the user asked for a change, you may still make it with one call of "
         "workflow_update, without reading anything first, and then answer."
     )
-    assert "style_update, map_update or workflow_update" in make_the_change(MAP_WRITES)
+    assert "style_update, map_update, workflow_update or undo_changes" in (
+        make_the_change(MAP_WRITES)
+    )
 
 
 #: A change whose operation names no part of a style: it is not saved, and

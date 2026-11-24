@@ -22,7 +22,6 @@ import {
   restoreIcon,
 } from "@/lib/style/editor/parts";
 import {
-  type Setter,
   fillSetter,
   iconSetter,
   markerFillState,
@@ -31,7 +30,6 @@ import {
   perLayerPath,
 } from "@/lib/style/editor/sources";
 import { type EditorStore, type Path, type Scope, getIn, setIn } from "@/lib/style/editor/store";
-import { setterSummary } from "@/lib/style/editor/summaries";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
@@ -46,15 +44,15 @@ import {
   useStyleSelector,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
-import { useClassificationOpener } from "@/components/map/panels/styleEditor/editors/ClassificationEditor";
 import { LabelEditor } from "@/components/map/panels/styleEditor/editors/LabelEditor";
 import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRows";
 import { PatternRow } from "@/components/map/panels/styleEditor/editors/PatternEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
+import { SetByRow } from "@/components/map/panels/styleEditor/editors/SetByRow";
 import { type PartGroup, groupOf } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
-import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { GroupRow, ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
+import { usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
+import { ZoomRangeRow } from "@/components/map/panels/styleEditor/rows";
 
 /** The last settings of each switched-off part, per open layer. */
 const switchedOff = new WeakMap<EditorStore, Map<Path, unknown>>();
@@ -158,29 +156,6 @@ export function markerInvisible(doc: LayerStyle, scope: Scope | null): boolean {
       : []
     : setValues(doc as unknown as JsonObject, "marker.icon");
   return icons.length === 0;
-}
-
-/** The "Classes" row of a part only classes turn on (or of hollow markers only classes fill): "By <field>", opening
- * that classification's editor (`rowsOpening` counts it). None while only rules do. */
-export function SetByRow({ setterOf }: { setterOf: (doc: LayerStyle) => Setter | undefined }) {
-  const { t } = useTranslation("common");
-  const store = useEditor();
-  const { fields } = useStyleData();
-  const openClassification = useClassificationOpener();
-  const ci = useStyleSelector((doc) => {
-    const setter = setterOf(doc);
-    const all = getIn(doc, "classify");
-    return setter && setter !== "rules" && Array.isArray(all) ? all.indexOf(setter) : -1;
-  });
-  if (ci < 0) return null;
-  const c = getIn(store.document, `classify.${ci}`);
-  return (
-    <GroupRow
-      label={t("style_editor.classes")}
-      value={setterSummary(t, String(isObject(c) ? c.field : ""), fields)}
-      onOpen={(anchor) => openClassification(ci, anchorTopOf(anchor))}
-    />
-  );
 }
 
 /** A popover header's on/off switch (passed as the entry's `actions`, beside the close button), named "Turn <name>
@@ -404,7 +379,9 @@ export function PartEditor({ part }: { part: string }) {
       .join(",");
   });
   // For all features: icons or shapes only classes or rules give, while the base marker is a plain circle.
-  const iconSome = useStyleSelector((doc) => group?.id === "icon" && !scope && iconSetter(doc) !== undefined);
+  const iconSome = useStyleSelector(
+    (doc) => group?.id === "icon" && !scope && iconSetter(doc, geometry) !== undefined
+  );
   if (!group || !geometry) return null;
   if (rows === OFF_FOR_LAYER || rows === OFF_CARRIED || rows === OFF_RULES) {
     // A part other than the main one may be allowed per class (or for the rules that carry it): absent is off for all
@@ -470,7 +447,7 @@ export function PartEditor({ part }: { part: string }) {
           {t("style_editor.icon_some_note")}
         </Typography>
       )}
-      {iconSome && <SetByRow setterOf={iconSetter} />}
+      {iconSome && <SetByRow setterOf={(doc) => iconSetter(doc, geometry)} />}
       {group.id === "label" ? (
         <LabelEditor base={base} />
       ) : (

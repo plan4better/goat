@@ -1,19 +1,31 @@
 """Runs one eval task with a model: the production agent, prompt, tool layer
 and limits, against the fixed backends, and records what happened.
 
-A task with ``answer_card`` runs a second turn when the first showed a card:
-the eval user answers it (``auto_answer``) and the turn gets the answer the
-way the app renders it (``assistant.asks.answer_lines``). A task with
+Every message of a task is answered as the run manager answers it
+(``assistant.runs.manager``): the conversation is kept as the app stores it,
+the rows of its messages (``Repository.list_messages``: the user's text, page
+and card answer, and the answer's parts folded from its events) and the
+answers' model messages (``Repository.history``, as JSON). Each run reads its
+cards, writes, workflow runs, typed texts and loaded skills from those rows
+with the app's own functions, and the agent gets the model messages back as
+the app reloads them, so its history processing shortens earlier answers as
+in the app (``assistant.history``). A task of several messages
+(``conversation``) answers them in turn, each in a turn of its own.
+
+A message with ``answer_card`` runs a second time when its answer showed a
+card: the eval user answers it (``auto_answer``) and the run gets the answer
+the way the app renders it (``assistant.asks.answer_lines``). A task with
 ``undo`` has the eval user press Undo under the last answer, as the dock does
 (``assistant.undo``), over the audit rows the answer's calls left. A task on
 the map project (``map_states``) records the project as core held it before
-the run, when a card was answered, after the run and after the Undo."""
+each turn, when a card was answered, after each turn and after the Undo."""
 
 import asyncio
 import json
 import time
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field, replace
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -24,6 +36,7 @@ from pydantic_ai.messages import (
     FunctionToolCallEvent,
     FunctionToolResultEvent,
     ModelMessage,
+    ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
     PartDeltaEvent,
@@ -34,10 +47,17 @@ from pydantic_ai.messages import (
     ThinkingPart,
     UserPromptPart,
 )
-from pydantic_ai.models import Model
-from pydantic_ai.usage import RunUsage
+from pydantic_ai.models import (
+    Model,
+    ModelRequestParameters,
+    StreamedResponse,
+)
+from pydantic_ai.models.wrapper import WrapperModel
+from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import RequestUsage, RunUsage
+from pydantic_core import to_jsonable_python
 
-from assistant.agent import RunDeps, build_agent
+from assistant.agent import PartIds, RunDeps, build_agent
 from assistant.asks import (
     ASK_TOOL,
     AskHistory,
@@ -45,24 +65,33 @@ from assistant.asks import (
     CardAnswer,
     QuestionAnswer,
     answer_lines,
+    typed_texts,
 )
 from assistant.budget import RunBudget
 from assistant.clock import AnswerClock
 from assistant.config import AssistantSettings
-from assistant.context import PageContext, parse_context
-from assistant.events import DataPart, RunEvent
+from assistant.context import PageContext, dump_context, parse_context
+from assistant.events import DataPart, RunEvent, fold_parts
 from assistant.login import StaticLogin
 from assistant.prompt import render_note, with_note
 from assistant.repo import Repository
+from assistant.runs.translate import EventTranslator
 from assistant.runs.turn import run_turn
 from assistant.tools.runtime import ToolEnv, client_secrets
-from assistant.tools.toolset import earlier_writes
+from assistant.tools.skills import loaded_skills
+from assistant.tools.toolset import (
+    ANSWER_STEP_REFUSALS,
+    LOOK_UPS_USED_UP,
+    RESULT_TOO_LARGE,
+    STAGE_REFUSALS,
+    earlier_writes,
+)
 from assistant.undo import NothingToUndo, UndoRefused, UndoUnderWay, undo_run
 from assistant.workflows.runs import ConversationRuns
 from evals.backends import Backends
 from evals.map_backends import MapState
 from evals.map_fixture import MAP_PROJECT_ID, MAP_VIEW_PROJECT_ID
-from evals.tasks import EvalTask
+from evals.tasks import EvalTask, Message
 
 #: The eval user; the fixed backends answer for anyone.
 EVAL_USER = UUID(int=0xE7A1)
@@ -74,6 +103,65 @@ class ToolCall:
     args: dict[str, Any]
     result: Any
     failed: bool
+
+
+#: The failures of a call refused because the answer had no room left for it
+#: (``assistant.tools.toolset``): by the stage of its step, with its look-ups
+#: used up, or with a result too large for what was left.
+ROOM_REFUSALS: tuple[str, ...] = (
+    *STAGE_REFUSALS.values(),
+    *ANSWER_STEP_REFUSALS.values(),
+    LOOK_UPS_USED_UP,
+    RESULT_TOO_LARGE,
+)
+
+
+def refused_for_room(calls: Iterable[ToolCall]) -> list[str]:
+    """The tools of the calls refused because the answer had no room left
+    for them, in order, one entry per call."""
+    refused = []
+    for call in calls:
+        if not call.failed:
+            continue
+        text = (
+            call.result
+            if isinstance(call.result, str)
+            else json.dumps(call.result, ensure_ascii=False, default=str)
+        )
+        if any(refusal in text for refusal in ROOM_REFUSALS):
+            refused.append(call.name)
+    return refused
+
+
+@dataclass
+class TurnReport:
+    """One message of the eval user and its answer, with the answer after a
+    card the eval user answered in it."""
+
+    #: What the eval user typed.
+    prompt: str
+    #: What the dock showed of the turn's last answer.
+    answer: str = ""
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    #: Tokens of the turn's runs, as the budget counted them: the cache
+    #: reads are those the model reported, none for a request the task
+    #: makes cold (``ColdCacheDouble``).
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    #: Model requests of the turn's runs.
+    requests: int = 0
+    #: Runs of the turn: two when the eval user answered a card.
+    runs: int = 0
+    #: The map project before the turn, when the eval user answered a card
+    #: (before the answer), and after the turn (``MapState.snapshot``).
+    map_before: dict[str, Any] | None = None
+    map_before_answer: dict[str, Any] | None = None
+    map_after: dict[str, Any] | None = None
+
+    @property
+    def refused_for_room(self) -> list[str]:
+        return refused_for_room(self.tool_calls)
 
 
 @dataclass
@@ -114,6 +202,103 @@ class Transcript:
     map_before_answer: dict[str, Any] | None = None
     map_after: dict[str, Any] | None = None
     map_undone: dict[str, Any] | None = None
+    #: Each message of the eval user and its answer, in order; the fields
+    #: above hold the whole task (the answer and the card of its last turn).
+    turns: list[TurnReport] = field(default_factory=list)
+
+
+def turn_view(transcript: Transcript, turn: int | str | None) -> Transcript | None:
+    """What a check that names ``turn`` grades (``evals.tasks._Graded``):
+    the transcript as if the task had ended with that turn, its answer,
+    calls, tokens and snapshots that turn's, its earlier turns kept in
+    ``turns``; the whole transcript for "all", for a transcript of one turn
+    and for one made by hand. None for a turn the transcript has not (a run
+    that failed before it)."""
+    turns = transcript.turns
+    if turn == "all" or len(turns) <= 1:
+        return transcript
+    number = len(turns) if turn is None else int(turn)
+    if not 1 <= number <= len(turns):
+        return None
+    graded = turns[number - 1]
+    return replace(
+        transcript,
+        answer=graded.answer,
+        tool_calls=graded.tool_calls,
+        input_tokens=graded.input_tokens,
+        output_tokens=graded.output_tokens,
+        cache_read_tokens=graded.cache_read_tokens,
+        map_before=graded.map_before,
+        map_before_answer=graded.map_before_answer,
+        map_after=graded.map_after,
+        turns=turns[:number],
+    )
+
+
+def _cold(usage: RequestUsage) -> RequestUsage:
+    return replace(usage, cache_read_tokens=0, cache_audio_read_tokens=0)
+
+
+class ColdCacheDouble(WrapperModel):
+    """A test double around the model under test, for the tasks that ask for
+    it (``cold_requests``): the chosen requests of a run report no cache
+    reads, as if the provider had missed its cache there, so the run's budget
+    plans and counts them as such. A provider cannot be told to miss; the
+    budget reads the usage the model reports (``assistant.budget``), on the
+    response and in the run's usage. While a response streams, the checks of
+    the token limit still see the reads the provider reported; the response
+    and the run's usage get none once it ended."""
+
+    def __init__(self, wrapped: Model) -> None:
+        super().__init__(wrapped)
+        self._cold: frozenset[int] = frozenset()
+        self._requests = 0
+
+    def start_run(self, cold: Sequence[int]) -> None:
+        """A new run whose requests ``cold`` (counted from 1) miss the cache."""
+        self._cold = frozenset(cold)
+        self._requests = 0
+
+    def _next_is_cold(self) -> bool:
+        self._requests += 1
+        return self._requests in self._cold
+
+    async def request(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+    ) -> ModelResponse:
+        cold = self._next_is_cold()
+        response = await super().request(
+            messages, model_settings, model_request_parameters
+        )
+        return replace(response, usage=_cold(response.usage)) if cold else response
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: Any = None,
+    ) -> AsyncGenerator[StreamedResponse]:
+        cold = self._next_is_cold()
+        async with super().request_stream(
+            messages, model_settings, model_request_parameters, run_context
+        ) as stream:
+            if cold:
+                events = stream._get_event_iterator
+
+                async def missed() -> AsyncIterator[Any]:
+                    # The provider sets the usage as the response streams;
+                    # once it ended, the reads go before the agent reads it.
+                    async for event in events():
+                        yield event
+                    stream._usage = _cold(stream._usage)
+
+                stream._get_event_iterator = missed  # type: ignore[method-assign]
+            yield stream
 
 
 class AuditRows:
@@ -133,6 +318,29 @@ class AuditRows:
             for row in self.rows
             if row["run_id"] == run_id and row.get("undo") is not None
         ]
+
+    async def calls_before(
+        self, run_id: UUID
+    ) -> list[tuple[UUID, list[dict[str, Any]]]]:
+        """The calls of the task's other runs, by run, the oldest first, as
+        ``Repository.calls_before`` gives them: every row belongs to the
+        task's one conversation."""
+        found: dict[UUID, list[dict[str, Any]]] = {}
+        for row in self.rows:
+            if row["run_id"] == run_id:
+                continue
+            undo = row.get("undo")
+            found.setdefault(row["run_id"], []).append(
+                {
+                    "id": row["id"],
+                    "tool": row.get("tool"),
+                    "status": row.get("status"),
+                    "args": dict(row.get("args_summary") or {}),
+                    "created": row.get("created") is not None,
+                    "undo": dict(undo) if undo is not None else None,
+                }
+            )
+        return list(found.items())
 
     async def claim_undo(self, ids: list[UUID]) -> list[UUID]:
         claimed = []
@@ -277,66 +485,97 @@ class _ToolLog:
         return list(self._calls)
 
 
-def _written(calls: list[ToolCall]) -> dict[str, dict[str, Any]]:
-    """The results of the write calls that succeeded, by call key, as the
-    run manager seeds a run with those of the conversation
-    (``toolset.earlier_writes`` over the stored parts)."""
-    stored = [
-        {
-            "role": "assistant",
-            "parts": [
-                {
-                    "type": "tool",
-                    "tool_name": call.name,
-                    "args": call.args,
-                    "output": call.result,
-                    "state": "output",
-                }
-                for call in calls
-                if not call.failed
-            ],
-        }
-    ]
-    return earlier_writes(stored)
-
-
 def _is_text(event: Any) -> bool:
     if isinstance(event, PartStartEvent):
         return isinstance(event.part, TextPart) and bool(event.part.content)
     return isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta)
 
 
-def _history(task: EvalTask, page: PageContext) -> list[ModelMessage]:
-    """The task's earlier turns as the app replays them: each user text with
-    the note of its time, then the answer."""
-    messages: list[ModelMessage] = []
-    for turn in task.history:
-        note = render_note(page, page if messages else None, task.locale, turn.user)
-        messages.append(
-            ModelRequest(parts=[UserPromptPart(content=with_note(note, turn.user))])
-        )
-        messages.append(ModelResponse(parts=[TextPart(content=turn.assistant)]))
-    return messages
+class Conversation:
+    """A task's conversation as the app stores it: the rows of its messages
+    (``Repository.list_messages``) and the model messages of its answers
+    (``Repository.history``), as JSON."""
+
+    def __init__(self, page: PageContext) -> None:
+        self.page = page
+        self.rows: list[dict[str, Any]] = []
+        self.model_messages: list[Any] = []
+
+    def user_row(self, text: str, answer: CardAnswer | None) -> dict[str, Any]:
+        """A user message's row as ``RunManager.start_run`` stores it."""
+        parts: list[dict[str, Any]] = [{"type": "user_text", "text": text}]
+        if self.page.surface != "none" or self.page.sources:
+            parts.append({"type": "context", "context": dump_context(self.page)})
+        if answer is not None:
+            parts.append({"type": "answer", "answer": answer.model_dump(mode="json")})
+        return {"role": "user", "parts": parts}
+
+    def previous_page(self) -> PageContext | None:
+        """The page stored with the latest user message
+        (``Repository.last_user_context``)."""
+        for row in reversed(self.rows):
+            if row["role"] != "user":
+                continue
+            for part in row["parts"]:
+                if part.get("type") == "context":
+                    return parse_context(part["context"])
+            return None
+        return None
+
+    def history(self) -> list[ModelMessage]:
+        """The model messages a run continues, as the app reloads them."""
+        return ModelMessagesTypeAdapter.validate_python(self.model_messages)
+
+    def add_text_turns(self, task: EvalTask) -> None:
+        """The task's text-only earlier turns (``history``) as the app
+        replays them: each user text with the note of its time, then the
+        answer."""
+        for turn in task.history:
+            note = render_note(self.page, self.previous_page(), task.locale, turn.user)
+            self.add(
+                self.user_row(turn.user, None),
+                [{"type": "text", "text": turn.assistant}],
+                [
+                    ModelRequest(
+                        parts=[UserPromptPart(content=with_note(note, turn.user))]
+                    ),
+                    ModelResponse(parts=[TextPart(content=turn.assistant)]),
+                ],
+            )
+
+    def add(
+        self,
+        user: dict[str, Any],
+        parts: list[dict[str, Any]],
+        messages: list[ModelMessage],
+    ) -> None:
+        """An answered message: its row, the answer's parts and its model
+        messages, stored as ``RunManager`` stores them."""
+        self.rows += [user, {"role": "assistant", "parts": parts}]
+        self.model_messages += to_jsonable_python(messages)
 
 
 def auto_answer(
-    card_id: str, card: AskUserInput, value: str | None = None
+    card_id: str,
+    card: AskUserInput,
+    value: str | None = None,
+    declines: str | None = None,
 ) -> tuple[CardAnswer, str]:
     """The eval user's answer to a card: every question with the option of
-    ``value`` where it offers one, else its first option, the recommended one
-    when there is one (``AskQuestion`` puts it first), and the text the dock
-    sends with it."""
-    picks = [
-        next(
-            (
-                index
-                for index, option in enumerate(question.options)
-                if value is not None and option.value == value
-            ),
-            0,
-        )
-        for question in card.questions
-    ]
+    ``value`` where it offers one, the first option without the value
+    ``declines`` where it offers that, else its first option, the recommended
+    one when there is one (``AskQuestion`` puts it first), and the text the
+    dock sends with it."""
+
+    def pick(options: Sequence[Any]) -> int:
+        values = [option.value for option in options]
+        if value is not None and value in values:
+            return values.index(value)
+        if declines is not None and declines in values:
+            return next(i for i, given in enumerate(values) if given != declines)
+        return 0
+
+    picks = [pick(question.options) for question in card.questions]
     answer = CardAnswer(
         card_id=card_id,
         answers=[
@@ -386,55 +625,57 @@ async def run_task(
     maps, watched = map_states(task)
     services, requests, saved = backends.clients(maps=maps)
     events: list[RunEvent] = []
-
-    async def emit(event: RunEvent) -> None:
-        events.append(event)
-
-    agent = build_agent(model)
+    cold = (
+        ColdCacheDouble(model)
+        if any(reply.cold_requests for reply in task.messages)
+        else None
+    )
+    agent = build_agent(cold if cold is not None else model)
     budget = RunBudget(
         max_tokens=settings.run_max_tokens,
         max_tool_calls=settings.run_max_tool_calls,
     )
     started = time.monotonic()
     first_text: float | None = None
-    output = ""
     error: str | None = None
     log = _ToolLog()
-    #: One per turn, as each run of the app has its own limits.
+    #: One per run, as each run of the app has its own limits.
     usages: list[RunUsage] = []
-    #: Each turn's own messages, for the providers that answered them.
+    #: Each run's own messages, for the providers that answered them.
     answered: list[ModelMessage] = []
-    #: What the conversation created and ran, shared by its turns as the
-    #: stored conversation is in the app (ConversationRuns.from_stored).
-    runs = ConversationRuns()
-    #: What the eval user typed: the task's turns and its prompt; the text
-    #: sent with a card answer lists the options, which the model wrote.
-    typed = (*(turn.user for turn in task.history), task.prompt)
-    #: The skills the conversation loaded, shared by its turns as the stored
-    #: conversation keeps them in the app (loaded_skills).
-    skills: set[str] = set()
+    conversation = Conversation(page)
+    conversation.add_text_turns(task)
     #: The audit rows of the task's calls, and the run of the last answer.
     audit = AuditRows()
     last_run: UUID | None = None
     undo: str | None = None
-    map_before = watched.snapshot() if watched is not None else None
-    map_before_answer: dict[str, Any] | None = None
-    map_after: dict[str, Any] | None = None
+    turns: list[TurnReport] = []
     map_undone: dict[str, Any] | None = None
 
-    async def turn(
-        prompt: str,
-        history: list[ModelMessage],
-        previous: PageContext | None,
-        asks: AskHistory,
-        answer: str,
-        written: dict[str, dict[str, Any]],
-    ) -> list[ModelMessage]:
-        """One run of the conversation, as RunManager runs it: its own limits
-        and time, the conversation's earlier write results (``written``)."""
-        nonlocal first_text, output, last_run
+    def snapshot() -> dict[str, Any] | None:
+        return watched.snapshot() if watched is not None else None
+
+    async def run(
+        text: str,
+        answer: CardAnswer | None,
+        report: TurnReport,
+        cold_requests: Sequence[int],
+    ) -> None:
+        """One run of the conversation, as RunManager starts and executes it:
+        its own limits and time, and what it reads of the conversation from
+        the stored rows and model messages."""
+        nonlocal first_text, last_run
+        rows = conversation.rows
+        asks = AskHistory.from_stored(rows)
+        answer_text = ""
+        if answer is None:
+            asks = asks.with_typed_message()
+        else:
+            card = asks.cards[answer.card_id]
+            asks, answer_text = asks.with_answer(answer), answer_lines(card, answer)
         clock = AnswerClock(settings.run_wait_max_seconds)
         last_run = uuid4()
+        message_id = str(uuid4())
         env = ToolEnv(
             services=services,
             login=StaticLogin("eval-token"),
@@ -445,97 +686,112 @@ async def run_task(
             repo=cast(Repository, audit),
             extra_secrets=client_secrets(settings),
             asks=asks,
-            typed=typed,
-            skills=skills,
+            typed=typed_texts(rows, text, answer),
+            skills=loaded_skills(rows),
             clock=clock,
-            runs=runs,
+            runs=ConversationRuns.from_stored(rows),
         )
+        run_events: list[RunEvent] = []
+
+        async def emit(event: RunEvent) -> None:
+            events.append(event)
+            run_events.append(event)
+
+        part_ids = PartIds(message_id)
         deps = RunDeps(
-            message_id=str(uuid4()),
+            message_id=message_id,
             emit=emit,
+            part_ids=part_ids,
             env=env,
-            prompt_note=render_note(page, previous, task.locale, prompt),
-            prompt_answer=answer,
-            prompt_text=prompt,
+            prompt_note=render_note(
+                page, conversation.previous_page(), task.locale, text
+            ),
+            prompt_answer=answer_text,
+            prompt_text=text,
             prompt_locale=task.locale,
             budget=budget,
         )
         env.emit_data = deps.emit_data
-        deps.earlier_results.update(written)
+        deps.earlier_results.update(earlier_writes(rows))
+        translator = EventTranslator(part_ids, deps.response_texts)
+        history = conversation.history()
+        user = conversation.user_row(text, answer)
         # The caller's usage, as RunManager does: tokens of a run that fails
         # or times out are still counted.
         usage = RunUsage()
         usages.append(usage)
+        calls = len(log.calls)
+        report.runs += 1
+        if cold is not None:
+            cold.start_run(cold_requests)
 
         async def on_event(event: AgentStreamEvent) -> None:
             nonlocal first_text
             log.see(event)
             if first_text is None and _is_text(event):
                 first_text = time.monotonic() - started
+            for translated in translator.translate(event):
+                await emit(translated)
 
-        async with asyncio.timeout(settings.run_max_seconds) as deadline:
-            clock.timeout = deadline
-            result = await run_turn(
-                agent,
-                with_note(deps.prompt_note, prompt, answer),
-                deps=deps,
-                on_event=on_event,
-                message_history=history or None,
-                # One per run, as each run of the app has its own: the limit's
-                # margin follows the run's own requests.
-                usage_limits=budget.usage_limits(),
-                usage=usage,
-            )
+        try:
+            async with asyncio.timeout(settings.run_max_seconds) as deadline:
+                clock.timeout = deadline
+                result = await run_turn(
+                    agent,
+                    with_note(deps.prompt_note, text, answer_text),
+                    deps=deps,
+                    on_event=on_event,
+                    message_history=history,
+                    # One per run, as each run of the app has its own: the
+                    # limit's margin follows the run's own requests.
+                    usage_limits=budget.usage_limits(),
+                    usage=usage,
+                )
+        finally:
+            report.tool_calls += log.calls[calls:]
+            report.input_tokens += usage.input_tokens
+            report.output_tokens += usage.output_tokens
+            report.cache_read_tokens += usage.cache_read_tokens
+            report.requests += usage.requests
         # What the dock shows: the text of every response of the answer, the
         # one before a card that ended it too.
-        output = _text(result.messages)
+        report.answer = _text(result.messages)
         # The replaced responses and the requests that asked again count too:
         # each cost a model call.
         answered.extend([*result.messages, *result.replaced])
-        return [*history, *result.messages]
+        conversation.add(user, fold_parts(run_events), result.messages)
 
     try:
-        messages = await turn(
-            task.prompt,
-            _history(task, page),
-            page if task.history else None,
-            AskHistory(),
-            "",
-            {},
-        )
-        first = log.calls
-        shown = _shown_card(first) if task.answer_card else None
-        if shown is not None:
-            card_id, card = shown
-            answer, text = auto_answer(card_id, card, task.answer_value)
-            if watched is not None:
-                map_before_answer = watched.snapshot()
-            await turn(
-                text,
-                messages,
-                page,
-                AskHistory(cards={card_id: card}).with_answer(answer),
-                answer_lines(card, answer),
-                _written(first),
-            )
-        if watched is not None:
-            map_after = watched.snapshot()
+        for reply in task.messages:
+            text = reply.text if isinstance(reply, Message) else task.prompt
+            report = TurnReport(prompt=text, map_before=snapshot())
+            turns.append(report)
+            await run(text, None, report, reply.cold_requests)
+            shown = _shown_card(report.tool_calls) if reply.answer_card else None
+            if shown is not None:
+                card_id, card = shown
+                answer, typed = auto_answer(
+                    card_id, card, reply.answer_value, reply.answer_declines
+                )
+                report.map_before_answer = snapshot()
+                await run(typed, answer, report, ())
+            report.map_after = snapshot()
         if task.undo and last_run is not None:
             undo = await press_undo(audit, services, last_run)
-            if watched is not None:
-                map_undone = watched.snapshot()
+            map_undone = snapshot()
     except Exception as exc:  # a failed run is a failed task, not a failed eval
         error = f"{type(exc).__name__}: {exc}"
     finally:
         await services.aclose()
-    if watched is not None and map_after is None:
+    if turns and turns[-1].map_after is None:
         # A run that failed: what it stored before it failed.
-        map_after = watched.snapshot()
+        turns[-1].map_after = snapshot()
     providers, cost = answered_by(answered)
     reasoning_only, retries = stalls(answered)
+    last = turns[-1] if turns else TurnReport(prompt=task.prompt)
     return Transcript(
         task_id=task.id,
-        answer=output,
+        answer=last.answer,
         tool_calls=log.calls,
         proposals=[
             e.data for e in events if isinstance(e, DataPart) and e.name == "proposal"
@@ -553,8 +809,9 @@ async def run_task(
         reasoning_only=reasoning_only,
         retries=retries,
         undo=undo,
-        map_before=map_before,
-        map_before_answer=map_before_answer,
-        map_after=map_after,
+        map_before=turns[0].map_before if turns else snapshot(),
+        map_before_answer=last.map_before_answer,
+        map_after=last.map_after,
         map_undone=map_undone,
+        turns=turns,
     )

@@ -1,4 +1,4 @@
-"""The outlines a ``set_area`` row operation is built from, read before the
+"""The outlines a filter operation's area is built from, read before the
 plan of ``map_update``: region outlines from the catalog, the features of
 another polygon layer from geoapi, and the map view from the page.
 
@@ -22,6 +22,7 @@ from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import ProjectMapContext
 from assistant.maps.filter_area import AreaSources, Outline, SetArea
+from assistant.maps.filter_rows import AREA_REFUSED
 from assistant.maps.operations import FilterLayer, MapOp
 from assistant.maps.state import MapRead
 from assistant.maps.view import LOCKED, NO_LAYER
@@ -54,7 +55,7 @@ _HIDDEN_FIELDS = frozenset({"layer_id", "id", "h3_3", "h3_6", "geom", "geometry"
 
 AreaFacts = Mapping[int, AreaSources | InputInvalid | ToolFailed]
 
-#: The set_area operations one call takes, the regions of all of them
+#: The areas one call sets, the regions of all of them
 #: together, and how many outline requests of a call run at the same time:
 #: a request names a few places, and each outline is read and simplified.
 MAX_AREAS_PER_CALL = 10
@@ -66,10 +67,9 @@ def check_outline_budget(operations: Sequence[MapOp]) -> None:
     """Refuses a call whose areas would read more outlines than one call
     takes, before anything is read."""
     areas = [
-        found[1]
+        op.area
         for op in operations
-        if isinstance(op, FilterLayer)
-        if (found := _area_operation(op)) is not None
+        if isinstance(op, FilterLayer) and isinstance(op.area, SetArea)
     ]
     if len(areas) > MAX_AREAS_PER_CALL:
         raise InputInvalid(
@@ -301,7 +301,7 @@ def _check_count(count: int, name: str) -> None:
 
 
 async def _no_layer() -> tuple[str | None, tuple[Outline, ...]]:
-    """What a set_area without features_of reads of another layer."""
+    """What an area without features_of reads of another layer."""
     return None, ()
 
 
@@ -341,53 +341,38 @@ async def _sources(
     )
 
 
-def _area_operation(op: FilterLayer) -> tuple[int, SetArea] | None:
-    return next(
-        (
-            (number, row)
-            for number, row in enumerate(op.rows, start=1)
-            if isinstance(row, SetArea)
-        ),
-        None,
-    )
-
-
 async def read_area_sources(
     env: ToolEnv, project_id: UUID, state: MapRead, operations: Sequence[MapOp]
 ) -> dict[int, AreaSources | InputInvalid | ToolFailed]:
-    """The outlines of every ``set_area``, by the index of its ``filter``
-    operation, read at once; a refusal in its place, worded with the row
-    operation's number, for the plan to raise. Only a layer the plan does
+    """The outlines of every area a ``filter`` operation sets, by the index
+    of that operation, read at once; a refusal in its place, starting with
+    ``AREA_REFUSED``, for the plan to raise. Only a layer the plan does
     not refuse anyway (one the user can read, a feature layer, not being
     copied) has its outlines read, at most ``OUTLINE_READS`` requests at a
     time."""
     limit = asyncio.Semaphore(OUTLINE_READS)
 
-    async def read(
-        link: int, number: int, op: SetArea
-    ) -> AreaSources | InputInvalid | ToolFailed:
+    async def read(link: int, op: SetArea) -> AreaSources | InputInvalid | ToolFailed:
         try:
             return await _sources(env, project_id, state, state.rows[link], op, limit)
         except InputInvalid as exc:
-            return InputInvalid(f"Row operation {number}: {exc.message}")
+            return InputInvalid(f"{AREA_REFUSED}{exc.message}")
         except ToolFailed as exc:
-            return ToolFailed(f"Row operation {number}: {exc.message}")
+            return ToolFailed(f"{AREA_REFUSED}{exc.message}")
 
     wanted: dict[int, Any] = {}
     for index, operation in enumerate(operations):
         if not isinstance(operation, FilterLayer):
             continue
-        found = _area_operation(operation)
         row = state.rows.get(operation.layer_project_id)
         if (
-            found is None
+            not isinstance(operation.area, SetArea)
             or row is None
             or row.get("locked")
             or _copy_status(row) in _COPYING
             or row.get("type") != "feature"
         ):
             continue
-        number, op = found
-        wanted[index] = read(operation.layer_project_id, number, op)
+        wanted[index] = read(operation.layer_project_id, operation.area)
     read_all = await asyncio.gather(*wanted.values())
     return dict(zip(wanted, read_all, strict=True))

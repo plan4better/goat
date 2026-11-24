@@ -12,7 +12,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.usage import RunUsage
 
 from evals.graders import Grade
-from evals.harness import Transcript
+from evals.harness import Transcript, turn_view
 from evals.tasks import EvalTask, JudgeCheck
 
 JUDGE_INSTRUCTIONS = (
@@ -58,8 +58,11 @@ class ModelJudge:
     async def judge(
         self, task: EvalTask, rubric: str, transcript: Transcript
     ) -> Verdict:
-        material = {
-            "question": task.prompt,
+        # A conversation's turn (``evals.harness.turn_view``): its message,
+        # and the messages and answers before it.
+        turns = transcript.turns
+        material: dict[str, Any] = {
+            "question": turns[-1].prompt if turns else task.prompt,
             "ui_language": task.locale,
             "rubric": rubric,
             "answer": transcript.answer,
@@ -68,6 +71,10 @@ class ModelJudge:
                 for c in transcript.tool_calls
             ],
         }
+        if len(turns) > 1:
+            material["earlier"] = [
+                {"user": turn.prompt, "assistant": turn.answer} for turn in turns[:-1]
+            ]
         result = await self._agent.run(
             json.dumps(material, ensure_ascii=False), usage=self.usage
         )
@@ -90,8 +97,12 @@ async def apply_judge(
         elif judge is None:
             decided.append(Grade("judge", None, "not judged (--no-judge)"))
         else:
+            graded = turn_view(transcript, check.turn)
+            if graded is None:
+                decided.append(Grade("judge", False, f"no turn {check.turn}"))
+                continue
             try:
-                verdict = await judge.judge(task, check.rubric, transcript)
+                verdict = await judge.judge(task, check.rubric, graded)
             except Exception as exc:  # one failed judge call must not lose the run
                 # Undecided, not failed: the model under test is not at fault,
                 # and an undecided check blocks promotion.

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { answerChanges, hasChanges } from "@/lib/assistant/answerChanges";
+import { answerChanges, hasChanges, savesChange } from "@/lib/assistant/answerChanges";
 import { type AskCardState, askCardOf, askCardState, askStepReturned } from "@/lib/assistant/ask";
 import { contextChips, plainTranslate } from "@/lib/assistant/chips";
 import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, itemKey, shownGroups, uniqueGroups } from "@/lib/assistant/items";
@@ -22,7 +22,9 @@ import {
   useActiveSurface,
   useDockState,
 } from "@/lib/assistant/store";
+import type { Restored } from "@/lib/assistant/transport";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
+import { runsUndoneByWords, typedRestores } from "@/lib/assistant/undoReply";
 
 import AnswerDetails from "@/components/assistant/messages/AnswerDetails";
 import AskCard from "@/components/assistant/messages/AskCard";
@@ -227,6 +229,8 @@ function Answer({
   panelAskId,
   heldAskId,
   onShowAsk,
+  undoneByWords,
+  restoredByWords,
 }: {
   message: AssistantMessage;
   /** When the answer was given, if known. */
@@ -246,6 +250,10 @@ function Answer({
   panelAskId: string | null;
   heldAskId: string | null;
   onShowAsk?: (cardId: string) => void;
+  /** A typed undo of a later answer took this answer's changes back. */
+  undoneByWords: boolean;
+  /** What typed undos of later answers wrote back of this answer's changes. */
+  restoredByWords?: Restored[];
 }) {
   const { t } = useTranslation("common");
   const blocks: ReactNode[] = [];
@@ -259,10 +267,10 @@ function Answer({
     const partId = part.providerMetadata?.goat?.partId;
     return typeof partId !== "string" || !replaced.has(partId);
   };
-  // What the answer's steps named, for every group: a change names the workflow an earlier group read.
-  const names = stepNames(
-    message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool")
-  );
+  // What the answer's steps named, for every group: a change names the workflow an earlier group read. A
+  // failed write that a later group corrected is part of that group's line.
+  const answerSteps = message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool");
+  const names = stepNames(answerSteps);
   // Only the answer's last list of each show tool becomes cards: a model that
   // names them more than once has refined what it points to. Every workflow
   // the answer created gets its card.
@@ -298,6 +306,7 @@ function Answer({
         running={running}
         openProject={openProject}
         names={names}
+        answerSteps={answerSteps}
       />
     );
     // Below the group, so the way back shows also when the step's line is folded into the summary.
@@ -401,7 +410,9 @@ function Answer({
     !running && !readOnly && !!runId && (message.metadata?.undoable === true || hasChanges(changes));
   // An answer whose only change was a removal has nothing to undo: a line says the layer does not come back.
   const removedOnly = !running && !undoable && changes.layersRemoved && !hasChanges(changes);
-  const actions = !running && (text.trim() || !ended || undoable || charged || removedOnly);
+  // An ended answer with nothing to copy or rate keeps the row for its time while it offers Undo.
+  const actions =
+    !running && (text.trim() || !ended || charged || removedOnly || (undoable && time !== null));
   return (
     <Stack
       gap="14px"
@@ -412,13 +423,22 @@ function Answer({
         "&:hover .answer-actions, &:focus-within .answer-actions": { opacity: 1 },
         "@media (hover: none)": { "& .answer-actions": { opacity: 1 } },
       }}>
-      {blocks}
+      {/* The Undo sits on the lines of the answer's changes, the last one carrying its button. */}
+      <UndoAnswer
+        conversationId={conversationId}
+        runId={undoable && runId ? runId : null}
+        changes={changes}
+        changeSteps={answerSteps.filter(savesChange).map((step) => step.toolCallId)}
+        undone={message.metadata?.undone === true || undoneByWords}
+        restores={restoredByWords}>
+        {blocks}
+      </UndoAnswer>
       {/* Below whatever came so far, between steps (the model decides what to do next) and
           while text streams in; a step under way says what it does instead. */}
       {running && <AnsweringLine quiet={stepUnderWay} />}
       {actions && (
-        // The 28px buttons sit 6px out, so their icons start where the answer's text does. A note of
-        // the Undo wraps to a line of its own below them.
+        // The 28px buttons sit 6px out, so their icons start where the answer's text does. The note of
+        // a removal that Undo cannot put back wraps to a line of its own below them.
         <Stack
           className="answer-actions"
           direction="row"
@@ -426,14 +446,6 @@ function Answer({
           alignItems="center"
           flexWrap="wrap"
           sx={{ mt: "-8px", ml: "-6px" }}>
-          {undoable && runId && (
-            <UndoAnswer
-              conversationId={conversationId}
-              runId={runId}
-              changes={changes}
-              undone={message.metadata?.undone}
-            />
-          )}
           <CopyAnswer text={text} />
           {(!ended || charged) && <AnswerDetails usage={message.metadata?.usage} />}
           {!ended && (
@@ -458,6 +470,8 @@ export default function MessageList(props: MessageListProps) {
   const runs = (index: number) => props.busy && index === props.messages.length - 1;
   const newestProposal = lastProposalId(props.messages);
   const latestAnswer = props.messages.findLast((message) => message.role === "assistant")?.id;
+  const undoneByWords = runsUndoneByWords(props.messages);
+  const restoredByWords = typedRestores(props.messages);
   // A question's time reserves no space in the flow. Last in the list, with no
   // Answering line after it, the question keeps that space below it in the
   // list, so what follows the list (an alert) does not cover its time.
@@ -489,6 +503,8 @@ export default function MessageList(props: MessageListProps) {
             panelAskId={props.panelAskId ?? null}
             heldAskId={props.heldAskId ?? null}
             onShowAsk={props.onShowAsk}
+            undoneByWords={undoneByWords.has(message.metadata?.run_id ?? "")}
+            restoredByWords={restoredByWords.get(message.metadata?.run_id ?? "")}
           />
         ) : null
       )}
