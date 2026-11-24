@@ -3154,9 +3154,9 @@ changes to the current style or discard them. Version history, when it comes, re
   closed tab loses what was not saved: about one second of edits, or everything since going offline.
 - Other people see a stored change when their map loads the style again.
 
-**The AI** writes a whole document, or operations from section 11's list that core applies to the current document.
-Both go through steps 2 to 4. A check without storing (`dry_run: true`) returns the same issues, so the AI can fix its
-document before writing it.
+**The AI** applies edit operations (section 20) with goatlib to the stored document and saves the whole result,
+which goes through steps 1 to 4 like any save. A check without storing is the check route (`POST .../style/{id}/check`),
+which returns the issues of the document it is given, so the AI can correct its edits before saving them.
 
 **Not used:** CRDTs (the server could not refuse an invalid edit, and the stored style would stop being plain JSON) and
 WebSockets (live multiplayer can come later without changing the document or these rules).
@@ -3770,6 +3770,28 @@ Common mistakes the validator answers with a fix:
 - writing `classes` with invented breaks for a computed method (the server replaces them; write the method and
   `count` only);
 - a fractional class zoom (`zoom_not_whole`, fix `round`).
+
+**Edit operations.** The AI changes a stored style with a list of operations, which goatlib applies in order, all or
+none, before the whole result is saved (13.1). A path is a JSON pointer in which a list item with an id is named by
+its id (`/classify/density/palette`).
+
+| `op` | Arguments | Does |
+|---|---|---|
+| `set` | `path`, `value` | sets a value, creating missing objects on the way; a list item must exist (`add` adds one) |
+| `remove` | `path` | removes a key or list item |
+| `add` | `path`, `item`, `after` | adds an item to an id list (`classify`, a classification's `classes`, `rules`, `popup.blocks`, `render.classify.classes`), after the item `after` names, or last |
+| `move` | `path`, `after` | moves an item of an id list after the item `after` names, or first |
+| `retarget` | `path`, `target` | points a classification at another property, as the fix does (section 11) |
+| `use_field` | `path`, `field` | replaces a field reference, as the fix does |
+| `round` | `path` | rounds a class or rule zoom to a whole number, as the fix does |
+
+An added item without an id gets the one the server would give it: a classification its field name when that is free,
+otherwise `k1`, `k2`; classes `c1`, rules `r1`, blocks `b1`. An id the item brings is kept when it is free and is a
+lowercase letter followed by up to 31 lowercase letters, digits or `_`. A later operation of the same call can name the
+new item by its id. `version` and `kind` are not edited. Computed values are never written: an operation on a path under
+`computed`, with a value that contains `computed`, or whose path ends on a class bound or value the server computes
+(5.2) is refused. Bounds written inside a whole class or class list of such a classification are replaced by the server.
+`use_field` replaces a field reference that is there; a key that is not there is refused.
 
 ## 21. Changelog
 
