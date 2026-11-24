@@ -11,8 +11,9 @@ import { type AnswerChanges, hasChanges } from "@/lib/assistant/answerChanges";
 import { plainTranslate } from "@/lib/assistant/chips";
 import { assistantErrorKey, toRequestError } from "@/lib/assistant/errors";
 import { getMapBridge } from "@/lib/assistant/mapBridge";
-import { type MapChange, mapChangeOfUndo, mergedMapChange } from "@/lib/assistant/mapEdits";
+import { type MapChange, mergedMapChange } from "@/lib/assistant/mapEdits";
 import { type Restored, type UndoOutcome, undoAnswer } from "@/lib/assistant/transport";
+import { followUndone } from "@/lib/assistant/undoReply";
 import { changedText } from "@/lib/utils/changedElsewhereText";
 
 import { useNow } from "@/hooks/assistant/useNow";
@@ -115,20 +116,21 @@ export default function UndoAnswer({
   runId: string;
   /** What the answer changed. */
   changes: AnswerChanges;
-  /** The answer's edits were undone before (the stored conversation says so). */
+  /** The answer's edits were undone elsewhere: before (the stored conversation says so), or by a typed undo. */
   undone?: boolean;
 }) {
   const { t, i18n } = useTranslation("common");
   const actions = useDockActions();
   const now = useNow();
   const button = useRef<HTMLButtonElement>(null);
-  const [undone, setUndone] = useState(() => undoneBefore || undoneRuns.has(runId));
+  const [undoneHere, setUndoneHere] = useState(() => undoneRuns.has(runId));
+  const undone = undoneBefore || undoneHere;
   const [busy, setBusy] = useState(false);
   const [asking, setAsking] = useState<Asking | null>(null);
 
   const done = () => {
     undoneRuns.add(runId);
-    setUndone(true);
+    setUndoneHere(true);
   };
 
   /** Has the page read again everything the answer changed, as an Undo whose reply names nothing. */
@@ -171,22 +173,7 @@ export default function UndoAnswer({
       }
       const outcome = await undoAnswer(conversationId, runId, force);
       const { restored } = outcome;
-      if (restored.workflows.length) actions.followWorkflowChanges(restored.workflows);
-      if (restored.styles.length) {
-        actions.followStyleChanges(
-          // The reply does not say whether the layer's active style or the style's name went back with it: the
-          // layer's list of styles is read again.
-          restored.styles.map(({ projectId, layerProjectId, styleId, revision, removed }) => ({
-            projectId,
-            layerProjectId,
-            styleId,
-            revision,
-            listChanged: true,
-            removed,
-          }))
-        );
-      }
-      if (restored.map) actions.followMapChange(mapChangeOfUndo(restored.map));
+      followUndone(restored, actions);
       count(runId, restored);
       if (outcome.kind === "changed") setAsking({ kind: "changed", changed: outcome.changed });
       // Core stored nothing of a style's restore: the Undo stays, and a line says so.
@@ -262,7 +249,8 @@ export default function UndoAnswer({
     tally?.layerRemoved ? t("assistant_undone_layer_removed") : "",
     tally?.mapRefused ? t("assistant_undone_map_refused") : "",
     tally?.groupInUse ? t("assistant_undone_group_in_use") : "",
-    tally?.styleRefused ? t("assistant_undone_style_refused") : "",
+    // A later undo, typed or pressed, took the answer back, that style included.
+    !undone && tally?.styleRefused ? t("assistant_undone_style_refused") : "",
   ].filter(Boolean);
 
   if (undone) {

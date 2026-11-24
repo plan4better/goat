@@ -1,9 +1,16 @@
 // The dock's way into the open map page. The dock sits outside the page's tree, and what follows a change made
 // elsewhere lives inside it (the style editor stores, the scene store, the map request's cache, the map's camera),
 // so the page registers a bridge here while it is mounted, as it registers its surface adapter.
-import { type MapChange, type ViewTarget, mapEdit, mergedMapChange } from "@/lib/assistant/mapEdits";
+import {
+  type MapChange,
+  type ViewTarget,
+  mapChangeOfUndo,
+  mapEdit,
+  mergedMapChange,
+} from "@/lib/assistant/mapEdits";
 import { type StyleChange, styleEdit } from "@/lib/assistant/styleEdits";
 import type { AssistantMessage, UndoFn } from "@/lib/assistant/types";
+import { undoneByStep } from "@/lib/assistant/undoReply";
 
 /** What the open map page does for the dock. */
 export interface MapBridge {
@@ -75,7 +82,7 @@ export function followMapChange(change: MapChange): void {
     .catch((error: unknown) => console.error("Following the assistant's map change failed", error));
 }
 
-/** The `style_update` and `map_update` steps this tab handed to the page as they came in, by tool call. */
+/** The `style_update`, `map_update` and `undo_changes` steps this tab handed to the page as they came in, by tool call. */
 const followedCalls = new Set<string>();
 
 /** A step was handed to the page as it came in. */
@@ -84,12 +91,23 @@ export const markFollowed = (toolCallId: string): void => void followedCalls.add
 /** Tests: forget the steps handed over, as a fresh tab would. */
 export const resetFollowedCalls = (): void => followedCalls.clear();
 
+/** A re-read of a project's map request, which carries the layers' active styles and their lists. */
+const restyled = (projectId: string): MapChange => ({
+  projectId,
+  layers: false,
+  state: true,
+  groups: false,
+  basemap: false,
+  scene: false,
+});
+
 /**
  * What the newest answer of `messages` changed in steps this tab did not hand to the page as they came in (no chat
  * view followed it while it ran: the dock was closed, or it ran in another tab), as one change per project for the
- * page to read again. A changed style is a re-read of the map request, which carries the layers' active styles and
- * their lists: no style is read on its own. `map: false` leaves the map steps out, for a caller that follows them
- * itself. Each step counts once per tab.
+ * page to read again. A changed style is a re-read of the map request: no style is read on its own. A typed undo is
+ * what went back of the map and the maps of the styles it restored. `map: false` leaves the map steps out, for a
+ * caller that follows them itself; no follow reads a typed undo's map again, so it stays in. Each step counts once
+ * per tab.
  */
 export function missedEdits(messages: AssistantMessage[], { map = true } = {}): MapChange[] {
   const answer = messages.findLast((message) => message.role === "assistant");
@@ -97,22 +115,23 @@ export function missedEdits(messages: AssistantMessage[], { map = true } = {}): 
   for (const part of answer?.parts ?? []) {
     if (part.type !== "dynamic-tool" || followedCalls.has(part.toolCallId)) continue;
     const style = styleEdit(part);
-    const change = style
-      ? {
-          projectId: style.projectId,
-          layers: false,
-          state: true,
-          groups: false,
-          basemap: false,
-          scene: false,
-        }
-      : map
-        ? mapEdit(part)?.change
-        : null;
-    if (!change) continue;
+    const undone = undoneByStep(part);
+    const found: MapChange[] = style
+      ? [restyled(style.projectId)]
+      : undone
+        ? [
+            ...(undone.map ? [mapChangeOfUndo(undone.map)] : []),
+            ...undone.styles.map((restored) => restyled(restored.projectId)),
+          ]
+        : map
+          ? [mapEdit(part)?.change].filter((change): change is MapChange => !!change)
+          : [];
+    if (!found.length) continue;
     followedCalls.add(part.toolCallId);
-    const known = changes.get(change.projectId);
-    changes.set(change.projectId, known ? mergedMapChange(known, change) : change);
+    for (const change of found) {
+      const known = changes.get(change.projectId);
+      changes.set(change.projectId, known ? mergedMapChange(known, change) : change);
+    }
   }
   return [...changes.values()];
 }

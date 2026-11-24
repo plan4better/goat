@@ -48,6 +48,7 @@ export const WRITE_TOOLS = [
   "workflow_update",
   "style_update",
   "map_update",
+  "undo_changes",
 ] as const;
 
 /**

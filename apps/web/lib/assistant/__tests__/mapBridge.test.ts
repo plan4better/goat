@@ -182,3 +182,58 @@ describe("what the newest answer changed that this tab did not follow", () => {
     expect(missedEdits([asked])).toEqual([]);
   });
 });
+
+describe("a typed undo the tab did not follow as it came in", () => {
+  const undone = (toolCallId: string, output: Record<string, unknown>): DynamicToolUIPart =>
+    ({
+      type: "dynamic-tool",
+      toolName: "undo_changes",
+      toolCallId,
+      state: "output-available",
+      input: {},
+      output: { workflows: [], styles: [], not_restored: [], summary: "…", ...output },
+    }) as DynamicToolUIPart;
+  const map = { project_id: "p1", layers: [32], tree: false, groups: false, basemap: true, scene: false };
+  const style = (projectId: string) => ({
+    project_id: projectId,
+    layer_project_id: 7,
+    style_id: "s1",
+    revision: 4,
+    removed: false,
+    partial: false,
+  });
+
+  it("is a re-read of what went back of the map and of the maps of the restored styles, once, also without the map steps", () => {
+    const messages = [
+      asked,
+      answer("a1", [
+        undone("t-1", { status: "undone", run_id: "r1", map, styles: [style("p1"), style("p2")] }),
+      ]),
+    ];
+    // The undo's map is no other follow's: it is read again also when the map steps are left out.
+    expect(missedEdits(messages, { map: false })).toEqual([
+      plain({ layers: true, state: true, basemap: true }),
+      { ...plain({ state: true }), projectId: "p2" },
+    ]);
+    expect(missedEdits(messages)).toEqual([]);
+  });
+
+  it("reads what went back of a result that asks about the rest, and nothing for the other results", () => {
+    expect(missedEdits([answer("a1", [undone("t-2", { status: "changed", run_id: "r1", map })])])).toEqual([
+      plain({ layers: true, state: true, basemap: true }),
+    ]);
+    const none = [
+      undone("t-3", { status: "undone", run_id: "r1", map, repeated_call: "…" }),
+      undone("t-4", { status: "nothing", run_id: "r1" }),
+      undone("t-5", { status: "under_way", run_id: "r1" }),
+      undone("t-6", { status: "failed", run_id: "r1" }),
+      undone("t-7", { status: "undone", run_id: "r1", workflows: [{ workflow_id: "w", project_id: "p1" }] }),
+    ];
+    expect(missedEdits([answer("a2", none)])).toEqual([]);
+  });
+
+  it("leaves out an undo this tab followed as it came in", () => {
+    markFollowed("t-8");
+    expect(missedEdits([answer("a1", [undone("t-8", { status: "undone", run_id: "r1", map })])])).toEqual([]);
+  });
+});

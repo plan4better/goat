@@ -23,6 +23,7 @@ import {
   useDockState,
 } from "@/lib/assistant/store";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
+import { runsUndoneByWords } from "@/lib/assistant/undoReply";
 
 import AnswerDetails from "@/components/assistant/messages/AnswerDetails";
 import AskCard from "@/components/assistant/messages/AskCard";
@@ -227,6 +228,7 @@ function Answer({
   panelAskId,
   heldAskId,
   onShowAsk,
+  undoneByWords,
 }: {
   message: AssistantMessage;
   /** When the answer was given, if known. */
@@ -246,6 +248,8 @@ function Answer({
   panelAskId: string | null;
   heldAskId: string | null;
   onShowAsk?: (cardId: string) => void;
+  /** A typed undo of a later answer took this answer's changes back. */
+  undoneByWords: boolean;
 }) {
   const { t } = useTranslation("common");
   const blocks: ReactNode[] = [];
@@ -432,7 +436,7 @@ function Answer({
               conversationId={conversationId}
               runId={runId}
               changes={changes}
-              undone={message.metadata?.undone}
+              undone={message.metadata?.undone === true || undoneByWords}
             />
           )}
           <CopyAnswer text={text} />
@@ -459,6 +463,7 @@ export default function MessageList(props: MessageListProps) {
   const runs = (index: number) => props.busy && index === props.messages.length - 1;
   const newestProposal = lastProposalId(props.messages);
   const latestAnswer = props.messages.findLast((message) => message.role === "assistant")?.id;
+  const undoneByWords = runsUndoneByWords(props.messages);
   // A question's time reserves no space in the flow. Last in the list, with no
   // Answering line after it, the question keeps that space below it in the
   // list, so what follows the list (an alert) does not cover its time.
@@ -490,6 +495,7 @@ export default function MessageList(props: MessageListProps) {
             panelAskId={props.panelAskId ?? null}
             heldAskId={props.heldAskId ?? null}
             onShowAsk={props.onShowAsk}
+            undoneByWords={undoneByWords.has(message.metadata?.run_id ?? "")}
           />
         ) : null
       )}

@@ -14,6 +14,7 @@ import {
   foldRepeatedWrites,
   groupSummary,
   staysVisible,
+  stepFailed,
   stepNames,
   stepRows,
   stepRunning,
@@ -70,7 +71,7 @@ export default function StepGroup({
     return <StepList steps={steps} rows={shown(rows, open)} running={running} names={names} />;
   }
 
-  const failed = rows.filter((row) => row.step.state === "output-error").length;
+  const failed = rows.filter((row) => stepFailed(row.step)).length;
   // One shimmer at a time: a line of its own shows its step under way, and so
   // does the open list.
   const underWay =

@@ -249,3 +249,9 @@ describe("write tools", () => {
     expect(WRITE_TOOLS).not.toContain("style_catalog");
   });
 });
+
+describe("the typed undo", () => {
+  it("is a write, so its step never folds into a summary", () => {
+    expect(WRITE_TOOLS).toContain("undo_changes");
+  });
+});

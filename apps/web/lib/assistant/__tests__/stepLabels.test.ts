@@ -10,6 +10,7 @@ import {
   foldRepeatedWrites,
   groupSummary,
   staysVisible,
+  stepFailed,
   stepLabel,
   stepNames,
   stepResult,
@@ -1024,5 +1025,111 @@ describe("repeated writes", () => {
     const rows = foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate);
     expect(groupSummary(rows, enTranslate, false)).toBe(groupSummary(stepRows(steps), enTranslate, false));
     expect(rows.filter((row) => staysVisible(row, false))).toHaveLength(1);
+  });
+});
+
+describe("typed undo steps", () => {
+  const undo = (output: Record<string, unknown>) => call("undo_changes", {}, output);
+  const base = { workflows: [], styles: [], not_restored: [], summary: "…" };
+  const undoneMap = {
+    project_id: "p1",
+    layers: [32],
+    tree: false,
+    groups: false,
+    basemap: false,
+    scene: false,
+  };
+  const undone = undo({ ...base, status: "undone", run_id: "r1", map: undoneMap });
+  const changedOnly = undo({ ...base, status: "changed", run_id: "r1" });
+  const changedPartly = undo({
+    ...base,
+    status: "changed",
+    run_id: "r1",
+    workflows: [{ workflow_id: "wf-1", project_id: "p1", revision: 6 }],
+  });
+  const nothing = undo({ ...base, status: "nothing" });
+  const takenAlready = undo({ ...base, status: "nothing", run_id: "r1" });
+  const underWay = undo({ ...base, status: "under_way", run_id: "r1" });
+  const refusedByCore = undo({ ...base, status: "failed", run_id: "r1" });
+  const refused = failed("undo_changes", { confirm: "undo_anyway:x" });
+  const de = (step: DynamicToolUIPart) => stepLabel(step, stepNames([step]), deTranslate);
+  const running = (t: Translate) => stepLabel(call("undo_changes", {}), stepNames([]), t, true);
+  const mapChange = call(
+    "map_update",
+    { operations: [] },
+    { applied: [{ index: 0, op: "set_layer", layer_project_id: 1, fields: ["visible"], summary: "hidden" }] }
+  );
+
+  it("say what came of the undo in both languages, running and finished", () => {
+    expect(running(enTranslate)).toBe("Undoing the changes…");
+    expect(running(deTranslate)).toBe("Macht die Änderungen rückgängig…");
+    expect(label(undone)).toBe("Undid the changes");
+    expect(de(undone)).toBe("Änderungen rückgängig gemacht");
+    // Asked about what was changed since: a check, not a failure and not an undo.
+    expect(label(changedOnly)).toBe("Checked what was changed since");
+    expect(de(changedOnly)).toBe("Geprüft, was seitdem geändert wurde");
+    expect(label(changedPartly)).toBe("Undid part of the changes and checked what was changed since");
+    expect(de(changedPartly)).toBe(
+      "Einen Teil der Änderungen rückgängig gemacht und geprüft, was seitdem geändert wurde"
+    );
+    expect(label(nothing)).toBe("Found nothing to undo");
+    expect(de(nothing)).toBe("Nichts gefunden, was rückgängig zu machen ist");
+    expect(label(takenAlready)).toBe("Found nothing to undo");
+    // A call that did not go through keeps the plain label, as the other writes do.
+    for (const step of [underWay, refusedByCore, refused]) {
+      expect(label(step)).toBe("Undid the changes");
+      expect(de(step)).toBe("Änderungen rückgängig gemacht");
+    }
+  });
+
+  it("count an undo under way elsewhere, refused by core or refused as a call as a step that did not go through", () => {
+    expect([underWay, refusedByCore, refused].map(stepFailed)).toEqual([true, true, true]);
+    expect([undone, changedOnly, changedPartly, nothing, takenAlready].map(stepFailed)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // Only the undo reads its status: another tool's output with that word is its own business.
+    expect(stepFailed(call("workflow_last_run", {}, { status: "failed" }))).toBe(false);
+  });
+
+  it("keep one row per call, never folded into the change rows nor counted in the summary", () => {
+    const again = undo({ ...base, status: "undone", run_id: "r1", repeated_call: "…" });
+    const steps = [mapChange, undone, again, call("catalog_search", { q: "a" }, { numberMatched: 1 })];
+    const rows = foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate, true);
+    expect(rows.map((row) => [row.step.toolCallId, (row.repeats ?? []).length])).toEqual([
+      [mapChange.toolCallId, 0],
+      [undone.toolCallId, 0],
+      [again.toolCallId, 0],
+      [steps[3].toolCallId, 0],
+    ]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([
+      mapChange,
+      undone,
+      again,
+    ]);
+    expect(groupSummary(rows, enTranslate, false)).toBe("Searched the catalog");
+    // A refused or under-way undo stays visible as a failure.
+    expect(staysVisible({ step: underWay, rejected: [] }, true)).toBe(true);
+  });
+
+  it("take in a refused call only with an undo that went through, never with one that did not", () => {
+    const shape = (steps: DynamicToolUIPart[]) =>
+      stepRows(steps).map((row) => [row.step.toolCallId, row.rejected.map((step) => step.toolCallId)]);
+    const first = failed("undo_changes", { confirm: "undo_anyway:x" });
+    for (const notRun of [
+      undo({ ...base, status: "under_way", run_id: "r1" }),
+      undo({ ...base, status: "failed", run_id: "r1" }),
+    ]) {
+      // Both did not go through: each is a failure of its own, none a corrected attempt.
+      expect(shape([first, notRun])).toEqual([
+        [first.toolCallId, []],
+        [notRun.toolCallId, []],
+      ]);
+    }
+    const done = undo({ ...base, status: "undone", run_id: "r1" });
+    expect(shape([first, done])).toEqual([[done.toolCallId, [first.toolCallId]]]);
   });
 });

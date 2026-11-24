@@ -539,3 +539,37 @@ describe("StepGroup in the transcript", () => {
     );
   });
 });
+
+describe("typed undo steps in a group", () => {
+  const lines = () => screen.getAllByRole("button").map((button) => button.textContent);
+  const base = { workflows: [], styles: [], not_restored: [], summary: "…" };
+  const undo = (status: string, more: Record<string, unknown> = {}) =>
+    call("undo_changes", {}, "output-available", { ...base, status, run_id: "r1", ...more });
+  const mapChange = () =>
+    call("map_update", { operations: [] }, "output-available", {
+      project_id: "p1",
+      applied: [{ index: 0, op: "set_layer", layer_project_id: 1, fields: ["visible"], summary: "hidden" }],
+    });
+
+  it("shows the undo as a line of its own beside the map's line, which does not count it", () => {
+    const steps = [search("a"), search("b"), mapChange(), undo("undone"), mapChange()];
+    render(<StepGroup steps={steps} open={false} running={false} />);
+    expect(lines()).toEqual([
+      "Searched the catalog 2 times",
+      "Changed the map · 2 times",
+      "Undid the changes",
+    ]);
+  });
+
+  it("marks an undo that did not go through as failed, and counts it as failed", () => {
+    render(<StepGroup steps={[search("a"), search("b"), undo("under_way")]} open={false} running={false} />);
+    expect(lines()).toEqual(["Searched the catalog 2 times · 1 failed", "Undid the changes · Failed"]);
+    expect(document.querySelector('[data-status="failed"]')).toBeTruthy();
+  });
+
+  it("shows a check of what was changed since as done, not as failed", () => {
+    render(<StepGroup steps={[undo("changed")]} open={false} running={false} />);
+    expect(lines()).toEqual(["Checked what was changed since"]);
+    expect(document.querySelector('[data-status="done"]')).toBeTruthy();
+  });
+});

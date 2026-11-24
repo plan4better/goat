@@ -13,6 +13,7 @@ import {
   type StepNames,
   type StepRow,
   foldRepeatedWrites,
+  stepFailed,
   stepLabel,
   stepNames,
   stepResult,
@@ -141,7 +142,7 @@ export default function StepList({
     <Stack gap="1px">
       {rows.map(({ step, rejected, repeats = [] }) => {
         const expanded = open === step.toolCallId;
-        const failed = step.state === "output-error";
+        const failed = stepFailed(step);
         const unreturned = stepRunning(step);
         const underWay = running && unreturned;
         const stopped = !running && unreturned;

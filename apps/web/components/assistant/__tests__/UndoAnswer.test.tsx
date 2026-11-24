@@ -213,6 +213,17 @@ describe("the Undo of an answer's edits", () => {
     expect(actions.followWorkflowChanges).not.toHaveBeenCalled();
   });
 
+  it("turns into Undone at once when a typed undo took the answer back, without notes of its own", () => {
+    const { rerender } = mount(false, mapChanges);
+    expect(undoButton()).toBeTruthy();
+    rerender(<UndoAnswer conversationId="c1" runId="r1" changes={mapChanges} undone />);
+    expect(screen.getByText("Undone")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(doneHint()).toBe("This answer's changes were undone");
+    expect(document.querySelectorAll("p")).toHaveLength(0);
+    expect(undoAnswer).not.toHaveBeenCalled();
+  });
+
   it("keeps Undone after the dock mounts the answer again", async () => {
     undoAnswer.mockResolvedValue({ kind: "undone", restored });
     const { unmount } = mount();
@@ -641,6 +652,20 @@ describe("the Undo of an answer's edits", () => {
     });
     fireEvent.click(undoButton());
     await screen.findByText("Undone");
+    expect(screen.queryByText(styleRefused)).toBeNull();
+  });
+
+  it("drops the refused style's line once a typed undo took the answer back", async () => {
+    undoAnswer.mockResolvedValueOnce({
+      kind: "undone",
+      restored: { ...restored, notRestored: ["style"] },
+    });
+    const changes = { ...workflowChanges, styles: [styleChange("s1")] };
+    const { rerender } = mount(false, changes);
+    fireEvent.click(undoButton());
+    expect(await screen.findByText(styleRefused)).toBeTruthy();
+    rerender(<UndoAnswer conversationId="c1" runId="r1" changes={changes} undone />);
+    expect(screen.getByText("Undone")).toBeTruthy();
     expect(screen.queryByText(styleRefused)).toBeNull();
   });
 

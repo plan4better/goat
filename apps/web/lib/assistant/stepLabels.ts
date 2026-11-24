@@ -2,6 +2,7 @@ import type { DynamicToolUIPart } from "ai";
 
 import type { Translate, TranslateOptions } from "@/lib/assistant/chips";
 import { WRITE_TOOLS } from "@/lib/assistant/items";
+import { UNDO_CHANGES_TOOL, typedUndo, wroteBack } from "@/lib/assistant/undoReply";
 
 /** An argument longer than this is cut with an ellipsis, so a label stays on one line. */
 export const ARGUMENT_CHARS = 40;
@@ -289,6 +290,20 @@ function labelKey(step: DynamicToolUIPart, names: StepNames, t: Translate): Labe
       if (Object.keys(fields(view)).length) return { key: "assistant_tool_map_update_view" };
       break;
     }
+    // What came of a typed undo: nothing to take back, or a check of what was changed since (with a part taken
+    // back already). An undo that went through, and one that did not, keep the plain label.
+    case UNDO_CHANGES_TOOL: {
+      const undo = typedUndo(step);
+      if (undo?.status === "nothing") return { key: "assistant_tool_undo_changes_nothing" };
+      if (undo?.status === "changed") {
+        return {
+          key: wroteBack(undo.restored)
+            ? "assistant_tool_undo_changes_partly"
+            : "assistant_tool_undo_changes_changed",
+        };
+      }
+      break;
+    }
     default:
       break;
   }
@@ -402,6 +417,17 @@ const RUNNING_STATES: ReadonlySet<string> = new Set([
 /** A call that has not returned yet; under way only while its answer runs. */
 export const stepRunning = (step: DynamicToolUIPart): boolean => RUNNING_STATES.has(step.state);
 
+/** The results of a typed undo that did not go through: another undo under way, or refused. */
+const UNDO_NOT_RUN: ReadonlySet<string> = new Set(["under_way", "failed"]);
+
+/**
+ * A step that did not go through: a call that failed, or a typed undo that
+ * returned without running (another undo of the same answer under way, or
+ * refused).
+ */
+export const stepFailed = (step: DynamicToolUIPart): boolean =>
+  step.state === "output-error" || UNDO_NOT_RUN.has(typedUndo(step)?.status ?? "");
+
 /** One line of the step list: a call, with the rejected attempts it replaced. */
 export interface StepRow {
   step: DynamicToolUIPart;
@@ -418,7 +444,8 @@ export interface StepRow {
  * The failed write calls the answer corrected, by the call that succeeded:
  * each successful write takes the failed calls of its tool since that tool's
  * previous success. A failed write that no success of its tool follows is no
- * one's (it stays a failure), and a call still running or stopped is no success.
+ * one's (it stays a failure), and a call still running or stopped is no success,
+ * nor is a typed undo that returned without going through (`stepFailed`).
  */
 function correctedWrites(answer: DynamicToolUIPart[]): Map<string, DynamicToolUIPart[]> {
   const corrected = new Map<string, DynamicToolUIPart[]>();
@@ -426,7 +453,7 @@ function correctedWrites(answer: DynamicToolUIPart[]): Map<string, DynamicToolUI
   for (const step of answer) {
     if (!WRITES.has(step.toolName)) continue;
     const attempts = pending.get(step.toolName) ?? [];
-    if (step.state === "output-error") {
+    if (stepFailed(step)) {
       pending.set(step.toolName, [...attempts, step]);
     } else if (step.state === "output-available") {
       if (attempts.length) corrected.set(step.toolCallId, attempts);
@@ -460,7 +487,7 @@ export function stepRows(steps: DynamicToolUIPart[], answer: DynamicToolUIPart[]
     const attempts = corrected.get(step.toolCallId);
     if (attempts) {
       rows.push({ step, rejected: attempts });
-    } else if (step.state === "output-error") {
+    } else if (stepFailed(step)) {
       failed.push(step);
     } else if (step.state === "output-available" && failed.length) {
       rows.push({ step, rejected: failed });
@@ -600,11 +627,16 @@ const COUNTED_BY: Record<
  * result (stopped).
  */
 export const staysVisible = (row: StepRow, running: boolean): boolean =>
-  WRITES.has(row.step.toolName) || row.step.state === "output-error" || (!running && stepRunning(row.step));
+  WRITES.has(row.step.toolName) || stepFailed(row.step) || (!running && stepRunning(row.step));
 
-/** A write that returned: one that a line of repeats may stand for, with the attempts it corrected. */
+/**
+ * A write that returned: one that a line of repeats may stand for, with the attempts it corrected. A typed
+ * undo keeps a line per call: a second call takes nothing more back.
+ */
 const repeatable = (row: StepRow): boolean =>
-  WRITES.has(row.step.toolName) && row.step.state === "output-available";
+  WRITES.has(row.step.toolName) &&
+  row.step.toolName !== UNDO_CHANGES_TOOL &&
+  row.step.state === "output-available";
 
 /**
  * The step rows with the finished writes that say the same ("Changed the
