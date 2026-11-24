@@ -17,7 +17,15 @@ import {
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { dashArray } from "@/lib/style/compile/polygons";
-import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
+import {
+  AUTO_COLOR,
+  combine,
+  followColor,
+  fromForm,
+  substitute,
+  toDarkerShade,
+  toProperty,
+} from "@/lib/style/compile/values";
 
 export function lineLayers(ctx: PartContext): LayerSpecification[] {
   const { style } = ctx;
@@ -39,7 +47,13 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
       { kind: "number" }
     );
     const paint: Record<string, unknown> = {};
-    put(paint, "line-color", cascade(style, "casing.color", c), ctx, "casing.color");
+    // "auto": the line's color, darkened class by class and stop by stop.
+    const casingColor = substitute(
+      cascade(style, "casing.color", { ...c, map: followColor }),
+      AUTO_COLOR,
+      cascade(style, "line.color", { ...c, map: toDarkerShade })
+    );
+    put(paint, "line-color", casingColor, ctx, "casing.color");
     paint["line-width"] = toProperty(casingWidth);
     put(paint, "line-offset", offset, ctx, "line.offset");
     put(paint, "line-opacity", cascade(style, "casing.opacity", c), ctx, "casing.opacity");

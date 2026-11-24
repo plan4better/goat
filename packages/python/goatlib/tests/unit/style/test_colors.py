@@ -5,6 +5,7 @@ import pytest
 from goatlib.style.catalog import palette_colors
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
+    darker_shade,
     default_range,
     hex_to_rgb,
     parse_color,
@@ -21,6 +22,11 @@ from .conftest import FIXTURES
 #: rewrites the `colors` of every row.
 PALETTE_SAMPLES: list[dict[str, Any]] = json.loads(
     (FIXTURES / "palette_samples.json").read_text()
+)
+#: The darker shade `"auto"` draws (spec 3.1), which the web's `darkerShade` must also give
+#: (lib/style/__tests__/darker-shade.test.ts): red, green and blue times 0.7, halves up.
+DARKER_SHADES: list[dict[str, str]] = json.loads(
+    (FIXTURES / "darker_shades.json").read_text()
 )
 
 
@@ -108,3 +114,13 @@ def test_shared_palette_samples(row: dict[str, Any]) -> None:
         )
         == row["colors"]
     )
+
+
+@pytest.mark.parametrize("row", DARKER_SHADES, ids=lambda r: r["color"])
+def test_shared_darker_shades(row: dict[str, str]) -> None:
+    assert darker_shade(row["color"]) == row["shade"]
+
+
+def test_the_darker_shade_rounds_exact_halves_up() -> None:
+    # 15 x 0.7 is 10.5 exactly, though 10.499... in floating point.
+    assert darker_shade("#0f0f0f") == "#0b0b0b"

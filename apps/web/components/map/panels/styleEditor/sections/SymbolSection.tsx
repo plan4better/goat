@@ -133,6 +133,9 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     on && group.swatch
       ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null })
       : undefined;
+  // A color that follows another part as its darker shade reads before the width: "Auto · 1 px".
+  if (on && group.swatch && getIn(doc, `${base}.${group.swatch}`) === "auto")
+    text = `${t("style_editor.auto")} · ${text}`;
   if (on && group.summary === "text") {
     // The field's display name or the template, and the size: "Name · 12 px".
     const template = getIn(doc, summaryPath);

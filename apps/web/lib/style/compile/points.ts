@@ -23,13 +23,16 @@ import {
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
 import {
+  AUTO_COLOR,
   type Expr,
   FILL_COLOR,
   type Value,
   combine,
+  followColor,
   fromForm,
   isZoomed,
   substitute,
+  toDarkerShade,
   toProperty,
 } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -220,12 +223,16 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
   const shape = baseMarker.shape ?? DEFAULTS["marker.shape"];
   const baseSize =
     typeof baseMarker.size === "number" ? baseMarker.size : (DEFAULTS["marker.size"] as number);
-  const markerColor = ctx.color !== undefined ? { expr: ctx.color } : cascade(style, "marker.color", c);
-  // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint).
+  const colorOf = (map?: (color: unknown) => Expr): Value =>
+    ctx.color !== undefined
+      ? { expr: ctx.color(map ?? ((color) => color)) }
+      : cascade(style, "marker.color", map ? { ...c, map } : c);
+  const markerColor = colorOf();
+  // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint), "auto" its darker shade.
   const outlineColor = substitute(
-    cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) }),
-    FILL_COLOR,
-    markerColor
+    substitute(cascade(style, "outline.color", { ...c, map: followColor }), FILL_COLOR, markerColor),
+    AUTO_COLOR,
+    colorOf(toDarkerShade)
   );
 
   const iconRefs = ctx.icon

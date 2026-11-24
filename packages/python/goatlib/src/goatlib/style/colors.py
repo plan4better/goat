@@ -74,6 +74,14 @@ def rgb_to_hex(rgb: list[int]) -> str:
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
+def darker_shade(hex_color: str) -> str:
+    """The color `"auto"` draws (spec 3.1): red, green and blue each times 0.7,
+    rounded half up in whole numbers (so 15 gives 11, not 10.499... rounded),
+    alpha unchanged; lowercase."""
+    rgb = [(7 * c + 5) // 10 for c in hex_to_rgb(hex_color)]
+    return rgb_to_hex(rgb) + hex_color[7:9].lower()
+
+
 def _lab(hex_color: str) -> tuple[float, float, float]:
     linear = [
         c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4

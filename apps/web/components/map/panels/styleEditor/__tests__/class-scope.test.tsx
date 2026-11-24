@@ -154,6 +154,41 @@ describe("class scope", () => {
     expect(within(groupRowOf("style_editor.part_fill")).queryByLabelText(DOT)).toBeNull();
   });
 
+  it("in scope Auto writes auto into the class record, as Same as fill does", async () => {
+    const { store } = setup();
+    act(() => store.setScope({ classify: 0, key: 1 }));
+    await openGroup("style_editor.part_outline");
+    const field = within(rowOf("style_editor.color")).getByRole("button", {
+      name: "style_editor.pick_color",
+    });
+    await userEvent.click(field);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.auto" }));
+    expect(store.get("classify.0.classes.1.outline.color")).toBe("auto");
+    expect(store.get("symbol.outline.color")).toBe("#ffffff");
+    expect(field.textContent).toBe("style_editor.auto");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.same_as_fill" }));
+    expect(store.get("classify.0.classes.1.outline.color")).toBe("fill");
+  });
+
+  it("in scope an outline color the class takes from the base reads Auto or Same as fill", async () => {
+    const { store } = setup();
+    act(() => store.update((doc) => setIn(doc, "symbol.outline", { color: "auto", width: 1 })));
+    act(() => store.setScope({ classify: 0, key: 1 }));
+    await openGroup("style_editor.part_outline");
+    const field = within(rowOf("style_editor.color")).getByRole("button", {
+      name: "style_editor.pick_color",
+    });
+    expect(field.textContent).toBe("style_editor.auto");
+    act(() => store.update((doc) => setIn(doc, "symbol.outline.color", "fill")));
+    expect(field.textContent).toBe("style_editor.same_as_fill");
+    // The class sets nothing of its own: the picker presses no choice.
+    await userEvent.click(field);
+    expect(
+      screen.getByRole("button", { name: "style_editor.same_as_fill" }).getAttribute("aria-pressed")
+    ).toBe("false");
+    expect(store.get("classify.0.classes.1.outline")).toBeUndefined();
+  });
+
   it("Reset keeps the emptied part that switches on, for the class, a part the layer leaves out", async () => {
     const { store } = setup();
     act(() =>

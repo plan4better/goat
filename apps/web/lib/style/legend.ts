@@ -6,7 +6,7 @@ import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
 import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale, pointsSymbol } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
-import { type Kind, fromForm, isZoomed, valueAt } from "@/lib/style/compile/values";
+import { type Kind, darkerShade, fromForm, isZoomed, valueAt } from "@/lib/style/compile/values";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -436,6 +436,13 @@ function swatch(
         mainColor ??
         DEFAULTS[geometry === "point" ? "marker.color" : "fill.color"];
     out[part] = resolved;
+  }
+  // An outline's or a casing's "auto": the color the main part shows, darkened (the casing comes before the line).
+  for (const part of ["outline", "casing"] as const) {
+    const own = out[part];
+    if (own?.color !== "auto") continue;
+    const main = out[MAIN[geometry] as "fill" | "line" | "marker"]?.color ?? mainColor;
+    own.color = darkerShade(String(main ?? DEFAULTS[`${MAIN[geometry]}.color`]));
   }
   if (geometry === "line") {
     const arrows = arrowsSwatch(style, symbol.arrows, override?.arrows, out.line?.color, zoom);

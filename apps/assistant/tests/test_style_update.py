@@ -788,7 +788,7 @@ async def test_a_new_style_from_the_dataset_default_and_from_empty() -> None:
     stored = state.styles[default.style_id].document
     # The dataset's default has no classification; the drawn style's is gone.
     assert "classify" not in stored and stored["opacity"] == 0.5
-    assert stored["symbol"]["outline"] is False
+    assert stored["symbol"]["outline"] == {"color": "auto", "width": 1}
     empty = await _run(
         services,
         layer_project_id=32,

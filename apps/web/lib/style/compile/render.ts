@@ -12,13 +12,16 @@ import { type PartContext, layerOpacity, makeLayer, put, withLayerOpacity } from
 import { pointLayers } from "@/lib/style/compile/points";
 import type { FieldType } from "@/lib/style/compile/types";
 import {
+  AUTO_COLOR,
   FILL_COLOR,
   type Value,
   combine,
+  followColor,
   fromForm,
   hasValue,
   isZoomed,
   substitute,
+  toDarkerShade,
   toProperty,
 } from "@/lib/style/compile/values";
 import type { Expr } from "@/lib/style/compile/values";
@@ -174,11 +177,17 @@ function dominantIcon(categories: MarkerCategories, base: unknown): PartContext[
   };
 }
 
-/** A cluster's color: that of its most common category, the base color otherwise (one by zoom stays as it is). */
-function dominantColor(categories: MarkerCategories, style: JsonObject): Expr | undefined {
+/** A cluster's color: that of its most common category, the base color otherwise (one by zoom stays as it is), each
+ * color `map`ped. */
+function dominantColor(categories: MarkerCategories, style: JsonObject): PartContext["color"] {
   if (!categories.classes.some((k) => k.color)) return undefined;
-  const base = cascade(style, "marker.color", {});
-  return isZoomed(base) ? undefined : dominant(categories, (k) => k.color, base.expr);
+  if (isZoomed(cascade(style, "marker.color", {}))) return undefined;
+  return (map) =>
+    dominant(
+      categories,
+      (k) => (k.color ? map(k.color) : undefined),
+      (cascade(style, "marker.color", { map }) as { expr: Expr }).expr
+    );
 }
 
 const drawsLikeThePoints = (render: JsonObject) => (render.look ?? DEFAULTS["cluster.look"]) === "points";
@@ -429,9 +438,9 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
   const outline = partUsed(symbol, "outline");
   const stroke = outline
     ? substitute(
-        cascade(symbol, "outline.color", { map: (v) => (v === "fill" ? FILL_COLOR : v) }),
-        FILL_COLOR,
-        fill
+        substitute(cascade(symbol, "outline.color", { map: followColor }), FILL_COLOR, fill),
+        AUTO_COLOR,
+        cascade(symbol, "marker.color", { map: toDarkerShade })
       )
     : { expr: BADGE_RING.color };
   const strokeWidth = outline ? cascade(symbol, "outline.width", {}) : { expr: BADGE_RING.width };

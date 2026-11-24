@@ -1,6 +1,6 @@
-// The color picker (prototype 5.1): an optional "Same as fill/line" first, swatches (the colors of this style, GOAT's
-// colors and the last ten picked, kept in this browser when it allows), then the color field and hue bar with the
-// color as Hex, RGB or HSL. Opacity is not here: each part has its own Opacity row, by zoom and by classes too.
+// The color picker (prototype 5.1): optional choices first ("Same as fill/line", "Auto"), swatches (the colors of this
+// style, GOAT's colors and the last ten picked, kept in this browser when it allows), then the color field and hue bar
+// with the color as Hex, RGB or HSL. Opacity is not here: each part has its own Opacity row, by zoom and by classes too.
 import { Box, ButtonBase, Typography, styled } from "@mui/material";
 import { type ReactNode, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -158,7 +158,8 @@ export interface Sentinel {
 export interface ColorPickerProps {
   value: string | undefined;
   onChange: (hex: string) => void;
-  sentinel?: Sentinel;
+  /** Choices that take the color from elsewhere, above the swatches. */
+  sentinels?: Sentinel[];
   docColors: string[];
   recentKey?: string;
 }
@@ -166,7 +167,7 @@ export interface ColorPickerProps {
 export function ColorPicker({
   value,
   onChange,
-  sentinel,
+  sentinels,
   docColors,
   recentKey = "goat.style.recent-colors",
 }: ColorPickerProps) {
@@ -201,13 +202,15 @@ export function ColorPicker({
   const all = [...docColors.slice(0, DOC_MAX), ...GOAT_COLORS, ...recent].map((c) => c.toLowerCase());
   // Taken from another part, the color the picker starts at is not a swatch's.
   const selected =
-    !sentinel?.selected && value && all.includes(value.toLowerCase()) ? value.toLowerCase() : undefined;
+    !sentinels?.some((s) => s.selected) && value && all.includes(value.toLowerCase())
+      ? value.toLowerCase()
+      : undefined;
   const docKey = docColors.slice(0, DOC_MAX).join(",");
   const docSwatches = useMemo(() => (docKey ? docKey.split(",") : []), [docKey]);
 
   return (
     <Box sx={{ pb: 2 }}>
-      {sentinel && <SentinelOption {...sentinel} />}
+      {sentinels?.map((sentinel) => <SentinelOption key={sentinel.label} {...sentinel} />)}
       <Swatches
         title={t("style_editor.colors_in_this_style")}
         colors={docSwatches}

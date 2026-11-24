@@ -640,11 +640,11 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
          "type": "string"
         },
         {
-         "$ref": "#/$defs/ZoomColor"
+         "$ref": "#/$defs/ZoomCasingColor"
         },
         {
          "$ref": "#/$defs/ByAttributeColor"
@@ -5353,7 +5353,7 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|^fill$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|fill|auto)$",
          "type": "string"
         },
         {
@@ -7527,6 +7527,62 @@
    "title": "View",
    "type": "object"
   },
+  "ZoomCasingColor": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "oneOf": [
+         {
+          "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
+          "type": "string"
+         },
+         {
+          "$ref": "#/$defs/ByAttributeColor"
+         },
+         {
+          "$ref": "#/$defs/RawField"
+         }
+        ]
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomCasingColor",
+   "type": "object"
+  },
   "ZoomColor": {
    "additionalProperties": false,
    "properties": {
@@ -8238,7 +8294,7 @@
        {
         "oneOf": [
          {
-          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|^fill$",
+          "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|fill|auto)$",
           "type": "string"
          },
          {

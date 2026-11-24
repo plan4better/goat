@@ -28,8 +28,8 @@ export interface PartContext {
    * none. */
   icon?: { refs: string[]; pick: (map: (ref: string) => Expr, fallback: Expr) => Expr };
   /** The marker color when it is not the cascade's (a cluster drawn like its points takes the color of the category it
-   * mostly holds). */
-  color?: Expr;
+   * mostly holds), with each color `map`ped. */
+  color?: (map: (color: unknown) => Expr) => Expr;
 }
 
 /** MapLibre's own defaults: a property equal to one of these that no record sets is left out. */

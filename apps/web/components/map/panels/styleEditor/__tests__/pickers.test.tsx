@@ -57,7 +57,7 @@ describe("pickers", () => {
         value="#2bb381"
         onChange={vi.fn()}
         docColors={["#ff0000"]}
-        sentinel={{ ...sentinel, selected: false }}
+        sentinels={[{ ...sentinel, selected: false }]}
       />
     );
     const option = screen.getByRole("button", { name: "style_editor.same_as_fill" });
@@ -76,7 +76,7 @@ describe("pickers", () => {
         value="#2bb381"
         onChange={vi.fn()}
         docColors={["#ff0000"]}
-        sentinel={{ ...sentinel, selected: true }}
+        sentinels={[{ ...sentinel, selected: true }]}
       />
     );
     expect(

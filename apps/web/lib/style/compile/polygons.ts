@@ -19,14 +19,17 @@ import {
 } from "@/lib/style/compile/parts";
 import { NO_PATTERN_IMAGE, PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
 import {
+  AUTO_COLOR,
   type Expr,
   FILL_COLOR,
   type Value,
   combine,
   fold,
+  followColor,
   fromForm,
   isZoomed,
   substitute,
+  toDarkerShade,
   toProperty,
   valueAt,
 } from "@/lib/style/compile/values";
@@ -143,8 +146,11 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
   const fillColor = cascade(style, "fill.color", c);
-  // The outline's "fill" and the pattern's default color: the fill color, class by class and stop by stop.
-  const inFill = (value: Value) => substitute(value, FILL_COLOR, fillColor);
+  // The outline's "fill" and the pattern's default color: the fill color, class by class and stop by stop; the
+  // outline's "auto" its darker shade.
+  const fillShade = cascade(style, "fill.color", { ...c, map: toDarkerShade });
+  const inFill = (value: Value) =>
+    substitute(substitute(value, FILL_COLOR, fillColor), AUTO_COLOR, fillShade);
 
   if (extrudes(style)) {
     layers.push(extrusionLayer(ctx, fillColor));
@@ -195,9 +201,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
 
   if (partUsed(style, "outline", "polygon")) {
     const paint: Record<string, unknown> = {};
-    const color = inFill(
-      cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) })
-    );
+    const color = inFill(cascade(style, "outline.color", { ...c, map: followColor }));
     put(paint, "line-color", highlightColor(ctx, color), ctx, "outline.color");
     const width = cascade(style, "outline.width", c);
     put(paint, "line-width", highlightWidth(ctx, width), ctx, "outline.width");

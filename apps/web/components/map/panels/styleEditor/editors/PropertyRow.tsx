@@ -413,7 +413,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
                   ? fallback
                   : undefined
             }
-            sentinel={row.sentinel}
+            sentinels={row.sentinels}
             note={note}
             mode={modeButton}
           />

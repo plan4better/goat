@@ -60,7 +60,11 @@ Dash = Literal["solid", "dashed", "dotted", "dash_dot"]
 #: `<library>:<name>` (`goat:park`, `emoji:1f525`) or `asset:<id>` for an uploaded icon;
 #: which libraries exist is checked against the catalogue (`unknown_icon`).
 IconRef = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*:[A-Za-z0-9._-]+$")]
-ColorOrFill = Annotated[str, Field(pattern=HEX[:-1] + "|^fill$")]
+#: An outline color: a color, `"fill"` (the color the main part draws) or `"auto"`
+#: (a darker shade of it, `goatlib.style.colors.darker_shade`).
+OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|fill|auto)$")]
+#: A casing color: a color or `"auto"` (a darker shade of the line's color).
+CasingColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
 XY = Annotated[tuple[float, float], LAX]
 
 ColorValue = value_type(
@@ -70,7 +74,6 @@ ColorValue = value_type(
         "fill.color",
         "fill.pattern_color",
         "line.color",
-        "casing.color",
         "arrows.color",
         "marker.color",
         "marker.icon_color",
@@ -80,7 +83,10 @@ ColorValue = value_type(
     ),
 )
 OutlineColorValue = value_type(
-    "OutlineColor", ColorOrFill, **limits.forms("outline.color", attribute="color")
+    "OutlineColor", OutlineColor, **limits.forms("outline.color", attribute="color")
+)
+CasingColorValue = value_type(
+    "CasingColor", CasingColor, **limits.forms("casing.color", attribute="color")
 )
 UnitValue = value_type(
     "Unit",
@@ -260,7 +266,7 @@ class Line(_Part):
 
 
 class Casing(_Part):
-    color: ColorValue | None = None
+    color: CasingColorValue | None = None
     width: PxValue | None = None
     opacity: UnitValue | None = None
 

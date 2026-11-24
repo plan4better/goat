@@ -113,6 +113,13 @@ class TestBuilders:
         )
         assert "classes" not in c
 
+    def test_tool_polygon_styles_keep_their_look_without_an_outline(self) -> None:
+        # A new upload's outline is the default style's; a tool's result keeps its own look.
+        doc = tool_style.classified("v", tool_style.EMRLD, "polygon")
+        assert doc["symbol"]["outline"] is False
+        given = tool_style.styled("polygon", {"outline": {"color": "#ffffff"}})
+        assert given["symbol"]["outline"] == {"color": "#ffffff"}
+
     def test_bundle_roles_keep_their_look(self) -> None:
         edges = tool_style.bundle_role_style("street_network", "edges", "line")
         assert edges["symbol"]["line"] == {"color": "#717171", "width": 2}

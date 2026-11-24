@@ -6,6 +6,8 @@ import type { CompoundChoice } from "@/lib/style/editor/forms";
 import type { JsonObject } from "@/lib/style/json";
 import { drawsAsImage, isPin } from "@/lib/style/markerShapes";
 
+import type { ColorSentinel } from "@/components/map/panels/styleEditor/editors/ColorRow";
+
 interface RowBase {
   key: string;
   /** The row's label key. */
@@ -24,8 +26,9 @@ interface RowBase {
 export type PartRow =
   | (RowBase & {
       type: "color";
-      /** A choice that takes the color from another part: writes `value` (undefined deletes the key). */
-      sentinel?: { label: string; value: "fill" | undefined };
+      /** Choices that take the color from another part, in the picker's order: each writes its `value` (undefined
+       * deletes the key). */
+      sentinels?: ColorSentinel[];
     })
   | (RowBase & { type: "number" })
   | (RowBase & { type: "switch" })
@@ -70,6 +73,8 @@ const OUTLINE_POSITIONS = ["center", "inside", "outside"] as const;
 /** A label's letter case (`label.transform`). */
 export const LETTER_CASES = ["none", "uppercase", "lowercase"] as const;
 const SAME_AS_FILL = "style_editor.same_as_fill";
+/** A darker shade of the color the fill, the marker or the line has (spec 3.1, 3.2). */
+const AUTO: ColorSentinel = { label: "style_editor.auto", value: "auto" };
 
 const repeats = (part: JsonObject) => part.placement === undefined || part.placement === "repeat";
 export const hasPattern = (part: JsonObject) => part.pattern !== undefined && part.pattern !== "none";
@@ -107,7 +112,7 @@ export function patternRows(dots: boolean): PartRow[] {
       key: "pattern_color",
       label: dots ? "style_editor.pattern_dot_color" : "style_editor.pattern_color",
       note: "style_editor.note_pattern_color",
-      sentinel: { label: SAME_AS_FILL, value: undefined },
+      sentinels: [{ label: SAME_AS_FILL, value: undefined }],
       when: hasPattern,
     },
     { type: "number", key: "pattern_spacing", label: "style_editor.pattern_spacing", when: hasPattern },
@@ -131,7 +136,7 @@ const OUTLINE: PartGroup = {
       type: "color",
       key: "color",
       label: "style_editor.color",
-      sentinel: { label: SAME_AS_FILL, value: "fill" },
+      sentinels: [{ label: SAME_AS_FILL, value: "fill" }, AUTO],
     },
     { type: "number", key: "width", label: "style_editor.width" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
@@ -177,7 +182,7 @@ const CASING: PartGroup = {
   summary: "width",
   swatch: "color",
   rows: [
-    { type: "color", key: "color", label: "style_editor.color" },
+    { type: "color", key: "color", label: "style_editor.color", sentinels: [AUTO] },
     { type: "number", key: "width", label: "style_editor.width", note: "style_editor.note_casing_width" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
   ],
@@ -216,7 +221,7 @@ const ARROWS: PartGroup = {
       type: "color",
       key: "color",
       label: "style_editor.color",
-      sentinel: { label: "style_editor.same_as_line", value: undefined },
+      sentinels: [{ label: "style_editor.same_as_line", value: undefined }],
       when: (a) => !keepsColors(a.icon),
     },
     {
@@ -372,6 +377,18 @@ export const GROUPS: Readonly<Record<Geometry, PartGroup[]>> = {
 
 export const groupOf = (geometry: Geometry, id: string): PartGroup | undefined =>
   GROUPS[geometry].find((group) => group.id === id);
+
+/** The choices a zoom stop of a color key offers (`outline.color`: Same as fill and Auto): its row's, without one that
+ * deletes the key, which a stop cannot. */
+export function stopSentinels(geometry: Geometry, key: string): ColorSentinel[] | undefined {
+  const [part, sub] = key.split(".");
+  const row = GROUPS[geometry]
+    .filter((group) => group.part === part)
+    .flatMap((group) => group.rows)
+    .find((r) => r.key === sub && r.type === "color");
+  const sentinels = row?.type === "color" ? row.sentinels?.filter((s) => s.value !== undefined) : undefined;
+  return sentinels?.length ? sentinels : undefined;
+}
 
 /** Choice keys whose rows live outside GROUPS (the label editor's). */
 const OTHER_CHOICES: Record<string, readonly string[]> = {

@@ -118,9 +118,9 @@ A geometry has a fixed set of parts. Each part has its own keys.
 | Part | Geometry | Keys |
 |---|---|---|
 | `fill` | polygon | `color`, `opacity`, `pattern`, `pattern_color`, `pattern_spacing`, `pattern_width` |
-| `outline` | polygon, point | `color` (or `"fill"`: the fill color on polygons, the marker color on points), `width`, `opacity`; `dash` and `position` on polygons only |
+| `outline` | polygon, point | `color` (or `"fill"`: the fill color on polygons, the marker color on points; or `"auto"`: a darker shade of it), `width`, `opacity`; `dash` and `position` on polygons only |
 | `line` | line | `color`, `width`, `opacity`, `dash`, `cap`, `join`, `offset`, `blur` |
-| `casing` | line | `color`, `width` (extra on each side), `opacity` |
+| `casing` | line | `color` (or `"auto"`: a darker shade of the line color), `width` (extra on each side), `opacity` |
 | `arrows` | line | `placement`, `direction`, `spacing`, `size`, `color`, `icon`, `turn_with_line` |
 | `marker` | point; polygon and line, off by default (3.3) | `shape`, `color`, `fill`, `size`, `opacity`, `icon`, `icon_color`, `rotation`, `anchor`, `offset`, `allow_overlap` |
 | `label` | all | `text`, `format`, `formats`, `size`, `color`, `halo`, `font`, `transform`, `letter_spacing`, `line_height`, `placement`, `offset`, `max_width`, `spacing`, `padding`, `lines`, `priority`, `allow_overlap` |
@@ -209,6 +209,30 @@ them. Polygons only: a point outline with a `position` is `position_on_point_out
 `outline.color: "fill"` takes the fill color each feature would have (from the base, its class and the rules), even
 when the fill itself is switched off.
 
+> "Each district with a thin border in a darker shade of its own color."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+    "fill": { "color": "#cccccc", "opacity": 0.8 },
+    "outline": { "color": "auto", "width": 1 }
+  },
+  "classify": [
+    { "field": "land_use", "method": "categories", "palette": "carto:Bold" }
+  ]
+}
+```
+
+`outline.color: "auto"` is a darker shade of the color `"fill"` would give, feature by feature: its red, green and blue
+values each times 0.7, rounded to the nearest whole number (halves up), alpha unchanged, so it keeps the hue
+(`#7f3c8d` gives `#592a63`). goatlib's `darker_shade` (`style/colors.py`) and the web client compute it the same way.
+On points it is a darker shade of the marker color. A fill color by classes, zoom stops or a palette ramp is darkened
+class by class and stop by stop when the style is compiled; a color read from a field as it is (`{ "field": ... }`
+without a palette) draws its feature's outline in that color unchanged. New polygon layers get `"auto"` (section 18).
+
 > "Planned areas hatched in red on a light red tint, protected areas cross-hatched in green."
 
 <!-- check: districts -->
@@ -260,6 +284,8 @@ when the fill itself is switched off.
 - `cap`: `butt`, `round`, `square`. `join`: `miter`, `round`, `bevel`. `offset` shifts the line sideways (positive is
   right of the drawing direction, negative left).
 - `casing.width` is the extra width on each side; the casing is drawn under the line and shifted with it.
+- `casing.color: "auto"` is a darker shade of the color each feature's line has (from the base, its class and the
+  rules), worked out as the outline's `"auto"` (3.1).
 - `arrows.placement`:
   - `repeat` places arrows along the line every `spacing` px (at least 1);
   - `center`, `start`, `end` and `both_ends` place one arrow per feature, at points the tile service computes from
@@ -3241,9 +3267,9 @@ are part of the format: an output that breaks one of them draws something else t
 | Construct | MapLibre output |
 |---|---|
 | polygon `fill` | `fill` layer; with `pattern`, a second `fill` layer with `fill-pattern` above the color fill: one image per look, named `goat-pattern:<kind>|<spacing>|<width>|<color>` per feature, at each zoom stop and at each whole zoom between two stops of its color (4.2), and drawn when the map first needs it |
-| polygon `outline` | `line` layer (`fill-outline-color` is always 1 px); `position` `inside` is `line-offset` of half the width, `outside` of minus half the width, at every zoom stop and per class: MapLibre insets a polygon's rings by a positive offset, as vector tiles wind outer rings clockwise and holes counterclockwise in tile coordinates and MapLibre's GeoJSON tiler rewinds rings that way |
+| polygon `outline` | `line` layer (`fill-outline-color` is always 1 px); `color` `"fill"` is the fill's `fill-color` expression, `"auto"` the same expression with each color in it darkened (3.1), so no color arithmetic runs in MapLibre; `position` `inside` is `line-offset` of half the width, `outside` of minus half the width, at every zoom stop and per class: MapLibre insets a polygon's rings by a positive offset, as vector tiles wind outer rings clockwise and holes counterclockwise in tile coordinates and MapLibre's GeoJSON tiler rewinds rings that way |
 | `line` | `line` layer; dashes as `line-dasharray` in line widths: `solid` [1, 0], `dashed` [2, 2], `dotted` [0.5, 2], `dash_dot` [3, 2, 0.5, 2] |
-| `casing` | `line` layer below the line, with the **same filter, zoom range and layout**, so MapLibre tessellates the geometry once. Width = line width + 2 x casing width at every zoom stop. A class with `casing: false` gets casing opacity 0 instead of a different filter |
+| `casing` | `line` layer below the line, with the **same filter, zoom range and layout**, so MapLibre tessellates the geometry once. Width = line width + 2 x casing width at every zoom stop. `color` `"auto"` is the line's `line-color` expression with each color in it darkened. A class with `casing: false` gets casing opacity 0 instead of a different filter |
 | `arrows: repeat` | `symbol` layer on the line source, `symbol-placement: line`, `symbol-spacing`; the `icon` (GOAT's arrow `goat:arrow` by default, pointing north), `icon-rotate: 90` to follow the line; `icon-rotation-alignment: map`; `backward` adds 180; `both` adds a second layer; no `icon-keep-upright`, which would turn arrows on lines drawn westward round |
 | `arrows`: `center`, `start`, `end`, `both_ends` | `symbol` layer on geoapi's decoration points (`default_decoration`), `icon-rotate` from `bearing` (+180 for `backward`), `icon-rotation-alignment: map` |
 | `arrows.turn_with_line: false` | `icon-rotation-alignment: viewport`, `icon-rotate: 0`, one layer whatever the `direction` |
@@ -3533,6 +3559,11 @@ Schema and the web's types and defaults are generated from them, and these table
 line color, the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker color on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
 Z by zoom, A by attribute, C by classes; section 4.5).
 
+These defaults say what an absent key means. A new layer without a style of its own starts from a document instead
+(goatlib's `default_style`): one color of the palette `carto:Bold`, picked by the layer id, so the same layer always
+gets the same color; a point as a circle marker of size 10, a line 2 px wide, a polygon as a fill at opacity 0.8 with
+`"outline": { "color": "auto", "width": 1 }` (3.1); a raster as an image.
+
 ### 18.1 Layer style
 
 | Key | Type | Required | Default |
@@ -3562,7 +3593,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `fill.pattern_color` | color | F Z A C | the fill color |
 | `fill.pattern_spacing` | px | F Z(step) C | 10 |
 | `fill.pattern_width` | px | F Z(step) C | 2 |
-| `outline.color` | color or `"fill"` | F Z A C | `#ffffff` |
+| `outline.color` | color, `"fill"` or `"auto"` (3.1) | F Z A C | `#ffffff` |
 | `outline.width` | px | F Z A C | 1 |
 | `outline.opacity` | 0 to 1 | F Z A C | 1 |
 | `outline.dash` | `solid`, `dashed`, `dotted`, `dash_dot` (polygons) | F Z(step) C | `solid` |
@@ -3575,7 +3606,7 @@ Z by zoom, A by attribute, C by classes; section 4.5).
 | `line.join` | `miter`, `round`, `bevel` | F Z(step) C | `round` |
 | `line.offset` | px | F Z A C | 0 |
 | `line.blur` | px | F Z A C | 0 |
-| `casing.color` | color | F Z A C | `#ffffff` |
+| `casing.color` | color or `"auto"` (3.2) | F Z A C | `#ffffff` |
 | `casing.width` | px on each side | F Z A C | 1 |
 | `casing.opacity` | 0 to 1 | F Z A C | 1 |
 | `arrows.placement` | `repeat`, `center`, `start`, `end`, `both_ends` | F (per layer) | `repeat` |

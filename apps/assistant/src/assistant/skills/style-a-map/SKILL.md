@@ -102,9 +102,8 @@ Only the user's words change that (A new style or variants):
   pointer into the style as style_get shows it; a list item with an id is
   named by its id: `/classify/density/count`, `/rules/r1`, `/popup/blocks/b1`.
 - `set` creates missing objects on the way: `/symbol/label/text` works on a
-  style without a label. A part that is switched off holds `false` (a new
-  polygon layer has `"outline": false`): nothing can be set under it, so set
-  the part whole.
+  style without a label. A part that is switched off holds `false`: nothing
+  can be set under it, so set the part whole.
 - A new classification, class, rule or popup block is an `add` to its list
   (`/classify`, `/classify/density/classes`, `/rules`, `/popup/blocks`). The
   result's `added` gives its id by the operation's index, counting from 0. A
@@ -206,7 +205,8 @@ side twice); a yes/no field; a rule for features without a value:
   dark basemap or imagery it is the light end: `d3:` ramps as they are,
   ColorBrewer ramps with `"reverse": true`.
 - **Against the basemap.** Light: no pale fills; thin dark grey outlines
-  (`#555555`, 0.5). Dark: no dark fills; light outlines. Imagery (`imagery`
+  (`#555555`, 0.5) or `"auto"`, a darker shade of the fill (casing: of the
+  line). Dark: no dark fills; light outlines. Imagery (`imagery`
   true): strong, saturated colors, a white `casing` under lines, an outline
   around markers. Polygon fills at `opacity` 0.6 to 0.8 show the basemap. Say
   when the basemap decided a choice.

@@ -17,13 +17,19 @@ import { ColorField, Row } from "@/components/map/panels/styleEditor/rows";
 
 const HEX = /^#[0-9a-f]{6}/i;
 
+/** A choice that takes the color from another part: writes `value` (undefined deletes the key). */
+export interface ColorSentinel {
+  label: string;
+  value: "fill" | "auto" | undefined;
+}
+
 export interface ColorRowProps {
   label: string;
   path: Path;
   /** The color shown while the path is unset (default: the reference default of its key). */
   fallback?: string;
-  /** A choice that takes the color from another part: writes `value` (undefined deletes the key). */
-  sentinel?: { label: string; value: "fill" | undefined };
+  /** The choices that take the color from another part, in the picker's order. */
+  sentinels?: ColorSentinel[];
   note?: string;
   mode?: ReactNode;
   /** Writes a color (default: sets the path). */
@@ -34,9 +40,9 @@ export interface ColorRowProps {
 export function PathColorPicker({
   path,
   fallback,
-  sentinel,
+  sentinels,
   write,
-}: Pick<ColorRowProps, "path" | "fallback" | "sentinel"> & { write: (v?: string) => void }) {
+}: Pick<ColorRowProps, "path" | "fallback" | "sentinels"> & { write: (v?: string) => void }) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { geometry } = useStyleData();
@@ -44,7 +50,7 @@ export function PathColorPicker({
   // A color taken from another part starts the picker at that color.
   const resolved = swatchOf(store.document, path, geometry);
   const shown =
-    typeof value === "string" && value !== "fill"
+    typeof value === "string" && value !== "fill" && value !== "auto"
       ? value
       : value === undefined && fallback
         ? fallback
@@ -55,15 +61,11 @@ export function PathColorPicker({
     <ColorPicker
       value={shown}
       onChange={write}
-      sentinel={
-        sentinel
-          ? {
-              label: t(sentinel.label),
-              selected: value === sentinel.value,
-              onPick: () => write(sentinel.value),
-            }
-          : undefined
-      }
+      sentinels={sentinels?.map((sentinel) => ({
+        label: t(sentinel.label),
+        selected: value === sentinel.value,
+        onPick: () => write(sentinel.value),
+      }))}
       docColors={colorsIn(store.document)}
     />
   );
@@ -73,17 +75,20 @@ export function ColorRow(props: ColorRowProps) {
   const { t } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
-  const { label, path, sentinel, note, mode } = props;
+  const { label, path, sentinels, note, mode } = props;
   const value = useStyleValue<unknown>(path);
   const write = props.write ?? ((next?: string) => store.set(path, next));
   const fallback = props.fallback ?? (DEFAULTS[keyOf(path)] as string | undefined);
-  const sentinelShown = sentinel !== undefined && value === sentinel.value;
-  const shown = sentinelShown ? value : (value ?? fallback);
+  // The choice the row shows: the path's own, else the one its fallback holds (a class taking the base's "auto").
+  const sentinel =
+    sentinels?.find((s) => value === s.value) ??
+    (value === undefined ? sentinels?.find((s) => s.value !== undefined && s.value === fallback) : undefined);
+  const shown = sentinel ? sentinel.value : (value ?? fallback);
   return (
     <Row label={label} actions={mode} note={note}>
       <ColorField
         value={typeof shown === "string" ? shown : undefined}
-        sentinel={sentinel ? { label: t(sentinel.label), shown: sentinelShown } : undefined}
+        sentinel={sentinel ? { label: t(sentinel.label), shown: true } : undefined}
         onOpenPicker={(anchor) =>
           popover.open("picker", {
             key: `color:${path}`,

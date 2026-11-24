@@ -48,6 +48,7 @@ import {
   ZoomStopChart,
 } from "@/components/map/panels/styleEditor/editors/ZoomStopChart";
 import { DASH_ARRAYS } from "@/components/map/panels/styleEditor/editors/choiceGlyph";
+import { stopSentinels } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PatternPicture, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { SHAPE_NEUTRAL } from "@/components/map/panels/styleEditor/pickers/ShapeTiles";
 import { useSymbols } from "@/components/map/panels/styleEditor/pickers/iconRefs";
@@ -327,7 +328,14 @@ export function ZoomEditor({
         />
       </Row>
     );
-  } else if (kind === "color") valueRow = <ColorRow label={label} path={stopPath} />;
+  } else if (kind === "color")
+    valueRow = (
+      <ColorRow
+        label={label}
+        path={stopPath}
+        sentinels={data.geometry ? stopSentinels(data.geometry, key) : undefined}
+      />
+    );
   else if (key === "marker.icon") valueRow = <IconRow label={label} path={stopPath} />;
   else if (key === "fill.pattern")
     valueRow = (

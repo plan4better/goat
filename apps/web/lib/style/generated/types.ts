@@ -283,9 +283,18 @@ export interface ZoomLineOffset {
 export interface Casing {
   min_zoom?: number | null;
   max_zoom?: number | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomCasingColor | ByAttributeColor | RawField) | null;
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomCasingColor".
+ */
+export interface ZoomCasingColor {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema

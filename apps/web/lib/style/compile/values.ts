@@ -61,11 +61,12 @@ function scaleOf(scale: unknown, field: string, number: Expr) {
   return { input: number, has: hasValue(field), at: (x: number) => x };
 }
 
-/** A value form by attribute: a palette ramp (colors) or a range (numbers) over a scale, guarded for missing data. */
-function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
+/** A value form by attribute: a palette ramp (colors) or a range (numbers) over a scale, guarded for missing data;
+ * `map` turns its colors and its `no_data` as it turns fixed values. */
+function byAttribute(form: Record<string, unknown>, fallback: Expr, map: (v: unknown) => Expr): Expr {
   const field = form.field as string;
   const domain = domainOf(form);
-  const noData = "no_data" in form && form.no_data !== undefined ? form.no_data : fallback;
+  const noData = "no_data" in form && form.no_data !== undefined ? map(form.no_data) : fallback;
   if (!domain) return fallback;
   let [d0, d1] = domain;
   const number: Expr = ["to-number", ["get", field], 0];
@@ -78,7 +79,7 @@ function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
     return d0 >= d1 || (scale === "log" && d0 <= 0);
   };
   if ("palette" in form) {
-    const colors = paletteColors(form.palette);
+    const colors = paletteColors(form.palette)?.map((c) => map(c));
     if (!colors || !colors.length) return fallback;
     if (form.reverse === true) colors.reverse();
     // A reversed domain is the same ramp the other way round; MapLibre needs ascending stops.
@@ -127,7 +128,7 @@ export function fromForm(
     return { interpolate, stops, kind };
   }
   if (isObject(form) && typeof form.field === "string") {
-    if ("palette" in form || "range" in form) return { expr: byAttribute(form, fallback) };
+    if ("palette" in form || "range" in form) return { expr: byAttribute(form, fallback, map) };
     const get = ["get", form.field];
     if (kind === "number") return { expr: raw(["to-number", get, fallback]) };
     if (kind === "color") return { expr: ["to-color", get, fallback] };
@@ -252,6 +253,29 @@ export function toProperty(value: Value): Expr {
 
 /** Stands for a color another part supplies (an outline in the fill color, a pattern's default) until `substitute`. */
 export const FILL_COLOR = "\u0000fill";
+/** Stands for the darker shade of that color (an outline's or a casing's `"auto"`) until `substitute`. */
+export const AUTO_COLOR = "\u0000auto";
+
+const HEX_COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+/** The color `"auto"` draws (spec 3.1, goatlib's `darker_shade`): red, green and blue each times 0.7, rounded half up
+ * in whole numbers, alpha unchanged; lowercase. Anything but a hex color stays as it is. */
+export function darkerShade(color: string): string {
+  if (!HEX_COLOR.test(color)) return color;
+  const channel = (i: number) =>
+    Math.floor((7 * parseInt(color.slice(i, i + 2), 16) + 5) / 10)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(1)}${channel(3)}${channel(5)}${color.slice(7).toLowerCase()}`;
+}
+
+/** A cascade's `map` that turns every fixed color into its darker shade, class by class and stop by stop. */
+export const toDarkerShade = (value: unknown): Expr =>
+  typeof value === "string" ? darkerShade(value) : value;
+
+/** An outline's or a casing's own color form for the cascade: `"fill"` and `"auto"` as their placeholders. */
+export const followColor = (value: unknown): Expr =>
+  value === "fill" ? FILL_COLOR : value === "auto" ? AUTO_COLOR : value;
 
 const uses = (expr: Expr, name: string): boolean =>
   expr === name || (Array.isArray(expr) && expr.some((e) => uses(e, name)));

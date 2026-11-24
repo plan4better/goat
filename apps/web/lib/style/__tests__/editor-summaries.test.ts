@@ -182,6 +182,58 @@ describe("swatches", () => {
   });
 });
 
+describe('"auto" outline and casing colors', () => {
+  it("summarize as Auto", () => {
+    expect(summarize(doc({ fill: {}, outline: { color: "auto" } }), "symbol.outline.color", t, ctx)).toBe(
+      "Auto"
+    );
+    expect(
+      summarize(doc({ line: {}, casing: { color: "auto" } }), "symbol.casing.color", t, {
+        ...ctx,
+        geometry: "line",
+      })
+    ).toBe("Auto");
+  });
+
+  it("show the darker shade of the color they follow, class by class for classes", () => {
+    expect(
+      swatchOf(
+        doc({ fill: { color: "#7f3c8d" }, outline: { color: "auto" } }),
+        "symbol.outline.color",
+        "polygon"
+      )
+    ).toBe("#592a63");
+    expect(
+      swatchOf(
+        doc({ marker: { color: "#3969ac" }, outline: { color: "auto" } }),
+        "symbol.outline.color",
+        "point"
+      )
+    ).toBe("#284a78");
+    expect(
+      swatchOf(doc({ line: { color: "#f97b72" }, casing: { color: "auto" } }), "symbol.casing.color", "line")
+    ).toBe("#ae5650");
+    const classified = doc(
+      { fill: { color: "#cccccc" }, outline: { color: "auto" } },
+      {
+        classify: [
+          {
+            field: "use",
+            method: "categories",
+            classes: [
+              { values: ["a"], fill: { color: "#ff0000" } },
+              { values: ["b"], fill: { color: "#0000ff" } },
+            ],
+          },
+        ],
+      }
+    );
+    expect(swatchOf(classified, "symbol.outline.color", "polygon")).toBe(
+      "linear-gradient(90deg, #b30000, #0000b3)"
+    );
+  });
+});
+
 describe("colors in a style", () => {
   it("lists each color once, in document order", () => {
     const d = doc(
