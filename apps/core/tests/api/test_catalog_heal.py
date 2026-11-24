@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+import pytest_asyncio
 from core.core.config import settings
 from core.db.models.layer import Layer
 from goatlib.catalog.promote import bundle_version
@@ -20,6 +21,22 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 S = settings.SCHEMA
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def no_projects_left(db_session: AsyncSession) -> Any:
+    """These tests give the shared default user projects; they go with the test,
+    or a later test of that user in the same worker finds them."""
+    before = set(
+        (await db_session.execute(text(f"SELECT id FROM {S}.project"))).scalars()
+    )
+    yield
+    await db_session.rollback()
+    await db_session.execute(
+        text(f"DELETE FROM {S}.project WHERE NOT (id = ANY(:before))"),
+        {"before": list(before)},
+    )
+    await db_session.commit()
 
 
 @pytest.fixture
