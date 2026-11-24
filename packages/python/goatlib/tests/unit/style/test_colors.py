@@ -1,17 +1,21 @@
 import json
+import math
 from typing import Any
 
 import pytest
 from goatlib.style.catalog import palette_colors
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
-    darker_shade,
+    contrast_ratio,
     default_range,
     hex_to_rgb,
+    on_color,
     parse_color,
     range_values,
+    readable_shade,
     rgb_to_hex,
     sample_colors,
+    shade,
 )
 
 from .conftest import FIXTURES
@@ -23,10 +27,12 @@ from .conftest import FIXTURES
 PALETTE_SAMPLES: list[dict[str, Any]] = json.loads(
     (FIXTURES / "palette_samples.json").read_text()
 )
-#: The darker shade `"auto"` draws (spec 3.1), which the web's `darkerShade` must also give
-#: (lib/style/__tests__/darker-shade.test.ts): red, green and blue times 0.7, halves up.
-DARKER_SHADES: list[dict[str, str]] = json.loads(
-    (FIXTURES / "darker_shades.json").read_text()
+#: The color rules derived colors are made of (spec 3.1), which the web's `shade`,
+#: `contrastRatio`, `readableShade` and `onColor` must also give (lib/style/__tests__/colors.test.ts):
+#: inputs and expected outputs by function, malformed inputs included (`null` is None; a
+#: contrast ratio of `null` is NaN).
+COLOR_RULES: dict[str, list[dict[str, Any]]] = json.loads(
+    (FIXTURES / "color_rules.json").read_text()
 )
 
 
@@ -116,11 +122,49 @@ def test_shared_palette_samples(row: dict[str, Any]) -> None:
     )
 
 
-@pytest.mark.parametrize("row", DARKER_SHADES, ids=lambda r: r["color"])
-def test_shared_darker_shades(row: dict[str, str]) -> None:
-    assert darker_shade(row["color"]) == row["shade"]
+@pytest.mark.parametrize("row", COLOR_RULES["shade"], ids=lambda r: str(r["color"]))
+def test_shared_shades(row: dict[str, Any]) -> None:
+    assert shade(row["color"]) == row["expected"]
 
 
-def test_the_darker_shade_rounds_exact_halves_up() -> None:
+def test_the_shade_rounds_exact_halves_up() -> None:
     # 15 x 0.7 is 10.5 exactly, though 10.499... in floating point.
-    assert darker_shade("#0f0f0f") == "#0b0b0b"
+    assert shade("#0f0f0f") == "#0b0b0b"
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["contrast_ratio"], ids=lambda r: f"{r['a']}-{r['b']}"
+)
+def test_shared_contrast_ratios(row: dict[str, Any]) -> None:
+    got = contrast_ratio(row["a"], row["b"])
+    if row["expected"] is None:
+        assert math.isnan(got)
+    else:
+        assert got == pytest.approx(row["expected"], abs=5e-5)
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["readable_shade"], ids=lambda r: f"{r['color']}-{r['against']}"
+)
+def test_shared_readable_shades(row: dict[str, Any]) -> None:
+    assert readable_shade(row["color"], row["against"]) == row["expected"]
+
+
+def test_a_readable_shade_meets_the_floor_where_it_can() -> None:
+    for row in COLOR_RULES["readable_shade"]:
+        got = readable_shade(row["color"], row["against"])
+        hexes = all(
+            isinstance(c, str) and len(c) in (7, 9) and c.startswith("#")
+            for c in (row["color"], row["against"])
+        )
+        if (
+            hexes
+            and not math.isnan(contrast_ratio(got, row["against"]))
+            and shade(got) != got
+        ):
+            assert contrast_ratio(got, row["against"]) >= 4.5
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["on_color"], ids=lambda r: str(r["color"]))
+def test_shared_on_colors(row: dict[str, Any]) -> None:
+    assert on_color(row["color"]) == row["expected"]

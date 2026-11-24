@@ -7,12 +7,15 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT, ICON_HEIGHT } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
 import { keepsColors } from "@/lib/style/compile/images";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import {
   ACTIVE,
   type PartContext,
+  always,
+  byFill,
   highlightColor,
   highlightWidth,
   makeLayer,
@@ -22,19 +25,7 @@ import {
 } from "@/lib/style/compile/parts";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
-import {
-  AUTO_COLOR,
-  type Expr,
-  FILL_COLOR,
-  type Value,
-  combine,
-  followColor,
-  fromForm,
-  isZoomed,
-  substitute,
-  toDarkerShade,
-  toProperty,
-} from "@/lib/style/compile/values";
+import { type Expr, type Value, combine, fromForm, isZoomed, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
@@ -48,21 +39,6 @@ import {
 const anchor = (name: unknown) => (typeof name === "string" ? name.replace("_", "-") : name);
 
 const moves = (offset: unknown) => Array.isArray(offset) && (offset[0] !== 0 || offset[1] !== 0);
-
-/** Stands for the icon color nothing sets until the fill decides it: the reference color on a filled marker, the
- * marker color on a hollow one (spec 3.3). */
-const ICON_TINT = "\u0000tint";
-
-const always = (value: Value, expr: Expr) => !isZoomed(value) && value.expr === expr;
-
-/** `filled` where a feature's marker has its fill, `hollow` where it has none. */
-function byFill(fill: Value, filled: Value, hollow: Value, kind: "number" | "color"): Value {
-  return combine(
-    [fill, filled, hollow],
-    ([f, a, b]) => (f === true ? a : f === false ? b : ["case", ["==", f, false], b, a]),
-    { kind }
-  );
-}
 
 /** A halo width that is 0 where the outline is off: icon halos have no opacity of their own. */
 function haloWidth(width: Value, opacity: Value): Value {
@@ -229,11 +205,11 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
       : cascade(style, "marker.color", map ? { ...c, map } : c);
   const markerColor = colorOf();
   // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint), "auto" its darker shade.
-  const outlineColor = substitute(
-    substitute(cascade(style, "outline.color", { ...c, map: followColor }), FILL_COLOR, markerColor),
-    AUTO_COLOR,
-    colorOf(toDarkerShade)
-  );
+  const outlineColor = derivedValue(style, "outline.color", {
+    geometry: "point",
+    fields: ctx.fields,
+    follow: colorOf,
+  });
 
   const iconRefs = ctx.icon
     ? [...ctx.icon.refs]
@@ -244,6 +220,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
       opacity: hollowOpacity(1),
       fill,
       color: markerColor,
+      follow: colorOf,
       outline: outline ? { color: outlineColor } : undefined,
     });
 
@@ -376,7 +353,15 @@ function markerImageLayers(
   place: Place,
   shape: MarkerShapeId,
   refs: string[],
-  marker: { size: Value; opacity: Value; fill: Value; color: Value; outline?: { color: Value } }
+  marker: {
+    size: Value;
+    opacity: Value;
+    fill: Value;
+    color: Value;
+    /** The marker color with each fixed color `map`ped. */
+    follow: (map?: (color: unknown) => Expr) => Value;
+    outline?: { color: Value };
+  }
 ): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
@@ -386,13 +371,13 @@ function markerImageLayers(
     ? haloWidth(cascade(style, "outline.width", c), cascade(style, "outline.opacity", c))
     : { expr: 0 };
   const shapes = setValues(style, "marker.shape");
-  const iconColor = always(marker.fill, true)
-    ? cascade(style, "marker.icon_color", c)
-    : substitute(
-        cascade(style, "marker.icon_color", { ...c, fallback: ICON_TINT }),
-        ICON_TINT,
-        byFill(marker.fill, { expr: DEFAULTS["marker.icon_color"] as Expr }, marker.color, "color")
-      );
+  // An icon color nothing sets: the reference color on a filled marker, the marker color on a hollow one (spec 3.3).
+  const iconColor = derivedValue(style, "marker.icon_color", {
+    geometry: ctx.geometry,
+    fields: ctx.fields,
+    follow: marker.follow,
+    fill: marker.fill,
+  });
   const parts = [
     cascade(style, "marker.shape", { ...c, fallback: "circle" }),
     iconValue(ctx, { ...c, fallback: "" }),

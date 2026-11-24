@@ -251,32 +251,6 @@ export function toProperty(value: Value): Expr {
   return ["interpolate", interpolate, ["zoom"], ...stops.flat()];
 }
 
-/** Stands for a color another part supplies (an outline in the fill color, a pattern's default) until `substitute`. */
-export const FILL_COLOR = "\u0000fill";
-/** Stands for the darker shade of that color (an outline's or a casing's `"auto"`) until `substitute`. */
-export const AUTO_COLOR = "\u0000auto";
-
-const HEX_COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
-
-/** The color `"auto"` draws (spec 3.1, goatlib's `darker_shade`): red, green and blue each times 0.7, rounded half up
- * in whole numbers, alpha unchanged; lowercase. Anything but a hex color stays as it is. */
-export function darkerShade(color: string): string {
-  if (!HEX_COLOR.test(color)) return color;
-  const channel = (i: number) =>
-    Math.floor((7 * parseInt(color.slice(i, i + 2), 16) + 5) / 10)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${channel(1)}${channel(3)}${channel(5)}${color.slice(7).toLowerCase()}`;
-}
-
-/** A cascade's `map` that turns every fixed color into its darker shade, class by class and stop by stop. */
-export const toDarkerShade = (value: unknown): Expr =>
-  typeof value === "string" ? darkerShade(value) : value;
-
-/** An outline's or a casing's own color form for the cascade: `"fill"` and `"auto"` as their placeholders. */
-export const followColor = (value: unknown): Expr =>
-  value === "fill" ? FILL_COLOR : value === "auto" ? AUTO_COLOR : value;
-
 const uses = (expr: Expr, name: string): boolean =>
   expr === name || (Array.isArray(expr) && expr.some((e) => uses(e, name)));
 
@@ -287,8 +261,12 @@ const replaced = (expr: Expr, name: string, by: Expr): Expr =>
       ? expr.map((e) => replaced(e, name, by))
       : expr;
 
-/** `value` with the placeholder `name` replaced by the color `by`, stop by stop when either varies by zoom. */
-export function substitute(value: Value, name: string, by: Value): Value {
+/** `value` with the placeholder `name` replaced by the color `by` (worked out only where `value` holds `name`), stop by
+ * stop when either varies by zoom. */
+export function substitute(value: Value, name: string, by: Value | (() => Value)): Value {
   const found = isZoomed(value) ? value.stops.some(([, e]) => uses(e, name)) : uses(value.expr, name);
-  return found ? combine([value, by], ([v, b]) => replaced(v, name, b), { kind: "color" }) : value;
+  if (!found) return value;
+  return combine([value, typeof by === "function" ? by() : by], ([v, b]) => replaced(v, name, b), {
+    kind: "color",
+  });
 }

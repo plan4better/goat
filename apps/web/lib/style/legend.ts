@@ -2,11 +2,12 @@
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { classTexts } from "@/lib/style/categoryTexts";
 import { perLayer } from "@/lib/style/compile/cascade";
+import { derivedColor, followedKey, isDerivedWord } from "@/lib/style/compile/derived";
 import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
 import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale, pointsSymbol } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
-import { type Kind, darkerShade, fromForm, isZoomed, valueAt } from "@/lib/style/compile/values";
+import { type Kind, fromForm, isZoomed, valueAt } from "@/lib/style/compile/values";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -371,8 +372,11 @@ function arrowsSwatch(
   const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
   return {
     icon,
-    color:
-      (merged.color !== undefined ? resolve(merged.color, "arrows.color", zoom) : undefined) ?? lineColor,
+    color: derivedColor(
+      "arrows.color",
+      merged.color !== undefined ? resolve(merged.color, "arrows.color", zoom) : undefined,
+      lineColor
+    ),
     direction: perLayer(style, "arrows.direction"),
     placement: perLayer(style, "arrows.placement"),
     turn_with_line: perLayer(style, "arrows.turn_with_line"),
@@ -418,31 +422,34 @@ function swatch(
     // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own.
     if (part === "marker" && merged.fill === false && resolved.shape !== "icon") {
       resolved.fill = false;
-      if (merged.icon_color === undefined) resolved.icon_color = resolved.color;
+      if (merged.icon_color === undefined)
+        resolved.icon_color = derivedColor("marker.icon_color", undefined, resolved.color, { hollow: true });
     }
     if (part === "fill" && resolved.pattern !== "none") {
       // In the fill color unless it has its own, drawn in an image.
       resolved.pattern_color = followsField(merged.pattern_color)
         ? merged.pattern_color
-        : merged.pattern_color !== undefined
-          ? resolve(merged.pattern_color, "fill.pattern_color", at("fill.pattern_color"))
-          : resolve(merged.color, "fill.color", at("fill.pattern_color"));
+        : derivedColor(
+            "fill.pattern_color",
+            merged.pattern_color !== undefined
+              ? resolve(merged.pattern_color, "fill.pattern_color", at("fill.pattern_color"))
+              : undefined,
+            resolve(merged.color, "fill.color", at("fill.pattern_color"))
+          );
       for (const key of ["pattern_spacing", "pattern_width"])
         resolved[key] = resolve(merged[key], `fill.${key}`, zoom);
     }
-    if (part === "outline" && resolved.color === "fill")
-      resolved.color =
-        (geometry === "point" ? out.marker?.color : out.fill?.color) ??
-        mainColor ??
-        DEFAULTS[geometry === "point" ? "marker.color" : "fill.color"];
     out[part] = resolved;
   }
-  // An outline's or a casing's "auto": the color the main part shows, darkened (the casing comes before the line).
+  // An outline's or a casing's word ("fill", "auto"): from the color the main part shows, drawn or not (the casing
+  // comes before the line).
   for (const part of ["outline", "casing"] as const) {
     const own = out[part];
-    if (own?.color !== "auto") continue;
-    const main = out[MAIN[geometry] as "fill" | "line" | "marker"]?.color ?? mainColor;
-    own.color = darkerShade(String(main ?? DEFAULTS[`${MAIN[geometry]}.color`]));
+    const key = `${part}.color`;
+    const follows = followedKey(key, geometry);
+    if (!own || !follows || !isDerivedWord(key, own.color)) continue;
+    const main = out[follows.split(".")[0] as "fill" | "line" | "marker"]?.color ?? mainColor;
+    own.color = derivedColor(key, own.color, main ?? DEFAULTS[follows]);
   }
   if (geometry === "line") {
     const arrows = arrowsSwatch(style, symbol.arrows, override?.arrows, out.line?.color, zoom);
@@ -1087,13 +1094,13 @@ function clusterSections(style: JsonObject, render: JsonObject, zoom: number): L
   const sample = points ? swatch({ symbol: pointsSymbol(style) }, "point", zoom) : own;
   if ((render.count ?? DEFAULTS["cluster.count"]) === "badge") {
     const label = isObject(symbol.label) ? symbol.label : {};
-    const outline = isObject(symbol.outline) ? symbol.outline : null;
     sample.badge = {
       color: typeof own.marker?.color === "string" ? own.marker.color : (DEFAULTS["marker.color"] as string),
       text: typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
-      ring: outline
-        ? typeof outline.color === "string"
-          ? outline.color
+      // The cluster symbol's outline as its swatch draws it, "Same as fill" and "auto" resolved.
+      ring: isObject(symbol.outline)
+        ? typeof own.outline?.color === "string"
+          ? own.outline.color
           : (DEFAULTS["outline.color"] as string)
         : "#ffffff",
     };

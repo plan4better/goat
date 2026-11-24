@@ -6,6 +6,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import { DASHES } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
 import {
   ACTIVE,
@@ -19,17 +20,12 @@ import {
 } from "@/lib/style/compile/parts";
 import { NO_PATTERN_IMAGE, PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
 import {
-  AUTO_COLOR,
   type Expr,
-  FILL_COLOR,
   type Value,
   combine,
   fold,
-  followColor,
   fromForm,
   isZoomed,
-  substitute,
-  toDarkerShade,
   toProperty,
   valueAt,
 } from "@/lib/style/compile/values";
@@ -146,11 +142,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
   const fillColor = cascade(style, "fill.color", c);
-  // The outline's "fill" and the pattern's default color: the fill color, class by class and stop by stop; the
-  // outline's "auto" its darker shade.
-  const fillShade = cascade(style, "fill.color", { ...c, map: toDarkerShade });
-  const inFill = (value: Value) =>
-    substitute(substitute(value, FILL_COLOR, fillColor), AUTO_COLOR, fillShade);
+  const derived = { geometry: "polygon" as const, fields: ctx.fields };
 
   if (extrudes(style)) {
     layers.push(extrusionLayer(ctx, fillColor));
@@ -173,7 +165,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
           cascade(style, "fill.pattern", c),
           cascade(style, "fill.pattern_spacing", c),
           cascade(style, "fill.pattern_width", c),
-          everyZoom(inFill(cascade(style, "fill.pattern_color", { ...c, fallback: FILL_COLOR }))),
+          everyZoom(derivedValue(style, "fill.pattern_color", derived)),
         ],
         ([kind, spacing, width, color]) => {
           if (kind === "none") return NO_PATTERN_IMAGE;
@@ -201,7 +193,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
 
   if (partUsed(style, "outline", "polygon")) {
     const paint: Record<string, unknown> = {};
-    const color = inFill(cascade(style, "outline.color", { ...c, map: followColor }));
+    const color = derivedValue(style, "outline.color", derived);
     put(paint, "line-color", highlightColor(ctx, color), ctx, "outline.color");
     const width = cascade(style, "outline.width", c);
     put(paint, "line-width", highlightWidth(ctx, width), ctx, "outline.width");

@@ -4,6 +4,7 @@ The Python implementation is the reference: the server stores the colors and
 numbers a classification resolves to, and the compiler and legend read them.
 """
 
+import math
 import re
 from typing import Any
 
@@ -74,12 +75,70 @@ def rgb_to_hex(rgb: list[int]) -> str:
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
-def darker_shade(hex_color: str) -> str:
-    """The color `"auto"` draws (spec 3.1): red, green and blue each times 0.7,
-    rounded half up in whole numbers (so 15 gives 11, not 10.499... rounded),
-    alpha unchanged; lowercase."""
-    rgb = [(7 * c + 5) // 10 for c in hex_to_rgb(hex_color)]
-    return rgb_to_hex(rgb) + hex_color[7:9].lower()
+#: The contrast a readable shade reaches (WCAG's 4.5 to 1), the relative luminance
+#: from which an on-color is dark, and the light and dark colors it picks from.
+CONTRAST_FLOOR = 4.5
+ON_COLOR_LUMINANCE = 0.5
+LIGHT = "#ffffff"
+DARK = "#3a3541"
+
+
+def _is_hex(value: Any) -> bool:
+    """Whether `value` is a `#rrggbb` or `#rrggbbaa` color."""
+    return isinstance(value, str) and _HEX.fullmatch(value) is not None
+
+
+def shade(hex_color: Any) -> Any:
+    """The darker shade `"auto"` draws (spec 3.1): red, green and blue each times
+    0.7, rounded half up in whole numbers (so 15 gives 11, not 10.499...
+    rounded), opaque whatever the color's alpha; lowercase. Anything but a
+    six- or eight-digit hex color is returned as it is."""
+    if not _is_hex(hex_color):
+        return hex_color
+    return rgb_to_hex([(7 * c + 5) // 10 for c in hex_to_rgb(hex_color)])
+
+
+def _luminance(hex_color: str) -> float:
+    """WCAG's relative luminance of the color's red, green and blue."""
+    linear = [
+        s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+        for s in (c / 255 for c in hex_to_rgb(hex_color))
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(a: Any, b: Any) -> float:
+    """WCAG's contrast ratio of two hex colors, 1 to 21, alpha ignored; NaN where
+    either is not a six- or eight-digit hex color."""
+    if not (_is_hex(a) and _is_hex(b)):
+        return math.nan
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def readable_shade(hex_color: Any, against: Any, floor: float = CONTRAST_FLOOR) -> Any:
+    """The shade of the color, shaded again until it contrasts with `against` by
+    at least `floor`; where shading stops changing it (near black) first, that
+    last shade. Against anything but a hex color, the shade alone; anything but
+    a hex color is returned as it is."""
+    if not _is_hex(hex_color):
+        return hex_color
+    color = shade(hex_color)
+    # A NaN ratio (`against` no hex color) compares as False: the shade alone.
+    while contrast_ratio(color, against) < floor:
+        darker = shade(color)
+        if darker == color:
+            break
+        color = darker
+    return color
+
+
+def on_color(hex_color: Any) -> str:
+    """White where the color underneath has a relative luminance below 0.5, else
+    GOAT's dark text color; white for anything but a hex color."""
+    if not _is_hex(hex_color):
+        return LIGHT
+    return LIGHT if _luminance(hex_color) < ON_COLOR_LUMINANCE else DARK
 
 
 def _lab(hex_color: str) -> tuple[float, float, float]:

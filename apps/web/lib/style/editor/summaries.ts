@@ -2,8 +2,8 @@
 // "By Visitors per year".
 import type { TFunction } from "i18next";
 
+import { DERIVED, derivedColor, followedKey, isDerivedWord } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
-import { darkerShade } from "@/lib/style/compile/values";
 import type { ScopedView } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { type CompoundChoice, MAIN_COLOR, classificationFor, keyOf, modeOf } from "@/lib/style/editor/forms";
@@ -87,6 +87,9 @@ export const thenText = (t: TFunction, value: string, later: Setter, fields: Fie
         ...PLAIN,
       });
 
+/** The panel's words for a color taken from another part. */
+const WORD_LABELS: Record<string, string> = { fill: "style_editor.same_as_fill", auto: "style_editor.auto" };
+
 export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: SummaryContext): string {
   if (ctx.scope) {
     const { doc: shown, later } = summaryView(doc, ctx.scope, path, ctx.view, ctx.geometry);
@@ -130,8 +133,7 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
     default: {
       const fixed = value ?? DEFAULTS[key];
       if (kind === "color") {
-        if (fixed === "fill") return t("style_editor.same_as_fill");
-        if (fixed === "auto") return t("style_editor.auto");
+        if (isDerivedWord(key, fixed)) return t(WORD_LABELS[fixed] ?? fixed);
         const hex = typeof fixed === "string" ? fixed.toUpperCase() : "";
         const opacityPath = path.replace(/color$/, "opacity");
         const opacityKey = key.replace(/color$/, "opacity");
@@ -163,14 +165,25 @@ export function swatchOf(
   opts: { scoped?: boolean } = {}
 ): string {
   const key = keyOf(path);
-  const value = getIn(doc, path) ?? DEFAULTS[key];
-  if (value === "fill" || value === "auto") {
-    const main = MAIN_COLOR[geometry ?? "polygon"];
+  const own = getIn(doc, path);
+  const value = own ?? DEFAULTS[key];
+  // An unset icon color of a hollow marker follows the marker color (spec 3.3). An unset pattern or arrows color keeps
+  // the hatch: its row reads "Same as fill" or "Same as line".
+  const part = path.slice(0, path.length - key.length) + key.split(".")[0];
+  const hollow =
+    own === undefined &&
+    DERIVED[key]?.absent?.only === "hollow" &&
+    getIn(doc, `${part}.fill`) === false &&
+    getIn(doc, `${part}.shape`) !== "icon";
+  if (isDerivedWord(key, value) || hollow) {
+    const main = followedKey(key, geometry ?? "polygon") ?? MAIN_COLOR[geometry ?? "polygon"];
     const followed = swatchOf(doc, `symbol.${main}`, geometry, opts);
-    // "auto" draws each color the main part has a darker shade.
-    return value === "auto" && followed !== HATCH
-      ? followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, darkerShade)
-      : followed;
+    // Each color the followed swatch shows, derived (a darker shade for "auto").
+    return followed === HATCH
+      ? followed
+      : followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) =>
+          String(derivedColor(key, hollow ? undefined : value, color, { hollow }))
+        );
   }
   // A color set by classes shows the classes' colors, in their order: the color under them draws nothing.
   const classified =

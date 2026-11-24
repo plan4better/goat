@@ -61,7 +61,7 @@ Dash = Literal["solid", "dashed", "dotted", "dash_dot"]
 #: which libraries exist is checked against the catalogue (`unknown_icon`).
 IconRef = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*:[A-Za-z0-9._-]+$")]
 #: An outline color: a color, `"fill"` (the color the main part draws) or `"auto"`
-#: (a darker shade of it, `goatlib.style.colors.darker_shade`).
+#: (a darker shade of it, `goatlib.style.colors.shade`).
 OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|fill|auto)$")]
 #: A casing color: a color or `"auto"` (a darker shade of the line's color).
 CasingColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]

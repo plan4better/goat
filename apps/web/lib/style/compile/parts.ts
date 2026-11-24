@@ -6,7 +6,7 @@ import { featureFilter, isSet } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import type { ImageCollector } from "@/lib/style/compile/images";
 import type { CompileInput, CompiledLayer, FieldType, Geometry } from "@/lib/style/compile/types";
-import { type Expr, type Value, combine, fromForm, toProperty } from "@/lib/style/compile/values";
+import { type Expr, type Value, combine, fromForm, isZoomed, toProperty } from "@/lib/style/compile/values";
 import { type JsonObject, deepEqual, isObject } from "@/lib/style/json";
 
 export interface PartContext {
@@ -91,6 +91,18 @@ export const highlightWidth = (ctx: PartContext, value: Value): Value =>
   ctx.input.highlight
     ? combine([value], ([v]) => ["case", ACTIVE, ["max", v, HIGHLIGHT.width], v], { kind: "number" })
     : value;
+
+/** Whether a value is `expr` for every feature at every zoom. */
+export const always = (value: Value, expr: Expr) => !isZoomed(value) && value.expr === expr;
+
+/** `filled` where a feature's marker has its fill (`marker.fill`), `hollow` where it has none. */
+export function byFill(fill: Value, filled: Value, hollow: Value, kind: "number" | "color"): Value {
+  return combine(
+    [fill, filled, hollow],
+    ([f, a, b]) => (f === true ? a : f === false ? b : ["case", ["==", f, false], b, a]),
+    { kind }
+  );
+}
 
 /** A part opacity times the layer opacity, for layers without a layer opacity of their own (spec 4.6). */
 export function withLayerOpacity(ctx: PartContext, opacity: Value): Value {

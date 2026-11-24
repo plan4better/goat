@@ -4,6 +4,7 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { ICON_HEIGHT } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { keepsColors } from "@/lib/style/compile/images";
 import {
   type Decoration,
@@ -17,15 +18,7 @@ import {
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { dashArray } from "@/lib/style/compile/polygons";
-import {
-  AUTO_COLOR,
-  combine,
-  followColor,
-  fromForm,
-  substitute,
-  toDarkerShade,
-  toProperty,
-} from "@/lib/style/compile/values";
+import { type Value, combine, fromForm, toProperty } from "@/lib/style/compile/values";
 
 export function lineLayers(ctx: PartContext): LayerSpecification[] {
   const { style } = ctx;
@@ -47,12 +40,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
       { kind: "number" }
     );
     const paint: Record<string, unknown> = {};
-    // "auto": the line's color, darkened class by class and stop by stop.
-    const casingColor = substitute(
-      cascade(style, "casing.color", { ...c, map: followColor }),
-      AUTO_COLOR,
-      cascade(style, "line.color", { ...c, map: toDarkerShade })
-    );
+    const casingColor = derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields });
     put(paint, "line-color", casingColor, ctx, "casing.color");
     paint["line-width"] = toProperty(casingWidth);
     put(paint, "line-offset", offset, ctx, "line.offset");
@@ -76,7 +64,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
   return layers;
 }
 
-function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): LayerSpecification[] {
+function arrowLayers(ctx: PartContext, lineColor: Value): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
   // One icon for the layer (spec 3.2), drawn as GOAT's arrow is: pointing north before it is turned along the line.
@@ -90,8 +78,12 @@ function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): L
   const size = combine([cascade(style, "arrows.size", c)], ([s]) => ["/", s, ICON_HEIGHT], {
     kind: "number",
   });
-  // Arrows take the line's color, class by class, unless a record colors them.
-  const color = isSet(style, "arrows.color") ? cascade(style, "arrows.color", c) : lineColor;
+  // Arrows take the line's color, class by class, where no record colors them.
+  const color = derivedValue(style, "arrows.color", {
+    geometry: "line",
+    fields: ctx.fields,
+    follow: (map) => (map ? cascade(style, "line.color", { ...c, map }) : lineColor),
+  });
   const layout = {
     "icon-image": icon,
     "icon-size": toProperty(size),

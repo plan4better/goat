@@ -5,25 +5,14 @@ import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import { cascade, categoryLabels, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS, TILE_MAXZOOM } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { colorText, concat, numberText } from "@/lib/style/compile/imageNames";
 import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compile/labels";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import { type PartContext, layerOpacity, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
 import { pointLayers } from "@/lib/style/compile/points";
 import type { FieldType } from "@/lib/style/compile/types";
-import {
-  AUTO_COLOR,
-  FILL_COLOR,
-  type Value,
-  combine,
-  followColor,
-  fromForm,
-  hasValue,
-  isZoomed,
-  substitute,
-  toDarkerShade,
-  toProperty,
-} from "@/lib/style/compile/values";
+import { type Value, combine, fromForm, hasValue, isZoomed, toProperty } from "@/lib/style/compile/values";
 import type { Expr } from "@/lib/style/compile/values";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS, H3_AUTO_FROM_ZOOM } from "@/lib/style/generated/defaults";
@@ -437,11 +426,10 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
   const fill = cascade(symbol, "marker.color", {});
   const outline = partUsed(symbol, "outline");
   const stroke = outline
-    ? substitute(
-        substitute(cascade(symbol, "outline.color", { map: followColor }), FILL_COLOR, fill),
-        AUTO_COLOR,
-        cascade(symbol, "marker.color", { map: toDarkerShade })
-      )
+    ? derivedValue(symbol, "outline.color", {
+        geometry: "point",
+        follow: (map) => (map ? cascade(symbol, "marker.color", { map }) : fill),
+      })
     : { expr: BADGE_RING.color };
   const strokeWidth = outline ? cascade(symbol, "outline.width", {}) : { expr: BADGE_RING.width };
   const sides = BADGE_SIDES.map((side) => Math.round(side * scale));

@@ -1,0 +1,8270 @@
+{
+ "polygon outline fill / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-outline": {
+    "line-color": "#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8d"
+  }
+ },
+ "polygon outline fill / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-outline": {
+    "line-color": "#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8dcc"
+  }
+ },
+ "polygon outline fill / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon outline fill / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #ff0000, #0000ff)"
+  }
+ },
+ "polygon outline fill / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #fee8c8, #e34a33)"
+  }
+ },
+ "polygon outline fill / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon outline fill / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #11a579, #e73f74)"
+  }
+ },
+ "polygon outline fill / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#cccccc"
+  }
+ },
+ "polygon outline auto / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-outline": {
+    "line-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "polygon outline auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-outline": {
+    "line-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "polygon outline auto / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon outline auto / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#68004a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b30000, #0000b3)"
+  }
+ },
+ "polygon outline auto / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#b2a28c",
+      10,
+      "#9f3424"
+     ],
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b2a28c, #9f3424)"
+  }
+ },
+ "polygon outline auto / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#6c7279",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon outline auto / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#8f8f8f"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#a22c51",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "polygon outline auto / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#8f8f8f"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#284a78",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#8f8f8f",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#8f8f8f"
+  }
+ },
+ "polygon outline fill in zoom stops / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     "#7f3c8d",
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     "#7f3c8dcc",
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     "#2bb381",
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     10,
+     "#aa0055",
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     [
+      "case",
+      [
+       "!=",
+       [
+        "get",
+        "v"
+       ],
+       null
+      ],
+      [
+       "interpolate-lab",
+       [
+        "linear"
+       ],
+       [
+        "to-number",
+        [
+         "get",
+         "v"
+        ],
+        0
+       ],
+       0,
+       "#fee8c8",
+       10,
+       "#e34a33"
+      ],
+      "#2bb381"
+     ],
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2bb381"
+     ],
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ],
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ],
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon fill off, outline fill / fixed": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / alpha": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / absent": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / zoom": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / palette": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / raw": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline fill / classes": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #11a579, #e73f74)"
+  }
+ },
+ "polygon fill off, outline fill / rules": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "polygon fill off, outline auto / fixed": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / absent": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / zoom": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / palette": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / raw": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / classes": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#a22c51",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "polygon fill off, outline auto / rules": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#284a78",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon pattern color absent / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-pattern": {
+    "fill-pattern": "goat-pattern:hatch_45|10|2|#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#7f3c8d",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-pattern": {
+    "fill-pattern": "goat-pattern:hatch_45|10|2|#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#7f3c8dcc",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-pattern": {
+    "fill-pattern": "goat-pattern:hatch_45|10|2|#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#2bb381",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "step",
+     [
+      "zoom"
+     ],
+     "goat-pattern:hatch_45|10|2|#ff0000",
+     9,
+     "goat-pattern:hatch_45|10|2|#d5002b",
+     10,
+     "goat-pattern:hatch_45|10|2|#aa0055",
+     11,
+     "goat-pattern:hatch_45|10|2|#800080",
+     12,
+     "goat-pattern:hatch_45|10|2|#5500aa",
+     13,
+     "goat-pattern:hatch_45|10|2|#2b00d5",
+     14,
+     "goat-pattern:hatch_45|10|2|#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#aa0055",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "concat",
+     "goat-pattern:hatch_45|10|2|",
+     [
+      "to-string",
+      [
+       "to-color",
+       [
+        "case",
+        [
+         "!=",
+         [
+          "get",
+          "v"
+         ],
+         null
+        ],
+        [
+         "interpolate-lab",
+         [
+          "linear"
+         ],
+         [
+          "to-number",
+          [
+           "get",
+           "v"
+          ],
+          0
+         ],
+         0,
+         [
+          "to-color",
+          "#fee8c8"
+         ],
+         10,
+         [
+          "to-color",
+          "#e34a33"
+         ]
+        ],
+        [
+         "to-color",
+         "#2bb381"
+        ]
+       ]
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "concat",
+     "goat-pattern:hatch_45|10|2|",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2bb381"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#9aa3ad",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "concat",
+     "goat-pattern:hatch_45|10|2|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#11a579",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#e73f74",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "concat",
+     "goat-pattern:hatch_45|10|2|",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#3969ac",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#cccccc",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line casing auto / fixed": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": "#592a63"
+   },
+   "1-line": {
+    "line-color": "#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#592a63",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#592a63"
+  }
+ },
+ "line casing auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": "#592a63"
+   },
+   "1-line": {
+    "line-color": "#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#592a63",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#592a63"
+  }
+ },
+ "line casing auto / absent": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": "#174778"
+   },
+   "1-line": {
+    "line-color": "#2166ac"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#174778",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#2166ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#174778"
+  }
+ },
+ "line casing auto / zoom": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#68004a",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "linear-gradient(90deg, #b30000, #0000b3)"
+  }
+ },
+ "line casing auto / palette": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#b2a28c",
+      10,
+      "#9f3424"
+     ],
+     "#174778"
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2166ac"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.casing.color": "linear-gradient(90deg, #b2a28c, #9f3424)"
+  }
+ },
+ "line casing auto / raw": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#174778"
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2166ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#6c7279",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line casing auto / classes": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#8f8f8f"
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#0c7455",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#a22c51",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "line casing auto / rules": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#8f8f8f"
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#284a78",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#8f8f8f",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#8f8f8f"
+  }
+ },
+ "line arrows color absent / fixed": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#7f3c8d"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": "#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#7f3c8d",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / alpha": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#7f3c8dcc"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": "#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#7f3c8dcc",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / absent": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#2166ac"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": "#2166ac"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#2166ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#2166ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / zoom": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#95006a",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / palette": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2166ac"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2166ac"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / raw": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2166ac"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2166ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#9aa3ad",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / classes": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#11a579",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#e73f74",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / rules": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#cccccc",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows colored only in a class / fixed": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#7f3c8d"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     "#7f3c8d"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / alpha": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#7f3c8dcc"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     "#7f3c8dcc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / absent": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#2166ac"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     "#2166ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#2166ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / zoom": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "k"
+       ]
+      ],
+      "x",
+      "#00ff00",
+      "#ff0000"
+     ],
+     14,
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "k"
+       ]
+      ],
+      "x",
+      "#00ff00",
+      "#0000ff"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / palette": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2166ac"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     [
+      "case",
+      [
+       "!=",
+       [
+        "get",
+        "v"
+       ],
+       null
+      ],
+      [
+       "interpolate-lab",
+       [
+        "linear"
+       ],
+       [
+        "to-number",
+        [
+         "get",
+         "v"
+        ],
+        0
+       ],
+       0,
+       "#fee8c8",
+       10,
+       "#e34a33"
+      ],
+      "#2166ac"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / raw": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2166ac"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2166ac"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / classes": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#11a579",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#e73f74",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / rules": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "point circle outline fill / fixed": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#7f3c8d",
+    "circle-stroke-color": "#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8d"
+  }
+ },
+ "point circle outline fill / alpha": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#7f3c8dcc",
+    "circle-stroke-color": "#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8dcc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8dcc"
+  }
+ },
+ "point circle outline fill / absent": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381",
+    "circle-stroke-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "point circle outline fill / zoom": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ],
+    "circle-stroke-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#95006a",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #ff0000, #0000ff)"
+  }
+ },
+ "point circle outline fill / palette": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ],
+    "circle-stroke-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #fee8c8, #e34a33)"
+  }
+ },
+ "point circle outline fill / raw": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ],
+    "circle-stroke-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#9aa3ad",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "point circle outline fill / classes": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ],
+    "circle-stroke-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e73f74",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #11a579, #e73f74)"
+  }
+ },
+ "point circle outline fill / rules": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ],
+    "circle-stroke-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#3969ac",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#cccccc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#cccccc"
+  }
+ },
+ "point circle outline auto / fixed": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#7f3c8d",
+    "circle-stroke-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "point circle outline auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#7f3c8dcc",
+    "circle-stroke-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8dcc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "point circle outline auto / absent": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381",
+    "circle-stroke-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "point circle outline auto / zoom": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ],
+    "circle-stroke-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#95006a",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#68004a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b30000, #0000b3)"
+  }
+ },
+ "point circle outline auto / palette": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ],
+    "circle-stroke-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#b2a28c",
+      10,
+      "#9f3424"
+     ],
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b2a28c, #9f3424)"
+  }
+ },
+ "point circle outline auto / raw": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ],
+    "circle-stroke-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#9aa3ad",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#6c7279",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "point circle outline auto / classes": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ],
+    "circle-stroke-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#8f8f8f"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e73f74",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#a22c51",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "point circle outline auto / rules": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ],
+    "circle-stroke-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#8f8f8f"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#3969ac",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#284a78",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#cccccc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#8f8f8f",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#8f8f8f"
+  }
+ },
+ "point image outline auto / fixed": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:square|8|goat:park|#7f3c8d|#592a63|2|#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#7f3c8d",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "point image outline auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:square|8|goat:park|#7f3c8dcc|#592a63|2|#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#7f3c8dcc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "point image outline auto / absent": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:square|8|goat:park|#2bb381|#1e7d5a|2|#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "point image outline auto / zoom": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "step",
+     [
+      "zoom"
+     ],
+     "goat-marker:square|8|goat:park|#ff0000|#b30000|2|#ffffff",
+     9,
+     "goat-marker:square|8|goat:park|#d5002b|#95001e|2|#ffffff",
+     10,
+     "goat-marker:square|8|goat:park|#aa0055|#77003c|2|#ffffff",
+     11,
+     "goat-marker:square|8|goat:park|#800080|#5a005a|2|#ffffff",
+     12,
+     "goat-marker:square|8|goat:park|#5500aa|#3c0077|2|#ffffff",
+     13,
+     "goat-marker:square|8|goat:park|#2b00d5|#1e0095|2|#ffffff",
+     14,
+     "goat-marker:square|8|goat:park|#0000ff|#0000b3|2|#ffffff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#aa0055",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#77003c",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b30000, #0000b3)"
+  }
+ },
+ "point image outline auto / palette": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:square|8|goat:park|",
+     [
+      "to-string",
+      [
+       "to-color",
+       [
+        "case",
+        [
+         "!=",
+         [
+          "get",
+          "v"
+         ],
+         null
+        ],
+        [
+         "interpolate-lab",
+         [
+          "linear"
+         ],
+         [
+          "to-number",
+          [
+           "get",
+           "v"
+          ],
+          0
+         ],
+         0,
+         [
+          "to-color",
+          "#fee8c8"
+         ],
+         10,
+         [
+          "to-color",
+          "#e34a33"
+         ]
+        ],
+        [
+         "to-color",
+         "#2bb381"
+        ]
+       ]
+      ]
+     ],
+     "|",
+     [
+      "to-string",
+      [
+       "to-color",
+       [
+        "case",
+        [
+         "!=",
+         [
+          "get",
+          "v"
+         ],
+         null
+        ],
+        [
+         "interpolate-lab",
+         [
+          "linear"
+         ],
+         [
+          "to-number",
+          [
+           "get",
+           "v"
+          ],
+          0
+         ],
+         0,
+         [
+          "to-color",
+          "#b2a28c"
+         ],
+         10,
+         [
+          "to-color",
+          "#9f3424"
+         ]
+        ],
+        [
+         "to-color",
+         "#1e7d5a"
+        ]
+       ]
+      ]
+     ],
+     "|2|#ffffff"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b2a28c, #9f3424)"
+  }
+ },
+ "point image outline auto / raw": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:square|8|goat:park|",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2bb381"
+     ],
+     "|",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#1e7d5a"
+     ],
+     "|2|#ffffff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#9aa3ad",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#6c7279",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "point image outline auto / classes": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:square|8|goat:park|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ],
+     "|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#0c7455",
+      "b",
+      "#a22c51",
+      "#8f8f8f"
+     ],
+     "|2|#ffffff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#e73f74",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#a22c51",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "point image outline auto / rules": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:square|8|goat:park|",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ],
+     "|",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#284a78",
+      "#8f8f8f"
+     ],
+     "|2|#ffffff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#3969ac",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#284a78",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#cccccc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#8f8f8f",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#8f8f8f"
+  }
+ },
+ "point hollow marker icon / fixed": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:circle|8|goat:park||#7f3c8d|2|#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#7f3c8d",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#7f3c8d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#7f3c8d",
+   "symbol.outline.color": "#7f3c8d"
+  }
+ },
+ "point hollow marker icon / alpha": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:circle|8|goat:park||#7f3c8dcc|2|#7f3c8dcc"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8dcc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#7f3c8dcc",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#7f3c8dcc",
+   "symbol.outline.color": "#7f3c8dcc"
+  }
+ },
+ "point hollow marker icon / absent": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:circle|8|goat:park||#2bb381|2|#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#2bb381",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#2bb381",
+   "symbol.outline.color": "#2bb381"
+  }
+ },
+ "point hollow marker icon / zoom": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "step",
+     [
+      "zoom"
+     ],
+     "goat-marker:circle|8|goat:park||#ff0000|2|#ff0000",
+     9,
+     "goat-marker:circle|8|goat:park||#d5002b|2|#d5002b",
+     10,
+     "goat-marker:circle|8|goat:park||#aa0055|2|#aa0055",
+     11,
+     "goat-marker:circle|8|goat:park||#800080|2|#800080",
+     12,
+     "goat-marker:circle|8|goat:park||#5500aa|2|#5500aa",
+     13,
+     "goat-marker:circle|8|goat:park||#2b00d5|2|#2b00d5",
+     14,
+     "goat-marker:circle|8|goat:park||#0000ff|2|#0000ff"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#aa0055",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#aa0055",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#aa0055",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "linear-gradient(90deg, #ff0000, #0000ff)",
+   "symbol.outline.color": "linear-gradient(90deg, #ff0000, #0000ff)"
+  }
+ },
+ "point hollow marker icon / palette": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:circle|8|goat:park||",
+     [
+      "to-string",
+      [
+       "to-color",
+       [
+        "case",
+        [
+         "!=",
+         [
+          "get",
+          "v"
+         ],
+         null
+        ],
+        [
+         "interpolate-lab",
+         [
+          "linear"
+         ],
+         [
+          "to-number",
+          [
+           "get",
+           "v"
+          ],
+          0
+         ],
+         0,
+         [
+          "to-color",
+          "#fee8c8"
+         ],
+         10,
+         [
+          "to-color",
+          "#e34a33"
+         ]
+        ],
+        [
+         "to-color",
+         "#2bb381"
+        ]
+       ]
+      ]
+     ],
+     "|2|",
+     [
+      "to-string",
+      [
+       "to-color",
+       [
+        "case",
+        [
+         "!=",
+         [
+          "get",
+          "v"
+         ],
+         null
+        ],
+        [
+         "interpolate-lab",
+         [
+          "linear"
+         ],
+         [
+          "to-number",
+          [
+           "get",
+           "v"
+          ],
+          0
+         ],
+         0,
+         [
+          "to-color",
+          "#fee8c8"
+         ],
+         10,
+         [
+          "to-color",
+          "#e34a33"
+         ]
+        ],
+        [
+         "to-color",
+         "#2bb381"
+        ]
+       ]
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.marker.icon_color": "linear-gradient(90deg, #fee8c8, #e34a33)",
+   "symbol.outline.color": "linear-gradient(90deg, #fee8c8, #e34a33)"
+  }
+ },
+ "point hollow marker icon / raw": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:circle|8|goat:park||",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2bb381"
+     ],
+     "|2|",
+     [
+      "to-color",
+      [
+       "get",
+       "c"
+      ],
+      "#2bb381"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#9aa3ad",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#9aa3ad",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)",
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "point hollow marker icon / classes": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:circle|8|goat:park||",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ],
+     "|2|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "b",
+      "#e73f74",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#11a579",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e73f74",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#e73f74",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "linear-gradient(90deg, #11a579, #e73f74)",
+   "symbol.outline.color": "linear-gradient(90deg, #11a579, #e73f74)"
+  }
+ },
+ "point hollow marker icon / rules": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:circle|8|goat:park||",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ],
+     "|2|",
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "a"
+      ],
+      "#3969ac",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#3969ac",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#3969ac",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#cccccc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#cccccc",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#cccccc",
+   "symbol.outline.color": "#cccccc"
+  }
+ },
+ "outline words in classes over a hex base": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "b",
+     "#11a579",
+     "#7f3c8d"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "b",
+      "#0c7455",
+      "#592a63"
+     ],
+     "b",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "b",
+      "#11a579",
+      "#7f3c8d"
+     ],
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "hex outline in a class and a rule over an auto base": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "b"
+     ],
+     "#f2b701",
+     "#7f3c8d"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "b"
+     ],
+     [
+      "case",
+      [
+       "==",
+       [
+        "get",
+        "t"
+       ],
+       "b"
+      ],
+      "#f2b701",
+      "#7f3c8d"
+     ],
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#000000",
+      [
+       "case",
+       [
+        "==",
+        [
+         "get",
+         "t"
+        ],
+        "b"
+       ],
+       "#a98001",
+       "#592a63"
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#000000",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#f2b701",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#f2b701",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "casing words in a class and a rule": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "b"
+     ],
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#a22c51",
+      "#284a78"
+     ],
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "a",
+       "#a22c51",
+       "#284a78"
+      ],
+      "#ffffff"
+     ]
+    ]
+   },
+   "1-line": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#e73f74",
+     "#3969ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#a22c51",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#e73f74",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#284a78",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#ffffff"
+  }
+ },
+ "pattern only in a class": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "#7f3c8d"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "case",
+     [
+      "==",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "a",
+       "hatch_45",
+       "none"
+      ],
+      "none"
+     ],
+     "goat-pattern:none",
+     [
+      "concat",
+      "goat-pattern:",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "a",
+       "hatch_45",
+       "none"
+      ],
+      "|10|2|",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "a",
+       "#11a579",
+       "#7f3c8d"
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#11a579",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "pattern color only in a class": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "b",
+     "#11a579",
+     "#7f3c8d"
+    ]
+   },
+   "1-pattern": {
+    "fill-pattern": [
+     "concat",
+     "goat-pattern:dots|10|2|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#000000",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "b",
+       "#11a579",
+       "#7f3c8d"
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "dots",
+      "pattern_color": "#000000",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "dots",
+      "pattern_color": "#11a579",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "#000000"
+  }
+ },
+ "hollow marker only in a class": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": [
+     "concat",
+     "goat-marker:circle|8|goat:park|",
+     [
+      "case",
+      [
+       "==",
+       [
+        "match",
+        [
+         "to-string",
+         [
+          "get",
+          "t"
+         ]
+        ],
+        "a",
+        false,
+        "b",
+        false,
+        true
+       ],
+       false
+      ],
+      "",
+      [
+       "match",
+       [
+        "to-string",
+        [
+         "get",
+         "t"
+        ]
+       ],
+       "b",
+       "#e68310",
+       "#1a6b4d"
+      ]
+     ],
+     "|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "b",
+      "#e68310",
+      "#1a6b4d"
+     ],
+     "|2|",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "b",
+      "#000000",
+      [
+       "case",
+       [
+        "==",
+        [
+         "match",
+         [
+          "to-string",
+          [
+           "get",
+           "t"
+          ]
+         ],
+         "a",
+         false,
+         "b",
+         false,
+         true
+        ],
+        false
+       ],
+       [
+        "match",
+        [
+         "to-string",
+         [
+          "get",
+          "t"
+         ]
+        ],
+        "b",
+        "#e68310",
+        "#1a6b4d"
+       ],
+       "#ffffff"
+      ]
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#1a6b4d",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#1a6b4d",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#1a6b4d",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#000000",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#e68310",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#000000",
+   "symbol.outline.color": "#e68310"
+  }
+ },
+ "clusters like the points, outline fill": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "kind"
+      ]
+     ],
+     "bakery",
+     "#ffd92f",
+     "cafe",
+     "#11a579",
+     "#5a1846"
+    ],
+    "circle-stroke-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "kind"
+      ]
+     ],
+     "bakery",
+     "#ffd92f",
+     "cafe",
+     "#11a579",
+     "#5a1846"
+    ]
+   },
+   "1-cluster-marker": {
+    "circle-color": [
+     "let",
+     "m",
+     [
+      "max",
+      [
+       "get",
+       "goat_cluster_0"
+      ],
+      [
+       "get",
+       "goat_cluster_1"
+      ],
+      [
+       "get",
+       "goat_cluster_other"
+      ]
+     ],
+     [
+      "case",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_0"
+       ]
+      ],
+      "#ffd92f",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_1"
+       ]
+      ],
+      "#11a579",
+      "#5a1846"
+     ]
+    ],
+    "circle-stroke-color": [
+     "let",
+     "m",
+     [
+      "max",
+      [
+       "get",
+       "goat_cluster_0"
+      ],
+      [
+       "get",
+       "goat_cluster_1"
+      ],
+      [
+       "get",
+       "goat_cluster_other"
+      ]
+     ],
+     [
+      "case",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_0"
+       ]
+      ],
+      "#ffd92f",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_1"
+       ]
+      ],
+      "#11a579",
+      "#5a1846"
+     ]
+    ]
+   },
+   "1-cluster-label": {
+    "text-color": "#ffffff",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#5a1846",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#5a1846",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#ffd92f",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#ffd92f",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #ffd92f, #11a579)"
+  }
+ },
+ "clusters like the points, outline auto": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "kind"
+      ]
+     ],
+     "bakery",
+     "#ffd92f",
+     "cafe",
+     "#11a579",
+     "#5a1846"
+    ],
+    "circle-stroke-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "kind"
+      ]
+     ],
+     "bakery",
+     "#b39821",
+     "cafe",
+     "#0c7455",
+     "#3f1131"
+    ]
+   },
+   "1-cluster-marker": {
+    "circle-color": [
+     "let",
+     "m",
+     [
+      "max",
+      [
+       "get",
+       "goat_cluster_0"
+      ],
+      [
+       "get",
+       "goat_cluster_1"
+      ],
+      [
+       "get",
+       "goat_cluster_other"
+      ]
+     ],
+     [
+      "case",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_0"
+       ]
+      ],
+      "#ffd92f",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_1"
+       ]
+      ],
+      "#11a579",
+      "#5a1846"
+     ]
+    ],
+    "circle-stroke-color": [
+     "let",
+     "m",
+     [
+      "max",
+      [
+       "get",
+       "goat_cluster_0"
+      ],
+      [
+       "get",
+       "goat_cluster_1"
+      ],
+      [
+       "get",
+       "goat_cluster_other"
+      ]
+     ],
+     [
+      "case",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_0"
+       ]
+      ],
+      "#b39821",
+      [
+       "==",
+       [
+        "var",
+        "m"
+       ],
+       [
+        "get",
+        "goat_cluster_1"
+       ]
+      ],
+      "#0c7455",
+      "#3f1131"
+     ]
+    ]
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     "goat-marker:circle|18||#2bb381|#ffffff|1.5|",
+     100,
+     "goat-marker:circle|26||#2bb381|#ffffff|1.5|",
+     1000,
+     "goat-marker:circle|34||#2bb381|#ffffff|1.5|",
+     10000,
+     "goat-marker:circle|40||#2bb381|#ffffff|1.5|",
+     100000,
+     "goat-marker:circle|46||#2bb381|#ffffff|1.5|"
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#5a1846",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#3f1131",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#2bb381",
+      "text": "#ffffff",
+      "ring": "#ffffff"
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#ffd92f",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#b39821",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#11a579",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "linear-gradient(90deg, #b39821, #0c7455)"
+  }
+ },
+ "arrows in a class over a line colored by classes of another field": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "#cccccc"
+    ]
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     [
+      "match",
+      [
+       "to-string",
+       [
+        "get",
+        "t"
+       ]
+      ],
+      "a",
+      "#11a579",
+      "#cccccc"
+     ]
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#11a579",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#11a579",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#cccccc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "arrows only in a rule": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#3969ac"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#00ff00",
+     "#3969ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "arrows by their own palette": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#3969ac"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#000000",
+      10,
+      "#ffffff"
+     ],
+     "#3969ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "linear-gradient(90deg, #000000, #ffffff)"
+  }
+ },
+ "arrows read from a field": {
+  "valid": true,
+  "map": {
+   "1-line": {
+    "line-color": "#3969ac"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#3969ac"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#3969ac",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "badge ring fill": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": "#e68310",
+    "circle-stroke-color": "#e68310"
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     "goat-marker:circle|18||#e68310|#e68310|2|",
+     100,
+     "goat-marker:circle|26||#e68310|#e68310|2|",
+     1000,
+     "goat-marker:circle|34||#e68310|#e68310|2|",
+     10000,
+     "goat-marker:circle|40||#e68310|#e68310|2|",
+     100000,
+     "goat-marker:circle|46||#e68310|#e68310|2|"
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#e68310",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#e68310",
+      "text": "#ffffff",
+      "ring": "#e68310"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge ring auto": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": "#e68310",
+    "circle-stroke-color": "#a15c0b"
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     "goat-marker:circle|18||#e68310|#a15c0b|2|",
+     100,
+     "goat-marker:circle|26||#e68310|#a15c0b|2|",
+     1000,
+     "goat-marker:circle|34||#e68310|#a15c0b|2|",
+     10000,
+     "goat-marker:circle|40||#e68310|#a15c0b|2|",
+     100000,
+     "goat-marker:circle|46||#e68310|#a15c0b|2|"
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#a15c0b",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#e68310",
+      "text": "#ffffff",
+      "ring": "#a15c0b"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge ring absent": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": "#e68310"
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     "goat-marker:circle|18||#e68310|#ffffff|1.5|",
+     100,
+     "goat-marker:circle|26||#e68310|#ffffff|1.5|",
+     1000,
+     "goat-marker:circle|34||#e68310|#ffffff|1.5|",
+     10000,
+     "goat-marker:circle|40||#e68310|#ffffff|1.5|",
+     100000,
+     "goat-marker:circle|46||#e68310|#ffffff|1.5|"
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "badge": {
+      "color": "#e68310",
+      "text": "#ffffff",
+      "ring": "#ffffff"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge ring own": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": "#e68310",
+    "circle-stroke-color": "#000000"
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     "goat-marker:circle|18||#e68310|#000000|2|",
+     100,
+     "goat-marker:circle|26||#e68310|#000000|2|",
+     1000,
+     "goat-marker:circle|34||#e68310|#000000|2|",
+     10000,
+     "goat-marker:circle|40||#e68310|#000000|2|",
+     100000,
+     "goat-marker:circle|46||#e68310|#000000|2|"
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#000000",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#e68310",
+      "text": "#ffffff",
+      "ring": "#000000"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge ring by zoom": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": "#e68310",
+    "circle-stroke-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#e68310",
+     14,
+     "#000000"
+    ]
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "zoom"
+     ],
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#e68310|#e68310|2|",
+      100,
+      "goat-marker:circle|26||#e68310|#e68310|2|",
+      1000,
+      "goat-marker:circle|34||#e68310|#e68310|2|",
+      10000,
+      "goat-marker:circle|40||#e68310|#e68310|2|",
+      100000,
+      "goat-marker:circle|46||#e68310|#e68310|2|"
+     ],
+     14,
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#e68310|#000000|2|",
+      100,
+      "goat-marker:circle|26||#e68310|#000000|2|",
+      1000,
+      "goat-marker:circle|34||#e68310|#000000|2|",
+      10000,
+      "goat-marker:circle|40||#e68310|#000000|2|",
+      100000,
+      "goat-marker:circle|46||#e68310|#000000|2|"
+     ]
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#e68310",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#e68310",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#e68310",
+      "text": "#ffffff",
+      "ring": "#e68310"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge marker by zoom, ring fill": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ],
+    "circle-stroke-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "zoom"
+     ],
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#ff0000|#ff0000|2|",
+      100,
+      "goat-marker:circle|26||#ff0000|#ff0000|2|",
+      1000,
+      "goat-marker:circle|34||#ff0000|#ff0000|2|",
+      10000,
+      "goat-marker:circle|40||#ff0000|#ff0000|2|",
+      100000,
+      "goat-marker:circle|46||#ff0000|#ff0000|2|"
+     ],
+     14,
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#0000ff|#0000ff|2|",
+      100,
+      "goat-marker:circle|26||#0000ff|#0000ff|2|",
+      1000,
+      "goat-marker:circle|34||#0000ff|#0000ff|2|",
+      10000,
+      "goat-marker:circle|40||#0000ff|#0000ff|2|",
+      100000,
+      "goat-marker:circle|46||#0000ff|#0000ff|2|"
+     ]
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#95006a",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#95006a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#95006a",
+      "text": "#ffffff",
+      "ring": "#95006a"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge marker by zoom, ring auto": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ],
+    "circle-stroke-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ]
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "zoom"
+     ],
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#ff0000|#b30000|2|",
+      100,
+      "goat-marker:circle|26||#ff0000|#b30000|2|",
+      1000,
+      "goat-marker:circle|34||#ff0000|#b30000|2|",
+      10000,
+      "goat-marker:circle|40||#ff0000|#b30000|2|",
+      100000,
+      "goat-marker:circle|46||#ff0000|#b30000|2|"
+     ],
+     14,
+     [
+      "step",
+      [
+       "abs",
+       [
+        "to-number",
+        [
+         "get",
+         "point_count"
+        ],
+        0
+       ]
+      ],
+      "goat-marker:circle|18||#0000ff|#0000b3|2|",
+      100,
+      "goat-marker:circle|26||#0000ff|#0000b3|2|",
+      1000,
+      "goat-marker:circle|34||#0000ff|#0000b3|2|",
+      10000,
+      "goat-marker:circle|40||#0000ff|#0000b3|2|",
+      100000,
+      "goat-marker:circle|46||#0000ff|#0000b3|2|"
+     ]
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#95006a",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#68004a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#95006a",
+      "text": "#ffffff",
+      "ring": "#68004a"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ },
+ "badge ring fill over a marker by a count palette": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#2bb381"
+   },
+   "1-cluster-marker": {
+    "circle-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "point_count"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ],
+      2,
+      "#000000",
+      1000,
+      "#ffffff"
+     ],
+     "#2bb381"
+    ],
+    "circle-stroke-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "point_count"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ],
+      2,
+      "#000000",
+      1000,
+      "#ffffff"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-cluster-badge": {
+    "icon-image": [
+     "step",
+     [
+      "abs",
+      [
+       "to-number",
+       [
+        "get",
+        "point_count"
+       ],
+       0
+      ]
+     ],
+     [
+      "concat",
+      "goat-marker:circle|18||",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|2|"
+     ],
+     100,
+     [
+      "concat",
+      "goat-marker:circle|26||",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|2|"
+     ],
+     1000,
+     [
+      "concat",
+      "goat-marker:circle|34||",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|2|"
+     ],
+     10000,
+     [
+      "concat",
+      "goat-marker:circle|40||",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|2|"
+     ],
+     100000,
+     [
+      "concat",
+      "goat-marker:circle|46||",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|",
+      [
+       "to-string",
+       [
+        "to-color",
+        [
+         "case",
+         [
+          "!=",
+          [
+           "get",
+           "point_count"
+          ],
+          null
+         ],
+         [
+          "interpolate-lab",
+          [
+           "linear"
+          ],
+          [
+           "to-number",
+           [
+            "get",
+            "point_count"
+           ],
+           0
+          ],
+          2,
+          [
+           "to-color",
+           "#000000"
+          ],
+          1000,
+          [
+           "to-color",
+           "#ffffff"
+          ]
+         ],
+         [
+          "to-color",
+          "#2bb381"
+         ]
+        ]
+       ]
+      ],
+      "|2|"
+     ]
+    ],
+    "text-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "cluster",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#9aa3ad",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#9aa3ad",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "badge": {
+      "color": "#9aa3ad",
+      "text": "#ffffff",
+      "ring": "#9aa3ad"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#2bb381",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     }
+    }
+   }
+  ]
+ }
+}

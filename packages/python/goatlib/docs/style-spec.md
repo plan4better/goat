@@ -227,8 +227,8 @@ when the fill itself is switched off.
 ```
 
 `outline.color: "auto"` is a darker shade of the color `"fill"` would give, feature by feature: its red, green and blue
-values each times 0.7, rounded to the nearest whole number (halves up), alpha unchanged, so it keeps the hue
-(`#7f3c8d` gives `#592a63`). goatlib's `darker_shade` (`style/colors.py`) and the web client compute it the same way.
+values each times 0.7, rounded to the nearest whole number (halves up), opaque, so it keeps the hue (`#7f3c8d` and
+`#7f3c8dcc` give `#592a63`). goatlib's `shade` (`style/colors.py`) and the web client compute it the same way.
 On points it is a darker shade of the marker color. A fill color by classes, zoom stops or a palette ramp is darkened
 class by class and stop by stop when the style is compiled; a color read from a field as it is (`{ "field": ... }`
 without a palette) draws its feature's outline in that color unchanged. New polygon layers get `"auto"` (section 18).

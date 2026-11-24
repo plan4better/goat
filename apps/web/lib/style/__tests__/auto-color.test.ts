@@ -1,9 +1,9 @@
 import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
+import { shade } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
 import type { CompileInput } from "@/lib/style/compile/types";
-import { darkerShade } from "@/lib/style/compile/values";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { evaluate, maplibreErrors } from "./maplibre";
@@ -53,7 +53,7 @@ describe('outline color "auto"', () => {
 
   it("is the reference fill color, darkened, where the fill sets none", () => {
     const out = compile({ symbol: { outline: { color: "auto" } } }, "polygon");
-    expect(paintOf(out, "outline")["line-color"]).toBe(darkerShade("#2bb381"));
+    expect(paintOf(out, "outline")["line-color"]).toBe(shade("#2bb381"));
   });
 
   it("takes each class's fill color, darkened, and the base's for the others", () => {
@@ -140,11 +140,11 @@ describe('outline color "auto"', () => {
     expect(auto.layers.map((l) => l.id)).toEqual(["9-outline"]);
     for (const use of ["green", "shop"])
       expect(hex(evaluate(paintOf(auto, "outline")["line-color"], { use }))).toBe(
-        darkerShade(hex(evaluate(paintOf(fill, "outline")["line-color"], { use })))
+        shade(hex(evaluate(paintOf(fill, "outline")["line-color"], { use })))
       );
     // Without a class color both follow the reference fill color.
     const plain = compile({ symbol: { fill: false, outline: { color: "auto" } } }, "polygon");
-    expect(paintOf(plain, "outline")["line-color"]).toBe(darkerShade("#2bb381"));
+    expect(paintOf(plain, "outline")["line-color"]).toBe(shade("#2bb381"));
   });
 
   it("can be the color of one class or one zoom stop", () => {
