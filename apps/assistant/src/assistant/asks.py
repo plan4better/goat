@@ -9,10 +9,11 @@ gets the value back with the user's answer (``answer_lines``). ``user_chose``
 and ``picked_ids`` read the stored history, never the model's words; only
 ``picked_ids`` reads ``adds``, so an option's ``adds`` never stands for a value
 such as a workflow run's. A value a tool takes as consent to something the
-undo button does not bring back or a whole replacement (``CONSENT_PREFIXES``)
-is offered only as a tool of the same answer named it, beside an option that
-keeps what it would change (``consent_problem``), and counts only as picked in
-the current chain of picks without text of the user's own (``consented``).
+undo button does not bring back, a whole replacement or an undo over later
+changes (``CONSENT_PREFIXES``) is offered only as a tool of the same answer
+named it, beside an option that keeps what it would change
+(``consent_problem``), and counts only as picked in the current chain of
+picks without text of the user's own (``consented``).
 """
 
 import re
@@ -683,25 +684,27 @@ def user_chose(history: AskHistory, value: str) -> bool:
 
 
 #: The option values a tool reads as the user's consent (``consented``):
-#: removing a layer and replacing a style whole.
-CONSENT_PREFIXES = ("remove_layer:", "replace_style:")
+#: removing a layer, replacing a style whole, and taking an answer's changes
+#: back over what was changed since.
+CONSENT_PREFIXES = ("remove_layer:", "replace_style:", "undo_anyway:")
 CONSENT_UNNAMED = (
-    "The option value {value} lets a tool remove a layer or replace a style, "
-    "and no tool of this answer asked for it. Call that tool first (map_update "
-    "with remove_layer, or style_update): its answer names the value to offer."
+    "The option value {value} lets a tool remove a layer, replace a style or "
+    "undo over later changes, and no tool of this answer asked for it. Call "
+    "that tool first (map_update with remove_layer, style_update, or "
+    "undo_changes): its answer names the value to offer."
 )
 CONSENT_TWICE = (
     "The value {value} is on more than one option of a question. Put it on the "
-    "one option that agrees, and give the option that keeps the layer or the "
-    "style no value."
+    "one option that agrees, and give the option that keeps it as it is no "
+    "value."
 )
 CONSENT_NO_KEEP = (
     "A question that offers {value} needs an option without such a value that "
-    "keeps the layer or the style."
+    "keeps it as it is."
 )
 CONSENT_MULTI = (
     "A question that offers {value} is single-select (multi_select false): the "
-    "user picks either that option or the one that keeps the layer or the style."
+    "user picks either that option or the one that keeps it as it is."
 )
 
 
@@ -728,7 +731,7 @@ def consent_problem(card: AskUserInput, named: Collection[str]) -> str | None:
     """Why ``card`` cannot ask for consent: an option value of
     ``CONSENT_PREFIXES`` that no tool of this answer named (``named``,
     ``ToolEnv.confirm_values``), one on several options of its question, or
-    a question with no option that keeps the layer or the style. None when
+    a question with no option that keeps it as it is. None when
     it can."""
     for question in card.questions:
         for option in question.options:

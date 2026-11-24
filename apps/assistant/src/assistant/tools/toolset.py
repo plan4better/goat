@@ -58,6 +58,7 @@ from assistant.tools.runtime import (
     refuse,
 )
 from assistant.tools.styles import UPDATE_STYLE
+from assistant.tools.undo import UNDO_CHANGES
 from assistant.tools.workflow_edits import UPDATE
 from assistant.tools.workflow_runs import RUN
 from assistant.tools.workflow_tools import DESCRIBE_TOOL
@@ -719,11 +720,17 @@ CARDS_SHOWN = (
     "This call did not run: this answer has shown its cards already. Answer "
     "from what you found."
 )
-#: The writes that make the change a user asks for on a page, which the step
-#: that answers still makes while it and the answer after it fit
-#: (``answer_writes``): reads that took an answer's look-ups must not leave
-#: it without the change it was for. In the order the note names them.
-ANSWER_WRITES = (UPDATE_STYLE.wire_name, MAP_UPDATE.wire_name, UPDATE.wire_name)
+#: The writes that make the change a user asks for on a page, an undo of an
+#: answer's changes among them, which the step that answers still makes while
+#: it and the answer after it fit (``answer_writes``): reads that took an
+#: answer's look-ups must not leave it without the change it was for. In the
+#: order the note names them.
+ANSWER_WRITES = (
+    UPDATE_STYLE.wire_name,
+    MAP_UPDATE.wire_name,
+    UPDATE.wire_name,
+    UNDO_CHANGES.wire_name,
+)
 
 #: In place of ``STAGE_REFUSALS["answer or ask"]`` for the tools that step
 #: still runs for some calls (``_answer_step_allows``).

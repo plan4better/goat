@@ -214,8 +214,8 @@ def test_the_step_that_answers_offers_only_the_changes_the_page_offers() -> None
     """The note that offers the change names workflow_update only once the
     skill brought it."""
     for skills, expected in (
-        (set(), ["style_update", "map_update"]),
-        ({SKILL}, ["style_update", "map_update", "workflow_update"]),
+        (set(), ["style_update", "map_update", "undo_changes"]),
+        ({SKILL}, ["style_update", "map_update", "workflow_update", "undo_changes"]),
     ):
         deps = _deps(MAP_PAGE, skills)
         deps.run_room["r1"] = 3
@@ -223,8 +223,8 @@ def test_the_step_that_answers_offers_only_the_changes_the_page_offers() -> None
         assert answer_writes(ctx) == expected
 
 
-def test_the_map_page_offers_at_most_forty_tools_in_all() -> None:
-    assert len(tools_for("project.map")) <= 40
+def test_the_map_page_offers_at_most_forty_one_tools_in_all() -> None:
+    assert len(tools_for("project.map")) <= 41
     assert len(offered_tools("project.map", {SKILL})) == len(tools_for("project.map"))
 
 

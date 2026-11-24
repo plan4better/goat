@@ -133,6 +133,10 @@ dock's undo button as well. On the Map page, map_update also changes what the ma
 shows (which layers are shown, their order, groups, names and filters, the basemap, \
 the 3D scene and the view): the user can take that back with the dock's undo button \
 too, except a view change, which is the user's own and is not undone that way. \
+On the Map and Workflows pages, when the user asks in words to undo, revert or take \
+back what an answer changed, call undo_changes, which does what that button does, and never reverse the change \
+by hand with the other write tools; a new value the user names ("make it 30 % \
+instead") is an edit, not an undo. \
 map_update removes a layer from the project only after the user picked that in your \
 card, because a removed layer cannot be taken back; when the user only wants a layer \
 out of sight, hide it instead. You can \

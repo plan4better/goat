@@ -22,6 +22,7 @@ from assistant.tools.project import PROJECT_TOOLS
 from assistant.tools.runtime import ToolSpec
 from assistant.tools.skills import SKILLS_LOAD
 from assistant.tools.styles import STYLE_TOOLS
+from assistant.tools.undo import UNDO_TOOLS
 from assistant.tools.workflow_edits import UPDATE, WORKFLOW_EDIT_TOOLS
 from assistant.tools.workflow_runs import RUN, WORKFLOW_RUN_TOOLS
 from assistant.tools.workflow_tools import TOOL_CATALOG_TOOLS, WORKFLOW_TOOL_LIST
@@ -48,6 +49,7 @@ ALL_TOOLS: tuple[ToolSpec[Any, Any], ...] = tuple(
             *WORKFLOW_TOOLS,
             *WORKFLOW_RUN_TOOLS,
             *WORKFLOW_EDIT_TOOLS,
+            *UNDO_TOOLS,
         ),
         key=lambda spec: spec.wire_name,
     )

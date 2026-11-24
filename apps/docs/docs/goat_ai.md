@@ -49,7 +49,7 @@ While the assistant works, the answer shows the **steps** it takes, such as a se
 
 Below the newest answer, and below older ones when you point at them, you find:
 
-- <code>Undo</code>, when the answer changed layer styles, the map or workflows (see [Style layers and change the map](#style-and-map) and [Change a workflow with the AI assistant](./workflows/workflow_interface.md#change-a-workflow-with-the-ai-assistant)).
+- <code>Undo</code>, when the answer changed layer styles, the map or workflows (see [Style layers and change the map](#style-and-map) and [Change a workflow with the AI assistant](./workflows/workflow_interface.md#change-a-workflow-with-the-ai-assistant)). You can also ask in words, for example <code>Undo the last change</code>: the assistant then takes back the changes of the last answer that changed something in the same way, if <code>Undo</code> can take them back. If it cannot, for example for an added dataset, it says so.
 - <code>Copy answer</code>, to copy the answer's text.
 - <code>Answer details</code>: for an answer of GOAT AI, the AI credits it used (where your organization's AI credits are counted), its <code>Steps</code> and, where it is known, where the model runs, for example <code>Runs on a model hosted in the EU.</code> For an answer from your organization's own connection, the <code>Model</code>, the <code>Provider</code> and the token counts.
 - <code>Good answer</code> and <code>Bad answer</code>, to rate the answer. After <code>Bad answer</code> you can say what could be better. Click the chosen button again to remove your rating.

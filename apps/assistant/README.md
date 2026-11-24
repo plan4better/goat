@@ -367,6 +367,11 @@ before and the state written, and Undo compares them with what the map holds now
 before where the map still holds what the answer wrote, asks first where a person changed it since, and creates a
 removed group again under a new id. A removed layer is recorded only so that the Undo can say it does not come back;
 the view has no record.
+A typed "undo that" runs the same Undo: `undo_changes` (`tools/undo.py`) calls `undo_run` for the newest earlier answer
+whose Undo can still act, so core decides under the user's sign-in as for the button and that answer reads Undone
+afterwards. A model that reversed the change by hand with the other write tools could get it wrong and would leave the
+button offering to undo a change that is already gone. What was changed since is written over only after the user
+picked that in a card (`undo_anyway:<run>`, a consent value like a removal's).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's

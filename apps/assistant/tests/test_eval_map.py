@@ -170,7 +170,7 @@ def test_the_map_suite_loads_fifty_one_tasks_on_the_map_page() -> None:
     assert [t.id for t in tasks if any(r.cold_requests for r in t.messages)] == [
         "map-49"
     ]
-    assert EVAL_SET_VERSION == 31
+    assert EVAL_SET_VERSION == 32
 
 
 def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
@@ -183,7 +183,7 @@ def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
                 wants.setdefault(check.where, []).append(task.id)
     assert "any" not in wants
     assert wants["new"] == ["map-17", "map-21"]
-    assert len(wants["same"]) == 31
+    assert len(wants["same"]) == 32
     prompts = {t.id: t.prompt.casefold() for t in load_tasks("map")}
     assert "as separate styles" in prompts["map-17"]
     assert "two style options" in prompts["map-17"]
@@ -1728,7 +1728,7 @@ async def test_the_styling_conversation_loads_the_skill_once_and_edits_twice_at_
     assert grades["style"] == [False]
 
 
-async def test_a_typed_undo_changes_nothing_and_points_to_the_undo_button(
+async def test_a_typed_undo_runs_the_undo_of_the_last_answer(
     backends: Backends, settings: Any
 ) -> None:
     right = ANSWERS["map-50"].script
@@ -1736,7 +1736,11 @@ async def test_a_typed_undo_changes_nothing_and_points_to_the_undo_button(
     transcript, grades = await _graded("map-50", right, backends, settings)
     assert all(g is not False for gs in grades.values() for g in gs), grades
     assert grades["judge"] == [None]
-    # Taking the filter off by itself is not what the undo button does.
+    [undo] = transcript.turns[-1].tool_calls
+    assert undo.name == "undo_changes" and not undo.failed
+    assert undo.result["status"] == "undone"
+    assert undo.result["map"]["layers"] == [32]
+    # Taking the area off by hand is not the undo, though the map ends alike.
     clear = {
         "operations": [
             {
@@ -1748,12 +1752,25 @@ async def test_a_typed_undo_changes_nothing_and_points_to_the_undo_button(
     }
     _, grades = await _graded(
         "map-50",
-        _script("map-50", 2, [("map_update", clear)], "I removed the filter again."),
+        _script("map-50", 2, [("map_update", clear)], "I removed the area again."),
+        backends,
+        settings,
+    )
+    assert grades["map"] == [True, True] and grades["tools"] == [False]
+    assert all(grades["style"])
+    # Pointing to the undo button takes nothing back.
+    _, grades = await _graded(
+        "map-50",
+        _script(
+            "map-50",
+            2,
+            [],
+            "To take back the area, press the undo button under my last answer.",
+        ),
         backends,
         settings,
     )
     assert grades["map"] == [True, False] and grades["tools"] == [False]
-    assert grades["answer"] == [False]
 
 
 async def test_a_removal_declined_needs_a_new_card_when_asked_for_again(

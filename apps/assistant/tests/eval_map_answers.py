@@ -1091,9 +1091,9 @@ ANSWERS: dict[str, Answer] = {
                 "The points of interest now show only those in Auental.",
             ),
             (
-                [],
-                "I have not changed anything. To take back the filter to Auental, "
-                "press the undo button under my last answer.",
+                [("undo_changes", {})],
+                "I took back the area limit: the points of interest show "
+                "everywhere again, and the districts stay half transparent.",
             ),
         ]
     ),

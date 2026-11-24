@@ -1892,7 +1892,7 @@ REMOVAL_QUESTION = 'Remove the layer "Old boundaries" from this project?'
                 {"label": "Remove Old boundaries", "value": "remove_layer:39"},
                 {"label": "Remove Land use", "value": "remove_layer:34"},
             ],
-            "keeps the layer or the style",
+            "keeps it as it is",
         ),
     ],
 )

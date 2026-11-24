@@ -319,6 +319,29 @@ class AuditRows:
             if row["run_id"] == run_id and row.get("undo") is not None
         ]
 
+    async def calls_before(
+        self, run_id: UUID
+    ) -> list[tuple[UUID, list[dict[str, Any]]]]:
+        """The calls of the task's other runs, by run, the oldest first, as
+        ``Repository.calls_before`` gives them: every row belongs to the
+        task's one conversation."""
+        found: dict[UUID, list[dict[str, Any]]] = {}
+        for row in self.rows:
+            if row["run_id"] == run_id:
+                continue
+            undo = row.get("undo")
+            found.setdefault(row["run_id"], []).append(
+                {
+                    "id": row["id"],
+                    "tool": row.get("tool"),
+                    "status": row.get("status"),
+                    "args": dict(row.get("args_summary") or {}),
+                    "created": row.get("created") is not None,
+                    "undo": dict(undo) if undo is not None else None,
+                }
+            )
+        return list(found.items())
+
     async def claim_undo(self, ids: list[UUID]) -> list[UUID]:
         claimed = []
         for row in self.rows:
