@@ -730,6 +730,32 @@ describe("label editor rows and popovers", () => {
     expect(within(row()).getByLabelText("style_editor.differs_for_some_features")).toBeDefined();
   });
 
+  it("in a class Reset of the Font clears both keys and the label part they leave empty", async () => {
+    const { store } = render(
+      { text: "{name}", font: { weight: "bold" } },
+      "point",
+      {},
+      {
+        classify: [
+          {
+            id: "k",
+            field: "name",
+            method: "categories",
+            classes: [
+              { id: "a", values: ["Berlin"], label: { font: { weight: "regular", style: "italic" } } },
+            ],
+          },
+        ],
+      }
+    );
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openGroup("style_editor.part_label");
+    await openRow("style_editor.text_style");
+    await pickMode("style_editor.font", "style_editor.mode_reset");
+    expect(store.get("classify.0.classes.0")).toEqual({ id: "a", values: ["Berlin"] });
+    expect(store.get("symbol.label.font")).toEqual({ weight: "bold" });
+  });
+
   it("in a class the halo width is the class's own", async () => {
     const { store } = render({ text: "{name}" }, "point", {}, CATEGORIES);
     act(() => store.setScope({ classify: 0, key: 0 }));

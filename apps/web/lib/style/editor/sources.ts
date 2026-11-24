@@ -5,16 +5,21 @@
 import { isSet, partUsed, setValues } from "@/lib/style/compile/cascade";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type ScopedView, scopedView } from "@/lib/style/editor/classify";
-import { LABEL_FONT_CHOICE, classificationFor, compoundKeys, keyOf, targets } from "@/lib/style/editor/forms";
+import {
+  LABEL_FONT_CHOICE,
+  MAIN_PART,
+  classificationFor,
+  compoundKeys,
+  isPerLayer,
+  keyOf,
+  targets,
+} from "@/lib/style/editor/forms";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
 import { type Scope, isRuleScope } from "@/lib/style/editor/store";
-import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { GROUPS } from "@/components/map/panels/styleEditor/editors/partRows";
-
-const MAIN_PART: Record<Geometry, string> = { point: "marker", line: "line", polygon: "fill" };
 
 const list = (value: unknown): JsonObject[] => (Array.isArray(value) ? value.filter(isObject) : []);
 
@@ -35,6 +40,11 @@ export function recordPaths(doc: LayerStyle): Array<{ path: Path; record: JsonOb
   });
   return out;
 }
+
+/** The values the records below the base hold at `keys`, as one string: what a row that follows them compares, so it
+ * renders again when one of them changes and only then. */
+export const recordValuesAt = (doc: LayerStyle, keys: readonly string[]): string =>
+  JSON.stringify(recordPaths(doc).map(({ record }) => keys.map((key) => getIn(record, key) ?? null)));
 
 /** How a part is drawn for the layer: for every feature (`all`), only where classes or rules turn it on (`some`),
  * nowhere (`none`), or switched off for the layer (`off`, which no record turns back on). */
@@ -88,7 +98,7 @@ export function markerFillState(doc: LayerStyle): "all" | "some" | "none" {
 export const fillSetter = (doc: LayerStyle): Setter | undefined => setterOf(doc, fills);
 
 /** Whether a key is set once for the layer (spec 6.1: not per feature). */
-export const isPerLayer = (key: string): boolean => CAPABILITIES[key]?.perFeature === false;
+export { isPerLayer } from "@/lib/style/editor/forms";
 
 /** Where the panel reads and writes a key set once for the layer: the first record that sets it (the base first), as
  * the map takes it; the path itself for any other key, or while no record sets it. */

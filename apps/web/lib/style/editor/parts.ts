@@ -11,16 +11,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
 import { type MarkerShapeId, isPin, markerShapeOf, symbolShape } from "@/lib/style/markerShapes";
 
-/** The part a geometry draws when the symbol leaves it out (spec 3). */
-export const MAIN_PART: Readonly<Record<Geometry, string>> = {
-  polygon: "fill",
-  line: "line",
-  point: "marker",
-};
-
-/** Whether a part is drawn: `false` is off; an absent part is off except the geometry's main part (spec 3). */
-export const partOn = (value: unknown, part: string, geometry: Geometry): boolean =>
-  value === false ? false : value === undefined ? MAIN_PART[geometry] === part : true;
+export { MAIN_PART, partOn } from "@/lib/style/editor/forms";
 
 /** Whether a marker draws its fill: `fill: false` draws it hollow; the icon alone has no fill to leave out (spec 3.3). */
 export const markerFilled = (marker: unknown): boolean =>

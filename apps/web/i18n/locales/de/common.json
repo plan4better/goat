@@ -3930,6 +3930,7 @@
     "scope_hint_line": "Wählen Sie eine Klasse, um ihr mit denselben Einstellungen eine eigene Linie, Randlinie, Pfeile, einen Marker, eine Beschriftung oder einen Zoombereich zu geben.",
     "scope_hint_point": "Wählen Sie eine Klasse, um ihr mit denselben Einstellungen eine eigene Füllung, einen Umriss, ein Symbol, eine Beschriftung oder einen Zoombereich zu geben.",
     "section_layer": "Layer",
+    "section_layer_scope_note": "Gilt für alle Objekte",
     "section_legend": "Legende",
     "zooms": "Zoomstufen",
     "all_zooms": "Alle Zoomstufen",

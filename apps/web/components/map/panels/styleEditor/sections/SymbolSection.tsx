@@ -6,7 +6,7 @@ import { Box, Button, Typography } from "@mui/material";
 import { type ReactNode, memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { classifyShape, recordPathOf, scopedView } from "@/lib/style/editor/classify";
+import { classifyShape, partDiffers, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import { MAIN_COLOR, modeOf, targetsOf } from "@/lib/style/editor/forms";
 import { issueText } from "@/lib/style/editor/issues";
 import { templateField } from "@/lib/style/editor/labels";
@@ -32,6 +32,7 @@ import {
   useEditor,
   useLiveMapZoom,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -72,15 +73,19 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   const mapZoom = useMapZoom();
   const popover = usePopover();
   const base = partPath(group);
-  // In class scope the row summarizes the class: its part merged over the base, a dot when it sets anything.
-  const { value, overridden } = useScoped(base);
+  // In class scope the row summarizes the class: its part merged over the base, a dot when the part differs from all
+  // features beyond the value its classification gives it.
+  const { value } = useScoped(base);
   const scope = useScope();
   // A part the layer switches off (`false`) is off for all features, in every class too; one the layer leaves out
   // reads by what turns it on for some features (classes or rules), else None.
   const offForAll = useStyleSelector((doc) => getIn(doc, base) === false);
   // The summary reads the classifications (a color by classes) and the main color ("Same as fill").
   const geometry = data.geometry ?? "polygon";
+  const differs = useStyleSelector((doc) => (scope ? partDiffers(doc, scope, group.part, geometry) : false));
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // A class or rule record's keys of the part change what the summary reads ("By <field>" for a key one sets).
+  useRecordValuesAt(base);
   useStyleValue(`symbol.${MAIN_COLOR[geometry]}`);
   // The points' Fill is off on a hollow marker, while the marker itself is drawn.
   const on = partOn(value, group.part, geometry) && (!group.switchKey || markerFilled(value));
@@ -173,7 +178,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     <GroupRow
       label={label}
       off={!on && !some}
-      overrideDot={overridden}
+      overrideDot={differs}
       warn={issues[0] ? issueText(t, issues[0]) : invisible ? t("style_editor.marker_invisible") : undefined}
       value={iconValue ?? text}
       glyph={glyph}

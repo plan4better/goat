@@ -3930,6 +3930,7 @@
     "scope_hint_line": "Pick a class to give it its own line, casing, arrows, marker, label or zoom range with the same controls.",
     "scope_hint_point": "Pick a class to give it its own fill, outline, icon, label or zoom range with the same controls.",
     "section_layer": "Layer",
+    "section_layer_scope_note": "Applies to all features",
     "section_legend": "Legend",
     "zooms": "Zooms",
     "all_zooms": "All zooms",

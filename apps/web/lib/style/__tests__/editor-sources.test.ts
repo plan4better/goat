@@ -22,6 +22,7 @@ import {
   partSetter,
   partState,
   perLayerPath,
+  recordValuesAt,
   rowsOpening,
 } from "@/lib/style/editor/sources";
 import { summarize } from "@/lib/style/editor/summaries";
@@ -761,5 +762,32 @@ describe("follow-ups: then by a later classification without target still to com
       ],
     });
     expect((laterSetter(d, { classify: 0, key: 0 }, "marker.color") as { id: string }).id).toBe("k");
+  });
+});
+
+describe("the records' values at a key", () => {
+  const d = doc({
+    symbol: { fill: { opacity: 0.8 } },
+    classify: [
+      {
+        id: "a",
+        field: "kind",
+        classes: [{ fill: { color: "#f00" } }, { fill: { opacity: 0.4 } }],
+        other: { fill: {} },
+      },
+    ],
+    rules: [{ id: "r", when: {}, fill: { opacity: 0.1 } }],
+  });
+
+  it("lists classes, Other, No data and rules in cascade order, the same string while nothing changed", () => {
+    expect(recordValuesAt(d, ["fill.opacity"])).toBe("[[null],[0.4],[null],[0.1]]");
+    expect(recordValuesAt(d, ["fill.opacity"])).toBe(recordValuesAt(structuredClone(d), ["fill.opacity"]));
+  });
+
+  it("changes when a record's value at the key changes, not for another key", () => {
+    const other = doc({ ...d, rules: [{ id: "r", when: {}, fill: { opacity: 0.1, color: "#000" } }] });
+    expect(recordValuesAt(other, ["fill.opacity"])).toBe(recordValuesAt(d, ["fill.opacity"]));
+    const changed = doc({ ...d, rules: [{ id: "r", when: {}, fill: { opacity: 0.2 } }] });
+    expect(recordValuesAt(changed, ["fill.opacity"])).not.toBe(recordValuesAt(d, ["fill.opacity"]));
   });
 });

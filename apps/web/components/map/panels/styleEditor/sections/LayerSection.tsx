@@ -3,7 +3,7 @@
 // Layer (prototype 2.7): opacity, the zooms the layer shows at, which features draw on top, the position among the
 // basemap's layers (map state, where there is a map document) and a time field. The filter and the time slider's value
 // belong to the map document.
-import { Link } from "@mui/material";
+import { Link, Typography } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +16,7 @@ import { isObject } from "@/lib/style/json";
 import {
   useEditor,
   useMapZoom,
+  useScope,
   useStyleData,
   useStyleSelector,
   useStyleValue,
@@ -253,9 +254,19 @@ export function PositionRow() {
 export function LayerSection() {
   const { t } = useTranslation("common");
   const store = useEditor();
+  const scope = useScope();
   useStyleValue("render");
   return (
-    <PanelSection title={t("style_editor.section_layer")}>
+    <PanelSection
+      title={t("style_editor.section_layer")}
+      // While a class or a rule is scoped the symbol's rows edit it alone; these stay the layer's.
+      scopeNote={
+        scope ? (
+          <Typography variant="caption" color="text.secondary">
+            {t("style_editor.section_layer_scope_note")}
+          </Typography>
+        ) : undefined
+      }>
       <PropertyRow row={OPACITY} base="" />
       <VisibleRow />
       {symbolShown(store.document) && <DrawOrderRow />}

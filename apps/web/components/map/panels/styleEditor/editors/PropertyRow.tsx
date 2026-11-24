@@ -6,7 +6,14 @@ import { Box } from "@mui/material";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type ScopedView, addClassification, classifyShape, scopedView } from "@/lib/style/editor/classify";
+import {
+  type ScopedView,
+  addClassification,
+  classifyShape,
+  recordPathOf,
+  scopedView,
+  withoutEmptyPart,
+} from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import {
   type Mode,
@@ -44,6 +51,7 @@ import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/Iss
 import {
   useEditor,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -118,6 +126,8 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   );
   // A classification that targets this key changes its mode (its shape, not every class value).
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // So does a class or rule record that sets the key, or a value it holds there (the summary reads it).
+  useRecordValuesAt(compound ? compound.keys.map((k) => `${base}.${k}`) : path);
   useStyleValue(path);
   // Heights draw with one fill opacity for the whole layer.
   const extruded = useStyleSelector((doc) => drawsHeights(doc));
@@ -241,14 +251,22 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     if (modeOf(store.document, writePath, data.geometry) === to && popover.current(next)?.key !== editorKey)
       openEditor(to, anchorTopOf(anchor));
   };
+  // Reset drops the record's own value, and the part with it when nothing of it is left over a part that is on.
   const reset =
-    scoped && owned
+    scoped && owned && scope
       ? () =>
-          compound
-            ? store.update((doc) =>
-                compound.keys.reduce((d, k) => setIn(d, `${record}.${k}`, undefined), doc)
-              )
-            : store.set(writePath, undefined)
+          store.update(
+            (doc) =>
+              withoutEmptyPart(
+                compound
+                  ? compound.keys.reduce((d, k) => setIn(d, `${record}.${k}`, undefined), doc)
+                  : setIn(doc, writePath, undefined),
+                recordPathOf(scope),
+                key.split(".")[0],
+                data.geometry ?? "polygon"
+              ),
+            compound ? undefined : writePath
+          )
       : undefined;
   const modeButton =
     modes.length > 1 || reset ? (
