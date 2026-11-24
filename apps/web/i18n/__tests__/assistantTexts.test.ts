@@ -45,6 +45,10 @@ const TOOLS = [
   "workflow_update",
   "project_add_catalog_layer",
   "project_add_dataset",
+  "style_get",
+  "style_catalog",
+  "style_update",
+  "map_update",
 ];
 const ROWS = [
   "q",
@@ -222,7 +226,10 @@ describe("assistant texts", () => {
     // A key read with a count (`t(key, { count })`) exists as its plural forms only.
     const missing = usedKeys().filter((key) => !(key in EN) && !(`${key}_one` in EN && `${key}_other` in EN));
     expect(missing).toEqual([]);
-    for (const tool of TOOLS) expect(EN, tool).toHaveProperty(`assistant_tool_${tool}`);
+    for (const tool of TOOLS) {
+      expect(EN, tool).toHaveProperty(`assistant_tool_${tool}`);
+      expect(EN, tool).toHaveProperty(`assistant_tool_${tool}_running`);
+    }
     for (const code of RUN_ERROR_CODES) expect(EN, code).toHaveProperty(`assistant_run_error_${code}`);
     for (const row of ROWS) expect(EN, row).toHaveProperty(`assistant_proposal_row_${row}`);
     for (const group of GROUPS) {

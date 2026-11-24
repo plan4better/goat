@@ -6,7 +6,7 @@ import { type Path, getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { withRuleIds } from "@/lib/style/ids";
 import { deepEqual, isObject } from "@/lib/style/json";
-import type { StyleSaver } from "@/lib/style/save";
+import type { StyleIssue, StyleSaver } from "@/lib/style/save";
 
 /** The class the panel edits on its own (spec 5.5): a class of `classify[classify]`, or its `other`. */
 export interface ClassScope {
@@ -122,6 +122,30 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
     this.past.push(this.current);
     this.lastKey = null;
     this.replace(next);
+  }
+
+  /** A newer stored style that was changed elsewhere (the assistant): one undo step back to the document as it is
+   * now, unsaved edits included, then the saver takes the stored style as its base with those edits on top. An
+   * older or equal revision changes nothing, nor does a saver that takes no stored document (the scene's). */
+  takeOutside(stored: { document: LayerStyle; revision: number; issues?: StyleIssue[] }): void {
+    const saver: DocumentSaver<LayerStyle> & Partial<Pick<StyleSaver, "revision" | "receive">> = this.saver;
+    if (typeof saver.receive !== "function" || typeof saver.revision !== "number") return;
+    if (stored.revision <= saver.revision) return;
+    const before = this.current;
+    const future = this.future;
+    // Recorded first: subscribers read the history when the saver tells of the received style.
+    this.past.push(before);
+    this.future = [];
+    saver.receive(stored);
+    this.fromSaver();
+    if (this.current === before) {
+      // The same document at a newer revision is no step.
+      this.past.pop();
+      this.future = future;
+      return;
+    }
+    if (this.past.length > HISTORY) this.past.shift();
+    this.lastKey = null;
   }
 
   setScope(scope: Scope | null): void {

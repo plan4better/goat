@@ -4,6 +4,8 @@ import { createContext, useContext } from "react";
 
 import type { AddedToProject } from "@/lib/assistant/addToProject";
 import type { ResultItem } from "@/lib/assistant/items";
+import type { MapChange } from "@/lib/assistant/mapEdits";
+import type { StyleChange } from "@/lib/assistant/styleEdits";
 import type { WorkflowChange } from "@/lib/assistant/workflowEdits";
 
 /** What message parts can ask the dock to do; the dock provides it. */
@@ -25,6 +27,17 @@ export interface DockActions {
    * loads the stored version, the project's workflow list is read again.
    */
   followWorkflowChanges: (changes: WorkflowChange[]) => void;
+  /**
+   * Styles an answer changed: the open map draws them, and an open style
+   * editor takes them as one step of its undo.
+   */
+  followStyleChanges: (changes: StyleChange[]) => void;
+  /**
+   * What an answer changed of a project's map (layers, groups, basemap,
+   * scene), or the dock's Undo wrote back: the open map page of that project
+   * reads it again.
+   */
+  followMapChange: (change: MapChange) => void;
   /** Whether the Workflows editor holds changes of one of these workflows that are not saved yet. */
   unsavedWorkflowChanges: (workflowIds: string[]) => boolean;
   /** The existing dataset window (summary, data, map): a dataset's "All details". */

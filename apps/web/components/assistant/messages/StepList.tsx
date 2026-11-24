@@ -12,6 +12,7 @@ import { plainTranslate } from "@/lib/assistant/chips";
 import {
   type StepNames,
   type StepRow,
+  foldRepeatedWrites,
   stepLabel,
   stepNames,
   stepResult,
@@ -102,7 +103,8 @@ function StatusIcon({ state }: { state: StepStatus }) {
 /**
  * The tools an answer used (spec §4.7, §10): one line per call with what it
  * found, its input and result on click. The list shows every row it is given;
- * `StepGroup` folds a group's rows behind its summary. While the answer runs
+ * `StepGroup` folds a group's rows behind its summary. A row that stands for
+ * repeated writes shows their count and, on click, each call. While the answer runs
  * (`running`), a step that has not returned says what it is doing, with the
  * shimmer of the Answering line; once the answer ended, such a step is marked
  * as stopped, with the same words: it was under way, not done.
@@ -125,16 +127,15 @@ export default function StepList({
   const theme = useTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const [open, setOpen] = useState<string | null>(null);
-  const rows = only ?? stepRows(steps);
   const names = known ?? stepNames(steps);
   // The labels carry the call's arguments (search words, layer names): React escapes them as text.
   const translate = plainTranslate(t);
+  const rows = only ?? foldRepeatedWrites(stepRows(steps), names, translate);
 
   return (
     <Stack gap="1px">
-      {rows.map(({ step, rejected }) => {
+      {rows.map(({ step, rejected, repeats = [] }) => {
         const expanded = open === step.toolCallId;
-        const output = (step as { output?: unknown }).output;
         const failed = step.state === "output-error";
         const unreturned = stepRunning(step);
         const underWay = running && unreturned;
@@ -144,7 +145,11 @@ export default function StepList({
           : stopped
             ? t("assistant_step_stopped")
             : stepResult(step, translate);
-        const extras = [result, rejected.length ? t("assistant_step_retried") : null].filter(Boolean);
+        const extras = [
+          result,
+          rejected.length ? t("assistant_step_retried") : null,
+          repeats.length ? t("assistant_step_times", { count: repeats.length + 1 }) : null,
+        ].filter(Boolean);
         const status: StepStatus = underWay
           ? reducedMotion
             ? "spinning"
@@ -205,8 +210,16 @@ export default function StepList({
                     (attempt) =>
                       `${t("assistant_step_rejected")}\n${pretty(attempt.input)}\n${t("assistant_step_failed")}`
                   ),
-                  `${t("assistant_step_input")}\n${pretty(step.input)}`,
-                  ...(output === undefined ? [] : [`${t("assistant_step_output")}\n${pretty(output)}`]),
+                  // Each call the line stands for, in the answer's order.
+                  ...[step, ...repeats].flatMap((call) => {
+                    const returned = (call as { output?: unknown }).output;
+                    return [
+                      `${t("assistant_step_input")}\n${pretty(call.input)}`,
+                      ...(returned === undefined
+                        ? []
+                        : [`${t("assistant_step_output")}\n${pretty(returned)}`]),
+                    ];
+                  }),
                 ].join("\n\n")}
               </Box>
             )}

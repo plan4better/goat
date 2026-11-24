@@ -1895,6 +1895,58 @@ describe("the Undo of an answer's workflow edits", () => {
     expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
   });
 
+  it("an answer that only changed a style shows Undo", () => {
+    const style = (before: number, after: number) =>
+      ({
+        type: "dynamic-tool",
+        toolName: "style_update",
+        toolCallId: `s-${after}`,
+        state: "output-available",
+        input: {},
+        output: {
+          project_id: "p1",
+          layer_project_id: 12,
+          style_id: "s1",
+          created: false,
+          made_active: false,
+          revision_before: before,
+          revision_after: after,
+        },
+      }) as DynamicToolUIPart;
+    show(answer([style(4, 4), text]));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    show(answer([style(4, 5), text]));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+  });
+
+  it("an answer that only removed a layer shows no Undo, and says the layer does not come back", () => {
+    const removal = (applied: unknown[]) =>
+      ({
+        type: "dynamic-tool",
+        toolName: "map_update",
+        toolCallId: "m-1",
+        state: "output-available",
+        input: {},
+        output: { project_id: "p1", applied },
+      }) as DynamicToolUIPart;
+    const removed = { index: 0, op: "remove_layer", layer_project_id: 12, summary: "Removed Parks" };
+    show(answer([removal([removed]), text]));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    expect(screen.getByText("assistant_undone_layer_removed")).toBeTruthy();
+    cleanup();
+    // Beside a change Undo puts back, the Undo shows and its notes say it once undone.
+    const hidden = {
+      index: 1,
+      op: "set_layer",
+      layer_project_id: 13,
+      fields: ["visible"],
+      summary: "Hidden",
+    };
+    show(answer([removal([removed, hidden]), text]));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    expect(screen.queryByText("assistant_undone_layer_removed")).toBeNull();
+  });
+
   it("shows on an answer that edited and then failed without a word", () => {
     show(
       answer([
@@ -1920,6 +1972,63 @@ describe("the Undo of an answer's workflow edits", () => {
 
   it("reads Undone for an answer whose edits were undone", () => {
     show(answer([update(4, 5), text], { run_id: "run-2", undone: true }));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    expect(screen.getByText("assistant_undone")).toBeTruthy();
+  });
+
+  describe("an answer stopped after its edit landed", () => {
+    const stopped = { type: "data-run-status", data: { status: "cancelled", error: null, code: null } };
+    // The stopped call never finished: its part names no edit.
+    const unfinished = {
+      type: "dynamic-tool",
+      toolName: "workflow_update",
+      toolCallId: "u-stopped",
+      state: "input-available",
+      input: { workflow_id: "wf-1", operations: [] },
+    } as DynamicToolUIPart;
+    const parts = [unfinished, stopped] as AssistantMessage["parts"];
+
+    it("shows Undo when the server says its Undo can act", () => {
+      show(answer(parts, { run_id: "run-1", undoable: true }));
+      expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    });
+
+    it("shows none without the server's word, as before", () => {
+      show(answer(parts));
+      show(answer(parts, { run_id: "run-1", undoable: false }));
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    });
+
+    it("shows none in a read-only conversation, nor while the answer runs", () => {
+      show(answer(parts, { run_id: "run-1", undoable: true }), { readOnly: true });
+      show(answer(parts, { run_id: "run-1", undoable: true }), { busy: true });
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    });
+
+    it("says nothing of a removed layer that does not come back while its Undo is offered", () => {
+      const removal = {
+        type: "dynamic-tool",
+        toolName: "map_update",
+        toolCallId: "m-1",
+        state: "output-available",
+        input: {},
+        output: {
+          project_id: "p1",
+          applied: [{ index: 0, op: "remove_layer", layer_project_id: 12, summary: "Removed Parks" }],
+        },
+      } as DynamicToolUIPart;
+      show(answer([removal, ...parts], { run_id: "run-1", undoable: true }));
+      expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+      expect(screen.queryByText("assistant_undone_layer_removed")).toBeNull();
+    });
+  });
+
+  it("goes by the finished steps when the server's word is false", () => {
+    // They agree on every answer but a stopped one; an edit the steps name keeps its Undo.
+    show(answer([update(4, 5), text], { run_id: "run-1", undoable: false }));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    cleanup();
+    show(answer([update(4, 5), text], { run_id: "run-2", undoable: false, undone: true }));
     expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
     expect(screen.getByText("assistant_undone")).toBeTruthy();
   });

@@ -1,19 +1,28 @@
 "use client";
 
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography, useTheme } from "@mui/material";
 import type { DynamicToolUIPart, TextUIPart } from "ai";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { answerChanges, hasChanges } from "@/lib/assistant/answerChanges";
 import { type AskCardState, askCardOf, askCardState, askStepReturned } from "@/lib/assistant/ask";
 import { contextChips, plainTranslate } from "@/lib/assistant/chips";
 import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, itemKey, shownGroups, uniqueGroups } from "@/lib/assistant/items";
+import { mapEdit, viewUndoKey } from "@/lib/assistant/mapEdits";
 import { messageTime } from "@/lib/assistant/messageTimes";
 import { stepNames, stepRunning } from "@/lib/assistant/stepLabels";
+import {
+  hasProposalUndo,
+  markProposal,
+  takeProposalUndo,
+  useActiveSurface,
+  useDockState,
+} from "@/lib/assistant/store";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
-import { answerEdits } from "@/lib/assistant/workflowEdits";
 
 import AnswerDetails from "@/components/assistant/messages/AnswerDetails";
 import AskCard from "@/components/assistant/messages/AskCard";
@@ -27,9 +36,9 @@ import ResultCards from "@/components/assistant/messages/ResultCards";
 import RunStatusNote from "@/components/assistant/messages/RunStatusNote";
 import SafeMarkdown from "@/components/assistant/messages/SafeMarkdown";
 import StepGroup from "@/components/assistant/messages/StepGroup";
-import UndoAnswer from "@/components/assistant/messages/UndoAnswer";
+import UndoAnswer, { UndoNote } from "@/components/assistant/messages/UndoAnswer";
 import WorkflowRunNote from "@/components/assistant/messages/WorkflowRunNote";
-import { accentSoft, shimmerSx } from "@/components/assistant/styles";
+import { accentSoft, accentText, pillButtonSx, shimmerSx } from "@/components/assistant/styles";
 
 export interface MessageListProps {
   messages: AssistantMessage[];
@@ -161,6 +170,48 @@ function AnsweringLine({ quiet = false }: { quiet?: boolean }) {
   );
 }
 
+/**
+ * The way back from the view a `map_update` step showed on the map, while the page that applied it keeps one (the
+ * newest applied view of the open map page): pressing it puts the camera, mode and projection back, once.
+ */
+function PreviousView({ toolCallId, projectId }: { toolCallId: string; projectId: string }) {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  // The way back is kept outside React: the dock's state changes when one is kept or taken, the surface when
+  // the page that keeps it goes.
+  useDockState();
+  const surface = useActiveSurface();
+  const key = viewUndoKey(toolCallId);
+  if (surface?.surface !== "project.map" || surface.project?.id !== projectId || !hasProposalUndo(key)) {
+    return null;
+  }
+  const back = () => {
+    // Taken first, so a second press cannot run it again.
+    try {
+      takeProposalUndo(key)?.();
+    } finally {
+      markProposal(key, null);
+    }
+  };
+  return (
+    <Box sx={{ mt: "-8px" }}>
+      <Button
+        size="small"
+        variant="text"
+        onClick={back}
+        startIcon={<Icon iconName={ICON_NAME.UNDO} style={{ fontSize: 11, color: "inherit" }} />}
+        sx={{
+          ...pillButtonSx,
+          "&&": { ...pillButtonSx["&&"], px: "10px", py: "3px" },
+          color: accentText(theme),
+          "& .MuiButton-startIcon": { mr: "5px" },
+        }}>
+        {t("assistant_view_back")}
+      </Button>
+    </Box>
+  );
+}
+
 function Answer({
   message,
   time,
@@ -196,6 +247,7 @@ function Answer({
   heldAskId: string | null;
   onShowAsk?: (cardId: string) => void;
 }) {
+  const { t } = useTranslation("common");
   const blocks: ReactNode[] = [];
   let tools: DynamicToolUIPart[] = [];
   // Text the run asked for again in the message's language: the answer after it replaces it.
@@ -248,6 +300,19 @@ function Answer({
         names={names}
       />
     );
+    // Below the group, so the way back shows also when the step's line is folded into the summary.
+    group.forEach((part) => {
+      const edit = mapEdit(part);
+      if (edit?.view) {
+        blocks.push(
+          <PreviousView
+            key={`view-${part.toolCallId}`}
+            toolCallId={part.toolCallId}
+            projectId={edit.projectId}
+          />
+        );
+      }
+    });
     // In the answer's order, when it shows several kinds of cards.
     group.filter(showsCards).forEach((part) => {
       const groups = uniqueGroups(shownGroups(part), seen);
@@ -328,11 +393,15 @@ function Answer({
   // A step under way shimmers in its line or its group's summary: one shimmer at a time.
   const stepUnderWay =
     running && message.parts.some((part) => part.type === "dynamic-tool" && stepRunning(part));
-  // An answer that saved workflow edits offers Undo, also when it then failed without a word.
+  // An answer that saved edits (workflows, styles, the map) offers Undo, also when it then failed without a word.
+  // The server's word covers a write of a call that a Stop or the time limit ended: no finished step names it.
   const runId = message.metadata?.run_id;
-  const edits = answerEdits(message);
-  const undoable = !running && !readOnly && !!runId && edits.length > 0;
-  const actions = !running && (text.trim() || !ended || undoable || charged);
+  const changes = answerChanges(message);
+  const undoable =
+    !running && !readOnly && !!runId && (message.metadata?.undoable === true || hasChanges(changes));
+  // An answer whose only change was a removal has nothing to undo: a line says the layer does not come back.
+  const removedOnly = !running && !undoable && changes.layersRemoved && !hasChanges(changes);
+  const actions = !running && (text.trim() || !ended || undoable || charged || removedOnly);
   return (
     <Stack
       gap="14px"
@@ -348,18 +417,20 @@ function Answer({
           while text streams in; a step under way says what it does instead. */}
       {running && <AnsweringLine quiet={stepUnderWay} />}
       {actions && (
-        // The 28px buttons sit 6px out, so their icons start where the answer's text does.
+        // The 28px buttons sit 6px out, so their icons start where the answer's text does. A note of
+        // the Undo wraps to a line of its own below them.
         <Stack
           className="answer-actions"
           direction="row"
           gap="4px"
           alignItems="center"
+          flexWrap="wrap"
           sx={{ mt: "-8px", ml: "-6px" }}>
           {undoable && runId && (
             <UndoAnswer
               conversationId={conversationId}
               runId={runId}
-              workflowIds={[...new Set(edits.map((edit) => edit.workflowId))]}
+              changes={changes}
               undone={message.metadata?.undone}
             />
           )}
@@ -369,6 +440,7 @@ function Answer({
             <FeedbackButtons conversationId={conversationId} messageId={message.id} initial={feedback} />
           )}
           {time !== null && <MessageTime time={time} />}
+          {removedOnly && <UndoNote>{t("assistant_undone_layer_removed")}</UndoNote>}
         </Stack>
       )}
     </Stack>

@@ -267,6 +267,28 @@ function labelKey(step: DynamicToolUIPart, names: StepNames, t: Translate): Labe
       if (name) return { key: "assistant_tool_project_add_catalog_layer_name", values: { name: clip(name) } };
       break;
     }
+    // A new style, by the name its result gives; a style changed in place keeps the plain label.
+    case "style_update": {
+      const name = output.created === true ? text(output.name) : undefined;
+      if (name) return { key: "assistant_tool_style_update_created", values: { name: clip(name) } };
+      break;
+    }
+    // Nothing stored: a removal that waits for the user's pick (the layers to ask about), else a view for the page.
+    // The tool lists a view among what it applied.
+    case "map_update": {
+      const { applied, confirm, view } = output;
+      if (!Array.isArray(applied) || applied.some((op) => fields(op).op !== "set_view")) break;
+      if (Array.isArray(confirm) && confirm.length) {
+        return {
+          key:
+            confirm.length > 1
+              ? "assistant_tool_map_update_confirm_several"
+              : "assistant_tool_map_update_confirm",
+        };
+      }
+      if (Object.keys(fields(view)).length) return { key: "assistant_tool_map_update_view" };
+      break;
+    }
     default:
       break;
   }
@@ -385,6 +407,8 @@ export interface StepRow {
   step: DynamicToolUIPart;
   /** Failed calls of the same tool right before `step`, which succeeded: the model corrected its input. */
   rejected: DynamicToolUIPart[];
+  /** Finished writes after `step` among the rows shown, same label (`foldRepeatedWrites`): the line stands for them too. */
+  repeats?: DynamicToolUIPart[];
 }
 
 /**
@@ -454,6 +478,8 @@ const STEP_KINDS: Record<string, string> = {
   workflow_check_draft: "draft_check",
   workflow_last_run: "workflow_last_run",
   workflow_get: "workflow_read",
+  style_get: "style_read",
+  style_catalog: "style_catalog",
 };
 
 /** Every kind a summary may name, with the one for tools the dock does not know. */
@@ -526,6 +552,12 @@ const COUNTED_BY: Record<
   docs: (step) => text(fields(step.input).page),
   workflow_last_run: (step) => text(fields(step.input).workflow_id),
   workflow_read: (step) => text(fields(step.input).workflow_id),
+  // A style by its layer and ID (none: the active one); reading another part of it is the same style.
+  style_read: (step, openProject) => {
+    const layer = layerOfInput(step, openProject);
+    const style = text(outputOf(step).style_id) ?? text(fields(step.input).style_id) ?? "";
+    return layer === undefined ? undefined : `${layer}:${style}`;
+  },
 };
 
 /**
@@ -535,6 +567,34 @@ const COUNTED_BY: Record<
  */
 export const staysVisible = (row: StepRow, running: boolean): boolean =>
   WRITES.has(row.step.toolName) || row.step.state === "output-error" || (!running && stepRunning(row.step));
+
+/** A write that returned, without rejected attempts: one that a line of repeats may stand for. */
+const repeatable = (row: StepRow): boolean =>
+  WRITES.has(row.step.toolName) && row.step.state === "output-available" && !row.rejected.length;
+
+/**
+ * The step rows with each run of finished writes that say the same ("Changed
+ * the style" five times in a row) folded into the run's first row, as its
+ * `repeats`: the line shows once, with the count. Only rows right next to each
+ * other in `rows` fold; a failed or running step, a read or another label in
+ * between ends the run. The caller passes the rows it shows: once reads fold
+ * into a group's summary, the writes around them are next to each other.
+ */
+export function foldRepeatedWrites(rows: StepRow[], names: StepNames, t: Translate): StepRow[] {
+  const folded: StepRow[] = [];
+  let label: string | null = null;
+  for (const row of rows) {
+    const last = folded.at(-1);
+    const own = repeatable(row) ? stepLabel(row.step, names, t) : null;
+    if (last && own !== null && own === label) {
+      folded[folded.length - 1] = { ...last, repeats: [...(last.repeats ?? []), row.step] };
+    } else {
+      folded.push(row);
+      label = own;
+    }
+  }
+  return folded;
+}
 
 /**
  * The summary line of a group of steps: the steps that fold away counted by

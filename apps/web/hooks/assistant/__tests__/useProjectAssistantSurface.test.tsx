@@ -15,21 +15,48 @@ import ProposalCard from "@/components/assistant/messages/ProposalCard";
 
 const WORKFLOW = "0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c";
 
-const redux = vi.hoisted(() => ({ activeLayerId: 4 as number | null, dispatch: vi.fn() }));
+const redux = vi.hoisted(() => ({
+  activeLayerId: 4 as number | null,
+  dispatch: vi.fn(),
+  map: {} as Record<string, unknown>,
+}));
 const navigate = vi.hoisted(() => ({ zoomToProjectLayer: vi.fn(async () => undefined) }));
 
 vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppSelector: (select: (state: unknown) => unknown) =>
-    select({ layers: { activeLayerId: redux.activeLayerId }, workflow: { selectedWorkflowId: WORKFLOW } }),
+    select({
+      layers: { activeLayerId: redux.activeLayerId },
+      workflow: { selectedWorkflowId: WORKFLOW },
+      map: redux.map,
+    }),
   useAppDispatch: () => redux.dispatch,
 }));
 vi.mock("@/lib/utils/map/navigate", () => navigate);
 vi.mock("react-toastify", () => ({ toast: { error: vi.fn() } }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en", exists: () => false } }),
 }));
 
 const project = { id: "p1", name: "Radnetz", folder_id: "f1" };
+const builtIn = (value: string, title: string) => ({
+  source: "builtin",
+  type: "vector",
+  value,
+  url: `https://tiles.example.org/styles/${value}`,
+  title,
+  subtitle: "",
+  thumbnail: "",
+});
+const BUILT_INS = [builtIn("streets", "High Fidelity"), builtIn("light", "Light"), builtIn("dark", "Dark")];
+const RASTER_ID = "6d3c2a1e-0f4b-4c5d-8e9f-0a1b2c3d4e5f";
+const raster = {
+  id: RASTER_ID,
+  name: "Luftbild",
+  type: "raster",
+  url: "https://tiles.example.org/{z}/{x}/{y}.png",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+};
 const view: Proposal = {
   version: 1,
   kind: "map.view",
@@ -44,6 +71,12 @@ beforeEach(() => {
   window.sessionStorage.clear();
   resetAssistantStore();
   redux.activeLayerId = 4;
+  redux.map = {
+    basemaps: BUILT_INS,
+    activeBasemap: undefined,
+    activeBasemapProjectId: undefined,
+    view: undefined,
+  };
 });
 
 describe("useProjectAssistantSurface", () => {
@@ -148,6 +181,65 @@ describe("useProjectAssistantSurface", () => {
     rerender();
     expect(getActiveSurface()).not.toBe(first);
     expect(getActiveSurface()?.getContext()).toMatchObject({ selected_layer_project_id: 7 });
+  });
+
+  it("tells the basemap, the offered basemaps and the view mode, read live without re-registering", () => {
+    const withBasemaps = { ...project, basemap: "dark", custom_basemaps: [raster] };
+    redux.map.view = { projectId: "p1", mode: "2d", projection: "mercator" };
+    const { rerender } = renderHook(() =>
+      useProjectAssistantSurface({
+        project: withBasemaps as never,
+        mapRef: { current: null },
+        mapMode: "data",
+        isEditor: true,
+      })
+    );
+    const first = getActiveSurface();
+    expect(first?.getContext()).toEqual({
+      surface: "project.map",
+      project_id: "p1",
+      selected_layer_project_id: 4,
+      basemap: { id: "dark", name: "Dark", tone: "dark", imagery: false },
+      basemaps: [
+        { id: "streets", name: "High Fidelity", tone: "light", imagery: false },
+        { id: "light", name: "Light", tone: "light", imagery: false },
+        { id: "dark", name: "Dark", tone: "dark", imagery: false },
+        { id: RASTER_ID, name: "Luftbild", tone: "dark", imagery: true },
+      ],
+      view_mode: "2d",
+      projection: "mercator",
+    });
+
+    // The user picks the imagery basemap and switches to a 3D globe.
+    redux.map = {
+      ...redux.map,
+      activeBasemap: { ...raster, source: "custom", value: RASTER_ID },
+      activeBasemapProjectId: "p1",
+      view: { projectId: "p1", mode: "3d", projection: "globe" },
+    };
+    rerender();
+    expect(getActiveSurface()).toBe(first);
+    expect(getActiveSurface()?.getContext()).toMatchObject({
+      basemap: { id: RASTER_ID, name: "Luftbild", tone: "dark", imagery: true },
+      view_mode: "3d",
+      projection: "globe",
+    });
+  });
+
+  it("sends no view mode left over from another project, and no basemap keys outside Map mode", () => {
+    redux.map.view = { projectId: "other", mode: "3d", projection: "globe" };
+    const { rerender } = renderHook(
+      ({ mapMode }: { mapMode: MapMode }) =>
+        useProjectAssistantSurface({ project, mapRef: { current: null }, mapMode, isEditor: true }),
+      { initialProps: { mapMode: "data" as MapMode } }
+    );
+    const context = getActiveSurface()?.getContext();
+    expect(context).not.toHaveProperty("view_mode");
+    expect(context).not.toHaveProperty("projection");
+    // Without a saved basemap the map opens on the default one.
+    expect(context).toMatchObject({ basemap: { id: "light", tone: "light" } });
+    rerender({ mapMode: "builder" });
+    expect(getActiveSurface()?.getContext()).toEqual({ surface: "project.dashboard", project_id: "p1" });
   });
 
   it("throws from apply while the map is not ready, so the card reports a failure", async () => {
