@@ -558,8 +558,7 @@ export const previewSource = (service: ConnectedService, ids: string[]): Preview
   return null;
 };
 
-/** A bounding box as the WKT extent a layer row carries. */
-export const extentWkt = ([west, south, east, north]: LngLatBounds) =>
+const extentWkt = ([west, south, east, north]: LngLatBounds) =>
   `MULTIPOLYGON(((${west} ${south}, ${west} ${north}, ${east} ${north}, ${east} ${south}, ${west} ${south})))`;
 
 /** What `createLayer` sends to `layer_import`: `url` becomes its `wfs_url`. */

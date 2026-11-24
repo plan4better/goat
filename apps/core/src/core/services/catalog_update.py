@@ -10,7 +10,6 @@ from core.services.catalog_promote import (
     catalog_connection,
     catalog_mirror,
     promote_catalog_items,
-    refuse_unaddable,
 )
 from core.services.processes import submit_each
 from core.services.style import (
@@ -21,7 +20,6 @@ from core.services.style import (
 )
 from fastapi import HTTPException, status
 from goatlib.catalog import promote as catalog
-from goatlib.catalog.item import layer_type
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
@@ -38,13 +36,6 @@ def _without_computed(node: Any) -> Any:
     if isinstance(node, list):
         return [_without_computed(v) for v in node]
     return node
-
-
-def _same_kind(layer: Any, item: dict[str, Any]) -> bool:
-    """The new version is still the same kind of layer (type and geometry), so the
-    entry's style and filter still fit it."""
-    kind, geometry = layer_type(item)
-    return (str(layer.type), str(layer.geometry or "") or None) == (kind, geometry)
 
 
 async def _repoint(
@@ -114,8 +105,7 @@ async def update_catalog_layer(
         await async_session.execute(
             text(
                 f"""
-                SELECT lp.layer_id, lp.name, l.other_properties->'catalog_item' AS item,
-                       l.type::text AS type, l.feature_layer_geometry_type::text AS geometry,
+                SELECT lp.layer_id, l.other_properties->'catalog_item' AS item,
                        g.bundle_id, g.name AS group_name
                 FROM {schema}.layer_project lp
                 JOIN {schema}.layer l ON l.id = lp.layer_id
@@ -145,17 +135,8 @@ async def update_catalog_layer(
         raise _refuse(
             status.HTTP_404_NOT_FOUND, "This layer is no longer in the catalog."
         )
-    already = _refuse(
-        status.HTTP_409_CONFLICT, "This layer is already on the newest version."
-    )
-    if str(items[item_id].get("version") or "") == str(snapshot.get("version") or ""):
-        raise already
-    if not _same_kind(row, items[item_id]):
-        raise _refuse(
-            status.HTTP_400_BAD_REQUEST,
-            f"'{row.name}' is another kind of layer in the catalog now; add it again instead.",
-        )
-    refuse_unaddable(items, {}, action="updated")
+    # Lost to an update that moved the entry first.
+    raced = _refuse(status.HTTP_409_CONFLICT, "Someone else just updated this layer.")
 
     conn = await catalog_connection()
     try:
@@ -183,7 +164,7 @@ async def update_catalog_layer(
         new_layer_id=new_layer_id,
     ):
         await async_session.rollback()
-        raise already
+        raise raced
     await async_session.commit()
     await follow_catalog_style(
         async_session,
@@ -233,8 +214,8 @@ async def update_catalog_bundle(
     gone = _refuse(
         status.HTTP_404_NOT_FOUND, f"'{row.name}' is no longer in the catalog."
     )
-    already = _refuse(
-        status.HTTP_409_CONFLICT, f"'{row.name}' is already on the newest version."
+    raced = _refuse(
+        status.HTTP_409_CONFLICT, f"Someone else just updated '{row.name}'."
     )
     mirror = catalog_mirror()
     try:
@@ -248,18 +229,13 @@ async def update_catalog_bundle(
     if row.dataset not in typed:
         raise gone
     versions = bundle_versions_of(items, typed)
-    if versions[row.dataset] == row.version:
-        raise already
-    refuse_unaddable(items, typed, roles_required=True, action="updated")
 
     entries = (
         await async_session.execute(
             text(
                 f"""
-                SELECT lp.id, lp.layer_id, bl.role, l.type::text AS type,
-                       l.feature_layer_geometry_type::text AS geometry
+                SELECT lp.id, lp.layer_id, bl.role
                 FROM {schema}.layer_project lp
-                JOIN {schema}.layer l ON l.id = lp.layer_id
                 LEFT JOIN {schema}.bundle_layer bl
                     ON bl.layer_id = lp.layer_id AND bl.bundle_id = :old
                 WHERE lp.layer_project_group_id = :group
@@ -268,18 +244,15 @@ async def update_catalog_bundle(
             {"old": row.bundle_id, "group": group_id},
         )
     ).all()
-    if not all(entry.role for entry in entries):
+    # Entries move to the new version by role, so every layer needs one.
+    if not all(entry.role for entry in entries) or not all(
+        item.get("goat:role") for item in items.values()
+    ):
         raise _refuse(
             status.HTTP_400_BAD_REQUEST,
             f"'{row.name}' has a layer without a role, so it cannot be updated.",
         )
-    by_role = {item.get("goat:role"): item for item in items.values()}
-    if any(e.role in by_role and not _same_kind(e, by_role[e.role]) for e in entries):
-        raise _refuse(
-            status.HTTP_400_BAD_REQUEST,
-            f"'{row.name}' has a layer of another kind in the catalog now; add it again instead.",
-        )
-    new_roles = set(by_role)
+    new_roles = {item.get("goat:role") for item in items.values()}
     old_roles = {entry.role for entry in entries}
     existing = await crud_layer_project.count_by_project(
         async_session=async_session, project_id=project_id
@@ -334,7 +307,7 @@ async def update_catalog_bundle(
     )
     if claimed.rowcount == 0:
         await async_session.rollback()
-        raise already
+        raise raced
     moved = [(e.id, e.layer_id, members[e.role]) for e in entries if e.role in members]
     dropped = [e.id for e in entries if e.role not in members]
     for link_id, old_layer, new_layer in moved:

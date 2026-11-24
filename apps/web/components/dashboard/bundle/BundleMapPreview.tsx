@@ -35,16 +35,7 @@ import MapViewer from "@/components/map/MapViewer";
  * lines and areas they belong to. */
 const DRAW_ORDER: Record<string, number> = { point: 0, line: 1, polygon: 2 };
 
-/** A member: a GOAT layer, or a catalog item (`layer_id` = `catalog:<item id>`). */
-type BundleMapLayer = Pick<Layer, "id" | "type" | "feature_layer_geometry_type" | "extent"> & {
-  layer_id?: string;
-};
-
-const BundleMapPreview: React.FC<{
-  layers: BundleMapLayer[];
-  /** Styles for catalog members; fetched from core when not given. */
-  styles?: Record<string, ViewLayer["style"]>;
-}> = ({ layers, styles: given }) => {
+const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
   const theme = useTheme();
   const { t } = useTranslation("common");
   const mapRef = useRef<MapRef | null>(null);
@@ -65,8 +56,7 @@ const BundleMapPreview: React.FC<{
     [layers]
   );
   const ids = useMemo(() => drawable.map((layer) => layer.id), [drawable]);
-  const { styles: fetched } = useDatasetStyles(given ? [] : ids);
-  const styles = given ?? fetched;
+  const { styles } = useDatasetStyles(ids);
   const viewLayers = useMemo<ViewLayer[]>(
     () =>
       drawable.map((layer) => ({ ...layer, visible: true, entry: {}, style: styles?.[layer.id] ?? null })),

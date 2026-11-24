@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from pydantic import UUID4
 from sqlmodel import select
 
+from core.core import authz
 from core.crud.crud_layer_project import layer_project as crud_layer_project
 from core.crud.crud_layer_project_group import (
     layer_project_group as crud_layer_project_group,
@@ -35,18 +36,6 @@ from core.services.processes import submit_each
 logger = logging.getLogger("project_layer")
 
 router = APIRouter()
-
-
-async def require_project_editor(
-    async_session: AsyncSession, project_id: UUID, user_id: UUID, refusal: str
-) -> None:
-    """404 for a trashed project, 403 unless the caller is its owner or an editor."""
-    await crud_project.get_live_or_404(async_session, project_id)
-    role = await crud_project.get_my_role(
-        async_session, project_id=project_id, user_id=user_id
-    )
-    if role not in ("project-owner", "project-editor"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=refusal)
 
 
 @router.post(
@@ -85,12 +74,16 @@ async def add_layers_to_project(
     """Add layers to a project by its ID."""
 
     # 404 if the project itself is trashed.
-    await require_project_editor(
-        async_session,
-        project_id,
-        user_id,
-        "Adding layers to a project requires editor access to the project",
+    await crud_project.get_live_or_404(async_session, project_id)
+
+    role = await crud_project.get_my_role(
+        async_session, project_id=project_id, user_id=user_id
     )
+    if role not in ("project-owner", "project-editor"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Adding layers to a project requires editor access to the project",
+        )
 
     # Add layers to project
     layers_project = await crud_layer_project.create(
@@ -187,12 +180,16 @@ async def add_catalog_items_to_project(
     then links it.
     """
     # 404 if the project itself is trashed.
-    await require_project_editor(
-        async_session,
-        project_id,
-        user_id,
-        "Adding layers to a project requires editor access to the project",
+    await crud_project.get_live_or_404(async_session, project_id)
+
+    role = await crud_project.get_my_role(
+        async_session, project_id=project_id, user_id=user_id
     )
+    if role not in ("project-owner", "project-editor"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Adding layers to a project requires editor access to the project",
+        )
 
     from goatlib.catalog.promote import (
         CatalogItemNotFoundError,
@@ -358,12 +355,8 @@ async def update_catalog_entry(
         update_catalog_layer,
     )
 
-    await require_project_editor(
-        async_session,
-        project_id,
-        user_id,
-        "Updating layers requires editor access to the project",
-    )
+    await crud_project.get_live_or_404(async_session, project_id)
+    await authz.require(async_session, "project", project_id, user_id, "write")
     if target.group_id is not None:
         link_ids = await update_catalog_bundle(
             async_session,

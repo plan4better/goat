@@ -28,7 +28,9 @@ const item = (properties: Partial<CatalogItemProperties>): CatalogItem => ({
 
 describe("catalogKindOf", () => {
   it("reads a dataset standing for several layers as a bundle", () => {
-    expect(catalogKindOf(item({ "goat:layerType": "bundle", "goat:member_count": 4 }))).toBe("bundle");
+    expect(catalogKindOf(item({ "goat:layerType": "bundle", "goat:member_count": 4 }))).toBe(
+      "bundle"
+    );
   });
 
   it("does not let a member of a bundle claim to be one", () => {
@@ -46,7 +48,9 @@ describe("catalogKindOf", () => {
     expect(catalogKindOf(item({ "goat:layerType": "bundle", "goat:geometryType": "point" }), true)).toBe(
       "vector"
     );
-    expect(catalogKindOf(item({ "goat:layerType": "bundle", "table:row_count": 12 }), true)).toBe("table");
+    expect(catalogKindOf(item({ "goat:layerType": "bundle", "table:row_count": 12 }), true)).toBe(
+      "table"
+    );
   });
 
   it("reports unknown rather than guessing", () => {
@@ -70,9 +74,9 @@ describe("catalogKindOf", () => {
     };
     expect(catalogKindOf(member, true)).toBe("wmts");
     // A vector layer that also offers a map view stays a vector layer.
-    expect(
-      catalogKindOf({ ...member, properties: { ...member.properties, "goat:geometryType": "polygon" } }, true)
-    ).toBe("vector");
+    expect(catalogKindOf({ ...member, properties: { ...member.properties, "goat:geometryType": "polygon" } }, true)).toBe(
+      "vector"
+    );
   });
 
   it("marks map services and rasters apart", () => {
@@ -96,19 +100,16 @@ describe("catalogServiceTiles", () => {
     expect(catalogServiceTiles(item({}))).toBeNull();
     // Only a WMS item draws live; a bundle or feature carrying a WMS link keeps its sample.
     // A bundle member inherits `bundle` but is still a WMS by its own link; one with geometry is not.
-    expect(
-      catalogServiceTiles({ ...wms, properties: { ...wms.properties, "goat:layerType": "bundle" } })
-    ).toContain("layers=vogis:mountainbike_weglaenge");
+    expect(catalogServiceTiles({ ...wms, properties: { ...wms.properties, "goat:layerType": "bundle" } })).toContain(
+      "layers=vogis:mountainbike_weglaenge"
+    );
     expect(
       catalogServiceTiles({
         ...wms,
         properties: { ...wms.properties, "goat:layerType": "bundle", "goat:geometryType": "polygon" },
       })
     ).toBeNull();
-    const several = catalogServiceTiles({
-      ...wms,
-      links: [{ rel: "wms", href: "https://g/ows", title: "a, b" }],
-    });
+    const several = catalogServiceTiles({ ...wms, links: [{ rel: "wms", href: "https://g/ows", title: "a, b" }] });
     expect(several).toContain("&layers=a,b&");
     const wmts = {
       ...item({ "goat:layerType": "wmts" }),

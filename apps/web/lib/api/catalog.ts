@@ -210,7 +210,9 @@ export const useCatalogAggregations = () => {
  */
 export const useCatalogResolve = (entryId?: string) => {
   const { data, isLoading, error } = useSWR<CatalogResolved>(
-    entryId && CATALOG_API_BASE_URL ? catalogUrl(`/resolve/${encodeURIComponent(entryId)}`) : null,
+    entryId && CATALOG_API_BASE_URL
+      ? catalogUrl(`/resolve/${encodeURIComponent(entryId)}`)
+      : null,
     fetcher
   );
   const isCollection = data?.kind === "collection";
@@ -239,7 +241,10 @@ export const useCatalogItem = (itemId?: string) => {
 };
 
 /** The members of a bundle. */
-export const useCatalogCollectionItems = (collectionId?: string, params: CatalogSearchParams = {}) => {
+export const useCatalogCollectionItems = (
+  collectionId?: string,
+  params: CatalogSearchParams = {}
+) => {
   const { data, isLoading, error } = useSWR<CatalogItemCollection>(
     collectionId && CATALOG_API_BASE_URL
       ? catalogUrl(`/collections/${encodeURIComponent(collectionId)}/items`, params)
@@ -328,11 +333,11 @@ export const useCatalogDatasetVersions = (datasetIds: string[]) => {
  * revalidates and a failure is simply "no style".
  */
 export const useCatalogStyle = (href?: string, enabled = true) => {
-  const { data, isLoading, error } = useSWR<CatalogStyle>(enabled && href ? href : null, fetcher, {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
-    shouldRetryOnError: false,
-  });
+  const { data, isLoading, error } = useSWR<CatalogStyle>(
+    enabled && href ? href : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateIfStale: false, shouldRetryOnError: false }
+  );
   return { style: data, isLoading, isError: error };
 };
 
