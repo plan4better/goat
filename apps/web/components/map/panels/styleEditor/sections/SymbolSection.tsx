@@ -103,7 +103,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   );
   // The Icon row of a base marker without icon or shape: what gives icons or shapes to some features.
   const iconSome = useStyleSelector((doc) =>
-    scope || group.summary !== "icon" ? "" : setterKey(iconSetter(doc))
+    scope || group.summary !== "icon" ? "" : setterKey(iconSetter(doc, geometry))
   );
   const label = t(`style_editor.part_${group.id}`);
   // Groups that share a part (point fill, outline, icon) each show the issues of their own keys.

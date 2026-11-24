@@ -14,7 +14,7 @@ import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
 import { recordPathOf, scopedView } from "@/lib/style/editor/classify";
-import { LABEL_FONT_CHOICE } from "@/lib/style/editor/forms";
+import { LABEL_FONT_CHOICE, classificationFor } from "@/lib/style/editor/forms";
 import { issueText } from "@/lib/style/editor/issues";
 import {
   type LabelSummaryContext,
@@ -49,6 +49,7 @@ import {
 } from "@/components/map/panels/styleEditor/editors/NumberFormatEditor";
 import { OffsetRows } from "@/components/map/panels/styleEditor/editors/OffsetRows";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
+import { SetByRow } from "@/components/map/panels/styleEditor/editors/SetByRow";
 import { choiceGlyph } from "@/components/map/panels/styleEditor/editors/choiceGlyph";
 import { LETTER_CASES, type PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { FieldPicker, FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
@@ -274,6 +275,10 @@ function TextRows({ base }: { base: Path }) {
       {issues.map((issue, i) => (
         <IssueNotice key={`${issue.code}-${i}`} issue={issue} />
       ))}
+      {/* Texts classes set: the classification that sets them, which the Label row names. */}
+      {!scopedText.scoped && (
+        <SetByRow setterOf={(doc) => classificationFor(doc, "label.text", data.geometry)} />
+      )}
       <Row label={t("style_editor.preview")}>
         <Typography variant="body2" sx={{ whiteSpace: "pre-line", minWidth: 0 }}>
           {preview || t("style_editor.no_text")}

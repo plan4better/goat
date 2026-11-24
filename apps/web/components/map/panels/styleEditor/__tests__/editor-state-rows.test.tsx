@@ -205,3 +205,92 @@ describe("minor: in class scope a row opens the classification it names", () => 
     expect(screen.queryByText(/^Classes: .*size/i)).toBeNull();
   });
 });
+
+describe("follow-up: a label text set by classes", () => {
+  it("the label editor has a Classes row that opens the classification", async () => {
+    render(
+      vector({
+        symbol: { marker: { color: "#cccccc" }, label: { text: "{kind}" } },
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            classes: [{ id: "a", values: ["park"], label: { text: "{pop}" } }],
+          },
+        ],
+      }),
+      "point"
+    );
+    await openGroup("style_editor.part_label");
+    const row = lastRowOf("style_editor.classes");
+    expect(within(row).getByText("By kind")).toBeDefined();
+    await userEvent.click(within(row).getAllByRole("button")[0]);
+    // The classification editor's title (an earlier test gives it a resource).
+    expect(screen.getByText(/by_classes_title|^Classes: /)).toBeDefined();
+  });
+});
+
+describe("follow-up: a base offset by zoom beside a class's own offset", () => {
+  it("still reads By zoom, with the classes note", async () => {
+    i18n.addResourceBundle(
+      "en",
+      "common",
+      { style_editor: { by_zoom_stops: "By zoom · {{count}} stops" } },
+      true,
+      true
+    );
+    render(
+      vector({
+        symbol: {
+          marker: { color: "#cccccc" },
+          label: {
+            text: "{kind}",
+            offset: {
+              zoom: [
+                [8, [0, 0]],
+                [14, [0, 4]],
+              ],
+            },
+          },
+        },
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            classes: [{ id: "a", values: ["park"], label: { offset: [0, 6] } }],
+          },
+        ],
+      }),
+      "point"
+    );
+    await openGroup("style_editor.part_label");
+    await userEvent.click(within(rowOf("style_editor.label_position")).getAllByRole("button")[0]);
+    expect(within(rowOf("style_editor.offset")).getByText("By zoom · 2 stops")).toBeDefined();
+    expect(screen.getByText("style_editor.offset_classes_note")).toBeDefined();
+  });
+});
+
+describe("follow-up: an icon classification on a marker without icon", () => {
+  it("the Icon editor shows the Icon row's By <field> only, no Classes row", async () => {
+    render(
+      vector({
+        symbol: { marker: { color: "#cccccc" } },
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            target: "marker.icon",
+            classes: [{ id: "a", values: ["park"], marker: { icon: "goat:park" } }],
+          },
+        ],
+      }),
+      "point"
+    );
+    await openGroup("style_editor.part_icon");
+    expect(screen.queryByText("style_editor.classes")).toBeNull();
+    expect(within(lastRowOf("style_editor.icon")).getByText("By kind")).toBeDefined();
+  });
+});

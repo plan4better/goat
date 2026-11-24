@@ -259,11 +259,12 @@ function leaveClasses(doc: LayerStyle, key: string, geometry?: Geometry): LayerS
   });
   const next = setIn(doc, "classify", kept.length ? kept : undefined);
   if (!frozen.size || !geometry) return next;
-  // A row of another key than the one left; a classification without classes would claim the color again.
+  // A row of another key than the one left; a classification without classes (still to come) would claim the color
+  // again.
   const reachable = kept.filter(
     (c) =>
       !frozen.has(c) ||
-      (classRecords(c).length > 0 && rowsOpening(next, c, geometry).some((row) => row !== key))
+      (list(c.classes).length > 0 && rowsOpening(next, c, geometry).some((row) => row !== key))
   );
   return setIn(doc, "classify", reachable.length ? reachable : undefined);
 }

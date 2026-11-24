@@ -47,10 +47,10 @@ import {
 import {
   HeaderSwitch,
   PartZooms,
-  SetByRow,
   allowPerClass,
   togglePart,
 } from "@/components/map/panels/styleEditor/editors/PartEditor";
+import { SetByRow } from "@/components/map/panels/styleEditor/editors/SetByRow";
 import { ZoomEditor } from "@/components/map/panels/styleEditor/editors/ZoomEditor";
 import { FieldPicker } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";

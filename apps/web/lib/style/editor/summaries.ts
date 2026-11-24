@@ -88,7 +88,7 @@ export const thenText = (t: TFunction, value: string, later: Setter, fields: Fie
 
 export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: SummaryContext): string {
   if (ctx.scope) {
-    const { doc: shown, later } = summaryView(doc, ctx.scope, path, ctx.view);
+    const { doc: shown, later } = summaryView(doc, ctx.scope, path, ctx.view, ctx.geometry);
     const text = summarize(shown, path, t, { ...ctx, scope: null, view: undefined });
     return later ? thenText(t, text, later, ctx.fields) : text;
   }

@@ -5,8 +5,8 @@
 import { isSet, partUsed, setValues } from "@/lib/style/compile/cascade";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type ScopedView, scopedView } from "@/lib/style/editor/classify";
-import { classificationFor, compoundKeys, keyOf, targets } from "@/lib/style/editor/forms";
-import { type Path, getIn, setIn } from "@/lib/style/editor/paths";
+import { LABEL_FONT_CHOICE, classificationFor, compoundKeys, keyOf, targets } from "@/lib/style/editor/forms";
+import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
 import { type Scope, isRuleScope } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import type { LayerStyle } from "@/lib/style/generated/types";
@@ -105,41 +105,84 @@ export function perLayerPath(doc: LayerStyle, path: Path): Path {
 /** In class or rule scope: what draws over the scoped record's own value at `key` where it applies, as the cascade
  * applies records in order (spec 6.1): a later classification whose records set the key, else a rule (for a rule, a
  * later rule). */
-export function laterSetter(doc: LayerStyle, scope: Scope, key: string): Setter | undefined {
+export function laterSetter(
+  doc: LayerStyle,
+  scope: Scope,
+  key: string,
+  geometry?: Geometry
+): Setter | undefined {
   const sets = (r: unknown) => isObject(r) && getIn(r, key) !== undefined;
   const rules = list(getIn(doc, "rules"));
   if (isRuleScope(scope)) return rules.slice(scope.index + 1).some(sets) ? "rules" : undefined;
-  // A classification that targets the key sets it, also before the server has computed its classes.
+  // A classification that targets the key sets it, also before the server has computed its classes (one without
+  // `target` sets the main color then).
   const later = list(getIn(doc, "classify"))
     .slice(scope.classify + 1)
-    .filter(
-      (c) =>
-        [...list(c.classes), c.other, c.no_data].some(sets) ||
-        (typeof c.target === "string" && targets(c, key))
-    );
+    .filter((c) => [...list(c.classes), c.other, c.no_data].some(sets) || targets(c, key, geometry));
   if (later.length) return later[later.length - 1];
   return rules.some(sets) ? "rules" : undefined;
 }
 
+/** The fields a rule's condition requires to be empty: `isNull` at its top, or directly inside a top `and`. */
+function emptyFields(when: unknown): Set<string> {
+  const out = new Set<string>();
+  const add = (node: unknown) => {
+    if (!isObject(node) || node.op !== "isNull" || !Array.isArray(node.args)) return;
+    const arg = node.args[0];
+    if (isObject(arg) && typeof arg.property === "string") out.add(arg.property);
+  };
+  add(when);
+  if (isObject(when) && when.op === "and" && Array.isArray(when.args)) when.args.forEach(add);
+  return out;
+}
+
+/** The leaf paths an object sets ("outline.width", "label.halo.color"); a part switched off is its own leaf. */
+function leaves(node: JsonObject, prefix = ""): string[] {
+  return Object.entries(node).flatMap(([key, value]) =>
+    isObject(value) && !Array.isArray(value.zoom) && !("field" in value)
+      ? leaves(value, `${prefix}${key}.`)
+      : [`${prefix}${key}`]
+  );
+}
+
 /** What the layer draws under a rule for its features: the rule's record over the base with every classification
- * (whichever features the condition picks, a classification applies to them). A rule that picks the features without
- * a value in a field (`isNull`) puts them in that field's classifications' No data only: they draw as its No data
- * record merged over the base. */
+ * (whichever features the condition picks, a classification applies to them). A condition the panel cannot read as
+ * "this field is empty" leaves it at that. Where it requires a field to be empty (`isNull`, also inside a top `and`),
+ * that field's classifications reach the features only through their No data, in list order as the cascade applies
+ * them: an earlier classification's value for a key the No data sets is drawn over, so it leaves those records; the
+ * No data record joins the base. */
 function underRule(doc: LayerStyle, index: number, view: LayerStyle): LayerStyle {
   const rule = getIn(doc, `rules.${index}`);
-  const when = isObject(rule) ? rule.when : undefined;
-  const arg = isObject(when) && when.op === "isNull" && Array.isArray(when.args) ? when.args[0] : undefined;
-  const empty = isObject(arg) && typeof arg.property === "string" ? arg.property : undefined;
-  let next = setIn(view, "rules", undefined);
-  if (empty === undefined) return next;
-  const classify = list(getIn(next, "classify"));
-  classify.forEach((c, ci) => {
-    if (c.field === empty && isObject(c.no_data))
-      next = setIn(next, "symbol", getIn(scopedView(next, { classify: ci, key: "no_data" }).view, "symbol"));
-  });
-  const others = classify.filter((c) => c.field !== empty);
-  return setIn(next, "classify", others.length ? others : undefined);
+  const empty = emptyFields(isObject(rule) ? rule.when : undefined);
+  const next = setIn(view, "rules", undefined);
+  if (!empty.size) return next;
+  let symbol = getIn(next, "symbol");
+  let kept: JsonObject[] = [];
+  for (const c of list(getIn(next, "classify"))) {
+    if (typeof c.field !== "string" || !empty.has(c.field)) {
+      kept.push(c);
+      continue;
+    }
+    const noData = c.no_data;
+    if (!isObject(noData)) continue;
+    const parts = Object.fromEntries(Object.entries(noData).filter(([part]) => PART_KEYS.has(part)));
+    const paths = leaves(parts as JsonObject);
+    kept = kept.map((k) => {
+      let out = k;
+      for (const record of [...list(k.classes).map((_, i) => `classes.${i}`), "other", "no_data"])
+        if (isObject(getIn(out, record))) for (const path of paths) out = dropKey(out, record, path);
+      return out;
+    });
+    symbol = getIn(
+      scopedView(setIn(setIn(next, "symbol", symbol), "classify", [c]), { classify: 0, key: "no_data" }).view,
+      "symbol"
+    );
+  }
+  return setIn(setIn(next, "symbol", symbol), "classify", kept.length ? kept : undefined);
 }
+
+/** The parts a record may set. */
+const PART_KEYS = new Set(["fill", "outline", "extrude", "line", "casing", "arrows", "marker", "label"]);
 
 /** The document a row's summary reads in scope, and what draws over it: where the scoped record sets `path` itself,
  * its own value alone (its record over the base, no classifications or rules) and the later records that draw over
@@ -150,7 +193,8 @@ export function summaryView(
   doc: LayerStyle,
   scope: Scope | null,
   path: Path,
-  scoped?: ScopedView
+  scoped?: ScopedView,
+  geometry?: Geometry
 ): { doc: LayerStyle; later: Setter | undefined } {
   if (!scope) return { doc, later: undefined };
   const view = scoped ?? scopedView(doc, scope);
@@ -160,20 +204,20 @@ export function summaryView(
     delete own.rules;
     return own as unknown as LayerStyle;
   };
-  if (view.overridden(path)) return { doc: alone(), later: laterSetter(doc, scope, keyOf(path)) };
+  if (view.overridden(path)) return { doc: alone(), later: laterSetter(doc, scope, keyOf(path), geometry) };
   if (isRuleScope(scope)) return { doc: underRule(doc, scope.index, view.view), later: undefined };
   const others = list(getIn(view.view, "classify")).filter((_, i) => i !== scope.classify);
   return { doc: setIn(view.view, "classify", others.length ? others : undefined), later: undefined };
 }
 
-/** The label editor's rows of values that may vary per feature (its Halo and Text style rows included). */
+/** The label editor's rows of values that may vary per feature (its Halo and Text style rows included; the text's
+ * "Classes" row; the Font as one row over its weight and style). */
 const LABEL_ROW_KEYS = [
+  "text",
   "size",
   "color",
   "halo.color",
   "halo.width",
-  "font.weight",
-  "font.style",
   "transform",
   "letter_spacing",
   "max_width",
@@ -191,15 +235,19 @@ function pointGroupShows(doc: LayerStyle, id: string): boolean {
 
 /** What gives the points' markers icons or shapes while the base marker is a plain circle: the Icon editor's "Classes"
  * row names it. */
-export function iconSetter(doc: LayerStyle): Setter | undefined {
+export function iconSetter(doc: LayerStyle, geometry?: Geometry): Setter | undefined {
   const marker = getIn(doc, "symbol.marker");
   if (marker === false || !markerIcons(doc)) return undefined;
   if (isObject(marker) && (marker.icon !== undefined || (marker.shape ?? "circle") !== "circle"))
     return undefined;
-  return setterOf(
+  const setter = setterOf(
     doc,
     (r) => isObject(r.marker) && (r.marker.icon !== undefined || r.marker.shape !== undefined)
   );
+  // A classification of the icon has its own Icon row.
+  return setter !== "rules" && setter === classificationFor(doc, "marker.icon", geometry)
+    ? undefined
+    : setter;
 }
 
 /** Whether any record gives the markers an icon or a shape other than the circle (as `markerOn` reads it). */
@@ -229,11 +277,20 @@ export function rowsOpening(doc: LayerStyle, c: JsonObject, geometry: Geometry):
     if (state !== "all") continue;
     if (geometry === "point" && part === "marker") {
       if (group.id === "fill" && markerFillState(doc) === "some" && fillSetter(doc) === c) rows.add("fill");
-      if (group.id === "icon" && iconSetter(doc) === c) rows.add("icon");
+      if (group.id === "icon" && iconSetter(doc, geometry) === c) rows.add("icon");
       if (!pointGroupShows(doc, group.id)) continue;
     }
+    // The part's values as its editor reads them: a key set once for the layer at the record that holds it.
     const base = getIn(doc, `symbol.${part}`);
-    const values = isObject(base) ? base : {};
+    const values: JsonObject = { ...(isObject(base) ? base : {}) };
+    for (const row of group.rows) {
+      const holder = perLayerPath(doc, `symbol.${part}.${row.key}`);
+      if (holder !== `symbol.${part}.${row.key}`) values[row.key] = getIn(doc, holder);
+    }
+    // A compound row (the label's Font) opens the first classification over its keys, as PropertyRow does.
+    const compoundOpens = (keys: string[]) =>
+      keys.map((key) => classificationFor(doc, key, geometry)).find(Boolean) === c;
+    if (part === "label" && compoundOpens(compoundKeys(LABEL_FONT_CHOICE))) rows.add("label.font");
     const keys =
       part === "label"
         ? LABEL_ROW_KEYS
@@ -246,11 +303,11 @@ export function rowsOpening(doc: LayerStyle, c: JsonObject, geometry: Geometry):
                 (!row.only || row.only.includes(geometry)) &&
                 (!row.when || row.when(values))
             )
-            .flatMap((row) =>
-              row.type === "choice" && row.compound
-                ? compoundKeys(row.compound).map((key) => key.slice(part.length + 1))
-                : [row.key]
-            );
+            .flatMap((row) => {
+              if (row.type !== "choice" || !row.compound) return [row.key];
+              if (compoundOpens(compoundKeys(row.compound))) rows.add(`${part}.${row.key}`);
+              return [];
+            });
     for (const key of keys) if (opens(`${part}.${key}`)) rows.add(`${part}.${key}`);
     if (part === "extrude")
       for (const key of ["height", "base"]) if (opens(`extrude.${key}`)) rows.add(`extrude.${key}`);

@@ -3519,7 +3519,7 @@
     "part_off_for_some": "bei einigen aus",
     "part_some_note": "Nur dort gezeichnet, wo Klassen oder Regeln diesen Teil einschalten. Der Schalter oben schaltet ihn für alle Objekte ein; wieder ausgeschaltet, bleibt er den Klassen und Regeln überlassen.",
     "icon_some_note": "Einige Objekte erhalten ein Symbol oder eine Form aus Klassen oder Regeln. Ein hier gewähltes Symbol gilt für alle Objekte ohne eigenes.",
-    "offset_classes_note": "Klassen nach {{field}} haben einen eigenen Versatz.",
+    "offset_classes_note": "Einige Klassen nach {{field}} haben einen eigenen Versatz.",
     "cluster_size_by_count": "Nach Anzahl",
     "cluster_size_by_count_sub": "Von der kleinsten bis zur größten Größe nach der Anzahl der Punkte",
     "scope_then_field": "{{value}}, danach nach {{field}}",

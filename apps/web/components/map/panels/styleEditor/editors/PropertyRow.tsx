@@ -370,7 +370,8 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
       typeof row.fallback === "function" ? row.fallback(part) : (row.fallback ?? DEFAULTS[key]);
     const noteKey = typeof row.note === "function" ? row.note(part) : row.note;
     // A class's or rule's own value a later classification or rule draws over where it applies.
-    const later = scoped && overridden && scope ? laterSetter(store.document, scope, key) : undefined;
+    const later =
+      scoped && overridden && scope ? laterSetter(store.document, scope, key, data.geometry) : undefined;
     const overNote =
       later === undefined
         ? undefined

@@ -3519,7 +3519,7 @@
     "part_off_for_some": "off for some",
     "part_some_note": "Drawn only where classes or rules turn it on. The switch above turns it on for all features; turned off again, it is left to them.",
     "icon_some_note": "Some features take an icon or a shape from classes or rules. An icon picked here is for every feature without one of its own.",
-    "offset_classes_note": "Classes by {{field}} have an offset of their own.",
+    "offset_classes_note": "Some classes by {{field}} have an offset of their own.",
     "cluster_size_by_count": "By count",
     "cluster_size_by_count_sub": "From the smallest to the largest size by the points in a cluster",
     "scope_then_field": "{{value}}, then by {{field}}",
