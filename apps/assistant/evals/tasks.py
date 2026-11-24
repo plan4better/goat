@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 29
+EVAL_SET_VERSION = 30
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow", "map"]
@@ -141,6 +141,9 @@ class ToolsCheck(_Check):
     #: Each with a call that succeeded, the first such call of each after
     #: that of the one before it.
     in_order: list[str] = Field(default_factory=list)
+    #: Reference files of a skill, each returned by a skills_load call that
+    #: succeeded (its ``file``).
+    loaded: list[str] = Field(default_factory=list)
 
 
 class DocsCheck(_Check):

@@ -61,7 +61,14 @@ STYLE_SURFACES: frozenset[Surface] = frozenset({"project.map"})
 
 
 async def _catalog(env: ToolEnv, args: CatalogInput) -> CatalogResult:
-    return search(args)
+    if args.kind != "icons":
+        return search(args)
+    # No await between the count and its read: the calls of one response run
+    # concurrently, and only one of them is the answer's first.
+    env.icon_lookups.append(
+        tuple(args.queries) if args.queries is not None else (args.query or "",)
+    )
+    return search(args, again=len(env.icon_lookups) > 1)
 
 
 CATALOG: ToolSpec[CatalogInput, CatalogResult] = ToolSpec(
@@ -72,8 +79,10 @@ CATALOG: ToolSpec[CatalogInput, CatalogResult] = ToolSpec(
         "library icons (goat:<name>) and emoji (emoji:<code>). One call is "
         "enough: icons without a query, or with one that matches nothing, lists "
         "all of them by group; a search by English words answers at most 30 rows "
-        "and how many matched. For styling "
-        "only; datasets are found with catalog_search."
+        "and how many matched. For several icons, pass every search word in "
+        "queries, in one call, or leave the query out for all of them; one call "
+        "per icon is never needed. For styling only; datasets are found with "
+        "catalog_search."
     ),
     input_model=CatalogInput,
     output_model=CatalogResult,

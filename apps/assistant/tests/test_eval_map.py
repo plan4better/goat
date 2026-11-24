@@ -51,6 +51,7 @@ from evals.tasks import (
     load_tasks,
 )
 from tests.eval_map_answers import (
+    _ICON_CLASSES,
     ANSWERS,
     FIRST_MADE,
     SECOND_MADE,
@@ -137,10 +138,10 @@ def _density_check(**changes: Any) -> StyleCheck:
 # ---- the task set ------------------------------------------------------------------
 
 
-def test_the_map_suite_loads_forty_five_tasks_on_the_map_page() -> None:
+def test_the_map_suite_loads_forty_seven_tasks_on_the_map_page() -> None:
     tasks = load_tasks("map")
-    assert len(tasks) == 45
-    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 46)]
+    assert len(tasks) == 47
+    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 48)]
     assert {t.context["surface"] for t in tasks} == {"project.map"}
     assert {t.context["project_id"] for t in tasks} <= {
         MAP_PROJECT_ID,
@@ -159,7 +160,7 @@ def test_the_map_suite_loads_forty_five_tasks_on_the_map_page() -> None:
     ]
     assert sorted(t.id for t in tasks if t.undo) == ["map-20", "map-21", "map-31"]
     assert [t.id for t in tasks if t.answer_card] == ["map-17", "map-25"]
-    assert EVAL_SET_VERSION == 29
+    assert EVAL_SET_VERSION == 30
 
 
 def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
@@ -172,7 +173,7 @@ def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
                 wants.setdefault(check.where, []).append(task.id)
     assert "any" not in wants
     assert wants["new"] == ["map-17", "map-21"]
-    assert len(wants["same"]) == 26
+    assert len(wants["same"]) == 28
     prompts = {t.id: t.prompt.casefold() for t in load_tasks("map")}
     assert "as separate styles" in prompts["map-17"]
     assert "two style options" in prompts["map-17"]
@@ -564,7 +565,7 @@ def test_the_two_tasks_that_bound_the_calls_of_one_request() -> None:
     assert map_layer(34).fields["area_m2"] == "number"
     assert MapState().layers[34]["query"] == LAND_USE_QUERY
     [icon_tools] = [c for c in icon.checks if isinstance(c, ToolsCheck)]
-    assert icon_tools.at_most == {"style_catalog": 2, "style_update": 2}
+    assert icon_tools.at_most == {"style_catalog": 3, "style_update": 2}
     assert icon_tools.not_called == ["ask_user"]
     [blue_tools] = [c for c in blues.checks if isinstance(c, ToolsCheck)]
     assert blue_tools.at_most == {
@@ -620,7 +621,7 @@ async def test_an_icon_answer_with_more_calls_or_a_card_fails(
     assert all(g.passed for g in await grade(task, applied(task, right), backends))
     lookups = [
         ToolCall("style_catalog", {"kind": "icons", "query": w}, {}, False)
-        for w in "abc"
+        for w in "abcd"
     ]
     many = dataclasses.replace(right, calls=lookups)
     failed = [
@@ -641,6 +642,66 @@ async def test_an_icon_answer_with_more_calls_or_a_card_fails(
         lambda api: api.edit(40, lambda d: d["symbol"]["marker"].update(size=14))
     )
     assert not grade_style(_style_check(task), plain)[0]
+
+
+async def test_an_html_popup_needs_the_popup_file_html_mode_and_the_condition(
+    backends: Backends,
+) -> None:
+    """The name as a heading and the year only when it is known, written as
+    HTML: the stored popup is a template that names the name and tests the
+    year, after the skill's popup file was loaded."""
+    task = _map_task("map-46")
+    right = ANSWERS["map-46"]
+    assert all(g.passed for g in await grade(task, applied(task, right), backends))
+    assert map_layer(32).fields["opening_year"] == "integer"
+    [loaded] = [c for c in right.calls if c.args.get("file") == "popups.md"]
+    assert loaded.name == "skills_load"
+    unloaded = dataclasses.replace(
+        right, calls=[c for c in right.calls if c is not loaded]
+    )
+    failed = [
+        g.check
+        for g in await grade(task, applied(task, unloaded), backends)
+        if not g.passed
+    ]
+    assert failed == ["tools"]
+
+    def popup(value: dict[str, Any]) -> Any:
+        return lambda api: api.edit(32, lambda d: d.update(popup=value))
+
+    blocks = {
+        "blocks": [
+            {
+                "type": "field_list",
+                "attributes": [{"field": "name"}, {"field": "opening_year"}],
+            }
+        ]
+    }
+    always = {"mode": "html", "html": "<h3>{{ name }}</h3><p>{{ opening_year }}</p>"}
+    for wrong in (blocks, always):
+        passed, detail = grade_style(_style_check(task), _run(popup(wrong))[1])
+        assert not passed and "/popup/" in detail, detail
+
+
+async def test_icons_per_kind_need_an_icon_on_the_base_marker_too(
+    backends: Backends,
+) -> None:
+    """Points in no class draw the base marker: icons on the classes alone
+    leave "Other" without one."""
+    task = _map_task("map-47")
+    right = ANSWERS["map-47"]
+    assert all(g.passed for g in await grade(task, applied(task, right), backends))
+    [tools] = [c for c in task.checks if isinstance(c, ToolsCheck)]
+    assert tools.at_most == {"style_update": 2, "style_catalog": 3}
+
+    def classes_only(document: dict[str, Any]) -> None:
+        document["symbol"]["marker"]["size"] = 18
+        document["classify"] = copy.deepcopy(_ICON_CLASSES)
+
+    passed, detail = grade_style(
+        _style_check(task), _run(lambda api: api.edit(32, classes_only))[1]
+    )
+    assert not passed and "/symbol/marker/icon" in detail, detail
 
 
 async def test_a_blue_classification_counted_by_hand_fails(backends: Backends) -> None:

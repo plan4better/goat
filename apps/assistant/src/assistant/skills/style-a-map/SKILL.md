@@ -12,9 +12,9 @@ basemap, the 3D scene and the view (Changing the map). On a page without these
 tools (Workflows, layouts, dashboards, the catalog, home), tell the user to
 open the project's Map page.
 
-The comment above an example names the kind of layer it styles, or the tool
-it calls. Layers 12 (polygons), 13 (points) and 14 (lines) and their fields
-are invented: use the layer's own ids and fields.
+The comment above an example names the layer kind or the tool it calls.
+Layers 12 (polygons), 13 (points), 14 (lines) and their fields are invented:
+use your layer's ids and fields.
 
 ## How to work
 
@@ -79,6 +79,7 @@ request needs it; a loaded file stays in the conversation.
   hexagons, when a request could mean a drawing mode or an analysis ("where is
   it dense", catchment areas, access), and before you style the result of a
   workflow.
+- `popups.md`: popup blocks, HTML, layouts, hover, switching it off.
 
 ## Edit in place
 
@@ -112,8 +113,8 @@ Only the user's words change that (A new style or variants):
   coloring, `set` `/classify` to a list with the one classification you want.
   To change a classification that exists, `set` its `method`, `count` or
   `palette`.
-- `remove` takes a key back to its default: without `/render` the points are
-  drawn as points again.
+- `remove` takes a key back to its default: without `/render` points are drawn
+  as points again.
 - Never write `computed`.
 - style_get leaves computed values out and cuts a class list to its first 12
   (`cut` names the list). Read a part in full with `part`
@@ -139,25 +140,24 @@ Only the user's words change that (A new style or variants):
 |---|---|
 | one color for everything | the main part's color: `/symbol/fill/color`, `/symbol/line/color` or `/symbol/marker/color` |
 | the layer more transparent | `/opacity` from 0 to 1 for the whole layer, `/symbol/fill/opacity` for the fill alone |
-| a text field with up to 12 values | a classification with `method` `categories`, `count` = its `distinct_count`, a qualitative palette |
-| a text field with many values | `categories` with `count` 5 to 8 (the most frequent values) and `other` in grey; say what "Other" holds |
-| a number, in ranges | a classification with a numeric method, `count` and a sequential palette; the server computes the classes |
+| a text field with up to 12 values | `categories` with `count` = its `distinct_count`, a qualitative palette |
+| a text field with many values | `categories` with `count` 5 to 8 (the most frequent) and `other` in grey; say what "Other" holds |
+| a number, in ranges | a numeric method with `count` and a sequential palette; the server computes the classes |
 | a number, as a smooth ramp | the value form `{"field", "palette"}` as the color |
 | a number with a long tail (the last break is further from `max` than from the first break) | `quantile` classes, never `equal_interval`; as a ramp, `"scale": "log"` when every value is above 0 |
 | a share or a rate (0 to 1, percent, per 1,000) | sequential classes, `equal_interval` or `manual` with round limits; `"format": {"percent": true}` for values from 0 to 1 |
 | a count that grows with the area (residents per district) on polygons | never the fill color: large areas look important. Use a density or share field; without one, a circle per polygon sized by the count (Sizes), and say why |
-| values around a midpoint (a change, a difference, a balance) | a diverging palette with the midpoint in its middle: a ramp with a `domain` symmetric around it, or `manual` classes symmetric around it |
+| values around a midpoint (a change, a difference, a balance) | a diverging palette: a ramp with a `domain`, or `manual` classes, symmetric around the midpoint |
 | a year stored as a number | classes like any number, with `"format": {"thousands_separator": false}` |
 | a date field | no classes and no ramp (`field_type_mismatch`): offer the time slider (`/time` with `field` and `step` `year`, `month` or `day`), or ask for a number field |
 | a yes/no field | `categories` with the values `"true"` and `"false"` as text: one strong color, one grey |
-| a field that is empty for more than half the features | not a field to style by: say so and offer another |
+| a field empty for more than half the features | not one to style by: say so, offer another |
 | a look for some features only, by several fields or empty values | a rule: an item of `/rules` with `when` and the parts it changes |
 | many points as a surface, or counted per cell | `render` (looks-and-analyses.md) |
 
-The most frequent categories with the rest in grey; a ramp for a number with a
-long tail; a diverging ramp around 0 for values from -12 to 9 (the domain
-takes the larger distance on both sides); a yes/no field; a rule for features
-without a value:
+The most frequent categories, the rest in grey; a ramp for a long tail; a
+diverging ramp around 0 for values from -12 to 9 (the domain takes the larger
+side twice); a yes/no field; a rule for features without a value:
 
 <!-- layer: point -->
 ```json
@@ -188,13 +188,13 @@ without a value:
 
 - **Kind by meaning.** Sequential for low to high, diverging for two
   directions around a midpoint, qualitative for categories without an order.
-  Another kind draws the warning `palette_kind_mismatch`.
+  Another kind is the warning `palette_kind_mismatch`.
 - **Sequential:** `colorbrewer:YlOrRd`, `colorbrewer:YlGnBu`,
   `colorbrewer:Blues`, `colorbrewer:Greens`, `colorbrewer:Purples`,
   `d3:viridis`, `d3:cividis`, `d3:plasma`, `d3:magma`, `d3:inferno`.
 - **Diverging:** `colorbrewer:RdBu`, `colorbrewer:PuOr`, `colorbrewer:BrBG`,
   `colorbrewer:PiYG`. Not `colorbrewer:RdYlGn` or `colorbrewer:Spectral`
-  unless the user asks for red and green: many readers cannot tell them apart.
+  unless asked for red and green: many readers cannot tell them apart.
 - **Qualitative:** `colorbrewer:Set2` (soft, for areas), `colorbrewer:Dark2`
   (strong, for points and lines), `carto:Bold` (saturated, for dark basemaps
   and imagery), `colorbrewer:Paired` (up to 12). Not `colorbrewer:Set1`: it
@@ -208,16 +208,16 @@ without a value:
 - **Against the basemap.** Light: no pale fills; thin dark grey outlines
   (`#555555`, 0.5). Dark: no dark fills; light outlines. Imagery (`imagery`
   true): strong, saturated colors, a white `casing` under lines, an outline
-  around markers. Polygon fills at `opacity` 0.6 to 0.8 let the basemap show
-  through. When the basemap decided a choice, say so in the answer.
+  around markers. Polygon fills at `opacity` 0.6 to 0.8 show the basemap. Say
+  when the basemap decided a choice.
 - **The user names colors.** One color is a hex value. "A blue ramp" is
   `colorbrewer:Blues`. Colors of their own are an inline palette: a list of 2
   to 12 hex colors in place of the id, at least as many as classes
   (`palette_too_short`). Look any other name up with style_catalog (`kind`
   `palettes`, `query` or `palette_kind`). Never write a palette id you have
   not seen here or there.
-- Grey (`#9aa3ad`) is for "Other" and for features without a value, never for
-  a class.
+- Grey (`#9aa3ad`) is for "Other" and features without a value, never for a
+  class.
 
 ## Classes
 
@@ -269,7 +269,7 @@ without a value:
 - A size by a number is a value form: `range` is the size at the lowest and at
   the highest value. Markers take `"scale": "sqrt"` (the area grows with the
   value) and a range such as 4 to 24; line widths a range such as 1 to 8.
-- With sized markers, add `order` so that small ones lie on top, and an
+- With sized markers, add `order` so small ones lie on top, and an
   `opacity` of 0.7 to 0.8 where they overlap. A polygon layer takes a `marker`
   too: one per polygon.
 - Fixed sizes: points 6 to 10, a marker with an icon 16 to 20, lines 1.5 to 3;
@@ -294,21 +294,19 @@ without a value:
   ("bus", "shop"), or the emoji itself when the user named one. Use only ids
   it answers: an invented one is `unknown_icon`.
 - An icon on a circle: `icon` on a marker with `shape` `circle`, drawn in
-  `icon_color` (white) on the marker's `color`, at `size` 16 or more. The icon
-  alone: `"shape": "icon"`, tinted with `color`.
+  `icon_color` (white) on the marker's `color`, readable at 16 px or more. A
+  size by zoom gets its icon where it reaches 16 (`icon` by zoom,
+  `"interpolate": "step"`), a dot (`goat:circle-solid`) below, in classes
+  too. The icon alone: `"shape": "icon"`, tinted with `color`.
 - An emoji keeps its own colors: `color` and `icon_color` do not tint it. Use
   it with `"shape": "icon"`, and never to show a color by class.
-- An icon per category: each class sets its `marker` `icon`, the base marker
-  keeps `shape` `circle`. Use at most 8 different icons.
-
-<!-- layer: point -->
-```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker", "value": {"shape": "circle", "color": "#d95f02", "size": 18, "icon": "goat:shop", "icon_color": "#ffffff"}}]}
-```
+- An icon per category: each class sets its `marker` `icon` and the base
+  marker a neutral one, which "Other" and new values draw. At most 8 icons. Any
+  part the classes set (an outline, a label) is set on the base first.
 
 <!-- layer: point, classified -->
 ```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker/size", "value": 18}, {"op": "set", "path": "/classify/category/classes/c1/marker/icon", "value": "goat:school"}, {"op": "set", "path": "/classify/category/classes/c2/marker/icon", "value": "goat:shop"}]}
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker/size", "value": 18}, {"op": "set", "path": "/symbol/marker/icon", "value": "goat:marker"}, {"op": "set", "path": "/classify/category/classes/c1/marker/icon", "value": "goat:school"}, {"op": "set", "path": "/classify/category/classes/c2/marker/icon", "value": "goat:shop"}, {"op": "set", "path": "/classify/category/classes/c3/marker/icon", "value": "goat:park"}]}
 ```
 
 <!-- layer: point -->
@@ -340,8 +338,7 @@ without a value:
 - Without `popup` a click shows every field. To choose the fields, set
   `/popup` with one `field_list` block: its `attributes` name each `field`,
   with a `label` in the user's language and a `format` for numbers.
-- `trigger` is `click`, `hover` or `click_and_hover`; `"popup": false`
-  switches the popup off.
+- Load popups.md before you write a popup that is more than a list of fields.
 
 <!-- layer: point -->
 ```json
@@ -367,11 +364,9 @@ without a value:
 - Polygons only: `/symbol/extrude` draws each polygon as a volume. A field of
   heights in metres is `{"height": {"field"}}`; a field of floors takes
   `"unit": "storeys"` (3 m each); any other number is charted with a `range`
-  in metres (`{"field", "range": [0, 300]}`). A feature without a value stands
-  at 0.
+  in metres (`{"field", "range": [0, 300]}`).
 - The heights show only when the map is tilted: after the style, switch the
-  view with map_update, `set_view` with `mode` `3d` and a `pitch` (Changing
-  the map).
+  view with map_update, `set_view` with `mode` `3d` and a `pitch`.
 
 <!-- layer: polygon -->
 ```json
@@ -395,6 +390,11 @@ without a value:
 <!-- layer: line, classified -->
 ```json
 {"layer_project_id": 14, "operations": [{"op": "set", "path": "/symbol/line/width", "value": {"zoom": [[10, 1], [16, 4]]}}, {"op": "set", "path": "/classify/category/classes/c3/min_zoom", "value": 13}]}
+```
+
+<!-- layer: point -->
+```json
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker/size", "value": {"zoom": [[10, 8], [15, 18]]}}, {"op": "set", "path": "/symbol/marker/icon", "value": {"zoom": [[10, "goat:circle-solid"], [14, "goat:shop"]], "interpolate": "step"}}]}
 ```
 
 ## Reading the legend numbers
@@ -536,17 +536,12 @@ left in a new call.
 
 <!-- call: map_update -->
 ```json
-{"operations": [{"op": "filter", "layer_project_id": 13, "rows": [{"do": "add", "conditions": [{"field": "category", "op": "!=", "value": "park"}]}]}]}
+{"operations": [{"op": "filter", "layer_project_id": 13, "rows": [{"do": "add", "conditions": [{"field": "category", "op": "!=", "value": "park"}]}, {"do": "set_area", "regions": ["DE212"]}]}]}
 ```
 
 <!-- call: map_update -->
 ```json
 {"operations": [{"op": "filter", "layer_project_id": 12, "rows": [{"do": "replace", "row": 1, "condition": {"field": "population", "op": ">=", "value": 5000}}, {"do": "remove", "row": 3}]}]}
-```
-
-<!-- call: map_update -->
-```json
-{"operations": [{"op": "filter", "layer_project_id": 13, "rows": [{"do": "set_area", "regions": ["DE212"]}]}]}
 ```
 
 <!-- call: map_update -->
@@ -582,7 +577,6 @@ in `issues`. Fix both before you answer; an issue of level info may stay.
 
 - `field_type_mismatch`: a ramp or a numeric method on a text or date field.
   Use `categories`.
-- `template_syntax`: `{{ name }}` in a label. Write `{name}`.
 - `unknown_palette`, `unknown_icon`, `unknown_field`: an id or a name that
   does not exist (a palette without its namespace, such as "Blues"). Look it
   up; never guess a second time.
@@ -593,8 +587,8 @@ in `issues`. Fix both before you answer; an issue of level info may stay.
   `retarget` (`target` `outline.color`).
 - `zoom_not_whole`: the operation `round` on the zoom's path fixes it.
 - `zoom_needs_step`: a choice or an icon by zoom needs `"interpolate": "step"`.
-- `render_not_for_geometry`: a heatmap, clusters or hexagons on lines or
-  polygons. They draw points only.
+- `render_not_for_geometry`: a heatmap, clusters or hexagons draw points
+  only.
 - `override_not_per_feature`: a key that holds one value for the whole layer
   (a label's `placement`, a marker with `shape` `icon`) set in a second place.
   Set it on the base symbol only.
@@ -603,5 +597,5 @@ in `issues`. Fix both before you answer; an issue of level info may stay.
 
 ## House examples
 
-Styles judged good go here, each with one line on its data and look and the
-essential part of its style. None yet: follow the rules above.
+Styles judged good go here, each with a line on its data and look and its
+essential part. None yet: follow the rules above.

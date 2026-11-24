@@ -416,10 +416,10 @@ sent again with every later call, so a conversation loads only the one it uses. 
 exactly one file, and that its example drafts use only tools, inputs, settings and choices found in process
 descriptions captured from processes (`tests/fixtures/process_descriptions.json`). The second, `style-a-map`, is
 loaded before the model styles a layer or changes a layer's filter (the Map page's instructions name it): its
-`SKILL.md` holds the forms, palettes, classes and map operations, with a reference file each for rasters and for
-looks that could mean an analysis. Its tests (`tests/test_style_a_map_skill.py`) apply every example's operations with
-goatlib, validate every example document, check every palette, icon and tool it names, and keep `SKILL.md` within
-34,500 bytes, since a loaded skill is resent with every later call.
+`SKILL.md` holds the forms, palettes, classes and map operations, with a reference file each for rasters, for
+looks that could mean an analysis and for popups beyond a list of fields. Its tests (`tests/test_style_a_map_skill.py`)
+apply every example's operations with goatlib, validate every example document, check every palette, icon and tool it
+names, and keep `SKILL.md` within 34,500 bytes, since a loaded skill is resent with every later call.
 
 **User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
 are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such

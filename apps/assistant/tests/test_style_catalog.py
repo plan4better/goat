@@ -1,5 +1,6 @@
 """``style_catalog``: palettes, library icons and emoji looked up by word."""
 
+import asyncio
 import json
 import re
 import subprocess
@@ -9,11 +10,18 @@ from typing import Any
 import pytest
 from goatlib.style.catalog import Palette, emoji, icon_libraries, palettes
 from pydantic import ValidationError
+from pydantic_ai.messages import ToolReturnPart
 
+from assistant.agent import RunDeps, build_agent
+from assistant.context import parse_context
+from assistant.prompt import render_note
 from assistant.styles import catalog
 from assistant.styles.catalog import (
     ALL_ICONS,
+    ICON_ID,
+    ICONS_AGAIN,
     ICONS_LISTED,
+    MAX_PER_SEARCH,
     MAX_RESULTS,
     NOTHING_MATCHED,
     NOTHING_MATCHED_EMOJI,
@@ -23,8 +31,10 @@ from assistant.styles.catalog import (
     search,
 )
 from assistant.tools.registry import BY_WIRE_NAME
+from assistant.tools.runtime import execute
 from assistant.tools.styles import CATALOG, STYLE_TOOLS
-from assistant.tools.testing import fake_clients, tool_env
+from assistant.tools.testing import ScriptedModel, fake_clients, tool_env
+from assistant.tools.toolset import REPEATED_CALL
 
 
 def _search(**kwargs: Any) -> CatalogResult:
@@ -437,6 +447,7 @@ def test_the_tool_is_a_read_on_the_map_page_only() -> None:
     assert set(properties) == {
         "kind",
         "query",
+        "queries",
         "palette_kind",
         "colorblind_safe",
         "classes",
@@ -460,3 +471,211 @@ def test_the_search_loads_no_data_libraries() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert out.stdout.strip() == "[]"
+
+
+async def _lookup(env: Any, **args: Any) -> dict[str, Any]:
+    """One ``style_catalog`` call the way the runtime makes it: each call on
+    its own copy of the answer's environment."""
+    return await execute(CATALOG, env, args)
+
+
+async def test_the_first_icon_lookup_answers_its_matches_only() -> None:
+    env = tool_env(fake_clients())
+    first = await _lookup(env, kind="icons", query="bicycle")
+    assert first == search(CatalogInput(kind="icons", query="bicycle")).model_dump(
+        mode="json", exclude_none=True
+    )
+    assert "groups" not in first and first["results"]
+
+
+async def test_the_second_icon_lookup_of_an_answer_answers_the_whole_library() -> None:
+    env = tool_env(fake_clients())
+    await _lookup(env, kind="icons", query="bicycle")
+    # Palettes and emoji are not icon lookups.
+    await _lookup(env, kind="palettes", palette_kind="qualitative")
+    await _lookup(env, kind="emoji", query="fire")
+    library = search(CatalogInput(kind="icons"))
+    # The second, then a third and later, whatever the query.
+    for query in ("bus", "solid", "zzzqx", None, "park"):
+        again = await _lookup(env, kind="icons", query=query)
+        assert again["note"] == ICONS_AGAIN
+        assert again["results"] == [] and again["total"] == library.total
+        assert again["groups"] == library.model_dump(mode="json")["groups"]
+        size = len(json.dumps(again, separators=(",", ":"), ensure_ascii=False))
+        assert size < 4_500, query
+    assert "no further icon lookup is needed" in ICONS_AGAIN
+    assert ICONS_AGAIN.endswith(ICON_ID)
+
+
+async def test_a_new_answer_starts_the_icon_lookups_again() -> None:
+    first = tool_env(fake_clients())
+    await _lookup(first, kind="icons", query="bicycle")
+    assert (await _lookup(first, kind="icons", query="bus"))["note"] == ICONS_AGAIN
+    fresh = await _lookup(tool_env(fake_clients()), kind="icons", query="bus")
+    assert "groups" not in fresh and fresh["results"]
+
+
+def test_the_description_says_one_call_lists_several_icons() -> None:
+    description = " ".join(CATALOG.description.split())
+    assert (
+        "For several icons, pass every search word in queries, in one call, or "
+        "leave the query out for all of them; one call per icon is never needed."
+    ) in description
+
+
+async def test_a_repeat_answered_from_memory_is_no_icon_lookup() -> None:
+    script = ScriptedModel(
+        [
+            ("style_catalog", {"kind": "icons", "query": "bicycle"}),
+            ("style_catalog", {"kind": "icons", "query": "bicycle"}),
+            ("style_catalog", {"kind": "icons", "query": "bus"}),
+        ]
+    )
+    page = parse_context(
+        {"surface": "project.map", "project_id": "00000000-0000-0000-0000-000000000001"}
+    )
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(
+        message_id="m1",
+        emit=emit,
+        env=tool_env(fake_clients(), page=page),
+        prompt_note=render_note(page, None, "en"),
+    )
+    await build_agent(script.model).run("hi", deps=deps)
+    first, repeated, second = [
+        part.content
+        for message in script.requests[-1]
+        for part in getattr(message, "parts", [])
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert repeated == {**first, "repeated_call": REPEATED_CALL}
+    assert second["note"] == ICONS_AGAIN
+    assert deps.env is not None and deps.env.icon_lookups == [("bicycle",), ("bus",)]
+
+
+#: One word per kind of point of interest, as a model asks for them; four
+#: of them match no icon.
+KINDS = [
+    "restaurant",
+    "cafe",
+    "shop",
+    "school",
+    "park",
+    "hotel",
+    "bank",
+    "pharmacy",
+    "hospital",
+    "bar",
+]
+
+
+def test_one_call_answers_several_icon_searches() -> None:
+    result = _search(kind="icons", queries=["bicycle", " parking  garage ", "solid"])
+    assert result.searches is not None and result.results == []
+    assert [s.query for s in result.searches] == [
+        "bicycle",
+        "parking garage",
+        "solid",
+    ]
+    for search_ in result.searches:
+        alone = _all(kind="icons", query=search_.query)
+        assert search_.total == len(alone)
+        assert search_.results == alone[:MAX_PER_SEARCH]
+    assert result.total == sum(s.total for s in result.searches)
+    # Every search found something: no library.
+    assert result.groups is None
+    assert result.note == f"Each search shows at most {MAX_PER_SEARCH} rows."
+
+
+def test_a_search_that_finds_nothing_brings_the_library_once() -> None:
+    result = _search(kind="icons", queries=KINDS)
+    assert result.searches is not None and len(result.searches) == len(KINDS)
+    missed = [s.query for s in result.searches if s.total == 0]
+    assert missed == ["cafe", "hotel", "bank", "bar"]
+    for search_ in result.searches:
+        if search_.total == 0:
+            assert search_.results == []
+    library = _search(kind="icons")
+    assert result.groups == library.groups and result.total == library.total
+    assert result.note == (
+        'Each search shows at most 8 rows. Nothing matched "cafe", "hotel", '
+        '"bank", "bar": the whole library by group follows, pick from it. ' + ICON_ID
+    )
+    assert _size(result) < 6_000
+
+
+def test_the_largest_answer_of_several_searches_stays_bounded() -> None:
+    """Ten searches each answering the 8 largest icon rows, and the library:
+    more than any real call answers (ten kinds of point of interest stay under
+    6,000 bytes above)."""
+
+    def size(value: Any) -> int:
+        return len(
+            json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+        )
+
+    rows = sorted((size(r) for r in _all(kind="icons")), reverse=True)
+    per_search = sum(rows[:MAX_PER_SEARCH]) + 100
+    library = _size(_search(kind="icons"))
+    assert 10 * per_search + library + 300 < 11_000
+
+
+def test_several_emoji_searches_in_one_call() -> None:
+    result = _search(kind="emoji", queries=["fire", "zzzqx", "\U0001f6d2"])
+    assert result.searches is not None and result.groups is None
+    fire, empty, trolley = result.searches
+    assert fire.results == _all(kind="emoji", query="fire")[:MAX_PER_SEARCH]
+    assert empty.results == [] and empty.total == 0
+    assert [row["id"] for row in trolley.results] == ["emoji:1f6d2"]
+    assert result.note is not None and 'Nothing matched "zzzqx"' in result.note
+    assert PASS_THE_EMOJI in result.note
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"kind": "icons", "query": "bus", "queries": ["park"]},
+        {"kind": "icons", "queries": []},
+        {"kind": "icons", "queries": ["x"] * 11},
+        {"kind": "icons", "queries": [""]},
+        {"kind": "icons", "queries": ["x" * 61]},
+        {"kind": "palettes", "queries": ["blues"]},
+    ],
+    ids=str,
+)
+def test_queries_out_of_range_are_refused(args: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        CatalogInput(**args)
+
+
+def test_query_and_queries_together_are_refused_in_a_sentence() -> None:
+    with pytest.raises(ValidationError, match="not both"):
+        CatalogInput(kind="icons", query="bus", queries=["park"])
+
+
+async def test_a_second_icons_call_with_several_searches_answers_the_library() -> None:
+    env = tool_env(fake_clients())
+    first = await _lookup(env, kind="icons", queries=["bicycle", "bus"])
+    assert first["searches"] and "groups" not in first
+    again = await _lookup(env, kind="icons", queries=["park", "shop"])
+    assert again["note"] == ICONS_AGAIN and "searches" not in again
+    # Emoji searches are no icon lookups.
+    fresh = tool_env(fake_clients())
+    await _lookup(fresh, kind="emoji", queries=["fire", "tree"])
+    assert "searches" in await _lookup(fresh, kind="icons", queries=["park"])
+
+
+async def test_two_concurrent_first_icon_calls_count_as_two() -> None:
+    """The calls of one response run concurrently: one of them is the first,
+    the other the second."""
+    env = tool_env(fake_clients())
+    results = await asyncio.gather(
+        _lookup(env, kind="icons", query="bicycle"),
+        _lookup(env, kind="icons", queries=["park", "bus"]),
+    )
+    notes = [result.get("note") for result in results]
+    assert notes.count(ICONS_AGAIN) == 1
+    assert sorted(env.icon_lookups) == [("bicycle",), ("park", "bus")]

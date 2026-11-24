@@ -176,6 +176,10 @@ class ToolEnv:
     #: (``assistant.tools.styles``): from the third of one layer on, the
     #: result says to finish.
     style_changes: dict[int, int] = field(default_factory=dict)
+    #: The searches of this answer's icon lookups, one entry per call
+    #: (``assistant.tools.styles``): from the second on, the result is the
+    #: whole library by group.
+    icon_lookups: list[tuple[str, ...]] = field(default_factory=list)
     #: The card values this answer's map changes asked the user's pick for
     #: (``MapUpdated.confirm``, ``assistant.tools.map_edits``): a question
     #: that offers one asks no answered question again

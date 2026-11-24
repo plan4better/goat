@@ -388,6 +388,28 @@ def _view_pieces(bounds: tuple[float, float, float, float]) -> tuple[Piece, ...]
     return added.pieces
 
 
+#: Points of interest by kind: the five most frequent each with an icon,
+#: the rest in grey.
+_ICON_CLASSES: list[dict[str, Any]] = [
+    {
+        "field": "category",
+        "method": "categories",
+        "palette": "colorbrewer:Dark2",
+        "classes": [
+            {"values": [value], "marker": {"color": color, "icon": icon}}
+            for value, color, icon in (
+                ("restaurant", "#1b9e77", "goat:restaurant"),
+                ("cafe", "#d95f02", "goat:mug-hot-solid"),
+                ("shop", "#7570b3", "goat:shop"),
+                ("bus_stop", "#e7298a", "goat:bus"),
+                ("pharmacy", "#66a61e", "goat:pharmacy"),
+            )
+        ],
+        "other": {"name": "Other", "marker": {"color": "#9aa3ad"}},
+    }
+]
+
+
 def _without_area(api: Api) -> None:
     stored = read_rows(api.state.layers[34]["query"], None)
     api.put_layer(34, query=write_rows(Rows(stored.match, stored.rows)))
@@ -852,6 +874,54 @@ ANSWERS: dict[str, Answer] = {
     "map-45": Answer(
         answer="I cannot draw a shape on the map. You can draw it yourself in "
         "the layer's Filter tab, under Area."
+    ),
+    "map-46": Answer(
+        lambda api: api.edit(
+            32,
+            _set(
+                popup={
+                    "mode": "html",
+                    "html": "<h3>{{ name }}</h3>{% if opening_year %}"
+                    "<p>Opened in {{ opening_year }}</p>{% endif %}",
+                }
+            ),
+        ),
+        calls=[
+            ToolCall("skills_load", {"name": "style-a-map"}, {}, False),
+            ToolCall(
+                "skills_load", {"name": "style-a-map", "file": "popups.md"}, {}, False
+            ),
+            _call("project_get_fields"),
+            _call("style_update"),
+        ],
+        answer="The popup of the points of interest shows the name as a heading "
+        "and the opening year where it is known.",
+    ),
+    # The five most frequent kinds with an icon each; the base marker's icon
+    # is what the other kinds draw.
+    "map-47": Answer(
+        lambda api: api.edit(
+            32,
+            lambda d: (
+                _symbol("marker", size=18, icon="goat:marker")(d),
+                d.update(classify=copy.deepcopy(_ICON_CLASSES)),
+            ),
+        ),
+        calls=[
+            _call("project_field_statistics"),
+            ToolCall(
+                "style_catalog",
+                {
+                    "kind": "icons",
+                    "queries": ["restaurant", "cafe", "shop", "bus", "pharmacy"],
+                },
+                {},
+                False,
+            ),
+            _call("style_update"),
+        ],
+        answer="The five most common kinds have their own icon on a colored "
+        "circle; all other kinds show a grey marker icon.",
     ),
 }
 

@@ -5,20 +5,25 @@ A record's text is its words: lower case, every run of characters other than
 letters and digits read as a space, so ``bicycle_parked`` and ``travel_places``
 are two words each. Every word of the query must start one of the record's
 words; a word is never matched in its middle. An emoji in the query finds
-itself by its code. Icons without a query, or with one that matches nothing,
-answer the whole library by group, so one call is enough.
+itself by its code. ``queries`` runs several searches in one call. Icons
+without a query, or with one that matches nothing, answer the whole library by
+group, so one call is enough; so does an answer's second icon lookup, whatever
+its query.
 """
 
 import re
 from functools import cache
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from goatlib.style.catalog import Palette, emoji, icon_groups, icon_names, palettes
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Kind = Literal["palettes", "icons", "emoji"]
 
 MAX_RESULTS = 30
+#: The searches one call takes, and the rows each of them answers.
+MAX_SEARCHES = 10
+MAX_PER_SEARCH = 8
 #: Fewer icons than this found by a query point to the whole list.
 FEW_ICONS = 3
 NOTHING_MATCHED = "Nothing matched. Search with English words, one or two at a time."
@@ -32,11 +37,29 @@ ICONS_LISTED = f"Every library icon, by group. {ICON_ID}"
 NOTHING_MATCHED_ICONS = (
     'Nothing matched "{query}": this is the whole library by group. ' + ICON_ID
 )
+#: The note of an answer's second and later icon lookups, which answer the
+#: whole library by group whatever their query.
+ICONS_AGAIN = (
+    "This answer looked up icons already, so here is the whole library by "
+    "group: pick every icon you need from it, no further icon lookup is "
+    f"needed. {ICON_ID}"
+)
 ALL_ICONS = (
     "call style_catalog once with kind icons and no query for the whole list "
     "instead of trying other words"
 )
 PASS_THE_EMOJI = "When the user named an emoji, pass the emoji itself as query."
+SEARCHES_CUT = f"Each search shows at most {MAX_PER_SEARCH} rows."
+#: The note of icon searches of one call of which some matched nothing, which
+#: answer the whole library once beside them.
+SOME_MATCHED_NOTHING_ICONS = (
+    "Nothing matched {queries}: the whole library by group follows, pick from "
+    "it. " + ICON_ID
+)
+BOTH_QUERIES = "Pass query for one search or queries for several, not both."
+QUERIES_NOT_PALETTES = (
+    "queries is for icons and emoji; find palettes with query or palette_kind."
+)
 NOTHING_MATCHED_EMOJI = f"{NOTHING_MATCHED} {PASS_THE_EMOJI}"
 PALETTES_CUT = (
     "Narrow the list with palette_kind (sequential, diverging or qualitative) "
@@ -67,6 +90,17 @@ class CatalogInput(BaseModel):
             "for every library icon by group, or the first palettes or emoji."
         ),
     )
+    queries: list[Annotated[str, Field(min_length=1, max_length=60)]] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_SEARCHES,
+        description=(
+            "Icons and emoji only: several searches in one call, 1 to 10, each "
+            "read as query, e.g. ['restaurant', 'school', 'park'] for an icon "
+            "per kind. Each search answers its own rows. Pass query or "
+            "queries, not both."
+        ),
+    )
     palette_kind: Literal["sequential", "diverging", "qualitative"] | None = Field(
         default=None,
         description=(
@@ -94,6 +128,14 @@ class CatalogInput(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _one_query_form(self) -> Self:
+        if self.query is not None and self.queries is not None:
+            raise ValueError(BOTH_QUERIES)
+        if self.queries is not None and self.kind == "palettes":
+            raise ValueError(QUERIES_NOT_PALETTES)
+        return self
+
 
 class IconGroup(BaseModel):
     group: str
@@ -101,16 +143,28 @@ class IconGroup(BaseModel):
     icons: list[str]
 
 
+class Search(BaseModel):
+    query: str
+    #: The search's first ``MAX_PER_SEARCH`` rows, as ``CatalogResult.results``.
+    results: list[dict[str, Any]]
+    #: How many records matched.
+    total: int
+
+
 class CatalogResult(BaseModel):
     kind: Kind
     #: Palette ``{id, name, kind, colorblind_safe, colors}`` (and ``classes``
     #: when asked); icon ``{id: "goat:<name>", group}``; emoji
     #: ``{id: "emoji:<code>", name, group}``. At most ``MAX_RESULTS``; empty
-    #: when ``groups`` lists the icons.
+    #: when ``groups`` lists the icons or ``searches`` answers the rows.
     results: list[dict[str, Any]]
-    #: How many records matched; with ``groups``, how many icons they list.
+    #: How many records matched; with ``groups``, how many icons they list;
+    #: with ``searches`` alone, how many all searches matched.
     total: int
-    #: Icons without a query, or with one that matched nothing: every library
+    #: Several searches (``queries``): each with its own rows.
+    searches: list[Search] | None = None
+    #: Icons without a query, with one that matched nothing (of several
+    #: searches: any), or after the answer's first icon lookup: every library
     #: icon, in the picker's groups.
     groups: list[IconGroup] | None = None
     note: str | None = None
@@ -221,15 +275,20 @@ def _emoji(query: list[str], glyph: str | None = None) -> list[dict[str, Any]]:
     return [row for *_, row in found]
 
 
-def matches(args: CatalogInput) -> list[dict[str, Any]]:
-    """Every row the search matches, in its order."""
-    query = _words(args.query or "")
+def _found(args: CatalogInput, text: str) -> list[dict[str, Any]]:
+    """Every row a search for ``text`` matches, in its order."""
+    query = _words(text)
     if args.kind == "palettes":
         return _palettes(args, query)
     if args.kind == "icons":
         return _icons(query)
     # A query without words is read as the emoji it holds.
-    return _emoji(query, None if query else _glyph(args.query or ""))
+    return _emoji(query, None if query else _glyph(text))
+
+
+def matches(args: CatalogInput) -> list[dict[str, Any]]:
+    """Every row the search matches, in its order."""
+    return _found(args, args.query or "")
 
 
 def _empty_note(args: CatalogInput) -> str:
@@ -267,7 +326,45 @@ def _library(note: str = ICONS_LISTED) -> CatalogResult:
     )
 
 
-def search(args: CatalogInput) -> CatalogResult:
+def _searches(args: CatalogInput, queries: list[str]) -> CatalogResult:
+    searches = []
+    for text in queries:
+        rows = _found(args, text)
+        searches.append(
+            Search(
+                query=" ".join(text.split()),
+                results=rows[:MAX_PER_SEARCH],
+                total=len(rows),
+            )
+        )
+    notes = []
+    if any(found.total > MAX_PER_SEARCH for found in searches):
+        notes.append(SEARCHES_CUT)
+    missed = ", ".join(f'"{found.query}"' for found in searches if not found.total)
+    library = None
+    if missed and args.kind == "icons":
+        # Replacements for the words that found nothing, without another call.
+        library = _library(SOME_MATCHED_NOTHING_ICONS.format(queries=missed))
+        notes.append(library.note or "")
+    elif missed:
+        notes.append(f"Nothing matched {missed}. {PASS_THE_EMOJI}")
+    return CatalogResult(
+        kind=args.kind,
+        results=[],
+        total=library.total if library else sum(found.total for found in searches),
+        searches=searches,
+        groups=library.groups if library else None,
+        note=" ".join(notes) or None,
+    )
+
+
+def search(args: CatalogInput, *, again: bool = False) -> CatalogResult:
+    """``again``: an icon lookup after the answer's first, which answers the
+    whole library whatever its query or queries."""
+    if args.kind == "icons" and again:
+        return _library(ICONS_AGAIN)
+    if args.queries is not None:
+        return _searches(args, args.queries)
     if args.kind == "icons" and not _words(args.query or ""):
         return _library()
     rows = matches(args)

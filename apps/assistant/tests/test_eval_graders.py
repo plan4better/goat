@@ -43,14 +43,14 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_26_project_13_workflow_and_45_map_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_26_project_13_workflow_and_47_map_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
     assert sum(t.suite == "project" for t in tasks) == 26
     assert sum(t.suite == "workflow" for t in tasks) == 13
-    assert sum(t.suite == "map" for t in tasks) == 45
+    assert sum(t.suite == "map" for t in tasks) == 47
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
     assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 9
@@ -280,6 +280,23 @@ async def test_docs_check_grades_the_pages_read(backends: Backends) -> None:
     other = _transcript(tool_calls=[read("sharing/public"), read("map/filter", True)])
     assert [g.passed for g in await grade(task, other, backends)] == [False]
     assert [g.passed for g in await grade(task, _transcript(), backends)] == [False]
+
+
+async def test_the_tools_check_reads_the_reference_files_loaded(
+    backends: Backends,
+) -> None:
+    task = _task('{"kind": "tools", "loaded": ["popups.md"]}')
+
+    def load(failed: bool = False, **args: str) -> ToolCall:
+        return ToolCall("skills_load", {"name": "style-a-map", **args}, {}, failed)
+
+    loaded = _transcript(tool_calls=[load(), load(file="popups.md")])
+    assert [g.passed for g in await grade(task, loaded, backends)] == [True]
+    instructions = _transcript(tool_calls=[load(), load(file="rasters.md")])
+    [refused] = await grade(task, instructions, backends)
+    assert refused.passed is False and "popups.md" in refused.detail
+    failed = _transcript(tool_calls=[load(failed=True, file="popups.md")])
+    assert [g.passed for g in await grade(task, failed, backends)] == [False]
 
 
 def test_docs_tasks_name_pages_that_exist() -> None:

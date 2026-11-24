@@ -1,6 +1,6 @@
 # GOAT eval set
 
-36 catalog, 26 project, 13 workflow and 45 map tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 26 project, 13 workflow and 47 map tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
@@ -49,7 +49,7 @@ run and after the Undo, and the `style` and `map` checks (`map_graders.py`) grad
 (edited in place, or new where the request asks for a new style or for options and then which of the styles made is drawn, its classification, paths, legend shares, no error stored), the map state (what is drawn, the
 order, groups, basemap, filters and their areas as the filter panel reads them, layers removed or kept, nothing
 stored) and that Undo brought back the state before,
-computed stamps aside. The `view` check reads the view the answer's `map_update` calls set. The `tools` check bounds the calls of a tool in an answer (`at_most`); a key that joins tools with `+` bounds their calls together. A task with
+computed stamps aside. The `view` check reads the view the answer's `map_update` calls set. The `tools` check bounds the calls of a tool in an answer (`at_most`); a key that joins tools with `+` bounds their calls together. Its `loaded` names the skill reference files a `skills_load` call must have returned (`popups.md`). A task with
 `answer_value` has the eval user pick the option of that value in the card instead of the first one. The tools get what
 the eval user typed (the task's turns and prompt) and the skills the task's turns loaded, as in a run, so a new style
 needs a quote of the prompt's words. A workflow can be

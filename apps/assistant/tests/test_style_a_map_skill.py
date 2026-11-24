@@ -1,5 +1,5 @@
 """The built-in skill style-a-map and the prompt around it: the skill loads
-with its two reference files, every tool, palette, icon, emoji, key and issue
+with its three reference files, every tool, palette, icon, emoji, key and issue
 code it names exists, every style example is a call goatlib accepts for the
 layer kind its marker names, and every map example a call map_update reads."""
 
@@ -35,7 +35,7 @@ from assistant.tools.styles import UPDATE_STYLE, StyleGetInput, StyleView
 from assistant.workflows.runs import RunStatus
 
 NAME = "style-a-map"
-FILES = {"rasters.md", "looks-and-analyses.md"}
+FILES = {"rasters.md", "looks-and-analyses.md", "popups.md"}
 PROJECT = UUID("00000000-0000-0000-0000-0000000005e9")
 TOOL_NAME = re.compile(
     r"\b(?:workflow|project|catalog|core|map|style|ask|skills)_[a-z_]+\b"
@@ -93,6 +93,8 @@ FIELDS = (
     FieldInfo("year", "integer", min=1870, max=2024),
     FieldInfo("active", "boolean"),
     FieldInfo("opened", "date"),
+    FieldInfo("website", "string"),
+    FieldInfo("photo_url", "string"),
 )
 #: Ids and field names the examples' pointers name beside the style's keys.
 POINTER_WORDS = {f.name for f in FIELDS} | {"c1", "c2", "c3", "r1", "b1", "k1"}
@@ -310,7 +312,7 @@ def _vocabulary() -> set[str]:
 # -- the skill and its files -----------------------------------------------------
 
 
-def test_the_skill_loads_and_names_its_two_files() -> None:
+def test_the_skill_loads_and_names_its_three_files() -> None:
     skill = _skill()
     assert set(skill.files) == FILES
     named = set(re.findall(r"\b[\w-]+\.md\b", skill.instructions)) - {"SKILL.md"}
@@ -946,6 +948,148 @@ def test_rasters_have_a_worked_band_formula() -> None:
         r["band"]["expression"] for r in renders if isinstance(r.get("band"), dict)
     ]
     assert formulas and all(re.fullmatch(r"[b0-9 ()+*/.-]+", f) for f in formulas)
+
+
+#: The parts a class record can switch on for its features.
+_CLASS_PARTS = ("fill", "outline", "line", "casing", "marker", "label")
+
+
+def _records(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every class record of a vector style: classes, other and no_data."""
+    found: list[dict[str, Any]] = []
+    for item in document.get("classify") or []:
+        found += [r for r in item.get("classes") or [] if isinstance(r, dict)]
+        found += [
+            item[k] for k in ("other", "no_data") if isinstance(item.get(k), dict)
+        ]
+    return found
+
+
+def test_a_part_or_an_icon_the_classes_set_is_set_on_the_base_too() -> None:
+    """Features in no class draw the base: an icon or a part only the classes
+    set leaves "Other" and new values without it. Every example sets it on
+    the base first, and the classified icon example gives every class and
+    the base an icon."""
+    icons = _plain(_section("Icons and emoji"))
+    assert "the base marker a neutral one" in icons
+    assert '"Other" and new values draw' in icons
+    assert "set on the base first" in icons
+    assert "the base marker keeps shape circle" not in icons
+    for example in _style_calls():
+        document = _result(example)
+        symbol = document.get("symbol") or {}
+        for record in _records(document):
+            for part in _CLASS_PARTS:
+                if isinstance(record.get(part), dict):
+                    assert isinstance(symbol.get(part), dict), (example.call, part)
+            marker = record.get("marker")
+            if isinstance(marker, dict) and "icon" in marker:
+                assert symbol["marker"].get("icon"), example.call
+    [classified] = [
+        e
+        for e in _style_calls()
+        if e.state == "classified"
+        and any("/marker/icon" in o["path"] for o in e.call["operations"])
+    ]
+    document = _result(classified)
+    assert document["symbol"]["marker"]["icon"] == "goat:marker"
+    records = document["classify"][0]["classes"]
+    assert all(record["marker"].get("icon") for record in records)
+
+
+def _at_zoom(stops: list[list[Any]], zoom: float) -> float:
+    """A linear value by zoom at ``zoom``."""
+    (z0, v0), (_, v1) = stops[0], stops[-1]
+    if zoom <= z0:
+        return float(v0)
+    for (a, va), (b, vb) in zip(stops, stops[1:]):
+        if a <= zoom <= b:
+            return float(va + (vb - va) * (zoom - a) / (b - a))
+    return float(v1)
+
+
+def test_an_icon_shows_from_the_zoom_where_its_marker_is_large_enough() -> None:
+    """An icon needs a marker of about 16 px. A marker that grows with the
+    zoom switches from a dot to its icon at the zoom where it reaches that
+    size, by a step zoom form."""
+    icons = _plain(_section("Icons and emoji"))
+    assert "16 px or more" in icons
+    assert '"interpolate": "step"' in icons
+    markers = [(_result(e).get("symbol") or {}).get("marker") for e in _style_calls()]
+    zoomed = [
+        m for m in markers if isinstance(m, dict) and isinstance(m.get("icon"), dict)
+    ]
+    assert zoomed and all(z["icon"]["interpolate"] == "step" for z in zoomed)
+    for marker in zoomed:
+        (low, dot), (switch, icon) = marker["icon"]["zoom"]
+        size = marker["size"]["zoom"]
+        assert dot == "goat:circle-solid" and icon != dot
+        assert _at_zoom(size, low) < 16 <= _at_zoom(size, switch)
+        assert _at_zoom(size, switch - 1) < 16
+
+
+def _popup_calls() -> list[Example]:
+    return [e for e in _style_calls() if e.source == "popups.md"]
+
+
+def test_popups_md_is_loaded_for_more_than_a_list_of_fields() -> None:
+    popups = _plain(_section("Popups"))
+    assert (
+        "load popups.md before you write a popup that is more than a list of fields"
+        in popups.lower()
+    )
+    assert "field_list" in popups and "attributes" in popups
+    # The rest is in the reference file.
+    assert "click_and_hover" not in popups
+    assert len((SKILLS_DIR / NAME / "popups.md").read_bytes()) <= 6000
+
+
+def test_popups_md_teaches_the_blocks_the_html_mode_and_the_fields_to_pick() -> None:
+    text = _plain(_skill().files["popups.md"])
+    for block in ("field_list", "text", "image", "button", "badge", "divider"):
+        assert block in text, block
+    for key in ("label", "type", "format", "trigger", "layout", "header"):
+        assert key in text, key
+    for liquid in ("{{ name }}", "{% if", "{% for", "upcase"):
+        assert liquid in text, liquid
+    assert "escaped" in text and "sanitized" in text
+    for name in (
+        "attr-table",
+        "attr-field",
+        "attr-value",
+        "attr-list",
+        "badge",
+        "btn-link",
+        "btn-outlined",
+        "btn-filled",
+    ):
+        assert name in text, name
+    assert "does not convert back" in text
+    assert "Blocks by default" in text
+    assert "Never name a field you have not read" in text
+    assert "at most eight" in text
+    for kind in ("A URL as a button", "an image URL as an image block", "ids"):
+        assert kind in text, kind
+
+
+def test_the_popup_examples_are_a_block_popup_an_html_popup_and_switching_off() -> None:
+    """Each validates against fields the examples' layers have (the style
+    test above), and together they show the forms the file teaches."""
+    popups = [
+        o["value"]
+        for e in _popup_calls()
+        for o in e.call["operations"]
+        if o["path"] == "/popup"
+    ]
+    assert False in popups
+    blocks = [p for p in popups if isinstance(p, dict) and p.get("blocks")]
+    html = [p for p in popups if isinstance(p, dict) and p.get("mode") == "html"]
+    assert blocks and html
+    types = {b["type"] for p in blocks for b in p["blocks"]}
+    assert {"field_list", "text", "button"} <= types
+    assert any("{{" in b.get("html", "") for p in blocks for b in p["blocks"])
+    template = html[0]["html"]
+    assert "<h3>" in template and "{% if" in template and "<img" in template
 
 
 # -- the prompt ---------------------------------------------------------------------

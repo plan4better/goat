@@ -308,16 +308,24 @@ async def _grade_one(
         made = [c.name for c in transcript.tool_calls if not c.failed]
         first = [made.index(t) if t in made else -1 for t in check.in_order]
         ordered = -1 not in first and first == sorted(first)
+        files = {
+            c.args.get("file")
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed
+        }
+        unloaded = [f for f in check.loaded if f not in files]
         return (
             not missing_tools
             and not untried
             and not forbidden
             and not over
-            and ordered,
+            and ordered
+            and not unloaded,
             f"no successful call of {missing_tools}, called {forbidden}"
             + (f", never tried {untried}" if untried else "")
             + (f", too often {over}" if over else "")
-            + ("" if ordered else f", not {' before '.join(check.in_order)}"),
+            + ("" if ordered else f", not {' before '.join(check.in_order)}")
+            + (f", never loaded {unloaded}" if unloaded else ""),
         )
     if isinstance(check, DocsCheck):
         read = {
