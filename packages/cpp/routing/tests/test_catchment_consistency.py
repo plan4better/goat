@@ -192,10 +192,18 @@ def test_outputs_agree_band_by_band(overrides, cell, grid_points):
         assert all(
             area.buffer(tolerance).contains(p) for p in reached
         ), f"band {band}: a grid point of the band outside the polygon"
+        # A point of a later band may lie well inside the polygon only where
+        # a street of the band runs within a grid cell of it: the polygon
+        # cannot tell two streets that close apart (a pedestrian zone the
+        # bicycle crosses slowly, next to a street it rides).
         inner = area.buffer(-tolerance)
-        assert not any(
-            inner.contains(p) for p in not_reached
-        ), f"band {band}: a grid point of a later band well inside the polygon"
+        unexplained = [
+            p for p in not_reached if inner.contains(p) and streets.distance(p) > cell
+        ]
+        assert not unexplained, (
+            f"band {band}: a grid point of a later band well inside the polygon, "
+            f"away from its streets"
+        )
 
 
 def test_the_start_point_is_in_the_first_band():
