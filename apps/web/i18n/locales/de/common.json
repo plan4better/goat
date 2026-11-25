@@ -606,6 +606,7 @@
   "connect_service_copy_note": "<b>Als Kopie importiert.</b> Die Features werden einmalig in GOAT kopiert, sodass Sie sie stylen, filtern und mit Werkzeugen analysieren können. Spätere Änderungen an der Quelle kommen nicht an. Große Feature-Typen können einige Minuten dauern; der Layer erscheint, sobald er bereit ist.",
   "connect_service_direct_tiles": "Eine Kachelvorlage hat keine Layerliste: Diese Adresse ist der Layer. Prüfen Sie, ob die Vorschau zeigt, was Sie erwarten.",
   "connect_service_direct_cog": "Die Datei wird stückweise direkt von ihrem Speicherort gelesen, es wird nichts hochgeladen.",
+  "connect_service_cog_no_preview": "Diese Datei kann im Browser nicht in der Vorschau gezeigt werden. GOAT liest sie, sobald sie hinzugefügt ist.",
   "connect_service_save_to": "Speichern in",
   "connect_service_combine": "{{count}} Layer werden als ein Kartenlayer hinzugefügt, in der Reihenfolge Ihrer Auswahl gezeichnet.",
   "connect_service_import": "Layer importieren",

@@ -595,6 +595,7 @@
   "connect_service_copy_note": "<b>Imported as a copy.</b> The features are copied into GOAT once, so you can style, filter and run tools on them. Later changes at the source won’t show up. Large feature types can take a few minutes; the layer appears as soon as it’s ready.",
   "connect_service_direct_tiles": "A tile template has no list of layers: this address is the layer. Check the preview shows what you expect.",
   "connect_service_direct_cog": "The file is read in pieces straight from where it is stored, so nothing is uploaded.",
+  "connect_service_cog_no_preview": "This file can’t be previewed in the browser. GOAT reads it once it is added.",
   "connect_service_save_to": "Save to",
   "connect_service_combine": "{{count}} layers are added as one map layer, drawn in the order you picked them.",
   "connect_service_import": "Import layer",
