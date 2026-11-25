@@ -40,7 +40,8 @@ export const SLIDERS: Readonly<Record<string, SliderRange>> = {
   "label.spacing": { min: 50, max: 1000, step: 10, unit: "px" },
   "label.padding": { min: 0, max: 30, step: 1, unit: "px" },
   "heatmap.radius": { min: 5, max: 60, step: 1, unit: "px" },
-  "heatmap.intensity": { min: 0.2, max: 3, step: 0.05, pct: true },
+  // A multiplier of the density, shown as the number it is ("1.6"), not as a share.
+  "heatmap.intensity": { min: 0.2, max: 3, step: 0.05 },
   "heatmap.opacity": PCT,
   "h3.opacity": PCT,
   "h3.outline.width": { min: 0, max: 8, step: 0.5, unit: "px" },
