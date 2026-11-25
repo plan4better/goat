@@ -39,6 +39,7 @@ from evals.tasks import (
     AnswerCheck,
     AskedCheck,
     ClassRule,
+    ColorRule,
     EvalTask,
     JudgeCheck,
     LayerRule,
@@ -139,10 +140,10 @@ def _density_check(**changes: Any) -> StyleCheck:
 # ---- the task set ------------------------------------------------------------------
 
 
-def test_the_map_suite_loads_fifty_one_tasks_on_the_map_page() -> None:
+def test_the_map_suite_loads_fifty_six_tasks_on_the_map_page() -> None:
     tasks = load_tasks("map")
-    assert len(tasks) == 51
-    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 52)]
+    assert len(tasks) == 56
+    assert [t.id for t in tasks] == [f"map-{n:02d}" for n in range(1, 57)]
     assert {t.context["surface"] for t in tasks} == {"project.map"}
     assert {t.context["project_id"] for t in tasks} <= {
         MAP_PROJECT_ID,
@@ -170,7 +171,7 @@ def test_the_map_suite_loads_fifty_one_tasks_on_the_map_page() -> None:
     assert [t.id for t in tasks if any(r.cold_requests for r in t.messages)] == [
         "map-49"
     ]
-    assert EVAL_SET_VERSION == 32
+    assert EVAL_SET_VERSION == 33
 
 
 def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
@@ -183,7 +184,7 @@ def test_only_a_request_that_asks_for_a_new_style_accepts_one() -> None:
                 wants.setdefault(check.where, []).append(task.id)
     assert "any" not in wants
     assert wants["new"] == ["map-17", "map-21"]
-    assert len(wants["same"]) == 32
+    assert len(wants["same"]) == 37
     prompts = {t.id: t.prompt.casefold() for t in load_tasks("map")}
     assert "as separate styles" in prompts["map-17"]
     assert "two style options" in prompts["map-17"]
@@ -856,6 +857,255 @@ def test_a_value_form_counts_as_a_classification_by_attribute() -> None:
         update={"classification": rule.model_copy(update={"methods": ["quantile"]})}
     )
     assert not grade_style(strict, transcript)[0]
+
+
+# ---- colors: automatic, None, transparency -----------------------------------------
+
+
+#: The tasks on the colors GOAT derives, None and a color's own transparency:
+#: the color rule each grades, and the basemap its page shows.
+COLOR_TASKS = {
+    "map-52": ("outline_follows", "light"),
+    "map-53": ("labels_readable", "dark"),
+    "map-54": ("fill_half_transparent", "light"),
+    "map-55": ("outline_only", "light"),
+    "map-56": ("class_none", "light"),
+}
+
+
+def test_the_color_tasks_grade_one_color_rule_each_on_their_basemap() -> None:
+    for task_id, (kind, tone) in COLOR_TASKS.items():
+        task = _map_task(task_id)
+        check = _style_check(task)
+        assert [rule.kind for rule in check.colors] == [kind], task_id
+        assert task.context["basemap"]["tone"] == tone, task_id
+        assert check.colors[0].tone == tone, task_id
+        assert check.where == "same" and not task.critical, task_id
+    others = [t for t in load_tasks("map") if t.id not in COLOR_TASKS]
+    assert not any(
+        c.colors for t in others for c in t.checks if isinstance(c, StyleCheck)
+    )
+    # The outline task colors a layer whose outline starts fixed; the fill
+    # tasks start from a fill that is opaque at 0.8 in one color.
+    start = MapState()
+    districts = start.styles[start.active_style_id(31)].document["symbol"]
+    assert districts["outline"]["color"].startswith("#")
+    buildings = start.styles[start.active_style_id(36)].document
+    assert "classify" not in buildings
+    assert buildings["symbol"]["fill"] == {"color": "#008695", "opacity": 0.8}
+
+
+def _colors(link: int, change: Any, **rule: Any) -> tuple[bool, str]:
+    """``change`` (a function of the document) saved on layer ``link`` and
+    graded by a style check with one color rule."""
+    check = StyleCheck(
+        kind="style", layer_project_id=link, where="same", colors=[ColorRule(**rule)]
+    )
+    return grade_style(check, _run(lambda api: api.edit(link, change))[1])
+
+
+def _density_classes(**base: Any) -> Any:
+    def change(document: dict[str, Any]) -> None:
+        document["classify"] = [
+            {
+                "field": "density",
+                "method": "quantile",
+                "count": 5,
+                "palette": "colorbrewer:YlOrRd",
+                **base,
+            }
+        ]
+
+    return change
+
+
+def _then(*changes: Any) -> Any:
+    def change(document: dict[str, Any]) -> None:
+        for step in changes:
+            step(document)
+
+    return change
+
+
+def test_an_outline_follows_the_fill_only_in_auto() -> None:
+    """Districts in classes with an outline in a darker shade of each class:
+    "auto" passes; the fixed outline they start with, "fill", a classification
+    of the outline color and a fixed outline color per class fail."""
+    auto = _then(_density_classes(), _symbol("outline", color="auto", width=0.5))
+    passed, detail = _colors(31, auto, kind="outline_follows")
+    assert passed, detail
+    passed, detail = _colors(31, _density_classes(), kind="outline_follows")
+    assert not passed and "outline.color" in detail
+    same = _then(_density_classes(), _symbol("outline", color="fill"))
+    assert not _colors(31, same, kind="outline_follows")[0]
+
+    def outline_classes(document: dict[str, Any]) -> None:
+        auto(document)
+        document["classify"].append(
+            {
+                "field": "density",
+                "target": "outline.color",
+                "method": "quantile",
+                "count": 5,
+                "palette": "colorbrewer:Reds",
+            }
+        )
+
+    passed, detail = _colors(31, outline_classes, kind="outline_follows")
+    assert not passed and "classification" in detail
+
+    def per_class(document: dict[str, Any]) -> None:
+        document["symbol"]["outline"]["color"] = "auto"
+        document["classify"] = [
+            {
+                "field": "density",
+                "method": "manual",
+                "classes": [
+                    {"to": 3000, "fill": {"color": "#fee8c8"}, "outline": {"color": "#b3a290"}},
+                    {"from": 3000, "fill": {"color": "#e34a33"}, "outline": {"color": "#9f3424"}},
+                ],
+            }
+        ]  # fmt: skip
+
+    passed, detail = _colors(31, per_class, kind="outline_follows")
+    assert not passed and "class" in detail
+    # An "auto" outline that draws nothing, or classes that all switch it off.
+    for nothing in (
+        _then(auto, _symbol("outline", width=0)),
+        _then(auto, _symbol("outline", opacity=0)),
+    ):
+        passed, detail = _colors(31, nothing, kind="outline_follows")
+        assert not passed and "no outline" in detail, detail
+
+    def classes_off(document: dict[str, Any]) -> None:
+        per_class(document)
+        for record in document["classify"][0]["classes"]:
+            record["outline"] = False
+
+    passed, detail = _colors(31, classes_off, kind="outline_follows")
+    assert not passed and "switches the outline off" in detail, detail
+
+
+def test_labels_are_readable_on_the_dark_basemap() -> None:
+    """Station labels on the dark basemap: text and halo "auto", a text "auto"
+    beside the default halo, a white text in a dark halo, and the default pair
+    (dark text in a white halo, which meets the floor too) pass; a white text
+    in a white halo, or with the halo left out (the default white one), and a
+    layer without labels fail."""
+    rule = {"kind": "labels_readable", "tone": "dark"}
+
+    def label(**keys: Any) -> Any:
+        return _symbol("label", text="{name}", **keys)
+
+    for good in (
+        label(color="auto", halo={"color": "auto"}),
+        label(color="auto"),
+        label(color="#ffffff", halo={"color": "#1f2933", "width": 1.5}),
+        label(halo={"color": "auto"}),
+        label(),
+    ):
+        passed, detail = _colors(40, good, **rule)
+        assert passed, detail
+    for bad in (
+        label(color="#ffffff"),
+        label(color="#ffffff", halo={"color": "#ffffff", "width": 1}),
+        label(color="#ffffff00", halo={"color": "#1f2933"}),
+        label(color="#ffffff80", halo={"color": "#1f2933"}),
+    ):
+        passed, detail = _colors(40, bad, **rule)
+        assert not passed and "contrast" in detail, detail
+    passed, detail = _colors(40, _symbol("marker", size=12), **rule)
+    assert not passed and "no label" in detail
+
+
+def test_a_half_transparent_fill_is_carried_by_one_of_two() -> None:
+    """Buildings start with a fill at 0.8: half transparent is the fill's
+    opacity at 0.5 or its color at 50 % with the opacity at 1, never both."""
+    rule = {"kind": "fill_half_transparent"}
+    for good in (
+        _symbol("fill", opacity=0.5),
+        _symbol("fill", color="#00869580", opacity=1),
+    ):
+        passed, detail = _colors(36, good, **rule)
+        assert passed, detail
+    for bad in (
+        _symbol("fill", color="#00869580", opacity=0.5),
+        _symbol("fill", color="#00869580"),
+        _symbol("fill", opacity=0.4),
+        _symbol("fill", opacity=0.5, color="#ff0000"),
+    ):
+        passed, detail = _colors(36, bad, **rule)
+        assert not passed and "fill" in detail, detail
+
+
+def test_outline_only_draws_no_fill_and_an_outline_in_the_layers_hue() -> None:
+    """Buildings (fill #008695, outline "auto") as outlines only: a None fill
+    with the outline kept, or the fill off with an outline in the fill color,
+    pass. An outline that copies a None fill ("fill"), one in grey, the fill
+    off with an "auto" outline (the shade of the default fill color), a fill
+    that still draws and no outline fail."""
+    rule = {"kind": "outline_only"}
+    for good in (
+        _symbol("fill", color="#00869500"),
+        _then(lambda d: d["symbol"].update(fill=False), _symbol("outline", color="#008695")),
+        _then(_symbol("fill", color="#00869500"), _symbol("outline", color="#005e68", width=2)),
+    ):  # fmt: skip
+        passed, detail = _colors(36, good, **rule)
+        assert passed, detail
+    for bad, says in (
+        (_then(_symbol("fill", color="#00869500"), _symbol("outline", color="fill")), "outline"),
+        (_then(_symbol("fill", color="#00869500"), _symbol("outline", color="#333333")), "hue"),
+        (lambda d: d["symbol"].update(fill=False), "hue"),
+        (_symbol("fill", color="#00000000"), "hue"),
+        (_symbol("outline", width=2), "fill"),
+        (_then(_symbol("fill", color="#00869500"), lambda d: d["symbol"].update(outline=False)), "outline"),
+        (_then(_symbol("fill", color="#00869500"), lambda d: d.update(opacity=0)), "layer"),
+    ):  # fmt: skip
+        passed, detail = _colors(36, bad, **rule)
+        assert not passed and says in detail, detail
+
+
+def test_one_class_is_hidden_by_a_none_fill_and_the_others_stay() -> None:
+    """Land use: the industrial class's fill at None passes; the class
+    removed, another class changed too, the fill only made transparent by its
+    opacity, or a None color in another hue (its "auto" outline would follow
+    that hue) fail."""
+    rule = {"kind": "class_none", "field": "use", "value": "industrial"}
+
+    def class_fill(class_id: str, **keys: Any) -> Any:
+        def change(document: dict[str, Any]) -> None:
+            [record] = [
+                c for c in document["classify"][0]["classes"] if c["id"] == class_id
+            ]
+            record["fill"] = {**record["fill"], **keys}
+
+        return change
+
+    passed, detail = _colors(34, class_fill("c6", color="#b3b3b300"), **rule)
+    assert passed, detail
+    # The hue is compared without case, as the format reads hex.
+    passed, detail = _colors(34, class_fill("c6", color="#B3B3B300"), **rule)
+    assert passed, detail
+
+    def class_outline_off(document: dict[str, Any]) -> None:
+        class_fill("c6", color="#b3b3b300")(document)
+        [record] = [c for c in document["classify"][0]["classes"] if c["id"] == "c6"]
+        record["outline"] = False
+
+    def removed(document: dict[str, Any]) -> None:
+        classes = document["classify"][0]["classes"]
+        classes[:] = [c for c in classes if c["id"] != "c6"]
+
+    for bad, says in (
+        (removed, "no class"),
+        (_then(class_fill("c6", color="#b3b3b300"), class_fill("c1", color="#e41a1c")), "changed"),
+        (class_fill("c6", opacity=0), "None"),
+        (class_fill("c6", color="#3182bd00"), "hue"),
+        (_then(class_fill("c6", color="#b3b3b300"), lambda d: d["symbol"].update(outline=False)), "border"),
+        (class_outline_off, "border"),
+    ):  # fmt: skip
+        passed, detail = _colors(34, bad, **rule)
+        assert not passed and says in detail, detail
 
 
 def test_the_popup_check_reads_the_fields_the_popup_names() -> None:
@@ -1851,3 +2101,64 @@ async def test_no_task_is_passed_by_doing_nothing(
     assert passed is (task.id in PASSED_BY_DOING_NOTHING), [
         (g.check, g.detail) for g in grades
     ]
+
+
+# ---- the outline loop of map-52 -----------------------------------------------------
+
+_OFF = {"op": "set", "path": "/symbol/outline", "value": False}
+_EMPTY = {"op": "set", "path": "/symbol/outline", "value": {}}
+_AUTO = {"op": "set", "path": "/symbol/outline/color", "value": "auto"}
+#: The first calls of runs of map-52 on a model that went wrong: the outline
+#: switched off twice, a bare "auto" in its place, reset to {} twice. Each is
+#: followed by the key-level call the model sends next, which must land.
+_MAP_52_STARTS: dict[str, list[dict[str, Any]]] = {
+    "off twice": [_OFF, _OFF],
+    "bare auto": [{"op": "set", "path": "/symbol/outline", "value": "auto"}],
+    "reset twice": [_EMPTY, _EMPTY],
+}
+
+
+@pytest.mark.parametrize("start", list(_MAP_52_STARTS))
+async def test_the_key_level_outline_lands_after_each_failed_start(
+    start: str, backends: Backends, settings: Any
+) -> None:
+    task = _map_task("map-52")
+    calls: list[Any] = [
+        ("skills_load", {"name": "style-a-map"}),
+        ("style_update", {"layer_project_id": 31, "operations": _MAP_52_STARTS[start]}),
+        ("style_update", {"layer_project_id": 31, "operations": [_AUTO]}),
+    ]
+    transcript = await played(task, [(calls, "Done.")], backends, settings)
+    first, then = [c for c in transcript.tool_calls if c.name == "style_update"]
+    assert first.failed is (start == "bare auto"), first.result
+    assert then.failed is False, then.result
+    after = transcript.map_after
+    assert after is not None
+    style_id = after["layers"][31]["active_style_id"] or next(
+        s for s, v in after["styles"].items() if v["layer_project_id"] == 31
+    )
+    outline = after["styles"][style_id]["document"]["symbol"]["outline"]
+    assert outline["color"] == "auto", outline
+    if start == "bare auto":
+        assert 'set /symbol/outline/color to \\"auto\\"' in json.dumps(first.result)
+    if start == "off twice":
+        assert "switched it on" in json.dumps(then.result)
+
+
+async def test_a_key_set_after_false_in_the_same_call_lands(
+    backends: Backends, settings: Any
+) -> None:
+    task = _map_task("map-52")
+    calls: list[Any] = [
+        ("skills_load", {"name": "style-a-map"}),
+        ("style_update", {"layer_project_id": 31, "operations": [_OFF, _AUTO]}),
+    ]
+    transcript = await played(task, [(calls, "Done.")], backends, settings)
+    [call] = [c for c in transcript.tool_calls if c.name == "style_update"]
+    assert call.failed is False, call.result
+    after = transcript.map_after
+    assert after is not None
+    documents = [
+        v["document"] for v in after["styles"].values() if v["layer_project_id"] == 31
+    ]
+    assert documents[0]["symbol"]["outline"] == {"color": "auto"}

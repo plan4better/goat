@@ -145,6 +145,23 @@ describe("marker images", () => {
     expect(bare).toEqual([]);
   });
 
+  it("a fill that is not opaque clears the stroke's inner half first, so the stroke lies outside as on a hollow marker", async () => {
+    for (const fill of ["#1a6b4d80", "#1a6b4d00", "rgba(26,107,77,0.5)"]) {
+      const painted = recordingCanvas();
+      await drawMarker(`goat-marker:diamond|20||${fill}|#ffffff|2|#ffffff`);
+      expect(painted).toEqual([
+        { op: "stroke", color: "#ffffff", composite: "source-over" },
+        { op: "fill", color: "#000000", composite: "destination-out" },
+        { op: "fill", color: fill, composite: "source-over" },
+      ]);
+      vi.restoreAllMocks();
+    }
+    // An opaque fill in either form covers the inner half itself.
+    const opaque = recordingCanvas();
+    await drawMarker("goat-marker:diamond|20||rgba(26,107,77,1)|#ffffff|2|#ffffff");
+    expect(opaque.map((p) => p.composite)).toEqual(["source-over", "source-over"]);
+  });
+
   it("an icon that fails to load is loaded again on the next draw", async () => {
     // An image that fails its first load and loads after; every load as a CORS request.
     const loads: Array<{ src: string; crossOrigin: string | null }> = [];

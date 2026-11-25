@@ -22,6 +22,7 @@ from assistant.context import (
     CatalogContext,
     PageContext,
     ProjectMapContext,
+    advised_tone,
     dump_context,
     project_of,
 )
@@ -399,10 +400,16 @@ def _guidance(page: PageContext) -> list[str]:
 
 def _state(page: PageContext) -> dict[str, object]:
     """The page state for the note, without the offered basemaps: a list of
-    up to 30 entries in every message would only lengthen it."""
+    up to 30 entries in every message would only lengthen it. The basemap's tone
+    is the one the assistant advises by (``advised_tone``)."""
     state: dict[str, object] = dump_context(page)
     for key in ("surface", "sources", "basemaps"):
         state.pop(key, None)
+    if isinstance(page, ProjectMapContext) and page.basemap is not None:
+        state["basemap"] = {
+            **page.basemap.model_dump(mode="json"),
+            "tone": advised_tone(page.basemap),
+        }
     return state
 
 

@@ -116,10 +116,10 @@ describe("a palette's colors under its Palette row", () => {
       }
     );
     await userEvent.click(swatches()[1]);
-    expect(screen.getByRole("button", { name: "#d7301f" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "#D7301F" })).toBeDefined();
     await userEvent.click(bins()[0]);
     expect(store.get("symbol.fill.color.palette")).toEqual(["#808080", "#ffffff", "#ff0000"]);
-    expect(screen.queryByRole("button", { name: "#d7301f" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "#D7301F" })).toBeNull();
   });
 
   it("a reversed inline palette by attribute draws reversed and stays as written", () => {

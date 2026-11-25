@@ -81,6 +81,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--concurrency", type=int, default=4)
     run.add_argument("--results-dir", type=Path, default=RESULTS_DIR)
+    run.add_argument(
+        "--calls",
+        action="store_true",
+        help="keep each tool call's arguments and answer in the results file",
+    )
     run.add_argument("--allow-test-model", action="store_true", help=argparse.SUPPRESS)
     prom = commands.add_parser(
         "promote", help="add a passing model to the tested-models list"
@@ -263,6 +268,7 @@ async def _run(
         judge_tokens=(
             (judge.usage.input_tokens, judge.usage.output_tokens) if judge else (0, 0)
         ),
+        calls=args.calls,
     )
     path = write_report(report, args.results_dir)
     summary = report["summary"]

@@ -1,7 +1,8 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { classTexts } from "@/lib/style/categoryTexts";
-import { perLayer } from "@/lib/style/compile/cascade";
+import { cascade, perLayer } from "@/lib/style/compile/cascade";
+import { derivedColor, followedKey, isDerivedWord, ruleOf } from "@/lib/style/compile/derived";
 import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
 import { DEFAULT_CLUSTER_SYMBOL, h3Resolution, h3Scale, pointsSymbol } from "@/lib/style/compile/render";
@@ -283,6 +284,14 @@ function fieldStops(form: unknown): Array<[number, unknown]> | null {
 /** Whether a value follows a field, at every zoom (spec 4.3) or in its zoom stops (spec 4.4): no one value to show. */
 const followsField = (form: unknown): boolean => byField(form) || fieldStops(form) !== null;
 
+/** A field's value used as it is (spec 4.3: no palette, no range). */
+const asRead = (value: unknown): boolean => byField(value) && !("palette" in value) && !("range" in value);
+
+/** Whether a value uses a field's value as it is, at every zoom or in a zoom stop: a color known only when drawn,
+ * which a rule cannot turn (spec 4.5). */
+const readsField = (form: unknown): boolean =>
+  asRead(form) || (fieldStops(form)?.some(([, value]) => asRead(value)) ?? false);
+
 /** The stops a value by zoom reads at `zoom`, as the compiler's `valueAt` reads them: the first or the last beyond
  * them, the one the zoom is on or a step holds, else the two around the zoom. */
 function stopsAround<T>(stops: Array<[number, T]>, zoom: number, step: boolean): Array<[number, T]> {
@@ -371,13 +380,38 @@ function arrowsSwatch(
   const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
   return {
     icon,
-    color:
-      (merged.color !== undefined ? resolve(merged.color, "arrows.color", zoom) : undefined) ?? lineColor,
+    color: derivedColor(
+      "arrows.color",
+      merged.color !== undefined ? resolve(merged.color, "arrows.color", zoom) : undefined,
+      lineColor
+    ),
     direction: perLayer(style, "arrows.direction"),
     placement: perLayer(style, "arrows.placement"),
     turn_with_line: perLayer(style, "arrows.turn_with_line"),
   };
 }
+
+const volumeAlpha = new WeakMap<JsonObject, boolean>();
+
+/** Whether a raised layer's volumes draw their fill colors without their transparency: MapLibre drops an extrusion
+ * color's alpha, so where the fill color varies (by class, rule, field or zoom) it is lost (spec 4.6). */
+function dropsVolumeAlpha(style: JsonObject): boolean {
+  if (!volumeAlpha.has(style)) {
+    const color = extrudes(style) ? cascade(style, "fill.color", {}) : undefined;
+    volumeAlpha.set(style, color !== undefined && (isZoomed(color) || typeof color.expr !== "string"));
+  }
+  return volumeAlpha.get(style)!;
+}
+
+/** A fill color as a raised layer's volumes draw it: without a transparency where the layer drops it; a None color
+ * stays None, its record leaves the volumes. */
+const volumeColor = (style: JsonObject, color: unknown): unknown =>
+  typeof color === "string" &&
+  /^#[0-9a-f]{8}$/i.test(color) &&
+  !color.endsWith("00") &&
+  dropsVolumeAlpha(style)
+    ? color.slice(0, 7)
+    : color;
 
 /** The base merged with a record's overrides (spec 6.1): `false` switches a part off, an object switches on a part the
  * base leaves out; a part the base switches off stays off. An outline in the fill color takes the color the main part
@@ -395,47 +429,78 @@ function swatch(
   const out: Swatch = { geometry };
   const at = (path: string) => (images.has(path) ? Math.floor(zoom) : zoom);
   let mainColor: unknown;
+  let mainRead = false;
   for (const part of PARTS[geometry]) {
     const base = symbol[part];
     const over = override?.[part];
     const used = part === MAIN[geometry] || isObject(base) || isObject(over);
     const merged: JsonObject = { ...(isObject(base) ? base : {}), ...(isObject(over) ? over : {}) };
-    if (part === MAIN[geometry]) mainColor = resolve(merged.color, `${part}.color`, at(`${part}.color`));
+    if (part === MAIN[geometry]) {
+      mainColor = resolve(merged.color, `${part}.color`, at(`${part}.color`));
+      mainRead = readsField(merged.color);
+    }
     if (!used || over === false || base === false) continue;
+    // Whether the part's own color is read from a field as it is (an Auto icon follows the marker's).
+    const ownRead = readsField(merged.color);
     // A main color by attribute has no one color to show (its ramp stands beside the entries): neutral grey.
     if (part === MAIN[geometry] && followsField(merged.color)) merged.color = LEGEND_NEUTRAL;
     if (neutral && part === MAIN[geometry]) {
       const own = isObject(over) ? over : {};
       if (own.color === undefined) merged.color = LEGEND_NEUTRAL;
-      if (part === "marker" && own.icon_color === undefined && merged.icon_color !== undefined)
+      // An icon color derived from the marker's (Auto) follows the neutral marker instead.
+      if (
+        part === "marker" &&
+        own.icon_color === undefined &&
+        merged.icon_color !== undefined &&
+        !isDerivedWord("marker.icon_color", merged.icon_color)
+      )
         merged.icon_color = LEGEND_NEUTRAL;
     }
     const resolved: Part = {};
     for (const key of KEYS[part])
       resolved[key] = resolve(merged[key], `${part}.${key}`, at(`${part}.${key}`));
+    if (part === "fill") resolved.color = volumeColor(style, resolved.color);
     if (part === "marker" && merged.icon !== undefined)
       resolved.icon = resolve(merged.icon, "marker.icon", zoom);
-    // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own.
-    if (part === "marker" && merged.fill === false && resolved.shape !== "icon") {
-      resolved.fill = false;
-      if (merged.icon_color === undefined) resolved.icon_color = resolved.color;
-    }
+    // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own; an
+    // Auto icon white or dark on the marker color, in the marker's hue on a hollow one.
+    const hollow = part === "marker" && merged.fill === false && resolved.shape !== "icon";
+    if (hollow) resolved.fill = false;
+    if (
+      part === "marker" &&
+      (isDerivedWord("marker.icon_color", resolved.icon_color) || (hollow && merged.icon_color === undefined))
+    )
+      resolved.icon_color = derivedColor(
+        "marker.icon_color",
+        merged.icon_color === undefined ? undefined : resolved.icon_color,
+        resolved.color,
+        { hollow, raw: ownRead }
+      );
     if (part === "fill" && resolved.pattern !== "none") {
       // In the fill color unless it has its own, drawn in an image.
       resolved.pattern_color = followsField(merged.pattern_color)
         ? merged.pattern_color
-        : merged.pattern_color !== undefined
-          ? resolve(merged.pattern_color, "fill.pattern_color", at("fill.pattern_color"))
-          : resolve(merged.color, "fill.color", at("fill.pattern_color"));
+        : derivedColor(
+            "fill.pattern_color",
+            merged.pattern_color !== undefined
+              ? resolve(merged.pattern_color, "fill.pattern_color", at("fill.pattern_color"))
+              : undefined,
+            resolve(merged.color, "fill.color", at("fill.pattern_color"))
+          );
       for (const key of ["pattern_spacing", "pattern_width"])
         resolved[key] = resolve(merged[key], `fill.${key}`, zoom);
     }
-    if (part === "outline" && resolved.color === "fill")
-      resolved.color =
-        (geometry === "point" ? out.marker?.color : out.fill?.color) ??
-        mainColor ??
-        DEFAULTS[geometry === "point" ? "marker.color" : "fill.color"];
     out[part] = resolved;
+  }
+  // An outline's or a casing's word ("fill", "auto"): from the color the main part shows, drawn or not (the casing
+  // comes before the line); a main color read from a field stands as it is.
+  for (const part of ["outline", "casing"] as const) {
+    const own = out[part];
+    const key = `${part}.color`;
+    const follows = followedKey(key, geometry);
+    if (!own || !follows || !isDerivedWord(key, own.color)) continue;
+    const main = out[follows.split(".")[0] as "fill" | "line" | "marker"]?.color ?? mainColor;
+    own.color = derivedColor(key, own.color, main ?? DEFAULTS[follows], { raw: mainRead });
   }
   if (geometry === "line") {
     const arrows = arrowsSwatch(style, symbol.arrows, override?.arrows, out.line?.color, zoom);
@@ -532,7 +597,8 @@ function valueFormSections(
           id,
           title,
           field: form.field as string,
-          colors: colorsOf(form),
+          colors:
+            id === "fill.color" ? colorsOf(form).map((c) => volumeColor(style, c) as string) : colorsOf(form),
           domain,
           // Three significant digits: a guide to where the middle sits, not a value to read exactly.
           ...(curved ? { middle: Number(scaleValue(form, domain, 0.5).toPrecision(3)) } : {}),
@@ -1080,13 +1146,22 @@ function clusterSections(style: JsonObject, render: JsonObject, zoom: number): L
   const sample = points ? swatch({ symbol: pointsSymbol(style) }, "point", zoom) : own;
   if ((render.count ?? DEFAULTS["cluster.count"]) === "badge") {
     const label = isObject(symbol.label) ? symbol.label : {};
-    const outline = isObject(symbol.outline) ? symbol.outline : null;
     sample.badge = {
       color: typeof own.marker?.color === "string" ? own.marker.color : (DEFAULTS["marker.color"] as string),
-      text: typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
-      ring: outline
-        ? typeof outline.color === "string"
-          ? outline.color
+      // An Auto number white or dark on the badge's color, as on the map.
+      text: String(
+        derivedColor(
+          "cluster.symbol.label.color",
+          typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
+          typeof own.marker?.color === "string" ? own.marker.color : DEFAULTS["marker.color"],
+          // The badge draws its number without a halo.
+          { against: null }
+        )
+      ),
+      // The cluster symbol's outline as its swatch draws it, "Same as fill" and "auto" resolved.
+      ring: isObject(symbol.outline)
+        ? typeof own.outline?.color === "string"
+          ? own.outline.color
           : (DEFAULTS["outline.color"] as string)
         : "#ffffff",
     };
@@ -1128,6 +1203,16 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
   const value = isObject(render.value) ? render.value : {};
   const field = value.op !== "count" && typeof value.field === "string" ? { field: value.field } : {};
   const opacity = renderOpacity(render.opacity, DEFAULTS["h3.opacity"] as number, zoom);
+  // An Auto outline carries each class's shade, so the swatches draw it; flat hexagons only, and not at width 0.
+  const outline = isObject(render.outline) ? render.outline : {};
+  const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
+  const shaded =
+    !isObject(render.extrude) && width > 0 && ruleOf("h3.outline.color", outline.color) !== undefined;
+  const cell = (color: string): Swatch => ({
+    geometry: "polygon",
+    fill: { color, opacity },
+    ...(shaded ? { outline: { color: derivedColor("h3.outline.color", outline.color, color), width } } : {}),
+  });
   if (scale.kind === "ramp")
     return [
       {
@@ -1151,7 +1236,7 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
           {
             id: "0",
             extra: "h3",
-            swatch: { geometry: "polygon" as const, fill: { color: scale.color, opacity } },
+            swatch: cell(scale.color),
           },
         ],
       },
@@ -1169,7 +1254,7 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
           ...(i > 0 ? { from: scale.breaks[i - 1] } : {}),
           ...(i < n - 1 ? { to: scale.breaks[i] } : {}),
         },
-        swatch: { geometry: "polygon" as const, fill: { color, opacity } },
+        swatch: cell(color),
       })),
       ...(scale.domain ? { domain: scale.domain } : {}),
     },

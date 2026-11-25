@@ -558,6 +558,40 @@ export const previewSource = (service: ConnectedService, ids: string[]): Preview
   return null;
 };
 
+/** What the preview of a COG does: draw it, fitted to its bounds, or say it cannot be shown in the browser. */
+export type CogPreview = { kind: "draw"; bounds: LngLatBounds } | { kind: "unavailable" };
+
+/** Degrees of longitude per web mercator metre: 180° is half the earth's circumference, 20037508.34 m. */
+const DEGREES_PER_METRE = 180 / 20037508.342789244;
+
+/**
+ * Whether a bbox is what the browser's COG reader makes of a file in degrees. It reads every file's bounds as web
+ * mercator metres (it only refuses a file that declares another projected CRS), so a file read in degrees appears
+ * as a box close to 0°/0°: its coordinates, -180 to 360 east and -90 to 90 north, taken as metres. The box checked
+ * is twice that range, for a grid whose edges reach half a cell past those limits. A web mercator file is taken
+ * for one in degrees only if it lies entirely inside that box, in the open sea at 0°/0°.
+ */
+const degreesReadAsMetres = ([west, south, east, north]: number[]) => {
+  const within = (value: number, from: number, to: number) =>
+    value >= from * DEGREES_PER_METRE && value <= to * DEGREES_PER_METRE;
+  return (
+    within(west, -360, 720) && within(east, -360, 720) && within(south, -180, 180) && within(north, -180, 180)
+  );
+};
+
+/**
+ * The preview of a COG from the file's details as the browser's COG reader (`getCogMetadata`) gives them, or
+ * `null` where it could not read the file: the storage does not let the browser read it, or it is no COG in web
+ * mercator. Only a web mercator file with real bounds is drawn; the reader cannot draw any other.
+ */
+export const cogPreview = (details: { bbox?: readonly number[] } | null): CogPreview => {
+  const bbox = details?.bbox;
+  if (!bbox || bbox.length !== 4 || !bbox.every(Number.isFinite)) return { kind: "unavailable" };
+  const [west, south, east, north] = bbox;
+  if (west >= east || south >= north || degreesReadAsMetres([...bbox])) return { kind: "unavailable" };
+  return { kind: "draw", bounds: [west, south, east, north] };
+};
+
 const extentWkt = ([west, south, east, north]: LngLatBounds) =>
   `MULTIPOLYGON(((${west} ${south}, ${west} ${north}, ${east} ${north}, ${east} ${south}, ${west} ${south})))`;
 

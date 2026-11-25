@@ -7,6 +7,7 @@
 import { Color, featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import type { MapGeoJSONFeature } from "maplibre-gl";
 
+import { isNone } from "@/lib/style/colors";
 import { ICON_HEIGHT } from "@/lib/style/compile/constants";
 import { cqlToExpression } from "@/lib/style/compile/cql";
 import { keepsColors } from "@/lib/style/compile/images";
@@ -40,7 +41,7 @@ export const WHITE: Rgb = [255, 255, 255];
 
 export type Rgb = [number, number, number];
 type Part = Record<string, unknown>;
-/** A rectangle in CSS pixels of the map. `dominant`: its color is the one most of its non-white pixels have (an
+/** A rectangle in CSS pixels of the map. `dominant`: its color is the one most of its pixels off the ground have (an
  * icon's box, whose long edges hold every blend of the icon's color with the ground). */
 export type Rect = { x: number; y: number; w: number; h: number; dominant?: true };
 /** A rendered feature's layer: its paint and layout values evaluated for that feature. */
@@ -72,15 +73,29 @@ const around = ([x, y]: [number, number], reach: number): Box => [
   [x + reach, y + reach],
 ];
 
+/** The parts of a swatch with a width, and the key that holds it. */
+const WIDTHS: Partial<Record<keyof Swatch, string>> = { outline: "width", line: "width" };
+
+/** Whether a swatch draws a part: it holds the part, its color is not None (spec 4.6) and its width, where it has one,
+ * is not 0. */
+function swatchDraws(swatch: Swatch, part: keyof Swatch): boolean {
+  const held = swatch[part] as Part | undefined;
+  if (!held || typeof held !== "object") return false;
+  const width = WIDTHS[part];
+  return !isNone(held.color) && (!width || held[width] !== 0);
+}
+
+const SWATCH_PARTS: Array<keyof Swatch> = ["fill", "outline", "line", "casing", "marker", "arrows"];
+
 /** The rendered features of a sample's own feature where it is drawn: a marker's box (its place, size, anchor and
- * offset as MapLibre evaluated them for the feature); a polygon whose fill is switched off along its outline (the edge
- * of its square); any other sample at its pixel. */
+ * offset as MapLibre evaluated them for the feature); a polygon whose fill is switched off or None along its outline
+ * (the edge of its square); any other sample at its pixel. */
 function drawnAt(scene: Scene, p: PlacedSample): MapGeoJSONFeature[] {
   const own = (where?: [number, number] | Box) =>
     (where ? scene.map.queryRenderedFeatures(where) : scene.map.queryRenderedFeatures()).filter(
       (f) => f.id === p.featureId
     );
-  if (p.swatch.geometry === "polygon" && !p.swatch.fill)
+  if (p.swatch.geometry === "polygon" && !swatchDraws(p.swatch, "fill"))
     return own(around(p.pixel, SAMPLE_SIZE / 2 + OUTLINE_REACH));
   // A point without a marker (its label alone): at its pixel.
   if (p.swatch.geometry !== "point" || !p.swatch.marker) return own(p.pixel);
@@ -119,9 +134,14 @@ export function drawSkip(scene: Scene, p: PlacedSample): string | null {
   return null;
 }
 
-/** Samples the map should draw (drawSkip) with no rendered feature where they are placed. */
+/** Whether every part a sample's swatch shows is None (spec 4.6): the map draws nothing of it, and may keep its feature
+ * on the layer (a class or rule at None, for clicks and the highlight) or leave it out (one fixed None color, a None
+ * class of raised polygons). Where the map keeps its feature on the layer, its color check reads the ground there. */
+const drawsNothing = (p: PlacedSample): boolean => !SWATCH_PARTS.some((part) => swatchDraws(p.swatch, part));
+
+/** Samples the map should draw (drawSkip, and not all None) with no rendered feature where they are placed. */
 export function notDrawn(scene: Scene): PlacedSample[] {
-  return scene.placed.filter((p) => !drawSkip(scene, p) && !drawnAt(scene, p).length);
+  return scene.placed.filter((p) => !drawSkip(scene, p) && !drawsNothing(p) && !drawnAt(scene, p).length);
 }
 
 /** Samples the map should not draw at its zoom (drawSkip) that it draws where they are placed. */
@@ -234,11 +254,11 @@ export function over(part: Part, fade: number, ground: Rgb): Rgb | null {
   return [color.r, color.g, color.b].map((c, i) => c * opacity * 255 + (1 - alpha) * ground[i]) as Rgb;
 }
 
-/** The color the swatch says the map draws: its main part over the ground, a line over its casing. */
-function expected(swatch: Swatch, fade: number): Rgb | null {
+/** The color the swatch says the map draws: its main part over the scene's ground, a line over its casing. */
+function expected(swatch: Swatch, fade: number, ground: Rgb): Rgb | null {
   const geometry = swatch.geometry;
-  const ground = (geometry === "line" && swatch.casing && over(swatch.casing, fade, WHITE)) || WHITE;
-  return over(swatch[MAIN[geometry]]!, fade, ground);
+  const under = (geometry === "line" && swatch.casing && over(swatch.casing, fade, ground)) || ground;
+  return over(swatch[MAIN[geometry]]!, fade, under);
 }
 
 const num = (value: unknown, fallback: number) => (typeof value === "number" ? value : fallback);
@@ -411,7 +431,7 @@ function judge(scene: Scene, p: PlacedSample): Verdict {
       rect = { x: p.pixel[0] - half, y: p.pixel[1] - 1, w: 2 * half, h: 2 };
     } else rect = geometry === "point" ? markerPlace(scene, p, layers).read : windowAt(scene, p.pixel);
     const fade = layerOpacity(scene.style, scene.map.getZoom());
-    const want = expected(p.swatch, fade);
+    const want = expected(p.swatch, fade, scene.ground);
     if (!want) return { error: `legend color ${String(main.color)} is not a color` };
     const reads: Read[] = [];
     const marker = geometry !== "point" ? p.swatch.marker : undefined;
@@ -421,7 +441,7 @@ function judge(scene: Scene, p: PlacedSample): Verdict {
       if (!beside) return { skip: `the marker covers the ${MAIN[geometry]} where it is read` };
       rect = beside;
       const skip = markerSkip(scene.style, marker, geometry);
-      const markerWant = skip ? null : over(marker, fade, geometry === "polygon" ? want : WHITE);
+      const markerWant = skip ? null : over(marker, fade, geometry === "polygon" ? want : scene.ground);
       if (!skip && !markerWant)
         return { error: `legend marker color ${String(marker.color)} is not a color` };
       if (markerWant) reads.push({ part: " marker", want: markerWant, rect: mark.read });
@@ -492,33 +512,33 @@ const hex = (rgb: Rgb) =>
 /** The largest difference of two colors in one channel, of 255. */
 export const distance = (a: Rgb, b: Rgb) => Math.max(...a.map((c, i) => Math.abs(c - b[i])));
 
-/** The color most pixels of a read have, white (the ground) left out unless nothing else is there. */
-function mostFrequent(pixels: Rgb[]): Rgb {
+/** The color most pixels of a read have, the ground left out unless nothing else is there. */
+function mostFrequent(pixels: Rgb[], ground: Rgb): Rgb {
   const counts = new Map<string, { rgb: Rgb; n: number }>();
   for (const rgb of pixels) {
-    if (distance(rgb, WHITE) <= TOLERANCE) continue;
+    if (distance(rgb, ground) <= TOLERANCE) continue;
     const key = hex(rgb);
     const found = counts.get(key);
     if (found) found.n += 1;
     else counts.set(key, { rgb, n: 1 });
   }
-  let best: { rgb: Rgb; n: number } = { rgb: WHITE, n: 0 };
+  let best: { rgb: Rgb; n: number } = { rgb: ground, n: 0 };
   for (const entry of counts.values()) if (entry.n > best.n) best = entry;
   return best.rgb;
 }
 
-/** Whether the map drew nothing: every pixel of it is the white ground. A scene of points in groups (clusters, a
+/** Whether the map drew nothing: every pixel of it is the ground. A scene of points in groups (clusters, a
  * heatmap) places no samples, so this is what tells that it drew. */
 export function blank(scene: Scene): boolean {
   const canvas = scene.map.getCanvas();
   const pixels = readRect(scene, { x: 0, y: 0, w: canvas.clientWidth, h: canvas.clientHeight });
-  return pixels.every((rgb) => distance(rgb, WHITE) <= TOLERANCE);
+  return pixels.every((rgb) => distance(rgb, scene.ground) <= TOLERANCE);
 }
 
 /** Samples whose drawn color is not the one their legend swatch shows: "section/entry: legend #rrggbb, map #rrggbb",
  * the legend's color at its opacity (and the layer's) over the ground, the map's the most frequent color read. Passes
  * when at least MIN_PIXELS pixels of the read are within TOLERANCE per channel; a dominant read when its most frequent
- * non-white color is. */
+ * color off the ground is. */
 export function colorMismatches(scene: Scene): string[] {
   const out: string[] = [];
   for (const p of scene.placed) {
@@ -531,7 +551,7 @@ export function colorMismatches(scene: Scene): string[] {
     }
     for (const { part, want, rect } of verdict.reads) {
       const pixels = readRect(scene, rect);
-      const drawn = mostFrequent(pixels);
+      const drawn = mostFrequent(pixels, scene.ground);
       const near = pixels.filter((rgb) => distance(rgb, want) <= TOLERANCE).length;
       const pass = rect.dominant ? distance(drawn, want) <= TOLERANCE : near >= MIN_PIXELS;
       if (!pass) out.push(`${label}${part}: legend ${hex(want)}, map ${hex(drawn)}`);

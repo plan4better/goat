@@ -26,7 +26,7 @@ sidebar_position: 3
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Set the <code>Size</code> and the <code>Color</code> of the text. The three rows under them, <code>Halo</code>, <code>Text style</code> and <code>Position</code>, each sum up their settings; click one to open its settings next to the editor.</div>
+  <div class="content">Set the <code>Size</code> and the <code>Color</code> of the text. A new label starts with <code>Auto</code> for the text and the halo: GOAT picks both from the feature's color for the light or dark basemap, so the text stays readable. The three rows under them, <code>Halo</code>, <code>Text style</code> and <code>Position</code>, each sum up their settings; click one to open its settings next to the editor.</div>
 </div>
 
 The row in the section then shows the field and the size, for example <code>Name · 12 px</code>.
@@ -50,7 +50,7 @@ The row in the section then shows the field and the size, for example <code>Name
 
 ## Halo
 
-<code>Halo</code> shows the halo's color and width, for example <code>1.5 px</code>, or <code>None</code>. Click it to set its <code>Color</code> and <code>Width</code>: an outline around the letters that keeps them readable on busy backgrounds.
+<code>Halo</code> shows the halo's color and width, for example <code>1.5 px</code>, or <code>None</code>. Click it to set its <code>Color</code> and <code>Width</code>: an outline around the letters that keeps them readable on busy backgrounds. <code>Auto</code> gives it a color that keeps the text readable.
 
 ## Text style
 
@@ -86,6 +86,6 @@ A label can differ per class, for example a larger size for main roads: give the
 ## Best practices
 
 - Use **smaller fonts for dense layers** to reduce visual clutter.
-- Add **halos with contrasting colors** (light halos on dark maps, dark halos on light maps) to improve text readability.
+- Leave **text and halo at <code>Auto</code>** to keep labels readable on light and dark basemaps; with colors of your own, give the halo a color that **contrasts with the text**.
 - Keep **overlap off for a cleaner map**, and set a priority so the most important labels stay when space is short.
 - Show detailed labels **only from a zoom level on**, and test your labels at different zoom levels.

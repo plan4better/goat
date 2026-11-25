@@ -9,7 +9,14 @@ section 4.5 table allows it.
 import re
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BeforeValidator, Discriminator, Field, Tag, model_validator
+from pydantic import (
+    AfterValidator,
+    BeforeValidator,
+    Discriminator,
+    Field,
+    Tag,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 
 from goatlib.style import limits
@@ -191,6 +198,22 @@ class RawField(StyleModel):
     no_data: Any = None
 
 
+def _no_derived_word(v: Any) -> Any:
+    if v in ("auto", "fill"):
+        raise PydanticCustomError(
+            "invalid_value",
+            'A color read from a field takes no "auto" or "fill" as its no_data.',
+        )
+    return v
+
+
+class RawColorField(RawField):
+    """Hex colors read from a text field as they are. `no_data` is not drawn; it takes
+    any value but the derived words `"auto"` and `"fill"`."""
+
+    no_data: Annotated[Any, AfterValidator(_no_derived_word)] = None
+
+
 def _check_stops(data: Any) -> Any:
     if not isinstance(data, dict):
         return data
@@ -281,6 +304,7 @@ def value_type(
     attr_model = {"color": ByAttributeColor, "number": ByAttributeNumber, None: None}[
         attribute
     ]
+    raw_model = RawColorField if attribute == "color" else RawField
     choices: list[Any] = [Annotated[fixed, Tag("form:fixed")]]
     if zoom:
         stop_value = fixed
@@ -289,7 +313,7 @@ def value_type(
                 Union[
                     Annotated[fixed, Tag("form:fixed")],
                     Annotated[attr_model, Tag("form:attribute")],
-                    Annotated[RawField, Tag("form:raw")],
+                    Annotated[raw_model, Tag("form:raw")],
                 ],
                 Discriminator(
                     _form_of,
@@ -302,7 +326,7 @@ def value_type(
         )
     if attr_model is not None:
         choices.append(Annotated[attr_model, Tag("form:attribute")])
-        choices.append(Annotated[RawField, Tag("form:raw")])
+        choices.append(Annotated[raw_model, Tag("form:raw")])
     return Annotated[
         Union[tuple(choices)],
         Discriminator(

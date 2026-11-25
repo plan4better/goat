@@ -105,6 +105,43 @@ describe("StyleLegend", () => {
     expect(container.querySelector("svg")).toBeNull();
   });
 
+  it("a long heading stays on one line, cut, with the full name on hover; print wraps it", () => {
+    const long = "Copernicus_DSM_COG_10_N52_00_E013_00_DEM";
+    const heading = (node: HTMLElement) => {
+      expect(node.getAttribute("title")).toBe(long);
+      expect(node.className).toContain("MuiTypography-noWrap");
+    };
+    const plain = legendOf(
+      { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } },
+      "polygon"
+    );
+    const titled = legendOf(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#cccccc" } },
+        legend: { display: "name_only", title: long },
+      },
+      "polygon"
+    );
+    // The panel's heading: the layer's name, or the legend's own title.
+    const panel = render(<StyleLegend legend={plain} layerName={long} />);
+    heading(screen.getByText(long));
+    panel.unmount();
+    const custom = render(<StyleLegend legend={titled} layerName="Short" />);
+    heading(screen.getByText(long));
+    custom.unmount();
+    // Under a layer list row: the legend's own title.
+    const tree = render(<StyleLegend legend={titled} variant="tree" />);
+    heading(screen.getByText(long));
+    tree.unmount();
+    // Print draws its texts itself and wraps them: paper has no hover.
+    render(<StyleLegend legend={titled} variant="tree" renderText={(_, text) => <span>{text}</span>} />);
+    const printed = screen.getByText(long);
+    expect(printed.getAttribute("title")).toBeNull();
+    expect(printed.className).not.toContain("MuiTypography-noWrap");
+  });
+
   const twoBlocks = (classify: object[]) =>
     legendOf(
       { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#e01903" } }, classify },
@@ -533,6 +570,32 @@ describe("StyleLegend", () => {
     );
     const { container } = render(<StyleLegend legend={legend} variant="tree" />);
     expect(container.textContent).toBe("ClustersSingle points");
+  });
+
+  it("a badge color with its own transparency lies over the swatch checkerboard", () => {
+    const { container } = render(
+      <SwatchIcon
+        swatch={{
+          geometry: "point",
+          marker: { shape: "circle", color: "#5a1846" },
+          badge: { color: "#2838b280", text: "#ffff00", ring: "#ffffff" },
+        }}
+      />
+    );
+    expect((container.querySelector("[data-cluster-badge]") as HTMLElement).style.background).toContain(
+      "linear-gradient"
+    );
+  });
+
+  it("a library icon tinted with a color that is not opaque lies over the swatch checkerboard", () => {
+    const { container } = render(
+      <SwatchIcon
+        swatch={{ geometry: "point", marker: { shape: "icon", icon: "goat:shop", color: "#5a184680" } }}
+      />
+    );
+    expect((container.querySelector("[data-marker-icon]") as HTMLElement).style.background).toContain(
+      "linear-gradient"
+    );
   });
 
   it("a cluster swatch with a badge draws a dot in the badge color at the marker's upper right", () => {

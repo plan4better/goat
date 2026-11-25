@@ -394,7 +394,8 @@ CREATED_SAVE_UNKNOWN = (
 )
 STOPPED = "An unexpected error stopped the call."
 REPEATED_STYLE_EDIT = (
-    "You made this style change earlier in this answer; this is its result again."
+    "You made this style change earlier in this answer; this is its result again. "
+    "Sending it again changes nothing: change the call as its note or refusal says."
 )
 THIRD_CHANGE = (
     "This is the third style change of this layer in this answer: finish with "
@@ -727,11 +728,13 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
     name_before = written.name if mode in ("edit", "replace") else None
 
     added: dict[int, str] = {}
+    applied_added: dict[int, str] = {}
     own: list[str] = []
     if args.operations is not None:
         # Off the event loop: an edit copies the document once per operation.
         applied = await asyncio.to_thread(edits.edited, base, args.operations)
         document, added = applied.document, applied.added
+        applied_added = dict(added)
         # A value the call writes is the call's own, also where the style
         # had an error before.
         own = edits.written_pointers(document, args.operations, added)
@@ -828,6 +831,21 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
         # The writes landed: what describes them never fails the call.
         logger.exception("style_update could not describe what it saved")
     shown, cut = edits.shown_changes(changed)
+    # Classes a call wrote that the server rebuilt are said, and their ids not
+    # given as added.
+    lost: list[str] = []
+    operations = args.operations
+    if written.stored is not None and operations and added:
+        lost = edits.lost_items(written.stored, operations, added)
+        added = {i: item for i, item in added.items() if operations[i].path not in lost}
+    if written.stored is not None:
+        lost += [
+            p
+            for p in edits.rebuilt_classes(
+                document, written.stored, operations or (), applied_added
+            )
+            if p not in lost
+        ]
     not_saved = edits.kept_paths(written.issues, known, own)
     issues = edits.views(written.issues, known, own)
     moved = written.revision_after != written.revision_before
@@ -843,11 +861,15 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
             notes.append(THIRD_CHANGE)
         elif count > 3:
             notes.append(MORE_CHANGES.format(count=count))
+    if args.operations:
+        notes += edits.operation_notes(base, document, args.operations)
     if _skill_missing(env) and SKILL_BEFORE_NEXT not in env.notes_given:
         env.notes_given.add(SKILL_BEFORE_NEXT)
         notes.append(SKILL_BEFORE_NEXT)
     if not_saved:
         notes.append(NOT_SAVED_PATHS)
+    if lost:
+        notes.append(edits.LOST_ADDED.format(lists=", ".join(lost)))
     if cut:
         notes.append(cut)
     listed_issues = [issue for issue in written.issues if isinstance(issue, dict)]

@@ -15,7 +15,7 @@ import { isObject } from "@/lib/style/json";
 import { useAutoTilt } from "@/hooks/map/useAutoTilt";
 
 import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
-import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
+import { PathColorField, PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightRow";
 import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
@@ -29,7 +29,6 @@ import {
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
-  ColorField,
   GroupRow,
   NumberInput,
   PanelSection,
@@ -178,7 +177,6 @@ function OutlineRow() {
   const { t } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
-  const color = useStyleValue<unknown>("render.outline.color");
   const width = useStyleValue<unknown>("render.outline.width");
   const fallback = DEFAULTS["h3.outline.color"] as string;
   const label = t("style_editor.part_outline");
@@ -186,8 +184,9 @@ function OutlineRow() {
     <Row label={label}>
       <Box sx={{ display: "flex", gap: 2, flex: 1, minWidth: 0 }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <ColorField
-            value={typeof color === "string" ? color : fallback}
+          <PathColorField
+            path="render.outline.color"
+            fallback={fallback}
             onOpenPicker={(anchor) =>
               popover.open("picker", {
                 key: "h3:outline",

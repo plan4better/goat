@@ -172,7 +172,7 @@ describe("point parts", () => {
     const circle = render({ symbol: { marker: { size: 12 } } });
     await openGroup("style_editor.part_icon");
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }));
-    expect(circle.store.get("symbol.marker")).toEqual({ size: 12, icon: "goat:marker" });
+    expect(circle.store.get("symbol.marker")).toEqual({ size: 12, icon: "goat:marker", icon_color: "auto" });
   });
 
   it("emoji: search, pick with a skin tone, then find it among the recent ones", async () => {
@@ -583,9 +583,17 @@ describe("draw as", () => {
       unmount();
       return out;
     };
-    const likeThePoints = { type: "cluster", look: "points", count: "badge" };
-    expect(await switched({ marker: {} })).toEqual({ type: "cluster" });
-    expect(await switched({ marker: { shape: "circle", color: "#ff0000" } })).toEqual({ type: "cluster" });
+    // Either way with the default cluster symbol, its number on Auto.
+    const symbol = {
+      marker: { shape: "circle", size: { field: "count", range: [16, 40], scale: "sqrt" } },
+      label: { text: "{count}", color: "auto" },
+    };
+    const likeThePoints = { type: "cluster", look: "points", count: "badge", symbol };
+    expect(await switched({ marker: {} })).toEqual({ type: "cluster", symbol });
+    expect(await switched({ marker: { shape: "circle", color: "#ff0000" } })).toEqual({
+      type: "cluster",
+      symbol,
+    });
     expect(await switched({ marker: { shape: "icon", icon: "goat:shop" } })).toEqual(likeThePoints);
     expect(await switched({ marker: { shape: "pin" } })).toEqual(likeThePoints);
     expect(await switched({ marker: { shape: "circle", icon: "goat:shop" } })).toEqual(likeThePoints);

@@ -6,6 +6,7 @@ import {
   ServiceConnectError,
   buildLayerRequest,
   capabilitiesRequestUrl,
+  cogPreview,
   defaultLayerName,
   detectDirectService,
   parseCapabilities,
@@ -404,6 +405,57 @@ describe("direct services", () => {
       url: "cog://https://example.org/data/dgm1.tif",
     });
     expect(defaultLayerName(service, [])).toBe("dgm1");
+  });
+});
+
+describe("cogPreview", () => {
+  /** A file's details as the COG library reads them: its bbox in degrees, from bounds it takes as web mercator
+   * metres. */
+  const details = (bbox: number[] | undefined, zoom = 12) => ({
+    offset: 0,
+    scale: 1,
+    ...(bbox ? { bbox } : {}),
+    images: [{ zoom, isOverview: false, isMask: false }],
+  });
+
+  it("draws a web mercator file, fitted to its bounds", () => {
+    expect(cogPreview(details([13.0, 52.0, 14.0, 53.0]))).toEqual({
+      kind: "draw",
+      bounds: [13.0, 52.0, 14.0, 53.0],
+    });
+    // A small file is no geographic one where it lies away from 0°/0°: a few metres in a city.
+    expect(cogPreview(details([11.575, 48.137, 11.5752, 48.1371], 22))).toEqual({
+      kind: "draw",
+      bounds: [11.575, 48.137, 11.5752, 48.1371],
+    });
+  });
+
+  it("cannot preview a file in degrees: the library reads its degrees as metres, a few metres off 0°/0°", () => {
+    // 13° to 14° east, 52° to 53° north, read as metres.
+    expect(cogPreview(details([0.000117, 0.000467, 0.000126, 0.000476], 28.5))).toEqual({
+      kind: "unavailable",
+    });
+    // The whole world, from -180° and from 0° to 360°.
+    expect(cogPreview(details([-0.001617, -0.000808, 0.001617, 0.000808], 18))).toEqual({
+      kind: "unavailable",
+    });
+    expect(cogPreview(details([0, -0.000808, 0.003234, 0.000808], 18))).toEqual({ kind: "unavailable" });
+    // A global grid of 5° cells whose edges reach half a cell past -180°, 180°, -90° and 90°.
+    expect(cogPreview(details([-0.00164, -0.000831, 0.00164, 0.000831], 16))).toEqual({
+      kind: "unavailable",
+    });
+  });
+
+  it("cannot preview a file it could not read: the request was refused or the file is no COG", () => {
+    // A file without georeference also arrives here: the reader fails on it ("does not have an affine
+    // transformation"), as on a file in another projected CRS.
+    expect(cogPreview(null)).toEqual({ kind: "unavailable" });
+  });
+
+  it("cannot preview details without usable bounds", () => {
+    expect(cogPreview(details(undefined))).toEqual({ kind: "unavailable" });
+    expect(cogPreview(details([Number.NaN, 52, 14, 53]))).toEqual({ kind: "unavailable" });
+    expect(cogPreview(details([13, 52, 13, 52]))).toEqual({ kind: "unavailable" });
   });
 });
 

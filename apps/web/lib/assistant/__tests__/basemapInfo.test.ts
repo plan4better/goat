@@ -54,13 +54,13 @@ const vector = (backgroundColor?: string) => {
 
 describe("basemapInfo", () => {
   it("gives a built-in basemap its id, title and tone", () => {
-    expect(basemapInfo(builtIn("dark", "Dark"), "light")).toEqual({
+    expect(basemapInfo(builtIn("dark", "Dark"))).toEqual({
       id: "dark",
       name: "Dark",
       tone: "dark",
       imagery: false,
     });
-    expect(basemapInfo(builtIn("light", "Light"), "dark")).toEqual({
+    expect(basemapInfo(builtIn("light", "Light"))).toEqual({
       id: "light",
       name: "Light",
       tone: "light",
@@ -68,43 +68,41 @@ describe("basemapInfo", () => {
     });
   });
 
-  it("marks imagery and calls its tone dark in either app theme", () => {
-    for (const theme of ["light", "dark"] as const) {
-      expect(basemapInfo(builtIn("satellite", "Satellite"), theme)).toEqual({
-        id: "satellite",
-        name: "Satellite",
-        tone: "dark",
-        imagery: true,
-      });
-      expect(basemapInfo(raster, theme)).toEqual({
-        id: RASTER_ID,
-        name: "Luftbild 2024",
-        tone: "dark",
-        imagery: true,
-      });
-    }
+  it("marks imagery: Satellite is dark, a custom image basemap light, as for the layers' automatic colors", () => {
+    expect(basemapInfo(builtIn("satellite", "Satellite"))).toEqual({
+      id: "satellite",
+      name: "Satellite",
+      tone: "dark",
+      imagery: true,
+    });
+    expect(basemapInfo(raster)).toEqual({
+      id: RASTER_ID,
+      name: "Luftbild 2024",
+      tone: "light",
+      imagery: true,
+    });
   });
 
   it("reads the tone of a solid and a custom vector basemap from its colour", () => {
-    expect(basemapInfo(solid("#202020"), "light")).toMatchObject({
+    expect(basemapInfo(solid("#202020"))).toMatchObject({
       id: SOLID_ID,
       tone: "dark",
       imagery: false,
     });
-    expect(basemapInfo(solid("#f0f0f0"), "dark")).toMatchObject({ tone: "light", imagery: false });
-    expect(basemapInfo(vector("#111111"), "light")).toMatchObject({
+    expect(basemapInfo(solid("#f0f0f0"))).toMatchObject({ tone: "light", imagery: false });
+    expect(basemapInfo(vector("#111111"))).toMatchObject({
       id: VECTOR_ID,
       name: "Eigener Stil",
       tone: "dark",
       imagery: false,
     });
-    expect(basemapInfo(vector(), "dark")).toMatchObject({ tone: "light", imagery: false });
+    expect(basemapInfo(vector())).toMatchObject({ tone: "light", imagery: false });
   });
 
   it("cuts a long name to 80 characters without splitting a character", () => {
     // A character outside the Basic Multilingual Plane is two UTF-16 units; the server counts it as one.
     const name = `${"a".repeat(79)}\u{1F5FA} rest`;
-    const info = basemapInfo({ ...(vector() as object), name } as Basemap, "light");
+    const info = basemapInfo({ ...(vector() as object), name } as Basemap);
     expect(info.name).toBe(`${"a".repeat(79)}\u{1F5FA}`);
   });
 });
@@ -112,14 +110,14 @@ describe("basemapInfo", () => {
 describe("offeredBasemaps", () => {
   it("offers built-in and custom basemaps, at most thirty", () => {
     const builtIns = [builtIn("streets", "High Fidelity"), builtIn("dark", "Dark")];
-    expect(offeredBasemaps(builtIns, [raster, solid("#202020")], "light")).toEqual([
+    expect(offeredBasemaps(builtIns, [raster, solid("#202020")])).toEqual([
       { id: "streets", name: "High Fidelity", tone: "light", imagery: false },
       { id: "dark", name: "Dark", tone: "dark", imagery: false },
-      { id: RASTER_ID, name: "Luftbild 2024", tone: "dark", imagery: true },
+      { id: RASTER_ID, name: "Luftbild 2024", tone: "light", imagery: true },
       { id: SOLID_ID, name: "Fläche", tone: "dark", imagery: false },
     ]);
     const many = Array.from({ length: 40 }, (_, i) => builtIn(`b${i}`, `Basemap ${i}`));
-    const offered = offeredBasemaps(many.slice(0, 10), many.slice(10), "light");
+    const offered = offeredBasemaps(many.slice(0, 10), many.slice(10));
     expect(offered).toHaveLength(30);
     expect(offered[0].id).toBe("b0");
     expect(offered[29].id).toBe("b29");
@@ -134,7 +132,7 @@ describe("offeredBasemaps", () => {
       builtIn("x".repeat(64), "Just fits"),
     ];
     const many = Array.from({ length: 30 }, (_, i) => builtIn(`b${i}`, `Basemap ${i}`));
-    const offered = offeredBasemaps(builtIns, many, "light");
+    const offered = offeredBasemaps(builtIns, many);
     // The refused ones take no place: thirty valid entries remain.
     expect(offered).toHaveLength(30);
     expect(offered.map((b) => b.id)).not.toContain(longId);

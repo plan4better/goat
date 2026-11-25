@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { compileLayer } from "@/lib/style/compile";
 
 import { maplibreErrors } from "../maplibre";
-import { compileInput, legendCases } from "./cases";
+import { colorCases, compileInput, legendCases } from "./cases";
 import { known } from "./known";
 
 const cases = legendCases();
@@ -17,8 +17,18 @@ describe("legend cases", () => {
     expect(ids.filter((id) => id.startsWith("spec-")).length).toBeGreaterThan(50);
   });
 
+  it("hold the colors' cases after the others, each with its basemap's tone, and the review's named cases", () => {
+    const colors = colorCases();
+    expect(colors.length).toBeGreaterThan(50);
+    expect(cases.slice(-colors.length)).toEqual(colors);
+    for (const c of colors) expect(["light", "dark"]).toContain(c.tone);
+    expect(colors.map((c) => c.id)).toEqual(expect.arrayContaining(["focus-class-none", "focus-data-color"]));
+    // The colors' made-up fields add a field of hex text to the legend's.
+    expect(Object.keys(colors[0].fields)).toContain("color_hex");
+  });
+
   it("the generated cases use the made-up fields only", () => {
-    const made = cases.filter((c) => c.values);
+    const made = cases.filter((c) => c.values && c.tone === undefined);
     expect(made.length).toBeGreaterThan(0);
     for (const c of made)
       expect(Object.keys(c.fields).sort()).toEqual(

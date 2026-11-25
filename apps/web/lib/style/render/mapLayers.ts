@@ -6,6 +6,7 @@
 import type { FilterSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
 import { compileLayer } from "@/lib/style/compile";
+import { usesTone } from "@/lib/style/compile/derived";
 import { h3SourceId } from "@/lib/style/compile/render";
 import type {
   CompileInput,
@@ -15,7 +16,7 @@ import type {
   Position,
 } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import { deepEqual } from "@/lib/style/json";
+import { type JsonObject, deepEqual } from "@/lib/style/json";
 import {
   type PreviewMap,
   applyCompiled,
@@ -23,6 +24,7 @@ import {
   removeCompiled,
   withTileParams,
 } from "@/lib/style/render/apply";
+import type { Tone } from "@/lib/style/tone";
 
 /** One project layer as the renderer draws it. */
 export interface RenderLayer {
@@ -56,6 +58,8 @@ export interface SyncOptions {
   overlay?: string;
   /** The scene's lowest 3D building layer: the project layers' parts drawn on the ground go below it (`GROUND`). */
   ground?: string;
+  /** The tone of the basemap the layers draw on (`basemapTone`), for their automatic colors; light by default. */
+  tone?: Tone;
 }
 
 interface Placed {
@@ -71,6 +75,8 @@ export interface MapLayersState {
   overlay?: string;
   /** The building layer the ground parts went below: `ground` while it is on the map. */
   ground?: string;
+  /** The basemap's tone the layers were compiled for. */
+  tone?: Tone;
 }
 
 export type RendererMap = PreviewMap & {
@@ -164,7 +170,7 @@ function withFilters(layer: LayerSpecification, extra: unknown[]): LayerSpecific
   return { ...layer, filter } as LayerSpecification;
 }
 
-function compile(layer: RenderLayer): CompiledLayer {
+function compile(layer: RenderLayer, tone: Tone): CompiledLayer {
   const out = withTileParams(
     compileLayer({
       id: layer.key,
@@ -174,6 +180,7 @@ function compile(layer: RenderLayer): CompiledLayer {
       entry: layer.entry,
       highlight: true,
       resolveIcon: layer.resolveIcon,
+      tone,
     })
   );
   // The map's locale is the renderer's: a layer's default must not overwrite it.
@@ -263,6 +270,10 @@ export function syncMapLayers(
   }
 
   const anchors = opts.anchors ?? {};
+  const tone = opts.tone ?? "light";
+  // A new basemap tone compiles again only the layers whose automatic colors follow it.
+  const retoned = (layer: RenderLayer) =>
+    prev !== null && (prev.tone ?? "light") !== tone && usesTone(layer.style as unknown as JsonObject);
   const ground = opts.ground && map.getLayer(opts.ground) ? opts.ground : undefined;
   const reorder =
     !prev ||
@@ -318,7 +329,8 @@ export function syncMapLayers(
     const low = splits(position) ? stackBefore(true) : raised;
     const beforeId = (l: LayerSpecification) => (onGround(position, l) ? low : raised);
     const old = prev?.placed.get(layer.key);
-    let compiled = old && sameInput(old.layer, layer) ? old.compiled : compile(layer);
+    let compiled =
+      old && sameInput(old.layer, layer) && !retoned(layer) ? old.compiled : compile(layer, tone);
     if (compiled !== old?.compiled) applyCompiled(map, old?.compiled ?? null, compiled, { beforeId });
     else if (timeOf(old.layer) !== timeOf(layer)) {
       // A moved time slider sets its global state; the default keeps the value for restoreGlobalState.
@@ -354,7 +366,7 @@ export function syncMapLayers(
   }
   registries.set(map, registry);
 
-  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground };
+  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground, tone };
 }
 
 /** Sets the global state again (the locale, every time slider's value) after a new style replaced it. */

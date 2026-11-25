@@ -19,12 +19,13 @@ import type { Geometry } from "@/lib/style/compile/types";
 import { buildLegend } from "@/lib/style/legend";
 import { mapLayerIdsOf } from "@/lib/style/render/mapLayers";
 import { INTERACTIVE_PARTS } from "@/lib/style/render/viewLayers";
+import { basemapTone } from "@/lib/style/tone";
 import { detailPopupConfig } from "@/lib/utils/map/detailPopup";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 import type { CatalogItem } from "@/lib/validations/catalog";
 import type { PopupProperties } from "@/lib/validations/layer";
 
-import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
+import { useCatalogBasemap } from "@/hooks/catalog/useCatalogBasemapStyle";
 import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
 import { useCatalogSample } from "@/hooks/catalog/useCatalogSample";
 
@@ -60,7 +61,8 @@ const CatalogFootprintMap = ({
 }) => {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
-  const basemapStyle = useCatalogBasemapStyle();
+  const catalogBasemap = useCatalogBasemap();
+  const basemapStyle = catalogBasemap?.url;
   /** A WMS or WMTS item has no sample: the service draws itself, live. */
   const wmsTiles = catalogServiceTiles(item);
   /** The item's own data is read from geoapi, which answers it to signed-in users only. */
@@ -359,7 +361,9 @@ const CatalogFootprintMap = ({
           )}
 
           {/* The dataset's own rendering through the map compiler; the active feature is marked by feature state. */}
-          {!awaitingStyle && sampleLayer && <StyledLayers layers={[sampleLayer]} locale={i18n.language} />}
+          {!awaitingStyle && sampleLayer && (
+            <StyledLayers layers={[sampleLayer]} locale={i18n.language} tone={basemapTone(catalogBasemap)} />
+          )}
 
           {/* `generateId`: the active feature is matched by id, and preview GeoJSON carries none. */}
           {!styledSample && (

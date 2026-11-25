@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { partUsed, setValues } from "@/lib/style/compile/cascade";
 import type { Geometry } from "@/lib/style/compile/types";
 import { recordPathOf, scopedPart } from "@/lib/style/editor/classify";
+import { labelStart } from "@/lib/style/editor/labels";
 import {
   type IconSettings,
   MAIN_PART,
@@ -19,6 +20,7 @@ import {
   markerFilled,
   markerOn,
   partOn,
+  partStart,
   restoreIcon,
 } from "@/lib/style/editor/parts";
 import {
@@ -91,19 +93,20 @@ const carriedOnly = (doc: LayerStyle, path: Path): boolean =>
   getIn(doc, path) === undefined &&
   partUsed(doc as unknown as JsonObject, path.slice("symbol.".length));
 
-/** Switches a part off (remembering it) or on (restoring it, else `{}`); `after` adjusts the document in the same edit
- * when the part comes on (heights take one fill opacity). A layer's part that only classes or rules turned on goes back
- * to them when it is switched off again, instead of off for every feature. */
+/** Switches a part off (remembering it) or on (restoring it, else `start`, by default `{}`); `after` adjusts the
+ * document in the same edit when the part comes on (heights take one fill opacity). A layer's part that only classes or
+ * rules turned on goes back to them when it is switched off again, instead of off for every feature. */
 export function togglePart(
   store: EditorStore,
   path: Path,
   on: boolean,
-  after?: (doc: LayerStyle) => LayerStyle
+  after?: (doc: LayerStyle) => LayerStyle,
+  start: JsonObject = {}
 ): void {
   const memory = memoryOf(store);
   const absent = `${path}${ABSENT}`;
   if (on) {
-    const value = memory.get(path) ?? {};
+    const value = memory.get(path) ?? start;
     const carried = carriedOnly(store.document, path);
     store.update((doc) => {
       const next = setIn(doc, path, value);
@@ -284,7 +287,19 @@ export function PartSwitch({ part }: { part: string }) {
       name={name}
       on={on}
       disabled={offForLayer}
-      onToggle={() => togglePart(store, writePath, !on)}
+      onToggle={() =>
+        // A part with nothing to bring back starts as `labelStart` or `partStart` says: a label's text and halo, an
+        // outline's or a casing's color on Auto (spec 18.10).
+        togglePart(
+          store,
+          writePath,
+          !on,
+          undefined,
+          group.part === "label"
+            ? labelStart(store.document, geometry, scope)
+            : partStart(store.document, group.part, scope)
+        )
+      }
     />
   );
 }

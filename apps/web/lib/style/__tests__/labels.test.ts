@@ -143,6 +143,61 @@ describe("labels", () => {
     expect(placed("center")["text-anchor"]).toBeUndefined();
   });
 
+  it("beside a marker that collides, the clearance also covers the icon's and the label's collision padding (spec 3.4)", () => {
+    // Label 12 px. Around: [top, bottom, right, left] offsets in ems; a fixed side: its one offset.
+    const layout = (marker: object, label: object = {}) =>
+      label_(
+        compile(
+          { version: "1.0.0", kind: "vector", symbol: { marker, label: { text: "{name}", ...label } } },
+          "point"
+        )
+      ).layout;
+    const label_ = label;
+    const around = (d: number) => ["top", [0, d], "bottom", [0, -d], "right", [-d, 0], "left", [d, 0]];
+    // An icon alone collides: half of 24 px plus 2 px, plus the icon's 2 px and the label's 2 px padding: 18 px.
+    const icon = { shape: "icon", icon: "goat:park", size: 24 };
+    expect(layout(icon)["text-variable-anchor-offset"]).toEqual(around(1.5));
+    expect(layout(icon, { placement: "below" })["text-offset"]).toEqual([0, 1.5]);
+    expect(layout(icon, { placement: "right" })["text-offset"]).toEqual([1.5, 0]);
+    // The label's own padding, as set.
+    expect(layout(icon, { padding: 8 })["text-variable-anchor-offset"]).toEqual(around(2));
+    // A shaped marker image with overlap turned off collides too.
+    const shaped = { shape: "circle", icon: "goat:park", size: 24, allow_overlap: false };
+    expect(layout(shaped)["text-variable-anchor-offset"]).toEqual(around(1.5));
+    // An icon that grows with the zoom: each zoom's clearance takes the size one zoom up, where MapLibre lays out the
+    // icon's collision box (4 px at zoom 8, 20 px at 16: the stops move to 7 and 15).
+    expect(
+      layout({
+        ...icon,
+        size: {
+          zoom: [
+            [8, 4],
+            [16, 20],
+          ],
+        },
+      })["text-variable-anchor-offset"]
+    ).toEqual([
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      7,
+      ["literal", around(0.6666666667)],
+      15,
+      ["literal", around(1.3333333333)],
+    ]);
+    // Markers that do not collide keep half their size plus 2 px: 14 px.
+    for (const marker of [
+      { ...icon, allow_overlap: true },
+      { shape: "circle", size: 24 },
+      { shape: "circle", size: 24, allow_overlap: false },
+      { shape: "circle", icon: "goat:park", size: 24 },
+      { shape: "pin", size: 24 },
+    ])
+      expect(layout(marker)["text-variable-anchor-offset"], JSON.stringify(marker)).toEqual(
+        around(1.1666666667)
+      );
+  });
+
   it("fixed placements without a marker keep 2 px from the point and pass MapLibre's validation", () => {
     for (const placement of ["below", "left", "above_right", "below_left"]) {
       const out = compile(

@@ -105,6 +105,32 @@
   }
  },
  {
+  "line": 232,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc",
+     "opacity": 0.8
+    },
+    "outline": {
+     "color": "auto",
+     "width": 1
+    }
+   },
+   "classify": [
+    {
+     "field": "land_use",
+     "method": "categories",
+     "palette": "carto:Bold"
+    }
+   ]
+  }
+ },
+ {
   "line": 246,
   "target": "districts",
   "expect": [],

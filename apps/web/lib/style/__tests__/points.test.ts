@@ -432,6 +432,37 @@ describe("points", () => {
   });
 });
 
+describe("marker images of a color read from a field", () => {
+  it("name a valid image beside a rule or a class that sets the color, as the read alone does", () => {
+    const rule = {
+      id: "r",
+      when: { op: "=", args: [{ property: "flag" }, true] },
+      marker: { color: "#d7191c" },
+    };
+    const classes = {
+      field: "kind",
+      method: "categories",
+      classes: [{ values: ["a"], marker: { color: "#1b9e77" } }],
+    };
+    for (const extra of [{}, { rules: [rule] }, { classify: [classes] }]) {
+      const out = compile(
+        {
+          version: "1.0.0",
+          kind: "vector",
+          symbol: { marker: { shape: "pin", color: { field: "hex" }, icon: "goat:park" } },
+          ...extra,
+        },
+        "point",
+        { fields: { hex: "string", flag: "boolean", kind: "string" } }
+      );
+      expect(valid(out), JSON.stringify(extra)).toEqual([]);
+      // The data's color is drawn, its text as MapLibre writes colors.
+      const look = mapLook(out, { hex: "#123456", flag: false, kind: "b" }, 12, "point");
+      expect(Color.parse(look["marker.color"] as string)?.toString()).toBe("rgba(18,52,86,1)");
+    }
+  });
+});
+
 describe("point outlines and offsets", () => {
   it("an outline only a rule sets draws only where the rule holds", () => {
     const out = compile({

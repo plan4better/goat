@@ -61,7 +61,7 @@ hexagons.
 
 <!-- layer: point -->
 ```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/render", "value": {"type": "cluster", "cluster_until_zoom": 14, "symbol": {"marker": {"shape": "circle", "color": "#283593", "size": {"field": "count", "range": [16, 40], "scale": "sqrt"}}, "outline": {"color": "#ffffff", "width": 2}, "label": {"text": "{count}", "color": "#ffffff", "size": 12}}}}]}
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/render", "value": {"type": "cluster", "cluster_until_zoom": 14, "symbol": {"marker": {"shape": "circle", "color": "#283593", "size": {"field": "count", "range": [16, 40], "scale": "sqrt"}}, "label": {"text": "{count}", "color": "auto", "size": 12}}}}]}
 ```
 
 ## Hexagons

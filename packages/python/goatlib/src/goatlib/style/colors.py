@@ -4,7 +4,10 @@ The Python implementation is the reference: the server stores the colors and
 numbers a classification resolves to, and the compiler and legend read them.
 """
 
+import json
+import math
 import re
+from importlib import resources
 from typing import Any
 
 from goatlib.style.catalog import palettes
@@ -74,6 +77,163 @@ def rgb_to_hex(rgb: list[int]) -> str:
     return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 
+#: The contrast a readable shade reaches (WCAG's 4.5 to 1), the relative luminance
+#: from which an on-color is dark, and the light and dark colors it picks from.
+CONTRAST_FLOOR = 4.5
+ON_COLOR_LUMINANCE = 0.5
+LIGHT = "#ffffff"
+DARK = "#3a3541"
+
+
+def _is_hex(value: Any) -> bool:
+    """Whether `value` is a `#rrggbb` or `#rrggbbaa` color."""
+    return isinstance(value, str) and _HEX.fullmatch(value) is not None
+
+
+def shade(hex_color: Any) -> Any:
+    """The darker shade `"auto"` draws (spec 3.1): red, green and blue each times
+    0.7, rounded half up in whole numbers (so 15 gives 11, not 10.499...
+    rounded), opaque whatever the color's alpha; lowercase. Anything but a
+    six- or eight-digit hex color is returned as it is."""
+    if not _is_hex(hex_color):
+        return hex_color
+    return rgb_to_hex([(7 * c + 5) // 10 for c in hex_to_rgb(hex_color)])
+
+
+def _luminance(hex_color: str) -> float:
+    """WCAG's relative luminance of the color's red, green and blue."""
+    linear = [
+        s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+        for s in (c / 255 for c in hex_to_rgb(hex_color))
+    ]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def contrast_ratio(a: Any, b: Any) -> float:
+    """WCAG's contrast ratio of two hex colors, 1 to 21, alpha ignored; NaN where
+    either is not a six- or eight-digit hex color."""
+    if not (_is_hex(a) and _is_hex(b)):
+        return math.nan
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def readable_shade(hex_color: Any, against: Any, floor: float = CONTRAST_FLOOR) -> Any:
+    """The shade of the color, shaded again until it contrasts with `against` by
+    at least `floor`; where shading stops changing it (near black) first, that
+    last shade. Against anything but a hex color, the shade alone; anything but
+    a hex color is returned as it is."""
+    if not _is_hex(hex_color):
+        return hex_color
+    color = shade(hex_color)
+    # A NaN ratio (`against` no hex color) compares as False: the shade alone.
+    while contrast_ratio(color, against) < floor:
+        darker = shade(color)
+        if darker == color:
+            break
+        color = darker
+    return color
+
+
+def on_color(hex_color: Any) -> str:
+    """White where the color underneath has a relative luminance below 0.5, else
+    GOAT's dark text color; white for anything but a hex color."""
+    if not _is_hex(hex_color):
+        return LIGHT
+    return LIGHT if _luminance(hex_color) < ON_COLOR_LUMINANCE else DARK
+
+
+#: A label's text and halo where no color can be read for them (spec 18.10): GOAT's
+#: dark text in a light halo on a light basemap, white text in a dark halo on a dark one.
+LABEL_FALLBACK: dict[str, dict[str, str]] = {
+    "light": {"text": DARK, "halo": LIGHT},
+    "dark": {"text": LIGHT, "halo": DARK},
+}
+
+
+def label_pair(hex_color: Any, tone: Any = "light") -> dict[str, str]:
+    """A label's text and halo chosen together for the basemap's tone (spec 18.10),
+    from the color of the feature the label belongs to, its alpha ignored. On a light
+    basemap the text is the color's readable shade against white in a white halo; on
+    a dark one (any tone but "dark" counts as light) the text is white in a halo of
+    that shade. For anything but a hex color, `LABEL_FALLBACK`."""
+    dark = tone == "dark"
+    if not _is_hex(hex_color):
+        return dict(LABEL_FALLBACK["dark" if dark else "light"])
+    tinted = readable_shade(hex_color, LIGHT)
+    return {"text": LIGHT, "halo": tinted} if dark else {"text": tinted, "halo": LIGHT}
+
+
+def halo_against(text: Any) -> str:
+    """The halo of a set text color (spec 18.10): the one of white and GOAT's dark
+    text color that contrasts more with it, black where neither reaches the contrast
+    floor (a mid-tone text), so the floor always holds; white for anything but a hex
+    color."""
+    if not _is_hex(text):
+        return LIGHT
+    light, dark = contrast_ratio(text, LIGHT), contrast_ratio(text, DARK)
+    if max(light, dark) < CONTRAST_FLOOR:
+        return "#000000"
+    return LIGHT if light >= dark else DARK
+
+
+def text_against(
+    hex_color: Any, halo: Any, tone: Any = "light", text: Any = None
+) -> str:
+    """The text `"auto"` draws beside the halo the map draws (spec 18.10: a color the
+    style sets, or the reference `#ffffff` where none is set), read without its alpha:
+    `text` (by default the label pair's text for the tone) where it contrasts with the
+    halo by at least the contrast floor; else the color's readable shade against the
+    halo where it reaches the floor; else `halo_against` of the halo. A halo that is
+    not a hex color or is "None" is no halo: `text`. For a color that is not a hex
+    color the step of the readable shade is left out."""
+    first = label_pair(hex_color, tone)["text"] if text is None else text
+    if not _is_hex(halo) or is_none(halo):
+        return first
+    halo = opaque(halo)
+    if contrast_ratio(first, halo) >= CONTRAST_FLOOR:
+        return first
+    tinted = readable_shade(hex_color, halo)
+    if contrast_ratio(tinted, halo) >= CONTRAST_FLOOR:
+        return tinted
+    return halo_against(halo)
+
+
+def alpha(hex_color: Any) -> int | None:
+    """The color's alpha, 0 to 255: its last two digits, 255 without them; None
+    for anything but a six- or eight-digit hex color."""
+    if not _is_hex(hex_color):
+        return None
+    return int(hex_color[7:9], 16) if len(hex_color) == 9 else 255
+
+
+def is_none(hex_color: Any) -> bool:
+    """Whether the color is "None" (spec 4.6): a hex color at alpha 0, which draws
+    nothing and keeps its hue."""
+    return alpha(hex_color) == 0
+
+
+def opaque(hex_color: Any) -> Any:
+    """The color without its alpha, `#rrggbb` as written: the hue a color that is
+    not set takes from the color it follows (spec 3.1 to 3.3). Anything but a
+    six- or eight-digit hex color is returned as it is."""
+    return hex_color[:7] if _is_hex(hex_color) else hex_color
+
+
+#: The rules a color key's `"auto"` follows (spec 18.10).
+AUTO_RULES = ("shade", "label_text", "label_halo", "on_color")
+
+#: Every key that holds a color, a list of colors or a palette (spec 18.10), by
+#: the table's name: `auto` is its rule (`AUTO_RULES`) or None where `"auto"` is
+#: not offered; a rule has the color it `follows` and whether the models take
+#: `"auto"` there yet (`accepted`). The web's derived colors are tested against it.
+COLOR_KEYS: dict[str, dict[str, Any]] = json.loads(
+    resources.files("goatlib.style")
+    .joinpath("data", "color_keys.json")
+    .read_text(encoding="utf-8")
+)
+
+
 def _lab(hex_color: str) -> tuple[float, float, float]:
     linear = [
         c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -114,7 +274,8 @@ def sample_colors(
 
     A palette with a scheme for exactly `n` classes (ColorBrewer) uses it.
     Qualitative palettes repeat their colors in order. Any other palette spreads
-    its colors evenly over t = 0 to 1 and blends in Lab between the two nearest;
+    its colors evenly over t = 0 to 1 and blends in Lab between the two nearest,
+    their alphas linearly (a blend with an alpha below 255 has eight digits);
     one class takes the middle.
     """
     if n <= 0:
@@ -148,8 +309,20 @@ def sample_colors(
             continue
         frac = rem / den
         start, end = _lab(stops[j]), _lab(stops[j + 1])
-        out.append(_from_lab(tuple(s + (e - s) * frac for s, e in zip(start, end))))
+        blend = _from_lab(tuple(s + (e - s) * frac for s, e in zip(start, end)))
+        out.append(blend + _blend_alpha(stops[j], stops[j + 1], rem, den))
     return out
+
+
+def _blend_alpha(start: str, end: str, rem: int, den: int) -> str:
+    """The alpha `rem / den` of the way from `start`'s to `end`'s, rounded half
+    up in whole numbers, as the two digits a hex color ends with; nothing where
+    it is opaque."""
+    a, b = alpha(start), alpha(end)
+    a, b = 255 if a is None else a, 255 if b is None else b
+    # (a + (b - a) x rem / den) rounded half up, in integers.
+    value = (2 * (a * den + (b - a) * rem) + den) // (2 * den)
+    return "" if value == 255 else f"{value:02x}"
 
 
 def range_values(r0: float, r1: float, n: int, *, opacity: bool = False) -> list[float]:

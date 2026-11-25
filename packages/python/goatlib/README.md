@@ -196,6 +196,20 @@ READMEs means section N of that file.
   (or band formula) as the field: its range as `render.computed.domain`, classes
   into `render.classify`, computed by `raster.stats` from an overview sample with
   the shared class breaks.
+- **A derived color is the word `"auto"` on a color key** (spec 18.10): the
+  color follows another part's color, and for labels the basemap's tone. Which
+  keys take it, by which rule and following what, is defined once, in the
+  specification's table and in `style/data/color_keys.json`; a test walks the
+  JSON Schema and fails for a color key the table does not name, so no key takes
+  the word by accident. The rules themselves (a darker shade, a label's text and
+  halo, the color that reads on a marker) exist once here in `style/colors.py`
+  and once in the web, held equal by the shared fixture
+  `tests/unit/style/fixtures/color_rules.json`. goatlib only validates the word:
+  resolving it for the map, and knowing the basemap's tone, is the web
+  compiler's, since only the map knows what it draws on. A key left out keeps
+  its reference color, so a style that never says `"auto"` keeps its look. The
+  AI's operations write the word on the key itself (`/symbol/outline/color`);
+  `"auto"` sent as a whole part is refused (`style/edit.py`, below).
 
 - **The data fingerprint** (`fingerprint.py`): computed values record the data
   they come from (`ducklake:<layer.data_snapshot>`; a promoted catalog layer's
@@ -232,7 +246,9 @@ READMEs means section N of that file.
   `apply_edits` applies a list of them (`set`, `remove`, `retarget`,
   `use_field`, `round`, `add`, `move`) in order, all or none, and a refusal
   names what exists, so the model's next call can be right; validating the
-  result stays the server's check.
+  result stays the server's check. A key set under a part that is `false`
+  switches the part on, because models change a part key by key and rarely send
+  it as one object.
 - **A style in one line** (`style/summary.py`): `summarize` describes a
   document in plain words for the layer lists the AI reads, from the plain
   dict, so a damaged document gives a shorter line instead of an error.
@@ -391,7 +407,9 @@ stack, so validation runs in core too.
   NaN, the style's values) is transparent. `outside` works for classes as for a
   ramp: with `clamp` the first and last class are open, with `hide` they end at
   their own `from` and `to`, else at the token's `domain`, else at the band's
-  range (the last holding its end), and the cells beyond are transparent.
+  range (the last holding its end), and the cells beyond are transparent. A
+  color's own alpha (`#rrggbbaa`) is painted, blended premultiplied as MapLibre
+  blends the browser's colors; the layer opacity stays the browser's.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
   statistics for the band it is asked for alone (none without one), or for a
