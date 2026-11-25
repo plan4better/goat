@@ -95,13 +95,15 @@ const carriedOnly = (doc: LayerStyle, path: Path): boolean =>
 
 /** Switches a part off (remembering it) or on (restoring it, else `start`, by default `{}`); `after` adjusts the
  * document in the same edit when the part comes on (heights take one fill opacity). A layer's part that only classes or
- * rules turned on goes back to them when it is switched off again, instead of off for every feature. */
+ * rules turned on goes back to them when it is switched off again, instead of off for every feature. `offAbsent`: the
+ * part has no `false` and is off while absent (the hexagons' outline). */
 export function togglePart(
   store: EditorStore,
   path: Path,
   on: boolean,
   after?: (doc: LayerStyle) => LayerStyle,
-  start: JsonObject = {}
+  start: JsonObject = {},
+  { offAbsent = false }: { offAbsent?: boolean } = {}
 ): void {
   const memory = memoryOf(store);
   const absent = `${path}${ABSENT}`;
@@ -118,7 +120,7 @@ export function togglePart(
   } else {
     const value = store.get(path);
     memory.set(path, isObject(value) ? value : {});
-    store.set(path, memory.get(absent) === true ? undefined : false);
+    store.set(path, offAbsent || memory.get(absent) === true ? undefined : false);
     memory.delete(absent);
   }
 }

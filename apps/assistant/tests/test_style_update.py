@@ -815,6 +815,24 @@ def test_a_cluster_symbol_part_switched_on_does_not_stay_off_with_the_layer_part
     ]
 
 
+def test_a_key_set_under_an_absent_hexagon_outline_switches_the_outline_on() -> None:
+    """Hexagons draw no outline while `render.outline` is absent; setting one of
+    its keys creates the outline, which then draws with defaults for the rest."""
+    from goatlib.style.edit import Edit
+
+    from assistant.styles.edits import edited
+
+    base = {"version": "1.0.0", "kind": "vector", "render": {"type": "h3"}}
+    width = Edit(op="set", path="/render/outline/width", value=2)
+    assert edited(base, [width]).document["render"] == {
+        "type": "h3",
+        "outline": {"width": 2},
+    }
+    color = Edit(op="set", path="/render/outline/color", value="auto")
+    assert edited(base, [color]).document["render"]["outline"] == {"color": "auto"}
+    assert base["render"] == {"type": "h3"}
+
+
 async def test_a_part_switched_on_in_a_class_stays_off_while_the_symbol_holds_false() -> (
     None
 ):

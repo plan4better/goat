@@ -258,6 +258,31 @@ def test_h3_extrude_defaults() -> None:
     assert REFERENCE_DEFAULTS["h3.extrude.scale"] == "sqrt"
 
 
+@pytest.mark.parametrize(
+    "outline", [None, {}, {"color": "auto", "width": 2.5}, {"color": "#33669900"}]
+)
+def test_an_outline_absent_empty_or_set_validates_and_is_stored_as_written(
+    outline,
+) -> None:
+    """Absent draws no outline, present draws one with defaults for the keys it
+    leaves out (spec 8.3): every form is valid and nothing fills it in."""
+    from goatlib.style.migrate import stored_document
+    from goatlib.style.version import stamp
+
+    written = doc() if outline is None else doc(outline=outline)
+    ctx = DataContext(kind="vector", geometry="point")
+    assert validate(written, ctx) == []
+    assert stamp(written) == written
+    assert stored_document(written, ctx, seed="1") == written
+
+
+def test_h3_outline_defaults_are_those_of_a_present_outline() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["h3.outline.color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["h3.outline.width"] == 1
+
+
 def test_columns_over_manual_classes_need_the_cell_range(duck) -> None:
     manual = {"method": "manual", "classes": [{"to": 3}, {"from": 3}]}
     style = doc(resolution=8, classify=manual, extrude={"tallest": 500})

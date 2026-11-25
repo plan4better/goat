@@ -24,7 +24,7 @@ import {
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { ViewingIn2D } from "@/components/map/panels/styleEditor/editors/HeightRow";
-import { HeaderSwitch } from "@/components/map/panels/styleEditor/editors/PartEditor";
+import { HeaderSwitch, togglePart } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
@@ -181,12 +181,35 @@ function ClassesRows() {
   );
 }
 
-/** The outline's editor: its color (Auto, None or a color) and width. `render.outline` has no off: None draws no
- * outline. It closes once the hexagons are another render or columns, which draw no outline. */
+/** The outline's switch, for its editor's header: on brings back the outline it switched off, else an empty one
+ * (white, 1 px); off removes `render.outline`, which draws none. */
+function H3OutlineSwitch() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const on = isObject(useStyleValue<unknown>("render.outline"));
+  return (
+    <HeaderSwitch
+      name={t("style_editor.part_name_outline")}
+      on={on}
+      onToggle={() => togglePart(store, "render.outline", !on, undefined, {}, { offAbsent: true })}
+    />
+  );
+}
+
+/** The outline's editor: while on, its color (Auto, None or a color) and width. It closes once the hexagons are
+ * another render or columns, which draw no outline. */
 function H3OutlineEditor() {
+  const { t } = useTranslation("common");
   const type = useStyleValue<unknown>("render.type");
+  const on = isObject(useStyleValue<unknown>("render.outline"));
   const extruded = isObject(useStyleValue<unknown>("render.extrude"));
   useCloseWhenGone(type !== "h3" || extruded);
+  if (!on)
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
+        {t("style_editor.part_off_note")}
+      </Typography>
+    );
   return (
     <>
       <PropertyRow row={OUTLINE_COLOR} base="render.outline" />
@@ -196,7 +219,8 @@ function H3OutlineEditor() {
 }
 
 /** The outline as a group row, like a polygon's Outline: the swatch of what the map draws (on Auto, each hexagon's
- * color in a darker shade) and the width, "Auto" before it, "None" alone; it opens the outline's editor. */
+ * color in a darker shade) and the width, "Auto" before it, "None" alone or while the outline is off; it opens the
+ * outline's editor. */
 function OutlineRow() {
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
@@ -206,6 +230,7 @@ function OutlineRow() {
   const next = useNextLevel();
   // An Auto swatch follows the hexagons' colors: any change of the render.
   useStyleValue<unknown>("render");
+  const on = isObject(store.get("render.outline"));
   const color = store.get("render.outline.color") ?? DEFAULTS["h3.outline.color"];
   const width = store.get("render.outline.width");
   const size = summaryNumber(
@@ -213,24 +238,33 @@ function OutlineRow() {
     "h3.outline.width",
     i18n.language
   );
-  const text = isNone(color)
-    ? t("style_editor.none")
-    : isDerivedWord("h3.outline.color", color)
-      ? `${wordLabel(t, color)} · ${size}`
-      : size;
-  const swatch = swatchOf(store.document, "render.outline.color", geometry ?? undefined, { tone });
+  const text =
+    !on || isNone(color)
+      ? t("style_editor.none")
+      : isDerivedWord("h3.outline.color", color)
+        ? `${wordLabel(t, color)} · ${size}`
+        : size;
+  const swatch = on
+    ? swatchOf(store.document, "render.outline.color", geometry ?? undefined, { tone })
+    : undefined;
   const label = t("style_editor.part_outline");
   return (
     <GroupRow
       label={label}
+      off={!on}
       value={text}
-      swatch={{ background: swatch, wide: swatch.startsWith("linear-gradient") }}
+      swatch={swatch ? { background: swatch, wide: swatch.startsWith("linear-gradient") } : undefined}
       onOpen={(anchor) =>
         popover.open(next, {
           key: "h3:outline",
           title: label,
           anchorTop: anchorTopOf(anchor),
-          actions: <ResetToDataset paths={["render.outline"]} />,
+          actions: (
+            <>
+              <ResetToDataset paths={["render.outline"]} />
+              <H3OutlineSwitch />
+            </>
+          ),
           render: () => <H3OutlineEditor />,
         })
       }
@@ -238,8 +272,8 @@ function OutlineRow() {
   );
 }
 
-/** The columns' switch, for their editor's header: on raises them (the first columns on a 2D map tilt it once,
- * with Undo), off lays them flat. */
+/** The columns' switch, for their editor's header: on raises them as they were switched off, else with the defaults
+ * (the first columns on a 2D map tilt it once, with Undo); off removes `render.extrude`, which lays them flat. */
 function H3HeightSwitch() {
   const { t } = useTranslation("common");
   const store = useEditor();
@@ -251,7 +285,7 @@ function H3HeightSwitch() {
       name={t("style_editor.part_name_height")}
       on={on}
       onToggle={() => {
-        store.set("render.extrude", on ? undefined : {});
+        togglePart(store, "render.extrude", !on, undefined, {}, { offAbsent: true });
         tilt(!on);
       }}
     />

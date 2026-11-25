@@ -128,11 +128,16 @@ describe("syncMapLayers", () => {
     const map = orderedMap();
     const hexagons = polygon("1", {
       geometry: "point",
-      style: { version: "1.0.0", kind: "vector", render: { type: "h3", points_from_zoom: 15 } } as LayerStyle,
+      style: {
+        version: "1.0.0",
+        kind: "vector",
+        render: { type: "h3", points_from_zoom: 15, outline: {} },
+      } as LayerStyle,
       filter: { exclude: [5], atlas: 7 },
     });
     syncMapLayers(map, null, [hexagons], { locale: "en" });
     expect(map.specs.get("1-h3-fill")?.filter).toBeUndefined();
+    expect(map.specs.has("1-h3-outline")).toBe(true);
     expect(map.specs.get("1-h3-outline")?.filter).toBeUndefined();
     const hexagonTiles = (map.getSource("src-1-h3") as { tiles: string[] }).tiles;
     expect(hexagonTiles[0]).toMatch(/[?&]ids=7(&|$)/);

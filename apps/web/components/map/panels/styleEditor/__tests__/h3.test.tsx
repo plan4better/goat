@@ -197,10 +197,52 @@ describe("H3 hexagons", () => {
     expect(outlineRow()).toEqual({ text: "2 px", swatch: "#ff0000" });
   });
 
-  it("an outline left unset reads as the white 1 px outline it draws", () => {
+  /** The Outline editor's header switch. */
+  const outlineSwitch = () => screen.getByRole("checkbox", { name: /style_editor.turn_part_/ });
+
+  it("an outline left unset is off: the row reads None, the editor's switch is off, and opening writes nothing", async () => {
     const { store } = setup();
+    expect(outlineRow()).toEqual({ text: "style_editor.none", swatch: "" });
+    await openOutline();
+    expect((outlineSwitch() as HTMLInputElement).checked).toBe(false);
+    expect(outlineSwitch().getAttribute("aria-label")).toBe("style_editor.turn_part_on");
+    expect(screen.getByText("style_editor.part_off_note")).toBeDefined();
+    expect(screen.queryByText("style_editor.color")).toBeNull();
+    expect(store.document).toEqual({ version: "1.0.0", kind: "vector", render: { type: "h3" } });
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("switching the outline on writes an empty outline (white, 1 px); off removes it; one undo step each", async () => {
+    const { store } = setup();
+    await openOutline();
+    await userEvent.click(outlineSwitch());
+    expect(store.get("render.outline")).toEqual({});
     expect(outlineRow()).toEqual({ text: "1 px", swatch: "#ffffff" });
+    expect(screen.getByText("style_editor.color")).toBeDefined();
+    act(() => store.undo());
+    expect(store.get("render")).toEqual({ type: "h3" });
+    expect(store.canUndo).toBe(false);
+    act(() => store.redo());
+    expect(store.get("render.outline")).toEqual({});
+    await userEvent.click(outlineSwitch());
+    expect(store.get("render")).toEqual({ type: "h3" });
+    expect(outlineRow().text).toBe("style_editor.none");
+    expect(screen.getByText("style_editor.part_off_note")).toBeDefined();
+    act(() => store.undo());
+    expect(store.get("render.outline")).toEqual({});
+  });
+
+  it("switched off and on again, the outline comes back with its color and width", async () => {
+    const { store } = setup({ type: "h3", outline: { color: "#ff0000", width: 2 } });
+    await openOutline();
+    expect((outlineSwitch() as HTMLInputElement).checked).toBe(true);
+    await pickColor(rowOf("style_editor.color"), "#336699");
+    fireEvent.change(within(rowOf("style_editor.width")).getByRole("slider"), { target: { value: 3 } });
+    await userEvent.click(outlineSwitch());
     expect(store.get("render.outline")).toBeUndefined();
+    await userEvent.click(outlineSwitch());
+    expect(store.get("render.outline")).toEqual({ color: "#336699", width: 3 });
+    expect(outlineRow()).toEqual({ text: "3 px", swatch: "#336699" });
   });
 
   it("an Auto outline reads Auto before the width over the shade of each hexagon's color", () => {
@@ -226,10 +268,9 @@ describe("H3 hexagons", () => {
     expect(outlineRow().text).toBe("style_editor.none");
   });
 
-  it("the outline's editor writes its color and width; the format has no off, so no switch", async () => {
-    const { store } = setup();
+  it("the outline's editor writes its color and width", async () => {
+    const { store } = setup({ type: "h3", outline: {} });
     await openOutline();
-    expect(screen.queryByRole("checkbox", { name: /style_editor.turn_part_/ })).toBeNull();
     await pickColor(rowOf("style_editor.color"), "#336699");
     expect(store.get("render.outline.color")).toBe("#336699");
     fireEvent.change(within(rowOf("style_editor.width")).getByRole("slider"), { target: { value: 2.5 } });
@@ -238,7 +279,7 @@ describe("H3 hexagons", () => {
   });
 
   it("the outline's width takes a number past the slider's end", async () => {
-    const { store } = setup();
+    const { store } = setup({ type: "h3", outline: {} });
     await openOutline();
     const box = within(rowOf("style_editor.width")).getByRole("textbox");
     fireEvent.change(box, { target: { value: "12" } });
@@ -253,7 +294,7 @@ describe("H3 hexagons", () => {
       ],
       rules: [{ id: "r1", when: { field: "pupils", op: "eq", value: 1 }, marker: { color: "#00ff00" } }],
     };
-    const { store, unmount } = setup({ type: "h3", points_from_zoom: 14 });
+    const { store, unmount } = setup({ type: "h3", points_from_zoom: 14, outline: {} });
     act(() => store.update((doc) => ({ ...doc, ...records }) as LayerStyle));
     for (const scope of [
       { classify: 0, key: 0 },
@@ -268,7 +309,9 @@ describe("H3 hexagons", () => {
       expect(store.get("rules")).toEqual(records.rules);
       await userEvent.click(screen.getAllByRole("button", { name: "style_editor.close" })[0]);
       act(() =>
-        store.update((doc) => ({ ...doc, render: { type: "h3", points_from_zoom: 14 } }) as LayerStyle)
+        store.update(
+          (doc) => ({ ...doc, render: { type: "h3", points_from_zoom: 14, outline: {} } }) as LayerStyle
+        )
       );
     }
     unmount();
@@ -326,7 +369,7 @@ describe("H3 hexagons", () => {
   });
 
   it("the Outline editor closes when the hexagons are extruded and its row goes", async () => {
-    const { store } = setup();
+    const { store } = setup({ type: "h3", outline: {} });
     await openOutline();
     expect(screen.getByText("style_editor.color")).toBeDefined();
     act(() => store.set("render.extrude", {}));
@@ -335,7 +378,7 @@ describe("H3 hexagons", () => {
   });
 
   it("the outline's color offers Auto and None", async () => {
-    const { store } = setup();
+    const { store } = setup({ type: "h3", outline: {} });
     await openOutline();
     await userEvent.click(
       within(rowOf("style_editor.color")).getByRole("button", { name: "style_editor.pick_color" })
@@ -352,6 +395,21 @@ describe("H3 hexagons", () => {
 
   /** The section's Height row (the popover's title says Height too, after it in the page). */
   const heightRow = () => screen.getAllByText("style_editor.height")[0].parentElement as HTMLElement;
+
+  it("height switched off and on again brings back Tallest and the scale; opening writes nothing", async () => {
+    const { store } = setup({ type: "h3", extrude: { tallest: 1500 } });
+    // The row's own button (on a 2D map a link to show 3D follows it).
+    await userEvent.click(within(heightRow()).getAllByRole("button")[0]);
+    expect(store.get("render")).toEqual({ type: "h3", extrude: { tallest: 1500 } });
+    expect(store.canUndo).toBe(false);
+    await userEvent.click(within(rowOf("style_editor.h3_scale")).getAllByRole("button")[0]);
+    expect(store.get("render.extrude")).toEqual({ tallest: 1500, scale: "linear" });
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_off" }));
+    expect(store.get("render")).toEqual({ type: "h3" });
+    expect(screen.getByText("style_editor.part_off_note")).toBeDefined();
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }));
+    expect(store.get("render.extrude")).toEqual({ tallest: 1500, scale: "linear" });
+  });
 
   it("height: a group row whose popover switches columns on (tilting once), writes Tallest and Scale, and off", async () => {
     const { store, redux } = setup();
