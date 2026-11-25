@@ -3727,6 +3727,7 @@
     "as_in_dataset": "As in the dataset",
     "number_format": "Number format",
     "decimals": "Decimals",
+    "decimals_auto": "Auto",
     "auto": "Auto",
     "thousands": "Thousands",
     "note_thousands": "Show a thousands separator.",

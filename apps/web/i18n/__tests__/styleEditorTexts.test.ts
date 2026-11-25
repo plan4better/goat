@@ -86,6 +86,16 @@ describe("German style panel texts", () => {
   it("the merge distance says what the distance is for, in words that fit the label column", () => {
     expect(texts.merge_distance).toBe("Abstand für Cluster");
   });
+
+  it("the color choice reads Auto; the automatic values of a dropdown read Automatisch", () => {
+    expect(texts.auto).toBe("Auto");
+    expect(texts.decimals_auto).toBe("Automatisch");
+    expect(texts.h3_size_auto).toBe("Automatisch");
+    expect(texts.value_label_placement_auto).toBe("Automatisch");
+    expect((de as Record<string, unknown>).placement_auto).toBe("Automatisch");
+    expect(LANGUAGES.en.auto).toBe("Auto");
+    expect(LANGUAGES.en.decimals_auto).toBe("Auto");
+  });
 });
 
 /** The raster panel's files, their literal `style_editor.…` keys and those they build from a value. */
