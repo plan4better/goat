@@ -1,5 +1,8 @@
 """Moving a project's catalog layer or catalog bundle to the catalog's newer version, in place."""
 
+import copy
+import json
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -19,11 +22,14 @@ from core.services.style import (
     read_stored,
     write_document,
 )
+from core.templates.snapshot import _rewrite_tool_configs
 from fastapi import HTTPException, status
 from goatlib.catalog import promote as catalog
 from goatlib.catalog.item import layer_type
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
+
+logger = logging.getLogger(__name__)
 
 
 def _refuse(code: int, detail: str) -> HTTPException:
@@ -70,6 +76,218 @@ async def _repoint(
         {"id": link_id, "old": old_layer_id, "new": new_layer_id},
     )
     return bool(moved.rowcount)
+
+
+async def _left_behind(
+    async_session: AsyncSession,
+    *,
+    old_layer_ids: list[UUID],
+    leaving: list[int],
+    old_bundle_id: UUID | None = None,
+    group_id: int | None = None,
+) -> None:
+    """The old version's grace period in the catalog cleanup starts now, when it
+    loses its last entries (`leaving`), not at its last promotion. A layer or
+    bundle another entry or group still holds keeps its update time, a cache key
+    elsewhere. Runs before the entries move, so a cleanup in between never sees
+    the old time on a version without entries."""
+    schema = settings.SCHEMA
+    await async_session.execute(
+        text(
+            f"""
+            UPDATE {schema}.layer l SET updated_at = now()
+            WHERE l.id = ANY(:ids) AND NOT EXISTS (
+                SELECT 1 FROM {schema}.layer_project lp
+                WHERE lp.layer_id = l.id AND lp.id <> ALL(:leaving)
+            )
+            """
+        ),
+        {"ids": old_layer_ids, "leaving": leaving},
+    )
+    if old_bundle_id is not None:
+        await async_session.execute(
+            text(
+                f"""
+                UPDATE {schema}.bundle b SET updated_at = now()
+                WHERE b.id = :id AND NOT EXISTS (
+                    SELECT 1 FROM {schema}.layer_project_group g
+                    WHERE g.bundle_id = b.id AND g.id <> :group
+                )
+                """
+            ),
+            {"id": old_bundle_id, "group": group_id},
+        )
+
+
+def _dataset_data(config: Any) -> list[dict[str, Any]]:
+    """The `data` of each dataset node in a workflow config."""
+    nodes = config.get("nodes") if isinstance(config, dict) else None
+    if not isinstance(nodes, list):
+        return []
+    return [
+        node["data"]
+        for node in nodes
+        if isinstance(node, dict)
+        and isinstance(node.get("data"), dict)
+        and node["data"].get("type") == "dataset"
+    ]
+
+
+def _moved_nodes(
+    config: dict[str, Any], new_of: dict[int, str]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """A copy of `config` with every dataset node of a moved entry on the entry's
+    new layer, as a worker's rewrite after a run moves them (a node left on an
+    earlier version moves too), and the layer ids those nodes held, each with the
+    new id."""
+    config = copy.deepcopy(config)
+    held: dict[str, str] = {}
+    for data in _dataset_data(config):
+        link_id = data.get("projectLayerId")
+        if not isinstance(link_id, int) or isinstance(link_id, bool):
+            continue
+        new = new_of.get(link_id)
+        old = data.get("layerId")
+        if new is None or old == new:
+            continue
+        data["layerId"] = new
+        if isinstance(old, str):
+            held[old] = new
+    return config, held
+
+
+def _rewritten(
+    config: Any, new_of: dict[int, str], pairs: dict[str, str]
+) -> dict[str, Any] | None:
+    """`config` with the moved entries' dataset nodes on their new layers and the
+    tool settings holding an old id of `pairs` rewritten (the editor's "Replace
+    datasets" rewrite); None if nothing changed. An id a dataset node still reads
+    stays in tool settings: it may mean that node's layer."""
+    if not isinstance(config, dict):
+        return None
+    moved, _ = _moved_nodes(config, new_of)
+    still_read = {
+        data["layerId"]
+        for data in _dataset_data(moved)
+        if isinstance(data.get("layerId"), str)
+    }
+    _rewrite_tool_configs(
+        moved["nodes"] if isinstance(moved.get("nodes"), list) else [],
+        [(old, new) for old, new in pairs.items() if old not in still_read],
+    )
+    return moved if moved != config else None
+
+
+async def _follow_in_workflows(
+    async_session: AsyncSession,
+    *,
+    project_id: UUID,
+    moves: dict[int, tuple[UUID, UUID]],
+    user_id: UUID,
+) -> None:
+    """The project's workflows read the moved entries' new layers. Runs resolve a
+    dataset node through its entry anyway; the saved ids are what the editor, the
+    run's access check and tool settings read, and what keeps the old version
+    named for the catalog cleanup.
+
+    An old id no entry of the project shows any more is rewritten in the tool
+    settings of every workflow of the project, also one without a node of the
+    moved entry; one another entry still shows stays, as it may mean that entry.
+    Each write raises the revision, so an editor that still shows the old
+    workflow gets the "changed elsewhere" notice instead of saving the old ids
+    back. The last step of an update: a failure here is logged and leaves the
+    old ids, which the cleanup then spares."""
+    try:
+        await _rewrite_workflows(
+            async_session, project_id=project_id, moves=moves, user_id=user_id
+        )
+    except Exception:  # noqa: BLE001 - the entries moved already
+        logger.exception("Catalog update: workflows of %s not rewritten", project_id)
+        await async_session.rollback()
+
+
+async def _rewrite_workflows(
+    async_session: AsyncSession,
+    *,
+    project_id: UUID,
+    moves: dict[int, tuple[UUID, UUID]],
+    user_id: UUID,
+) -> None:
+    schema = settings.SCHEMA
+    new_of = {link: str(new) for link, (old, new) in moves.items() if old != new}
+    if not new_of:
+        return
+    read = f"SELECT id, config, revision FROM {schema}.workflow"
+    rows = (
+        await async_session.execute(
+            text(f"{read} WHERE project_id = :p"), {"p": project_id}
+        )
+    ).all()
+    pairs: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    held_ids = [{str(old): str(new) for old, new in moves.values() if old != new}]
+    held_ids += [
+        _moved_nodes(row.config, new_of)[1]
+        for row in rows
+        if isinstance(row.config, dict)
+    ]
+    for held in held_ids:
+        for old, new in held.items():
+            if pairs.setdefault(old, new) != new:
+                ambiguous.add(old)
+    shown = set(
+        (
+            await async_session.scalars(
+                text(
+                    f"SELECT DISTINCT layer_id::text FROM {schema}.layer_project "
+                    "WHERE project_id = :p AND layer_id::text = ANY(:ids)"
+                ),
+                {"p": project_id, "ids": list(pairs)},
+            )
+        ).all()
+    )
+    pairs = {
+        old: new
+        for old, new in pairs.items()
+        if old != new and old not in ambiguous and old not in shown
+    }
+    for row in rows:
+        # Written only over the config read: a save in between, also one that
+        # keeps the revision (a pan, a run's state), is read again once.
+        for _ in range(2):
+            config = _rewritten(row.config, new_of, pairs)
+            if config is None or await _write_over(async_session, row, config, user_id):
+                break
+            row = (
+                await async_session.execute(
+                    text(f"{read} WHERE id = :id"), {"id": row.id}
+                )
+            ).first()
+            if row is None:
+                break
+
+
+async def _write_over(
+    async_session: AsyncSession, row: Any, config: dict[str, Any], user_id: UUID
+) -> bool:
+    """Save `config` over the workflow `row` was read as, with a new revision;
+    False when the workflow changed since."""
+    written = await async_session.execute(
+        text(
+            f"UPDATE {settings.SCHEMA}.workflow SET config = CAST(:config AS jsonb), "
+            "revision = revision + 1, updated_at = now(), updated_by = :user "
+            "WHERE id = :id AND revision = :revision "
+            "AND config = CAST(:read AS jsonb)"
+        ),
+        {
+            "config": json.dumps(config),
+            "read": json.dumps(row.config),
+            "user": user_id,
+            "id": row.id,
+            "revision": row.revision,
+        },
+    )
+    return bool(written.rowcount)
 
 
 async def follow_catalog_style(
@@ -178,6 +396,10 @@ async def update_catalog_layer(
         access_token=access_token,
     )
     new_layer_id = promoted.layer_ids[item_id]
+    if new_layer_id != row.layer_id:
+        await _left_behind(
+            async_session, old_layer_ids=[row.layer_id], leaving=[link_id]
+        )
     if not await _repoint(
         async_session,
         link_id=link_id,
@@ -192,6 +414,12 @@ async def update_catalog_layer(
         link_id=link_id,
         old_layer_id=row.layer_id,
         new_layer_id=new_layer_id,
+        user_id=user_id,
+    )
+    await _follow_in_workflows(
+        async_session,
+        project_id=project_id,
+        moves={link_id: (row.layer_id, new_layer_id)},
         user_id=user_id,
     )
     return [link_id]
@@ -328,6 +556,19 @@ async def update_catalog_bundle(
         ).all()
     )
 
+    moved = [(e.id, e.layer_id, members[e.role]) for e in entries if e.role in members]
+    dropped = [e.id for e in entries if e.role not in members]
+    leaving = [(link, old) for link, old, new in moved if old != new] + [
+        (e.id, e.layer_id) for e in entries if e.role not in members
+    ]
+    await _left_behind(
+        async_session,
+        old_layer_ids=[old for _, old in leaving],
+        leaving=[link for link, _ in leaving],
+        old_bundle_id=row.bundle_id,
+        group_id=group_id,
+    )
+
     # One transaction, claimed by the group row: an update that moved the group
     # first wins and this one answers 409, so the entries are never moved twice.
     claimed = await async_session.execute(
@@ -340,8 +581,6 @@ async def update_catalog_bundle(
     if claimed.rowcount == 0:
         await async_session.rollback()
         raise raced
-    moved = [(e.id, e.layer_id, members[e.role]) for e in entries if e.role in members]
-    dropped = [e.id for e in entries if e.role not in members]
     for link_id, old_layer, new_layer in moved:
         await _repoint(
             async_session,
@@ -383,6 +622,12 @@ async def update_catalog_bundle(
             new_layer_id=new_layer,
             user_id=user_id,
         )
+    await _follow_in_workflows(
+        async_session,
+        project_id=project_id,
+        moves={link_id: (old, new) for link_id, old, new in moved},
+        user_id=user_id,
+    )
     return list(
         (
             await async_session.scalars(

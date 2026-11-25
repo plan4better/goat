@@ -10,6 +10,12 @@ A grace period keeps a just-unlinked layer around for a while, so
 remove-then-readd (and the promote→link window itself) never races the
 sweep. Layers are matched by ``catalog_external_uid IS NOT NULL`` — user
 layers are never candidates, whatever their link count.
+
+A layer without links can still be read: an update to a newer version moves
+the project entries, while a published map's snapshot, a workflow or a
+template keeps naming the old layer. Such a layer stays until nothing names
+it. Catalog bundles (plans) follow the same rules: a bundle goes once no
+project group holds it and nothing names it or one of its member layers.
 """
 
 from __future__ import annotations
@@ -32,6 +38,49 @@ from goatlib.utils.layer import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _documents(schema: str) -> str:
+    """The saved documents that can name a catalog layer or bundle after its
+    project entries moved: workflows, published maps' snapshots and templates.
+    Their configs are free-form JSON (tool settings hold layer ids as plain
+    values), so any string value equal to the id counts."""
+    return f"""(
+        SELECT config AS doc FROM {schema}.workflow
+        UNION ALL SELECT config FROM {schema}.project_public
+        UNION ALL SELECT config FROM {schema}.template
+        UNION ALL SELECT inputs FROM {schema}.template
+    )"""
+
+
+#: Rows deleted per statement; each statement reads the documents once.
+DELETE_BATCH = 500
+
+
+def _named(schema: str, ids: str) -> str:
+    """A `WITH` entry `named`: those of the ids `ids` (a query of text ids) that
+    a saved document names, in one pass over the documents however many ids
+    there are."""
+    return f"""named AS (
+        SELECT DISTINCT v #>> '{{}}' AS id
+        FROM {_documents(schema)} d, jsonb_path_query(d.doc, 'strict $.**') v
+        WHERE jsonb_typeof(v) = 'string' AND (v #>> '{{}}') IN ({ids})
+    )"""
+
+
+async def _named_ids(conn: Any, schema: str, ids: list[str]) -> set[str]:
+    """Which of `ids` a saved document names."""
+    if not ids:
+        return set()
+    rows = await conn.fetch(
+        f"WITH {_named(schema, 'SELECT unnest($1::text[])')} SELECT id FROM named",
+        ids,
+    )
+    return {row["id"] for row in rows}
+
+
+def _batches(ids: list[Any]) -> list[list[Any]]:
+    return [ids[i : i + DELETE_BATCH] for i in range(0, len(ids), DELETE_BATCH)]
 
 
 class CatalogGCParams(BaseModel):
@@ -99,6 +148,52 @@ class CatalogGCTask:
             *(tiles_dir / name for name in names),
         ]
 
+    async def _delete_rows(
+        self: Self, conn: Any, ids: list[Any], grace_hours: int
+    ) -> list[Any]:
+        """Delete the layer rows `ids` that are still deletable; the ids deleted.
+
+        The rows go before their files: once a row is gone nothing can resolve its
+        files, so a crash between the two steps leaves only
+        unreferenced files for the next sweep — never a row
+        whose data has vanished.
+
+        Re-check "unreferenced" inside the DELETE: a project link
+        created after the candidate SELECT (a concurrent re-add of
+        a layer) must survive. Without the guard the layer's
+        ON DELETE CASCADE would take that fresh link — and the
+        layer's files — with it. So must a layer a document saved
+        since names. A spared layer is missing from RETURNING.
+        """
+        assert self.settings is not None
+        schema = self.settings.customer_schema
+        rows = await conn.fetch(
+            f"""
+            WITH {_named(schema, "SELECT unnest($1::uuid[])::text")}
+            DELETE FROM {schema}.layer l
+            WHERE l.id = ANY($1::uuid[])
+              AND NOT EXISTS (
+                  SELECT 1 FROM {schema}.layer_project lp
+                  WHERE lp.layer_id = l.id
+              )
+              AND l.id::text NOT IN (SELECT id FROM named)
+              -- Promote protects a reused layer by bumping
+              -- updated_at; honour that here too, or a re-add that
+              -- lands between the candidate SELECT and this DELETE
+              -- loses its layer and then FK-fails on the link.
+              AND l.updated_at < NOW() - make_interval(hours => $2)
+              -- A job mid-flight would write its file after the row
+              -- is gone and leave it orphaned forever.
+              AND COALESCE(
+                  l.other_properties->'catalog_materialize'->>'status', ''
+              ) <> 'running'
+            RETURNING l.id
+            """,
+            ids,
+            grace_hours,
+        )
+        return [row["id"] for row in rows]
+
     async def _run(self: Self, params: CatalogGCParams) -> CatalogGCOutput:
         assert self.settings is not None
         out = CatalogGCOutput(dry_run=params.dry_run)
@@ -117,19 +212,57 @@ class CatalogGCTask:
                       WHERE g.bundle_id = b.id
                   )
             """
+            # A bundle stays while a document names it or one of its members.
+            unheld = await conn.fetch(
+                f"""
+                SELECT b.id::text AS id, ARRAY(
+                    SELECT bl.layer_id::text FROM {schema}.bundle_layer bl
+                    WHERE bl.bundle_id = b.id
+                ) AS members
+                FROM {bundles}
+                """,
+                params.grace_hours,
+            )
+            named = await _named_ids(
+                conn,
+                schema,
+                [i for row in unheld for i in (row["id"], *row["members"])],
+            )
+            unused = [
+                row["id"]
+                for row in unheld
+                if named.isdisjoint((row["id"], *row["members"]))
+            ]
             if params.dry_run:
-                out.bundles_deleted = await conn.fetchval(
-                    f"SELECT count(*) FROM {bundles}", params.grace_hours
+                out.bundles_deleted = len(unused)
+            # Checked again in the DELETE, for a group or a document saved
+            # since: the bundles and their members as they are now.
+            with_members = (
+                "SELECT unnest($2::uuid[])::text UNION "
+                f"SELECT bl.layer_id::text FROM {schema}.bundle_layer bl "
+                "WHERE bl.bundle_id = ANY($2::uuid[])"
+            )
+            for batch in [] if params.dry_run else _batches(unused):
+                deleted = await conn.fetch(
+                    f"""
+                    WITH {_named(schema, with_members)}
+                    DELETE FROM {bundles}
+                      AND b.id = ANY($2::uuid[])
+                      AND b.id::text NOT IN (SELECT id FROM named)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM {schema}.bundle_layer bl
+                          WHERE bl.bundle_id = b.id
+                            AND bl.layer_id::text IN (SELECT id FROM named)
+                      )
+                    RETURNING b.id
+                    """,
+                    params.grace_hours,
+                    batch,
                 )
-            else:
-                out.bundles_deleted = len(
-                    await conn.fetch(
-                        f"DELETE FROM {bundles} RETURNING b.id", params.grace_hours
-                    )
-                )
+                out.bundles_deleted += len(deleted)
             logger.info("Catalog GC: %d unused catalog bundle(s)", out.bundles_deleted)
 
-            rows = await conn.fetch(
+            unlinked = await conn.fetch(
                 f"""
                 SELECT l.id
                 FROM {schema}.layer l
@@ -140,10 +273,15 @@ class CatalogGCTask:
                       WHERE lp.layer_id = l.id
                   )
                 ORDER BY l.updated_at
-                {"LIMIT " + str(int(params.limit)) if params.limit else ""}
                 """,
                 params.grace_hours,
             )
+            # Left out before the limit, so layers that stay named never
+            # fill it night after night.
+            named = await _named_ids(conn, schema, [str(r["id"]) for r in unlinked])
+            rows = [r for r in unlinked if str(r["id"]) not in named][
+                : params.limit or None
+            ]
             out.candidates = len(rows)
             logger.info(
                 "Catalog GC: %d unreferenced promoted layer(s)%s",
@@ -151,62 +289,50 @@ class CatalogGCTask:
                 " (dry run)" if params.dry_run else "",
             )
 
-            for row in rows:
-                layer_id = str(row["id"])
-                paths = self._artifact_paths(layer_id)
-                if params.dry_run:
-                    logger.info("  would delete %s (+%d files)", layer_id, len(paths))
-                    continue
-                try:
-                    # Row first: once it is gone nothing can resolve the
-                    # files, so a crash between the two steps leaves only
-                    # unreferenced files for the next sweep — never a row
-                    # whose data has vanished.
-                    #
-                    # Re-check "unreferenced" inside the DELETE: a project link
-                    # created after the candidate SELECT (a concurrent re-add of
-                    # this layer) must survive. Without the guard the layer's
-                    # ON DELETE CASCADE would take that fresh link — and the
-                    # layer's files — with it. deleted_row is None when the
-                    # guard spared a now-referenced layer.
-                    deleted_row = await conn.fetchval(
-                        f"""
-                        DELETE FROM {schema}.layer l
-                        WHERE l.id = $1
-                          AND NOT EXISTS (
-                              SELECT 1 FROM {schema}.layer_project lp
-                              WHERE lp.layer_id = l.id
-                          )
-                          -- Promote protects a reused layer by bumping
-                          -- updated_at; honour that here too, or a re-add that
-                          -- lands between the candidate SELECT and this DELETE
-                          -- loses its layer and then FK-fails on the link.
-                          AND l.updated_at < NOW() - make_interval(hours => $2)
-                          -- A job mid-flight would write its file after the row
-                          -- is gone and leave it orphaned forever.
-                          AND COALESCE(
-                              l.other_properties->'catalog_materialize'->>'status', ''
-                          ) <> 'running'
-                        RETURNING l.id
-                        """,
-                        row["id"],
-                        params.grace_hours,
+            if params.dry_run:
+                for row in rows:
+                    layer_id = str(row["id"])
+                    logger.info(
+                        "  would delete %s (+%d files)",
+                        layer_id,
+                        len(self._artifact_paths(layer_id)),
                     )
-                    if deleted_row is None:
-                        logger.info(
-                            "  skipped %s (relinked, reused or running meanwhile)",
-                            layer_id,
-                        )
-                        continue
-                    for p in paths:
-                        if p.exists():
-                            p.unlink()
-                            out.files_removed += 1
-                    out.deleted += 1
-                    logger.info("  deleted %s", layer_id)
+            for batch in [] if params.dry_run else _batches([r["id"] for r in rows]):
+                try:
+                    deleted = await self._delete_rows(conn, batch, params.grace_hours)
                 except Exception as e:  # noqa: BLE001 - keep sweeping
-                    out.errors.append(f"{layer_id}: {e}")
-                    logger.warning("  failed to delete %s: %s", layer_id, e)
+                    # One bad row costs that row only: the batch row by row.
+                    logger.warning(
+                        "  failed to delete %d layer(s) at once: %s", len(batch), e
+                    )
+                    deleted = []
+                    for layer in batch:
+                        try:
+                            deleted += await self._delete_rows(
+                                conn, [layer], params.grace_hours
+                            )
+                        except Exception as e:  # noqa: BLE001 - keep sweeping
+                            out.errors.append(f"{layer}: {e}")
+                            logger.warning("  failed to delete %s: %s", layer, e)
+                gone = set(deleted)
+                for layer in batch:
+                    if layer not in gone:
+                        logger.info(
+                            "  skipped %s (relinked, named, reused or running meanwhile)",
+                            layer,
+                        )
+                for layer in gone:
+                    layer_id = str(layer)
+                    try:
+                        for p in self._artifact_paths(layer_id):
+                            if p.exists():
+                                p.unlink()
+                                out.files_removed += 1
+                        out.deleted += 1
+                        logger.info("  deleted %s", layer_id)
+                    except Exception as e:  # noqa: BLE001 - keep sweeping
+                        out.errors.append(f"{layer_id}: {e}")
+                        logger.warning("  failed to delete %s: %s", layer_id, e)
         finally:
             await conn.close()
         return out

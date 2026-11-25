@@ -30,12 +30,14 @@ import { projectLayerGroupsKey, projectLayersKey, updateCatalogEntry } from "@/l
 // ----------------------------------------------------------------------
 // Redux
 import { useUserProfile } from "@/lib/api/users";
+import { getWorkflow, refreshWorkflowList } from "@/lib/api/workflows";
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
 import { activeParts } from "@/lib/filter/read";
 import { clearRestoreGroup, closeExplorer, openExplorer } from "@/lib/store/explorer/slice";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
+import { requestWorkflowReload } from "@/lib/store/workflow/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { baseSwatch, buildLegend, informative, legendDependsOnZoom, titleOnly } from "@/lib/style/legend";
@@ -102,6 +104,7 @@ import {
   TABLES_PREFIX,
   catalogBundleGroups,
   foldBundleTables,
+  followCatalogUpdateInWorkflow,
   formatApiDataForDnd,
   formatDndDataForApi,
   outdatedBundleGroups,
@@ -638,6 +641,7 @@ export const ProjectLayerTree = ({
     [t, isOutdatedCatalogEntry]
   );
 
+  const openWorkflowId = useAppSelector((state) => state.workflow.selectedWorkflowId);
   /** Moves an outdated catalog entry to the new version, in place (the user decides). */
   /** Entries whose update is running: a second click waits for the first. */
   const updating = useRef(new Set<string>());
@@ -649,6 +653,12 @@ export const ProjectLayerTree = ({
       updating.current.add(key);
       try {
         await updateCatalogEntry(projectId, target);
+        void followCatalogUpdateInWorkflow(projectId, {
+          openWorkflowId: () => openWorkflowId,
+          read: getWorkflow,
+          requestReload: (id, revision) => dispatch(requestWorkflowReload({ id, revision })),
+          refreshList: refreshWorkflowList,
+        });
       } catch (error) {
         // The server says why (already on the newest version, another kind now, ...).
         toast.error(error instanceof Error ? error.message : t("error_updating_layer_tree"));
@@ -662,7 +672,7 @@ export const ProjectLayerTree = ({
         mutate(projectMapUrl(projectId)),
       ]);
     },
-    [isOutdatedCatalogEntry, projectId, t]
+    [isOutdatedCatalogEntry, projectId, t, openWorkflowId, dispatch]
   );
 
   /**

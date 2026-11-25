@@ -67,6 +67,32 @@ export function updatableCatalogEntry(
   return { layer_project_id: node.id };
 }
 
+/**
+ * After a catalog update, which rewrote the project's workflows on the server: the open workflow loads the stored one,
+ * as it does after an assistant edit (`requestWorkflowReload`), and the workflow list is read again (`refreshList`),
+ * so a closed workflow opened next has the stored config and revision. Nothing loads when the open copy already has
+ * that revision, or when it cannot be read here; its next save then meets the "changed elsewhere" notice.
+ */
+export async function followCatalogUpdateInWorkflow(
+  projectId: string,
+  deps: {
+    openWorkflowId: () => string | null;
+    read: (projectId: string, workflowId: string) => Promise<{ revision?: number }>;
+    requestReload: (workflowId: string, revision: number) => void;
+    refreshList: (projectId: string) => Promise<unknown>;
+  }
+): Promise<void> {
+  void deps.refreshList(projectId).catch(() => undefined);
+  const workflowId = deps.openWorkflowId();
+  if (!workflowId) return;
+  try {
+    const stored = await deps.read(projectId, workflowId);
+    if (typeof stored.revision === "number") deps.requestReload(workflowId, stored.revision);
+  } catch {
+    // Another project's workflow, or not readable now.
+  }
+}
+
 /** The tree's rows: a hidden group is listed closed and without its children (the map keeps them, drawn hidden). */
 export function formatApiDataForDnd(
   nodes: ProjectLayerTreeNode[],

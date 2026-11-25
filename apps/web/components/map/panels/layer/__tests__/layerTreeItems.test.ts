@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectLayerTreeNode } from "@/lib/validations/project";
 
 import {
   type ProjectTreeItem,
   catalogBundleGroups,
+  followCatalogUpdateInWorkflow,
   formatApiDataForDnd,
   formatDndDataForApi,
   outdatedBundleGroups,
@@ -51,6 +52,41 @@ describe("layer tree items", () => {
     expect(updatableCatalogEntry(layer(5), true)).toEqual({ layer_project_id: 5 });
     expect(updatableCatalogEntry(layer(5), false)).toBeUndefined();
     expect(updatableCatalogEntry(group(2), true)).toBeUndefined();
+  });
+
+  it("after a catalog update the open workflow loads the stored one and the list is read again", async () => {
+    const read = vi.fn().mockResolvedValue({ id: "wf-1", revision: 4 });
+    const requestReload = vi.fn();
+    const refreshList = vi.fn().mockResolvedValue([]);
+    await followCatalogUpdateInWorkflow("p-1", {
+      openWorkflowId: () => "wf-1",
+      read,
+      requestReload,
+      refreshList,
+    });
+    expect(read).toHaveBeenCalledWith("p-1", "wf-1");
+    expect(requestReload).toHaveBeenCalledWith("wf-1", 4);
+    // The closed workflows: the list is read again, so one opened next has the stored config and revision.
+    expect(refreshList).toHaveBeenCalledWith("p-1");
+
+    // No workflow open, or one that cannot be read here: nothing to load, the list still read again.
+    const none = vi.fn();
+    const listOnly = vi.fn().mockRejectedValue(new Error("offline"));
+    await followCatalogUpdateInWorkflow("p-1", {
+      openWorkflowId: () => null,
+      read,
+      requestReload: none,
+      refreshList: listOnly,
+    });
+    expect(listOnly).toHaveBeenCalledWith("p-1");
+    const failing = vi.fn().mockRejectedValue(new Error("404"));
+    await followCatalogUpdateInWorkflow("p-1", {
+      openWorkflowId: () => "wf-9",
+      read: failing,
+      requestReload: none,
+      refreshList,
+    });
+    expect(none).not.toHaveBeenCalled();
   });
 
   it("map state opens the tree: a group's expanded, a layer's legend_expanded; a hidden group shows no children", () => {
