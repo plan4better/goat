@@ -196,6 +196,20 @@ READMEs means section N of that file.
   (or band formula) as the field: its range as `render.computed.domain`, classes
   into `render.classify`, computed by `raster.stats` from an overview sample with
   the shared class breaks.
+- **A derived color is the word `"auto"` on a color key** (spec 18.10): the
+  color follows another part's color, and for labels the basemap's tone. Which
+  keys take it, by which rule and following what, is defined once, in the
+  specification's table and in `style/data/color_keys.json`; a test walks the
+  JSON Schema and fails for a color key the table does not name, so no key takes
+  the word by accident. The rules themselves (a darker shade, a label's text and
+  halo, the color that reads on a marker) exist once here in `style/colors.py`
+  and once in the web, held equal by the shared fixture
+  `tests/unit/style/fixtures/color_rules.json`. goatlib only validates the word:
+  resolving it for the map, and knowing the basemap's tone, is the web
+  compiler's, since only the map knows what it draws on. A key left out keeps
+  its reference color, so a style that never says `"auto"` keeps its look. The
+  AI's operations write the word on the key itself (`/symbol/outline/color`);
+  `"auto"` sent as a whole part is refused (`style/edit.py`, below).
 
 - **The data fingerprint** (`fingerprint.py`): computed values record the data
   they come from (`ducklake:<layer.data_snapshot>`; a promoted catalog layer's

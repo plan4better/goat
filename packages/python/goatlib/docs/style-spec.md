@@ -648,8 +648,8 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
   - points: `auto` (MapLibre tries positions around the marker and takes one that is free), `center` (on the point),
     or a fixed side of the marker, named by where the label sits: `above`, `below`, `left`, `right`, `above_left`,
     `above_right`, `below_left`, `below_right`. A label at a fixed side keeps clear of the marker as `auto` does
-    (half the marker size plus 2 px, and the collision paddings beside a marker that collides, 16); it is never
-    moved to another side, and on a collision it is dropped unless `allow_overlap` is on;
+    (half the marker size plus 2 px, and the collision paddings beside a marker that collides; see section 16); it
+    is never moved to another side, and on a collision it is dropped unless `allow_overlap` is on;
   - lines: `line` (along the line, repeated), or one label per line at its middle, a point from the tile service,
     placed there as a point's label: `auto`, `center` (on the middle) or a fixed side;
   - polygons: one label per polygon at a point inside it from the tile service, placed there as a point's label:
@@ -659,12 +659,12 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
   is `placement_not_for_geometry`, as is any placement of another geometry (`line` on points or polygons, `inside`
   on points or lines). The panel shows both as In the middle. `center` on a marker that collides hides the marker.
 
-  Around the marker of an area or a line's middle (3.3) the positions work as on points: a fixed side keeps half
-  the marker size plus 2 px from the point, the middle puts the label on the marker. Without a marker a fixed side
-  keeps 2 px from the point, as on a point without a marker, while `auto` puts the label on the point, as `inside`
-  and `center` do: with nothing to clear, an area's or a line's label names the feature from its middle. On a
-  GeoJSON source a line has no center point: MapLibre puts the label at the middle of the line itself, where a fixed
-  side moves it (upright, as the marker there) but `auto` cannot, so `auto` stays on the line's middle.
+  Around the marker of an area or a line's middle (3.3) the positions work as on points: a fixed side keeps half the
+  marker size plus 2 px from the point, and the collision paddings beside a marker that collides; the middle puts the
+  label on the marker. Without a marker a fixed side keeps 2 px from the point, as on a point, while `auto` puts the
+  label on the point, as `inside` and `center` do: with nothing to clear, an area's or a line's label names the
+  feature from its middle. On a GeoJSON source a line has no center point: MapLibre puts the label at the middle of
+  the line, where a fixed side moves it (upright, as the marker there) but `auto` cannot, so `auto` stays there.
 - `offset` is `[x, y]` in px. `max_width` wraps lines longer than this many px.
 - `lines` styles the lines of the template in order: `size`, `color`, `font`. Lines without an entry keep the label's
   style. A line's `font` replaces the label's font for that line (a key it leaves out takes its default). The panel
@@ -3283,7 +3283,7 @@ are part of the format: an output that breaks one of them draws something else t
 | icon on a circle | `circle` layer + `symbol` layer above; the icon size follows the circle size expression |
 | `marker` on polygons and lines | the marker image `symbol` layer (a plain circle too, or the icon alone) on geoapi's label anchors (`default_anchor`, the tiles asked with `label=true`) or the lines' center decoration points (`default_decoration`); on a GeoJSON source on the polygon itself (MapLibre places one symbol inside it) or on the line with `symbol-placement: line-center`; no stroke and no highlight ring (the polygon or the line highlights); on raised polygons `symbol-height-offset` = the height |
 | decoration points of several kinds | the tile URL asks for every kind the layers use (`decoration=start,end,center`); a layer drawn on some of them filters on `_decoration` |
-| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset` with `text-justify: auto`; a fixed side = `text-anchor` on the opposite side (`above` = `bottom`, `below` = `top`, `left` = `right`, `right` = `left`, `above_left` = `bottom-right`, `above_right` = `bottom-left`, `below_left` = `top-right`, `below_right` = `top-left`) with `text-offset` half the marker size plus 2 px toward that side (on both axes at a corner; beside a marker that collides, an icon alone without `allow_overlap: true` or a marker image with `allow_overlap: false`, the clearance also covers the icon's padding, 2 px, and `label.padding`, as MapLibre places the label first and drops the marker where their boxes meet, and takes a marker size that changes by zoom one zoom up, where MapLibre lays out the icon's collision box; the same for `auto`), and `text-justify: auto` at a side with a left or right; `offset` px / size = `text-offset` in ems, added to the clearance, per zoom stop when the size varies |
+| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset` with `text-justify: auto`; a fixed side = `text-anchor` on the opposite side (`above` = `bottom`, `below` = `top`, `left` = `right`, `right` = `left`, `above_left` = `bottom-right`, `above_right` = `bottom-left`, `below_left` = `top-right`, `below_right` = `top-left`) with `text-offset` half the marker size plus 2 px toward that side (on both axes at a corner; beside a marker that collides, an icon alone without `allow_overlap: true` or a marker image with `allow_overlap: false`, the clearance also covers the icon's padding, 2 px, and `label.padding`, as MapLibre places the label first and drops the marker where their boxes meet; the same for `auto`), and `text-justify: auto` at a side with a left or right; `offset` px / size = `text-offset` in ems, added to the clearance, per zoom stop when the size varies. Beside a marker that collides, a marker size that changes by zoom is taken one zoom up, as MapLibre lays out the icon's collision box there |
 | `label` on polygons | `symbol` layer on geoapi's label anchors (`default_anchor`), placed as on points: `auto` with a marker `text-variable-anchor-offset` around it, without one on the anchor; a side `text-anchor` and `text-offset`; `inside` on the anchor |
 | `label` on lines | `line`: `symbol-placement: line`, `spacing` = `symbol-spacing`; `auto`, `center` and the sides: the decoration center points, placed as on points (`text-variable-anchor-offset` for `auto` with a marker, `text-anchor` and `text-offset` for a side); on a GeoJSON source `symbol-placement: line-center`, a side with `text-rotation-alignment: viewport` |
 | label text | `concat` of literal text and one formatted value per placeholder; `lines` become `format` sections; `max_width` px / size = `text-max-width` in ems; `transform` = `text-transform`, `letter_spacing` = `text-letter-spacing`, `line_height` = `text-line-height` (both in ems already), `padding` = `text-padding` |
@@ -3803,14 +3803,14 @@ The rules:
   - Where the feature's color is one color and the halo changes by zoom or over a field, or both change by zoom alone,
     the text is worked out for every zoom or value and switches exactly where it changes.
   - Where the halo changes by zoom or over a field and the feature's colors vary by class, rule or palette, the text
-    is worked out at five points of each stretch between two of the halo's stops (its two ends and three between) and
-    each answer is held from halfway to the point before until halfway to the next. It steps there and never blends to
-    the halo's own color, but between those points the halo moves on while the text stays: its contrast with the halo
-    can dip below 4.5 to 1, and below 3 to 1 where the halo turns from light to dark (or back) within the stretch,
-    down to about 2.8 to 1 in the cases tested.
+    is worked out at five points of each stretch between two of the halo's stops (its two ends and three between)
+    and each answer is held from halfway to the point before until halfway to the next. It steps there and never
+    blends to the halo's own color, but between those points the halo moves on while the text stays: its contrast
+    with the halo can fall well below the floor, most where the halo turns from light to dark (or back) within the
+    stretch.
 
-"Not yet" marks a rule this version refuses: `"auto"` there, like on a key without a rule, is `invalid_value` (a
-palette named `"auto"` is `unknown_palette`). `"fill"` stays a word of `outline.color` alone (3.1).
+`"auto"` on a key whose rule is "not offered" is `invalid_value` (a palette named `"auto"` is `unknown_palette`).
+`"fill"` stays a word of `outline.color` alone (3.1).
 
 | Key | `"auto"` | Accepted | Follows |
 |---|---|---|---|
