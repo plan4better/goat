@@ -15,7 +15,7 @@ It is **database-less by design**. The whole catalog lives in four files under `
 | `nuts.parquet` | NUTS regions, for the spatial-filter region search |
 | `VERSION` | Marker identifying the loaded generation |
 
-The two mirror files are maintained by the goatlib `sync_catalog` task (S3 → local, ETag-gated, atomic swap with `VERSION` written last); `nuts.parquet` has its own producer, `sync_nuts` (built from Eurostat). The service watches the files and reloads automatically when they change, without interrupting in-flight requests.
+The two mirror files are maintained by the goatlib `sync_catalog` task (S3 → local, ETag-gated, atomic swap with `VERSION` written last); `nuts.parquet` has its own producer, `sync_nuts` (built from Eurostat). The service watches the files and reloads automatically when they change, without interrupting in-flight requests. A new service can meet a mirror the workers have not rebuilt yet. A facet whose mirror column is missing is dropped, and without `goat:dataType` the Data type filter (`?type=`, `type_count`) reads `goat:layerType`, so a rollout needs no deploy order.
 
 Items and collections are exposed as DuckDB **views** over the parquet files rather than resident tables, so a query reads only the columns it projects and a file swap costs no extra copy of the data. There is no full-text index — free-text search scans the mirror's precomputed `search_text` column. NUTS is small, so it is materialized as a table.
 

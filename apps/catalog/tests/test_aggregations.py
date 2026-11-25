@@ -414,3 +414,74 @@ def test_the_type_of_a_dataset_is_the_kinds_of_its_layers(catalog_dir: Path) -> 
         assert {col["id"] for col in found.json()["collections"]} == {"src-1"}
         found = c.get("/stac/collections", params={"type": "feature", "limit": 500})
         assert "src-1" not in {col["id"] for col in found.json()["collections"]}
+
+
+def _mirror_without_data_type(catalog_dir: Path) -> None:
+    """A mirror whose items carry `goat:layerType` but no `goat:dataType`, with
+    the layers of `src-1` typed `table` so the two kinds tell rows apart."""
+    items = catalog_dir / "mirror_items.parquet"
+    tmp = catalog_dir / "items_untyped.parquet"
+    duckdb.execute(
+        f"""COPY (SELECT * EXCLUDE ("goat:dataType") REPLACE (
+                  CASE WHEN collection = 'src-1' THEN 'table'
+                  ELSE "goat:layerType" END AS "goat:layerType")
+                  FROM read_parquet('{items}')) TO '{tmp}' (FORMAT PARQUET)"""
+    )
+    tmp.replace(items)
+
+
+def test_the_type_filter_reads_the_layer_type_without_a_data_type(
+    catalog_dir: Path,
+) -> None:
+    """The service can run ahead of the mirror it reads: without `goat:dataType`
+    the Data type filter and its counts read `goat:layerType`."""
+    _published_dataset_types(catalog_dir)
+    _mirror_without_data_type(catalog_dir)
+    total = duckdb.execute(
+        f"SELECT count(*) FROM read_parquet('{catalog_dir / 'mirror_items.parquet'}')"
+    ).fetchone()[0]
+    collections = catalog_dir / "mirror_collections.parquet"
+    datasets = duckdb.execute(
+        f"SELECT count(*) FROM read_parquet('{collections}')"
+    ).fetchone()[0]
+
+    with TestClient(create_app(CatalogSettings(data_dir=catalog_dir, auth=False))) as c:
+        tables = c.get("/stac/search", params={"type": "table", "limit": 500})
+        assert tables.status_code == 200, tables.text
+        assert {f["collection"] for f in tables.json()["features"]} == {"src-1"}
+        assert tables.json()["numberMatched"] == 4
+        features = c.get("/stac/search", params={"type": "feature", "limit": 1})
+        assert features.status_code == 200, features.text
+        assert features.json()["numberMatched"] == total - 4
+
+        def ids(kind: str) -> set[str]:
+            found = c.get("/stac/collections", params={"type": kind, "limit": 500})
+            assert found.status_code == 200, found.text
+            return {col["id"] for col in found.json()["collections"]}
+
+        assert ids("table") == {"src-1"}
+        assert "src-1" not in ids("feature")
+        # The dataset's own `bundle` says how it is packed, not what it holds.
+        assert ids("bundle") == set()
+
+        names = {a["name"] for a in c.get("/stac/aggregations").json()["aggregations"]}
+        assert "type_count" in names
+        counts = c.get("/stac/aggregate", params={"aggregations": "type_count"})
+        assert counts.status_code == 200, counts.text
+        buckets = {
+            b["key"]: b["frequency"]
+            for b in counts.json()["aggregations"][0]["buckets"]
+        }
+        assert buckets == {"feature": total - 4, "table": 4}
+
+        # Counted by datasets: `src-1` once as `table`, never as its `bundle`.
+        by_dataset = c.get(
+            "/stac/aggregate",
+            params={"aggregations": "type_count", "unit": "collections"},
+        )
+        assert by_dataset.status_code == 200, by_dataset.text
+        buckets = {
+            b["key"]: b["frequency"]
+            for b in by_dataset.json()["aggregations"][0]["buckets"]
+        }
+        assert buckets == {"feature": datasets - 1, "table": 1}

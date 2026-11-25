@@ -208,10 +208,9 @@ class _Virtual:
     requires: str
 
 
-#: Non-column queryables. Both were previously hardcoded as one-off ``if``
-#: branches in ``build_filters``, which made them filterable via their query
-#: parameter but *not* via CQL2 or ``sortby`` -- everything else in the API
-#: supports all three. Expressing them here closes that gap.
+#: Non-column queryables. Each is CQL2-addressable and sortable like a column;
+#: its seed in :data:`_FIELD_DEFS` decides whether it also gets a query
+#: parameter.
 _VIRTUAL_FIELDS: dict[str, _Virtual] = {
     # Makes the score sortable as `relevance` and CQL2-addressable.
     "relevance": _Virtual(
@@ -239,6 +238,14 @@ _VIRTUAL_FIELDS: dict[str, _Virtual] = {
         expr="date_part('year', COALESCE(datetime_start, datetime_end))",
         json_type="integer",
         requires="datetime_start",
+    ),
+    # The Data type of a mirror that has no `goat:dataType` column: the layer's
+    # own `goat:layerType`. The service can run ahead of the mirror it reads,
+    # and `?type=` and `type_count` keep working until the mirror is rebuilt.
+    "goat:dataType": _Virtual(
+        expr='"goat:layerType"',
+        json_type="string",
+        requires="goat:layerType",
     ),
 }
 
@@ -351,9 +358,10 @@ def build_registry(
     columns: dict[str, str], *, relation: str = "items"
 ) -> "QueryableRegistry":
     """Build the registry for a table with these ``{column: duckdb_type}``."""
-    hidden = _HIDDEN_COLUMNS | (
+    hidden_here = (
         _HIDDEN_COLLECTION_COLUMNS if relation == "collections" else frozenset()
     )
+    hidden = _HIDDEN_COLUMNS | hidden_here
     entries: dict[str, Queryable] = {}
     for name, duckdb_type in columns.items():
         if name in hidden:
@@ -376,7 +384,14 @@ def build_registry(
         )
 
     for name, virtual in _VIRTUAL_FIELDS.items():
-        if name in entries or virtual.requires not in columns:
+        # A column hidden on the collections relation only is not read through a
+        # virtual field either: a dataset's `goat:layerType` must not stand in
+        # for its layers' Data type.
+        if (
+            name in entries
+            or virtual.requires not in columns
+            or virtual.requires in hidden_here
+        ):
             continue
         seed = _FIELD_DEFS.get(name)
         entries[name] = _entry(
