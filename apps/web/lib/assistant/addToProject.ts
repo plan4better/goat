@@ -64,11 +64,20 @@ export async function addItemToProject(projectId: string, item: ResultItem): Pro
       ? await addCatalogLayersToProject(projectId, [item.id])
       : await addProjectLayers(projectId, [item.datasetId ?? item.id]);
   await refreshProjectLayers(projectId);
-  const layers = layerIds(links).filter((layer) => !before.has(layer));
+  const added = (Array.isArray(links) ? links : []).filter(
+    (link) => !before.has((link as { id?: number }).id as number)
+  ) as { id?: number; layer_project_group_id?: number | null }[];
+  const layers = layerIds(added);
+  // A catalog plan comes in as a bundle group: its layers leave only with it.
+  const groups = [...new Set(added.map((link) => link.layer_project_group_id).filter((id) => id != null))];
+  const loose = layerIds(added.filter((link) => link.layer_project_group_id == null));
   return {
     layers,
     undo: async () => {
-      await Promise.all(layers.map((layer) => deleteProjectLayer(projectId, layer)));
+      await Promise.all([
+        ...groups.map((group) => deleteProjectLayerGroup(projectId, group as number)),
+        ...loose.map((layer) => deleteProjectLayer(projectId, layer)),
+      ]);
       await refreshProjectLayers(projectId);
     },
   };

@@ -3,6 +3,7 @@ import { type ReactNode, createElement } from "react";
 import { SWRConfig } from "swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useCatalogDatasetVersions } from "@/lib/api/catalog";
 import {
   type MapResponse,
   createMapFetcher,
@@ -151,5 +152,14 @@ describe("dataset default styles", () => {
       .map(([url]) => url)
       .filter((url) => String(url).endsWith("/style"));
     expect(styleCalls).toEqual([datasetStyleUrl("a"), datasetStyleUrl("b")]);
+  });
+});
+
+describe("useCatalogDatasetVersions", () => {
+  it("answers the same object while nothing is asked, so a tree reading it settles", () => {
+    const { result, rerender } = renderHook(() => useCatalogDatasetVersions([]));
+    const first = result.current.versions;
+    rerender();
+    expect(result.current.versions).toBe(first);
   });
 });

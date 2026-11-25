@@ -12,6 +12,13 @@ from goatlib.style.migrate import context_for, stored_document
 RASTER_SUFFIXES = (".tif", ".tiff")
 
 
+#: Bundle types that are only a grouping: their layers are added one by one.
+PLAIN_BUNDLE_TYPES = frozenset({"", "generic"})
+
+#: Kinds a layer declares for itself; anything else is what its dataset is.
+OWN_KINDS = frozenset({"feature", "table", "raster", "wms", "wmts"})
+
+
 def _is_service(item: dict[str, Any], rel: str) -> bool:
     """Whether the item is a live map service of this kind, promoted as a link and never copied.
 

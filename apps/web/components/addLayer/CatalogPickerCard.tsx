@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCatalogCollectionItems } from "@/lib/api/catalog";
 import { datasetCard } from "@/lib/catalog/card";
+import { catalogBundleType } from "@/lib/catalog/kind";
 import { cardSelectionState } from "@/lib/catalog/selection";
 import type { CatalogCollection } from "@/lib/validations/catalog";
 
@@ -41,7 +42,9 @@ const CatalogPickerCard = ({
   onToggleStar: (id: string) => void;
 }) => {
   const card = useMemo(() => datasetCard(collection), [collection]);
-  const isBundle = card.memberCount > 1 && !!card.bundleId;
+  // A typed bundle (not generic) is picked whole, by its own id, like a
+  // one-layer dataset: core adds it as one shared bundle and refuses its layers.
+  const isBundle = card.memberCount > 1 && !!card.bundleId && !catalogBundleType(collection);
 
   /** Set once this card is opened or picked; until then its layers are nobody's business. */
   const [armed, setArmed] = useState(false);
@@ -106,8 +109,10 @@ const CatalogPickerCard = ({
         selected: state.selected,
         indeterminate: state.indeterminate,
         onToggle: toggle,
-        isMemberSelected: (memberId) => selection.ids.includes(memberId),
-        onToggleMember: (memberId) => selection.toggle(memberId),
+        ...(isBundle && {
+          isMemberSelected: (memberId: string) => selection.ids.includes(memberId),
+          onToggleMember: (memberId: string) => selection.toggle(memberId),
+        }),
       }}
     />
   );

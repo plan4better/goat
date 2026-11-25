@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import {
+  catalogBundleType,
   catalogKindOf,
   catalogRasterSource,
   catalogServiceTiles,
   catalogTilesUrl,
   markFor,
 } from "@/lib/catalog/kind";
-import type { CatalogItem, CatalogItemProperties } from "@/lib/validations/catalog";
+import type { CatalogCollection, CatalogItem, CatalogItemProperties } from "@/lib/validations/catalog";
 
 /**
  * `catalogKindOf` exists because two of the properties it reads are denormalised
@@ -147,5 +148,17 @@ describe("catalogRasterSource", () => {
     expect(catalogRasterSource(item({ "goat:layerType": "wms" }), GEOAPI)).toBeNull();
     expect(catalogRasterSource(item({}), GEOAPI)).toBeNull();
     expect(catalogRasterSource(item({ "goat:layerType": "raster" }), "")).toBeNull();
+  });
+});
+
+describe("catalogBundleType", () => {
+  it("names a typed bundle, which is added whole; a plain group is not one", () => {
+    const of = (type: string | null) =>
+      ({ id: "d", "goat:bundleType": type }) as unknown as CatalogCollection;
+    expect(catalogBundleType(of("xplan"))).toBe("xplan");
+    expect(catalogBundleType(of("XPlan"))).toBe("xplan");
+    expect(catalogBundleType(of("Generic"))).toBeUndefined();
+    expect(catalogBundleType(of(""))).toBeUndefined();
+    expect(catalogBundleType(of(null))).toBeUndefined();
   });
 });

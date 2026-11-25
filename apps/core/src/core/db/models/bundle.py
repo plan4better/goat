@@ -8,7 +8,7 @@ from uuid import UUID
 
 from goatlib.models.bundle import BundleStatus
 from pydantic import field_serializer
-from sqlalchemy import ForeignKey, Integer, Text
+from sqlalchemy import ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as UUID_PG
 from sqlmodel import Boolean, Column, DateTime, Field, Relationship, text
@@ -36,15 +36,24 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
     sense as a unit. A bundle bundles those member layers under one
     owner and folder, tagged with a ``bundle_type`` whose spec — in code, see
     ``goatlib.models.bundle`` — describes the roles and artifacts to expect.
-    Deleting a bundle cascades to its layers.
+    Deleting a bundle cascades to its layers. A shared catalog bundle (such as
+    an XPlan plan) has no owner, space or folder, like a catalog layer.
 
-    Inherits ``folder_id``, ``name`` and ``description`` from
-    ``ContentBaseAttributes`` and ``created_at``/``updated_at`` from
-    ``DateTimeBase``.
+    Inherits ``name`` and ``description`` from ``ContentBaseAttributes`` and
+    ``created_at``/``updated_at`` from ``DateTimeBase``.
     """
 
     __tablename__ = "bundle"
-    __table_args__ = {"schema": settings.SCHEMA}
+    __table_args__ = (
+        Index(
+            "uq_bundle_catalog_identity",
+            "catalog_external_uid",
+            "catalog_version",
+            unique=True,
+            postgresql_where=text("catalog_external_uid IS NOT NULL"),
+        ),
+        {"schema": settings.SCHEMA},
+    )
 
     id: UUID | None = Field(
         default=None,
@@ -70,10 +79,29 @@ class Bundle(ContentBaseAttributes, DateTimeBase, table=True):
         sa_column=Column(
             UUID_PG(as_uuid=True),
             ForeignKey(f"{settings.SCHEMA}.space.id", ondelete="CASCADE"),
-            nullable=False,
+            nullable=True,
             index=True,
         ),
-        description="Space this bundle belongs to.",
+        description="Space this bundle belongs to. NULL for a catalog bundle.",
+    )
+    folder_id: UUID | None = Field(
+        default=None,
+        sa_column=Column(
+            UUID_PG(as_uuid=True),
+            ForeignKey(f"{settings.SCHEMA}.folder.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
+        description="Folder the bundle lives in. NULL for a catalog bundle.",
+    )
+    catalog_external_uid: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="The catalog dataset a shared bundle was added from; unique with catalog_version.",
+    )
+    catalog_version: str | None = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="The catalog dataset's version the shared bundle holds.",
     )
     deleted_at: datetime | None = Field(
         default=None,

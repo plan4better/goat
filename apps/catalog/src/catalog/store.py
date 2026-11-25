@@ -77,6 +77,7 @@ _ITEM_COLUMNS_SQL = """
     updated TIMESTAMPTZ,
     parquet_url VARCHAR,
     "goat:layerType" VARCHAR,
+    "goat:dataType" VARCHAR,
     "goat:geometryType" VARCHAR,
     "goat:geographical_code" VARCHAR,
     bbox_xmin DOUBLE,

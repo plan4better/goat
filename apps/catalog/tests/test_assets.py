@@ -27,7 +27,7 @@ from catalog.services.assets import (
     valid_item_id,
 )
 from catalog.services.preview import object_key
-from catalog.services.stac_build import _public_assets
+from catalog.services.stac_build import _public_assets, collection_from_row
 
 BUCKET = "p4b-catalog-test"
 THUMB = ASSET_KINDS["thumbnail"]
@@ -309,6 +309,21 @@ class TestServedHrefs:
         assert served["style"]["href"] == (
             "https://catalog.example.com/assets/item-1/style"
         )
+        # A dataset serves its own thumbnail where it publishes one, else a layer's.
+        base = "https://catalog.example.com/assets"
+        borrowed = {"id": "plan", "thumbnail_item": "layer-1"}
+        own = {**borrowed, "assets": {"thumbnail": _row()["assets"]["thumbnail"]}}
+        assert collection_from_row(borrowed, assets_base=base)["assets"]["thumbnail"][
+            "href"
+        ] == (f"{base}/layer-1/thumbnail")
+        assert collection_from_row(own, assets_base=base)["assets"]["thumbnail"][
+            "href"
+        ] == (f"{base}/plan/thumbnail")
+        # A thumbnail struct without an href is no picture of its own.
+        empty = {**borrowed, "assets": {"thumbnail": {"href": None}}}
+        assert collection_from_row(empty, assets_base=base)["assets"]["thumbnail"][
+            "href"
+        ] == (f"{base}/layer-1/thumbnail")
 
     def test_the_data_asset_is_still_dropped(self) -> None:
         served = _public_assets(
