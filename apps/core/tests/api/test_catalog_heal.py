@@ -14,6 +14,8 @@ from uuid import UUID, uuid4
 import pytest
 import pytest_asyncio
 from core.core.config import settings
+from core.db.models._link_model import LayerProjectGroup
+from core.db.models.bundle import Bundle
 from core.db.models.layer import Layer
 from core.services.catalog_promote import bundle_versions_of
 from goatlib.catalog.promote import bundle_version
@@ -501,6 +503,9 @@ async def test_an_xplan_plan_is_added_whole_as_one_shared_bundle(
     )
     assert await _value(db_session, group_bundle, p=first) != bundle_id
     assert await _value(db_session, group_bundle, p=second) == bundle_id
+    newest = await _update(client, first, group_id=group_id)
+    assert newest.status_code == 409
+    assert "already on the newest version" in newest.json()["detail"]
 
     # Entries move by role, so a version with a member without one is refused.
     _plan_in_catalog(monkeypatch, {**roles_v2, "m-new": None}, "3")
@@ -536,7 +541,8 @@ async def test_a_catalog_layer_moves_to_its_new_version_in_place(
 ) -> None:
     """The entry keeps its id, name and order and points at the new version's
     layer, with what it copied from that layer; an untouched style follows the
-    catalog, an edited one is kept; another entry of the same dataset stays."""
+    catalog, an edited one is kept; another entry of the same dataset stays; a
+    second update is a 409, and a new version of another kind is refused."""
     _, promoted, enqueue = catalog
 
     def catalog_layer(version: str, copy: str) -> Layer:
@@ -562,7 +568,9 @@ async def test_a_catalog_layer_moves_to_its_new_version_in_place(
     promoted["item-u"] = new.id
     monkeypatch.setattr(
         "goatlib.catalog.promote.read_items",
-        lambda mirror, ids: {i: {"id": i, "version": "2"} for i in ids},
+        lambda mirror, ids: {
+            i: {"id": i, "version": "2", "goat:geometryType": "line"} for i in ids
+        },
     )
     project = await _new_project(client, fixture_get_home_folder)
 
@@ -626,11 +634,9 @@ async def test_a_catalog_layer_moves_to_its_new_version_in_place(
     copied = f"SELECT other_properties->'layers' FROM {S}.layer_project WHERE id = :l"
     assert await _value(db_session, copied, l=untouched) == ["wms-layer-v2"]
 
-    # Updating again changes nothing: the entry already has the newest layer.
-    assert (
-        await _update(client, project, layer_project_id=untouched)
-    ).status_code == 200
-    assert await _value(db_session, layer_of, l=untouched) == new.id
+    newest = await _update(client, project, layer_project_id=untouched)
+    assert newest.status_code == 409
+    assert "already on the newest version" in newest.json()["detail"]
 
     # Two updates at once: the one that finds the entry already moved answers 409.
     raced = await entry()
@@ -647,3 +653,162 @@ async def test_a_catalog_layer_moves_to_its_new_version_in_place(
         "goatlib.catalog.promote.promote", promote_while_another_moves_it
     )
     assert (await _update(client, project, layer_project_id=raced)).status_code == 409
+
+    # A new version of another kind (line to polygon) is refused: the kept
+    # style and filter would not fit it.
+    reshaped = await entry()
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"id": i, "version": "3", "goat:geometryType": "polygon"} for i in ids
+        },
+    )
+    other_kind = await _update(client, project, layer_project_id=reshaped)
+    assert other_kind.status_code == 400
+    assert "add it again" in other_kind.json()["detail"]
+    assert await _value(db_session, layer_of, l=reshaped) == old.id
+
+
+async def test_a_new_version_whose_map_service_cannot_be_drawn_is_refused(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The update checks a map service's link before it promotes anything, as the
+    add does: 400, and the entry stays on its layer."""
+    _, promoted, _ = catalog
+
+    def service_layer(version: str) -> Layer:
+        return Layer(
+            id=uuid4(),
+            name="Luftbild",
+            type="raster",
+            catalog_external_uid="item-w",
+            catalog_version=version,
+            other_properties={"catalog_item": {"id": "item-w", "version": version}},
+        )
+
+    old, new = service_layer("1"), service_layer("2")
+    db_session.add_all([old, new])
+    await db_session.commit()
+    promoted["item-w"] = new.id
+    # A WMS without a `rel=wms` link.
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"id": i, "version": "2", "goat:layerType": "wms"} for i in ids
+        },
+    )
+    project = await _new_project(client, fixture_get_home_folder)
+    linked = await client.post(
+        f"{settings.API_V2_STR}/project/{project}/layer",
+        params={"layer_ids": [str(old.id)]},
+    )
+    assert linked.status_code == 200, linked.text
+    link = int(linked.json()[0]["id"])
+
+    refused = await _update(client, project, layer_project_id=link)
+    assert refused.status_code == 400
+    assert "rel=wms" in refused.json()["detail"]
+    layer_of = f"SELECT layer_id FROM {S}.layer_project WHERE id = :l"
+    assert await _value(db_session, layer_of, l=link) == old.id
+
+
+async def test_a_layer_of_its_own_never_moves_onto_the_catalog_copy(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: Any,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A user's own layer that carries a `catalog_item` whose id is in the catalog
+    is still not the catalog's copy: its entry is refused and keeps its layer."""
+    _, promoted, _ = catalog
+    shape: dict[str, Any] = {
+        "name": "Radwege",
+        "type": "feature",
+        "feature_layer_type": "standard",
+        "feature_layer_geometry_type": "line",
+    }
+    own = Layer(
+        id=uuid4(),
+        user_id=fixture_create_user,
+        folder_id=fixture_get_home_folder["id"],
+        **shape,
+        other_properties={"catalog_item": {"id": "item-o", "version": "1"}},
+    )
+    shared = Layer(
+        id=uuid4(),
+        **shape,
+        catalog_external_uid="item-o",
+        catalog_version="2",
+        other_properties={"catalog_item": {"id": "item-o", "version": "2"}},
+    )
+    db_session.add_all([own, shared])
+    await db_session.commit()
+    promoted["item-o"] = shared.id
+    monkeypatch.setattr(
+        "goatlib.catalog.promote.read_items",
+        lambda mirror, ids: {
+            i: {"id": i, "version": "2", "goat:geometryType": "line"} for i in ids
+        },
+    )
+    project = await _new_project(client, fixture_get_home_folder)
+    linked = await client.post(
+        f"{settings.API_V2_STR}/project/{project}/layer",
+        params={"layer_ids": [str(own.id)]},
+    )
+    assert linked.status_code == 200, linked.text
+    link = int(linked.json()[0]["id"])
+
+    refused = await _update(client, project, layer_project_id=link)
+    assert refused.status_code == 400
+    assert "not from the catalog" in refused.json()["detail"]
+    layer_of = f"SELECT layer_id FROM {S}.layer_project WHERE id = :l"
+    assert await _value(db_session, layer_of, l=link) == own.id
+
+
+async def test_a_group_of_a_bundle_of_its_own_is_not_updated(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    fixture_create_user: Any,
+    fixture_get_home_folder: dict[str, Any],
+    catalog: tuple[Path, dict[str, UUID], AsyncMock],
+) -> None:
+    """A project group of a user's own bundle is not from the catalog: its update
+    is refused and its entries keep their layers."""
+    home = fixture_get_home_folder["id"]
+    bundle = Bundle(
+        user_id=fixture_create_user, folder_id=home, name="Plan", bundle_type="xplan"
+    )
+    own = Layer(
+        id=uuid4(), user_id=fixture_create_user, folder_id=home, name="m", type="table"
+    )
+    db_session.add_all([bundle, own])
+    await db_session.commit()
+    project = await _new_project(client, fixture_get_home_folder)
+    group = LayerProjectGroup(
+        name="Plan", project_id=UUID(project), bundle_id=bundle.id
+    )
+    db_session.add(group)
+    await db_session.commit()
+    linked = await client.post(
+        f"{settings.API_V2_STR}/project/{project}/layer",
+        params={"layer_ids": [str(own.id)]},
+    )
+    assert linked.status_code == 200, linked.text
+    link = int(linked.json()[0]["id"])
+    await db_session.execute(
+        text(f"UPDATE {S}.layer_project SET layer_project_group_id = :g WHERE id = :l"),
+        {"g": group.id, "l": link},
+    )
+    await db_session.commit()
+
+    refused = await _update(client, project, group_id=group.id)
+    assert refused.status_code == 400
+    assert "not from the catalog" in refused.json()["detail"]
+    layer_of = f"SELECT layer_id FROM {S}.layer_project WHERE id = :l"
+    assert await _value(db_session, layer_of, l=link) == own.id

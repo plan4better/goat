@@ -58,27 +58,37 @@ class PromotedItems:
 
 
 def refuse_unaddable(
-    items: dict[str, dict[str, Any]], typed: dict[str, tuple[str, str, str | None]]
+    items: dict[str, dict[str, Any]],
+    typed: dict[str, tuple[str, str, str | None]],
+    *,
+    roles_required: bool = False,
+    action: str = "added",
 ) -> None:
     """400 before anything is promoted, so a batch goes in whole or not at all: a
-    bundle type that cannot be shared, a role listed twice, a map service whose
-    link cannot be drawn."""
+    bundle type that cannot be shared, a role listed twice (or, for an update, a
+    member without one), a map service whose link cannot be drawn."""
     for dataset, (kind, title, _) in typed.items():
         # Only a plan is shared whole: a network's artifacts are built per owner.
         if kind != BundleTypeName.xplan.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{title}' is a {kind} dataset, which cannot be added yet.",
+                detail=f"'{title}' is a {kind} dataset, which cannot be {action} yet.",
             )
         roles = [
             item.get("goat:role")
             for item in items.values()
-            if item.get("collection") == dataset and item.get("goat:role")
+            if item.get("collection") == dataset
         ]
-        if len(roles) != len(set(roles)):
+        if roles_required and not all(roles):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{title}' lists a layer role twice, so it cannot be added.",
+                detail=f"'{title}' has a layer without a role, so it cannot be {action}.",
+            )
+        named = [role for role in roles if role]
+        if len(named) != len(set(named)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{title}' lists a layer role twice, so it cannot be {action}.",
             )
     for item in items.values():
         try:
