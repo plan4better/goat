@@ -15,6 +15,7 @@ import type { Geometry } from "@/lib/style/compile/types";
 import { MAIN_COLOR } from "@/lib/style/editor/forms";
 import type { EditorStore } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
+import type { Tone } from "@/lib/style/tone";
 
 import { DamagedNotice, IssuesProvider } from "@/components/map/panels/styleEditor/IssueNotice";
 import { StatusLine } from "@/components/map/panels/styleEditor/StatusLine";
@@ -34,6 +35,8 @@ export interface StyleEditorProps {
   data: StyleData;
   map: MaplibreMap | null;
   mapZoom: number;
+  /** The tone of the basemap the map draws (`basemapTone`); light by default. */
+  tone?: Tone;
   /** Shown under the header, outside the scrolling sections (the named styles row). */
   top?: ReactNode;
   /** Off where the host shows the header itself (the project page's layer panel). */
@@ -173,6 +176,7 @@ export function StyleEditor({
   data,
   map,
   mapZoom,
+  tone,
   top,
   header = true,
   shown = true,
@@ -183,7 +187,7 @@ export function StyleEditor({
   const issues = useIssuesOf(store);
 
   return (
-    <StyleEditorProvider store={store} data={data} mapZoom={mapZoom} map={map}>
+    <StyleEditorProvider store={store} data={data} mapZoom={mapZoom} map={map} tone={tone}>
       <IssuesProvider issues={issues}>
         <Box
           ref={root}

@@ -15,6 +15,7 @@ import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
+import type { Tone } from "@/lib/style/tone";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
@@ -174,12 +175,13 @@ const gradient = (colors: string[]) =>
   colors.length > 1 ? `linear-gradient(90deg, ${colors.join(", ")})` : (colors[0] ?? HATCH);
 
 /** The CSS background a row's swatch shows for the color at `path`. `scoped`: `doc` is one class's view, which
- * draws its own color, not the classes'. */
+ * draws its own color, not the classes'. `tone`: the basemap's tone the map draws a derived color for (light by
+ * default), so the swatch shows the map's color. */
 export function swatchOf(
   doc: LayerStyle,
   path: Path,
   geometry?: Geometry,
-  opts: { scoped?: boolean } = {}
+  opts: { scoped?: boolean; tone?: Tone } = {}
 ): string {
   const key = keyOf(path);
   const own = getIn(doc, path);
@@ -199,7 +201,12 @@ export function swatchOf(
     return followed === HATCH
       ? followed
       : followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) =>
-          String(derivedColor(key, hollow ? undefined : value, color, { hollow }))
+          String(
+            derivedColor(key, hollow ? undefined : value, color, {
+              hollow,
+              inputs: { tone: opts.tone ?? "light" },
+            })
+          )
         );
   }
   // A color set by classes shows the classes' colors, in their order: the color under them draws nothing.

@@ -18,6 +18,7 @@ import {
   layerOpacity,
   makeLayer,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { NO_PATTERN_IMAGE, PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
@@ -150,7 +151,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
   const fillColor = cascade(style, "fill.color", c);
-  const derived = { geometry: "polygon" as const, fields: ctx.fields };
+  const derived = { geometry: "polygon" as const, fields: ctx.fields, inputs: ruleInputs(ctx) };
   // A fill that is None for all draws no layer (spec 4.6); its pattern still draws, unless its color is None too.
   const filled = !drawsNothing(fillColor);
 

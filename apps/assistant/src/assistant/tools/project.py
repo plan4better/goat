@@ -25,7 +25,12 @@ from goatlib.style.summary import summarize
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai.exceptions import ToolFailed
 
-from assistant.context import BasemapInfo, ProjectMapContext, project_of
+from assistant.context import (
+    BasemapInfo,
+    ProjectMapContext,
+    advised_tone,
+    project_of,
+)
 from assistant.maps.filter_area import layer_labels
 from assistant.maps.filter_rows import CUSTOM, FilterBrief, brief
 from assistant.maps.state import MapRead, read_map
@@ -607,7 +612,10 @@ def _view(page: ProjectMapContext, document: Mapping[str, Any]) -> ViewInfo | No
 
 def _offered(basemap: BasemapInfo) -> BasemapBrief:
     return BasemapBrief(
-        id=basemap.id, name=basemap.name, tone=basemap.tone, imagery=basemap.imagery
+        id=basemap.id,
+        name=basemap.name,
+        tone=advised_tone(basemap),
+        imagery=basemap.imagery,
     )
 
 

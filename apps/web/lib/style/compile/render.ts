@@ -10,7 +10,14 @@ import { RULES, derivedValue, ruleOf } from "@/lib/style/compile/derived";
 import { colorText, concat, numberText } from "@/lib/style/compile/imageNames";
 import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compile/labels";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
-import { type PartContext, layerOpacity, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
+import {
+  type PartContext,
+  layerOpacity,
+  makeLayer,
+  put,
+  ruleInputs,
+  withLayerOpacity,
+} from "@/lib/style/compile/parts";
 import { pointLayers } from "@/lib/style/compile/points";
 import type { FieldType } from "@/lib/style/compile/types";
 import { type Value, combine, fromForm, hasValue, isZoomed, toProperty } from "@/lib/style/compile/values";
@@ -430,6 +437,7 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
     ? derivedValue(symbol, "outline.color", {
         geometry: "point",
         follow: (map) => (map ? cascade(symbol, "marker.color", { map }) : fill),
+        inputs: ruleInputs(clusters),
       })
     : { expr: BADGE_RING.color };
   const strokeWidth = outline ? cascade(symbol, "outline.width", {}) : { expr: BADGE_RING.width };
@@ -730,7 +738,7 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
   if (width > 0 && (rule || !isNone(outline.color))) {
     const linePaint: Record<string, unknown> = {
       "line-color": rule
-        ? h3Color(render, (color) => RULES[rule](color, {}))
+        ? h3Color(render, (color) => RULES[rule](color, ruleInputs(ctx)))
         : typeof outline.color === "string"
           ? outline.color
           : DEFAULTS["h3.outline.color"],

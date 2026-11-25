@@ -7,14 +7,20 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Map, MapProvider, type MapRef } from "react-map-gl/maplibre";
 
 import { BUILDINGS_TILES_URL, TERRAIN_TILES_URL } from "@/lib/constants";
-import { BASEMAPS, DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
+import { DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
 import { isImageryBasemap } from "@/lib/scene/auto";
 import { buildingsAnchor } from "@/lib/scene/compile";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { JsonObject } from "@/lib/style/json";
 import { renderLayersOf } from "@/lib/style/render/viewLayers";
+import { basemapTone } from "@/lib/style/tone";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
-import { parseThumbnailData, thumbnailLayers, thumbnailView } from "@/lib/utils/map/thumbnail";
+import {
+  parseThumbnailData,
+  thumbnailBasemap,
+  thumbnailLayers,
+  thumbnailView,
+} from "@/lib/utils/map/thumbnail";
 
 import { useScene } from "@/hooks/map/useScene";
 
@@ -137,10 +143,7 @@ export default function ThumbnailPage() {
       ),
     [thumbnailData, type]
   );
-  const basemap =
-    BASEMAPS.find((b) => b.value === thumbnailData?.basemap) ??
-    BASEMAPS.find((b) => b.value === DEFAULT_BASEMAP) ??
-    BASEMAPS[0];
+  const basemap = thumbnailBasemap(thumbnailData?.basemap);
   const projectExtrudes = useMemo(
     () => viewLayers.some((l) => l.visible && l.style && extrudes(l.style.document as unknown as JsonObject)),
     [viewLayers]
@@ -267,6 +270,7 @@ export default function ThumbnailPage() {
             <StyledLayers
               layers={layersToRender}
               locale="en"
+              tone={basemapTone(basemap)}
               ground={buildingsAnchor(appliedScene)}
               onValuesPending={setValuesPending}
             />

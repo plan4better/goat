@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as compileModule from "@/lib/style/compile";
+import * as derivedModule from "@/lib/style/compile/derived";
 import type { CompileSource } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import {
@@ -15,6 +16,10 @@ import {
 import { loadImage } from "@/lib/transformers/map-image";
 
 vi.mock("@/lib/transformers/map-image", () => ({ loadImage: vi.fn(async () => undefined) }));
+vi.mock("@/lib/style/compile/derived", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/style/compile/derived")>();
+  return { ...actual, usesTone: vi.fn(actual.usesTone) };
+});
 vi.mock("@/lib/style/compile", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/style/compile")>();
   return { ...actual, compileLayer: vi.fn(actual.compileLayer) };
@@ -496,5 +501,89 @@ describe("syncMapLayers", () => {
     map.calls.length = 0;
     restoreGlobalState(map, next);
     expect(map.calls).toEqual(["state locale=en", "state 1:time=2021"]);
+  });
+
+  describe("the basemap's tone", () => {
+    const compileLayer = () => vi.mocked(compileModule.compileLayer);
+    const usesTone = vi.mocked(derivedModule.usesTone);
+    const toned = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { color: "#7f3c8d" }, outline: { color: "auto" } },
+    } as LayerStyle;
+    const layers = () => [
+      polygon("1", { version: "a:1" }),
+      polygon("2", { style: toned, version: "b:1" }),
+      polygon("3", { version: "c:1" }),
+    ];
+    const compiledKeys = () => compileLayer().mock.calls.map(([input]) => input.id);
+    // Back to its own answer (vi.fn of the module's function).
+    afterEach(() => {
+      usesTone.mockReset();
+      vi.restoreAllMocks();
+    });
+
+    it("is passed to the compiler for every layer it compiles", () => {
+      compileLayer().mockClear();
+      syncMapLayers(orderedMap(), null, layers(), { locale: "en", tone: "dark" });
+      expect(compileLayer().mock.calls.map(([input]) => input.tone)).toEqual(["dark", "dark", "dark"]);
+      compileLayer().mockClear();
+      syncMapLayers(orderedMap(), null, layers(), { locale: "en" });
+      expect(compileLayer().mock.calls.map(([input]) => input.tone)).toEqual(["light", "light", "light"]);
+    });
+
+    it("a switch from light to dark compiles again exactly the layers whose style uses it", () => {
+      usesTone.mockImplementation((style) => style === (toned as unknown));
+      // A stand-in rule that reads the tone: the Auto outline is black on a dark basemap.
+      const shade = derivedModule.RULES.shade;
+      vi.spyOn(derivedModule.RULES, "shade").mockImplementation((color, inputs) =>
+        inputs.tone === "dark" ? "#000000" : shade(color, inputs)
+      );
+      const map = orderedMap();
+      const state = syncMapLayers(map, null, layers(), { locale: "en", tone: "light" });
+      compileLayer().mockClear();
+      const touched: string[] = [];
+      const record =
+        (name: "addLayer" | "removeLayer" | "setPaintProperty" | "setLayoutProperty" | "setFilter") =>
+        (id: unknown) =>
+          touched.push(`${name} ${typeof id === "string" ? id : (id as { id: string }).id}`);
+      for (const name of [
+        "addLayer",
+        "removeLayer",
+        "setPaintProperty",
+        "setLayoutProperty",
+        "setFilter",
+      ] as const)
+        vi.spyOn(map, name).mockImplementation(record(name) as never);
+      const next = syncMapLayers(map, state, layers(), { locale: "en", tone: "dark" });
+      expect(compiledKeys()).toEqual(["2"]);
+      expect(compileLayer().mock.calls[0][0].tone).toBe("dark");
+      // The new outline color reaches the map, on that layer only.
+      expect(touched).toEqual(["setPaintProperty 2-outline"]);
+      // The same tone again compiles nothing.
+      compileLayer().mockClear();
+      syncMapLayers(map, next, layers(), { locale: "en", tone: "dark" });
+      expect(compiledKeys()).toEqual([]);
+    });
+
+    it("with no style using it, a switch compiles nothing that would not compile anyway", () => {
+      const map = orderedMap();
+      const state = syncMapLayers(map, null, layers(), { locale: "en", tone: "light" });
+      compileLayer().mockClear();
+      const addLayer = vi.spyOn(map, "addLayer");
+      const removeLayer = vi.spyOn(map, "removeLayer");
+      const next = syncMapLayers(map, state, layers(), { locale: "en", tone: "dark" });
+      expect(compiledKeys()).toEqual([]);
+      expect(addLayer).not.toHaveBeenCalled();
+      expect(removeLayer).not.toHaveBeenCalled();
+      // A changed style still compiles, and only that one.
+      const changed = [
+        polygon("1", { version: "a:2" }),
+        polygon("2", { style: toned, version: "b:1" }),
+        polygon("3", { version: "c:1" }),
+      ];
+      syncMapLayers(map, next, changed, { locale: "en", tone: "light" });
+      expect(compiledKeys()).toEqual(["1"]);
+    });
   });
 });

@@ -16,6 +16,7 @@ import {
   makeLayer,
   onDecorations,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { dashArray } from "@/lib/style/compile/polygons";
@@ -36,7 +37,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
 
   // A part whose color is None for all draws no layer (spec 4.6).
   const casingColor = partUsed(style, "casing", "line")
-    ? derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields })
+    ? derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields, inputs: ruleInputs(ctx) })
     : null;
   if (casingColor && !drawsNothing(casingColor)) {
     const casingWidth = combine(
@@ -88,6 +89,7 @@ function arrowLayers(ctx: PartContext, lineColor: Value): LayerSpecification[] {
     geometry: "line",
     fields: ctx.fields,
     follow: (map) => (map ? cascade(style, "line.color", { ...c, map }) : lineColor),
+    inputs: ruleInputs(ctx),
   });
   // Library icons take the arrows' color: None for all, they draw nothing (spec 4.6).
   if (drawsNothing(color) && !keepsColors(icon)) return [];

@@ -10,7 +10,7 @@ import { always, byFill } from "@/lib/style/compile/parts";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { type Expr, type Value, isZoomed, substitute } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
-import type { JsonObject } from "@/lib/style/json";
+import { type JsonObject, isObject } from "@/lib/style/json";
 
 /** What a rule reads besides the followed color, the same for every feature (a basemap's tone, say). */
 export type RuleInputs = Readonly<Record<string, unknown>>;
@@ -65,6 +65,38 @@ export const DERIVED: Readonly<Record<string, Derivation>> = {
     absent: { rule: "hue", only: "hollow" },
   },
 };
+
+/** The derived color keys a word of which takes its color by a rule that reads the basemap's tone (`inputs.tone`).
+ * A layer whose style sets one of them to one of its words compiles again when the basemap's tone changes; every
+ * other layer is left as it is drawn. */
+export const TONE_KEYS: readonly string[] = [];
+
+/** Whether a zoom stop value or the value itself is one of `key`'s words. */
+const holdsWord = (key: string, value: unknown): boolean =>
+  isDerivedWord(key, value) ||
+  (isObject(value) &&
+    Array.isArray(value.zoom) &&
+    value.zoom.some((stop) => Array.isArray(stop) && isDerivedWord(key, stop[1])));
+
+/**
+ * Whether the style draws a color that depends on the basemap's tone: one of `keys` holds one of its words in any
+ * record of the style (the base symbol, a class, `other`, `no_data`, a rule, a cluster's own symbol), as it is or in a
+ * zoom stop.
+ */
+export function usesTone(style: JsonObject, keys: readonly string[] = TONE_KEYS): boolean {
+  if (!keys.length) return false;
+  const paths = keys.map((key) => [key, key.split(".")] as const);
+  const walk = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(walk);
+    if (!isObject(node)) return false;
+    for (const [key, path] of paths) {
+      const value = path.reduce<unknown>((at, name) => (isObject(at) ? at[name] : undefined), node);
+      if (holdsWord(key, value)) return true;
+    }
+    return Object.values(node).some(walk);
+  };
+  return walk(style);
+}
 
 /** The color key `key` follows on `geometry`; undefined where it follows none. */
 export const followedKey = (key: string, geometry: Geometry): string | undefined =>

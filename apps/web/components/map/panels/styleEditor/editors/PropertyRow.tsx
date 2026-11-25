@@ -49,6 +49,7 @@ import { isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
+  useBasemapTone,
   useEditor,
   useMapZoom,
   useRecordValuesAt,
@@ -97,6 +98,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
+  const tone = useBasemapTone();
   const popover = usePopover();
   const next = useNextLevel();
   const openClassification = useClassificationOpener();
@@ -332,7 +334,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             });
     const swatch =
       CAPABILITIES[key]?.kind === "color"
-        ? { background: swatchOf(shownDoc, path, data.geometry, { scoped: !!scope }), wide: true }
+        ? { background: swatchOf(shownDoc, path, data.geometry, { scoped: !!scope, tone }), wide: true }
         : undefined;
     return (
       <GroupRow

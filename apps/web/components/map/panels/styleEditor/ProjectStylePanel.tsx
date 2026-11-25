@@ -8,13 +8,16 @@ import { type ReactNode, useEffect, useMemo, useSyncExternalStore } from "react"
 import { useMap } from "react-map-gl/maplibre";
 
 import { useProjectMap } from "@/lib/api/map";
+import { useProject } from "@/lib/api/projects";
 import type { Geometry } from "@/lib/style/compile/types";
 import { useStyleStores } from "@/lib/style/editor/StyleStores";
 import type { EditorStore } from "@/lib/style/editor/store";
 import { sourceOf } from "@/lib/style/layerSource";
 import { breaksBandOf } from "@/lib/style/raster/metadata";
+import { basemapTone } from "@/lib/style/tone";
 import { createCoreTransport } from "@/lib/style/transports/core";
 
+import { useBasemap } from "@/hooks/map/MapHooks";
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 import { useLayerStyle } from "@/hooks/style/useLayerStyle";
@@ -94,6 +97,9 @@ export function ProjectStylePanel({
   const { current, map: projectMap } = useMap();
   const map = ((current ?? projectMap)?.getMap() ?? null) as MaplibreMap | null;
   const zoom = useAppSelector((state) => state.map.currentZoom ?? 12);
+  // The basemap the project map draws, resolved as the page resolves it for the map: swatches show the derived
+  // colors for its tone.
+  const tone = basemapTone(useBasemap(useProject(projectId).project).activeBasemap);
   const { setLayerState } = useProjectMap(projectId);
   const position = (layer.entry?.position ?? "top") as Position;
   const mapState = useMemo(
@@ -115,6 +121,7 @@ export function ProjectStylePanel({
       data={data}
       map={map}
       mapZoom={zoom}
+      tone={tone}
       top={top}
       header={false}
       shown={visible}>

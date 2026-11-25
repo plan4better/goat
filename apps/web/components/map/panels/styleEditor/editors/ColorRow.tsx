@@ -10,7 +10,12 @@ import type { Path } from "@/lib/style/editor/store";
 import { colorsIn, swatchOf } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useBasemapTone,
+  useEditor,
+  useStyleData,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ColorField, Row } from "@/components/map/panels/styleEditor/rows";
@@ -48,7 +53,7 @@ export function PathColorPicker({
   const { geometry } = useStyleData();
   const value = useStyleValue<unknown>(path);
   // A color taken from another part starts the picker at that color.
-  const resolved = swatchOf(store.document, path, geometry);
+  const resolved = swatchOf(store.document, path, geometry, { tone: useBasemapTone() });
   const shown =
     typeof value === "string" && value !== "fill" && value !== "auto"
       ? value

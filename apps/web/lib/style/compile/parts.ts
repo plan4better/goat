@@ -5,6 +5,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { isNone } from "@/lib/style/colors";
 import { featureFilter, isSet } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
+import type { RuleInputs } from "@/lib/style/compile/derived";
 import type { ImageCollector } from "@/lib/style/compile/images";
 import type { CompileInput, CompiledLayer, FieldType, Geometry } from "@/lib/style/compile/types";
 import { type Expr, type Value, combine, fromForm, isZoomed, toProperty } from "@/lib/style/compile/values";
@@ -73,6 +74,9 @@ export function put(
     return;
   target[key] = property;
 }
+
+/** What the rules of derived colors read besides the followed color: the basemap's tone, light where none is given. */
+export const ruleInputs = (ctx: PartContext): RuleInputs => ({ tone: ctx.input.tone ?? "light" });
 
 /** The active or hovered feature (spec 16 "highlight"). */
 export const ACTIVE: Expr = [

@@ -112,6 +112,9 @@ interface MapProps {
   tone?: Tone;
   /** The basemap the scene adds buildings to; the active basemap by default. */
   basemap?: Basemap;
+  /** The tone of the basemap `mapStyle` draws (`basemapTone`), for the layers' automatic colors. Every map says it,
+   * so none takes another basemap's tone by default. */
+  layerTone: Tone;
   children?: React.ReactNode;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   containerSx?: any;
@@ -163,6 +166,7 @@ const MapViewer: React.FC<MapProps> = ({
   scene,
   tone,
   basemap,
+  layerTone,
   maxExtent,
   minZoom,
   maxZoom,
@@ -1262,6 +1266,7 @@ const MapViewer: React.FC<MapProps> = ({
             layers={renderLayers}
             editing={editing}
             locale={locale || i18n.language}
+            tone={layerTone}
             ground={buildingsAnchor(appliedScene)}
             onLayersChange={setDrawnLayerIds}
             presenceScope={MAP_SCOPE}

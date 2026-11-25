@@ -1,3 +1,4 @@
+import { ThemeProvider, createTheme } from "@mui/material";
 import { configureStore } from "@reduxjs/toolkit";
 import { render, screen } from "@testing-library/react";
 import { MapProvider } from "react-map-gl/maplibre";
@@ -17,6 +18,7 @@ const { recorded, dispatchMock } = vi.hoisted(() => ({
     layers: [] as ViewLayer[],
     slotLayers: [] as ViewLayer[],
     activeFeatureMarker: undefined as boolean | undefined,
+    layerTone: undefined as string | undefined,
   },
   dispatchMock: vi.fn(),
 }));
@@ -45,13 +47,16 @@ vi.mock("@/components/map/MapViewer", () => ({
     layers,
     children,
     activeFeatureMarker,
+    layerTone,
   }: {
     layers: ViewLayer[];
     children?: React.ReactNode;
     activeFeatureMarker?: boolean;
+    layerTone?: string;
   }) => {
     recorded.layers = layers;
     recorded.activeFeatureMarker = activeFeatureMarker;
+    recorded.layerTone = layerTone;
     return <div data-testid="map-viewer">{children}</div>;
   },
 }));
@@ -114,6 +119,17 @@ beforeEach(() => {
 });
 
 describe("DatasetMapPreview", () => {
+  it("draws the layers for the tone of the basemap it shows, Light or Dark by the app theme", () => {
+    render(<DatasetMapPreview dataset={datasetOf("feature")} />);
+    expect(recorded.layerTone).toBe("light");
+    render(
+      <ThemeProvider theme={createTheme({ palette: { mode: "dark" } })}>
+        <DatasetMapPreview dataset={datasetOf("feature")} />
+      </ThemeProvider>
+    );
+    expect(recorded.layerTone).toBe("dark");
+  });
+
   it("gives a feature layer the pinned hover-and-click panel", () => {
     render(<DatasetMapPreview dataset={datasetOf("feature")} />);
 

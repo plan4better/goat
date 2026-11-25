@@ -14,6 +14,7 @@ import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
+import type { Tone } from "@/lib/style/tone";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 
@@ -96,6 +97,8 @@ export interface LabelSummaryContext {
   geometry?: Geometry;
   /** The panel's language: the summary's first letter is a capital in it. */
   language: string;
+  /** The tone of the basemap the map draws: a swatch shows the derived color the map draws (light by default). */
+  tone?: Tone;
 }
 
 const TEXT_NUMBERS = ["letter_spacing", "line_height", "max_width"] as const;
@@ -160,6 +163,7 @@ export function labelHaloSummary(
   const color = `${base}.halo.color`;
   const swatch = swatchOf(summaryView(doc, scope, color).doc, color, ctx.geometry, {
     scoped: scope !== null,
+    tone: ctx.tone,
   });
   const { doc: shown, later } = summaryView(doc, scope, width);
   const none = !later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0;

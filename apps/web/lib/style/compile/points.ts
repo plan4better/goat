@@ -22,6 +22,7 @@ import {
   makeLayer,
   onDecorations,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
@@ -210,6 +211,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     geometry: "point",
     fields: ctx.fields,
     follow: colorOf,
+    inputs: ruleInputs(ctx),
   });
   // A color that is None for all draws nothing (spec 4.6): an outline so draws as one switched off. A marker whose
   // color is None gets no layer, nor a highlight ring, where nothing else of it shows; a marker hollow by
@@ -227,6 +229,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
       fields: ctx.fields,
       follow: colorOf,
       fill,
+      inputs: ruleInputs(ctx),
     });
     // Uploads and emoji keep their own colors; library icons take the icon color.
     const iconShows =

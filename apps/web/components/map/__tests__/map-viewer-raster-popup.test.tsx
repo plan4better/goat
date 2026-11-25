@@ -238,6 +238,7 @@ const viewer = (
               mapRef={mapRef as never}
               layers={[dem]}
               mapStyle="https://tiles.example/style.json"
+              layerTone="light"
               mode="2d"
               {...props}
             />

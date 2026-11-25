@@ -29,6 +29,7 @@ import { markerShapeOf } from "@/lib/style/markerShapes";
 import ToolPill from "@/components/dashboard/common/ToolPill";
 import { useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
+  useBasemapTone,
   useEditor,
   useLiveMapZoom,
   useMapZoom,
@@ -71,6 +72,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
+  const tone = useBasemapTone();
   const popover = usePopover();
   const base = partPath(group);
   // In class scope the row summarizes the class: its part merged over the base, a dot when the part differs from all
@@ -131,7 +133,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
       : t(offForAll && scope ? "style_editor.part_off_for_all" : "style_editor.none");
   const swatch =
     on && group.swatch
-      ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null })
+      ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null, tone })
       : undefined;
   // A color that follows another part as its darker shade reads before the width: "Auto · 1 px".
   if (on && group.swatch && getIn(doc, `${base}.${group.swatch}`) === "auto")
