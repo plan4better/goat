@@ -14,6 +14,7 @@ import type {
   PageContext,
   Rating,
 } from "@/lib/assistant/types";
+import { restoredOfReply, styleOf } from "@/lib/assistant/undoReply";
 import { ASSISTANT_BASE_URL } from "@/lib/constants";
 
 export interface TransportOptions {
@@ -156,27 +157,75 @@ export interface ChangedSince {
   between: boolean;
 }
 
+/** A style the dock's Undo wrote back, or deleted when the answer had created it (`removed`). */
+export interface UndoneStyle {
+  projectId: string;
+  layerProjectId: number;
+  styleId: string;
+  /** The revision that gave it; null when core named none or the style is gone. */
+  revision: number | null;
+  removed: boolean;
+  /** Core kept its stored value where the restored one no longer fits the data. */
+  partial: boolean;
+}
+
+/** What of the map the dock's Undo wrote back. */
+export interface UndoneMap {
+  projectId: string;
+  /** The layers whose state, name or filter went back. */
+  layers: number[];
+  tree: boolean;
+  groups: boolean;
+  basemap: boolean;
+  scene: boolean;
+}
+
+/** A style saved since the answer's edits. */
+export interface ChangedStyleSince {
+  projectId: string;
+  layerProjectId: number;
+  styleId: string;
+  /** Saved between two of the answer's edits rather than after them. */
+  between: boolean;
+  /** Saved so often since that Undo can only put back the whole style as it was before the answer. */
+  tooOld: boolean;
+}
+
+/** A part of the map changed since the answer's edits (`object` names the kind, as in the undo record). */
+export interface ChangedMapSince {
+  object: string;
+  layerProjectId?: number;
+  groupId?: number;
+}
+
+/** What an Undo wrote back, and what it could not (`notRestored`: `layer_removed`, `style`, ...). */
+export interface Restored {
+  workflows: UndoneWorkflow[];
+  styles: UndoneStyle[];
+  map: UndoneMap | null;
+  notRestored: string[];
+}
+
 /**
- * How an Undo went: the workflows went back, or some were changed since the
- * answer's edits and the dock asks before it writes over them (`force`).
- * Those that went back are listed either way.
+ * How an Undo went: everything went back, or some of it was changed since the
+ * answer's edits and the dock asks before it writes over it (`force`). What
+ * went back is listed either way.
  */
 export type UndoOutcome =
-  | { kind: "undone"; restored: UndoneWorkflow[] }
-  | { kind: "changed"; restored: UndoneWorkflow[]; changed: ChangedSince[] };
+  | { kind: "undone"; restored: Restored }
+  | {
+      kind: "changed";
+      restored: Restored;
+      changed: { workflows: ChangedSince[]; styles: ChangedStyleSince[]; map: ChangedMapSince[] };
+    };
 
 type Row = Record<string, unknown>;
-const rows = (value: unknown): Row[] =>
-  Array.isArray(value) ? value.filter((row): row is Row => typeof row === "object" && row !== null) : [];
+const isRow = (value: unknown): value is Row => typeof value === "object" && value !== null;
+const rows = (value: unknown): Row[] => (Array.isArray(value) ? value.filter(isRow) : []);
 const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
 const numberOf = (value: unknown): number | null => (typeof value === "number" ? value : null);
-
-const restoredOf = (value: unknown): UndoneWorkflow[] =>
-  rows(value).flatMap((row) => {
-    const workflowId = textOf(row.workflow_id);
-    const projectId = textOf(row.project_id);
-    return workflowId && projectId ? [{ workflowId, projectId, revision: numberOf(row.revision) }] : [];
-  });
+const wholeOf = (value: unknown): number | null =>
+  typeof value === "number" && Number.isInteger(value) ? value : null;
 
 const changedOf = (value: unknown): ChangedSince[] =>
   rows(value).flatMap((row) => {
@@ -195,9 +244,31 @@ const changedOf = (value: unknown): ChangedSince[] =>
       : [];
   });
 
+const changedStylesOf = (value: unknown): ChangedStyleSince[] =>
+  rows(value).flatMap((row) => {
+    const style = styleOf(row);
+    return style ? [{ ...style, between: row.between === true, tooOld: row.too_old === true }] : [];
+  });
+
+const changedMapOf = (value: unknown): ChangedMapSince[] =>
+  rows(value).flatMap((row) => {
+    const object = textOf(row.object);
+    if (!object) return [];
+    const layerProjectId = wholeOf(row.layer_project_id);
+    const groupId = wholeOf(row.group_id);
+    return [
+      {
+        object,
+        ...(layerProjectId !== null ? { layerProjectId } : {}),
+        ...(groupId !== null ? { groupId } : {}),
+      },
+    ];
+  });
+
 /**
- * Writes back what an answer's workflow edits replaced (the dock's Undo).
- * With `force`, also over changes made since. Throws the service's refusal
+ * Writes back what an answer's edits replaced (the dock's Undo): workflows,
+ * styles and the map. With `force`, also over changes made since. A key the
+ * reply lacks (an assistant of the release before) reads as nothing. Throws the service's refusal
  * (`already_undone`, `undo_not_allowed`, ...) as an AssistantRequestError.
  */
 export async function undoAnswer(conversationId: string, runId: string, force = false): Promise<UndoOutcome> {
@@ -210,15 +281,31 @@ export async function undoAnswer(conversationId: string, runId: string, force = 
     }
   );
   if (response.ok) {
-    const body = (await response.json()) as { workflows?: unknown };
-    return { kind: "undone", restored: restoredOf(body.workflows) };
+    const body = (await response.json()) as Row;
+    return {
+      kind: "undone",
+      restored: restoredOfReply(body.workflows, body.styles, body.map, body.not_restored),
+    };
   }
   if (response.status === 409) {
     const text = await response.text();
     try {
       const detail = (JSON.parse(text) as { detail?: Row }).detail;
       if (detail?.code === "changed_since") {
-        return { kind: "changed", restored: restoredOf(detail.undone), changed: changedOf(detail.workflows) };
+        return {
+          kind: "changed",
+          restored: restoredOfReply(
+            detail.undone,
+            detail.undone_styles,
+            detail.undone_map,
+            detail.not_restored
+          ),
+          changed: {
+            workflows: changedOf(detail.workflows),
+            styles: changedStylesOf(detail.styles),
+            map: changedMapOf(detail.map),
+          },
+        };
       }
     } catch {
       // Not JSON: a refusal like any other.

@@ -508,6 +508,7 @@ def _classifications(
                     "too_many_categories",
                     to_pointer(cpath),
                     f"{n} categories are hard to tell apart; 12 is the most that stay readable.",
+                    params={"categories": n, "limit": 12},
                 )
             )
         elif c.get("method") in NUMERIC_METHODS + ("manual",) and n > 7:
@@ -516,6 +517,7 @@ def _classifications(
                     "too_many_classes",
                     to_pointer(cpath),
                     f"{n} classes are hard to tell apart; 7 is the most that stay readable.",
+                    params={"classes": n, "limit": 7},
                 )
             )
         _palette_kind(issues, cpath, c)
@@ -578,6 +580,7 @@ def _palette_kind(issues: list[Issue], cpath: list[str], c: dict[str, Any]) -> N
                 to_pointer(cpath + ["palette"]),
                 f"{palette.name} is an ordered palette; categories read better with distinct colors.",
                 level="info",
+                params={"case": "ordered", "palette": palette.name},
             )
         )
     elif (
@@ -589,5 +592,6 @@ def _palette_kind(issues: list[Issue], cpath: list[str], c: dict[str, Any]) -> N
                 "palette_kind_mismatch",
                 to_pointer(cpath + ["palette"]),
                 f"{palette.name} is a palette for categories; ordered classes read better with a sequential palette.",
+                params={"case": "qualitative", "palette": palette.name},
             )
         )

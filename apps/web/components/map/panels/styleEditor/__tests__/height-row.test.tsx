@@ -294,6 +294,30 @@ describe("HeightRow", () => {
     expect(within(popover()).queryByText("Visible")).toBeNull();
   });
 
+  it("follows a class's own height set from outside the row, in the row and in its editor", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: 10 } },
+      classify: [
+        {
+          field: "use",
+          method: "categories",
+          classes: [{ values: ["office"], fill: { color: "#ff0000" } }],
+        },
+      ],
+    } as unknown as LayerStyle);
+    expect(summary()).toBe("10 m");
+    await openHeight();
+    expect(screen.getByRole("slider", { name: "Top" })).toBeTruthy();
+    act(() => store.set("classify.0.classes.0.extrude", { height: 30 }));
+    expect(summary()).not.toBe("10 m");
+    expect(screen.queryByRole("slider", { name: "Top" })).toBeNull();
+    act(() => store.undo());
+    expect(summary()).toBe("10 m");
+    expect(screen.getByRole("slider", { name: "Top" })).toBeTruthy();
+  });
+
   it("shows a class's own height in class scope", async () => {
     const { store } = setup({
       version: "1.0.0",

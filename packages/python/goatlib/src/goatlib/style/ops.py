@@ -1,6 +1,7 @@
-"""Fix operations (the specification's section 11, closed list).
+"""Fix operations (the specification's section 11, closed list) that issue fixes apply.
 
-The AI and the issue fixes edit documents with these; each returns a new document.
+Each returns a new document. The assistant's edit operations (`goatlib.style.edit`) use
+these for retarget, use_field and round.
 """
 
 import copy

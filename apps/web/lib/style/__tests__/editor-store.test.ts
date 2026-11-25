@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { moveClassification } from "@/lib/style/editor/classify";
-import { EditorStore } from "@/lib/style/editor/store";
+import { type DocumentSaver, EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
 
@@ -12,6 +12,9 @@ const doc = (extra: object = {}) =>
     symbol: { fill: { color: "#cccccc", opacity: 0.5 }, outline: { width: 1 } },
     ...extra,
   }) as LayerStyle;
+
+/** The style as a change made elsewhere left it. */
+const red = () => doc({ symbol: { fill: { color: "#ff0000", opacity: 0.5 }, outline: { width: 1 } } });
 
 /** A transport whose answers the test hands out one by one. */
 function fakeTransport() {
@@ -246,5 +249,102 @@ describe("EditorStore", () => {
     unsubscribe();
     store.set("symbol.fill.color", "#111111");
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("takeOutside records one step: undo gives back the document before and sends it as an edit", async () => {
+    const { store, saver, t } = storeOf();
+    const seen: boolean[] = [];
+    store.subscribe(() => seen.push(store.canUndo));
+    store.takeOutside({ document: red(), revision: 2 });
+    expect(store.document).toEqual(red());
+    expect(saver.revision).toBe(2);
+    expect(saver.pending).toBe(false);
+    // The panel reads the history when it is told of the change.
+    expect(seen).toEqual([true]);
+    store.undo();
+    expect(store.document).toEqual(doc());
+    expect(store.canUndo).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.saves).toEqual([doc()]);
+    store.redo();
+    expect(store.document).toEqual(red());
+  });
+
+  it("takeOutside keeps a local edit that is not saved yet on top of the received style", async () => {
+    const { store, saver, t } = storeOf();
+    store.set("symbol.outline.width", 3);
+    store.takeOutside({ document: red(), revision: 2 });
+    expect(store.get("symbol.fill.color")).toBe("#ff0000");
+    expect(store.get("symbol.outline.width")).toBe(3);
+    expect(saver.pending).toBe(true);
+    store.undo();
+    expect(store.get("symbol.fill.color")).toBe("#cccccc");
+    expect(store.get("symbol.outline.width")).toBe(3);
+    store.undo();
+    expect(store.document).toEqual(doc());
+    expect(store.canUndo).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.saves).toEqual([doc()]);
+  });
+
+  it("takeOutside of an older revision changes nothing and records nothing", () => {
+    const { store, saver } = storeOf();
+    const before = store.document;
+    const listener = vi.fn();
+    store.subscribe(listener);
+    store.takeOutside({ document: red(), revision: 1 });
+    store.takeOutside({ document: red(), revision: 0 });
+    expect(store.document).toBe(before);
+    expect(store.canUndo).toBe(false);
+    expect(saver.revision).toBe(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("takeOutside is a step of its own between two edits of one path", async () => {
+    const { store } = storeOf();
+    store.set("symbol.fill.opacity", 0.6);
+    await vi.advanceTimersByTimeAsync(100);
+    store.takeOutside({ document: red(), revision: 2 });
+    await vi.advanceTimersByTimeAsync(100);
+    store.set("symbol.fill.opacity", 0.7);
+    store.undo();
+    expect(store.get("symbol.fill")).toEqual({ color: "#ff0000", opacity: 0.6 });
+    store.undo();
+    expect(store.get("symbol.fill")).toEqual({ color: "#cccccc", opacity: 0.6 });
+    store.undo();
+    expect(store.get("symbol.fill")).toEqual({ color: "#cccccc", opacity: 0.5 });
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("takeOutside of a newer revision with the same document moves the revision without a step", () => {
+    const { store, saver } = storeOf();
+    store.set("symbol.fill.opacity", 0.6);
+    store.undo();
+    store.takeOutside({ document: doc(), revision: 2 });
+    expect(saver.revision).toBe(2);
+    expect(store.canUndo).toBe(false);
+    expect(store.canRedo).toBe(true);
+  });
+
+  it("takeOutside leaves a store alone whose saver takes no stored document (the scene's)", () => {
+    const listeners = new Set<() => void>();
+    let copy = doc();
+    const saver: DocumentSaver<LayerStyle> = {
+      get document() {
+        return copy;
+      },
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      edit: (next) => {
+        copy = next;
+      },
+      saveNow: () => undefined,
+    };
+    const store = new EditorStore({ saver });
+    store.takeOutside({ document: red(), revision: 2 });
+    expect(store.document).toEqual(doc());
+    expect(store.canUndo).toBe(false);
   });
 });

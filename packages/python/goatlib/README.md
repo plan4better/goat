@@ -12,8 +12,8 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `analysis/` | Analysis algorithms backing the tools |
 | `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror, the street network and the public transport network (`io/fetch/`) |
 | `models/` | Pydantic models shared across services |
-| `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
-| `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits |
+| `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema, the edit operations and one-line summaries the AI uses |
+| `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits, the filter panel's rows and areas |
 | `raster/` | Raster files read on the server: band formulas, value tiles the browser colors (`values.py`), the coloring an image tile's URL carries and coloring those tiles, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
@@ -141,7 +141,12 @@ READMEs means section N of that file.
   JSON pointer (list items addressed by their `id`): the models (`parse.py`),
   rules about the document as a whole (`check.py`), and rules against the data
   (`data_check.py`), which read a `DataContext` built by whoever can see the data.
-  `validate.py` runs all three.
+  `validate.py` runs all three. The message is English, for people and the AI
+  alike. The issues the style panel words also carry `params`, the facts their
+  message names, so the panel shows them in the user's language; for any other
+  code it shows the message. A service reads another's issues with
+  `read_issue`, which leaves out keys it does not know, so a newer sender never
+  fails an older reader.
 - **Versions are three numbers** (`style/version.py`, spec 14 and 21), one for
   layer styles and the map document. A written document gets the lowest
   version its keys need (`stamp`, which every writer calls: core's saves,
@@ -223,6 +228,14 @@ READMEs means section N of that file.
   checks the scene against what only the caller knows, through `MapContext`:
   which layers draw heights and whether the deployment has terrain and building
   sources.
+- **The AI edits a style with operations** (`style/edit.py`, spec 20):
+  `apply_edits` applies a list of them (`set`, `remove`, `retarget`,
+  `use_field`, `round`, `add`, `move`) in order, all or none, and a refusal
+  names what exists, so the model's next call can be right; validating the
+  result stays the server's check.
+- **A style in one line** (`style/summary.py`): `summarize` describes a
+  document in plain words for the layer lists the AI reads, from the plain
+  dict, so a damaged document gives a shorter line instead of an error.
 
 ## Layer filters (`filter/`)
 
@@ -302,6 +315,15 @@ features pass.
   the issues the checker reports and the rows the web's panel reads; the web's
   tests read the same file, and `test_saved_shapes.py` runs every error-free
   case through the evaluator and DuckDB.
+- **The panel's rows and areas in Python** (`rows.py`, `areas.py`), for the
+  assistant, which changes a layer's filter the way the panel does:
+  `read_rows` and `write_rows` turn a stored filter into the panel's rows and
+  back, and `areas.py` builds an area from its pieces (regions, another
+  layer's features, the map view) as the panel writes it, simplifying an
+  outline to fit the limits. Both use the standard library only, since the
+  assistant has no geometry libraries, and fixtures shared with the web's
+  tests (`filter_rows.json`, `filter_areas.json`) hold both sides to the same
+  answers.
 - **A workflow's filter rows are a second writer of the same CQL2.** A dataset
   step and an If step store their conditions as the panel's rows
   (`{attribute, expression, value}`), which the assistant reads and writes too;

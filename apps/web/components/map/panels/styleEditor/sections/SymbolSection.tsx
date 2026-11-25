@@ -6,12 +6,23 @@ import { Box, Button, Typography } from "@mui/material";
 import { type ReactNode, memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { classifyShape, recordPathOf, scopedView } from "@/lib/style/editor/classify";
+import { classifyShape, partDiffers, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import { MAIN_COLOR, modeOf, targetsOf } from "@/lib/style/editor/forms";
+import { issueText } from "@/lib/style/editor/issues";
 import { templateField } from "@/lib/style/editor/labels";
 import { markerFilled, partOn, symbolShown } from "@/lib/style/editor/parts";
+import {
+  fillSetter,
+  iconSetter,
+  markerFillState,
+  partOffSetter,
+  partSetter,
+  partState,
+  setterKey,
+  summaryView,
+} from "@/lib/style/editor/sources";
 import { getIn, isRuleScope, setIn } from "@/lib/style/editor/store";
-import { HATCH, choiceLabel, summarize, swatchOf } from "@/lib/style/editor/summaries";
+import { HATCH, choiceLabel, setterSummary, summarize, swatchOf } from "@/lib/style/editor/summaries";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { markerShapeOf } from "@/lib/style/markerShapes";
 
@@ -21,6 +32,7 @@ import {
   useEditor,
   useLiveMapZoom,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -61,31 +73,62 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   const mapZoom = useMapZoom();
   const popover = usePopover();
   const base = partPath(group);
-  // In class scope the row summarizes the class: its part merged over the base, a dot when it sets anything.
-  const { value, overridden } = useScoped(base);
+  // In class scope the row summarizes the class: its part merged over the base, a dot when the part differs from all
+  // features beyond the value its classification gives it.
+  const { value } = useScoped(base);
   const scope = useScope();
-  // A part the layer switches off (`false`) is off for all features, in every class too; one never turned on reads
-  // None, as classes may still turn it on.
+  // A part the layer switches off (`false`) is off for all features, in every class too: for all features its row reads
+  // None, in a class or a rule "Off for all", since the record cannot turn it on. One the layer leaves out reads by
+  // what turns it on for some features (classes or rules), else None.
   const offForAll = useStyleSelector((doc) => getIn(doc, base) === false);
   // The summary reads the classifications (a color by classes) and the main color ("Same as fill").
   const geometry = data.geometry ?? "polygon";
+  const differs = useStyleSelector((doc) => (scope ? partDiffers(doc, scope, group.part, geometry) : false));
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // A class or rule record's keys of the part change what the summary reads ("By <field>" for a key one sets).
+  useRecordValuesAt(base);
   useStyleValue(`symbol.${MAIN_COLOR[geometry]}`);
   // The points' Fill is off on a hollow marker, while the marker itself is drawn.
   const on = partOn(value, group.part, geometry) && (!group.switchKey || markerFilled(value));
+  // For all features: what draws the part (or fills the markers) for some features only, and what switches it off
+  // for some (`setterKey`); the row renders again when it changes.
+  const some = useStyleSelector((doc) => {
+    if (scope || on || offForAll) return "";
+    const setter =
+      group.switchKey && partOn(value, group.part, geometry)
+        ? markerFillState(doc) === "some"
+          ? fillSetter(doc)
+          : undefined
+        : partState(doc, group.part, geometry) === "some"
+          ? partSetter(doc, group.part)
+          : undefined;
+    return setterKey(setter);
+  });
+  const offForSome = useStyleSelector((doc) =>
+    !scope && on && !group.switchKey && group.id !== "icon" ? setterKey(partOffSetter(doc, group.part)) : ""
+  );
+  // The Icon row of a base marker without icon or shape: what gives icons or shapes to some features.
+  const iconSome = useStyleSelector((doc) =>
+    scope || group.summary !== "icon" ? "" : setterKey(iconSetter(doc, geometry))
+  );
   const label = t(`style_editor.part_${group.id}`);
   // Groups that share a part (point fill, outline, icon) each show the issues of their own keys.
   const issues = useIssueAt(
     group.rows.length ? [...group.rows.map((row) => `${base}.${row.key}`), `${base}.${group.summary}`] : base
   );
-  const doc = scope ? scopedView(store.document, scope).view : store.document;
+  const view = scope ? scopedView(store.document, scope) : undefined;
+  const doc = view ? view.view : store.document;
+  // In scope, summaries read what the scoped features draw (`summaryView`).
+  const sctx = { fields: data.fields, mapZoom, geometry, language: i18n.language, scope, view };
   // A hollow marker without outline or icon draws nothing: the Fill row warns, as the editor does.
   const invisible = group.switchKey !== undefined && markerInvisible(store.document, scope);
   const summaryPath = `${base}.${group.summary}`;
   const iconName = useIconLabel(group.summary === "icon" ? getIn(doc, summaryPath) : undefined);
   let text = on
-    ? summarize(doc, summaryPath, t, { fields: data.fields, mapZoom, geometry, language: i18n.language })
-    : t(offForAll ? "style_editor.part_off_for_all" : "style_editor.none");
+    ? summarize(store.document, summaryPath, t, sctx)
+    : some
+      ? setterSummary(t, some, data.fields)
+      : t(offForAll && scope ? "style_editor.part_off_for_all" : "style_editor.none");
   const swatch =
     on && group.swatch
       ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null })
@@ -95,12 +138,14 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     const template = getIn(doc, summaryPath);
     const field = typeof template === "string" ? templateField(template) : null;
     const name =
-      field !== null
-        ? (data.fields.find((f) => f.name === field)?.label ?? field)
-        : typeof template === "string" && template
-          ? template.replace(/\n/g, " ")
-          : t("style_editor.no_text");
-    text = `${name} · ${summarize(doc, `${base}.size`, t, { fields: data.fields, mapZoom, geometry, language: i18n.language })}`;
+      modeOf(summaryView(store.document, scope, summaryPath, view).doc, summaryPath, geometry) === "classes"
+        ? summarize(store.document, summaryPath, t, sctx)
+        : field !== null
+          ? (data.fields.find((f) => f.name === field)?.label ?? field)
+          : typeof template === "string" && template
+            ? template.replace(/\n/g, " ")
+            : t("style_editor.no_text");
+    text = `${name} · ${summarize(store.document, `${base}.size`, t, sctx)}`;
   }
   let glyph: ReactNode;
   let iconValue: ReactNode;
@@ -110,9 +155,11 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     const icon = getIn(doc, summaryPath);
     const raw = getIn(doc, `${base}.shape`);
     const shape = markerShapeOf(raw);
-    const iconMode = modeOf(doc, summaryPath, geometry);
-    // Without an icon a circle is the plain marker; any other shape names itself.
-    if (icon === undefined && iconMode === "fixed")
+    const iconMode = modeOf(summaryView(store.document, scope, summaryPath, view).doc, summaryPath, geometry);
+    // Without an icon a circle is the plain marker; any other shape names itself; icons and shapes only classes or
+    // rules give read by them.
+    if (iconSome) text = setterSummary(t, iconSome, data.fields);
+    else if (icon === undefined && iconMode === "fixed")
       text =
         shape === "circle" || raw === "icon" ? t("style_editor.none") : choiceLabel(t, "marker.shape", shape);
     else if (iconMode === "fixed" && typeof icon === "string") {
@@ -127,12 +174,13 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
         />
       );
   }
+  if (offForSome) text = `${text} · ${t("style_editor.part_off_for_some")}`;
   return (
     <GroupRow
       label={label}
-      off={!on}
-      overrideDot={overridden}
-      warn={issues[0]?.message ?? (invisible ? t("style_editor.marker_invisible") : undefined)}
+      off={!on && !some}
+      overrideDot={differs}
+      warn={issues[0] ? issueText(t, issues[0]) : invisible ? t("style_editor.marker_invisible") : undefined}
       value={iconValue ?? text}
       glyph={glyph}
       swatch={swatch ? { background: swatch, wide: swatch.startsWith("linear-gradient") } : undefined}
@@ -155,6 +203,13 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     />
   );
 });
+
+/** A group drawn as its one row (point Size); none while the part is off, as nothing is drawn. */
+function InlineRow({ group }: { group: PartGroup }) {
+  const { value } = useScoped(partPath(group));
+  if (value === false || !group.inline) return null;
+  return <PropertyRow row={group.inline} base={partPath(group)} />;
+}
 
 /** "All features" or the scoped class with its swatch; opens the menu of classes to style one on its own. */
 function ScopeChip() {
@@ -188,18 +243,22 @@ function ScopeChip() {
         onClick: () => store.setScope({ classify: ci, key: k }),
       })
     );
-    if (isObject(c.other))
+    // Other and No data are styled like a class.
+    for (const extra of ["other", "no_data"] as const) {
+      const own = c[extra];
+      if (!isObject(own)) continue;
       items.push({
         label: classLabel(
           c,
-          { ...c.other, values: undefined, name: c.other.name ?? t("style_editor.other") },
+          { ...own, values: undefined, name: own.name ?? t(`style_editor.${extra}`) },
           t,
           i18n.language
         ),
-        swatch: swatchOfRecord(c, c.other),
-        selected: classScope?.classify === ci && classScope.key === "other",
-        onClick: () => store.setScope({ classify: ci, key: "other" }),
+        swatch: swatchOfRecord(c, own),
+        selected: classScope?.classify === ci && classScope.key === extra,
+        onClick: () => store.setScope({ classify: ci, key: extra }),
       });
+    }
   });
   const current = classScope ? classify[classScope.classify] : undefined;
   const record = current && classScope ? getIn(store.document, recordPathOf(classScope)) : undefined;
@@ -208,7 +267,9 @@ function ScopeChip() {
     : current && isObject(record)
       ? classLabel(
           current,
-          classScope?.key === "other" && !record.name ? { name: t("style_editor.other") } : record,
+          classScope && typeof classScope.key !== "number" && !record.name
+            ? { name: t(`style_editor.${classScope.key}`) }
+            : record,
           t,
           i18n.language
         )
@@ -290,8 +351,8 @@ function ScopeNote() {
     const c = getIn(store.document, `classify.${scope.classify}`);
     if (!isObject(c)) return null;
     name =
-      scope.key === "other" && !record.name
-        ? t("style_editor.other")
+      typeof scope.key !== "number" && !record.name
+        ? t(`style_editor.${scope.key}`)
         : classLabel(c, record, t, i18n.language);
   }
   return (
@@ -332,7 +393,7 @@ export function SymbolSection() {
         group.part === "extrude" ? (
           <HeightRow key={group.id} />
         ) : group.inline ? (
-          <PropertyRow key={group.id} row={group.inline} base={partPath(group)} />
+          <InlineRow key={group.id} group={group} />
         ) : (
           <PartGroupRow key={group.id} group={group} />
         )

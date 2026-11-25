@@ -55,6 +55,7 @@ import { DraggableItem } from "@/components/builder/widgets/common/DraggableItem
 import ConflictBanner from "@/components/common/ConflictBanner";
 import { LoadingPage } from "@/components/common/LoadingPage";
 import Header from "@/components/header/Header";
+import AssistantMapBridge from "@/components/map/AssistantMapBridge";
 import EditModeHalo from "@/components/map/EditModeHalo";
 import MapDropTarget from "@/components/map/MapDropTarget";
 import MapViewer from "@/components/map/MapViewer";
@@ -589,6 +590,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
         <MapProvider>
           <SceneStoreProvider projectId={projectId} initial={projectMap?.map.scene} editable={isProjectEditor}>
           <StyleStoresProvider>
+            <AssistantMapBridge projectId={projectId} isEditor={!!isProjectEditor} mapRef={mapRef} />
             <DrawProvider>
               <MeasureProvider>
                 <Stack component="div" width="100%" height="100%" overflow="hidden">

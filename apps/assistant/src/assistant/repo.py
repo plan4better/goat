@@ -738,6 +738,40 @@ class Repository:
             )
         return found
 
+    async def calls_before(
+        self, run_id: UUID
+    ) -> list[tuple[UUID, list[dict[str, Any]]]]:
+        """The calls of the other runs of ``run_id``'s conversation, by run,
+        the oldest answer first, each run's in the order the calls were made:
+        the answers ``undo_changes``, called in that run, looks through. Each
+        call holds its ``tool``, ``status``, ``args`` (as the audit keeps
+        them), whether it ``created`` something and its ``undo`` record (or
+        None). A run without calls is left out."""
+        records = await self.db.pool.fetch(
+            "SELECT c.run_id, c.id, c.tool, c.status, c.args_summary, "
+            "c.created IS NOT NULL AS created, c.undo "
+            f"FROM {self.db.t('tool_call')} c "
+            f"JOIN {self.db.t('run')} r ON r.id = c.run_id "
+            f"JOIN {self.db.t('message')} m ON m.id = r.assistant_message_id "
+            "WHERE r.conversation_id = "
+            f"(SELECT conversation_id FROM {self.db.t('run')} WHERE id = $1) "
+            "AND r.id <> $1 ORDER BY m.seq, c.created_at, c.id",
+            run_id,
+        )
+        found: dict[UUID, list[dict[str, Any]]] = {}
+        for r in records:
+            found.setdefault(r["run_id"], []).append(
+                {
+                    "id": r["id"],
+                    "tool": r["tool"],
+                    "status": r["status"],
+                    "args": dict(r["args_summary"] or {}),
+                    "created": r["created"],
+                    "undo": dict(r["undo"]) if r["undo"] is not None else None,
+                }
+            )
+        return list(found.items())
+
     async def delete_mcp_tool_calls_before(
         self, cutoff: datetime, *, limit: int = 1000
     ) -> int:

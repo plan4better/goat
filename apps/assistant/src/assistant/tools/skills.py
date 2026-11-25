@@ -5,7 +5,8 @@ The result stays whole in the conversation's history (``history.KEPT_TOOLS``),
 so a skill loaded once is still there in later answers.
 """
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,6 +52,8 @@ def load_from(
             listed = ", ".join(sorted(skills)) or "none"
             raise InputInvalid(f"There is no skill {args.name!r}. Skills: {listed}.")
         if args.file is None:
+            if env.skills is not None:
+                env.skills.add(skill.name)
             return LoadedSkill(
                 name=skill.name,
                 text=skill.instructions,
@@ -79,3 +82,26 @@ SKILLS_LOAD: ToolSpec[SkillsLoadInput, LoadedSkill] = ToolSpec(
     run=load_from(BUILT_IN),
     surfaces=frozenset(SURFACES),
 )
+
+
+def loaded_skills(messages: Sequence[Mapping[str, Any]]) -> set[str]:
+    """The skills whose instructions an answer of the conversation loaded,
+    from ``Repository.list_messages`` rows: a ``skills_load`` part that
+    returned without a reference file."""
+    loaded: set[str] = set()
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        for part in message.get("parts") or []:
+            if not isinstance(part, dict) or part.get("type") != "tool":
+                continue
+            output = part.get("output")
+            if (
+                part.get("tool_name") == SKILLS_LOAD.wire_name
+                and part.get("state") == "output"
+                and isinstance(output, dict)
+                and isinstance(output.get("name"), str)
+                and output.get("file") is None
+            ):
+                loaded.add(output["name"])
+    return loaded

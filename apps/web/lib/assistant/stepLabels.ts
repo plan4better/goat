@@ -2,6 +2,7 @@ import type { DynamicToolUIPart } from "ai";
 
 import type { Translate, TranslateOptions } from "@/lib/assistant/chips";
 import { WRITE_TOOLS } from "@/lib/assistant/items";
+import { UNDO_CHANGES_TOOL, typedUndo, wroteBack } from "@/lib/assistant/undoReply";
 
 /** An argument longer than this is cut with an ellipsis, so a label stays on one line. */
 export const ARGUMENT_CHARS = 40;
@@ -267,6 +268,42 @@ function labelKey(step: DynamicToolUIPart, names: StepNames, t: Translate): Labe
       if (name) return { key: "assistant_tool_project_add_catalog_layer_name", values: { name: clip(name) } };
       break;
     }
+    // A new style, by the name its result gives; a style changed in place keeps the plain label.
+    case "style_update": {
+      const name = output.created === true ? text(output.name) : undefined;
+      if (name) return { key: "assistant_tool_style_update_created", values: { name: clip(name) } };
+      break;
+    }
+    // Nothing stored: a removal that waits for the user's pick (the layers to ask about), else a view for the page.
+    // The tool lists a view among what it applied.
+    case "map_update": {
+      const { applied, confirm, view } = output;
+      if (!Array.isArray(applied) || applied.some((op) => fields(op).op !== "set_view")) break;
+      if (Array.isArray(confirm) && confirm.length) {
+        return {
+          key:
+            confirm.length > 1
+              ? "assistant_tool_map_update_confirm_several"
+              : "assistant_tool_map_update_confirm",
+        };
+      }
+      if (Object.keys(fields(view)).length) return { key: "assistant_tool_map_update_view" };
+      break;
+    }
+    // What came of a typed undo: nothing to take back, or a check of what was changed since (with a part taken
+    // back already). An undo that went through, and one that did not, keep the plain label.
+    case UNDO_CHANGES_TOOL: {
+      const undo = typedUndo(step);
+      if (undo?.status === "nothing") return { key: "assistant_tool_undo_changes_nothing" };
+      if (undo?.status === "changed") {
+        return {
+          key: wroteBack(undo.restored)
+            ? "assistant_tool_undo_changes_partly"
+            : "assistant_tool_undo_changes_changed",
+        };
+      }
+      break;
+    }
     default:
       break;
   }
@@ -380,20 +417,64 @@ const RUNNING_STATES: ReadonlySet<string> = new Set([
 /** A call that has not returned yet; under way only while its answer runs. */
 export const stepRunning = (step: DynamicToolUIPart): boolean => RUNNING_STATES.has(step.state);
 
+/** The results of a typed undo that did not go through: another undo under way, or refused. */
+const UNDO_NOT_RUN: ReadonlySet<string> = new Set(["under_way", "failed"]);
+
+/**
+ * A step that did not go through: a call that failed, or a typed undo that
+ * returned without running (another undo of the same answer under way, or
+ * refused).
+ */
+export const stepFailed = (step: DynamicToolUIPart): boolean =>
+  step.state === "output-error" || UNDO_NOT_RUN.has(typedUndo(step)?.status ?? "");
+
 /** One line of the step list: a call, with the rejected attempts it replaced. */
 export interface StepRow {
   step: DynamicToolUIPart;
-  /** Failed calls of the same tool right before `step`, which succeeded: the model corrected its input. */
+  /**
+   * Failed calls the model corrected: of a read, right before `step`; of a write, the failed calls of its tool
+   * since that tool's previous success, anywhere in the answer. A line that stands for `repeats` holds theirs too.
+   */
   rejected: DynamicToolUIPart[];
+  /** Finished writes after `step` among the rows shown, same label (`foldRepeatedWrites`): the line stands for them too. */
+  repeats?: DynamicToolUIPart[];
 }
 
 /**
- * The step list's rows. A failed call that is immediately followed by a
- * successful call of the same tool is folded into that call (the model fixed
- * its input and retried), so the list shows one step. Any other failure
- * stays a row of its own.
+ * The failed write calls the answer corrected, by the call that succeeded:
+ * each successful write takes the failed calls of its tool since that tool's
+ * previous success. A failed write that no success of its tool follows is no
+ * one's (it stays a failure), and a call still running or stopped is no success,
+ * nor is a typed undo that returned without going through (`stepFailed`).
  */
-export function stepRows(steps: DynamicToolUIPart[]): StepRow[] {
+function correctedWrites(answer: DynamicToolUIPart[]): Map<string, DynamicToolUIPart[]> {
+  const corrected = new Map<string, DynamicToolUIPart[]>();
+  const pending = new Map<string, DynamicToolUIPart[]>();
+  for (const step of answer) {
+    if (!WRITES.has(step.toolName)) continue;
+    const attempts = pending.get(step.toolName) ?? [];
+    if (stepFailed(step)) {
+      pending.set(step.toolName, [...attempts, step]);
+    } else if (step.state === "output-available") {
+      if (attempts.length) corrected.set(step.toolCallId, attempts);
+      pending.delete(step.toolName);
+    }
+  }
+  return corrected;
+}
+
+/**
+ * The step list's rows. A failed read that is immediately followed by a
+ * successful call of the same tool is folded into that call (the model fixed
+ * its input and retried), so the list shows one step. A failed write is folded
+ * into the next successful call of the same tool anywhere in the answer
+ * (`answer`, the group's own steps when absent): the row of that call holds
+ * it, and the group that holds the attempt shows no row for it. Any other
+ * failure stays a row of its own.
+ */
+export function stepRows(steps: DynamicToolUIPart[], answer: DynamicToolUIPart[] = steps): StepRow[] {
+  const corrected = correctedWrites(answer);
+  const taken = new Set([...corrected.values()].flat().map((step) => step.toolCallId));
   const rows: StepRow[] = [];
   let failed: DynamicToolUIPart[] = [];
   const flush = () => {
@@ -401,8 +482,12 @@ export function stepRows(steps: DynamicToolUIPart[]): StepRow[] {
     failed = [];
   };
   for (const step of steps) {
+    if (taken.has(step.toolCallId)) continue;
     if (failed.length && failed[0].toolName !== step.toolName) flush();
-    if (step.state === "output-error") {
+    const attempts = corrected.get(step.toolCallId);
+    if (attempts) {
+      rows.push({ step, rejected: attempts });
+    } else if (stepFailed(step)) {
       failed.push(step);
     } else if (step.state === "output-available" && failed.length) {
       rows.push({ step, rejected: failed });
@@ -454,6 +539,8 @@ const STEP_KINDS: Record<string, string> = {
   workflow_check_draft: "draft_check",
   workflow_last_run: "workflow_last_run",
   workflow_get: "workflow_read",
+  style_get: "style_read",
+  style_catalog: "style_catalog",
 };
 
 /** Every kind a summary may name, with the one for tools the dock does not know. */
@@ -526,6 +613,12 @@ const COUNTED_BY: Record<
   docs: (step) => text(fields(step.input).page),
   workflow_last_run: (step) => text(fields(step.input).workflow_id),
   workflow_read: (step) => text(fields(step.input).workflow_id),
+  // A style by its layer and ID (none: the active one); reading another part of it is the same style.
+  style_read: (step, openProject) => {
+    const layer = layerOfInput(step, openProject);
+    const style = text(outputOf(step).style_id) ?? text(fields(step.input).style_id) ?? "";
+    return layer === undefined ? undefined : `${layer}:${style}`;
+  },
 };
 
 /**
@@ -534,7 +627,54 @@ const COUNTED_BY: Record<
  * result (stopped).
  */
 export const staysVisible = (row: StepRow, running: boolean): boolean =>
-  WRITES.has(row.step.toolName) || row.step.state === "output-error" || (!running && stepRunning(row.step));
+  WRITES.has(row.step.toolName) || stepFailed(row.step) || (!running && stepRunning(row.step));
+
+/**
+ * A write that returned: one that a line of repeats may stand for, with the attempts it corrected. A typed
+ * undo keeps a line per call: a second call takes nothing more back.
+ */
+const repeatable = (row: StepRow): boolean =>
+  WRITES.has(row.step.toolName) &&
+  row.step.toolName !== UNDO_CHANGES_TOOL &&
+  row.step.state === "output-available";
+
+/**
+ * The step rows with the finished writes that say the same ("Changed the
+ * style" five times) folded into the first one's row: its `repeats` hold the
+ * other calls, its `rejected` the attempts each of them corrected, and the
+ * line shows once, with the count. By default only rows right next to each
+ * other in `rows` fold (a list in the answer's order): a failed or running
+ * step, a read or another label in between ends the run. `anywhere`: every
+ * finished write with the same label folds, wherever it sits in `rows` (the
+ * lines a closed group shows). The caller passes the rows it shows.
+ */
+export function foldRepeatedWrites(
+  rows: StepRow[],
+  names: StepNames,
+  t: Translate,
+  anywhere = false
+): StepRow[] {
+  const folded: StepRow[] = [];
+  // The row each label folds into: with `anywhere` every label's first, else only the last row's.
+  const lines = new Map<string, number>();
+  for (const row of rows) {
+    const own = repeatable(row) ? stepLabel(row.step, names, t) : null;
+    const at = own === null ? undefined : lines.get(own);
+    if (own !== null && at !== undefined) {
+      const line = folded[at];
+      folded[at] = {
+        ...line,
+        rejected: [...line.rejected, ...row.rejected],
+        repeats: [...(line.repeats ?? []), row.step],
+      };
+      continue;
+    }
+    if (!anywhere) lines.clear();
+    if (own !== null) lines.set(own, folded.length);
+    folded.push(row);
+  }
+  return folded;
+}
 
 /**
  * The summary line of a group of steps: the steps that fold away counted by

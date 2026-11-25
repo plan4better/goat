@@ -29,6 +29,7 @@ from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
     TextPart,
+    ThinkingPart,
     ToolCallPart,
     ToolReturnPart,
     UserPromptPart,
@@ -64,6 +65,7 @@ from assistant.prompt import (
     CARD_AFTER_TEXT,
     RUN_WHAT_YOU_BUILT,
     as_note,
+    make_the_change,
     read_the_result,
     render_note,
     with_note,
@@ -81,9 +83,12 @@ from assistant.tools.toolset import (
     Stage,
     _tool,
     answer_step,
+    answer_writes,
     runnable_workflows,
 )
 from assistant.tools.workflow_runs import RUN
+from evals.map_backends import MapState, map_core
+from evals.map_fixture import MAP_PROJECT_ID
 from tests.test_ask_user import (
     CARD,
     LAST_RUN_CALL,
@@ -104,6 +109,8 @@ from tests.test_history_budget import (
     _sent_chars,
     look_ups,
 )
+from tests.test_style_get import _geoapi as _map_geoapi
+from tests.test_style_get import _processes as _map_processes
 
 DEFAULTS = AssistantSettings.model_fields
 #: The run's limits as the settings set them.
@@ -156,18 +163,20 @@ Act = Callable[[int, str | None], Response]
 
 class _Production(FunctionModel):
     """A streamed model with a provider's usage at production numbers: the
-    first call reads ``FIRST_CALL`` input tokens, each later call the input
-    and output of the call before it and the results it sends (at
-    ``PROVIDER_CHARS_PER_TOKEN``), and every call writes ``OUTPUT``. A call
-    reads ``share(n)`` of its input from the cache while its prefix holds:
-    it offers the same tools with the same instructions and tool choice as
-    the call before it and starts with the messages that call was sent; the
-    first call reads it from the conversation before the answer. What it
-    does is ``act``'s choice."""
+    first call reads ``first`` input tokens (``FIRST_CALL`` unless given),
+    each later call the input and output of the call before it and the
+    results it sends (at ``PROVIDER_CHARS_PER_TOKEN``), and every call writes
+    ``OUTPUT``. A call reads ``share(n)`` of its input from the cache while
+    its prefix holds: it offers the same tools with the same instructions
+    and tool choice as the call before it and starts with the messages that
+    call was sent; the first call reads it from the conversation before the
+    answer. What it does is ``act``'s choice."""
 
-    def __init__(self, act: Act, *, share: Callable[[int], float]) -> None:
+    def __init__(
+        self, act: Act, *, share: Callable[[int], float], first: int = FIRST_CALL
+    ) -> None:
         super().__init__(stream_function=self._stream)
-        self.act, self.share = act, share
+        self.act, self.share, self.first = act, share, first
         self.calls: list[_Call] = []
 
     async def _stream(
@@ -190,7 +199,7 @@ class _Production(FunctionModel):
             sent = math.ceil(_sent_chars(messages[-1]) / PROVIDER_CHARS_PER_TOKEN)
             input_tokens = previous.input_tokens + previous.output_tokens + sent
         else:
-            input_tokens = FIRST_CALL
+            input_tokens = self.first
         cached = round(self.share(n) * input_tokens) if held else 0
         usage = RequestUsage(
             input_tokens=input_tokens, cache_read_tokens=cached, output_tokens=OUTPUT
@@ -274,6 +283,11 @@ async def _answer(
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
             ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/map"): {
+                "map": {"version": "1.0.0", "layers": []},
+                "styles": {},
+                "unpublished": [],
+            },
             **(core_routes or {}),
         }
     )
@@ -638,11 +652,7 @@ SHOWN_IN: dict[Stage, tuple[list[Response], int]] = {
 
 
 def test_the_display_tools_are_the_card_tools() -> None:
-    assert DISPLAY_TOOLS == {
-        "core_show_items",
-        "catalog_show_records",
-        "map_propose_view",
-    }
+    assert DISPLAY_TOOLS == {"core_show_items", "catalog_show_records"}
     assert DISPLAY_TOOLS <= set(BY_WIRE_NAME)
 
 
@@ -1199,15 +1209,16 @@ def _step(
     )
 
 
-@pytest.mark.parametrize(("spent", "runs"), [(140_000, True), (165_000, False)])
+@pytest.mark.parametrize(("left", "runs"), [(60_000, True), (35_000, False)])
 async def test_the_answer_step_runs_what_it_built_only_while_its_result_can_be_read(
-    spent: int, runs: bool
+    left: int, runs: bool
 ) -> None:
     """The step that answers runs a workflow the answer built only while a
     step that reads the run's result and the answer step still fit: twice
-    19,703 and 8,000 for answering, which 140,000 spent leaves and 165,000
-    does not, though the answer step alone fits both. Decided as the step
-    is prepared, so the note that offers the run and the call agree."""
+    19,703 and 8,000 for answering, which 60,000 left of the budget holds and
+    35,000 does not, though the answer step alone fits both. Decided as the
+    step is prepared, so the note that offers the run and the call agree."""
+    spent = PRODUCTION.max_tokens - left
 
     async def emit(event: Any) -> None:
         return None
@@ -1487,3 +1498,395 @@ def test_the_answer_steps_refusals_say_what_it_still_allows() -> None:
         assert "budget" not in refusal.lower()
         assert tool in refusal and "ask_user" in refusal
         assert "\n" not in refusal
+
+
+# -- a change asked for late in a conversation on the map page --------------------
+
+#: The first call of a third message on the map page: the page's 40 tools
+#: (about 27,500 tokens), the style skill an earlier answer loaded (about
+#: 8,600) and the earlier answers' results, at both ends of what such a
+#: conversation sends.
+MAP_CONTEXTS = [50_000, 65_000]
+MAP_PAGE = {"surface": "project.map", "project_id": MAP_PROJECT_ID}
+#: The points layer the conversation is about, and what its third message
+#: asks to change.
+POINTS_LAYER = 32
+SMALLER: tuple[str, dict[str, Any]] = (
+    "style_update",
+    {
+        "layer_project_id": POINTS_LAYER,
+        "operations": [{"op": "set", "path": "/symbol/marker/size", "value": 5}],
+    },
+)
+CHANGED = "The points are smaller now."
+#: The reads before the change: statistics of the classified field and two
+#: parts of the style.
+CATEGORY_READS: Response = [
+    (
+        "project_field_statistics",
+        {"layer_project_id": POINTS_LAYER, "field": "category"},
+    ),
+    ("style_get", {"layer_project_id": POINTS_LAYER, "part": "/classify/category"}),
+]
+SYMBOL_READ: Response = [
+    ("style_get", {"layer_project_id": POINTS_LAYER, "part": "/symbol"})
+]
+
+
+def _earlier_turns() -> list[ModelMessage]:
+    """Two earlier answers of the conversation: the first loaded the style
+    skill and changed the style, the second read and changed it again."""
+    messages: list[ModelMessage] = []
+    for turn, (prompt, calls) in enumerate(
+        [
+            (
+                "Color the points by category",
+                [
+                    ("skills_load", {"name": "style-a-map"}, "The style skill. " * 200),
+                    ("style_update", {"layer_project_id": POINTS_LAYER}, "Saved."),
+                ],
+            ),
+            (
+                "Use other colors",
+                [
+                    (
+                        "style_get",
+                        {"layer_project_id": POINTS_LAYER},
+                        "A style. " * 200,
+                    ),
+                    ("style_update", {"layer_project_id": POINTS_LAYER}, "Saved."),
+                ],
+            ),
+        ]
+    ):
+        run_id = f"earlier-{turn}"
+        messages.append(ModelRequest(parts=[UserPromptPart(prompt)], run_id=run_id))
+        for n, (name, args, result) in enumerate(calls):
+            call_id = f"earlier-{turn}-{n}"
+            messages.append(
+                ModelResponse(
+                    parts=[ToolCallPart(name, args, tool_call_id=call_id)],
+                    run_id=run_id,
+                )
+            )
+            messages.append(
+                ModelRequest(
+                    parts=[ToolReturnPart(name, result, tool_call_id=call_id)],
+                    run_id=run_id,
+                )
+            )
+        messages.append(ModelResponse(parts=[TextPart("Done.")], run_id=run_id))
+    return messages
+
+
+@dataclass
+class _MapAnswered:
+    turn: Turn
+    model: _Production
+    usage: RunUsage
+    state: MapState
+
+    def size(self) -> Any:
+        style = self.state.styles[self.state.active_style_id(POINTS_LAYER)]
+        return style.document["symbol"]["marker"]["size"]
+
+
+async def _map_answer(
+    act: Act, *, first: int, share: Callable[[int], float]
+) -> _MapAnswered:
+    """The third message of a conversation about the points layer on the map
+    page, under the production budget, as the run manager runs it."""
+    state = MapState()
+    page = parse_context(MAP_PAGE)
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(
+        message_id="m3",
+        emit=emit,
+        prompt_note=render_note(page, None, "en"),
+        budget=PRODUCTION,
+    )
+    deps.env = tool_env(
+        fake_clients(
+            core=map_core(state), geoapi=_map_geoapi(), processes=_map_processes()
+        ),
+        page=page,
+        emit_data=deps.emit_data,
+    )
+
+    async def on_event(event: Any) -> None:
+        return None
+
+    model = _Production(act, share=share, first=first)
+    usage = RunUsage()
+    turn = await run_turn(
+        build_agent(model),
+        with_note(deps.prompt_note, "Can we show fewer points, they overlap"),
+        deps=deps,
+        on_event=on_event,
+        message_history=_earlier_turns(),
+        usage_limits=PRODUCTION.usage_limits(),
+        usage=usage,
+    )
+    return _MapAnswered(turn=turn, model=model, usage=usage, state=state)
+
+
+def _missed_second(n: int) -> float:
+    """Every call reads 92 % of its input from the cache, but the second,
+    which the provider served without it."""
+    return 0.0 if n == 1 else 0.92
+
+
+def _reads_then_change(n: int, note: str | None) -> Response:
+    """Three reads in two steps, the change, then the answer."""
+    return [CATEGORY_READS, SYMBOL_READ, [SMALLER]][n] if n < 3 else [CHANGED]
+
+
+@pytest.mark.parametrize("first", MAP_CONTEXTS)
+async def test_a_cache_miss_leaves_room_for_the_change_the_user_asked_for(
+    first: int,
+) -> None:
+    """The third message of a map conversation: three reads, then the
+    change. The provider served the answer's second call without its cache;
+    the change still runs, and the answer fits."""
+    answered = await _map_answer(_reads_then_change, first=first, share=_missed_second)
+    assert answered.model.calls[1].usage.cache_read_tokens == 0
+    [change] = _results(answered.turn, "style_update")
+    assert change.outcome != "failed", change.content
+    assert answered.size() == 5
+    assert answered.turn.output == CHANGED
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+
+
+async def test_an_answer_that_continues_a_conversation_keeps_its_prefix() -> None:
+    """Through the production mapping, after two earlier answers with long
+    results and reasoning (which the history shortens and leaves out): each
+    request of the answer starts with the whole request before it, so a call
+    that reads nothing from the cache is the provider's miss."""
+    history = _earlier_turns()
+    history[1] = replace(
+        history[1],  # type: ignore[arg-type]
+        parts=[ThinkingPart("Which skill fits?"), *history[1].parts],
+    )
+    calls = 0
+
+    def reply(n: int, body: dict[str, Any]) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        return LOOK_UP_MESSAGE if calls < 3 else {"role": "assistant", "content": FOUND}
+
+    result, bodies = await _through_openrouter(reply, history)
+    assert result.output == FOUND and len(bodies) == 3
+    for before, after in zip(bodies, bodies[1:]):
+        sent = _without_cache_markers(before["messages"])
+        assert _without_cache_markers(after["messages"][: len(sent)]) == sent
+    assert "Which skill fits?" not in json.dumps(bodies[0])
+
+
+def _reads_until_the_note_then_change() -> Act:
+    """Reads while it may look things up; in the step that answers, makes
+    the change once the note offers it, then answers."""
+    changed = False
+
+    def act(n: int, note: str | None) -> Response:
+        nonlocal changed
+        if note is None:
+            return CATEGORY_READS if n % 2 == 0 else SYMBOL_READ
+        if not changed and make_the_change(MAP_WRITES) in note:
+            changed = True
+            return [SMALLER]
+        return [CHANGED]
+
+    return act
+
+
+#: The writes the map page offers that the step that answers may still make.
+MAP_WRITES = ("style_update", "map_update", "workflow_update", "undo_changes")
+
+
+@pytest.mark.parametrize(
+    ("first", "share"),
+    [
+        (50_000, _missed_second),
+        (65_000, _missed_second),
+        # A provider without caching: the look-ups end after the fifth.
+        (50_000, lambda n: 0.0),
+        # The answer's first call missed: there is no hit before it.
+        (50_000, lambda n: 0.0 if n == 0 else 0.92),
+    ],
+    ids=["50k-missed", "65k-missed", "50k-uncached", "50k-cold-first"],
+)
+async def test_reads_never_crowd_out_the_change_the_user_asked_for(
+    first: int, share: Callable[[int], float]
+) -> None:
+    """A model that reads as long as it may: the step that answers may still
+    make the change, the note says so, and the answer after it fits."""
+    answered = await _map_answer(
+        _reads_until_the_note_then_change(), first=first, share=share
+    )
+    notes = answered.model.calls
+    first_note = next(n for n, call in enumerate(notes) if call.note is not None)
+    note = notes[first_note].note
+    assert _stage(note) == "answer or ask"
+    assert make_the_change(MAP_WRITES) in str(note)
+    [change] = _results(answered.turn, "style_update")
+    assert change.outcome != "failed", change.content
+    assert answered.size() == 5
+    assert answered.turn.output == CHANGED
+    assert len(notes) == first_note + 2
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+
+
+@pytest.mark.parametrize(("left", "runs"), [(60_000, True), (35_000, False)])
+async def test_the_answer_step_makes_the_change_only_while_the_answer_after_it_fits(
+    left: int, runs: bool
+) -> None:
+    """The step that answers makes the change the user asked for only while
+    it and the answer step after it fit: twice 19,703 and 8,000 for
+    answering, which 60,000 left of the budget holds and 35,000 does not.
+    Decided as the step is prepared, so the note that offers the change and
+    the call agree."""
+    spent = PRODUCTION.max_tokens - left
+
+    async def emit(event: Any) -> None:
+        return None
+
+    state = MapState()
+    env = tool_env(
+        fake_clients(
+            core=map_core(state), geoapi=_map_geoapi(), processes=_map_processes()
+        ),
+        page=parse_context(MAP_PAGE),
+    )
+    deps = RunDeps(message_id="m1", emit=emit, budget=PRODUCTION, env=env)
+    looked_up: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart("Smaller points")], run_id="r1"),
+        ModelResponse(
+            parts=[ToolCallPart(*SYMBOL_READ[0], tool_call_id="c1")],  # type: ignore[misc]
+            usage=NEAR_THE_LIMIT,
+            run_id="r1",
+        ),
+        ModelRequest(
+            parts=[ToolReturnPart("style_get", "a style", tool_call_id="c1")],
+            run_id="r1",
+        ),
+    ]
+    prepared = _step(deps, looked_up, spent)
+    assert answer_step(prepared) == "answer or ask"
+    assert answer_writes(prepared) == (list(MAP_WRITES) if runs else [])
+    running = _step(
+        deps,
+        [
+            *looked_up,
+            ModelResponse(
+                parts=[ToolCallPart(*SMALLER, tool_call_id="c2")],
+                usage=NEAR_THE_LIMIT,
+                run_id="r1",
+            ),
+        ],
+        spent + 20_000,
+    )
+    spec = BY_WIRE_NAME["style_update"]
+    if runs:
+        result = await _tool(spec).function(running, **SMALLER[1])  # type: ignore[call-arg]
+        assert result["revision_after"] == 2
+        return
+    with pytest.raises(ToolFailed) as refused:
+        await _tool(spec).function(running, **SMALLER[1])  # type: ignore[call-arg]
+    assert refused.value.message == ANSWER_STEP_REFUSALS["style_update"]
+    assert (
+        state.styles[state.active_style_id(POINTS_LAYER)].document["symbol"]["marker"][
+            "size"
+        ]
+        == 10
+    )
+
+
+def test_the_note_names_the_writes_of_the_page() -> None:
+    assert make_the_change(["workflow_update"]) == (
+        "If the user asked for a change, you may still make it with one call of "
+        "workflow_update, without reading anything first, and then answer."
+    )
+    assert "style_update, map_update, workflow_update or undo_changes" in (
+        make_the_change(MAP_WRITES)
+    )
+
+
+#: A change whose operation names no part of a style: it is not saved, and
+#: the result says what to fix.
+BAD_CHANGE: tuple[str, dict[str, Any]] = (
+    "style_update",
+    {
+        "layer_project_id": POINTS_LAYER,
+        "operations": [{"op": "set", "path": "/nothing/here", "value": 5}],
+    },
+)
+
+
+@pytest.mark.parametrize("first", MAP_CONTEXTS)
+async def test_a_change_the_answer_step_got_wrong_is_corrected_in_the_next_step(
+    first: int,
+) -> None:
+    """The change in the step that answers is not saved; the next step may
+    still make it while it and the answer after it fit, and does."""
+    tries: list[tuple[str, dict[str, Any]]] = [BAD_CHANGE, SMALLER]
+
+    def act(n: int, note: str | None) -> Response:
+        if note is None:
+            return CATEGORY_READS if n % 2 == 0 else SYMBOL_READ
+        if tries and make_the_change(MAP_WRITES) in note:
+            return [tries.pop(0)]
+        return [CHANGED]
+
+    answered = await _map_answer(act, first=first, share=_missed_second)
+    failed, change = _results(answered.turn, "style_update")
+    assert "Not saved" in str(failed.content)
+    assert change.outcome != "failed", change.content
+    assert answered.size() == 5
+    assert answered.turn.output == CHANGED
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens
+
+
+@pytest.mark.parametrize("first", MAP_CONTEXTS)
+@pytest.mark.parametrize(
+    ("share", "planned"),
+    [
+        (_missed_second, True),
+        (lambda n: 0.0, True),
+        # After its first call the provider never reads from its cache
+        # again, so the miss the plan forgives is followed by more.
+        (lambda n: 0.92 if n == 0 else 0.0, False),
+    ],
+    ids=["missed", "uncached", "misses-after-first"],
+)
+async def test_an_answer_that_keeps_changing_ends_within_the_limit(
+    first: int, share: Callable[[int], float], planned: bool
+) -> None:
+    """A model that makes another change in every step it may: each change
+    past the look-ups needs room for itself and the answer after it, so the
+    changes stop, and the answer ends within the planned tokens. A provider
+    that misses its cache again after the miss the plan forgave costs more
+    than planned, within the room the hard limit keeps for one such call."""
+
+    def act(n: int, note: str | None) -> Response:
+        size = 1 + n % 7
+        change = (
+            "style_update",
+            {
+                **SMALLER[1],
+                "operations": [
+                    {"op": "set", "path": "/symbol/marker/size", "value": size}
+                ],
+            },
+        )
+        return [change] if note is None or "style_update" in note else ["Done."]
+
+    answered = await _map_answer(act, first=first, share=share)
+    assert answered.turn.output in ("Done.", CLOSING_TEXT["en"])
+    most_cached = max(call.usage.cache_read_tokens for call in answered.model.calls)
+    margin = (1 - CACHE_READ_WEIGHT) * most_cached
+    assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens + margin
+    if planned:
+        assert weighted_tokens(answered.usage) <= PRODUCTION.max_tokens

@@ -78,6 +78,10 @@ def _services(
             inputs = json.loads(request.content)["inputs"]
             if process == "feature-count":
                 return httpx.Response(200, json={"count": count})
+            if process == "histogram":
+                return httpx.Response(
+                    200, json={"bins": [], "missing_count": 0, "total_rows": count}
+                )
             if process == "class-breaks":
                 return httpx.Response(
                     200,
@@ -156,6 +160,7 @@ def _services(
             ("POST", f"/processes/{name}/execution"): respond(name)
             for name in (
                 "feature-count",
+                "histogram",
                 "class-breaks",
                 "unique-values",
                 "area-statistics",
@@ -201,6 +206,7 @@ async def test_field_statistics_read_the_joined_field() -> None:
     )
     [breaks] = _bodies(services[2], "class-breaks")
     assert breaks["attribute"] == "join_oev_guete_mittel"
+    assert _bodies(services[2], "histogram")[0]["column"] == "join_oev_guete_mittel"
     assert out["field"] == "join_oev_guete_mittel" and out["mean"] == 3.2
     assert _read("oev_guete_mittel") in out["note"]
 

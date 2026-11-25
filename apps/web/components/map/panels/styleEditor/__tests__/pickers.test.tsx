@@ -163,6 +163,79 @@ describe("pickers", () => {
     expect(strips()[0].getAttribute("aria-label")).toBe("BuGn");
   });
 
+  const tabs = () =>
+    screen
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? "")
+      .filter((name) => name.startsWith("style_editor.palette_kind_"));
+  /** The palette grid as [heading, strips under it] in order. */
+  const sections = () => {
+    const strip = screen
+      .getAllByRole("button")
+      .find((b) => b.hasAttribute("aria-pressed") && b.getAttribute("title"));
+    const out: Array<[string, number]> = [];
+    for (const el of Array.from((strip?.parentElement as HTMLElement).children)) {
+      if (el.tagName === "BUTTON") out[out.length - 1][1] += 1;
+      else out.push([el.textContent ?? "", 0]);
+    }
+    return out;
+  };
+
+  it("the numeric picker lists sequential and diverging palettes: the science ramps, then the catalogue's runs", () => {
+    renderPanel(
+      <PalettePicker value="goat:green" steps={5} onChange={vi.fn()} kinds={["sequential", "diverging"]} />
+    );
+    expect(tabs()).toEqual([
+      "style_editor.palette_kind_all",
+      "style_editor.palette_kind_sequential",
+      "style_editor.palette_kind_diverging",
+    ]);
+    expect(sections()).toEqual([
+      ["style_editor.palette_group_science", 9],
+      ["style_editor.palette_kind_sequential", 18],
+      ["style_editor.palette_kind_diverging", 9],
+      ["style_editor.palette_kind_sequential", 6],
+      ["style_editor.palette_kind_diverging", 23],
+      ["style_editor.palette_kind_sequential", 31],
+    ]);
+  });
+
+  it("the categories' picker offers every palette: the qualitative ones first, then sequential, then diverging", async () => {
+    const onChange = vi.fn();
+    const onReverse = vi.fn();
+    renderPanel(
+      <PalettePicker
+        value={["#111111", "#222222", "#333333"]}
+        steps={5}
+        categories
+        onChange={onChange}
+        onReverse={onReverse}
+        kinds={["qualitative", "sequential", "diverging"]}
+      />
+    );
+    expect(tabs()).toEqual([
+      "style_editor.palette_kind_all",
+      "style_editor.palette_kind_qualitative",
+      "style_editor.palette_kind_sequential",
+      "style_editor.palette_kind_diverging",
+    ]);
+    expect(sections()).toEqual([
+      ["style_editor.palette_yours", 1],
+      ["style_editor.palette_kind_qualitative", 9],
+      ["style_editor.palette_group_science", 9],
+      ["style_editor.palette_kind_sequential", 55],
+      ["style_editor.palette_kind_diverging", 32],
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "OrRd" }));
+    expect(onChange).toHaveBeenCalledWith("colorbrewer:OrRd");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.reverse" }));
+    expect(onReverse).toHaveBeenCalledWith(true);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.palette_kind_diverging" }));
+    expect(screen.queryByRole("button", { name: "Set2" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "OrRd" })).toBeNull();
+    expect(screen.getByRole("button", { name: "RdBu" })).toBeDefined();
+  });
+
   /** The colors a strip draws, in order (the computed style writes them as rgb). */
   const stripColors = (name: string) =>
     Array.from(
@@ -178,12 +251,52 @@ describe("pickers", () => {
 
   it("in classes, a strip shows the colors that many classes get from the palette, reversed as they are", () => {
     const mine = ["#111111", "#222222", "#333333"];
-    renderPanel(<PalettePicker value={mine} reverse steps={10} onChange={vi.fn()} kinds={["qualitative"]} />);
+    renderPanel(
+      <PalettePicker
+        value={mine}
+        reverse
+        steps={10}
+        categories
+        onChange={vi.fn()}
+        kinds={["qualitative", "sequential", "diverging"]}
+      />
+    );
     // Ten categories of a qualitative palette repeat its colors in order, the palette turned round first.
     const categories = { method: "categories", reverse: true };
     expect(stripColors("Set2")).toEqual(classPaletteColors(categories, "colorbrewer:Set2", 10));
     expect(stripColors("Set2")).toHaveLength(10);
+    // One's own colors repeat in order too, never blended.
     expect(stripColors("style_editor.my_colors")).toEqual(classPaletteColors(categories, mine, 10));
+    expect(stripColors("style_editor.my_colors")).toEqual([
+      "#333333",
+      "#222222",
+      "#111111",
+      "#333333",
+      "#222222",
+      "#111111",
+      "#333333",
+      "#222222",
+      "#111111",
+      "#333333",
+    ]);
+    // A sequential or diverging palette gives categories the colors it gives as many ordered classes, reversed.
+    expect(stripColors("OrRd")).toEqual(classPaletteColors(categories, "colorbrewer:OrRd", 10));
+    expect(stripColors("OrRd")).toEqual(
+      classPaletteColors({ method: "quantile", reverse: true }, "colorbrewer:OrRd", 10)
+    );
+    expect(stripColors("RdBu")).toEqual(classPaletteColors(categories, "colorbrewer:RdBu", 10));
+  });
+
+  it("in the numeric picker, one's own colors are blended for that many classes", () => {
+    const mine = ["#000000", "#ffffff"];
+    renderPanel(
+      <PalettePicker value={mine} steps={3} onChange={vi.fn()} kinds={["sequential", "diverging"]} />
+    );
+    expect(stripColors("style_editor.my_colors")).toEqual(
+      classPaletteColors({ method: "quantile" }, mine, 3)
+    );
+    expect(stripColors("style_editor.my_colors")).toHaveLength(3);
+    expect(stripColors("style_editor.my_colors")[1]).not.toBe("#000000");
   });
 
   it("in classes of numbers, a strip shows the colors blended for that many classes; without classes, the ramp", () => {

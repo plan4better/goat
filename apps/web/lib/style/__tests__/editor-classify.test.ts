@@ -17,6 +17,7 @@ import {
   isIntentEdit,
   moveCategoryValue,
   moveClassification,
+  partDiffers,
   pickClassPalette,
   pickClassRange,
   rangeValues,
@@ -28,7 +29,9 @@ import {
   setClassificationField,
   setManualBound,
   setMethod,
+  withoutEmptyPart,
 } from "@/lib/style/editor/classify";
+import { getIn } from "@/lib/style/editor/paths";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
@@ -736,5 +739,136 @@ describe("classifyCount", () => {
     expect(classifyCount(raster({ type: "continuous", stops, classify: { classes } }))).toBe(0);
     expect(classifyCount(raster({ type: "hillshade", classify: { method: "manual", classes } }))).toBe(0);
     expect(classifyCount(raster({ type: "image", classes: [{ value: 1 }] }))).toBe(0);
+  });
+});
+
+describe("whether a scoped record's part differs from all features", () => {
+  const styled = (symbol: object, classify: object[], extra: object = {}) =>
+    ({ version: "1.0.0", kind: "vector", symbol, classify, ...extra }) as unknown as LayerStyle;
+  const byColor = (records: object[], extra: object = {}) => ({
+    id: "c",
+    field: "kind",
+    method: "categories",
+    classes: records,
+    ...extra,
+  });
+  const FIRST = { classify: 0, key: 0 } as const;
+
+  it("not for the classification's own target, one for any other key", () => {
+    const d = styled({ fill: { color: "#ccc" } }, [
+      byColor([{ fill: { color: "#f00" } }, { fill: { color: "#0f0", opacity: 0.4 } }]),
+    ]);
+    expect(partDiffers(d, FIRST, "fill", "polygon")).toBe(false);
+    expect(partDiffers(d, { classify: 0, key: 1 }, "fill", "polygon")).toBe(true);
+  });
+
+  it("follows a target value by zoom, a compound target and a nested target", () => {
+    const zoom = styled({ fill: {} }, [
+      byColor([
+        {
+          fill: {
+            color: {
+              zoom: [
+                [9, "#f00"],
+                [15, "#0f0"],
+              ],
+            },
+          },
+        },
+      ]),
+    ]);
+    expect(partDiffers(zoom, FIRST, "fill", "polygon")).toBe(false);
+    const font = styled({ label: { text: "{kind}" } }, [
+      byColor([{ label: { font: { weight: "bold", style: "italic" } } }], { target: "label.font.weight" }),
+    ]);
+    expect(partDiffers(font, FIRST, "label", "point")).toBe(false);
+    const halo = (own: object) =>
+      styled({ label: { text: "{kind}" } }, [
+        byColor([{ label: { halo: own } }], { target: "label.halo.color" }),
+      ]);
+    expect(partDiffers(halo({ color: "#fff" }), FIRST, "label", "point")).toBe(false);
+    expect(partDiffers(halo({ color: "#fff", width: 2 }), FIRST, "label", "point")).toBe(true);
+  });
+
+  it("not for a key set once for the layer that the record holds (spec 6.1)", () => {
+    const d = styled({ line: { color: "#000" }, label: { text: "{kind}" } }, [
+      byColor([{ line: { color: "#f00" }, label: { placement: "line" } }], { target: "line.color" }),
+    ]);
+    expect(partDiffers(d, FIRST, "label", "line")).toBe(false);
+    const marker = styled({ marker: { color: "#ccc" } }, [
+      byColor([{ marker: { color: "#f00", allow_overlap: true } }]),
+    ]);
+    expect(partDiffers(marker, FIRST, "marker", "point")).toBe(false);
+  });
+
+  it("not for keys of a part the layer switches off: it stays off in every record (spec 3)", () => {
+    const d = styled({ fill: { color: "#ccc" }, outline: false }, [
+      byColor([{ fill: { color: "#f00" }, outline: { width: 2 } }]),
+    ]);
+    expect(partDiffers(d, FIRST, "outline", "polygon")).toBe(false);
+  });
+
+  it("switching off a part that is on, or on a part the layer leaves out", () => {
+    const off = styled({ fill: { color: "#ccc" }, outline: { width: 1 } }, [byColor([{ outline: false }])]);
+    expect(partDiffers(off, FIRST, "outline", "polygon")).toBe(true);
+    const on = styled({ fill: { color: "#ccc" } }, [byColor([{ outline: {} }])]);
+    expect(partDiffers(on, FIRST, "outline", "polygon")).toBe(true);
+    const empty = styled({ fill: { color: "#ccc" } }, [byColor([{ fill: {} }])]);
+    expect(partDiffers(empty, FIRST, "fill", "polygon")).toBe(false);
+  });
+
+  it("reads Other, No data and the targets of the scoped classification only", () => {
+    const d = styled({ fill: { color: "#ccc" } }, [
+      byColor([{ fill: { color: "#f00" } }], {
+        other: { fill: { color: "#999" } },
+        no_data: { fill: { opacity: 0.2 } },
+      }),
+      byColor([{ fill: { opacity: 0.5 } }], { field: "size", target: "fill.opacity" }),
+    ]);
+    expect(partDiffers(d, { classify: 0, key: "other" }, "fill", "polygon")).toBe(false);
+    expect(partDiffers(d, { classify: 0, key: "no_data" }, "fill", "polygon")).toBe(true);
+    expect(partDiffers(d, { classify: 1, key: 0 }, "fill", "polygon")).toBe(false);
+  });
+
+  it("any key of a rule", () => {
+    const d = styled({ fill: { color: "#ccc" } }, [], {
+      rules: [{ id: "r", when: {}, fill: { color: "#f00" } }],
+    });
+    expect(partDiffers(d, { rule: "r", index: 0 }, "fill", "polygon")).toBe(true);
+  });
+});
+
+describe("a reset's emptied part", () => {
+  const styled = (symbol: object, record: object) =>
+    ({
+      version: "1.0.0",
+      kind: "vector",
+      symbol,
+      classify: [{ id: "c", field: "kind", method: "categories", classes: [record], other: record }],
+    }) as unknown as LayerStyle;
+
+  it("goes over a part that is on, the main part left out included", () => {
+    const d = styled({ outline: { width: 1 } }, { id: "a", outline: {} });
+    expect(
+      getIn(withoutEmptyPart(d, "classify.0.classes.0", "outline", "polygon"), "classify.0.classes.0")
+    ).toEqual({ id: "a" });
+    const main = styled({}, { id: "a", fill: {} });
+    expect(
+      getIn(withoutEmptyPart(main, "classify.0.classes.0", "fill", "polygon"), "classify.0.classes.0")
+    ).toEqual({ id: "a" });
+    // Other stays, emptied.
+    const other = styled({ fill: {} }, { fill: {} });
+    expect(getIn(withoutEmptyPart(other, "classify.0.other", "fill", "polygon"), "classify.0.other")).toEqual(
+      {}
+    );
+  });
+
+  it("stays over a part the layer leaves out or switches off, and while it holds a key", () => {
+    for (const symbol of [{}, { outline: false }]) {
+      const d = styled(symbol, { id: "a", outline: {} });
+      expect(withoutEmptyPart(d, "classify.0.classes.0", "outline", "polygon")).toBe(d);
+    }
+    const kept = styled({ outline: { width: 1 } }, { id: "a", outline: { width: 2 } });
+    expect(withoutEmptyPart(kept, "classify.0.classes.0", "outline", "polygon")).toBe(kept);
   });
 });

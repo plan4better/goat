@@ -63,7 +63,12 @@ class _Checker:
             return None
         info = fields.get(name)
         if info is None:
-            self.add("unknown_field", path, f'The dataset has no field "{name}".')
+            self.add(
+                "unknown_field",
+                path,
+                f'The dataset has no field "{name}".',
+                params={"field": name},
+            )
             return None
         if numeric and info.type not in NUMERIC:
             self.add(
@@ -153,6 +158,7 @@ class _Checker:
                     "domain_outside_data",
                     path,
                     f"The data runs from {info.min} to {info.max}; this domain misses it.",
+                    params={"min": info.min, "max": info.max},
                 )
 
     def parts(
@@ -242,6 +248,7 @@ class _Checker:
                 "palette_too_short",
                 path + ["palette"],
                 f"{needed} classes need {needed} colors; the palette has {len(colors)}.",
+                params={"classes": needed, "colors": len(colors)},
             )
         if method == "categories" and info is not None and info.values is not None:
             known = {cql.as_text(v) for v in info.values}
@@ -254,6 +261,10 @@ class _Checker:
                         "unknown_category",
                         path + ["classes", item_key(k, ki), "values"],
                         f"No feature has {', '.join(repr(str(v)) for v in missing)}.",
+                        params={
+                            "values": [str(v) for v in missing],
+                            "count": len(missing),
+                        },
                     )
 
     def rule(self, when: Any, path: list[str]) -> None:
@@ -360,6 +371,10 @@ class _Checker:
                     ["render", "type"],
                     f"Clusters are computed in the browser for up to {self.ctx.cluster_feature_limit:,} features; "
                     f"this layer has {count:,}. Use H3 hexagons instead.",
+                    params={
+                        "limit": self.ctx.cluster_feature_limit,
+                        "features": count,
+                    },
                 )
             value = render.get("value")
             if isinstance(value, dict) and value.get("op") in CLUSTER_AGGREGATES:
@@ -557,6 +572,7 @@ class _Checker:
                     "unknown_category",
                     ["render", "classes", str(i), "value"],
                     f"No cell has the value {v}.",
+                    params={"case": "cell", "values": [v], "count": 1},
                 )
         if band.max - band.min <= 256 and not render.get("other_color"):
             missing = [
@@ -569,6 +585,7 @@ class _Checker:
                     "unclassified_values",
                     ["render", "classes"],
                     f"Values without a class: {missing[:10]}.",
+                    params={"values": missing[:10]},
                 )
 
 

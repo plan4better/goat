@@ -261,6 +261,7 @@ def _execute_analytics_sync(
     inputs: dict[str, Any],
     user_id: UUID | None = None,
     raster_file: RasterFile | None = None,
+    issue_params: bool = False,
 ) -> dict[str, Any]:
     """Execute an analytics process synchronously.
 
@@ -268,6 +269,7 @@ def _execute_analytics_sync(
         process_id: Analytics process ID
         inputs: Process inputs
         raster_file: style-check of a raster file: its file from the layer row
+        issue_params: style-check: the issues carry their `params`
 
     Returns:
         Process result as dict
@@ -361,6 +363,7 @@ def _execute_analytics_sync(
                 stored=style_input.stored,
                 fingerprint=style_input.fingerprint,
                 raster_file=raster_file,
+                issue_params=issue_params,
             )
         elif process_id == "layer-search":
             return analytics_service.layer_search(
@@ -680,6 +683,12 @@ async def execute_process(
     execute_request: ExecuteRequest,
     user_id: UUID | None = Depends(get_optional_user_id),
     access_token: str | None = Depends(oauth2_scheme),
+    issue_params: bool = Query(
+        False,
+        description="style-check: the issues carry their `params` (the facts "
+        "their message names). A query parameter, so a caller that does not "
+        "know it, or a processes that does not, works as before.",
+    ),
 ) -> JSONResponse:
     """Execute a process.
 
@@ -821,6 +830,7 @@ async def execute_process(
                         execute_request.inputs,
                         user_id,
                         raster,
+                        issue_params,
                     ),
                     timeout=settings.ANALYTICS_QUERY_TIMEOUT,
                 )

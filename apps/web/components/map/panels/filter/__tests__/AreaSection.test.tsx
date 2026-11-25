@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -204,6 +204,49 @@ describe("the filter's area", () => {
   it("draws no area on the map while the panel is off screen (another tab)", () => {
     setup(areaOf([VIEW]), { shown: false });
     expect(outline).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("the row names the layer the features are of, while the project has it", () => {
+    const features = (source: string): AreaPiece => ({
+      kind: "features",
+      source,
+      features: [
+        { id: "1", n: 1 },
+        { id: "2", n: 1 },
+      ],
+      polygons: [square(0), square(2)],
+    });
+    setup(areaOf([features("layer-1")]));
+    expect(within(row()).getByText("filter_panel.area_features_of")).toBeDefined();
+    cleanup();
+    setup(areaOf([features("layer-9")]));
+    expect(within(row()).getByText("filter_panel.area_features")).toBeDefined();
+  });
+
+  describe("under the row, while the area is outlined on the map", () => {
+    const OUTLINED = "filter_panel.area_outlined";
+    const OUTLINED_OFF = "filter_panel.area_outlined_off";
+
+    it("says so", () => {
+      setup(areaOf([VIEW]));
+      expect(screen.getByText(OUTLINED)).toBeDefined();
+      expect(screen.queryByText(OUTLINED_OFF)).toBeNull();
+    });
+
+    it("says it is switched off", () => {
+      setup(areaOf([VIEW], { enabled: false }));
+      expect(screen.getByText(OUTLINED_OFF)).toBeDefined();
+      expect(screen.queryByText(OUTLINED)).toBeNull();
+    });
+
+    it("says nothing while the tab is not the open one, or without an area", () => {
+      setup(areaOf([VIEW]), { shown: false });
+      expect(screen.queryByText(OUTLINED)).toBeNull();
+      cleanup();
+      setup(undefined);
+      expect(screen.queryByText(OUTLINED)).toBeNull();
+      expect(screen.queryByText(OUTLINED_OFF)).toBeNull();
+    });
   });
 
   it("the switch turns the area off and on", async () => {

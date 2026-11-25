@@ -10,7 +10,12 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
-from pydantic_ai.models.function import AgentInfo, DeltaToolCalls, FunctionModel
+from pydantic_ai.models.function import (
+    AgentInfo,
+    DeltaToolCall,
+    DeltaToolCalls,
+    FunctionModel,
+)
 
 from assistant import app as app_module
 from assistant.agent import INSTRUCTIONS, RunDeps, build_agent
@@ -19,7 +24,7 @@ from assistant.auth import Principal, get_principal
 from assistant.bus import EventBus, InMemoryEventBus, events_channel
 from assistant.config import AssistantSettings
 from assistant.db import Database
-from assistant.encoding.ai_sdk import AiSdkEncoder
+from assistant.encoding.ai_sdk import SSE_DONE, AiSdkEncoder, sse
 from assistant.repo import Repository
 from assistant.routers import conversations
 from assistant.runs.manager import RunManager
@@ -257,6 +262,134 @@ async def test_cancel_endpoint_stops_the_run(
             await client.post(f"/conversations/{conversation_id}/cancel")
         ).status_code == 204
     assert _chunks(live.text)[-1] == {"type": "abort"}
+
+
+def _stopped_writer(
+    gate: Gate, landed: dict[str, Callable[[], Awaitable[None]]]
+) -> Callable[[str], Agent[RunDeps, str]]:
+    """An agent whose one tool call hangs after its write landed; a Stop ends
+    it, and its ``finally`` stores the audit row with the undo record,
+    shielded, as ``runtime._audit`` does."""
+
+    def factory(model: str) -> Agent[RunDeps, str]:
+        async def stream(
+            messages: list[ModelMessage], info: AgentInfo
+        ) -> AsyncIterator[str | DeltaToolCalls]:
+            yield {0: DeltaToolCall(name="write", json_args="{}", tool_call_id="c1")}
+
+        agent: Agent[RunDeps, str] = Agent(
+            FunctionModel(stream_function=stream),
+            deps_type=RunDeps,
+            instructions=INSTRUCTIONS,
+        )
+
+        @agent.tool_plain(name="write")
+        async def write() -> str:
+            gate.reached.set()
+            try:
+                await gate.release.wait()
+            finally:
+                await asyncio.shield(landed["audit"]())
+            return "written"
+
+        return agent
+
+    return factory
+
+
+async def test_an_answer_stopped_after_its_write_landed_ends_undoable(
+    db: Database, settings: AssistantSettings, gate: Gate
+) -> None:
+    """The stopped call has no finished step that names its write: the
+    stream's end says the answer's Undo can act, before the answer ends."""
+    landed: dict[str, Callable[[], Awaitable[None]]] = {}
+    async with (
+        _services(db, settings, _stopped_writer(gate, landed)) as services,
+        _client(settings, services) as client,
+    ):
+        conversation_id = await _new_conversation(client)
+        first = asyncio.create_task(
+            client.post(f"/conversations/{conversation_id}/runs", json=RUN)
+        )
+        await gate.at_first_token()
+        run_id = await _active_run_id(services, conversation_id)
+        record = {
+            "kind": "workflow",
+            "workflow_id": "wf-1",
+            "project_id": str(UUID(int=50)),
+            "revision_before": 4,
+            "revision_after": 5,
+            "before": {"config": {"nodes": [], "edges": []}},
+        }
+
+        async def audit() -> None:
+            await services.repo.insert_tool_call(
+                run_id=run_id,
+                user_id=USER,
+                tool="workflow_update",
+                tool_call_id="c1",
+                args_summary={},
+                result_bytes=0,
+                duration_ms=1,
+                status="error",
+                error="cancelled",
+                undo=record,
+            )
+
+        landed["audit"] = audit
+        await client.post(f"/conversations/{conversation_id}/cancel")
+        live = await first
+        replayed = await client.get(
+            f"/conversations/{conversation_id}/stream", params={"run_id": str(run_id)}
+        )
+        stored = (await client.get(f"/conversations/{conversation_id}")).json()
+    flag = {"type": "message-metadata", "messageMetadata": {"undoable": True}}
+    for body in (live.text, replayed.text):
+        chunks = _chunks(body)
+        assert chunks[-1] == {"type": "abort"}
+        ended = next(
+            i for i, chunk in enumerate(chunks) if chunk["type"] == "data-run-status"
+        )
+        assert flag in chunks[:ended]
+    assert stored["messages"][-1]["metadata"]["undoable"] is True
+
+
+@pytest.mark.parametrize("failure", ["raises", "hangs"])
+async def test_the_stream_ends_when_the_undoable_read_fails(
+    failure: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flag is best effort: a read of the undo records that fails or does
+    not answer leaves it out, and the end frames and [DONE] still come."""
+    from types import SimpleNamespace
+
+    from assistant.events import RunEnded, RunStarted
+
+    monkeypatch.setattr(conversations, "UNDOABLE_READ_SECONDS", 0.05, raising=False)
+
+    class Repo:
+        async def list_events(
+            self, run_id: UUID, after_seq: int = 0
+        ) -> list[tuple[int, Any]]:
+            return [(1, RunStarted(message_id="m1")), (2, RunEnded(status="succeeded"))]
+
+        async def undo_records(self, run_id: UUID) -> list[Any]:
+            if failure == "hangs":
+                await asyncio.sleep(10)
+            raise RuntimeError("pool exhausted")
+
+    services = SimpleNamespace(bus=InMemoryEventBus(), repo=Repo())
+    frames = [
+        frame
+        async for frame in conversations._stream_run(services, UUID(int=9), 0)  # type: ignore[arg-type]
+    ]
+    # Exactly the frames of the run's events, as before the flag existed.
+    encoder = AiSdkEncoder()
+    expected = [
+        sse(chunk)
+        for event in (RunStarted(message_id="m1"), RunEnded(status="succeeded"))
+        for chunk in encoder.encode(event)
+    ]
+    assert frames == [*expected, SSE_DONE]
 
 
 async def test_other_users_conversation_is_404(

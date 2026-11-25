@@ -3,9 +3,11 @@
 import type { TFunction } from "i18next";
 
 import type { Geometry } from "@/lib/style/compile/types";
+import type { ScopedView } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import { type CompoundChoice, MAIN_COLOR, classificationFor, keyOf, modeOf } from "@/lib/style/editor/forms";
-import { type Path, getIn } from "@/lib/style/editor/store";
+import { RULES, type Setter, perLayerPath, summaryView } from "@/lib/style/editor/sources";
+import { type Path, type Scope, getIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -22,6 +24,10 @@ interface SummaryContext {
   geometry?: Geometry;
   /** The panel's language: numbers take its decimal separator. */
   language: string;
+  /** The class or rule the panel styles: the summary reads what its features draw (`summaryView`). */
+  scope?: Scope | null;
+  /** The scope's view when the caller has it already. */
+  view?: ScopedView;
 }
 
 /** The label of a choice: `style_editor.value_<key with _>_<value>` ("value_line_dash_dash_dot" is "Dash dot"). */
@@ -63,12 +69,36 @@ export function summaryNumber(value: number, key: string, language: string): str
   return slider?.unit ? `${text} ${slider.unit}` : text;
 }
 
+/** What a setter (`setterKey`) reads as: "By <field>" for a classification, the field by its display name, or "By
+ * rules". */
+export const setterSummary = (t: TFunction, key: string, fields: FieldInfo[]): string =>
+  key === RULES
+    ? t("style_editor.by_rules")
+    : t("style_editor.by_field", { field: fields.find((f) => f.name === key)?.label ?? key, ...PLAIN });
+
+/** A scoped record's own value with what draws over it where it applies: "6 px, then by pop". */
+export const thenText = (t: TFunction, value: string, later: Setter, fields: FieldInfo[]): string =>
+  later === "rules"
+    ? t("style_editor.scope_then_rules", { value, ...PLAIN })
+    : t("style_editor.scope_then_field", {
+        value,
+        field: fields.find((f) => f.name === later.field)?.label ?? String(later.field),
+        ...PLAIN,
+      });
+
 export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: SummaryContext): string {
+  if (ctx.scope) {
+    const { doc: shown, later } = summaryView(doc, ctx.scope, path, ctx.view, ctx.geometry);
+    const text = summarize(shown, path, t, { ...ctx, scope: null, view: undefined });
+    return later ? thenText(t, text, later, ctx.fields) : text;
+  }
   const key = keyOf(path);
   const kind = CAPABILITIES[key]?.kind ?? "choice";
   const label = (field: unknown) => ctx.fields.find((f) => f.name === field)?.label ?? String(field);
-  const value = getIn(doc, path);
-  switch (modeOf(doc, path, ctx.geometry)) {
+  // A key set once for the layer reads where a class or rule holds it (spec 6.1).
+  const at = perLayerPath(doc, path);
+  const value = getIn(doc, at);
+  switch (modeOf(doc, at, ctx.geometry)) {
     case "classes":
       return t("style_editor.by_field", {
         field: label(classificationFor(doc, key, ctx.geometry)?.field),
@@ -103,7 +133,11 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
         const hex = typeof fixed === "string" ? fixed.toUpperCase() : "";
         const opacityPath = path.replace(/color$/, "opacity");
         const opacityKey = key.replace(/color$/, "opacity");
-        const opacity = opacityPath !== path ? (getIn(doc, opacityPath) ?? DEFAULTS[opacityKey]) : undefined;
+        // An opacity by classes or by attribute varies: no one percent to show.
+        const opacity =
+          opacityPath !== path && modeOf(doc, opacityPath, ctx.geometry) === "fixed"
+            ? (getIn(doc, opacityPath) ?? DEFAULTS[opacityKey])
+            : undefined;
         return typeof opacity === "number" ? `${hex} · ${Math.round(opacity * 100)}%` : hex;
       }
       if (typeof fixed === "number") return summaryNumber(fixed, key, ctx.language);

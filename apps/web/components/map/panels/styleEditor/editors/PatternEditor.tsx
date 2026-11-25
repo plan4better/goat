@@ -15,6 +15,7 @@ import { isObject } from "@/lib/style/json";
 import {
   useEditor,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -70,8 +71,9 @@ export function PatternRow({ row, base }: { row: PartRow; base: Path }) {
   const path = `${base}.${row.key}`;
   const { value } = useScoped(path);
   const label = t(row.label);
-  // A classification of the pattern decides it, whatever the base's value.
+  // A classification of the pattern decides it, whatever the base's value; so do records that set it.
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  useRecordValuesAt(path);
   const mode = modeOf(store.document, path, data.geometry);
   const text =
     mode === "fixed"

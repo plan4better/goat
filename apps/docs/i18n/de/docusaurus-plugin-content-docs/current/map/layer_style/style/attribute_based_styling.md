@@ -119,7 +119,7 @@ Einen Wert, den Sie in einer Klassenzeile ändern, behält die Klasse, auch wenn
 | <code>Geometrische Intervalle</code> | Klassen, die um denselben Faktor breiter werden. Nur für Felder, deren Werte alle über 0 liegen; sonst ist die Methode nicht verfügbar. | Werte, die über Größenordnungen wachsen, etwa Einwohnerzahlen oder Preise. |
 | <code>Manuelle Grenzen</code> | Sie geben die Untergrenze jeder Klasse ein. | Eigene Schwellenwerte, gleich über mehrere Karten. |
 
-<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>13 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> (bis zu 256) oder die häufigsten (<code>Top 3</code>, <code>Top 5</code>, <code>Top 8</code> oder <code>Top 12</code>) bei Kategorien.
+<code>Klassen</code> legt fest, wie viele: von <code>2 Klassen</code> bis <code>13 Klassen</code> bei Zahlen (Standard: 5) und <code>Alle Werte</code> (bis zu 256) oder die häufigsten (<code>Top 3</code>, <code>Top 5</code>, <code>Top 8</code> oder <code>Top 12</code>) bei Kategorien. Teilen viele Objekte denselben Wert oder bliebe eine Klasse leer, bildet eine Methode weniger Klassen als gewählt; ein Hinweis im Panel nennt den Grund und die Zahl der Klassen.
 
 ### Mehrere Klassifizierungen
 
@@ -141,7 +141,7 @@ Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Fü
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Ändern Sie die Zeilen wie gewohnt: Die Änderungen gelten nur für diese Klasse. Um einer Eigenschaft wieder den Wert aller Objekte zu geben, wählen Sie im Menü ihrer Schaltfläche <code>Zurücksetzen</code>. Eine Klasse kann einen Teil ausschalten, den der Layer zeigt; ein Teil, der für den ganzen Layer ausgeschaltet ist, zum Beispiel die Füllung, bleibt aber in jeder Klasse aus: Sein Schalter ist ausgegraut mit <code>Für den Layer ausgeschaltet</code>, und die Klasse behält ihre Einstellungen für den Fall, dass Sie den Teil für alle Objekte wieder einschalten. Die Zeile eines solchen Teils zeigt <code>Für alle aus</code>. Bei jedem Teil außer dem Hauptteil (die Füllung von Polygonen, die Linie von Linien, der Marker von Punkten) bietet der Editor der Klasse <code>Pro Klasse erlauben</code> an: Der Teil bleibt für alle Objekte aus, und Klassen können ihn einschalten.</div>
+  <div class="content">Ändern Sie die Zeilen wie gewohnt: Die Änderungen gelten nur für diese Klasse. Um einer Eigenschaft wieder den Wert aller Objekte zu geben, wählen Sie im Menü ihrer Schaltfläche <code>Zurücksetzen</code>. Eine Klasse kann einen Teil ausschalten, den der Layer zeigt; ein Teil, der für den ganzen Layer ausgeschaltet ist, zum Beispiel die Füllung, bleibt aber in jeder Klasse aus: Sein Schalter ist ausgegraut mit <code>Für den Layer ausgeschaltet</code>, und die Klasse behält ihre Einstellungen für den Fall, dass Sie den Teil für alle Objekte wieder einschalten. Solange eine Klasse ausgewählt ist, zeigt die Zeile eines solchen Teils <code>Für alle aus</code>. Bei jedem Teil außer dem Hauptteil (die Füllung von Polygonen, die Linie von Linien, der Marker von Punkten) bietet der Editor der Klasse <code>Pro Klasse erlauben</code> an: Der Teil bleibt für alle Objekte aus, und Klassen können ihn einschalten.</div>
 </div>
 
 <div class="step">
@@ -170,7 +170,7 @@ Eine Klasse kann mit denselben Einstellungen wie der ganze Layer eine eigene Fü
 
 ## Farbpaletten {#color-palettes}
 
-Die Palettenauswahl öffnet sich über <code>Palette</code> oder <code>Farben</code>. Sie zeigt die Paletten von GOAT nach Art (<code>Alle</code>, <code>Sequenziell</code>, <code>Divergierend</code> und <code>Kategorien</code>), die Paletten, die dieser Stil verwendet (<code>Verwendet</code>), und Ihre eigenen (<code>Eigene</code>). Unter <code>Alle</code> steht <code>Wissenschaft und Gelände</code> zuerst: die wahrnehmungsgleichen Verläufe Viridis, Magma, Cividis, Inferno und Plasma sowie Verläufe für Höhen und Vegetation (Elevation, Terrain, Hypsometric tints, NDVI), für Raster wie für Zahlenfelder. <code>Umkehren</code> dreht die Farben um.
+Die Palettenauswahl öffnet sich über <code>Palette</code> oder <code>Farben</code>. Sie zeigt die Paletten von GOAT nach Art (<code>Alle</code>, <code>Sequenziell</code>, <code>Divergierend</code> und <code>Kategorien</code>), die Paletten, die dieser Stil verwendet (<code>Verwendet</code>), und Ihre eigenen (<code>Eigene</code>). Unter <code>Alle</code> steht <code>Wissenschaft und Gelände</code> zuerst: die wahrnehmungsgleichen Verläufe Viridis, Magma, Cividis, Inferno und Plasma sowie Verläufe für Höhen und Vegetation (Elevation, Terrain, Hypsometric tints, NDVI), für Raster wie für Zahlenfelder. Bei der Methode <code>Kategorien</code> listet die Auswahl zuerst die Paletten der Art <code>Kategorien</code> und danach alle anderen Arten, sodass geordnete Kategorien, etwa Reisezeiten, eine sequenzielle Palette erhalten können. <code>Umkehren</code> dreht die Farben um.
 
 | Art | Beispiel | Beschreibung |
 | :-: | -------- | ------------ |

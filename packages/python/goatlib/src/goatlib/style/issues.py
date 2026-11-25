@@ -2,7 +2,8 @@
 
 Every finding carries one of the codes of the specification's section 11, its
 level, and a JSON pointer to the place in the document it is about. One message
-text serves people and the AI.
+text serves people and the AI; `params` carry the facts it names, so a client can
+word it in another language.
 """
 
 from typing import Any, Literal, Mapping
@@ -101,6 +102,9 @@ class Issue(BaseModel):
     message: str
     fix: Fix | None = None
     allowed: list[Any] | None = Field(default=None, max_length=20)
+    #: What the message names, by name (a field, the classes asked for and made,
+    #: and `case` where one code has several messages).
+    params: dict[str, Any] | None = None
 
 
 def make_issue(
@@ -111,6 +115,7 @@ def make_issue(
     level: Level | None = None,
     fix: Fix | None = None,
     allowed: list[Any] | None = None,
+    params: dict[str, Any] | None = None,
     codes: Mapping[str, Level] = CODES,
 ) -> Issue:
     """An issue with the code's default level unless one is given. `codes` is the
@@ -124,4 +129,14 @@ def make_issue(
         message=message,
         fix=fix,
         allowed=allowed[:20] if allowed is not None else None,
+        params=params,
+    )
+
+
+def read_issue(raw: Mapping[str, Any]) -> Issue:
+    """An issue another service sent, read with the keys this version knows: a
+    key a newer sender adds is left out instead of failing the reader, so the
+    services can be updated in any order."""
+    return Issue.model_validate(
+        {k: v for k, v in raw.items() if k in Issue.model_fields}
     )

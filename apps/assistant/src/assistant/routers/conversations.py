@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal, get_args
 from uuid import UUID
@@ -54,13 +55,27 @@ from assistant.runs.manager import (
 )
 from assistant.services import AppServices
 from assistant.surfaces import Locale
-from assistant.undo import NothingToUndo, UndoRefused, UndoUnderWay, undo_run, undone
+from assistant.undo import (
+    NothingToUndo,
+    UndoOutcome,
+    UndoRefused,
+    UndoUnderWay,
+    undo_run,
+    undoable,
+    undone,
+    undone_parts,
+)
 
 router = APIRouter(prefix="/conversations")
 
 #: Comment frames keep idle proxies from closing a quiet stream. Module-level so
 #: a test can shorten it (``monkeypatch.setattr(conversations, "KEEPALIVE_SECONDS", 0.1)``).
+logger = logging.getLogger(__name__)
+
 KEEPALIVE_SECONDS: float = 15
+#: How long the end of a stream waits for the read that says whether the
+#: answer's Undo can act; the flag is left out after that.
+UNDOABLE_READ_SECONDS: float = 2
 
 _END_STATUSES = get_args(RunStatus)
 
@@ -246,6 +261,22 @@ def _without_answers(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+async def _undoable_now(services: AppServices, run_id: UUID) -> bool:
+    """Whether the run's Undo can act, read from its audit rows; False when
+    the read fails or takes longer than ``UNDOABLE_READ_SECONDS``: the end of
+    the stream never waits on it, and a reload reads the flag again."""
+    try:
+        records = await asyncio.wait_for(
+            services.repo.undo_records(run_id), UNDOABLE_READ_SECONDS
+        )
+    except Exception:
+        logger.warning(
+            "Reading whether run %s is undoable failed", run_id, exc_info=True
+        )
+        return False
+    return undoable(records)
+
+
 async def _stream_run(
     services: AppServices, run_id: UUID, after: int
 ) -> AsyncGenerator[str, None]:
@@ -261,11 +292,21 @@ async def _stream_run(
     encoder = AiSdkEncoder()
     last_seq = after
 
-    def encode(seq: int, event: RunEvent) -> list[str]:
+    async def encode(seq: int, event: RunEvent) -> list[str]:
         nonlocal last_seq
         last_seq = max(last_seq, seq)
         frames = [sse(chunk) for chunk in encoder.encode(event)]
         if isinstance(event, RunEnded):
+            # Before the end: whether the answer's Undo has something to take
+            # back, as a reloaded message says it. A call a Stop or the time
+            # limit ended after its write landed has no finished step that
+            # names the write, only its undo record.
+            if await _undoable_now(services, run_id):
+                flag = {
+                    "type": "message-metadata",
+                    "messageMetadata": {"undoable": True},
+                }
+                frames.insert(0, sse(flag))
             frames.append(SSE_DONE)
         return frames
 
@@ -276,7 +317,7 @@ async def _stream_run(
         for seq, event in await services.repo.list_events(run_id, after_seq=last_seq):
             if before is not None and seq >= before:
                 break
-            frames.extend(encode(seq, event))
+            frames.extend(await encode(seq, event))
             if isinstance(event, RunEnded):
                 return frames, True
         return frames, False
@@ -311,7 +352,9 @@ async def _stream_run(
                     run = await services.repo.get_run(run_id)
                     if run is None:
                         # Deleted with its conversation: nothing more will come.
-                        for frame in encode(last_seq + 1, RunEnded(status="cancelled")):
+                        for frame in await encode(
+                            last_seq + 1, RunEnded(status="cancelled")
+                        ):
                             yield frame
                         return
                     finished_ticks = (
@@ -328,7 +371,7 @@ async def _stream_run(
                             error=run["error"],
                             code=code,
                         )
-                        for frame in encode(last_seq + 1, end):
+                        for frame in await encode(last_seq + 1, end):
                             yield frame
                         return
                     continue
@@ -345,7 +388,7 @@ async def _stream_run(
                     if ended:
                         return
                 event = EVENT_ADAPTER.validate_python(message["event"])
-                for frame in encode(seq, event):
+                for frame in await encode(seq, event):
                     yield frame
                 if isinstance(event, RunEnded):
                     return
@@ -452,6 +495,8 @@ async def get_conversation(
         await repo.undo_records_by_answer(conversation_id) if access == "ok" else {}
     )
     undone_answers = {answer for answer, rows in records.items() if undone(rows)}
+    # And with the Undo's "nothing to undo": what it would still take back.
+    undoable_answers = {answer for answer, rows in records.items() if undoable(rows)}
     return {
         "conversation": conversation,
         "active_run_id": str(active["id"]) if active and access == "ok" else None,
@@ -470,6 +515,7 @@ async def get_conversation(
                     else None
                 ),
                 undone=m["id"] in undone_answers,
+                undoable=m["id"] in undoable_answers,
             )
             for m in messages
         ],
@@ -713,12 +759,53 @@ async def cancel_run(
 class UndoIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    #: Saves on top of what the workflows hold now, after the user was asked
-    #: about the changes made since the answer's edits.
+    #: Writes on top of what the project holds now, after the user was asked
+    #: about the changes made since the answer's.
     force: bool = False
 
 
-CHANGED_SINCE = "The workflow was changed after this answer edited it."
+CHANGED_SINCE = "Something was changed after this answer edited it."
+
+
+def _changed_parts(outcome: UndoOutcome) -> dict[str, Any]:
+    """What the user is asked about before an Undo writes over it, kind by
+    kind; every list empty when nothing is."""
+    return {
+        "workflows": [
+            {
+                "workflow_id": item.workflow_id,
+                "project_id": item.project_id,
+                "revision": item.revision,
+                "updated_at": item.updated_at,
+                "updated_by": item.updated_by,
+                "between": item.between,
+            }
+            for item in outcome.changed
+        ],
+        "styles": [
+            {
+                "project_id": item.project_id,
+                "layer_project_id": item.layer_project_id,
+                "style_id": item.style_id,
+                "revision": item.revision,
+                "between": item.between,
+                "too_old": item.too_old,
+            }
+            for item in outcome.changed_styles
+        ],
+        "map": [
+            {
+                "object": item.object,
+                **(
+                    {"layer_project_id": item.layer_project_id}
+                    if item.layer_project_id is not None
+                    else {}
+                ),
+                **({"group_id": item.group_id} if item.group_id is not None else {}),
+            }
+            for item in outcome.changed_map
+        ],
+    }
 
 
 @router.post("/{conversation_id}/runs/{run_id}/undo")
@@ -729,10 +816,11 @@ async def undo_answer(
     body: UndoIn | None = None,
     principal: Principal = Depends(get_principal),
 ) -> dict[str, Any]:
-    """Writes back what an answer's workflow edits replaced (``assistant.undo``),
-    with the user's own sign-in. A workflow saved since the answer's edits is
-    not written: the answer (409 ``changed_since``) names it, and ``force``
-    saves on top of it."""
+    """Writes back what an answer's changes replaced (``assistant.undo``): its
+    workflow edits, its style changes and its changes of the map, with the
+    user's own sign-in. What was saved since the answer's changes is not
+    written: the answer (409 ``changed_since``) names it beside what did go
+    back, and ``force`` writes on top of it."""
     conversation = await _owned(request, conversation_id, principal)
     services = _services(request)
     await _require_access(services.repo, conversation, principal.user_id)
@@ -756,6 +844,10 @@ async def undo_answer(
             raise _refusal(
                 409, "already_undone", "This answer's changes were undone already."
             ) from exc
+        if exc.removed:
+            raise _refusal(
+                404, "nothing_to_undo", "Removed layers do not come back."
+            ) from exc
         raise _refusal(404, "nothing_to_undo", "This answer changed nothing.") from exc
     except UndoUnderWay as exc:
         raise _refusal(
@@ -763,30 +855,17 @@ async def undo_answer(
         ) from exc
     except UndoRefused as exc:
         raise _refusal(exc.status, exc.code, exc.message) from exc
-    restored = [
-        {
-            "workflow_id": item.workflow_id,
-            "project_id": item.project_id,
-            "revision": item.revision,
-        }
-        for item in outcome.restored
-    ]
-    if outcome.changed:
+    done = undone_parts(outcome)
+    asked = _changed_parts(outcome)
+    if any(asked.values()):
         raise _refusal(
             409,
             "changed_since",
             CHANGED_SINCE,
-            workflows=[
-                {
-                    "workflow_id": item.workflow_id,
-                    "project_id": item.project_id,
-                    "revision": item.revision,
-                    "updated_at": item.updated_at,
-                    "updated_by": item.updated_by,
-                    "between": item.between,
-                }
-                for item in outcome.changed
-            ],
-            undone=restored,
+            **asked,
+            undone=done["workflows"],
+            undone_styles=done["styles"],
+            undone_map=done["map"],
+            not_restored=done["not_restored"],
         )
-    return {"workflows": restored}
+    return done

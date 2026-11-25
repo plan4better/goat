@@ -46,11 +46,25 @@ export type CatalogContext = {
   sortby?: string;
   selected_record_id?: string;
 } & WithSources;
+/** A basemap as the page context names it: id at most 64 characters, name 1 to 80. */
+export interface BasemapInfo {
+  id: string;
+  name: string;
+  tone: "light" | "dark";
+  imagery: boolean;
+}
+
 export type ProjectMapContext = {
   surface: "project.map";
   project_id: string;
   selected_layer_project_id?: number;
   viewport?: Viewport;
+  /** The basemap the map shows. */
+  basemap?: BasemapInfo;
+  /** The basemaps the project offers, at most 30. */
+  basemaps?: BasemapInfo[];
+  view_mode?: "2d" | "3d";
+  projection?: "mercator" | "globe";
 } & WithSources;
 export type ProjectWorkflowsContext = {
   surface: "project.workflows";
@@ -198,6 +212,11 @@ export interface AssistantMetadata {
   run_id?: string;
   /** On a reloaded answer: its workflow edits were undone. */
   undone?: boolean;
+  /**
+   * On an answer, reloaded or at the end of its stream: its Undo has something to take back, also a write of a
+   * call a Stop or the time limit ended, which no finished step names. Absent: the finished steps decide.
+   */
+  undoable?: boolean;
 }
 /** A workflow run the assistant started or waited for (`data-workflow-run`): one part per run, replaced as it goes. */
 export interface WorkflowRunData {

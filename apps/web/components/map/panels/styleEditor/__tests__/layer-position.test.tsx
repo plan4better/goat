@@ -11,7 +11,6 @@ import type { RasterInfo } from "@/lib/style/raster/metadata";
 import { StyleSaver } from "@/lib/style/save";
 
 import { EMPTY_DATA, StyleEditorProvider } from "@/components/map/panels/styleEditor/context";
-
 import { MapStateProvider, type Position } from "@/components/map/panels/styleEditor/mapState";
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { LayerSection } from "@/components/map/panels/styleEditor/sections/LayerSection";
@@ -162,7 +161,9 @@ describe("the layer's position", () => {
         const value = useMemo(() => ({ position, layer: 81001, onPosition: setPosition }), [position]);
         return (
           <MapStateProvider value={value}>
-            <button onClick={() => setPosition((p) => (p === "top" ? "below_labels" : "top"))}>elsewhere</button>
+            <button onClick={() => setPosition((p) => (p === "top" ? "below_labels" : "top"))}>
+              elsewhere
+            </button>
             {children}
           </MapStateProvider>
         );

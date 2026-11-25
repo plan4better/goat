@@ -7,6 +7,7 @@ import { announceRunEnd, lastAnswer, runEndOf } from "@/lib/assistant/announce";
 import { type Translate, plainTranslate } from "@/lib/assistant/chips";
 import { refreshConversationLists } from "@/lib/assistant/conversations";
 import { AssistantApiError } from "@/lib/assistant/errors";
+import { followMapChange, missedEdits } from "@/lib/assistant/mapBridge";
 import { getDockState, removePendingRun, useDockState } from "@/lib/assistant/store";
 import { fetchConversation } from "@/lib/assistant/transport";
 
@@ -15,8 +16,9 @@ const GIVE_UP_MS = 30 * 60 * 1000;
 
 /**
  * Runs this tab started whose chat view is gone (the dock was closed, another
- * conversation opened): the run goes on server side, so this asks for its end
- * and announces it. Mounted only while the assistant is available.
+ * conversation opened): the run goes on server side, so this asks for its end,
+ * has an open map page read what the answer changed, and announces it.
+ * Mounted only while the assistant is available.
  */
 export default function RunWatcher() {
   const { t } = useTranslation("common");
@@ -59,6 +61,8 @@ export default function RunWatcher() {
             const answer = lastAnswer(detail.messages);
             // The answer known at send time is not this run's: the send was refused or never arrived.
             if (answer && answer.id !== (run.knownAnswerId ?? null)) {
+              // Nor did a chat view hand all of its changes to an open map page: it reads what they touched once.
+              missedEdits(detail.messages).forEach(followMapChange);
               await announceRunEnd(
                 {
                   conversationId: run.conversationId,

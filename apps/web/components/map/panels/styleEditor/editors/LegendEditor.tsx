@@ -10,10 +10,11 @@ import type { NumberFormatSpec } from "@/lib/style/compile/labels";
 import type { Geometry } from "@/lib/style/compile/types";
 import { moveClassification } from "@/lib/style/editor/classify";
 import { formatNumberText, isNumberType } from "@/lib/style/editor/labels";
+import { symbolShown } from "@/lib/style/editor/parts";
 import { type EditorStore, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type LegendClasses, classificationProperty, legendClasses } from "@/lib/style/legend";
+import { type LegendClasses, classificationProperty, legendClasses, legendGroups } from "@/lib/style/legend";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 
@@ -93,6 +94,20 @@ export function LegendEditor() {
   const classify = (Array.isArray(all) ? all : []).filter(isObject);
   // The geometry the legend reads its property words with.
   const legendGeometry = geometry ?? (store.get("geometry") as Geometry | undefined) ?? "point";
+  // A heatmap or H3 without points lists no classes; a classification the legend merges into an earlier one of its
+  // field has no heading or unit of its own there.
+  const shown = symbolShown(store.document);
+  const mergedInto = new Map<number, number>();
+  for (const group of legendGroups(store.document as unknown as JsonObject, legendGeometry))
+    for (const ci of group.slice(1)) mergedInto.set(ci, group[0]);
+  const headingOf = (c: JsonObject) => {
+    const fieldLabel = fields.find((f) => f.name === c.field)?.label ?? String(c.field ?? "");
+    // Two classifications, often of one field, read "Size · field" as the legend titles them.
+    return classify.length > 1
+      ? `${t(classificationProperty(c, legendGeometry))} · ${fieldLabel}`
+      : fieldLabel;
+  };
+  const titleOf = (c: JsonObject) => (typeof c.title === "string" && c.title ? c.title : headingOf(c));
   const positionLabel = (i: number) =>
     i === 0
       ? t("style_editor.order_first")
@@ -109,7 +124,7 @@ export function LegendEditor() {
         onChange={(value) => setLegendKey(store, "caption", value || undefined)}
       />
       {/* Which classes the legend lists, wherever it shows: every class, those the layer's filter keeps, those in view. */}
-      {kind !== "raster" && classify.length > 0 && (
+      {kind !== "raster" && shown && classify.length > 0 && (
         <ChoiceRow<LegendClasses>
           label={t("style_editor.classes_shown")}
           value={legendClasses(store.document as unknown as JsonObject)}
@@ -132,72 +147,84 @@ export function LegendEditor() {
             onChange={(value) => setLegendKey(store, key, value || undefined)}
           />
         ))}
-      {classify.map((c, ci) => {
-        const fieldLabel = fields.find((f) => f.name === c.field)?.label ?? String(c.field ?? "");
-        // Two classifications, often of one field, read "Size · field" as the legend titles them.
-        const heading =
-          classify.length > 1
-            ? `${t(classificationProperty(c, legendGeometry))} · ${fieldLabel}`
-            : fieldLabel;
-        return (
-          <Box key={typeof c.id === "string" ? c.id : ci} sx={{ pt: 2 }}>
-            <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ px: 3 }}>
-              {typeof c.title === "string" && c.title ? c.title : heading}
-            </Typography>
-            {classify.length > 1 && (
-              <ChoiceRow<string>
-                label={t("style_editor.order")}
-                value={String(ci)}
-                options={classify.map((_, i) => ({
-                  value: String(i),
-                  label: positionLabel(i),
-                  sub: t("style_editor.order_sub"),
-                }))}
-                onChange={(to) => store.update((doc) => moveClassification(doc, ci, Number(to)))}
+      {shown &&
+        classify.map((c, ci) => {
+          const heading = headingOf(c);
+          const into = mergedInto.get(ci);
+          return (
+            <Box key={typeof c.id === "string" ? c.id : ci} sx={{ pt: 2 }}>
+              <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ px: 3 }}>
+                {titleOf(c)}
+              </Typography>
+              {into !== undefined && (
+                <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 1 }}>
+                  {t("style_editor.legend_merged", { heading: titleOf(classify[into]), ...PLAIN })}
+                </Typography>
+              )}
+              {classify.length > 1 && (
+                <ChoiceRow<string>
+                  label={t("style_editor.order")}
+                  value={String(ci)}
+                  options={classify.map((_, i) => ({
+                    value: String(i),
+                    label: positionLabel(i),
+                    sub: t("style_editor.order_sub"),
+                  }))}
+                  onChange={(to) => store.update((doc) => moveClassification(doc, ci, Number(to)))}
+                />
+              )}
+              <SwitchRow
+                label={t("style_editor.in_legend")}
+                on={c.legend !== false}
+                onToggle={() => store.set(`classify.${ci}.legend`, c.legend === false ? undefined : false)}
               />
-            )}
-            <SwitchRow
-              label={t("style_editor.in_legend")}
-              on={c.legend !== false}
-              onToggle={() => store.set(`classify.${ci}.legend`, c.legend === false ? undefined : false)}
-            />
-            <TextRow
-              label={t("style_editor.heading")}
-              value={typeof c.title === "string" ? c.title : ""}
-              placeholder={heading}
-              onChange={(value) => store.set(`classify.${ci}.title`, value || undefined)}
-            />
-            <TextRow
-              label={t("style_editor.unit")}
-              value={typeof c.unit === "string" ? c.unit : ""}
-              placeholder={t("style_editor.unit_placeholder")}
-              onChange={(value) => store.set(`classify.${ci}.unit`, value || undefined)}
-            />
-            {/* Class bounds of a number field: how the legend writes them. Categories show their values as they are. */}
-            {isNumberType(fieldTypes[String(c.field)]) && c.method !== "categories" && (
-              <NavRow
-                label={t("style_editor.numbers")}
-                value={
-                  isObject(c.format)
-                    ? t("style_editor.example", {
-                        value: formatNumberText(PREVIEW_NUMBER, c.format as NumberFormatSpec, i18n.language),
-                        ...PLAIN,
+              {into === undefined && (
+                <TextRow
+                  label={t("style_editor.heading")}
+                  value={typeof c.title === "string" ? c.title : ""}
+                  placeholder={heading}
+                  onChange={(value) => store.set(`classify.${ci}.title`, value || undefined)}
+                />
+              )}
+              {into === undefined && (
+                <TextRow
+                  label={t("style_editor.unit")}
+                  value={typeof c.unit === "string" ? c.unit : ""}
+                  placeholder={t("style_editor.unit_placeholder")}
+                  onChange={(value) => store.set(`classify.${ci}.unit`, value || undefined)}
+                />
+              )}
+              {/* Class bounds of a number field: how the legend writes them. Categories show their values as they are. */}
+              {into === undefined &&
+                isNumberType(fieldTypes[String(c.field)]) &&
+                c.method !== "categories" && (
+                  <NavRow
+                    label={t("style_editor.numbers")}
+                    value={
+                      isObject(c.format)
+                        ? t("style_editor.example", {
+                            value: formatNumberText(
+                              PREVIEW_NUMBER,
+                              c.format as NumberFormatSpec,
+                              i18n.language
+                            ),
+                            ...PLAIN,
+                          })
+                        : t("style_editor.as_in_dataset")
+                    }
+                    onOpen={(anchor) =>
+                      popover.open(next, {
+                        key: `legend:format:${ci}`,
+                        title: t("style_editor.number_format"),
+                        anchorTop: anchorTopOf(anchor),
+                        render: () => <NumberFormatEditor path={`classify.${ci}.format`} />,
                       })
-                    : t("style_editor.as_in_dataset")
-                }
-                onOpen={(anchor) =>
-                  popover.open(next, {
-                    key: `legend:format:${ci}`,
-                    title: t("style_editor.number_format"),
-                    anchorTop: anchorTopOf(anchor),
-                    render: () => <NumberFormatEditor path={`classify.${ci}.format`} />,
-                  })
-                }
-              />
-            )}
-          </Box>
-        );
-      })}
+                    }
+                  />
+                )}
+            </Box>
+          );
+        })}
     </>
   );
 }

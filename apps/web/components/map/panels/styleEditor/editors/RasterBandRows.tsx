@@ -81,7 +81,8 @@ function awaitedClasses(doc: { render?: unknown }): string {
   const render = doc.render;
   if (!isObject(render) || (render.type !== "continuous" && render.type !== "hillshade")) return "";
   const classify = render.classify;
-  if (!isObject(classify) || typeof classify.method !== "string" || typeof classify.count !== "number") return "";
+  if (!isObject(classify) || typeof classify.method !== "string" || typeof classify.count !== "number")
+    return "";
   if (classify.method === "manual" || classify.method === "equal_interval") return "";
   if (Array.isArray(classify.classes) && classify.classes.length) return "";
   return `${classify.method}:${classify.count}`;

@@ -43,16 +43,46 @@ def backends(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Backends]:
     backends.close()
 
 
-def test_the_set_has_36_catalog_26_project_and_13_workflow_tasks_with_valid_contexts() -> (
+def test_the_set_has_36_catalog_26_project_13_workflow_and_51_map_tasks_with_valid_contexts() -> (
     None
 ):
     tasks = load_tasks()
     assert sum(t.suite == "catalog" for t in tasks) == 36
     assert sum(t.suite == "project" for t in tasks) == 26
     assert sum(t.suite == "workflow" for t in tasks) == 13
+    assert sum(t.suite == "map" for t in tasks) == 51
     for task in tasks:
         parse_context(task.context)  # raises on a context the dock could not send
-    assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 6
+    assert sum(any(c.kind == "judge" for c in t.checks) for t in tasks) == 10
+
+
+#: The docs page each how-to task names, in the task's language, and the web
+#: locale whose labels the interface shows.
+_HOW_TO_PAGES = {
+    "proj-27": (
+        "i18n/de/docusaurus-plugin-content-docs/current/map/filter.md",
+        "de",
+    ),
+    "proj-28": ("docs/map/layer_style/style/attribute_based_styling.md", "en"),
+}
+
+
+@pytest.mark.parametrize("task_id", sorted(_HOW_TO_PAGES))
+def test_a_how_to_task_expects_the_labels_of_the_docs_and_the_interface(
+    task_id: str,
+) -> None:
+    """The labels an answer must name are the ones the docs page and the
+    interface use now, word for word."""
+    apps = EVALS.parents[1]
+    page, locale = _HOW_TO_PAGES[task_id]
+    docs = (apps / "docs" / page).read_text().casefold()
+    labels = (apps / "web/i18n/locales" / locale / "common.json").read_text()
+    [task] = [t for t in load_tasks("project") if t.id == task_id]
+    expected = [p for c in task.checks if c.kind == "answer" for p in c.all_of]
+    assert len(expected) == (2 if task_id == "proj-27" else 1)
+    for phrase in expected:
+        assert phrase.casefold() in docs, phrase
+        assert f'"{phrase}"'.casefold() in labels.casefold(), phrase
 
 
 def test_evals_are_neither_collected_nor_packaged() -> None:
@@ -250,6 +280,23 @@ async def test_docs_check_grades_the_pages_read(backends: Backends) -> None:
     other = _transcript(tool_calls=[read("sharing/public"), read("map/filter", True)])
     assert [g.passed for g in await grade(task, other, backends)] == [False]
     assert [g.passed for g in await grade(task, _transcript(), backends)] == [False]
+
+
+async def test_the_tools_check_reads_the_reference_files_loaded(
+    backends: Backends,
+) -> None:
+    task = _task('{"kind": "tools", "loaded": ["popups.md"]}')
+
+    def load(failed: bool = False, **args: str) -> ToolCall:
+        return ToolCall("skills_load", {"name": "style-a-map", **args}, {}, failed)
+
+    loaded = _transcript(tool_calls=[load(), load(file="popups.md")])
+    assert [g.passed for g in await grade(task, loaded, backends)] == [True]
+    instructions = _transcript(tool_calls=[load(), load(file="rasters.md")])
+    [refused] = await grade(task, instructions, backends)
+    assert refused.passed is False and "popups.md" in refused.detail
+    failed = _transcript(tool_calls=[load(failed=True, file="popups.md")])
+    assert [g.passed for g in await grade(task, failed, backends)] == [False]
 
 
 def test_docs_tasks_name_pages_that_exist() -> None:
@@ -535,6 +582,17 @@ async def test_text_and_answer_checks_match_whole_words(backends: Backends) -> N
         g.passed
         for g in await grade(none, _transcript("It has 15 features."), backends)
     ] == [True]
+
+
+async def test_an_answer_check_bounds_the_length_without_the_judge(
+    backends: Backends,
+) -> None:
+    short = _task('{"kind": "answer", "max_chars": 20}')
+    assert [g.passed for g in await grade(short, _transcript("x" * 20), backends)] == [
+        True
+    ]
+    [over] = await grade(short, _transcript("x" * 21), backends)
+    assert over.passed is False and "21 characters" in over.detail
 
 
 def _project_task(task_id: str) -> EvalTask:

@@ -356,9 +356,7 @@ describe("point parts", () => {
     expect(store.get("symbol.outline")).toBe(false);
     expect(store.get("symbol.marker.fill")).toBe(false);
     expect(within(groupRow("style_editor.part_fill")).getByText("style_editor.none")).toBeDefined();
-    expect(
-      within(groupRow("style_editor.part_outline")).getByText("style_editor.part_off_for_all")
-    ).toBeDefined();
+    expect(within(groupRow("style_editor.part_outline")).getByText("style_editor.none")).toBeDefined();
   });
 
   it("the icon on a hollow marker reads the marker color until it has its own; its pictures are hollow", async () => {

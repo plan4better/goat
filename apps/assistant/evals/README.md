@@ -1,16 +1,38 @@
 # GOAT eval set
 
-36 catalog, 26 project and 13 workflow tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 26 project, 13 workflow and 51 map tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
-read, layers never sent, values not stated, cards asked, workflows created); six free-text tasks go to an LLM judge.
+read, layers never sent, values not stated, cards asked, workflows created, styles and map state stored, answer length); ten
+free-text tasks go to an LLM judge.
 The answer graded is what the dock shows: the text of every response of the last turn, the text before a tool call or a
 card too, but not text an answer asked for again in the message's language (or the interface's) replaced; a card counts as asked for an option's `value` and for the datasets its `adds` names.
 Questions about GOAT's own interface (`proj-26` to `proj-30`) are graded on the docs page the answer read with
 `docs_read` and the interface labels from that page in the answer, in the language of the user's interface. An `answer` check
 with `with_shown_items` also counts the names on the cards of the user's own items, since the prompt has the model show
-those as cards and not list them again.
+those as cards and not list them again; one with `max_chars` bounds the length of the answer the dock shows.
+
+**Conversations.** The harness answers every message as the run manager does and keeps the conversation between
+them as the app stores it (`harness.Conversation`): the rows of its messages (the user's text, page and card answer,
+and the answer's parts folded from its events by `events.fold_parts`) and the answers' model messages as JSON. Each
+run reads its cards (`AskHistory.from_stored`), earlier writes, workflow runs, typed texts and loaded skills from those
+rows with the app's functions, and the agent gets the model messages back as the app reloads them, so its own history
+processing shortens earlier answers (`assistant.history`). A task's `history` seeds earlier turns as text only; its
+`conversation` lists messages the eval user types before `prompt`, each answered for real, with its own
+`answer_card`, `answer_value`, `answer_declines` (the eval user picks an option without that value, such as keeping a
+layer) and `cold_requests`. A turn is one typed message with the answer after its card. Checks grade the last turn;
+`"turn": 2` names another, `"turn": "all"` the whole conversation: the tools, answer and length checks read that turn,
+the `style` and `map` checks the project before and after it, and the judge gets the turn's message after the earlier
+messages and answers. The transcript and the results file report each turn of a conversation: its tools, tokens (input,
+output, cache reads), model requests, and the calls refused for lack of room, which the `tools` check's
+`not_refused_for_room` fails on (`harness.refused_for_room`: a call its stage refused, one past the look-ups, a result
+too large for what was left). Its `skill_loads` bounds how often a skill's instructions were loaded.
+
+A provider cannot be told to miss its cache, but the budget reads the cache reads the model reports. A task with
+`cold_requests` (`map-49`) runs the model in `harness.ColdCacheDouble`, a test double that reports no cache reads for
+those requests of the answer (counted from 1), so its budget plans and counts them as misses; the other tasks run the
+model as it is.
 
 The workflow suite (`workflow_tasks.jsonl`, `wf-NN`) builds workflows in three more fixture projects: one to build in
 ("Erreichbarkeit Leipzig"), the same layers for a user who may only view them, and an empty one in Munich, where
@@ -33,6 +55,31 @@ recommended one when there is one, and the turn gets the answer as the app rende
 user press Undo under the last answer, as the dock does (`assistant.undo` over the audit rows the answer's calls left,
 kept in memory by the harness), and the `workflow_updated` check grades the version the edit saved and, with `undone`,
 that the workflow is as it was afterwards.
+
+The map suite (`map_tasks.jsonl`, `map-NN`) styles layers and changes the map of one more fixture project ("Stadtplan
+Beispiel", `map_fixture.py`) on the map page, and of the same project for a user who may only view it. Its tables are
+generated and seeded, with shapes chosen on purpose: a long tail, a few categories holding most features, values around
+zero, missing values. Its stand-ins (`map_backends.py`) run the real style logic on them: a style save goes through
+core's own save steps (`core.services.style`), and where core asks processes to check a style, the stand-in runs
+goatlib's `describe`, `compute_into` and `validate` over a DuckDB table per layer, so classes, domains and issues are
+the ones the servers would store. Core is imported for this on the first map route a task calls, so map tasks need
+core importable with its settings in the environment (the root `.env`, which `run` loads). Rasters are graded on the
+stored document only (it validates against the bands, it draws the asked form on the asked band): nothing reads their
+pixels. The harness records the project as core held it before each turn, when the eval user answered a card, after
+each turn and after the Undo, and the `style` and `map` checks (`map_graders.py`) grade those: the style the layer draws
+(edited in place, or new where the request asks for a new style or for options and then which of the styles made is drawn, its classification, paths, legend shares, no error stored), the map state (what is drawn, the
+order, groups, basemap, filters and their areas as the filter panel reads them, layers removed or kept, nothing
+stored) and that Undo brought back the state before,
+computed stamps aside. The `view` check reads the view the answer's `map_update` calls set. The `tools` check bounds the calls of a tool in an answer (`at_most`); a key that joins tools with `+` bounds their calls together. Its `loaded` names the skill reference files a `skills_load` call must have returned (`popups.md`). A task with
+`answer_value` has the eval user pick the option of that value in the card instead of the first one. The tools get what
+the eval user typed so far and the skills the conversation loaded, as in a run, so a new style
+needs a quote of the user's words. A workflow can be
+created and run in the map project too: its run saves one fixed result layer (catchment areas, `MAP_RESULT_LAYER`)
+into the project's state with the look the catchment tool gives its result, and a `style` check on that layer compares
+with the style it arrived with. The eval catalog holds two invented regions where the map project's data lies
+(`AREA_REGIONS` in `backends.py`): a rectangle, and one whose edge has more positions than a filter's area takes, so a
+filter limited to it is simplified as the filter panel simplifies it. The statistics stand-ins test an area against
+each feature's geometry (`selected_features`), and the graders count a filter's features the same way.
 
 `run` spends provider tokens, so it runs by hand, never in CI: it refuses when `CI` is set. The other commands spend
 none.
@@ -62,7 +109,7 @@ would be ignored (`--model` without `--provider`, `--judge-*` without `--judge-p
 an error. Promotion recomputes the score from the per-task records and needs a judge that is neither the test provider nor the model under test.
 
 Each run writes `evals/results/<time>-<provider>-<model>.json` (not committed): per task the grades, the answer,
-the tools called, tokens, the time to the first text and in total; a summary with the score per suite and the
+the tools called, tokens, the time to the first text and in total, and for a conversation each turn; a summary with the score per suite and the
 critical tasks that failed.
 
 **Regression workflows.** `workflow_runs.json` keeps workflows the assistant builds in the workflow project's layers
@@ -81,6 +128,9 @@ through `uv run python -m evals promote evals/results/<file>.json`. It refuses u
 task of the current `EVAL_SET_VERSION`, every judge check was decided, no critical task failed, and the score
 is at least 0.85 overall and 0.8 per suite. Commit the changed `tested_models.json`.
 
-**Changing tasks.** One task per line in `catalog_tasks.jsonl`, `project_tasks.jsonl` and `workflow_tasks.jsonl`. Bump
+**Changing tasks.** One task per line in `catalog_tasks.jsonl`, `project_tasks.jsonl`, `workflow_tasks.jsonl` and
+`map_tasks.jsonl`. A map task needs a right answer in `tests/eval_map_answers.py`, applied to the stand-in by
+`tests/test_eval_map.py` (a conversation's answer is a script of each run's calls, played through the harness and the
+real tools by a scripted model), which also checks that no map task passes when the answer changes nothing. Bump
 `EVAL_SET_VERSION` in `tasks.py` when a task or check changes meaning: models tested against an older version
 keep their entry until re-run, and `promote` only accepts results of the current version.

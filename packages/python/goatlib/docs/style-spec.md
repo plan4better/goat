@@ -1505,7 +1505,7 @@ formula of their own.
 
 | Method | Breaks |
 |---|---|
-| `quantile` | the k/count quantiles, k = 1 to count - 1 (linear interpolation, as numpy's default); equal breaks merge, so fewer classes can result (info `classes_merged`) |
+| `quantile` | the k/count quantiles, k = 1 to count - 1 (linear interpolation, as numpy's default); where many values are the same, breaks fall together or onto the minimum or maximum and merge, so fewer classes can result (info `classes_merged`) |
 | `equal_interval` | min + k x (max - min) / count, over the data's min and max (not the domain) |
 | `natural_breaks` | Jenks (Fisher's exact optimization) on at most 10,000 values, sampled by feature id when there are more |
 | `std_dev` | classes one standard deviation wide around the mean; an even count puts a break at the mean, an odd count centers the middle class on it (mean +- 0.5 sd); the outer classes are open |
@@ -2854,7 +2854,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 - `level`: `error` (blocks the write), `warning`, `info`, or `damaged` (a stored style that a later data change broke);
 - `code`;
 - `path`: a JSON pointer, which may use ids (`/classify/density/classes/2`);
-- `message`;
+- `message` (English) and, for an editor that words the issue in its own language, `params`: the facts it names;
 - where possible a `fix` and `allowed` (the valid choices, at most 20).
 
 ```json
@@ -2923,7 +2923,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `not_supported_yet` | error | a construct this deployment cannot render yet (section 19) |
 | `classify_target_conflict` | warning | a later classification covers every feature and sets the same keys (5.7) |
 | `classify_partial_overlap` | info | a later classification sets the same keys for some features |
-| `classes_merged` | info | a classification has fewer classes than its count: equal breaks merged, or geometric intervals over values at or below 0 |
+| `classes_merged` | info | a classification has fewer classes than its count, with why: geometric intervals over values at or below 0 (`case` `not_above_zero`), every value the same (`one_value`), a quantile over repeated values (`repeated_values`), or a class that would be empty or hold one value joined to the next (`joined`); `params` `asked` and `made` |
 | `no_values` | info | a computed classification or value form whose field has no values (an empty dataset, or every value empty) |
 | `classes_stale` | warning | stored classes from an older data fingerprint that could not be recomputed |
 | `too_many_classes`, `too_many_categories` | warning | more than 7 numeric classes or 12 categories |
@@ -3154,9 +3154,9 @@ changes to the current style or discard them. Version history, when it comes, re
   closed tab loses what was not saved: about one second of edits, or everything since going offline.
 - Other people see a stored change when their map loads the style again.
 
-**The AI** writes a whole document, or operations from section 11's list that core applies to the current document.
-Both go through steps 2 to 4. A check without storing (`dry_run: true`) returns the same issues, so the AI can fix its
-document before writing it.
+**The AI** applies edit operations (section 20) with goatlib to the stored document and saves the whole result,
+which goes through steps 1 to 4 like any save. A check without storing is the check route (`POST .../style/{id}/check`),
+which returns the issues of the document it is given, so the AI can correct its edits before saving them.
 
 **Not used:** CRDTs (the server could not refuse an invalid edit, and the stored style would stop being plain JSON) and
 WebSockets (live multiplayer can come later without changing the document or these rules).
@@ -3770,6 +3770,28 @@ Common mistakes the validator answers with a fix:
 - writing `classes` with invented breaks for a computed method (the server replaces them; write the method and
   `count` only);
 - a fractional class zoom (`zoom_not_whole`, fix `round`).
+
+**Edit operations.** The AI changes a stored style with a list of operations, which goatlib applies in order, all or
+none, before the whole result is saved (13.1). A path is a JSON pointer in which a list item with an id is named by
+its id (`/classify/density/palette`).
+
+| `op` | Arguments | Does |
+|---|---|---|
+| `set` | `path`, `value` | sets a value, creating missing objects on the way; a list item must exist (`add` adds one) |
+| `remove` | `path` | removes a key or list item |
+| `add` | `path`, `item`, `after` | adds an item to an id list (`classify`, a classification's `classes`, `rules`, `popup.blocks`, `render.classify.classes`), after the item `after` names, or last |
+| `move` | `path`, `after` | moves an item of an id list after the item `after` names, or first |
+| `retarget` | `path`, `target` | points a classification at another property, as the fix does (section 11) |
+| `use_field` | `path`, `field` | replaces a field reference, as the fix does |
+| `round` | `path` | rounds a class or rule zoom to a whole number, as the fix does |
+
+An added item without an id gets the one the server would give it: a classification its field name when that is free,
+otherwise `k1`, `k2`; classes `c1`, rules `r1`, blocks `b1`. An id the item brings is kept when it is free and is a
+lowercase letter followed by up to 31 lowercase letters, digits or `_`. A later operation of the same call can name the
+new item by its id. `version` and `kind` are not edited. Computed values are never written: an operation on a path under
+`computed`, with a value that contains `computed`, or whose path ends on a class bound or value the server computes
+(5.2) is refused. Bounds written inside a whole class or class list of such a classification are replaced by the server.
+`use_field` replaces a field reference that is there; a key that is not there is refused.
 
 ## 21. Changelog
 

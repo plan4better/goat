@@ -113,6 +113,21 @@ def build_report(
                 "answer": scrub(transcript.answer, known, ANSWER_CHARS),
             }
         )
+        if len(transcript.turns) > 1:
+            # A conversation: what each message's answer did and spent, and
+            # which of its calls were refused for lack of room.
+            tasks[-1]["turns"] = [
+                {
+                    "tools": [call.name for call in turn.tool_calls],
+                    "refused_for_room": turn.refused_for_room,
+                    "input_tokens": turn.input_tokens,
+                    "output_tokens": turn.output_tokens,
+                    "cache_read_tokens": turn.cache_read_tokens,
+                    "requests": turn.requests,
+                    "answer": scrub(turn.answer, known, ANSWER_CHARS),
+                }
+                for turn in transcript.turns
+            ]
     count = len(tasks)
     passed_count = sum(int(t["passed"]) for t in tasks)
     finished = datetime.now(UTC)

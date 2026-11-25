@@ -14,7 +14,6 @@ import type { RasterInfo } from "@/lib/style/raster/metadata";
 import { StyleSaver } from "@/lib/style/save";
 
 import { EMPTY_DATA, StyleEditorProvider } from "@/components/map/panels/styleEditor/context";
-
 import { PopoverProvider } from "@/components/map/panels/styleEditor/popovers/PopoverStack";
 import { RasterColorSection } from "@/components/map/panels/styleEditor/sections/RasterColorSection";
 import { RasterGeneralSection } from "@/components/map/panels/styleEditor/sections/RasterGeneralSection";
@@ -269,7 +268,13 @@ describe("raster general section", () => {
         classes: [{ to: 20 }, { from: 20, to: 40 }, { from: 40, to: 60 }, { from: 60, to: 80 }, { from: 80 }],
       },
     };
-    const second = [{ to: 600 }, { from: 600, to: 650 }, { from: 650, to: 700 }, { from: 700, to: 750 }, { from: 750 }];
+    const second = [
+      { to: 600 },
+      { from: 600, to: 650 },
+      { from: 650, to: 700 },
+      { from: 700, to: 750 },
+      { from: 750 },
+    ];
 
     it("takes that band's breaks when its info arrives, once, and leaves classes that exist alone", async () => {
       const { store, arrive } = arriving(quantiles, asked(1, [20, 40, 60, 80]));
@@ -628,7 +633,11 @@ describe("band math in the Band row", () => {
       domain: [-0.2, 0.9],
       classify: {
         method: "manual",
-        classes: [{ to: 0.2, name: "Bare" }, { from: 0.2, to: 0.5 }, { from: 0.5, name: "Dense" }],
+        classes: [
+          { to: 0.2, name: "Bare" },
+          { from: 0.2, to: 0.5 },
+          { from: 0.5, name: "Dense" },
+        ],
       },
     };
     const { store } = setup(styled, SENTINEL);
@@ -692,7 +701,10 @@ describe("band math in the Band row", () => {
     );
     const { store } = setup({ type: "continuous", palette: "goat:elevation", domain: [0, 3000] }, SENTINEL);
     await choose("style_editor.band", "B2", "style_editor.band_formula");
-    await userEvent.type(screen.getByRole("textbox", { name: "style_editor.formula" }), "(b1 - b2) / (b1 + b2)");
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "style_editor.formula" }),
+      "(b1 - b2) / (b1 + b2)"
+    );
     // A band picked from the menu instead: the box is left on the way, which writes the formula first.
     await pickIn("style_editor.band", 3);
     expect(store.get("render.band")).toBe(3);

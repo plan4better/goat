@@ -2,6 +2,12 @@ import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AssistantRequestError } from "@/lib/assistant/errors";
+import {
+  type MapBridge,
+  markFollowed,
+  registerMapBridge,
+  resetFollowedCalls,
+} from "@/lib/assistant/mapBridge";
 import { addPendingRun, getDockState, resetAssistantStore, setDockState } from "@/lib/assistant/store";
 
 import RunWatcher from "@/components/assistant/RunWatcher";
@@ -38,11 +44,66 @@ beforeEach(() => {
   vi.useFakeTimers();
   window.sessionStorage.clear();
   resetAssistantStore();
+  resetFollowedCalls();
   vi.clearAllMocks();
 });
 afterEach(() => vi.useRealTimers());
 
+const styleStep = (toolCallId: string, after: number) => ({
+  type: "dynamic-tool",
+  toolName: "style_update",
+  toolCallId,
+  state: "output-available",
+  input: {},
+  output: {
+    project_id: "p1",
+    layer_project_id: 7,
+    style_id: "s1",
+    created: false,
+    made_active: false,
+    revision_before: after - 1,
+    revision_after: after,
+  },
+});
+const edited = (parts: unknown[]) => ({
+  ...detail(null),
+  messages: [detail(null).messages[0], { id: "a1", role: "assistant", parts }],
+});
+
 describe("RunWatcher", () => {
+  it("has the open map page read its map once when a run it watched changed a style", async () => {
+    const followMap = vi.fn(async () => undefined);
+    const page: MapBridge = {
+      projectId: "p1",
+      isEditor: true,
+      followStyles: vi.fn(async () => undefined),
+      settle: vi.fn(async () => undefined),
+      followMap,
+      applyView: vi.fn(),
+    };
+    const unregister = registerMapBridge(page);
+    try {
+      // The dock was closed while the answer ran: its first edit was followed live, the second not.
+      markFollowed("live");
+      fetchMock.mockResolvedValue(edited([styleStep("live", 5), styleStep("missed", 6)]));
+      pend();
+      render(<RunWatcher />);
+      await act(() => vi.advanceTimersByTimeAsync(8000));
+      expect(followMap).toHaveBeenCalledTimes(1);
+      expect(followMap).toHaveBeenCalledWith({
+        projectId: "p1",
+        layers: false,
+        state: true,
+        groups: false,
+        basemap: false,
+        scene: false,
+      });
+      expect(page.followStyles).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
   it("announces a run whose chat view was closed once it has ended", async () => {
     fetchMock.mockResolvedValueOnce(detail("run-1")).mockResolvedValueOnce(detail(null));
     pend();

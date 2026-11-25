@@ -46,6 +46,33 @@ describe("SceneSaver", () => {
     expect(put).toHaveBeenCalledTimes(1);
   });
 
+  it("settle sends a waiting change at once and resolves once it is stored, or after its time", async () => {
+    let answer: (v: Awaited<ReturnType<PutScene>>) => void = () => undefined;
+    const put = vi.fn<PutScene>(() => new Promise((resolve) => (answer = resolve)));
+    const saver = new SceneSaver({ document: { scene: {} }, put });
+    let settled = false;
+    await expect(saver.settle()).resolves.toBeUndefined();
+    saver.edit({ scene: { buildings: false } });
+    void saver.settle().then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+    answer({ stored: true, scene: { buildings: false }, issues: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+
+    // No answer: the save retries later, and the wait ends at its time.
+    put.mockRejectedValue(new Error("offline"));
+    saver.edit({ scene: { buildings: true } });
+    settled = false;
+    void saver.settle(3000).then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+    expect(saver.pending).toBe(true);
+  });
+
   it("sends null for an empty scene", async () => {
     const put = vi.fn<PutScene>(async (scene) => ({ stored: true, scene, issues: [] }));
     const saver = new SceneSaver({ document: { scene: { buildings: true } }, put });
@@ -141,6 +168,99 @@ describe("LocalSaver", () => {
     store.undo();
     expect(store.get("scene.terrain")).toBeUndefined();
     expect((store.document as unknown as { scene: object }).scene).toEqual({});
+  });
+});
+
+describe("receive", () => {
+  const stored = (scene: object | null) => ({ stored: true, scene: scene as never, issues: [] });
+
+  it("receive makes the stored scene the base without sending it", async () => {
+    const put = vi.fn<PutScene>(async (scene) => stored(scene));
+    const saver = new SceneSaver({ document: { scene: { buildings: true } }, put });
+    const store = new EditorStore({ saver: saver as never });
+    const told = vi.fn();
+    store.subscribe(told);
+    saver.receive({ buildings: false, terrain: { exaggeration: 2 } });
+    expect(saver.document).toEqual({ scene: { buildings: false, terrain: { exaggeration: 2 } } });
+    expect(saver.pending).toBe(false);
+    // The scene store shows it, and it is no step of the store's undo.
+    expect(store.get("scene.terrain.exaggeration")).toBe(2);
+    expect(told).toHaveBeenCalled();
+    expect(store.canUndo).toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).not.toHaveBeenCalled();
+
+    // The next edit is taken against the received scene: undoing it by hand leaves nothing to send.
+    saver.edit({ scene: { buildings: true, terrain: { exaggeration: 2 } } });
+    saver.edit({ scene: { buildings: false, terrain: { exaggeration: 2 } } });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).not.toHaveBeenCalled();
+
+    // An automatic scene (null) empties the document.
+    saver.receive(null);
+    expect(saver.document).toEqual({ scene: {} });
+    expect(saver.pending).toBe(false);
+  });
+
+  it("receive keeps a local scene edit that is not sent yet", async () => {
+    let answer: (v: Awaited<ReturnType<PutScene>>) => void = () => undefined;
+    const put = vi.fn<PutScene>(() => new Promise((resolve) => (answer = resolve)));
+    const saver = new SceneSaver({ document: { scene: {} }, put });
+    const store = new EditorStore({ saver: saver as never });
+    store.set("scene.buildings", false);
+    saver.receive({ terrain: { exaggeration: 2 } });
+    expect(saver.document).toEqual({ scene: { buildings: false } });
+    expect(store.get("scene.buildings")).toBe(false);
+    expect(put).not.toHaveBeenCalled();
+    // The local scene goes out after its own wait, not because of the receive.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledWith({ buildings: false });
+
+    // A save under way keeps its document too.
+    saver.receive({ terrain: { exaggeration: 3 } });
+    expect(saver.document).toEqual({ scene: { buildings: false } });
+    answer(stored({ buildings: false }));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(saver.pending).toBe(false);
+  });
+
+  it("receive keeps the document while a save is under way, also one edited back to the stored scene", async () => {
+    let answer: (v: Awaited<ReturnType<PutScene>>) => void = () => undefined;
+    const put = vi.fn<PutScene>(() => new Promise((resolve) => (answer = resolve)));
+    const saver = new SceneSaver({ document: { scene: {} }, put });
+    saver.edit({ scene: { buildings: false } });
+    await vi.advanceTimersByTimeAsync(1000);
+    saver.edit({ scene: {} });
+    saver.receive({ terrain: { exaggeration: 2 } });
+    expect(saver.document).toEqual({ scene: {} });
+    // The reply stores what was sent; the document, edited since, goes out after it.
+    answer(stored({ buildings: false }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(put).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenLastCalledWith(null);
+  });
+
+  it("receive keeps a scene the server refused on screen", async () => {
+    const put = vi.fn<PutScene>(async () => ({ stored: false, scene: null, issues: [warning] }));
+    const saver = new SceneSaver({ document: { scene: {} }, put });
+    saver.edit({ scene: { light: { direction: 400 } } } as never);
+    await vi.advanceTimersByTimeAsync(1000);
+    saver.receive({ buildings: false });
+    expect(saver.document).toEqual({ scene: { light: { direction: 400 } } });
+    expect(saver.issues).toEqual([warning]);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(put).toHaveBeenCalledTimes(1);
+  });
+
+  it("a viewer's scene takes the stored one unless the viewer changed it", () => {
+    const saver = new LocalSaver({ scene: {} });
+    saver.receive({ buildings: false });
+    expect(saver.document).toEqual({ scene: { buildings: false } });
+    saver.edit({ scene: { buildings: false, terrain: false } });
+    saver.receive({ buildings: true });
+    expect(saver.document).toEqual({ scene: { buildings: false, terrain: false } });
   });
 });
 

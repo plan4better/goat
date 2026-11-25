@@ -156,6 +156,12 @@ def test_merged_breaks_rebuild_and_say_so() -> None:
     assert [k["fill"]["color"] for k in classes] == sample_colors("colorbrewer:OrRd", 3)
     assert [n.code for n in notes] == ["classes_merged"]
     assert notes[0].level == "info" and notes[0].path == "/classify/density"
+    # A quantile merges only where values repeat: the note says so, and what helps.
+    assert notes[0].message == (
+        "Many values are the same, so some class limits fell on the same value: "
+        "3 classes instead of 5. Choose fewer classes or another method."
+    )
+    assert notes[0].params == {"case": "repeated_values", "asked": 5, "made": 3}
 
 
 def test_one_value_everywhere_gives_one_class() -> None:
@@ -163,7 +169,38 @@ def test_one_value_everywhere_gives_one_class() -> None:
     classes = doc["classify"][0]["classes"]
     assert len(classes) == 1 and "from" not in classes[0] and "to" not in classes[0]
     assert classes[0]["fill"]["color"] == sample_colors("colorbrewer:OrRd", 1)[0]
-    assert [n.code for n in notes] == ["classes_merged"]
+    assert [(n.code, n.message, n.params) for n in notes] == [
+        (
+            "classes_merged",
+            "All values are the same: 1 class instead of 5.",
+            {"case": "one_value", "asked": 5, "made": 1},
+        )
+    ]
+
+
+@pytest.mark.parametrize("method", ["equal_interval", "natural_breaks"])
+def test_other_methods_say_classes_were_joined_not_that_values_repeat(
+    method: str,
+) -> None:
+    """Equal intervals and natural breaks merge where a class would be empty or
+    hold one value (a break on the data's highest value), whether or not values
+    repeat."""
+    doc = copy.deepcopy(QUANTILE)
+    doc["classify"][0]["method"] = method
+    key = ("breaks", "density", method, "5")
+    _, notes = compute(doc, {key: Breaks((3000, 5000, 7000), 1000, 9000, True)})
+    assert [(n.message, n.params) for n in notes] == [
+        (
+            "Some classes would be empty or hold a single value, so they were "
+            "joined: 4 classes instead of 5. Choose fewer classes or another method.",
+            {"case": "joined", "asked": 5, "made": 4},
+        )
+    ]
+
+
+def test_all_classes_made_have_no_note() -> None:
+    _, notes = compute(QUANTILE, STATS)
+    assert notes == []
 
 
 def test_number_targets_take_the_range() -> None:

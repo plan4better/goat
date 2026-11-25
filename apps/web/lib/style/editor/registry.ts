@@ -97,6 +97,34 @@ export class StyleStoreRegistry {
     if (entry.holders === 0 && !entry.store.saver.pending) this.drop(id);
   }
 
+  /**
+   * Sends every pending save now and resolves once none of them is pending, or after `timeoutMs`, whichever comes
+   * first. A store that stopped saving is not waited for. Never rejects.
+   */
+  settle(timeoutMs = 3000): Promise<void> {
+    const savers = [...this.entries.values()].map((entry) => entry.store.saver);
+    savers.forEach((saver) => {
+      if (saver.pending) saver.saveNow();
+    });
+    const waiting = () => savers.some((saver) => saver.pending && saver.status !== "stopped");
+    if (!waiting()) return Promise.resolve();
+    return new Promise((resolve) => {
+      const unsubscribe: Array<() => void> = [];
+      const finish = () => {
+        clearTimeout(timer);
+        unsubscribe.forEach((off) => off());
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      const check = () => {
+        if (!waiting()) finish();
+      };
+      // The registry's own notification too: a store nobody holds is dropped on its last reply, and dropping it
+      // clears the saver's listeners before they all ran.
+      unsubscribe.push(this.subscribe(check), ...savers.map((saver) => saver.subscribe(check)));
+    });
+  }
+
   /** Every store held or waiting for a save, by key id. */
   keys(): string[] {
     return [...this.entries.keys()];
