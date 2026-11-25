@@ -242,7 +242,9 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: 2: an item says whether it has published tiles (`goat:tiles`), and a
 #: facet's repeated values all filter (before, only the last one did).
 #: 3: a dataset that publishes its own thumbnail serves it, not a layer's.
-DOCUMENT_VERSION = 3
+#: 4: Collection Search under a map view counts the matches touching it
+#: (`numberInArea`), and searches rank by place and language in a new order.
+DOCUMENT_VERSION = 4
 
 
 #: Assets this API serves itself, and the ``/assets`` kind each is served as.

@@ -46,6 +46,7 @@ from catalog.routers.params import (
     CollectionSearchQuery,
     ItemsQuery,
     SearchQuery,
+    reader_languages,
     reject_get_encodings,
 )
 from catalog.services import capabilities, stac_build
@@ -404,25 +405,11 @@ def stac_collection_queryables(
 
 def _with_reader_languages(params: SearchParams, request: Request) -> SearchParams:
     """The request's ``Accept-Language`` as ``language_boost`` when none is
-    given, highest weight first, so any client ranks by its reader's language."""
+    given (see ``reader_languages``)."""
     if params.language_boost is not None:
         return params
-    weighted = []
-    for position, part in enumerate(
-        request.headers.get("accept-language", "").split(",")
-    ):
-        tag, _, rest = part.partition(";")
-        code = tag.strip().lower().split("-")[0]
-        if not code or code == "*":
-            continue
-        try:
-            weight = float(rest.strip().removeprefix("q=")) if rest.strip() else 1.0
-        except ValueError:
-            weight = 0.0
-        if weight > 0:
-            weighted.append((-weight, position, code))
-    codes = list(dict.fromkeys(code for _, _, code in sorted(weighted)))
-    return params.model_copy(update={"language_boost": codes or None})
+    codes = reader_languages(None, request.headers.get("accept-language", ""))
+    return params.model_copy(update={"language_boost": codes})
 
 
 @router.get(

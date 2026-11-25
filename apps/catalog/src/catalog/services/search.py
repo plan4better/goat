@@ -616,6 +616,14 @@ def _validated_bbox_boost(p: SearchParams) -> tuple[float, float, float, float] 
 _MAX_BOOST_LANGUAGES = 5
 
 
+def boost_languages(codes: list[str] | None) -> list[str]:
+    """The languages a search ranks by, as it compares them: trimmed, lower
+    case, each once, at most five. The ETag of a ranked route uses it too."""
+    return list(
+        dict.fromkeys(code.strip().lower() for code in codes or [] if code.strip())
+    )[:_MAX_BOOST_LANGUAGES]
+
+
 def _geojson_envelope(
     geometry: dict[str, Any],
 ) -> tuple[float, float, float, float] | None:
@@ -772,13 +780,16 @@ def _build_order_by(
             fit = f"CASE WHEN {_touches_sql(place[0], geom)} THEN {fit} ELSE 0 END"
         prefix += fit + " DESC, "
 
-    # The reader's languages next, not with a typed word, which already picks
-    # the language.
-    languages = list(
-        dict.fromkeys(
-            code.strip().lower() for code in p.language_boost or [] if code.strip()
-        )
-    )[:_MAX_BOOST_LANGUAGES]
+    # How much a planner needs it. Gated on the score column, which only
+    # collections carry.
+    scored = registry.resolve("relevance") is not None
+    if not p.sortby and scored:
+        prefix += f"{RELEVANCE_RANK_SQL} DESC, "
+
+    # The reader's languages within a score, so a language few datasets carry
+    # does not lift weaker rows above curated ones. Not with a typed word,
+    # which already picks the language.
+    languages = boost_languages(p.language_boost)
     if (
         languages
         and not q_terms
@@ -790,11 +801,8 @@ def _build_order_by(
         )
         prefix += f"CASE language_code {ranks} ELSE {len(languages)} END, "
 
-    # How much a planner needs it, then the wider footprint among rows that tie.
-    # Gated on the score column, which only collections carry.
-    scored = registry.resolve("relevance") is not None
+    # Then the wider footprint among rows that tie.
     if not p.sortby and scored:
-        prefix += f"{RELEVANCE_RANK_SQL} DESC, "
         prefix += f"{BBOX_AREA_SQL} DESC, "
 
     if not p.sortby:

@@ -7,6 +7,7 @@ deterministic fixture catalog (``tests/fixtures/gen_catalog.py``).
 
 import json
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -797,6 +798,27 @@ def test_etag_changes_when_content_changes_under_the_same_version(
         assert stale.status_code == 200
 
 
+def test_a_tag_from_the_previous_document_shape_is_stale(
+    client: TestClient, catalog_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Collection Search's documents changed after version 3 (a map view
+    counts the matches touching it, `numberInArea`), so a tag served under 3
+    must not revalidate into a 304 for the same mirror files."""
+    import catalog.services.stac_build as stac_build
+
+    monkeypatch.setattr(stac_build, "DOCUMENT_VERSION", 3)
+    old = CatalogStore(CatalogSettings(data_dir=catalog_dir))
+    old.ensure_current()
+    monkeypatch.undo()
+
+    r = client.get(
+        "/stac/collections",
+        params={"limit": 1},
+        headers={"If-None-Match": f'W/"{old.etag_seed}"'},
+    )
+    assert r.status_code == 200
+
+
 def test_reload_on_version_change(client: TestClient, catalog_dir: Path) -> None:
     r1 = client.get("/stac/search", params={"limit": 1})
     etag1 = r1.headers["etag"]
@@ -1183,7 +1205,75 @@ def test_search_language_boost_ranks_first_without_excluding(
     assert [f["id"] for f in r_header.json()["features"]][: len(english)] == ids[
         : len(english)
     ]
-    assert r_header.headers["vary"] == "Accept-Language"
+    assert "Accept-Language" in _vary(r_header)
+
+
+def _vary(response: Any) -> set[str]:
+    return {value.strip() for value in response.headers.get("vary", "").split(",")}
+
+
+def test_vary_keeps_cors_and_gzip_and_names_the_language_where_it_ranks(
+    client: TestClient,
+) -> None:
+    """``Accept-Language`` joins the ``Vary`` that CORS and compression set,
+    and only on the routes whose order it changes."""
+    origin = client.app.state.settings.cors_origins[0]
+    headers = {"Origin": origin, "Accept-Encoding": "gzip"}
+    for path in ("/stac/search", "/stac/collections"):
+        r = client.get(path, params={"limit": 50}, headers=headers)
+        assert r.status_code == 200
+        assert r.headers["content-encoding"] == "gzip"
+        assert {"Origin", "Accept-Encoding", "Accept-Language"} <= _vary(r)
+
+    first = client.get("/stac/collections", params={"limit": 1}).json()
+    cid = first["collections"][0]["id"]
+    for path in ("/stac/nuts", f"/stac/collections/{cid}"):
+        r = client.get(path, headers=headers)
+        assert r.status_code == 200
+        assert "Origin" in _vary(r)
+        assert "Accept-Language" not in _vary(r)
+
+
+@pytest.mark.parametrize("path", ["/stac/search", "/stac/collections"])
+def test_the_etag_follows_the_ranking_language(client: TestClient, path: str) -> None:
+    """Bodies differ by the language the ranking used, so their tags do too:
+    a revalidation with one language's tag never answers 304 for another."""
+    params = {"limit": 50}
+    de = client.get(path, params=params, headers={"Accept-Language": "de"})
+    en = client.get(path, params=params, headers={"Accept-Language": "en-GB"})
+    assert de.headers["etag"] != en.headers["etag"]
+
+    # The resolved list decides, not how it arrived.
+    explicit = client.get(path, params={**params, "language_boost": "DE"})
+    assert explicit.headers["etag"] == de.headers["etag"]
+
+    stale = client.get(
+        path,
+        params=params,
+        headers={"Accept-Language": "en", "If-None-Match": de.headers["etag"]},
+    )
+    assert stale.status_code == 200
+
+    hit = client.get(
+        path,
+        params=params,
+        headers={
+            "Accept-Language": "de-AT,de;q=0.9",
+            "If-None-Match": de.headers["etag"],
+        },
+    )
+    assert hit.status_code == 304
+    assert hit.headers["etag"] == de.headers["etag"]
+    assert "Accept-Language" in _vary(hit)
+
+
+def test_an_unranked_route_keeps_one_etag_across_languages(
+    client: TestClient,
+) -> None:
+    plain = client.get("/stac/nuts").headers["etag"]
+    for language in ("de", "en"):
+        r = client.get("/stac/nuts", headers={"Accept-Language": language})
+        assert r.headers["etag"] == plain
 
 
 def test_language_boost_is_off_under_a_sort_or_a_word(client: TestClient) -> None:

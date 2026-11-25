@@ -271,6 +271,37 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
         assert ids.index("fit-same") < ids.index("fit-small") < ids.index("fit-big")
 
 
+def test_the_reader_language_decides_within_a_topic_score(tmp_path: Path) -> None:
+    """The topic score leads whatever the language; among equal scores the
+    reader's language comes first, ahead of the larger and newer dataset."""
+
+    def dataset(row_id: str, idx: int, language: str, size: float, month: int) -> Row:
+        updated = datetime(2026, month, 1, tzinfo=timezone.utc)
+        ring = _box(10.0, 48.0, 10.0 + size, 48.0 + size)
+        row = _row(row_id, f"Datensatz {row_id}", ring, updated)
+        return replace(row, type="collection", idx=idx, collection_language=language)
+
+    rows = [
+        dataset("top-de", 0, "de", 2.0, 9),  # score 7, larger and newer
+        dataset("top-en", 0, "en", 0.5, 1),  # score 7
+        dataset("low-en", 1, "en", 3.0, 10),  # score 5, largest and newest
+        dataset("low-de", 1, "de", 0.5, 1),  # score 5
+    ]
+    write_catalog(tmp_path, n=20, extra_rows=rows)
+    write_nuts(tmp_path)
+    fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
+    fresh.ensure_current()
+
+    def order(language: str) -> list[str]:
+        found, _ = search_collections(
+            fresh, SearchParams(limit=50, language_boost=[language])
+        )
+        return [r["id"] for r in found if r["id"] in {row.id for row in rows}]
+
+    assert order("en") == ["top-en", "top-de", "low-en", "low-de"]
+    assert order("de") == ["top-de", "top-en", "low-de", "low-en"]
+
+
 #: A second city far enough away that nothing in it can touch `CITY`.
 FAR_CITY = [13.30, 52.45, 13.50, 52.55]
 #: A region containing BOTH cities, for the case where view and filter agree.
