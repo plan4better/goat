@@ -184,8 +184,7 @@ export function labelHaloSummary(
 
 const DEFAULT_PLACEMENT: Record<Geometry, string> = { point: "auto", line: "line", polygon: "auto" };
 
-/** The halo color a point label starts with: `"auto"` (the label pair's halo, as on lines and polygons) or a fixed
- * color such as `#ffffff` (a plain light halo). */
+/** The halo color a point label starts with: `"auto"`, the label pair's halo, as on lines and polygons. */
 export const POINT_LABEL_HALO = "auto";
 
 /** What a label starts with when its switch turns it on with nothing to bring back: text and halo on Auto. */

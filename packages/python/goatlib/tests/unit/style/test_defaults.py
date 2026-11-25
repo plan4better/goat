@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -61,7 +62,9 @@ def test_the_same_seed_gives_the_same_color_on_every_geometry() -> None:
         return part["color"]
 
     for seed in ("a", "layer-7", "0f9c2d6e-0000-4000-8000-000000000001"):
-        assert color("polygon", seed) == color("polygon", seed)
+        # The first byte of the seed's SHA-256 picks the color, on every call.
+        picked = BOLD[hashlib.sha256(seed.encode()).digest()[0] % len(BOLD)]
+        assert color("polygon", seed) == picked
         assert color("polygon", seed) == color("line", seed) == color("point", seed)
 
 
@@ -108,8 +111,8 @@ STARTING_VALUES = json.loads((FIXTURES / "starting_values.json").read_text())
 def test_what_the_panel_writes_when_a_part_is_switched_on_is_valid(row: dict) -> None:
     # fixtures/starting_values.json holds the documents the web panel writes when
     # a label, an icon, clustering, an outline or a casing is switched on (the web's test:
-    # styleEditor/__tests__/starting-values.test.tsx), and both candidates for a
-    # point label's halo.
+    # styleEditor/__tests__/starting-values.test.tsx), and a point label with text
+    # on Auto beside a white halo set by hand.
     ctx = DataContext(kind="vector", geometry=row["geometry"], fields={})
     assert [i for i in validate(row["style"], ctx) if i.level == "error"] == []
 

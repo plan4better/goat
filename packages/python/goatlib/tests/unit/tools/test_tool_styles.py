@@ -236,7 +236,7 @@ class TestComputedStyle:
         )
         assert again == doc
 
-    def test_a_tool_without_its_own_style_gets_the_new_layer_default_one_with_keeps_it(
+    def test_a_tool_without_a_style_gets_the_layer_default_one_with_a_style_keeps_it(
         self, con: duckdb.DuckDBPyConnection, tmp_path: Path
     ) -> None:
         # A result without a style of its own is an ordinary new layer, as an

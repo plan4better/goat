@@ -37,7 +37,7 @@
     }
   },
   {
-    "name": "the other candidate for a point label: a plain light halo",
+    "name": "a point label with text on Auto beside a white halo set by hand",
     "geometry": "point",
     "style": {
       "version": "1.0.0",

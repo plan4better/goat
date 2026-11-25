@@ -120,24 +120,14 @@ describe("a new polygon layer", () => {
   });
 });
 
-/** The fixture's two point labels are the candidates for the halo a point label starts with; the panel writes the one
- * whose halo is `POINT_LABEL_HALO`. */
-const POINT_CANDIDATES = [
-  "a label switched on beside a point",
-  "the other candidate for a point label: a plain light halo",
-];
-const pointLabelRow = (): Row => {
-  const found = POINT_CANDIDATES.map(row).find(
-    (r) => getIn(r.style, "symbol.label.halo.color") === POINT_LABEL_HALO
-  );
-  if (!found) throw new Error(`no point label row with the halo ${POINT_LABEL_HALO}`);
-  return found;
-};
-
 describe("a label switched on", () => {
-  for (const name of ["a label switched on over a polygon", "a label switched on along a line", "point"]) {
+  for (const name of [
+    "a label switched on over a polygon",
+    "a label switched on along a line",
+    "a label switched on beside a point",
+  ]) {
     it(`starts with its starting text and halo: ${name}`, async () => {
-      const { style, geometry } = name === "point" ? pointLabelRow() : row(name);
+      const { style, geometry } = row(name);
       const { store } = render(without(style, { "symbol.label": undefined }), geometry);
       await openGroup("style_editor.part_label");
       await turnOn();
@@ -166,13 +156,18 @@ describe("a label switched on", () => {
     expect(store.get("symbol.label")).toEqual(label);
   });
 
-  it("the point label's starting halo is the one named place, and both candidates are documents", () => {
-    expect(startingLabel("point")).toEqual({ color: "auto", halo: { color: POINT_LABEL_HALO } });
-    expect(getIn(pointLabelRow().style, "symbol.label")).toEqual(startingLabel("point"));
-    expect(POINT_CANDIDATES.map((name) => getIn(row(name).style, "symbol.label"))).toEqual([
-      { color: "auto", halo: { color: "auto" } },
-      { color: "auto", halo: { color: "#ffffff" } },
-    ]);
+  it("a point label starts with text and halo on Auto; a white halo set by hand beside it is a document too", () => {
+    expect(POINT_LABEL_HALO).toBe("auto");
+    expect(startingLabel("point")).toEqual({ color: "auto", halo: { color: "auto" } });
+    expect(getIn(row("a label switched on beside a point").style, "symbol.label")).toEqual(
+      startingLabel("point")
+    );
+    expect(
+      getIn(row("a point label with text on Auto beside a white halo set by hand").style, "symbol.label")
+    ).toEqual({
+      color: "auto",
+      halo: { color: "#ffffff" },
+    });
   });
 
   it("over a classified fill draws each class's own text color", async () => {

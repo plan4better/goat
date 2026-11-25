@@ -693,7 +693,7 @@ def test_it_says_what_style_get_leaves_out_and_what_a_result_can_carry() -> None
     for key in ("part", "cut", "not_saved", "incomplete", "added"):
         assert key in _plain(_section("Writing the change")), key
     assert "all or nothing" in text or "all or none" in text
-    # A part that is off holds false, and nothing can be set under it.
+    # A part that is off holds false; a key set under it turns it on.
     assert "false" in _plain(_section("Writing the change"))
 
 

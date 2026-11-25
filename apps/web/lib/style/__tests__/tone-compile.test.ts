@@ -186,7 +186,7 @@ describe("the basemap's tone in the panel's swatches", () => {
     for (const [, inputs] of spy.mock.calls) expect(inputs).toMatchObject({ tone: "dark" });
   });
 
-  it("is light where the caller gives none, and changes no swatch today", () => {
+  it("is light where the caller gives none, and a shade's swatch is the same on both tones", () => {
     const spy = vi.spyOn(RULES, "shade");
     const light = swatchOf(doc, "symbol.outline.color", "polygon");
     for (const [, inputs] of spy.mock.calls) expect(inputs).toMatchObject({ tone: "light" });
