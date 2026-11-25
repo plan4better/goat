@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { renderLayersOf } from "@/lib/style/render/viewLayers";
-import { parseThumbnailData, thumbnailLayers, thumbnailView } from "@/lib/utils/map/thumbnail";
+import { basemapTone } from "@/lib/style/tone";
+import {
+  parseThumbnailData,
+  thumbnailBasemap,
+  thumbnailLayers,
+  thumbnailView,
+} from "@/lib/utils/map/thumbnail";
 
 const FILL = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#ff0000" } } };
 
@@ -132,5 +139,23 @@ describe("the thumbnail payload in 3D (3D spec 10)", () => {
     expect(parseThumbnailData("not base64 json")).toBeNull();
     expect(parseThumbnailData(null)).toBeNull();
     error.mockRestore();
+  });
+});
+
+describe("the basemap a thumbnail draws", () => {
+  it("is the built-in the payload names, else Light, and the layers take its tone", () => {
+    expect(thumbnailBasemap("dark").value).toBe("dark");
+    expect(basemapTone(thumbnailBasemap("dark"))).toBe("dark");
+    expect(basemapTone(thumbnailBasemap("light"))).toBe("light");
+    expect(basemapTone(thumbnailBasemap("streets"))).toBe("light");
+    // A custom basemap's id is not known here: the thumbnail draws Light, so its layers are on a light basemap.
+    expect(thumbnailBasemap("6d3c2a1e-0f4b-4c5d-8e9f-0a1b2c3d4e5f").value).toBe("light");
+    expect(thumbnailBasemap(undefined).value).toBe("light");
+    expect(basemapTone(thumbnailBasemap(undefined))).toBe("light");
+  });
+
+  it("is the one whose style the page loads", () => {
+    for (const id of ["dark", "streets", "unknown", undefined])
+      expect(thumbnailBasemap(id).url).toBe(getBasemapUrl(id));
   });
 });

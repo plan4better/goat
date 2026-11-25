@@ -16,7 +16,7 @@ from assistant.llm import capabilities
 from evals import __main__ as cli
 from evals.__main__ import CliError, main
 from evals.graders import Grade
-from evals.harness import ToolCall, Transcript
+from evals.harness import ToolCall, Transcript, TurnReport
 from evals.judge import ModelJudge, Verdict, apply_judge
 from evals.report import (
     PASS_SCORE,
@@ -205,12 +205,13 @@ def test_a_run_writes_a_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 def test_promotion_is_refused_below_the_score() -> None:
-    # 67 of 79 (0.848): below the score, while each suite stays at 0.8 or more
-    # (catalog 29 of 36, project 27 of 30, workflow 11 of 13).
+    # 110 of 131 (0.840): below the score, while each suite stays at 0.8 or more
+    # (catalog 29 of 36, project 23 of 26, workflow 11 of 13, map 47 of 56).
     plain = (
         _plain_ids("catalog", False, 7)
         + _plain_ids("project", False, 3)
         + _plain_ids("workflow", False, 2)
+        + _plain_ids("map", False, 9)
     )
     refusal = promotion_refusal(_report(fail=tuple(plain)))
     assert refusal is not None and "score" in refusal
@@ -243,10 +244,11 @@ def test_promotion_goes_by_the_task_records_not_the_summary() -> None:
         _plain_ids("catalog", False, 7)
         + _plain_ids("project", False, 3)
         + _plain_ids("workflow", False, 2)
+        + _plain_ids("map", False, 9)
     )
     report = _report(fail=plain)
     report["summary"] = {
-        "tasks": 79,
+        "tasks": 131,
         "score": 1.0,
         "undecided": 0,
         "critical_failed": [],
@@ -635,6 +637,48 @@ def test_the_report_scrubs_and_truncates_errors() -> None:
     summary = report["summary"]
     assert (summary["judge_input_tokens"], summary["judge_output_tokens"]) == (7, 3)
     assert summary["total_seconds"] == 1.0 and "wall_seconds" in summary
+
+
+def test_the_report_keeps_the_calls_only_when_asked() -> None:
+    """With ``calls`` each task (and each turn of a conversation) keeps its
+    tool calls with their arguments and answers, scrubbed and cut, so a failed
+    run can be read; without it the record names the tools only."""
+    task = _judge_task()
+    key = "sk-secret-key-abcdef123456"
+    calls = [
+        ToolCall("style_update", {"operations": [{"op": "set"}]}, {"ok": key}, False),
+        ToolCall("style_get", {"layer_project_id": 31}, "x" * 5000, True),
+    ]
+    transcript = _transcript(task, tool_calls=calls)
+    args = ({"provider": "p", "model": "m"}, None, [(task, transcript, [])])
+    plain = build_report(*args, datetime.now(UTC), secrets=[key])
+    assert "calls" not in plain["tasks"][0]
+    kept = build_report(*args, datetime.now(UTC), secrets=[key], calls=True)
+    [first, second] = kept["tasks"][0]["calls"]
+    assert first["name"] == "style_update" and first["failed"] is False
+    assert first["args"] == {"operations": [{"op": "set"}]}
+    assert key not in json.dumps(kept)
+    assert second["failed"] is True and len(second["result"]) <= 2000
+    turns = [
+        TurnReport(prompt="one", answer="a", tool_calls=calls[:1]),
+        TurnReport(prompt="two", answer="b", tool_calls=calls[1:]),
+    ]
+    conversation = _transcript(task, tool_calls=calls, turns=turns)
+    report = build_report(
+        args[0], None, [(task, conversation, [])], datetime.now(UTC), calls=True
+    )
+    turned = report["tasks"][0]["turns"]
+    assert [[c["name"] for c in turn["calls"]] for turn in turned] == [
+        ["style_update"],
+        ["style_get"],
+    ]
+
+
+def test_the_run_command_takes_calls() -> None:
+    from evals.__main__ import _parser
+
+    assert _parser().parse_args(["run"]).calls is False
+    assert _parser().parse_args(["run", "--calls"]).calls is True
 
 
 def test_the_report_names_the_providers_that_answered_and_what_they_billed() -> None:

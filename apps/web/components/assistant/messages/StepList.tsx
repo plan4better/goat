@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, ButtonBase, CircularProgress, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import type { DynamicToolUIPart } from "ai";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +13,8 @@ import { plainTranslate } from "@/lib/assistant/chips";
 import {
   type StepNames,
   type StepRow,
+  foldRepeatedWrites,
+  stepFailed,
   stepLabel,
   stepNames,
   stepResult,
@@ -19,6 +22,7 @@ import {
   stepRunning,
 } from "@/lib/assistant/stepLabels";
 
+import { useUndoRows } from "@/components/assistant/messages/UndoAnswer";
 import { focusRing, mutedText, shimmerSx } from "@/components/assistant/styles";
 
 const JSON_CHARS = 4000;
@@ -60,9 +64,10 @@ export const rowSx = {
 
 /**
  * A step's state: done, failed, running (GOAT's mark, or a spinner with
- * reduced motion), or stopped (the answer ended before the step returned).
+ * reduced motion), stopped (the answer ended before the step returned), or
+ * undone (a change the answer's Undo took back).
  */
-type StepStatus = "done" | "running" | "spinning" | "failed" | "stopped";
+type StepStatus = "done" | "running" | "spinning" | "failed" | "stopped" | "undone";
 
 /** A step's state in one 14px slot. */
 function StatusIcon({ state }: { state: StepStatus }) {
@@ -92,7 +97,15 @@ function StatusIcon({ state }: { state: StepStatus }) {
         justifyContent: "center",
       }}>
       <Icon
-        iconName={failed ? ICON_NAME.CLOSE : state === "stopped" ? ICON_NAME.MINUS : ICON_NAME.CHECK}
+        iconName={
+          failed
+            ? ICON_NAME.CLOSE
+            : state === "stopped"
+              ? ICON_NAME.MINUS
+              : state === "undone"
+                ? ICON_NAME.UNDO
+                : ICON_NAME.CHECK
+        }
         style={{ fontSize: 7, color: failed ? theme.palette.error.main : mutedText(theme) }}
       />
     </Box>
@@ -102,10 +115,16 @@ function StatusIcon({ state }: { state: StepStatus }) {
 /**
  * The tools an answer used (spec §4.7, §10): one line per call with what it
  * found, its input and result on click. The list shows every row it is given;
- * `StepGroup` folds a group's rows behind its summary. While the answer runs
+ * `StepGroup` folds a group's rows behind its summary. A row that stands for
+ * repeated writes shows their count and, on click, each call, the attempts it
+ * corrected included, in the answer's order. While the answer runs
  * (`running`), a step that has not returned says what it is doing, with the
  * shimmer of the Answering line; once the answer ended, such a step is marked
- * as stopped, with the same words: it was under way, not done.
+ * as stopped, with the same words: it was under way, not done. In an answer
+ * that offers Undo (`useUndoRows`), the rows of its changes read as taken back
+ * once undone (the undo mark, struck through), and its last change row ends
+ * with the Undo, or Undone, with lines under it; while the Undo asks about
+ * changes made since, its question stands in that row's place.
  */
 export default function StepList({
   steps,
@@ -125,17 +144,32 @@ export default function StepList({
   const theme = useTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const [open, setOpen] = useState<string | null>(null);
-  const rows = only ?? stepRows(steps);
+  const undo = useUndoRows();
   const names = known ?? stepNames(steps);
   // The labels carry the call's arguments (search words, layer names): React escapes them as text.
   const translate = plainTranslate(t);
+  const rows = only ?? foldRepeatedWrites(stepRows(steps), names, translate);
+  // A call's place in the answer; a corrected attempt of an earlier group is not among `steps` and came first.
+  const place = new Map(steps.map((step, index) => [step.toolCallId, index]));
+  const inOrder = (calls: DynamicToolUIPart[]) =>
+    [...calls].sort((a, b) => (place.get(a.toolCallId) ?? -1) - (place.get(b.toolCallId) ?? -1));
+  /** A line of one of the changes the answer's Undo takes back; a line of repeats is one when any of its calls is. */
+  const isChange = ({ step, repeats = [] }: StepRow) =>
+    !!undo && [step, ...repeats].some((call) => undo.steps.has(call.toolCallId));
+  // The group of the answer's last change carries the Undo, on the last change line it shows.
+  const carrier =
+    undo && steps.some((step) => step.toolCallId === undo.last)
+      ? rows.findLast(isChange)?.step.toolCallId
+      : undefined;
 
   return (
     <Stack gap="1px">
-      {rows.map(({ step, rejected }) => {
+      {rows.map((row) => {
+        const { step, rejected, repeats = [] } = row;
         const expanded = open === step.toolCallId;
-        const output = (step as { output?: unknown }).output;
-        const failed = step.state === "output-error";
+        const undone = !!undo?.undone && isChange(row);
+        const carries = !!undo && step.toolCallId === carrier;
+        const failed = stepFailed(step);
         const unreturned = stepRunning(step);
         const underWay = running && unreturned;
         const stopped = !running && unreturned;
@@ -144,7 +178,12 @@ export default function StepList({
           : stopped
             ? t("assistant_step_stopped")
             : stepResult(step, translate);
-        const extras = [result, rejected.length ? t("assistant_step_retried") : null].filter(Boolean);
+        // A line with a count keeps to it: its details show the corrected attempts.
+        const extras = [
+          result,
+          rejected.length && !repeats.length ? t("assistant_step_retried") : null,
+          repeats.length ? t("assistant_step_times", { count: repeats.length + 1 }) : null,
+        ].filter(Boolean);
         const status: StepStatus = underWay
           ? reducedMotion
             ? "spinning"
@@ -153,30 +192,59 @@ export default function StepList({
             ? "stopped"
             : failed
               ? "failed"
-              : "done";
+              : undone
+                ? "undone"
+                : "done";
+        const line = (
+          <ButtonBase
+            onClick={() => setOpen(expanded ? null : step.toolCallId)}
+            aria-expanded={expanded}
+            sx={{
+              ...rowSx,
+              ...focusRing(theme),
+              ...(carries ? { flex: 1, width: "auto", minWidth: 0 } : {}),
+            }}>
+            <StatusIcon state={status} />
+            <Typography
+              sx={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, overflowWrap: "anywhere" }}>
+              <Box
+                component="span"
+                sx={
+                  underWay && !reducedMotion
+                    ? shimmerSx
+                    : undone
+                      ? { color: mutedText, textDecoration: "line-through" }
+                      : { color: "text.primary" }
+                }>
+                {stepLabel(step, names, translate, unreturned)}
+              </Box>
+              {extras.map((extra) => (
+                <Box
+                  key={extra}
+                  component="span"
+                  sx={{ color: failed && extra === result ? "error.main" : mutedText }}>
+                  {` · ${extra}`}
+                </Box>
+              ))}
+              {/* The strike-through says it only to the eye. */}
+              {undone && <Box component="span" sx={visuallyHidden}>{`, ${t("assistant_step_undone")}`}</Box>}
+            </Typography>
+          </ButtonBase>
+        );
         return (
           <Box key={step.toolCallId}>
-            <ButtonBase
-              onClick={() => setOpen(expanded ? null : step.toolCallId)}
-              aria-expanded={expanded}
-              sx={{ ...rowSx, ...focusRing(theme) }}>
-              <StatusIcon state={status} />
-              <Typography
-                sx={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.5, overflowWrap: "anywhere" }}>
-                <Box component="span" sx={underWay && !reducedMotion ? shimmerSx : { color: "text.primary" }}>
-                  {stepLabel(step, names, translate, unreturned)}
-                </Box>
-                {extras.map((extra) => (
-                  <Box
-                    key={extra}
-                    component="span"
-                    sx={{ color: failed && extra === result ? "error.main" : mutedText }}>
-                    {` · ${extra}`}
-                  </Box>
+            {/* The Undo sits beside the line's own button, never inside it. */}
+            {!carries
+              ? line
+              : (undo?.question ?? (
+                  <Stack direction="row" alignItems="center" gap="4px">
+                    {line}
+                    {undo?.end}
+                  </Stack>
                 ))}
-              </Typography>
-            </ButtonBase>
-            {expanded && (
+            {carries && undo?.notes}
+            {/* The question has nothing to close the details with: they wait until it is answered. */}
+            {expanded && !(carries && undo?.question) && (
               <Box
                 component="pre"
                 sx={{
@@ -199,14 +267,22 @@ export default function StepList({
                 {[
                   // The tool's own name, for whoever wants to know what ran.
                   step.toolName,
-                  // Rejected attempts first, in the order the model made them. The server's error text
-                  // is English and may quote the service, so only the translated mark is shown.
-                  ...rejected.map(
-                    (attempt) =>
-                      `${t("assistant_step_rejected")}\n${pretty(attempt.input)}\n${t("assistant_step_failed")}`
-                  ),
-                  `${t("assistant_step_input")}\n${pretty(step.input)}`,
-                  ...(output === undefined ? [] : [`${t("assistant_step_output")}\n${pretty(output)}`]),
+                  // Each call the line stands for, its rejected attempts included, in the answer's order. The
+                  // server's error text is English and may quote the service, so only the translated mark is shown.
+                  ...inOrder([...rejected, step, ...repeats]).flatMap((call) => {
+                    if (rejected.includes(call)) {
+                      return [
+                        `${t("assistant_step_rejected")}\n${pretty(call.input)}\n${t("assistant_step_failed")}`,
+                      ];
+                    }
+                    const returned = (call as { output?: unknown }).output;
+                    return [
+                      `${t("assistant_step_input")}\n${pretty(call.input)}`,
+                      ...(returned === undefined
+                        ? []
+                        : [`${t("assistant_step_output")}\n${pretty(returned)}`]),
+                    ];
+                  }),
                 ].join("\n\n")}
               </Box>
             )}

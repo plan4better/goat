@@ -2,12 +2,13 @@
 active style, the other style names, an ETag, and `stale` from the tracker."""
 
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from core.core.config import settings
 from core.db.models._link_model import LayerProjectGroup, LayerProjectLink
 from core.db.models.layer_style import LayerStyle
+from core.db.models.user import User
 from goatlib.style.models.map_document import MapDocument
 from httpx import AsyncClient
 from sqlalchemy import text
@@ -284,6 +285,54 @@ async def test_a_collapsed_group_says_expanded_false(
     body = (await get_map(client, world)).json()
     entry = next(e for e in body["map"]["layers"] if e["type"] == "group")
     assert entry["expanded"] is False
+    MapDocument.model_validate(body["map"])
+
+
+@pytest.mark.asyncio
+async def test_a_locked_layer_entry_has_no_filter_and_no_time(
+    client: AsyncClient, db_session: AsyncSession, api_style_world: StyleWorld
+) -> None:
+    """A link the caller has no access to of his own (D7) keeps its place in the
+    tree and its map state; its filter and time value stay out, as they do in
+    its row in the layer list."""
+    world = api_style_world
+    await style(db_session, world.layer_project_id, "Locked")
+    owner = User(
+        id=uuid4(),
+        email=f"o-{uuid4().hex[:6]}@goat.test",
+        firstname="O",
+        lastname="W",
+        avatar="",
+    )
+    db_session.add(owner)
+    await db_session.flush()
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.layer SET user_id = :u, folder_id = NULL, space_id = NULL "
+            "WHERE id = :l"
+        ),
+        {"u": owner.id, "l": world.layer_id},
+    )
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.layer_project SET shareable = false, "
+            "query = CAST(:q AS jsonb), time_value = CAST(:t AS jsonb) WHERE id = :id"
+        ),
+        {
+            "id": world.layer_project_id,
+            "q": '{"cql": {"op": "=", "args": [{"property": "name"}, "Site X"]}}',
+            "t": "2024",
+        },
+    )
+    await db_session.commit()
+
+    response = await get_map(client, world)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["map"]["layers"] == [
+        {"type": "layer", "id": world.layer_project_id, "visible": True}
+    ]
+    assert str(world.layer_project_id) not in body["styles"]
     MapDocument.model_validate(body["map"])
 
 

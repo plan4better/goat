@@ -302,6 +302,34 @@ export const useCatalogItemVersions = (itemIds: string[]) => {
   return { versions, isLoading: itemIds.length > 0 && data === undefined };
 };
 
+/** One empty answer, the same on every render: a new `{}` would re-run everything that depends on it. */
+const NO_DATASET_VERSIONS: Record<string, Record<string, string>> = {};
+
+/** The current layers of each given dataset, as {dataset id: {item id: version}}: a bundle's live version. */
+export const useCatalogDatasetVersions = (datasetIds: string[]) => {
+  const key =
+    datasetIds.length > 0 && CATALOG_API_BASE_URL ? ["catalog-dataset-versions", ...datasetIds] : null;
+  const { data } = useSWR<Record<string, Record<string, string>>>(key, async () => {
+    const pages = await Promise.all(
+      datasetIds.map(
+        (id) =>
+          fetcher(catalogUrl("/search", { collections: [id], limit: CATALOG_MAX_PAGE_SIZE })) as Promise<
+            CatalogItemCollection | undefined
+          >
+      )
+    );
+    // A dataset gone from the catalog, or with more layers than one page, says nothing.
+    return Object.fromEntries(
+      datasetIds.flatMap((id, i) => {
+        const features = pages[i]?.features ?? [];
+        if (!features.length || (pages[i]?.numberMatched ?? 0) > features.length) return [];
+        return [[id, Object.fromEntries(features.map((f) => [f.id, String(f.properties?.version ?? "")]))]];
+      })
+    );
+  });
+  return { versions: data ?? NO_DATASET_VERSIONS };
+};
+
 /**
  * A dataset's own rendering style, from the asset href the item carries.
  *

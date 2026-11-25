@@ -1,11 +1,14 @@
 // The thumbnail page's layers from the payload goatlib injects (`window.__THUMBNAIL_DATA__`): the map's layers top
 // first, each with its active style document (`style`). A layer without one (a payload from before GOAT Style) or
 // with a document of another GOAT Style major draws nothing.
+import { BASEMAPS, DEFAULT_BASEMAP } from "@/lib/constants/basemaps";
 import { type ViewMode, cameraFor, viewModeOf } from "@/lib/scene/view";
 import type { LayerStyle, Scene } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
 import { isDrawableStyle } from "@/lib/style/version";
+
+import type { BuiltInBasemap } from "@/types/map/common";
 
 export function thumbnailLayers(payload: unknown[] | undefined): ViewLayer[] {
   return (payload ?? []).filter(isObject).map((layer) => {
@@ -53,6 +56,16 @@ export function parseThumbnailData(dataParam: string | null): ThumbnailData | nu
     console.error("Failed to parse thumbnail data:", error);
     return null;
   }
+}
+
+/** The basemap a thumbnail draws: the built-in the payload names, else the default one (the page knows no custom
+ * basemap, so it draws the default for one); its layers take this basemap's tone. */
+export function thumbnailBasemap(id: string | null | undefined): BuiltInBasemap {
+  return (
+    BASEMAPS.find((b) => b.value === (id || DEFAULT_BASEMAP)) ??
+    BASEMAPS.find((b) => b.value === DEFAULT_BASEMAP) ??
+    BASEMAPS[0]
+  );
 }
 
 /** How the thumbnail draws the view (3D spec 10): a project in its saved mode with its scene, a layer flat. */

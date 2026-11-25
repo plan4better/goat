@@ -1,9 +1,11 @@
 // How a property's value is set (spec 4): fixed, by zoom, by attribute, a field's values as they are, or by the
 // classes of a classification. The panel's value mode button reads the mode, offers the modes the property takes
 // (spec 4.5, from CAPABILITIES) and switches between them.
+import { DERIVED, derivedColor, followedKey } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
 import { fromForm, valueAt } from "@/lib/style/compile/values";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
+import { rowsOpening } from "@/lib/style/editor/sources";
 import { CAPABILITIES, defaultRange } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -20,6 +22,20 @@ export const MAIN_COLOR: Record<Geometry, string> = {
   polygon: "fill.color",
 };
 
+/** The part a geometry draws when the symbol leaves it out (spec 3). */
+export const MAIN_PART: Readonly<Record<Geometry, string>> = {
+  polygon: "fill",
+  line: "line",
+  point: "marker",
+};
+
+/** Whether a part is drawn: `false` is off; an absent part is off except the geometry's main part (spec 3). */
+export const partOn = (value: unknown, part: string, geometry: Geometry): boolean =>
+  value === false ? false : value === undefined ? MAIN_PART[geometry] === part : true;
+
+/** A key the layer sets once (spec 6.1): one value for all features, held by the base or a single record. */
+export const isPerLayer = (key: string): boolean => CAPABILITIES[key]?.perFeature === false;
+
 const ZOOM_MIN = 0;
 const ZOOM_MAX = 24;
 
@@ -35,7 +51,10 @@ export function keyOf(full: Path): string {
   if (record) return record[1];
   const rule = /^rules\.\d+\.(.+)$/.exec(path);
   if (rule) return rule[1];
-  if (path.startsWith("render.extrude.")) return `h3.${path.slice("render.".length)}`;
+  if (path.startsWith("render.extrude.") || path.startsWith("render.outline."))
+    return `h3.${path.slice("render.".length)}`;
+  // The cluster symbol is a symbol: its keys are the parts' keys.
+  if (path.startsWith("render.symbol.")) return path.slice("render.symbol.".length);
   if (path.startsWith("render.")) return `heatmap.${path.slice("render.".length)}`;
   return path;
 }
@@ -49,13 +68,33 @@ export function targetsOf(c: JsonObject, geometry?: Geometry): string[] {
 const classRecords = (c: JsonObject): JsonObject[] =>
   [...list(c.classes), c.other, c.no_data].filter(isObject);
 
-/** The classification that sets `key` for the whole layer: its target, else one whose class records set it. */
+/** A classification whose classes the server has yet to compute: it sets its target once they come. */
+const pending = (c: JsonObject) => !Array.isArray(c.classes) || c.classes.length === 0;
+
+/** A classification whose classes the server computes (a method, or categories by count): it fills their target on
+ * every computation (spec 12). */
+const computed = (c: JsonObject) =>
+  c.method !== "manual" && !(c.method === "categories" && typeof c.count !== "number");
+
+/** Whether a classification sets `key` by `target`: an explicit one, or the main color of one without, while its
+ * records set that color or its classes are still to come (a classification without `target` may set other keys
+ * only, spec 5.5). */
+export function targets(c: JsonObject, key: string, geometry?: Geometry): boolean {
+  if (typeof c.target === "string") return c.target === key;
+  return targetsOf(c, geometry).includes(key) && (pending(c) || computed(c) || setsIn(c, key));
+}
+
+const setsIn = (c: JsonObject, key: string) => classRecords(c).some((r) => getIn(r, key) !== undefined);
+
+/** The classification that sets `key` for the whole layer: the last one that targets it (a later one wins, spec 5.7),
+ * else the last one whose records set it. A class of a later classification that sets the key draws over the targeting
+ * one only for its own features (class scope shows it there). A key set once for the layer (spec 6.1) is never set by
+ * classes. */
 export function classificationFor(doc: LayerStyle, key: string, geometry?: Geometry): JsonObject | undefined {
+  if (CAPABILITIES[key]?.perFeature === false) return undefined;
   const classify = list(getIn(doc, "classify"));
-  return (
-    classify.find((c) => targetsOf(c, geometry).includes(key)) ??
-    classify.find((c) => classRecords(c).some((r) => getIn(r, key) !== undefined))
-  );
+  const last = (test: (c: JsonObject) => boolean) => classify.filter(test).at(-1);
+  return last((c) => targets(c, key, geometry)) ?? last((c) => setsIn(c, key));
 }
 
 export function modeOf(doc: LayerStyle, path: Path, geometry?: Geometry): Mode {
@@ -209,41 +248,58 @@ export function fixedValue(doc: LayerStyle, path: Path, ctx: SwitchContext): unk
 /** A color as the language writes it. */
 const HEX = /^#([0-9a-f]{6}|[0-9a-f]{8})$/i;
 
-/** The document without the classifications that set `key`, and without `key` in other classifications' records. */
+/** The document without `key` in any classification's records, and without the classifications that set it by
+ * `target`. One without `target` stays, with classes the server no longer colors, while a row of the panel still opens
+ * it (`rowsOpening`): everything its classes hold (names, the eye, zooms) stays reachable in its editor. Otherwise it
+ * goes, and Undo brings it back. */
 function leaveClasses(doc: LayerStyle, key: string, geometry?: Geometry): LayerStyle {
-  const kept = list(getIn(doc, "classify"))
-    .filter((c) => !targetsOf(c, geometry).includes(key))
-    .map((c) => {
-      let next = c;
-      list(c.classes).forEach((_, i) => {
-        next = dropKey(next, `classes.${i}`, key);
-      });
-      for (const record of ["other", "no_data"])
-        if (isObject(next[record])) next = dropKey(next, record, key);
-      return next;
+  const frozen = new Set<JsonObject>();
+  const kept = list(getIn(doc, "classify")).flatMap((c) => {
+    let next = c;
+    list(c.classes).forEach((_, i) => {
+      next = dropKey(next, `classes.${i}`, key);
     });
-  return setIn(doc, "classify", kept.length ? kept : undefined);
+    for (const record of ["other", "no_data"]) if (isObject(next[record])) next = dropKey(next, record, key);
+    if (!targets(c, key, geometry)) return [next];
+    if (typeof c.target === "string" || !geometry) return [];
+    // The classes become the author's, so a recompute does not color them again (spec 12): no palette or count, a
+    // numeric method manual, nothing the server wrote for the color.
+    const { palette: _palette, reverse: _reverse, count: _count, ...rest } = next;
+    if (rest.method !== "categories") rest.method = "manual";
+    if (isObject(rest.computed) && "generated" in rest.computed) {
+      const { generated: _generated, ...computed } = rest.computed;
+      rest.computed = computed;
+    }
+    frozen.add(rest);
+    return [rest];
+  });
+  const next = setIn(doc, "classify", kept.length ? kept : undefined);
+  if (!frozen.size || !geometry) return next;
+  // A row of another key than the one left; a classification without classes (still to come) would claim the color
+  // again.
+  const reachable = kept.filter(
+    (c) =>
+      !frozen.has(c) ||
+      (list(c.classes).length > 0 && rowsOpening(next, c, geometry).some((row) => row !== key))
+  );
+  return setIn(doc, "classify", reachable.length ? reachable : undefined);
 }
 
 const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
-/** Keys that are drawn with another key's value while not set: the arrows with the line's color ("Same as line"), a
- * pattern with the fill's ("Same as fill"). */
-const DRAWN_AS: Record<string, string> = {
-  "arrows.color": "line.color",
-  "fill.pattern_color": "fill.color",
-};
-
-/** The value stops by zoom start from: the value at `path` as one fixed value, or, while it is not set, the value it
- * is drawn with; undefined where neither gives one (a marker without an icon). */
+/** The value stops by zoom start from: the value at `path` as one fixed value, or, while it is not set, the color the
+ * resolver draws in its place (the arrows in the line's hue, "Same as line"; a pattern in the fill's); undefined where
+ * neither gives one (a marker without an icon). */
 function zoomStartOf(doc: LayerStyle, path: Path, ctx: SwitchContext): unknown {
   const value = fixedValue(doc, path, ctx);
   if (value !== undefined && value !== null) return value;
   const key = keyOf(path);
-  const other = DRAWN_AS[key];
+  const derivation = DERIVED[key];
+  const follows = derivation?.absent && derivation.absent.only === undefined ? derivation.follows : undefined;
+  const other = follows && (followedKey(key, ctx.geometry ?? "polygon") ?? Object.values(follows)[0]);
   if (!other || !path.endsWith(key)) return undefined;
   const shown = fixedValue(doc, `${path.slice(0, path.length - key.length)}${other}`, ctx);
-  return shown === null ? undefined : shown;
+  return shown === null || shown === undefined ? undefined : derivedColor(key, undefined, shown);
 }
 
 /** Whether By zoom has a value to start from (the row's value at `path` in `doc`, the view a class or rule shows in

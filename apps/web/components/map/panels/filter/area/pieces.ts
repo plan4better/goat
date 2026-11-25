@@ -4,7 +4,7 @@ import circle from "@turf/circle";
 
 import { DEFAULT_BUFFER_KM } from "@/lib/catalog/spatial";
 import type { AreaFeature, AreaPiece, FilterArea, PolygonCoords, Position } from "@/lib/filter/area";
-import { roundPolygons, viewPolygon } from "@/lib/filter/area";
+import { areaPolygons, roundPolygons, viewPolygon } from "@/lib/filter/area";
 
 /** West, south, east, north. */
 export type Bounds = [number, number, number, number];
@@ -143,28 +143,52 @@ export function withoutFeature(
 const shapeName = (piece: Extract<AreaPiece, { kind: "shape" }>, t: Translate) =>
   piece.label || t(piece.shape ? `filter_panel.area_shape_${piece.shape}` : "filter_panel.area_shape");
 
-const featuresName = (piece: FeaturesPiece, t: Translate) => {
+/** Picked features: one by its name, else counted, with the layer they are of when it is given (`layer`, never for
+ * regions). The layer's name is the user's own and goes into the page as text: nothing to escape. */
+const featuresName = (piece: FeaturesPiece, t: Translate, layer?: string) => {
   const [only] = piece.features;
   if (piece.features.length === 1 && only.name) return only.name;
   const count = piece.features.length;
-  return t(piece.source === REGION_SOURCE ? "filter_panel.area_regions" : "filter_panel.area_features", {
-    count,
-  });
+  if (piece.source === REGION_SOURCE) return t("filter_panel.area_regions", { count });
+  return layer
+    ? t("filter_panel.area_features_of", { count, layer, interpolation: { escapeValue: false } })
+    : t("filter_panel.area_features", { count });
 };
 
-/** What one piece is, as the picker lists it. */
-export function pieceName(piece: AreaPiece, t: Translate): string {
+/** What one piece is, as the picker lists it; `layer` names the layer picked features are of. */
+export function pieceName(piece: AreaPiece, t: Translate, layer?: string): string {
   if (piece.kind === "view") return t("filter_panel.area_view");
-  return piece.kind === "shape" ? shapeName(piece, t) : featuresName(piece, t);
+  return piece.kind === "shape" ? shapeName(piece, t) : featuresName(piece, t, layer);
 }
 
-/** The area in a line: its pieces in their order, the shapes as one where the first is, "outside" said before. */
-export function areaSummary(area: FilterArea, t: Translate): string {
+/** The one layer every piece of a layer's features comes from, by its name in `layers`; none when they come from
+ * several layers or the project has no name for it. */
+function featuresLayer(
+  area: FilterArea,
+  layers: ReadonlyMap<string, string> | undefined
+): string | undefined {
+  const sources = new Set(
+    area.pieces.flatMap((p) => (p.kind === "features" && p.source !== REGION_SOURCE ? [p.source] : []))
+  );
+  const [only] = sources;
+  return (sources.size === 1 && layers?.get(only)) || undefined;
+}
+
+/** The outline the map draws of the area: the area while the panel is on screen and the area has a polygon (the
+ * piece being edited is left out of it), else none. */
+export const drawnOutline = (outline: FilterArea | undefined, shown: boolean): FilterArea | undefined =>
+  shown && outline && areaPolygons(outline).length > 0 ? outline : undefined;
+
+/** The area in a line: its pieces in their order, the shapes as one where the first is, "outside" said before. A
+ * count of a layer's features names the layer (`layers`: the project's layers' names by dataset id) when all of them
+ * come from that one layer. */
+export function areaSummary(area: FilterArea, t: Translate, layers?: ReadonlyMap<string, string>): string {
   const shapes = area.pieces.filter((p) => p.kind === "shape");
+  const layer = featuresLayer(area, layers);
   const parts: string[] = [];
   let counted = false;
   for (const piece of area.pieces) {
-    if (piece.kind !== "shape" || shapes.length === 1) parts.push(pieceName(piece, t));
+    if (piece.kind !== "shape" || shapes.length === 1) parts.push(pieceName(piece, t, layer));
     else if (!counted) {
       counted = true;
       parts.push(t("filter_panel.area_shapes", { count: shapes.length }));

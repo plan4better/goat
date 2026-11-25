@@ -228,7 +228,7 @@ describe("label part", () => {
     const { store } = render({ text: "{population}", format: { decimals: 1 } });
     await openGroup("style_editor.part_label");
     await userEvent.click(within(rowOf("style_editor.numbers")).getByRole("button"));
-    await choose("style_editor.decimals", "1", "style_editor.auto");
+    await choose("style_editor.decimals", "1", "style_editor.decimals_auto");
     expect(store.get("symbol.label.format")).toBeUndefined();
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.abbreviate" }));
     expect(store.get("symbol.label.format")).toEqual({ abbreviate: true });
@@ -331,7 +331,7 @@ describe("label part", () => {
         "button"
       )[0]
     );
-    await choose("style_editor.decimals", "style_editor.auto", "2");
+    await choose("style_editor.decimals", "style_editor.decimals_auto", "2");
     expect(store.get("symbol.label.formats")).toEqual({ "Einwohner 2020": { decimals: 2 } });
   });
 
@@ -728,6 +728,32 @@ describe("label editor rows and popovers", () => {
     expect(store.get("symbol.label.font")).toEqual({ weight: "bold" });
     expect(within(row()).getByRole("button").textContent).toBe("Italic");
     expect(within(row()).getByLabelText("style_editor.differs_for_some_features")).toBeDefined();
+  });
+
+  it("in a class Reset of the Font clears both keys and the label part they leave empty", async () => {
+    const { store } = render(
+      { text: "{name}", font: { weight: "bold" } },
+      "point",
+      {},
+      {
+        classify: [
+          {
+            id: "k",
+            field: "name",
+            method: "categories",
+            classes: [
+              { id: "a", values: ["Berlin"], label: { font: { weight: "regular", style: "italic" } } },
+            ],
+          },
+        ],
+      }
+    );
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openGroup("style_editor.part_label");
+    await openRow("style_editor.text_style");
+    await pickMode("style_editor.font", "style_editor.mode_reset");
+    expect(store.get("classify.0.classes.0")).toEqual({ id: "a", values: ["Berlin"] });
+    expect(store.get("symbol.label.font")).toEqual({ weight: "bold" });
   });
 
   it("in a class the halo width is the class's own", async () => {

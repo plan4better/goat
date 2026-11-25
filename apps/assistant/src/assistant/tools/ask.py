@@ -13,7 +13,9 @@ refused with ``REPORT_FIRST`` the same way (``ToolSpec.report_first``), in
 at most two responses per result. A card that asks again under the header of
 a question the user answered in an earlier card, or offers again what they
 picked under the same question, is refused with that answer named
-(``assistant.asks.repeated_question``), and so is one whose option names a
+(``assistant.asks.repeated_question``), unless the question offers a value
+that ``map_update`` of this answer asked the pick for (``confirm``) and no
+answered card offered; so is one whose option names a
 catalog dataset the answer found but adds nothing
 (``assistant.asks.unadded_dataset``). The ids an option adds are looked up
 before the card is shown, and the result names each option's datasets by
@@ -38,6 +40,7 @@ from assistant.asks import (
     CARD_PREFIX,
     AskUserInput,
     card_data,
+    consent_problem,
     repeated_question,
     unadded_dataset,
 )
@@ -300,7 +303,11 @@ async def _ask(env: ToolEnv, args: AskUserInput) -> AskShown:
         raise ToolFailed(
             "Questions with a card can only be asked in the GOAT assistant."
         )
-    repeat = repeated_question(env.asks, args, env.runs.used_cards)
+    # A value a tool takes as consent only as that tool asked for it.
+    consent = consent_problem(args, env.confirm_values)
+    if consent is not None:
+        raise InputInvalid(consent)
+    repeat = repeated_question(env.asks, args, env.runs.used_cards, env.confirm_values)
     if repeat is not None:
         raise InputInvalid(repeat)
     unadded = unadded_dataset(args, env.catalog_titles)

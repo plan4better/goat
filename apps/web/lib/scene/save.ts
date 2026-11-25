@@ -28,10 +28,13 @@ const RETRY_DELAYS = [5000, 10000, 30000];
 
 abstract class BaseSaver implements DocumentSaver<SceneDocument> {
   protected copy: SceneDocument;
+  /** The scene the server holds as far as we know. */
+  protected saved: Scene | null;
   private readonly listeners = new Set<() => void>();
 
   constructor(document: SceneDocument) {
     this.copy = document;
+    this.saved = sceneToSend(document.scene);
   }
 
   get document(): SceneDocument {
@@ -54,6 +57,21 @@ abstract class BaseSaver implements DocumentSaver<SceneDocument> {
 
   saveNow(): void {}
 
+  /** A scene stored elsewhere (the assistant changed it): the base from now on. It becomes the document unless a
+   * change made here is not stored yet, which stays as it is; nothing is sent because of it. */
+  receive(scene: Scene | null): void {
+    const changedHere = this.unstored();
+    this.saved = sceneToSend(scene ?? undefined);
+    if (changedHere) return;
+    this.copy = { scene: scene ?? {} };
+    this.notify();
+  }
+
+  /** Whether the document differs from the stored scene. */
+  protected unstored(): boolean {
+    return !deepEqual(sceneToSend(this.copy.scene), this.saved);
+  }
+
   protected notify(): void {
     this.listeners.forEach((listener) => listener());
   }
@@ -66,8 +84,6 @@ export class LocalSaver extends BaseSaver {}
 export class SceneSaver extends BaseSaver {
   private readonly put: PutScene;
   private readonly debounceMs: number;
-  /** The scene the server holds as far as we know. */
-  private saved: Scene | null;
   private sending: Scene | null | undefined = undefined;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private retries = 0;
@@ -79,7 +95,6 @@ export class SceneSaver extends BaseSaver {
     super(opts.document);
     this.put = opts.put;
     this.debounceMs = opts.debounceMs ?? 1000;
-    this.saved = sceneToSend(opts.document.scene);
   }
 
   override get issues(): StyleIssue[] {
@@ -102,6 +117,31 @@ export class SceneSaver extends BaseSaver {
 
   override saveNow(): void {
     this.schedule(0);
+  }
+
+  /**
+   * Sends a change still waiting now; resolves once nothing is pending, or after `timeoutMs` (a save that gets no
+   * answer keeps retrying meanwhile). Never rejects.
+   */
+  settle(timeoutMs = 3000): Promise<void> {
+    if (!this.pending) return Promise.resolve();
+    this.saveNow();
+    return new Promise((resolve) => {
+      const finish = () => {
+        clearTimeout(timer);
+        off();
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      const off = this.subscribe(() => {
+        if (!this.pending) finish();
+      });
+    });
+  }
+
+  /** A save under way counts as a change made here: its reply stores the document, not the received scene. */
+  protected override unstored(): boolean {
+    return this.sending !== undefined || super.unstored();
   }
 
   /** The page goes away: a change still waiting is sent at once. */

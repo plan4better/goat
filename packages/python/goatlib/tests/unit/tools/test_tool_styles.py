@@ -113,6 +113,13 @@ class TestBuilders:
         )
         assert "classes" not in c
 
+    def test_tool_polygon_styles_keep_their_look_without_an_outline(self) -> None:
+        # A new upload's outline is the default style's; a tool's result keeps its own look.
+        doc = tool_style.classified("v", tool_style.EMRLD, "polygon")
+        assert doc["symbol"]["outline"] is False
+        given = tool_style.styled("polygon", {"outline": {"color": "#ffffff"}})
+        assert given["symbol"]["outline"] == {"color": "#ffffff"}
+
     def test_bundle_roles_keep_their_look(self) -> None:
         edges = tool_style.bundle_role_style("street_network", "edges", "line")
         assert edges["symbol"]["line"] == {"color": "#717171", "width": 2}
@@ -228,6 +235,36 @@ class TestComputedStyle:
             None, relation="x", geometry="line", fingerprint="f", seed="layer-1"
         )
         assert again == doc
+
+    def test_a_tool_without_a_style_gets_the_layer_default_one_with_a_style_keeps_it(
+        self, con: duckdb.DuckDBPyConnection, tmp_path: Path
+    ) -> None:
+        # A result without a style of its own is an ordinary new layer, as an
+        # upload is: its polygons get the default outline in a darker shade of
+        # the fill. A tool that defines its look keeps it, without an outline.
+        from goatlib.style.defaults import default_style
+
+        relation = f"read_parquet('{cells(con, tmp_path)}')"
+        default = _Runner(con).computed_style(
+            None,
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:1",
+            seed="layer-1",
+        )
+        assert default == default_style(
+            DataContext(kind="vector", geometry="polygon"), seed="layer-1"
+        )
+        assert default["symbol"]["outline"] == {"color": "auto", "width": 1}
+        own = _Runner(con).computed_style(
+            tool_style.styled("polygon", seed="layer-1"),
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:1",
+            seed="layer-1",
+        )
+        assert own["symbol"]["outline"] is False
+        assert own["symbol"]["fill"] == default["symbol"]["fill"]
 
 
 class TestTempMode:

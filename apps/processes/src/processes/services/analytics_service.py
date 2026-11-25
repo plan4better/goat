@@ -732,9 +732,13 @@ class AnalyticsService:
         stored: bool = False,
         fingerprint: str | None = None,
         raster_file: RasterFile | None = None,
+        issue_params: bool = False,
     ) -> dict[str, Any]:
         """A GOAT Style document checked against its layer, with its computed
-        values (classes, domains) written in when `compute` is set.
+        values (classes, domains) written in when `compute` is set. The issues
+        carry their `params` only for a caller that asks (`issue_params`): a
+        caller that reads issues with a strict model and does not know them
+        gets them as before.
 
         Statistics are over the whole layer, never filtered (style spec 12).
         A raster file (`raster_file`, read by the route from the layer row) is
@@ -776,7 +780,14 @@ class AnalyticsService:
         )
         return {
             "document": document,
-            "issues": [i.model_dump(mode="json", exclude_none=True) for i in issues],
+            "issues": [
+                i.model_dump(
+                    mode="json",
+                    exclude_none=True,
+                    exclude=None if issue_params else {"params"},
+                )
+                for i in issues
+            ],
             "feature_count": ctx.feature_count,
             "fields": [
                 {"name": f.name, "type": f.type} for f in (ctx.fields or {}).values()

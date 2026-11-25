@@ -1,6 +1,6 @@
 // Height for polygons (3D spec 8.4): a group row like Fill and Outline with a summary, opening its popover with the
-// part's switch: None, Fixed, By zoom, By attribute, By classes; the first height on a 2D map tilts it once, with Undo;
-// a raw field picks its unit; Base height while Height is set.
+// part's switch, the one way to turn it off and on, as the other parts; on: Fixed, By zoom, By attribute, By classes;
+// the first height on a 2D map tilts it once, with Undo; a raw field picks its unit; Base height while Height is set.
 import { ThemeProvider, createTheme } from "@mui/material";
 import { configureStore } from "@reduxjs/toolkit";
 import { act, render, screen, within } from "@testing-library/react";
@@ -104,6 +104,10 @@ const openHeight = async () => {
   if (!document.querySelector("[data-popover-frame]"))
     await userEvent.click(within(sidebarRow()).getAllByRole("button")[0]);
 };
+const turnOn = async () => {
+  await openHeight();
+  await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height on" }));
+};
 const pick = async (mode: string) => {
   await openHeight();
   await userEvent.click(
@@ -117,24 +121,73 @@ describe("HeightRow", () => {
     const { store } = setup();
     expect(summary()).toBe("None");
     await openHeight();
-    expect(within(popover()).getByRole("checkbox", { name: "Turn height on" })).toBeTruthy();
+    // Off, the popover says so as the other parts' editors do: the switch is the way on.
+    expect(
+      within(popover()).getByText("Off. Turn it on with the switch above; your last settings come back.")
+    ).toBeTruthy();
+    expect(within(popover()).queryByText("Top")).toBeNull();
+    await turnOn();
+    expect(store.get("symbol.extrude")).toEqual({});
+    expect(summary()).toBe("10 m");
     // The title says Height once; its rows are the top and the bottom, as Fill's first row is Color.
     expect(within(popover()).getAllByText("Height")).toHaveLength(1);
     expect(within(popover()).getByText("Top")).toBeTruthy();
-    await pick("Fixed");
-    expect(summary()).toBe("10 m");
+    await pick("By zoom");
+    const height = store.get("symbol.extrude.height");
     // Off remembers the height, on brings it back.
     await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height off" }));
     expect(store.get("symbol.extrude")).toBe(false);
     expect(summary()).toBe("None");
     await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height on" }));
-    expect(store.get("symbol.extrude")).toEqual({ height: 10 });
+    expect(store.get("symbol.extrude.height")).toEqual(height);
+  });
+
+  it("offers no None among the forms of the height: the switch turns it off", async () => {
+    setup({ version: "1.0.0", kind: "vector", symbol: { extrude: { height: 10 } } } as LayerStyle);
+    await openHeight();
+    await userEvent.click(
+      within(popover()).getByRole("button", { name: /^Height: .*Change how the value is set\.$/ })
+    );
+    const items = within(screen.getByRole("menu")).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).not.toContainEqual(expect.stringMatching(/^None/));
+    ["Fixed", "By zoom", "By attribute", "Field values", "By classes"].forEach((name, i) =>
+      expect(within(items[i]).getByText(name)).toBeTruthy()
+    );
+  });
+
+  it("in a class while the layer turns heights off, says so as the other parts do", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: false },
+      classify: [{ field: "use", method: "categories", classes: [{ values: ["office"] }] }],
+    } as unknown as LayerStyle);
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openHeight();
+    expect(within(popover()).getByText(/^Off for the layer\./)).toBeTruthy();
+    expect(within(popover()).queryByText("Top")).toBeNull();
+  });
+
+  it("in a class with heights of its own while the layer turns them off, says so first and disables the switch", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: false },
+      classify: [
+        { field: "use", method: "categories", classes: [{ values: ["office"], extrude: { height: 30 } }] },
+      ],
+    } as unknown as LayerStyle);
+    act(() => store.setScope({ classify: 0, key: 0 }));
+    await openHeight();
+    expect(within(popover()).getByText(/^Off for the layer\./)).toBeTruthy();
+    expect(within(popover()).queryByText("Top")).toBeNull();
+    expect((within(popover()).getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
   });
 
   it("tilts a 2D map once for the first height, with Undo", async () => {
     const { store, redux } = setup();
-    await pick("Fixed");
-    expect(store.get("symbol.extrude")).toEqual({ height: 10 });
+    await turnOn();
+    expect(store.get("symbol.extrude")).toEqual({});
     expect(redux.getState().map.view?.mode).toBe("3d");
     expect(toasts).toHaveLength(1);
     render(<I18nextProvider i18n={english}>{toasts[0]}</I18nextProvider>);
@@ -146,8 +199,9 @@ describe("HeightRow", () => {
     expect(note.textContent).toBe("Viewing in 2D. Show in 3D");
     expect(within(note).getByRole("button", { name: "Show in 3D" })).toBeTruthy();
     // Declined for this layer: no tilt again.
-    await pick("None");
-    expect(store.get("symbol.extrude")).toBeUndefined();
+    await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height off" }));
+    expect(store.get("symbol.extrude")).toBe(false);
+    await userEvent.click(within(popover()).getByRole("checkbox", { name: "Turn height on" }));
     await pick("By zoom");
     expect(redux.getState().map.view?.mode).toBe("2d");
     expect(toasts).toHaveLength(1);
@@ -157,6 +211,7 @@ describe("HeightRow", () => {
 
   it("suggests height fields in the field menu, reads levels as storeys and says so in the summary", async () => {
     const { store } = setup();
+    await turnOn();
     await pick("Field values");
     const menu = screen.getByRole("listbox");
     const items = within(menu).getAllByRole("option");
@@ -190,7 +245,7 @@ describe("HeightRow", () => {
 
   it("raises the polygons in proportion to a field over a range of heights, in metres", async () => {
     const { store, redux } = setup();
-    await openHeight();
+    await turnOn();
     await userEvent.click(
       within(popover()).getByRole("button", { name: /^Height: .*Change how the value is set\.$/ })
     );
@@ -292,6 +347,30 @@ describe("HeightRow", () => {
     setup();
     await openHeight();
     expect(within(popover()).queryByText("Visible")).toBeNull();
+  });
+
+  it("follows a class's own height set from outside the row, in the row and in its editor", async () => {
+    const { store } = setup({
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { extrude: { height: 10 } },
+      classify: [
+        {
+          field: "use",
+          method: "categories",
+          classes: [{ values: ["office"], fill: { color: "#ff0000" } }],
+        },
+      ],
+    } as unknown as LayerStyle);
+    expect(summary()).toBe("10 m");
+    await openHeight();
+    expect(screen.getByRole("slider", { name: "Top" })).toBeTruthy();
+    act(() => store.set("classify.0.classes.0.extrude", { height: 30 }));
+    expect(summary()).not.toBe("10 m");
+    expect(screen.queryByRole("slider", { name: "Top" })).toBeNull();
+    act(() => store.undo());
+    expect(summary()).toBe("10 m");
+    expect(screen.getByRole("slider", { name: "Top" })).toBeTruthy();
   });
 
   it("shows a class's own height in class scope", async () => {

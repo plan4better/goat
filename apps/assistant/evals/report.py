@@ -13,7 +13,7 @@ from typing import Any
 
 from assistant.llm.failures import redact
 from evals.graders import Grade, task_passed
-from evals.harness import Transcript
+from evals.harness import ToolCall, Transcript
 from evals.tasks import EVAL_SET_VERSION, EvalTask, load_tasks
 
 ASSISTANT = Path(__file__).resolve().parents[1]
@@ -56,6 +56,29 @@ def scrub(
     return str(redact(text, secrets))[:limit]
 
 
+def _calls(calls: Iterable[ToolCall], secrets: list[str]) -> list[dict[str, Any]]:
+    """Tool calls with their arguments and answers, for reading a failed run:
+    each scrubbed of the keys in use and cut to ``ANSWER_CHARS``."""
+
+    def kept(value: Any) -> Any:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+        cut = scrub(text, secrets, ANSWER_CHARS) or ""
+        try:
+            return json.loads(cut)
+        except ValueError:
+            return cut
+
+    return [
+        {
+            "name": call.name,
+            "args": kept(call.args),
+            "failed": call.failed,
+            "result": kept(call.result),
+        }
+        for call in calls
+    ]
+
+
 def build_report(
     model: dict[str, str],
     judge: dict[str, str] | None,
@@ -64,7 +87,11 @@ def build_report(
     *,
     secrets: Iterable[str] = (),
     judge_tokens: tuple[int, int] = (0, 0),
+    calls: bool = False,
 ) -> dict[str, Any]:
+    """The results file's content. ``calls`` keeps each task's (and each
+    turn's) tool calls with their arguments and answers besides the tools'
+    names."""
     known = list(secrets)
     tasks: list[dict[str, Any]] = []
     by_suite: dict[str, dict[str, int]] = {}
@@ -113,6 +140,24 @@ def build_report(
                 "answer": scrub(transcript.answer, known, ANSWER_CHARS),
             }
         )
+        if calls:
+            tasks[-1]["calls"] = _calls(transcript.tool_calls, known)
+        if len(transcript.turns) > 1:
+            # A conversation: what each message's answer did and spent, and
+            # which of its calls were refused for lack of room.
+            tasks[-1]["turns"] = [
+                {
+                    "tools": [call.name for call in turn.tool_calls],
+                    "refused_for_room": turn.refused_for_room,
+                    "input_tokens": turn.input_tokens,
+                    "output_tokens": turn.output_tokens,
+                    "cache_read_tokens": turn.cache_read_tokens,
+                    "requests": turn.requests,
+                    "answer": scrub(turn.answer, known, ANSWER_CHARS),
+                    **({"calls": _calls(turn.tool_calls, known)} if calls else {}),
+                }
+                for turn in transcript.turns
+            ]
     count = len(tasks)
     passed_count = sum(int(t["passed"]) for t in tasks)
     finished = datetime.now(UTC)

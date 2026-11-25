@@ -3,11 +3,10 @@ from typing import Any, Dict, List, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
-from goatlib.config.postgres import asyncpg_connect_args
-from goatlib.utils.credentials import postgres_uri
 from pydantic import UUID4
+from sqlmodel import select
 
-from core.core.config import settings
+from core.core import authz
 from core.crud.crud_layer_project import layer_project as crud_layer_project
 from core.crud.crud_layer_project_group import (
     layer_project_group as crud_layer_project_group,
@@ -20,6 +19,7 @@ from core.deps.auth import auth, auth_z
 from core.endpoints.deps import get_db, get_user_id
 from core.endpoints.v2.bundle import authorize_bundle
 from core.schemas.project import (
+    ICatalogUpdate,
     IFeatureStandardProjectRead,
     IFeatureStreetNetworkProjectRead,
     IFeatureToolProjectRead,
@@ -191,43 +191,23 @@ async def add_catalog_items_to_project(
             detail="Adding layers to a project requires editor access to the project",
         )
 
-    import json
-    import uuid as uuid_module
-    from pathlib import Path as FSPath
-
-    import asyncpg
     from goatlib.catalog.promote import (
         CatalogItemNotFoundError,
-        promote,
         read_items,
         resolve_item_ids,
-        service_layer,
+        typed_datasets,
     )
     from starlette.concurrency import run_in_threadpool
 
-    from core.services.materialize_heal import copy_on_disk, decide_heal
-
-    mirror = FSPath(settings.CATALOG_DATA_DIR) / "mirror_items.parquet"
-    layers_dir = FSPath(settings.CATALOG_LAYERS_DIR)
-    if not mirror.exists():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Catalog mirror is not available on this deployment",
-        )
-
-    # Promote writes with goatlib (shared implementation with the workers), so
-    # it speaks plain asyncpg rather than this request's SQLAlchemy session.
-    # A promote is rare (miss-path only) — one short-lived connection is fine.
-    dsn = postgres_uri(
-        settings.POSTGRES_USER,
-        settings.POSTGRES_PASSWORD,
-        settings.POSTGRES_SERVER,
-        settings.POSTGRES_PORT,
-        settings.POSTGRES_DB,
+    from core.services.catalog_promote import (
+        bundle_versions_of,
+        catalog_connection,
+        catalog_mirror,
+        promote_catalog_items,
+        refuse_unaddable,
     )
-    layer_ids: List[UUID4] = []
-    reused_link_ids: List[int] = []
-    to_materialize: List[dict] = []
+
+    mirror = catalog_mirror()
     # What a user picks is a dataset; what promotes is a layer. A single-layer
     # dataset's Collection id is not its item's id, so the ids are resolved
     # against the mirror before anything is promoted.
@@ -237,112 +217,50 @@ async def add_catalog_items_to_project(
         # mirror sized for a million rows does not stall every other core
         # request while it is read.
         items = await run_in_threadpool(read_items, mirror, item_ids)
+        # A typed bundle (an XPlan plan) is added whole, as one shared bundle.
+        typed = await run_in_threadpool(
+            typed_datasets,
+            mirror,
+            {item["collection"] for item in items.values() if item.get("collection")},
+        )
     except CatalogItemNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    # Never a single member, nor some of them: only the plan itself.
+    for catalog_id in catalog_ids:
+        dataset = (items.get(catalog_id) or {}).get("collection")
+        if dataset in typed and catalog_id != dataset:
+            title = typed[dataset][1]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{title}' is added whole, not layer by layer.",
+            )
+    refuse_unaddable(items, typed)
+    # Each bundle version gets its own members, keyed by `bundle_version`.
+    bundle_versions = bundle_versions_of(items, typed)
 
     # Bounded before the first promote: see `catalog_batch_refusal`.
     existing_layers = await crud_layer_project.count_by_project(
         async_session=async_session, project_id=project_id
     )
-    refusal = catalog_batch_refusal(requested=len(item_ids), existing=existing_layers)
+    # A bundle counts once toward the request size, its layers toward the project's.
+    bundle_layers = sum(1 for item in items.values() if item.get("collection") in typed)
+    refusal = catalog_batch_refusal(
+        requested=len(item_ids) - bundle_layers + len(typed),
+        existing=existing_layers + bundle_layers - len(typed),
+    )
     if refusal:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=refusal)
-    # A WMS or WMTS whose link cannot be drawn is refused before anything is
-    # promoted, so a batch is added whole or not at all.
-    for catalog_id in item_ids:
-        try:
-            service_layer(items[catalog_id])
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
-    conn = await asyncpg.connect(
-        dsn,
-        **asyncpg_connect_args("goat-core", settings.POSTGRES_TRANSACTION_POOLER),
-    )
+    conn = await catalog_connection()
     try:
-        for catalog_id in item_ids:
-            result = await promote(
-                conn,
-                catalog_id,
-                mirror_items_path=mirror,
-                schema=settings.SCHEMA,
-                item=items[catalog_id],
-            )
-            layer_id = uuid_module.UUID(result["layer_id"])
-            # Enqueue for a fresh layer — and re-enqueue for an existing one
-            # whose data never arrived (`failed`, or `pending` with no job
-            # behind it because the original enqueue failed) or is gone
-            # (`ready`, but its file is not on disk). That makes re-adding the
-            # dataset the recovery path: no retry affordance, selecting it
-            # again heals it. The rules live in `services.materialize_heal` —
-            # including how old a `pending` or `running` has to be before it
-            # counts as lost.
-            # A WMS/WMTS has nothing to copy, new or healed: a raster with no
-            # file is what it is, not a lost copy.
-            copies_data = result.get("materialize", True)
-            should_enqueue = result["created"] and copies_data
-            add_link = True
-            if not should_enqueue and copies_data:
-                row = await conn.fetchrow(
-                    f"""
-                    SELECT type, other_properties->'catalog_materialize' AS doc
-                    FROM "{settings.SCHEMA}".layer WHERE id = $1
-                    """,
-                    layer_id,
-                )
-                raw_doc = row["doc"] if row else None
-                materialize_doc = (
-                    json.loads(raw_doc) if isinstance(raw_doc, str) else raw_doc
-                )
-                # Off the event loop: the data volume may be a network mount.
-                copy_present = await run_in_threadpool(
-                    copy_on_disk, layers_dir, layer_id, row["type"] if row else None
-                )
-                decision = decide_heal(materialize_doc, copy_present=copy_present)
-                should_enqueue = decision.should_enqueue
-                if decision.reset_to_pending:
-                    # Back to pending so the tree shows "preparing" again.
-                    # Merged, not replaced: keep the prior error as a trail,
-                    # and stamp it like every other status so age is readable.
-                    await conn.execute(
-                        f"""
-                        UPDATE "{settings.SCHEMA}".layer
-                        SET other_properties = jsonb_set(
-                            other_properties,
-                            '{{catalog_materialize}}',
-                            COALESCE(other_properties->'catalog_materialize', '{{}}'::jsonb)
-                                || jsonb_build_object(
-                                    'status', 'pending',
-                                    'updated_at', to_jsonb(now()),
-                                    'heal_reason', $2::text
-                                )
-                        )
-                        WHERE id = $1
-                        """,
-                        layer_id,
-                        decision.reason,
-                    )
-                if should_enqueue:
-                    # A heal reuses the broken entry already in the project
-                    # rather than adding a "Copy from …" twin next to it.
-                    # (Re-adding a HEALTHY dataset still duplicates on
-                    # purpose — two entries of one dataset, two stylings.)
-                    existing_link_id = await conn.fetchval(
-                        f"""
-                        SELECT id FROM "{settings.SCHEMA}".layer_project
-                        WHERE project_id = $1 AND layer_id = $2
-                        ORDER BY id LIMIT 1
-                        """,
-                        project_id,
-                        layer_id,
-                    )
-                    if existing_link_id is not None:
-                        reused_link_ids.append(existing_link_id)
-                        add_link = False
-            if add_link:
-                layer_ids.append(layer_id)
-            if should_enqueue:
-                to_materialize.append({"layer_id": result["layer_id"]})
+        promoted = await promote_catalog_items(
+            conn,
+            items,
+            item_ids,
+            mirror=mirror,
+            typed=typed,
+            bundle_versions=bundle_versions,
+            project_id=project_id,
+        )
     finally:
         await conn.close()
 
@@ -354,7 +272,7 @@ async def add_catalog_items_to_project(
     # remaining layers stay pending without another wait each.
     await submit_each(
         process_id="catalog_materialize",
-        inputs=to_materialize,
+        inputs=promoted.to_materialize,
         access_token=access_token,
     )
 
@@ -362,13 +280,38 @@ async def add_catalog_items_to_project(
         await crud_layer_project.create(
             async_session=async_session,
             project_id=project_id,
-            layer_ids=layer_ids,
+            layer_ids=promoted.link_layer_ids,
             user_id=user_id,
         )
-        if layer_ids
+        if promoted.link_layer_ids
         else []
     )
     assert isinstance(layers_project, List)
+    reused_link_ids = promoted.reused_link_ids
+    for bundle_id, dataset in promoted.bundles.items():
+        # A bundle already in the project: its entries if this add healed a copy, else 409.
+        group_id = await async_session.scalar(
+            select(LayerProjectGroup.id).where(
+                LayerProjectGroup.project_id == project_id,
+                LayerProjectGroup.bundle_id == bundle_id,
+            )
+        )
+        if group_id is not None and dataset in promoted.healed_bundles:
+            reused_link_ids += list(
+                await async_session.scalars(
+                    select(LayerProjectLink.id).where(
+                        LayerProjectLink.layer_project_group_id == group_id
+                    )
+                )
+            )
+            continue
+        _, members_project = await crud_layer_project_group.add_bundle(
+            async_session,
+            project_id=project_id,
+            bundle_id=bundle_id,
+            user_id=user_id,
+        )
+        layers_project = layers_project + members_project
     if reused_link_ids:
         layers_project = layers_project + await crud_layer_project.get_by_ids(
             async_session=async_session,
@@ -377,6 +320,66 @@ async def add_catalog_items_to_project(
             user_id=user_id,
         )
     return layers_project
+
+
+@router.post(
+    "/{project_id}/catalog-update",
+    response_model=List[
+        IFeatureStandardProjectRead
+        | IFeatureToolProjectRead
+        | IFeatureStreetNetworkProjectRead
+        | ITableProjectRead
+        | IRasterProjectRead
+    ],
+    response_model_exclude_none=True,
+    status_code=200,
+    dependencies=[Depends(auth_z)],
+)
+async def update_catalog_entry(
+    async_session: AsyncSession = Depends(get_db),
+    access_token: str = Depends(auth),
+    project_id: UUID4 = Path(..., description="The ID of the project"),
+    target: ICatalogUpdate = Body(...),
+    user_id: UUID = Depends(get_user_id),
+) -> List[
+    IFeatureStandardProjectRead
+    | IFeatureToolProjectRead
+    | IFeatureStreetNetworkProjectRead
+    | ITableProjectRead
+    | IRasterProjectRead
+]:
+    """Move a catalog layer entry, or a catalog bundle group, to the catalog's
+    newer version in place: same entries, same place, name, filter and styles."""
+    from core.services.catalog_update import (
+        update_catalog_bundle,
+        update_catalog_layer,
+    )
+
+    await crud_project.get_live_or_404(async_session, project_id)
+    await authz.require(async_session, "project", project_id, user_id, "write")
+    if target.group_id is not None:
+        link_ids = await update_catalog_bundle(
+            async_session,
+            project_id=project_id,
+            group_id=target.group_id,
+            user_id=user_id,
+            access_token=access_token,
+        )
+    else:
+        assert target.layer_project_id is not None
+        link_ids = await update_catalog_layer(
+            async_session,
+            project_id=project_id,
+            link_id=target.layer_project_id,
+            user_id=user_id,
+            access_token=access_token,
+        )
+    return await crud_layer_project.get_by_ids(
+        async_session=async_session,
+        ids=link_ids,
+        project_id=project_id,
+        user_id=user_id,
+    )
 
 
 @router.post(

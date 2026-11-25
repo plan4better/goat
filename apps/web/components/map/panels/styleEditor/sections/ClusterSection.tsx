@@ -18,13 +18,33 @@ import {
   withClusterValue,
 } from "@/lib/style/editor/parts";
 import { type Path, getIn, setIn } from "@/lib/style/editor/store";
-import { choiceLabel } from "@/lib/style/editor/summaries";
+import { choiceLabel, summarize } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { isObject } from "@/lib/style/json";
 
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useEditor,
+  useMapZoom,
+  useStyleData,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
-import { ChoiceRow, MAX_ZOOM, PanelSection, Row, SliderRow } from "@/components/map/panels/styleEditor/rows";
+import { ZoomEditor } from "@/components/map/panels/styleEditor/editors/ZoomEditor";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
+import {
+  anchorTopOf,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import {
+  ChoiceRow,
+  GroupRow,
+  MAX_ZOOM,
+  PanelSection,
+  Row,
+  SliderRow,
+} from "@/components/map/panels/styleEditor/rows";
+import { ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
 import { ValueRow } from "@/components/map/panels/styleEditor/sections/H3Section";
 import { DomainRow } from "@/components/map/panels/styleEditor/sections/HeatmapSection";
 
@@ -56,10 +76,59 @@ const SIZE: Path = "render.symbol.marker.size";
  * keeps its scale and domain; a fixed size is both ends, and an edit sizes the circles by count (the default symbol's
  * scale). */
 function ClusterSizeRow() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const store = useEditor();
+  const { fields } = useStyleData();
+  const mapZoom = useMapZoom();
+  const popover = usePopover();
+  const next = useNextLevel();
   useStyleValue("render.symbol");
   const size = getIn(store.document, SIZE) ?? clusterFallback(store.document, "marker.size");
+  // A size by zoom: its stops, edited in the zoom editor; By count goes back to circles sized by count, over the
+  // smallest and largest stop.
+  if (isObject(size) && Array.isArray(size.zoom)) {
+    const label = t("style_editor.size");
+    const ends = (size.zoom as unknown[]).flatMap((stop) =>
+      Array.isArray(stop) && typeof stop[1] === "number" ? [stop[1] as number] : []
+    );
+    const byCount = () =>
+      store.update(
+        (doc) =>
+          setIn(withClusterSymbol(doc), SIZE, {
+            ...DEFAULT_CLUSTER_SYMBOL.marker.size,
+            ...(ends.length ? { range: [Math.min(...ends), Math.max(...ends)] } : {}),
+          }),
+        SIZE
+      );
+    return (
+      <GroupRow
+        label={label}
+        value={summarize(store.document, SIZE, t, { fields, mapZoom, language: i18n.language })}
+        curve
+        mode={
+          <ValueModeButton
+            label={label}
+            propertyKey="marker.size"
+            mode="zoom"
+            modes={["attribute", "zoom"]}
+            labels={{ attribute: t("style_editor.cluster_size_by_count") }}
+            subs={{ attribute: t("style_editor.cluster_size_by_count_sub") }}
+            onSelect={(to) => {
+              if (to === "attribute") byCount();
+            }}
+          />
+        }
+        onOpen={(anchor) =>
+          popover.open(next, {
+            key: `zoom:${SIZE}`,
+            title: t("style_editor.by_zoom_title", { label, ...PLAIN }),
+            anchorTop: anchorTopOf(anchor),
+            render: () => <ZoomEditor path={SIZE} />,
+          })
+        }
+      />
+    );
+  }
   const fixed = typeof size === "number" ? size : (DEFAULTS["marker.size"] as number);
   const range: [number, number] =
     isObject(size) && Array.isArray(size.range) ? (size.range as [number, number]) : [fixed, fixed];
@@ -149,7 +218,10 @@ export function ClusterSection() {
         onChange={(value) => store.set("render.count", value)}
       />
       <ValueRow ops={VALUE_OPS} onChange={writeValue} />
-      <ClusterColorRow label={t("style_editor.color")} symbolKey="marker.color" />
+      {/* Like the points with the count in the middle, the points' own marker draws: the color is the badge's only. */}
+      {!(look === "points" && count === "center") && (
+        <ClusterColorRow label={t("style_editor.color")} symbolKey="marker.color" />
+      )}
       <ClusterColorRow label={t("style_editor.cluster_number_color")} symbolKey="label.color" />
       {look !== "points" && <ClusterSizeRow />}
       {look !== "points" && byValue && <DomainRow path={`${SIZE}.domain`} />}

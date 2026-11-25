@@ -12,19 +12,34 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 23
+EVAL_SET_VERSION = 33
 
 HERE = Path(__file__).resolve().parent
-Suite = Literal["catalog", "project", "workflow"]
+Suite = Literal["catalog", "project", "workflow", "map"]
 TASK_FILES: dict[Suite, Path] = {
     "catalog": HERE / "catalog_tasks.jsonl",
     "project": HERE / "project_tasks.jsonl",
     "workflow": HERE / "workflow_tasks.jsonl",
+    "map": HERE / "map_tasks.jsonl",
 }
 
 
 class _Check(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class _Graded(_Check):
+    """A check of a task. In a task of several messages (``conversation``) it
+    grades the answer to ``prompt`` unless it names another turn."""
+
+    #: The turn graded, counted from 1 over the eval user's messages: the
+    #: conversation's, then the prompt's. A turn holds the answer to the
+    #: message and the answer after the card the eval user answered in it;
+    #: the tools, answer and length checks read that turn, the style and map
+    #: checks the project before and after it. "all" grades the whole
+    #: conversation: every call, and the project before its first turn and
+    #: after its last.
+    turn: Annotated[int, Field(ge=1)] | Literal["all"] | None = None
 
 
 class Oracle(_Check):
@@ -42,7 +57,7 @@ class Oracle(_Check):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-class RecordsCheck(_Check):
+class RecordsCheck(_Graded):
     """The run's catalog tool results contain these records (an item or its dataset)."""
 
     kind: Literal["records"]
@@ -50,7 +65,7 @@ class RecordsCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class ShownCheck(_Check):
+class ShownCheck(_Graded):
     """The datasets the answer showed as cards (``catalog_show_records``): these
     and not those (an item or its dataset)."""
 
@@ -59,7 +74,7 @@ class ShownCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class ShownItemsCheck(_Check):
+class ShownItemsCheck(_Graded):
     """The user's own items the answer showed as cards (``core_show_items``),
     by name: these and not those."""
 
@@ -68,7 +83,7 @@ class ShownItemsCheck(_Check):
     exclude: list[str] = Field(default_factory=list)
 
 
-class FiltersCheck(_Check):
+class FiltersCheck(_Graded):
     """The last catalog.filters proposal sets these filters."""
 
     kind: Literal["filters"]
@@ -78,7 +93,7 @@ class FiltersCheck(_Check):
     nuts: list[str] = Field(default_factory=list)
 
 
-class NumberCheck(_Check):
+class NumberCheck(_Graded):
     """The answer states this number (read in English and German notation)."""
 
     kind: Literal["number"]
@@ -87,7 +102,7 @@ class NumberCheck(_Check):
     tolerance: float = 0.0
 
 
-class NotStatedCheck(_Check):
+class NotStatedCheck(_Graded):
     """The answer does not state this number: a value the model may not have
     read, such as one of a locked layer."""
 
@@ -98,16 +113,17 @@ class NotStatedCheck(_Check):
     tolerance: float = 0.05
 
 
-class TextCheck(_Check):
+class TextCheck(_Graded):
     """The answer names this value (case-insensitive)."""
 
     kind: Literal["text"]
     expected: str | Oracle
 
 
-class AnswerCheck(_Check):
+class AnswerCheck(_Graded):
     """The answer names one of ``any_of``, all of ``all_of`` and none of
-    ``none_of`` (whole words, case-insensitive)."""
+    ``none_of`` (whole words, case-insensitive), and is at most ``max_chars``
+    characters long."""
 
     kind: Literal["answer"]
     any_of: list[str] = Field(default_factory=list)
@@ -118,9 +134,12 @@ class AnswerCheck(_Check):
     #: part of the answer, for all three lists: the prompt has the model show
     #: those items as cards and not list them again in the text.
     with_shown_items: bool = False
+    #: The longest answer that passes, in characters, as the dock shows it
+    #: (the text before tool calls included).
+    max_chars: int | None = Field(default=None, ge=1)
 
 
-class ToolsCheck(_Check):
+class ToolsCheck(_Graded):
     """Tools (wire names) the run called, or must not have called."""
 
     kind: Literal["tools"]
@@ -130,11 +149,25 @@ class ToolsCheck(_Check):
     tried: list[str] = Field(default_factory=list)
     #: Not called at all, not even in a call that failed.
     not_called: list[str] = Field(default_factory=list)
-    #: The most calls a tool may get, e.g. one try of a write the user may not make.
+    #: The most calls a tool may get, e.g. one try of a write the user may not
+    #: make. A key joining tools with "+" bounds their calls together.
     at_most: dict[str, int] = Field(default_factory=dict)
+    #: Each with a call that succeeded, the first such call of each after
+    #: that of the one before it.
+    in_order: list[str] = Field(default_factory=list)
+    #: Reference files of a skill, each returned by a skills_load call that
+    #: succeeded (its ``file``).
+    loaded: list[str] = Field(default_factory=list)
+    #: The most times each skill's instructions were loaded (a skills_load
+    #: call without ``file`` that succeeded), e.g. once in a conversation.
+    skill_loads: dict[str, int] = Field(default_factory=dict)
+    #: No call was refused because the answer had no room left for it: by
+    #: its stage, its look-ups used up, or a result too large for what was
+    #: left (``evals.harness.refused_for_room``).
+    not_refused_for_room: bool = False
 
 
-class DocsCheck(_Check):
+class DocsCheck(_Graded):
     """The run read one of these pages of GOAT's user docs with docs_read (a
     call that succeeded), by page id: an answer about GOAT's interface comes
     from the page that describes it."""
@@ -143,22 +176,211 @@ class DocsCheck(_Check):
     any_of: list[str] = Field(min_length=1)
 
 
-class ViewCheck(_Check):
-    """The last map.view proposal frames this layer, or contains this point."""
+class ViewCheck(_Graded):
+    """The view the answer's map_update calls left the page with (their
+    results' ``view``, applied in order): it frames this layer (the last
+    ``set_view`` that moves the map fits it), contains this point, is in this
+    mode, tilted at least this far."""
 
     kind: Literal["view"]
     layer_project_id: int | None = None
     contains: tuple[float, float] | None = None
+    mode: Literal["2d", "3d"] | None = None
+    min_pitch: float | None = None
 
 
-class NotSentCheck(_Check):
+class PathRule(_Check):
+    """The value at a JSON pointer into a style document (a classification
+    also by its field: ``/classify/density/...``) or the scene. ``exists``
+    counts a part switched off (``false``) or null as absent."""
+
+    path: str
+    equals: Any = None
+    one_of: list[Any] | None = None
+    exists: bool | None = None
+    #: A number smaller than this.
+    below: float | None = None
+    #: A number larger than this.
+    above: float | None = None
+    #: A text this regular expression finds (``re.search``).
+    pattern: str | None = None
+
+    @model_validator(mode="after")
+    def _says_what_it_expects(self) -> "PathRule":
+        rules = (self.one_of, self.exists, self.below, self.above, self.pattern)
+        if "equals" not in self.model_fields_set and all(r is None for r in rules):
+            raise ValueError(f"{self.path}: the rule expects nothing")
+        return self
+
+
+class ClassRule(_Check):
+    """The classification of ``field`` in the checked style (a raster's
+    ``/render/classify``, whatever the field): its method, number of
+    classes as stored, the kind of its palette and the property it sets
+    (``target``, by default the geometry's main color). The method
+    ``by_attribute`` also accepts a value by attribute of the field at the
+    target (spec 4.3), which has no classes."""
+
+    field: str
+    target: str | None = None
+    methods: list[str] = Field(min_length=1)
+    min_classes: int = 2
+    max_classes: int = 12
+    palette_kind: Literal["sequential", "diverging", "qualitative"] | None = None
+
+
+class LegendRule(_Check):
+    """Shares of the classification's classes over the layer's features
+    under its saved filter."""
+
+    #: No class holds more than this share.
+    max_share: float | None = None
+    #: The share in no class.
+    max_other: float | None = None
+
+
+class ColorRule(_Check):
+    """An outcome of the checked style's colors, read with goatlib's color
+    rules (spec 4.6 and 18.10) on the base symbol, classes and rules aside
+    where a kind does not name them:
+
+    - ``outline_follows``: the outline is ``"auto"``, a darker shade of each
+      feature's fill, it draws (width above 0, opacity not 0), and no
+      classification, class or rule sets its color or switches it off;
+    - ``labels_readable``: the label's opaque text reads on its halo by the
+      contrast floor (4.5 to 1) on a basemap of ``tone``, ``"auto"`` resolved as
+      the map resolves it; without a halo the text is read on the dark or light
+      ground goatlib's fallback label takes for the tone;
+    - ``fill_half_transparent``: the fill draws at 50 % in the color it had,
+      through its ``opacity`` or through its color's own transparency, not both;
+    - ``outline_only``: the fill draws nothing (off, opacity 0 or a None color),
+      the layer's opacity is not 0, and an outline is drawn in the hue of the
+      fill the style had before;
+    - ``class_none``: the class of ``value`` in the classification of ``field``
+      has a None fill in the hue it had and still draws its border, and the
+      classification's other records are as before.
+    """
+
+    kind: Literal[
+        "outline_follows",
+        "labels_readable",
+        "fill_half_transparent",
+        "outline_only",
+        "class_none",
+    ]
+    tone: Literal["light", "dark"] = "light"
+    field: str | None = None
+    value: str | None = None
+
+    @model_validator(mode="after")
+    def _names_its_class(self) -> "ColorRule":
+        if self.kind == "class_none" and (self.field is None or self.value is None):
+            raise ValueError("class_none names a field and a value")
+        return self
+
+
+class StyleCheck(_Graded):
+    """The style the layer draws after the answer, as core stored it: it
+    differs from the style active before (computed stamps aside), has no
+    error, and meets every condition. ``where`` says which style that is:
+    "same", the style active before, edited in place, and no style made for
+    the layer; "new", a style made in the answer; "any", either of them.
+    For a layer the answer added (a run's result), the style before is the
+    one the layer arrived with."""
+
+    kind: Literal["style"]
+    layer_project_id: int
+    where: Literal["same", "new", "any"]
+    #: Styles made for the layer in the answer, at least.
+    variants: int | None = None
+    #: The style the layer draws after the answer is this one of the styles
+    #: made for it in the answer, counted from 1 in the order they were made.
+    active_variant: int | None = Field(default=None, ge=1)
+    classification: ClassRule | None = None
+    paths: list[PathRule] = Field(default_factory=list)
+    #: At least one of these holds.
+    paths_any: list[PathRule] = Field(default_factory=list)
+    #: Each of these holds.
+    colors: list[ColorRule] = Field(default_factory=list)
+    legend: LegendRule | None = None
+    #: Pointers whose value equals the one in the style active before.
+    unchanged: list[str] = Field(default_factory=list)
+    #: The fields the popup names (attributes, a block's field, ``{{ }}``).
+    popup_fields: list[str] = Field(default_factory=list)
+    #: The eval user's Undo (the task's ``undo``) brought back the layer's
+    #: styles and active style as they were before.
+    undone: bool = False
+
+
+class AreaRule(_Check):
+    """A layer filter's area, switched on, as its notes describe it: exactly
+    these region ids, features of exactly these layers (layer_project_id),
+    the map view or not, drawn shapes or not, inside or outside."""
+
+    regions: list[str] = Field(default_factory=list)
+    layers: list[int] = Field(default_factory=list)
+    #: The features picked from those layers together, when given.
+    features: int | None = None
+    view: bool = False
+    shapes: bool = False
+    outside: bool = False
+
+
+class LayerRule(_Check):
+    """A layer of the map project after the answer."""
+
+    #: As drawn: the layer and every group around it shown.
+    visible: bool | None = None
+    position: str | None = None
+    name: str | None = None
+    #: The name of the group it is in, "" for the top level.
+    group: str | None = None
+    #: The name of its active style.
+    active_style: str | None = None
+    #: Features its stored filter keeps, counted on the fixture's table.
+    filter_count: int | None = None
+    #: Condition rows of the stored filter (a drawn area and the switched-off
+    #: rows aside).
+    filter_rows: int | None = None
+    #: Switched-off rows the filter keeps in its notes (``ui.off``).
+    off_rows: int | None = None
+    #: The drawn area and its notes are as they were.
+    area_kept: bool | None = None
+    #: The filter's area ("none": the filter has none).
+    area: AreaRule | Literal["none"] | None = None
+    #: The filter's rows (switched-off ones included) and match are as they
+    #: were.
+    rows_kept: bool | None = None
+
+
+class MapCheck(_Graded):
+    """The map project as core held it after the answer."""
+
+    kind: Literal["map"]
+    layers: dict[int, LayerRule] = Field(default_factory=dict)
+    #: (a, b): a is drawn above b.
+    above: list[tuple[int, int]] = Field(default_factory=list)
+    basemap: str | None = None
+    scene: list[PathRule] = Field(default_factory=list)
+    removed: list[int] = Field(default_factory=list)
+    kept: list[int] = Field(default_factory=list)
+    #: The state after equals the state before, computed stamps aside.
+    writes: Literal["none"] | None = None
+    #: The eval user's Undo brought the whole map project back as it was.
+    undone: bool = False
+    #: Graded on the state when the card was shown, before the eval user
+    #: answered it (a task with ``answer_card``).
+    before_answer: bool = False
+
+
+class NotSentCheck(_Graded):
     """No request to geoapi or processes names this layer (a locked one)."""
 
     kind: Literal["not_sent"]
     layer_id: str
 
 
-class LanguageCheck(_Check):
+class LanguageCheck(_Graded):
     """The answer is in this language: the prompt's, whatever language the data
     or the earlier turns are in."""
 
@@ -166,7 +388,7 @@ class LanguageCheck(_Check):
     expected: Literal["en", "de"]
 
 
-class AskedCheck(_Check):
+class AskedCheck(_Graded):
     """The run showed an ask_user card: at least ``questions_min`` questions
     in its first card, and these option values offered (all of ``offers``,
     one of ``offers_any``)."""
@@ -177,7 +399,7 @@ class AskedCheck(_Check):
     offers_any: list[str] = Field(default_factory=list)
 
 
-class WorkflowCreatedCheck(_Check):
+class WorkflowCreatedCheck(_Graded):
     """The run created a workflow that core saved (with ``via`` "template"
     from a template, with "draft" from a draft), and one such workflow meets
     every condition: only the allowed issues are left open, its config holds
@@ -199,7 +421,7 @@ class WorkflowCreatedCheck(_Check):
     area_layers: list[int] = Field(default_factory=list)
 
 
-class WorkflowUpdatedCheck(_Check):
+class WorkflowUpdatedCheck(_Graded):
     """The run changed the workflow ``workflow_id`` with workflow_update, and
     the change core saved meets every condition: each step of a tool in
     ``settings`` has those settings, the workflow has ``notes_added`` more
@@ -215,7 +437,7 @@ class WorkflowUpdatedCheck(_Check):
     undone: bool = False
 
 
-class JudgeCheck(_Check):
+class JudgeCheck(_Graded):
     """Free text, graded by the LLM judge against the rubric (evals.judge)."""
 
     kind: Literal["judge"]
@@ -239,6 +461,8 @@ Check = Annotated[
     | AskedCheck
     | WorkflowCreatedCheck
     | WorkflowUpdatedCheck
+    | StyleCheck
+    | MapCheck
     | JudgeCheck,
     Field(discriminator="kind"),
 ]
@@ -253,10 +477,48 @@ class Turn(BaseModel):
     assistant: str = Field(min_length=1)
 
 
-class EvalTask(BaseModel):
+class _Reply(BaseModel):
+    """How the eval user and the harness treat the answer to one message."""
+
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(pattern=r"^(cat|proj|wf)-\d{2}$")
+    #: The eval user answers a card the run shows: every question with its
+    #: first option, the recommended one when there is one; then the next
+    #: run answers that answer, as the dock sends it.
+    answer_card: bool = False
+    #: With ``answer_card``: in every question that offers it, the eval user
+    #: picks the option with this value (``remove_layer:39``) instead.
+    answer_value: str | None = None
+    #: With ``answer_card``: in every question that offers it, the eval user
+    #: picks an option without this value (keeps the layer) instead.
+    answer_declines: str | None = None
+    #: Model requests of the answer, counted from 1, whose cache reads the
+    #: harness reports as none (``evals.harness.ColdCacheDouble``): what the
+    #: answer's budget sees when the provider misses its cache there.
+    cold_requests: list[Annotated[int, Field(ge=1)]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _answers_a_card(self) -> "_Reply":
+        if self.answer_value is not None and not self.answer_card:
+            raise ValueError("answer_value needs answer_card")
+        if self.answer_declines is not None and not self.answer_card:
+            raise ValueError("answer_declines needs answer_card")
+        if self.answer_value is not None and self.answer_declines is not None:
+            raise ValueError("answer_value and answer_declines exclude each other")
+        return self
+
+
+class Message(_Reply):
+    """A message the eval user types before the task's prompt. The agent
+    answers it for real, and the next message's answer gets the conversation
+    as the app keeps it: the stored answers with their tool calls and results,
+    the cards and their answers, the skills loaded and the writes made."""
+
+    text: str = Field(min_length=3)
+
+
+class EvalTask(_Reply):
+    id: str = Field(pattern=r"^(cat|proj|wf|map)-\d{2}$")
     suite: Suite
     #: The page context as the dock sends it (plan 3's wire format); its
     #: surface decides which tools the agent gets.
@@ -264,18 +526,35 @@ class EvalTask(BaseModel):
     locale: Locale = "en"
     #: Earlier turns, on the same page, before ``prompt``: a follow-up's answer
     #: can drift into the language or the claims of the conversation so far.
+    #: Text only: no tool call or result of theirs is in the conversation.
     history: list[Turn] = Field(default_factory=list)
+    #: Messages the eval user types after ``history`` and before ``prompt``,
+    #: each answered by the agent (``Message``). The checks grade the answer
+    #: to ``prompt``, the last turn, unless they name another (``turn``).
+    conversation: list[Message] = Field(default_factory=list)
     prompt: str = Field(min_length=3)
     checks: list[Check] = Field(min_length=1)
     #: A model that fails a critical task is not listed as tested, whatever its score.
     critical: bool = False
-    #: The eval user answers a card the run shows: every question with its
-    #: first option, the recommended one when there is one; then the next
-    #: turn runs with that answer, as the dock sends it.
-    answer_card: bool = False
     #: The eval user presses Undo under the last answer once it ended, as
     #: the dock does (``assistant.undo``); the transcript says how it went.
     undo: bool = False
+
+    @property
+    def messages(self) -> list[_Reply]:
+        """The messages the agent answers in turn: the conversation's, then
+        the task itself for ``prompt``."""
+        return [*self.conversation, self]
+
+    @model_validator(mode="after")
+    def _turns_exist(self) -> "EvalTask":
+        turns = len(self.conversation) + 1
+        for check in self.checks:
+            if isinstance(check.turn, int) and check.turn > turns:
+                raise ValueError(
+                    f"a {check.kind} check grades turn {check.turn} of {turns}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _surface_fits_suite(self) -> "EvalTask":
@@ -284,6 +563,7 @@ class EvalTask(BaseModel):
             "catalog": surface in ("catalog", "none"),
             "project": surface.startswith("project.") or surface == "none",
             "workflow": surface in ("project.map", "project.workflows"),
+            "map": surface == "project.map",
         }[self.suite]
         if not allowed:
             raise ValueError(

@@ -1,8 +1,8 @@
 """Create a GTFS bundle from GOAT's own public transport network, for an area.
 
 The cut itself is in `goatlib.io.fetch.pt_network`; this stores it as a
-pt_network_gtfs bundle, which builds its timetable and its access and egress
-like an uploaded feed, against the default street network.
+pt_network_gtfs bundle. Its timetable and its access and egress, against the
+default street network, are built by a job of their own once its layers are in.
 """
 
 import logging

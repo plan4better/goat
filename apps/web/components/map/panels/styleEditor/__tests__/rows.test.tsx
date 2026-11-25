@@ -251,6 +251,20 @@ describe("rows", () => {
     expect(onOpen).toHaveBeenCalledTimes(3);
   });
 
+  it("ColorField shows a color's own transparency as six digits and a percent over the checkerboard, None at 0%", () => {
+    const { unmount } = renderPanel(<ColorField value="#e87ab294" onOpenPicker={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "style_editor.pick_color" });
+    expect(button.textContent).toBe("#E87AB2 · 58%");
+    const swatch = getComputedStyle(button.firstElementChild as HTMLElement);
+    // The color first, the checkerboard's two layers of corners under it.
+    expect(swatch.backgroundImage.match(/linear-gradient/g)).toHaveLength(3);
+    unmount();
+    renderPanel(<ColorField value="#cc615c00" onOpenPicker={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "style_editor.pick_color" }).textContent).toBe(
+      "style_editor.none"
+    );
+  });
+
   it("ColorField shows Same as fill for the sentinel", () => {
     renderPanel(
       <ColorField

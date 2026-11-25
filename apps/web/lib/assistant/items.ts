@@ -46,6 +46,9 @@ export const WRITE_TOOLS = [
   ...ADD_LAYER_TOOLS,
   "workflow_run",
   "workflow_update",
+  "style_update",
+  "map_update",
+  "undo_changes",
 ] as const;
 
 /**

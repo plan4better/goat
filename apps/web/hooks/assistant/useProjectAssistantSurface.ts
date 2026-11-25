@@ -3,6 +3,7 @@
 import { type RefObject, useEffect, useRef } from "react";
 import type { MapRef } from "react-map-gl/maplibre";
 
+import { basemapInfo, offeredBasemaps } from "@/lib/assistant/basemapInfo";
 import { type MapLike, applyMapView, projectMapContext } from "@/lib/assistant/mapView";
 import { getDockState, setDockState } from "@/lib/assistant/store";
 import { surfaceForMapMode, useAssistantSurface } from "@/lib/assistant/surface";
@@ -10,20 +11,24 @@ import type { PageContext } from "@/lib/assistant/types";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import type { MapMode } from "@/lib/store/map/slice";
 import { zoomToProjectLayer } from "@/lib/utils/map/navigate";
-import type { ProjectLayer } from "@/lib/validations/project";
+import type { CustomBasemap, ProjectLayer } from "@/lib/validations/project";
 
+import { useBasemap } from "@/hooks/map/MapHooks";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The read-only project surface (spec §10): the project as the conversation's
- * target, context per mode (re-registered on a mode switch, so the dock's chips
- * re-label), and map-view proposals applied to the map in Map mode. It changes
- * no style, layer, filter, workflow, dashboard or layout.
+ * The project surface (spec §10): the project as the conversation's target,
+ * context per mode (re-registered on a mode switch, so the dock's chips
+ * re-label), and the map-view cards of stored conversations applied to the
+ * map in Map mode. The surface itself changes nothing: styles, layers and
+ * filters are changed by the assistant on the server, and the page follows
+ * them through the map bridge (`AssistantMapBridge`).
  *
- * The live viewport is read when `getContext` is called and is not part of
- * `contextKey`: a pan or an applied view must not re-register the surface.
+ * The live viewport, the basemap and the 2D/3D view are read when `getContext`
+ * is called and are not part of `contextKey`: a pan, an applied view or a
+ * basemap switch must not re-register the surface.
  */
 export function useProjectAssistantSurface({
   project,
@@ -34,7 +39,15 @@ export function useProjectAssistantSurface({
   isEditor,
   layers,
 }: {
-  project: { id: string; name: string; folder_id?: string | null } | undefined;
+  project:
+    | {
+        id: string;
+        name: string;
+        folder_id?: string | null;
+        basemap?: string | null;
+        custom_basemaps?: CustomBasemap[] | null;
+      }
+    | undefined;
   /** The page's project id (its URL), known before the project loads. */
   projectId?: string;
   /** The project could not be loaded: no surface will register. */
@@ -51,6 +64,10 @@ export function useProjectAssistantSurface({
   layersRef.current = layers;
   const activeLayerId = useAppSelector((state) => state.layers.activeLayerId);
   const workflowId = useAppSelector((state) => state.workflow.selectedWorkflowId);
+  const { basemaps, activeBasemap } = useBasemap(project);
+  const storedView = useAppSelector((state) => state.map.view);
+  // The store outlives the page: a view stored for another project is not this map's.
+  const view = project && storedView?.projectId === project.id ? storedView : undefined;
   const surface = surfaceForMapMode(mapMode);
   // The dock waits for this page's surface; tell it when none will come (a failed load,
   // or a mode without a surface, e.g. "public" left behind by a public map).
@@ -75,7 +92,18 @@ export function useProjectAssistantSurface({
             : undefined,
           getContext: (): PageContext => {
             if (surface === "project.map") {
-              return projectMapContext({ projectId: project.id, map: mapRef.current, activeLayerId });
+              return projectMapContext({
+                projectId: project.id,
+                map: mapRef.current,
+                activeLayerId,
+                basemap: basemapInfo(activeBasemap),
+                basemaps: offeredBasemaps(
+                  basemaps.filter((basemap) => basemap.source === "builtin"),
+                  basemaps.filter((basemap) => basemap.source === "custom")
+                ),
+                viewMode: view?.mode,
+                projection: view?.projection,
+              });
             }
             if (surface === "project.workflows" && workflowId && UUID.test(workflowId)) {
               return { surface, project_id: project.id, workflow_id: workflowId };

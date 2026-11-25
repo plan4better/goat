@@ -119,7 +119,7 @@ A value you change in a class row stays when the server computes the classes aga
 | <code>Geometric intervals</code> | Classes that grow wider by the same factor. Only for fields whose values all lie above 0; otherwise the method is not available. | Values that grow by orders of magnitude, such as population or prices. |
 | <code>Manual breaks</code> | You type the lower bound of each class. | Thresholds of your own, the same across maps. |
 
-<code>Classes</code> sets how many: from <code>2 classes</code> to <code>13 classes</code> for numbers (5 by default), and <code>All values</code> (up to 256) or the most frequent ones (<code>Top 3</code>, <code>Top 5</code>, <code>Top 8</code> or <code>Top 12</code>) for categories.
+<code>Classes</code> sets how many: from <code>2 classes</code> to <code>13 classes</code> for numbers (5 by default), and <code>All values</code> (up to 256) or the most frequent ones (<code>Top 3</code>, <code>Top 5</code>, <code>Top 8</code> or <code>Top 12</code>) for categories. When many features share one value, or a class would stay empty, a method makes fewer classes than asked for; a note in the panel says why and how many it made.
 
 ### Several classifications
 
@@ -141,7 +141,7 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu. A class can switch off a part the layer shows, but a part switched off for the whole layer, for example the fill, stays off in every class: its switch is greyed out with <code>Off for the layer</code>, and the class keeps its settings for when you turn the part on for all features. The layer's row for such a part reads <code>Off for all</code>. For any part but the main one (the fill of polygons, the line of lines, the marker of points), the class editor offers <code>Allow per class</code>: the part stays off for all features, and classes can turn it on.</div>
+  <div class="content">Change the rows as usual: the changes apply to this class only. To give a property the value of all features again, choose <code>Reset</code> in its button's menu. A class can switch off a part the layer shows, but a part switched off for the whole layer, for example the fill, stays off in every class: its switch is greyed out with <code>Off for the layer</code>, and the class keeps its settings for when you turn the part on for all features. While a class is selected, the row of such a part reads <code>Off for all</code>. For any part but the main one (the fill of polygons, the line of lines, the marker of points), the class editor offers <code>Allow per class</code>: the part stays off for all features, and classes can turn it on.</div>
 </div>
 
 <div class="step">
@@ -170,7 +170,7 @@ A class can get its own fill, outline, icon, label or zoom range with the same c
 
 ## Color palettes {#color-palettes}
 
-The palette picker opens from <code>Palette</code> or <code>Colors</code>. It shows GOAT's palettes by kind (<code>All</code>, <code>Sequential</code>, <code>Diverging</code> and <code>Categories</code>), the palettes <code>In use</code> in this style, and your own (<code>Yours</code>). Under <code>All</code>, <code>Science and terrain</code> comes first: the perceptual ramps Viridis, Magma, Cividis, Inferno and Plasma, and ramps for elevation and vegetation (Elevation, Terrain, Hypsometric tints, NDVI), for rasters and number fields alike. <code>Reverse</code> turns the colors around.
+The palette picker opens from <code>Palette</code> or <code>Colors</code>. It shows GOAT's palettes by kind (<code>All</code>, <code>Sequential</code>, <code>Diverging</code> and <code>Categories</code>), the palettes <code>In use</code> in this style, and your own (<code>Yours</code>). Under <code>All</code>, <code>Science and terrain</code> comes first: the perceptual ramps Viridis, Magma, Cividis, Inferno and Plasma, and ramps for elevation and vegetation (Elevation, Terrain, Hypsometric tints, NDVI), for rasters and number fields alike. For the method <code>Categories</code> the picker lists the <code>Categories</code> palettes first and every other kind after them, so a set of ordered categories, such as travel times, can take a sequential palette. <code>Reverse</code> turns the colors around.
 
 | Kind | Example | Description |
 | :--: | ------- | ----------- |

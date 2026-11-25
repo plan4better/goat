@@ -21,6 +21,9 @@ of them, keeps every line: coaches and any other type too.
 
 The tables cut from are the GTFS importer's own output
 (``goatlib.bundles.importers.pt_network.store``), and so is what this writes.
+Indexed tables (schema 2) are read through their index: the lines from
+``stop_lines``, and ``stop_times`` and ``shapes`` only in the row groups of
+the kept lines' numbers, which are left out of what is written.
 """
 
 import logging
@@ -29,7 +32,11 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from goatlib.bundles.importers.base import ExtractedLayer
 from goatlib.bundles.importers.pt_network.gtfs import GtfsImporter
-from goatlib.bundles.importers.pt_network.store import read_store, store_layers
+from goatlib.bundles.importers.pt_network.store import (
+    LINE_NO,
+    read_store,
+    store_layers,
+)
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.fetch import street_network
 from goatlib.io.fetch.area import area_table
@@ -162,6 +169,26 @@ def _kept(column: str, keep: str) -> str:
     )
 
 
+def on_lines(
+    con: Any, relation: str, numbers_of: str, ids: str, index: Dict[str, str]
+) -> str:
+    """``relation`` (an indexed table) read only where its line number is one
+    of those ``numbers_of`` (an index role) gives ``ids`` (a query of ids),
+    without the number. The numbers are written out, not a subquery: DuckDB
+    skips a row group by a constant list, not by a join."""
+    numbers = [
+        str(n)
+        for (n,) in con.execute(f"""
+            SELECT DISTINCT {LINE_NO} FROM read_parquet('{_q(index[numbers_of])}')
+            WHERE {"route_id" if numbers_of == "line_numbers" else "shape_id"} IN ({ids})
+        """).fetchall()
+    ]
+    return (
+        f"(SELECT * EXCLUDE ({LINE_NO}) FROM {relation} "
+        f"WHERE {LINE_NO} IN ({', '.join(numbers) or 'NULL'}))"
+    )
+
+
 def _drop_long_distance(con: Any, src: Dict[str, str]) -> None:
     """Remove the long-distance lines from keep_routes (see
     LONG_DISTANCE_SPACING_KM), judged on all of their trips."""
@@ -196,9 +223,11 @@ def _select_lines(
     src: Dict[str, str],
     modes: Optional[Sequence[str]] = None,
     exclude_long_distance: bool = False,
+    index: Optional[Dict[str, str]] = None,
 ) -> int:
     """keep_routes: the lines serving a stop in the area or its station, of
-    ``modes`` where given, without the long-distance ones if asked."""
+    ``modes`` where given, without the long-distance ones if asked; through
+    ``index`` where the tables have one."""
     by_mode = _modes_filter(modes)
     stops = src["stops"]
     con.execute(f"""
@@ -210,16 +239,25 @@ def _select_lines(
     (hits,) = con.execute("SELECT count(*) FROM area_stations").fetchone()
     if not hits:
         raise ValueError("The GOAT public transport network has no stops in this area.")
-    con.execute(f"""
-        CREATE OR REPLACE TEMP TABLE keep_routes AS
-        SELECT DISTINCT t.route_id AS id
-        FROM {src["stop_times"]} st
-        JOIN {src["trips"]} t USING (trip_id)
-        WHERE st.stop_id IN (
-            SELECT stop_id FROM {stops}
-            WHERE stop_id IN (SELECT id FROM area_stations)
-               OR parent_station IN (SELECT id FROM area_stations))
-    """)
+    area_stops = f"""
+        SELECT stop_id FROM {stops}
+        WHERE stop_id IN (SELECT id FROM area_stations)
+           OR parent_station IN (SELECT id FROM area_stations)"""
+    if index:
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE keep_routes AS
+            SELECT DISTINCT route_id AS id
+            FROM read_parquet('{_q(index["stop_lines"])}')
+            WHERE stop_id IN ({area_stops})
+        """)
+    else:
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE keep_routes AS
+            SELECT DISTINCT t.route_id AS id
+            FROM {src["stop_times"]} st
+            JOIN {src["trips"]} t USING (trip_id)
+            WHERE st.stop_id IN ({area_stops})
+        """)
     if by_mode is not None:
         con.execute(f"""
             DELETE FROM keep_routes WHERE id NOT IN (
@@ -235,6 +273,17 @@ def _select_lines(
             else "The GOAT public transport network has no service in this area."
         )
     if exclude_long_distance:
+        if index:
+            src = {
+                **src,
+                "stop_times": on_lines(
+                    con,
+                    src["stop_times"],
+                    "line_numbers",
+                    "SELECT id FROM keep_routes",
+                    index,
+                ),
+            }
         _drop_long_distance(con, src)
         (local,) = con.execute("SELECT count(*) FROM keep_routes").fetchone()
         if not local:
@@ -386,8 +435,18 @@ def export_pt_network(
     if missing:
         raise ValueError(f"The network's tables lack {', '.join(sorted(missing))}.")
 
-    lines = _select_lines(con, src, modes, exclude_long_distance)
+    index = info["index"]
+    lines = _select_lines(con, src, modes, exclude_long_distance, index)
+    if index:
+        # Read from here on only where the kept lines' rows lie.
+        src["stop_times"] = on_lines(
+            con, src["stop_times"], "line_numbers", "SELECT id FROM keep_routes", index
+        )
     _close(con, src)
+    if index and "shapes" in src and "shape_numbers" in index:
+        src["shapes"] = on_lines(
+            con, src["shapes"], "shape_numbers", "SELECT id FROM keep_shapes", index
+        )
     (trips,) = con.execute("SELECT count(*) FROM keep_trips").fetchone()
     if trips > MAX_TRIPS:
         raise ValueError(TOO_MANY_TRIPS)

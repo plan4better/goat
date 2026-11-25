@@ -50,7 +50,8 @@ def test_geometric_intervals_of_a_band_reaching_zero_make_one_class_and_say_why(
         (
             "classes_merged",
             "/render/classify",
-            "Geometric intervals need values above 0: 1 class instead of 5.",
+            "Geometric intervals need every value above 0: 1 class instead of 5. "
+            "Choose another method.",
         )
     ]
 
@@ -324,8 +325,9 @@ def test_whole_number_breaks_that_round_together_merge_with_a_note() -> None:
         _whole_file(codes), classify={"method": "geometric_interval", "count": 7}
     )
     assert written == [2, 3, 4, 5]
-    assert [(n.code, n.message) for n in notes] == [
-        ("classes_merged", "Equal breaks merged: 5 classes instead of 7.")
+    # Breaks that round onto the same whole number leave an empty class: joined.
+    assert [(n.code, n.params) for n in notes] == [
+        ("classes_merged", {"case": "joined", "asked": 7, "made": 5})
     ]
 
 

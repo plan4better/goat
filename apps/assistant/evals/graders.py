@@ -9,7 +9,8 @@ from typing import Any
 
 from assistant.language import answer_language
 from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
-from evals.harness import ToolCall, Transcript
+from evals.harness import ToolCall, Transcript, refused_for_room, turn_view
+from evals.map_graders import grade_map, grade_style, grade_view
 from evals.tasks import (
     AnswerCheck,
     AskedCheck,
@@ -19,6 +20,7 @@ from evals.tasks import (
     FiltersCheck,
     JudgeCheck,
     LanguageCheck,
+    MapCheck,
     NotSentCheck,
     NotStatedCheck,
     NumberCheck,
@@ -26,6 +28,7 @@ from evals.tasks import (
     RecordsCheck,
     ShownCheck,
     ShownItemsCheck,
+    StyleCheck,
     TextCheck,
     ToolsCheck,
     ViewCheck,
@@ -288,8 +291,11 @@ async def _grade_one(
             (not check.any_of or any(map(named, check.any_of)))
             and all(map(named, check.all_of))
             and not any(map(named, check.none_of))
+            and (check.max_chars is None or len(transcript.answer) <= check.max_chars)
         )
         detail = f"any {check.any_of}, all {check.all_of}, none {check.none_of}"
+        if check.max_chars is not None:
+            detail += f", {len(transcript.answer)} characters of {check.max_chars}"
         return ok, detail + (f", cards {cards}" if check.with_shown_items else "")
     if isinstance(check, ToolsCheck):
         counted = Counter(c.name for c in transcript.tool_calls)
@@ -297,12 +303,48 @@ async def _grade_one(
         missing_tools = [t for t in check.called if t not in succeeded]
         untried = [t for t in check.tried if t not in counted]
         forbidden = [t for t in check.not_called if t in counted]
-        over = {t: counted[t] for t, most in check.at_most.items() if counted[t] > most}
+        made_of = {t: sum(counted[n] for n in t.split("+")) for t in check.at_most}
+        over = {t: made_of[t] for t, most in check.at_most.items() if made_of[t] > most}
+        made = [c.name for c in transcript.tool_calls if not c.failed]
+        first = [made.index(t) if t in made else -1 for t in check.in_order]
+        ordered = -1 not in first and first == sorted(first)
+        files = {
+            c.args.get("file")
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed
+        }
+        unloaded = [f for f in check.loaded if f not in files]
+        loads = Counter(
+            str(c.args.get("name"))
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed and not c.args.get("file")
+        )
+        reloaded = {
+            skill: loads[skill]
+            for skill, most in check.skill_loads.items()
+            if loads[skill] > most
+        }
+        refused = (
+            refused_for_room(transcript.tool_calls)
+            if check.not_refused_for_room
+            else []
+        )
         return (
-            not missing_tools and not untried and not forbidden and not over,
+            not missing_tools
+            and not untried
+            and not forbidden
+            and not over
+            and ordered
+            and not unloaded
+            and not reloaded
+            and not refused,
             f"no successful call of {missing_tools}, called {forbidden}"
             + (f", never tried {untried}" if untried else "")
-            + (f", too often {over}" if over else ""),
+            + (f", too often {over}" if over else "")
+            + ("" if ordered else f", not {' before '.join(check.in_order)}")
+            + (f", never loaded {unloaded}" if unloaded else "")
+            + (f", skill loaded too often {reloaded}" if reloaded else "")
+            + (f", refused for lack of room {refused}" if refused else ""),
         )
     if isinstance(check, DocsCheck):
         read = {
@@ -318,24 +360,11 @@ async def _grade_one(
     if isinstance(check, WorkflowCreatedCheck):
         return _workflow_created(check, transcript)
     if isinstance(check, ViewCheck):
-        proposal = _last(transcript, "map.view")
-        if proposal is None:
-            return False, "no map.view proposal"
-        payload = proposal.get("payload", {})
-        ok = (
-            check.layer_project_id is None
-            or payload.get("layer_project_id") == check.layer_project_id
-        )
-        if check.contains is not None:
-            lon, lat = check.contains
-            bbox = payload.get("bbox")
-            camera = payload.get("camera") or {}
-            if bbox:
-                ok = ok and bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]
-            else:
-                center = camera.get("center") or [999.0, 999.0]
-                ok = ok and abs(center[0] - lon) < 0.05 and abs(center[1] - lat) < 0.05
-        return ok, f"proposal {payload}"
+        return grade_view(check, transcript)
+    if isinstance(check, StyleCheck):
+        return grade_style(check, transcript)
+    if isinstance(check, MapCheck):
+        return grade_map(check, transcript)
     if isinstance(check, NotSentCheck):
         leaks = [
             f"{service} {request.method} {request.url.path}"
@@ -561,7 +590,11 @@ async def grade(
                 )
             )
             continue
-        passed, detail = await _grade_one(check, transcript, backends)
+        graded = turn_view(transcript, check.turn)
+        if graded is None:
+            grades.append(Grade(check.kind, False, f"no turn {check.turn}"))
+            continue
+        passed, detail = await _grade_one(check, graded, backends)
         grades.append(Grade(check.kind, passed, detail))
     return grades
 

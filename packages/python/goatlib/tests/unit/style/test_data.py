@@ -5,9 +5,11 @@ import sys
 import time
 
 import duckdb
+import jsonschema
 import pytest
 from goatlib.style.compute import Breaks
 from goatlib.style.data import compute_into, compute_stats, describe
+from goatlib.style.issues import Issue
 
 ODD = 'Einwohner "2020" ß'
 
@@ -178,13 +180,43 @@ def test_geometric_intervals_over_values_at_or_below_zero_make_one_class() -> No
     }
     out, notes = compute_into(con, "t", doc, geometry="point", fingerprint="f")
     assert len(out["classify"][0]["classes"]) == 1
-    assert [(n.code, n.level, n.message) for n in notes] == [
+    assert [(n.code, n.level, n.message, n.params) for n in notes] == [
         (
             "classes_merged",
             "info",
-            "Geometric intervals need values above 0: 1 class instead of 4.",
+            "Geometric intervals need every value above 0: 1 class instead of 4. "
+            "Choose another method.",
+            {"case": "not_above_zero", "asked": 4, "made": 1},
         )
     ]
+
+
+def test_a_quantile_over_many_equal_values_makes_fewer_classes_and_says_why() -> None:
+    """A third of the features share the lowest value: two of the quantile's
+    limits fall on it, and 6 classes asked for give 5."""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE t AS SELECT 0.0 AS v FROM range(200) "
+        "UNION ALL SELECT CAST(i AS DOUBLE) FROM range(1, 401) r(i)"
+    )
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "classify": [{"field": "v", "method": "quantile", "count": 6}],
+    }
+    out, notes = compute_into(con, "t", doc, geometry="polygon", fingerprint="f")
+    assert len(out["classify"][0]["classes"]) == 5
+    [note] = notes
+    assert (note.code, note.level) == ("classes_merged", "info")
+    assert note.message == (
+        "Many values are the same, so some class limits fell on the same value: "
+        "5 classes instead of 6. Choose fewer classes or another method."
+    )
+    assert note.params == {"case": "repeated_values", "asked": 6, "made": 5}
+    # As core sends it: the JSON validates against the issue's schema.
+    as_json = note.model_dump(mode="json", exclude_none=True)
+    jsonschema.validate(as_json, Issue.model_json_schema())
+    assert Issue.model_validate(as_json) == note
 
 
 def test_compute_into_reads_nothing_for_a_style_without_computed_values() -> None:

@@ -1,5 +1,6 @@
 "use client";
 
+import { getCogMetadata } from "@geomatico/maplibre-cog-protocol";
 import LoadingButton from "@mui/lab/LoadingButton";
 import {
   Box,
@@ -13,13 +14,14 @@ import {
   useTheme,
 } from "@mui/material";
 import type { Theme } from "@mui/material";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import type { ConnectFailure, ConnectedService } from "@/lib/utils/externalService";
+import type { CogPreview, ConnectFailure, ConnectedService } from "@/lib/utils/externalService";
 import {
+  cogPreview,
   isDirect,
   pickedLayers,
   previewSource,
@@ -375,9 +377,37 @@ const ServiceBrowser = ({ controller }: { controller: ConnectFlow }) => {
   );
 };
 
+/** How many times a COG's details were read, for the key each read gets. */
+let cogReads = 0;
+
+/**
+ * What the browser can preview of a COG, from the file's details as the map's COG reader reads them; `undefined`
+ * while they are read and for any other address. Each Connect makes a new service, so the file is read again. The
+ * reader keeps every file it opened by its address, a failed one too, so each read passes the address with a key of
+ * its own as a fragment, which no request carries: a read that failed is not kept for the next one, nor for the
+ * address the map draws from once the file can be drawn.
+ */
+const useCogPreview = (service: ConnectedService): CogPreview | undefined => {
+  const url = service.kind === "cog" ? service.url : undefined;
+  const [preview, setPreview] = useState<{ service: ConnectedService; preview: CogPreview }>();
+  useEffect(() => {
+    if (!url) return;
+    let current = true;
+    getCogMetadata(`${url}#preview-${++cogReads}`).then(
+      (details) => current && setPreview({ service, preview: cogPreview(details) }),
+      () => current && setPreview({ service, preview: cogPreview(null) })
+    );
+    return () => {
+      current = false;
+    };
+  }, [service, url]);
+  return url && preview?.service === service ? preview.preview : undefined;
+};
+
 /** A tile template or COG: the address is the layer, so there is only the preview. */
 const DirectService = ({ service }: { service: ConnectedService }) => {
   const { t } = useTranslation("common");
+  const cog = useCogPreview(service);
   return (
     <Box
       sx={{
@@ -389,7 +419,17 @@ const DirectService = ({ service }: { service: ConnectedService }) => {
         p: 5,
       }}>
       <Box sx={{ flex: 1, minHeight: 240 }}>
-        <ConnectPreview source={previewSource(service, [])} />
+        {service.kind === "cog" ? (
+          // A COG is drawn only once the browser knows it can draw it, fitted to the file.
+          <ConnectPreview
+            source={cog?.kind === "draw" ? previewSource(service, []) : null}
+            bounds={cog?.kind === "draw" ? cog.bounds : undefined}
+            checking={!cog}
+            note={cog?.kind === "unavailable" ? t("connect_service_cog_no_preview") : undefined}
+          />
+        ) : (
+          <ConnectPreview source={previewSource(service, [])} />
+        )}
       </Box>
       <Stack spacing={3} sx={{ width: { xs: "100%", md: 300 }, flexShrink: 0 }}>
         <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>

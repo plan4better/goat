@@ -6,6 +6,7 @@ its own right, read back by the importer like any upload.
 """
 
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -167,22 +168,28 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
     # which every cut draws again.
     assert set(by_role) == set(imported) - {"route_directions.txt", "shape_lines"}
     con = duckdb.connect()
-    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute("LOAD spatial")
     for role, layer in imported.items():
         if role not in by_role:
             continue
         ours = tables / by_role[role]["file"]
+        # Indexed: the line number is the store's own, not the importer's.
+        exclude = (
+            f"EXCLUDE ({store.LINE_NO})" if role in ("stop_times", "shapes") else ""
+        )
         assert by_role[role]["layer_type"] == layer.layer_type
         assert by_role[role]["geometry_type"] == layer.geometry_type
         # The same rows, typed the same: a cut is ingested as an import is.
         assert (
-            con.execute(f"DESCRIBE SELECT * FROM read_parquet('{ours}')").fetchall()
+            con.execute(
+                f"DESCRIBE SELECT * {exclude} FROM read_parquet('{ours}')"
+            ).fetchall()
             == con.execute(
                 f"DESCRIBE SELECT * FROM read_parquet('{layer.file_path}')"
             ).fetchall()
         )
         diff = con.execute(
-            f"SELECT count(*) FROM (SELECT * FROM read_parquet('{ours}') "
+            f"SELECT count(*) FROM (SELECT * {exclude} FROM read_parquet('{ours}') "
             f"EXCEPT ALL SELECT * FROM read_parquet('{layer.file_path}'))"
         ).fetchone()[0]
         assert diff == 0, role
@@ -191,16 +198,96 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
             == con.execute(f"SELECT count(*) FROM read_parquet('{ours}')").fetchone()[0]
         )
 
-    # Sorted for the cut, which reads stop times by trip.
-    trips = [
-        r[0]
-        for r in con.execute(
-            f"SELECT trip_id FROM read_parquet('{tables / 'stop_times.parquet'}')"
-        ).fetchall()
-    ]
-    assert trips == sorted(trips)
+    # Sorted for the cut, which reads stop times by line, then trip.
+    order = con.execute(
+        f"SELECT {store.LINE_NO}, trip_id, stop_sequence "
+        f"FROM read_parquet('{tables / 'stop_times.parquet'}')"
+    ).fetchall()
+    assert order == sorted(order, key=lambda r: (r[0] is None, r))
     assert info["schema"] == store.STORE_SCHEMA and info["license"] == "CC-BY-4.0"
+    assert set(info["index"]) == set(store.INDEX_FILES)
     assert len(info["source"]["sha256"]) == 64
+
+
+def _unindexed(tables: Path, out: Path) -> Path:
+    """``tables`` as schema 1 wrote them: no index, no line numbers."""
+    shutil.copytree(tables, out)
+    info = json.loads((out / store.INFO_FILENAME).read_text())
+    con = duckdb.connect()
+    for role in ("stop_times", "shapes"):
+        path = out / f"{role}.parquet"
+        con.execute(
+            f"COPY (SELECT * EXCLUDE ({store.LINE_NO}) FROM read_parquet('{path}')) "
+            f"TO '{out / 'tmp.parquet'}' (FORMAT PARQUET)"
+        )
+        (out / "tmp.parquet").replace(path)
+    for name in store.INDEX_FILES.values():
+        (out / name).unlink()
+    info.pop("index")
+    (out / store.INFO_FILENAME).write_text(json.dumps({**info, "schema": 1}))
+    return out
+
+
+def _cut_rows(tables: Path, tmp_path: Path, name: str, **options) -> dict:
+    con = duckdb.connect()
+    return {
+        role: sorted(
+            con.execute(f"SELECT * FROM read_parquet('{path}')").fetchall(), key=str
+        )
+        for role, path in _cut_lines(tables, tmp_path, name, **options).items()
+        if role != "shape_lines"
+    }
+
+
+@pytest.mark.parametrize("options", [{}, {"exclude_long_distance": True}])
+def test_unindexed_tables_cut_the_same(
+    tables_with_town_line: Path, tmp_path: Path, options: dict
+) -> None:
+    old = _unindexed(tables_with_town_line, tmp_path / "schema1")
+    indexed = _cut_rows(tables_with_town_line, tmp_path, "indexed", **options)
+    assert indexed == _cut_rows(old, tmp_path, "unindexed", **options)
+    # The line number stays in the store: nothing cut carries it.
+    con = duckdb.connect()
+    for path in _cut_lines(tables_with_town_line, tmp_path, "cols", **options).values():
+        columns = [
+            r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{path}'").fetchall()
+        ]
+        assert store.LINE_NO not in columns
+
+
+def test_old_tables_are_indexed_and_indexing_again_changes_nothing(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    tables = tables_with_town_line
+    old = _unindexed(tables, tmp_path / "schema1")
+    once = store.index_store(old)
+    con = duckdb.connect()
+    rows = lambda d, role: con.execute(  # noqa: E731
+        f"SELECT * FROM read_parquet('{d / (role + '.parquet')}')"
+    ).fetchall()
+    assert once["schema"] == store.STORE_SCHEMA
+    for role in ("stop_times", "shapes", "stop_lines", "line_numbers"):
+        assert rows(old, role) == rows(tables, role)
+    store.index_store(old)
+    for role in ("stop_times", "shapes"):
+        assert rows(old, role) == rows(tables, role)
+    # The unused shape is still there, after every numbered one.
+    assert rows(old, "shapes")[-1][0] is None
+
+
+def test_a_failed_index_leaves_the_tables_as_they_were(
+    tables: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = _unindexed(tables, tmp_path / "schema1")
+    before = {p.name: p.read_bytes() for p in old.iterdir()}
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(store, "_write_index", fail)
+    with pytest.raises(RuntimeError, match="disk full"):
+        store.index_store(old)
+    assert {p.name: p.read_bytes() for p in old.iterdir()} == before
 
 
 def test_an_existing_store_is_not_overwritten(tables: Path, tmp_path: Path) -> None:
@@ -335,6 +422,8 @@ TOWN_LINE = {
     ),
     "routes.txt": "R5,A,5,3\n",
     "trips.txt": "R5,WK,T5,\n",
+    # A shape no trip uses: kept by the index, last and without a number.
+    "shapes.txt": "SH9,48.12,11.1,1\nSH9,48.12,11.2,2\n",
     "stop_times.txt": (
         "T5,08:00:00,08:00:00,L1,1\nT5,08:02:00,08:02:00,L2,2\n"
         "T5,08:04:00,08:04:00,L3,3\nT5,08:06:00,08:06:00,L4,4\n"

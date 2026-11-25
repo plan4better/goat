@@ -25,6 +25,7 @@ import {
   pickClassRange,
   removeClassification,
   retarget,
+  serverFillsClasses,
   setClassificationField,
   setManualBound,
   setMethod,
@@ -131,7 +132,8 @@ function ClassPalettePicker({
       value={current}
       reverse={reverse === true}
       steps={steps}
-      kinds={categories ? ["qualitative"] : ["sequential", "diverging"]}
+      kinds={categories ? ["qualitative", "sequential", "diverging"] : ["sequential", "diverging"]}
+      categories={categories}
       onChange={(next) => write(next, reverse === true)}
       onReverse={(next) => write(current, next)}
     />
@@ -199,6 +201,13 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
   const targets = geometry ? classifyTargets(geometry) : [];
   if (geometry && !targets.includes(target)) targets.push(target);
   const kind = CAPABILITIES[target]?.kind;
+  // Without `target`, classes the author lists that set no color of their own keep only their other settings
+  // (spec 5.5): the layer's color draws for them.
+  const setsNoColor =
+    typeof c.target !== "string" &&
+    classes.length > 0 &&
+    !serverFillsClasses(c) &&
+    [...classes, c.other, c.no_data].every((r) => !isObject(r) || getIn(r, target) === undefined);
   const locale = i18n.language;
   const number = (n: number) => formatNumberText(n, {}, locale);
   const pending = classesPending(store, ci);
@@ -362,6 +371,11 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
             })}
             onChange={(key) => store.update((doc) => retarget(doc, ci, key, geometry))}
           />
+        )}
+        {setsNoColor && (
+          <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 1 }}>
+            {t("style_editor.sets_no_color")}
+          </Typography>
         )}
         {issues.length > 0 && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1, px: 3, py: 1 }}>

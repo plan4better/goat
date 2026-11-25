@@ -12,6 +12,7 @@
  */
 import type { StyleSpecification } from "maplibre-gl";
 
+import { type BasemapLook, type Tone, basemapTone, lookOfMapStyle } from "@/lib/style/tone";
 import { isDrawableStyle } from "@/lib/style/version";
 import type { ProjectViewState } from "@/lib/validations/project";
 import type { ReportElement } from "@/lib/validations/reportLayout";
@@ -32,6 +33,13 @@ type MapConfig = Record<string, unknown>;
 /** The layers the project's map draws (their own and their groups' visibility). */
 export const visibleProjectLayers = (layers: MapLayer[]): MapLayer[] =>
   layers.filter((layer) => layer.visible);
+
+/** The tone of the basemap a map element draws (`basemapTone`), for its layers' automatic colors: the locked basemap
+ * where the layers are locked with one, else the project's. */
+export const mapElementTone = (config: MapConfig, basemap: BasemapLook | undefined): Tone =>
+  config.lock_layers === true && config.locked_basemap_url
+    ? basemapTone(lookOfMapStyle(config.locked_basemap_url as string | StyleSpecification))
+    : basemapTone(basemap);
 
 /**
  * The lock snapshot for `config` taken from `layers` (the project's visible

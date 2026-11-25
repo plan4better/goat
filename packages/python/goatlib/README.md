@@ -12,8 +12,8 @@ analysis algorithms, geospatial I/O, and shared models used by the `core`,
 | `analysis/` | Analysis algorithms backing the tools |
 | `io/` | Dataset import/export, format conversion, remote sources (WFS, …), and the readers for GOAT's base data: the OpenStreetMap/Overture mirror, the street network and the public transport network (`io/fetch/`) |
 | `models/` | Pydantic models shared across services |
-| `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema |
-| `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits |
+| `style/` | GOAT Style, the layer style format: validation, conversion of today's styles, merge, defaults, JSON Schema, the edit operations and one-line summaries the AI uses |
+| `filter/` | Layer filters (CQL2-JSON): the spellings the services read, the checker, the limits, the filter panel's rows and areas |
 | `raster/` | Raster files read on the server: band formulas, value tiles the browser colors (`values.py`), the coloring an image tile's URL carries and coloring those tiles, reading COGs with rio-tiler, statistics for computed values (the `raster` extra) |
 | `services/`, `storage/`, `tasks/` | Service clients, object storage, background task helpers |
 | `workflows/` | Workflow code that needs no analytics dependencies: the shape check core runs on save, the graph helpers and settings-visibility rules the full check in processes builds on, and the operations the assistant edits a stored workflow with |
@@ -141,7 +141,12 @@ READMEs means section N of that file.
   JSON pointer (list items addressed by their `id`): the models (`parse.py`),
   rules about the document as a whole (`check.py`), and rules against the data
   (`data_check.py`), which read a `DataContext` built by whoever can see the data.
-  `validate.py` runs all three.
+  `validate.py` runs all three. The message is English, for people and the AI
+  alike. The issues the style panel words also carry `params`, the facts their
+  message names, so the panel shows them in the user's language; for any other
+  code it shows the message. A service reads another's issues with
+  `read_issue`, which leaves out keys it does not know, so a newer sender never
+  fails an older reader.
 - **Versions are three numbers** (`style/version.py`, spec 14 and 21), one for
   layer styles and the map document. A written document gets the lowest
   version its keys need (`stamp`, which every writer calls: core's saves,
@@ -191,6 +196,20 @@ READMEs means section N of that file.
   (or band formula) as the field: its range as `render.computed.domain`, classes
   into `render.classify`, computed by `raster.stats` from an overview sample with
   the shared class breaks.
+- **A derived color is the word `"auto"` on a color key** (spec 18.10): the
+  color follows another part's color, and for labels the basemap's tone. Which
+  keys take it, by which rule and following what, is defined once, in the
+  specification's table and in `style/data/color_keys.json`; a test walks the
+  JSON Schema and fails for a color key the table does not name, so no key takes
+  the word by accident. The rules themselves (a darker shade, a label's text and
+  halo, the color that reads on a marker) exist once here in `style/colors.py`
+  and once in the web, held equal by the shared fixture
+  `tests/unit/style/fixtures/color_rules.json`. goatlib only validates the word:
+  resolving it for the map, and knowing the basemap's tone, is the web
+  compiler's, since only the map knows what it draws on. A key left out keeps
+  its reference color, so a style that never says `"auto"` keeps its look. The
+  AI's operations write the word on the key itself (`/symbol/outline/color`);
+  `"auto"` sent as a whole part is refused (`style/edit.py`, below).
 
 - **The data fingerprint** (`fingerprint.py`): computed values record the data
   they come from (`ducklake:<layer.data_snapshot>`; a promoted catalog layer's
@@ -223,6 +242,16 @@ READMEs means section N of that file.
   checks the scene against what only the caller knows, through `MapContext`:
   which layers draw heights and whether the deployment has terrain and building
   sources.
+- **The AI edits a style with operations** (`style/edit.py`, spec 20):
+  `apply_edits` applies a list of them (`set`, `remove`, `retarget`,
+  `use_field`, `round`, `add`, `move`) in order, all or none, and a refusal
+  names what exists, so the model's next call can be right; validating the
+  result stays the server's check. A key set under a part that is `false`
+  switches the part on, because models change a part key by key and rarely send
+  it as one object.
+- **A style in one line** (`style/summary.py`): `summarize` describes a
+  document in plain words for the layer lists the AI reads, from the plain
+  dict, so a damaged document gives a shorter line instead of an error.
 
 ## Layer filters (`filter/`)
 
@@ -302,6 +331,15 @@ features pass.
   the issues the checker reports and the rows the web's panel reads; the web's
   tests read the same file, and `test_saved_shapes.py` runs every error-free
   case through the evaluator and DuckDB.
+- **The panel's rows and areas in Python** (`rows.py`, `areas.py`), for the
+  assistant, which changes a layer's filter the way the panel does:
+  `read_rows` and `write_rows` turn a stored filter into the panel's rows and
+  back, and `areas.py` builds an area from its pieces (regions, another
+  layer's features, the map view) as the panel writes it, simplifying an
+  outline to fit the limits. Both use the standard library only, since the
+  assistant has no geometry libraries, and fixtures shared with the web's
+  tests (`filter_rows.json`, `filter_areas.json`) hold both sides to the same
+  answers.
 - **A workflow's filter rows are a second writer of the same CQL2.** A dataset
   step and an If step store their conditions as the panel's rows
   (`{attribute, expression, value}`), which the assistant reads and writes too;
@@ -369,7 +407,9 @@ stack, so validation runs in core too.
   NaN, the style's values) is transparent. `outside` works for classes as for a
   ramp: with `clamp` the first and last class are open, with `hide` they end at
   their own `from` and `to`, else at the token's `domain`, else at the band's
-  range (the last holding its end), and the cells beyond are transparent.
+  range (the last holding its end), and the cells beyond are transparent. A
+  color's own alpha (`#rrggbbaa`) is painted, blended premultiplied as MapLibre
+  blends the browser's colors; the layer opacity stays the browser's.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
   statistics for the band it is asked for alone (none without one), or for a
@@ -579,16 +619,35 @@ the area or not, so a trip still runs end to end. Every other table keeps a
 row only where each id it names is kept, so no reference is left dangling
 (`io/fetch/pt_network.py`).
 
+Finding a cut's lines and reading their rows would otherwise read every stop
+time and shape point of the network, tens of seconds on a worker's one CPU
+for any area. So the tables are indexed for the cut (`index_store` in
+`bundles/importers/pt_network/store.py`, schema 2): which line serves which
+stop, and every line numbered along a Hilbert curve through its stops'
+centre, with `stop_times` and `shapes` sorted by that number. An area's rows
+then lie together, and DuckDB reads only the row groups of the kept lines'
+numbers. The number is a column because DuckDB skips row groups by column
+statistics, not by row position; the cut leaves it out of what it writes.
+Tables written outside `build_store` are indexed on their own with
+`--index`, before the version's manifest is made. Schema 1 tables still cut,
+the slow way.
+
 Both network fetches create their bundle through
-`BundleImportRunner.create_bundle_from_layers`, so a cut is created, ingested,
-built and rolled back as an import is.
+`BundleImportRunner.create_bundle_from_layers`: created and ingested as an
+import is, and in the project as soon as its layers are. Its artifacts (a
+timetable and the stops' links to the streets, or a routable graph) take
+about as long again, so they are built by a `bundle_artifact_rebuild` job of
+their own, started as a top-level job so it shows in the jobs list. Until then
+they read as building, which keeps the routing tools off the bundle; a build
+that fails, or cannot be started, leaves them failed and the bundle offers a
+rebuild. A failed ingest still rolls the whole bundle back.
 
 Trip count and ÖV-Güteklassen count departures from the same tables, for one
 date: a bundle's own on the date picked, the default network's on the anchor
 date of the kind of day picked (`analysis/pt_time.py`). The default network is
 cut to the area and the date first (`cut_network_tables` in
 `tools/pt_network.py`), as a count joined across a continent's stop times
-would not fit a worker.
+would not fit a worker; indexed tables are read only in the area's lines.
 
 ## Copies behind a project entry
 
@@ -939,7 +998,7 @@ directory:
 One builder, `PMTilesGenerator` in `io/pmtiles.py`, makes the PMTiles of every layer: tool results, imports and copies, catalog materialization, `sync_pmtiles` and `rebuild_edited_pmtiles`, and the workflow previews in `tools/temp_writer.py`. It writes the layer from a DuckDB query (`tile_query`), ordered by feature id, to a GeoParquet file in the build's temporary directory, then runs manby on that file with a recipe per geometry type (`manby_flags` holds them). A polygon layer gets its label points in a second file, `_anchor.pmtiles`, built from the same input.
 
 - **The marker**: the tileset's description records `MANBY_MARKER` and the version of its recipe next to the DuckLake snapshot id. geoapi filters a stored tile only when it finds the marker, so tiles from before manby (whose point tiles merged nearby points at every zoom) keep the DuckDB path until they are rebuilt. `is_pmtiles_in_sync` wants the marker, the current version of the file's recipe and the snapshot, so a plain `sync_pmtiles` run after the deploy rebuilds those tiles; stopped and started again, it goes on with the layers still stale, where `force` would rebuild every layer. Each kind of tiles (points, lines, polygons, label anchors) has its own version in `MANBY_RECIPES`, and the file says which kind it holds (its anchor layer, else the geometry of its tile statistics), so bumping one after a change to its recipe in `manby_flags` rebuilds only the tiles of that kind, catalog layers' included. A polygon layer's anchor file has to be in sync too, and is published before the main file, so a main file in sync always has its anchors.
-- **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others.
+- **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others (a layer that lost its project entries, such as the old version after an update, stays only while a published map, a workflow or a template still names it, and keeps its tiles as they are).
 - **Recipes per geometry type** (`manby_flags`): points and label points end each branch of the pyramid where its tile holds everything below (variable depth). Lines and polygons do not: such a tile holds its features whole at full detail, which made the zoomed out tiles of large polygons and of sparse networks the heaviest of a layer. They are stored at every zoom down to the one manby guesses from the spacing of the vertices, at most `max_zoom` (`--largest-maximum-zoom-guess`, so one build), with full precision at the deepest zoom for the tiles geoapi overzooms from it. A point tile holds far fewer features than the others (`POINT_TILE_FEATURE_LIMIT`): MapLibre numbers the pictures of one symbol layer in a tile with a 16-bit counter, so a denser tile of points drawn as icons or shaped markers is not drawn at all. manby drops the densest points where a tile is over the limit and adds zooms where they are needed.
 - **manby is the only builder**: a build manby fails returns None and never fails the tool. geoapi serves a layer without PMTiles from DuckDB, and `sync_pmtiles` builds the missing files when it runs. When only a polygon layer's label build fails, its main tiles are published without anchors (older anchors are removed, or they would leave the layer stale on every sync): the layer is drawn from its tiles, and its label requests go to DuckDB. The one retry is for points whose spacing `-zg` cannot guess a max zoom from (`MANBY_EXIT_NO_ZOOM_GUESS`): they are built to the configured max zoom.
 - **DuckDB first, then manby**: streamed straight from the query, manby and the DuckDB connection sorting the layer had to fit in the worker at the same time, and manby slowed to a crawl under the small memory budget that left it. With the file in between, DuckDB has finished before manby starts, so manby gets half the container (`MANBY_MEMORY_SHARE` in `utils/container_memory.py` says why not more). Streaming also crashed the process on a second build unless pyarrow was imported first (`tests/unit/io/test_manby_repeat_calls.py`); with a file, manby's feeder thread does not run.

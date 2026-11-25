@@ -12,6 +12,8778 @@
   "partial": "number",
   "partial_text": "string"
  },
+ "colors": {
+  "fields": {
+   "category": "string",
+   "amount": "number",
+   "rate": "number",
+   "flag": "boolean",
+   "year": "integer",
+   "constant": "number",
+   "empty_number": "number",
+   "empty_text": "string",
+   "long_text": "string",
+   "partial": "number",
+   "partial_text": "string",
+   "color_hex": "string"
+  },
+  "cases": [
+   {
+    "id": "c001",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c002",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "class",
+     "tone": "dark"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "width": {
+        "zoom": [
+         [
+          8,
+          1
+         ],
+         [
+          16,
+          8
+         ]
+        ]
+       }
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto",
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "casing.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "casing": {
+          "color": "#fef0d999"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "casing": {
+          "color": "#fdcc8a99"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "casing": {
+          "color": "#fc8d5999"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "casing": {
+          "color": "#e34a3399"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "casing": {
+          "color": "#b3000099"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "casing.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "line": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c003",
+    "values": {
+     "geometry": "point_pin",
+     "render": "cluster",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "class",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "field": "color_hex"
+       },
+       "size": 24,
+       "icon": "goat:park",
+       "icon_color": "auto"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "auto",
+         "width": {
+          "zoom": [
+           [
+            8,
+            0
+           ],
+           [
+            10,
+            0
+           ],
+           [
+            14,
+            2
+           ]
+          ]
+         }
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "marker": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "marker": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "marker": {
+          "color": "#7570b399"
+         }
+        },
+        {
+         "from": 6000,
+         "marker": {
+          "color": "#e7298a99"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c004",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "manual",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "no",
+     "alpha": "class",
+     "tone": "dark"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}",
+       "color": "#ffffff"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "target": "outline.color",
+       "classes": [
+        {
+         "to": 2000,
+         "outline": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "outline": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "outline": {
+          "color": "#7570b399"
+         }
+        },
+        {
+         "from": 6000,
+         "outline": {
+          "color": "#e7298a99"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c005",
+    "values": {
+     "geometry": "point_icon",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "class",
+     "alpha": "class",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       }
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c006",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "color_hex"
+       }
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}",
+       "color": "#3a3541"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "fill": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "fill": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "fill": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c007",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "marker",
+     "alpha": "class",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc00",
+       "size": 10,
+       "icon_color": "auto",
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}",
+       "color": "#808080"
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "#808080"
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "outline.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "outline": {
+          "color": "#fef0d999"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "outline": {
+          "color": "#fdcc8a99"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "outline": {
+          "color": "#fc8d5999"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "outline": {
+          "color": "#e34a3399"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "outline": {
+          "color": "#b3000099"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "outline.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c008",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "outline",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       },
+       "icon_color": "auto",
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#ffffff00",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "marker": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "marker": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "marker": {
+          "color": "#7570b399"
+         }
+        },
+        {
+         "from": 6000,
+         "marker": {
+          "color": "#e7298a99"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c009",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "categories",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "outline",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 10,
+       "icon_color": "auto",
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#ffffff00",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "target": "outline.color",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "outline": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "outline": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "outline": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c010",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "fill",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "fill": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "fill": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "fill": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "fill": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c011",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "line",
+     "alpha": "class",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "line": {
+          "color": "#1b9e7799"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "line": {
+          "color": "#d95f0299"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "line": {
+          "color": "#7570b399"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c012",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "fixed",
+     "tone": "dark"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc99",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c013",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "class",
+     "alpha": "fixed",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc99",
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "line": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "line": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "line": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "line": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "line": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c014",
+    "values": {
+     "geometry": "point_icon",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "fixed",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": "#3366cc99",
+       "size": 18
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "auto"
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c015",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "fixed",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc99",
+       "size": 10,
+       "icon_color": "auto",
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c016",
+    "values": {
+     "geometry": "point_pin",
+     "render": "features",
+     "method": "categories",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "outline",
+     "alpha": "fixed",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": "#3366cc99",
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a00",
+       "width": 1
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "target": "outline.color",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "outline": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "outline": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "outline": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c017",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "quantile",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "outline",
+     "alpha": "fixed",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc99",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#55555500",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "fill": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "fill": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "fill": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "fill": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "fill": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "fill.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c018",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "no",
+     "alpha": "fixed",
+     "tone": "dark"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc99"
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "fill": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c019",
+    "values": {
+     "geometry": "point_pin",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "outline",
+     "alpha": "fixed",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": "#3366cc99",
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a00",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c020",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "none",
+     "none": "no",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "color_hex"
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c021",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto",
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       },
+       "text": "{category}"
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "line": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c022",
+    "values": {
+     "geometry": "point_pin",
+     "render": "cluster",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "class",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       },
+       "icon": "goat:park",
+       "icon_color": "auto"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "auto"
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c023",
+    "values": {
+     "geometry": "point_icon",
+     "render": "cluster",
+     "method": "quantile",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": {
+        "field": "color_hex"
+       },
+       "size": 18
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "color": "auto"
+        },
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#3a3541"
+          ],
+          [
+           16,
+           "#ffffff"
+          ]
+         ]
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "marker": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "marker": {
+          "color": "#fdcc8a00"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "marker": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "marker": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "marker": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "marker.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c024",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c025",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       }
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "fill": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "fill": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "fill": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "fill": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c026",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3_classes",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "light",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "color_hex"
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "outline.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "outline": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "outline": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "outline": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "outline": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "outline": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "outline.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c027",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "line",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "line": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c028",
+    "values": {
+     "geometry": "point_pin",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": "#3366cc00",
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c029",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "outline",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       }
+      },
+      "outline": {
+       "color": "#ffffff00",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "color": "auto"
+        },
+        "color": "#ffffff"
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c030",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "outline",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff00",
+       "width": 1
+      }
+     }
+    }
+   },
+   {
+    "id": "c031",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "categories",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "dark"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto",
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "target": "casing.color",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "casing": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "casing": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "casing": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "line": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c032",
+    "values": {
+     "geometry": "point_pin",
+     "render": "cluster",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 24,
+       "icon": "goat:park",
+       "icon_color": "auto"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "auto"
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "outline.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "outline": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "outline": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "outline": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "outline": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "outline": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "outline.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c033",
+    "values": {
+     "geometry": "point_icon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 18
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c034",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "manual",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "target": "outline.color",
+       "classes": [
+        {
+         "to": 2000,
+         "outline": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "outline": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "outline": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "outline": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c035",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       }
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c036",
+    "values": {
+     "geometry": "point_pin",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "yes",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 24,
+       "icon": "goat:park",
+       "icon_color": "auto"
+      },
+      "outline": {
+       "color": "#1a1a1a",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c037",
+    "values": {
+     "geometry": "point_pin",
+     "render": "features",
+     "method": "manual",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "palette",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "field": "amount",
+        "palette": [
+         "#44015499",
+         "#21918c",
+         "#fde72599"
+        ],
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "target": "outline.color",
+       "classes": [
+        {
+         "to": 2000,
+         "outline": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "outline": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "outline": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "outline": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c038",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "field": "color_hex"
+       },
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c039",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "width": {
+        "zoom": [
+         [
+          8,
+          1
+         ],
+         [
+          16,
+          8
+         ]
+        ]
+       }
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "casing.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "casing": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "casing": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "casing": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "casing": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "casing": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "casing.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c040",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "quantile",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "line",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "line": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "line": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "line": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "line": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "line": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "line.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c041",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "yes",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "width": {
+        "zoom": [
+         [
+          8,
+          1
+         ],
+         [
+          16,
+          8
+         ]
+        ]
+       }
+      },
+      "casing": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c042",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "outline",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff00",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "#3a3541"
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c043",
+    "values": {
+     "geometry": "point_icon",
+     "render": "cluster",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": "#3366cc00",
+       "size": 18
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "#ffffff"
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "marker": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "marker": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c044",
+    "values": {
+     "geometry": "point_icon",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": "#3366cc00",
+       "size": 18
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": "#ffffff00"
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c045",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "yes",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc00",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "color": "auto",
+        "halo": {
+         "color": {
+          "zoom": [
+           [
+            8,
+            "#ffffff"
+           ],
+           [
+            16,
+            "#3a3541"
+           ]
+          ]
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c046",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "yes",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        },
+        "icon_color": "auto",
+        "icon": "goat:park"
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "color": "auto"
+        },
+        "color": "#3a3541"
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "marker": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "marker": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "marker": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c047",
+    "values": {
+     "geometry": "point_icon",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": "#3366cc00",
+       "size": 18
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "color": "auto"
+        },
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c048",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "yes",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "color": "auto"
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c049",
+    "values": {
+     "geometry": "point_circle",
+     "render": "cluster",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "yes",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc00",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     },
+     "render": {
+      "type": "cluster",
+      "symbol": {
+       "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {
+         "field": "count",
+         "range": [
+          16,
+          40
+         ],
+         "scale": "sqrt"
+        }
+       },
+       "label": {
+        "text": "{count}",
+        "halo": {
+         "width": {
+          "zoom": [
+           [
+            8,
+            0
+           ],
+           [
+            10,
+            0
+           ],
+           [
+            14,
+            2
+           ]
+          ]
+         }
+        }
+       },
+       "outline": {
+        "color": "auto"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c050",
+    "values": {
+     "geometry": "point_pin",
+     "render": "h3",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": "#3366cc",
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c051",
+    "values": {
+     "geometry": "point_pin",
+     "render": "h3_classes",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": "#3366cc",
+       "size": 24,
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     },
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c052",
+    "values": {
+     "geometry": "point_pin",
+     "render": "h3",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "named",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "pin",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       },
+       "icon": "goat:park"
+      },
+      "outline": {
+       "color": "#1a1a1a",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "marker": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "marker": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ],
+     "rules": [
+      {
+       "id": "flagged",
+       "name": "Flagged",
+       "when": {
+        "op": "=",
+        "args": [
+         {
+          "property": "flag"
+         },
+         true
+        ]
+       },
+       "marker": {
+        "color": "#d7191c"
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c053",
+    "values": {
+     "geometry": "point_icon",
+     "render": "h3",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": "#3366cc",
+       "size": 18
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c054",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "mid",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "outline.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "outline": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "outline": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "outline": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "outline": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "outline": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "outline.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c055",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "color_hex"
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c056",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "yes",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "outline": {
+       "color": "auto"
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c057",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "quantile",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "target": "outline.color",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "outline": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "outline": {
+          "color": "#fdcc8a"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "outline": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "outline": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "outline": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "outline.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c058",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": {
+        "zoom": [
+         [
+          8,
+          0.5
+         ],
+         [
+          16,
+          4
+         ]
+        ]
+       }
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c059",
+    "values": {
+     "geometry": "point_icon",
+     "render": "h3_classes",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "by_zoom",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "icon",
+       "icon": "goat:park",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#fee8c8"
+         ],
+         [
+          16,
+          "#e34a33"
+         ]
+        ]
+       },
+       "size": {
+        "zoom": [
+         [
+          8,
+          4
+         ],
+         [
+          16,
+          20
+         ]
+        ]
+       }
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "marker": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "marker": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "marker": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c060",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "outline",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "color_hex"
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#55555500",
+       "width": 1
+      }
+     }
+    }
+   },
+   {
+    "id": "c061",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3_classes",
+     "method": "manual",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "target": "outline.color",
+       "classes": [
+        {
+         "to": 2000,
+         "outline": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "outline": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "outline": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "outline": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c062",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "fill": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "fill": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "fill": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c063",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "quantile",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc"
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "quantile",
+       "count": 5,
+       "palette": "colorbrewer:OrRd",
+       "classes": [
+        {
+         "id": "c1",
+         "to": 1807.0,
+         "fill": {
+          "color": "#fef0d9"
+         }
+        },
+        {
+         "id": "c2",
+         "from": 1807.0,
+         "to": 3614.0,
+         "fill": {
+          "color": "#fdcc8a00"
+         }
+        },
+        {
+         "id": "c3",
+         "from": 3614.0,
+         "to": 5420.9,
+         "fill": {
+          "color": "#fc8d59"
+         }
+        },
+        {
+         "id": "c4",
+         "from": 5420.9,
+         "to": 7228.0,
+         "fill": {
+          "color": "#e34a33"
+         }
+        },
+        {
+         "id": "c5",
+         "from": 7228.0,
+         "fill": {
+          "color": "#b30000"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "generated": {
+         "target": "fill.color",
+         "values": {
+          "c1": "#fef0d9",
+          "c2": "#fdcc8a",
+          "c3": "#fc8d59",
+          "c4": "#e34a33",
+          "c5": "#b30000"
+         }
+        },
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c064",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc"
+      },
+      "extrude": {
+       "height": 20
+      }
+     }
+    }
+   },
+   {
+    "id": "c065",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc"
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c066",
+    "values": {
+     "geometry": "polygon_raised",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc"
+      },
+      "extrude": {
+       "height": 20
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c067",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "manual",
+     "target": "outline_color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "dark",
+     "none": "line",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#3a3541",
+       "halo": {
+        "color": "#3a3541"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "target": "casing.color",
+       "classes": [
+        {
+         "to": 2000,
+         "casing": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "casing": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "casing": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "casing": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c068",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "manual",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#ffffff",
+       "halo": {
+        "color": "#ffffff"
+       }
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "amount",
+       "method": "manual",
+       "classes": [
+        {
+         "to": 2000,
+         "fill": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "from": 2000,
+         "to": 4000,
+         "fill": {
+          "color": "#d95f02"
+         }
+        },
+        {
+         "from": 4000,
+         "to": 6000,
+         "fill": {
+          "color": "#7570b3"
+         }
+        },
+        {
+         "from": 6000,
+         "fill": {
+          "color": "#e7298a"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "domain": [
+         0.0,
+         9035.0
+        ],
+        "no_data": false
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "c069",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "light",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 3.0,
+         "max": 42.0
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c070",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "line",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": "#808080",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c071",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "color": "#ffffff00"
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c072",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3_classes",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "none",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c073",
+    "values": {
+     "geometry": "point_circle",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "marker",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc00",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     }
+    }
+   },
+   {
+    "id": "c074",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c075",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "line",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "halo": {
+        "width": {
+         "zoom": [
+          [
+           8,
+           0
+          ],
+          [
+           10,
+           0
+          ],
+          [
+           14,
+           2
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c076",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3_classes",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "width",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c077",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "fill",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc00",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c078",
+    "values": {
+     "geometry": "line",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "line",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "line",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "line": {
+       "color": "#3366cc00",
+       "width": 3
+      },
+      "casing": {
+       "color": "#ffffff",
+       "width": 1
+      },
+      "label": {
+       "text": "{category}",
+       "color": {
+        "zoom": [
+         [
+          8,
+          "#3a3541"
+         ],
+         [
+          16,
+          "#ffffff"
+         ]
+        ]
+       },
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "c079",
+    "values": {
+     "geometry": "point_circle",
+     "render": "h3_classes",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "point",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "marker": {
+       "shape": "circle",
+       "color": "#3366cc",
+       "size": 10
+      },
+      "outline": {
+       "color": "#ffffff",
+       "width": 1
+      }
+     },
+     "render": {
+      "type": "h3",
+      "resolution": 6,
+      "value": {
+       "op": "sum",
+       "field": "amount"
+      },
+      "classify": {
+       "method": "quantile",
+       "count": 3
+      },
+      "computed": {
+       "at": "2026-01-01T00:00:00Z",
+       "data": "synthetic-v1",
+       "scope": "dataset",
+       "resolutions": {
+        "6": {
+         "min": 13325.0,
+         "max": 192010.0,
+         "breaks": [
+          49595.0,
+          81206.6666667
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "focus-class-none",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "categories",
+     "target": "color",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "fixed",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "no",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "class",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": "#3366cc",
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      }
+     },
+     "classify": [
+      {
+       "id": "first",
+       "field": "category",
+       "method": "categories",
+       "classes": [
+        {
+         "values": [
+          "A"
+         ],
+         "fill": {
+          "color": "#1b9e77"
+         }
+        },
+        {
+         "values": [
+          "B",
+          "C"
+         ],
+         "fill": {
+          "color": "#d95f0200"
+         }
+        },
+        {
+         "values": [
+          "D"
+         ],
+         "fill": {
+          "color": "#7570b3"
+         }
+        }
+       ],
+       "computed": {
+        "at": "2026-01-01T00:00:00Z",
+        "data": "synthetic-v1",
+        "scope": "dataset",
+        "no_data": false,
+        "other": true
+       }
+      }
+     ]
+    }
+   },
+   {
+    "id": "focus-data-color",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "yes",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "yes",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "plain",
+     "none": "no",
+     "alpha": "no",
+     "tone": "dark"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "dark",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "color_hex"
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "auto",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "halo": {
+        "color": "auto"
+       },
+       "text": "{category}"
+      }
+     }
+    }
+   },
+   {
+    "id": "focus-data-halo-by-zoom",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "data",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "zoom",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "color_hex"
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": {
+         "zoom": [
+          [
+           8,
+           "#ffffff"
+          ],
+          [
+           16,
+           "#3a3541"
+          ]
+         ]
+        }
+       }
+      }
+     }
+    }
+   },
+   {
+    "id": "limit-palette-blend",
+    "values": {
+     "geometry": "polygon",
+     "render": "features",
+     "method": "none",
+     "target": "none",
+     "data": "normal",
+     "other": "no",
+     "no_data": "no",
+     "hidden_class": "no",
+     "class_off_legend": "no",
+     "names": "no",
+     "unit": "no",
+     "format": "no",
+     "base": "palette",
+     "zoom": "12",
+     "rules": "none",
+     "title": "no",
+     "caption": "no",
+     "second": "none",
+     "auto:outline.color": "no",
+     "auto:casing.color": "no",
+     "auto:marker.icon_color": "no",
+     "auto:label.color": "yes",
+     "auto:label.halo.color": "no",
+     "auto:cluster.symbol.marker.icon_color": "no",
+     "auto:cluster.symbol.outline.color": "no",
+     "auto:cluster.symbol.label.color": "no",
+     "auto:cluster.symbol.label.halo.color": "no",
+     "auto:h3.outline.color": "no",
+     "label_colors": "mid",
+     "none": "no",
+     "alpha": "no",
+     "tone": "light"
+    },
+    "geometry": "polygon",
+    "zoom": 12,
+    "tone": "light",
+    "style": {
+     "version": "1.0.0",
+     "kind": "vector",
+     "symbol": {
+      "fill": {
+       "color": {
+        "field": "amount",
+        "palette": "d3:viridis",
+        "title": "Amount",
+        "computed": {
+         "at": "2026-01-01T00:00:00Z",
+         "data": "synthetic-v1",
+         "scope": "dataset",
+         "domain": [
+          0.0,
+          9035.0
+         ]
+        }
+       },
+       "opacity": 0.8
+      },
+      "outline": {
+       "color": "#555555",
+       "width": 1
+      },
+      "label": {
+       "color": "auto",
+       "text": "{category}",
+       "halo": {
+        "color": "#808080"
+       }
+      }
+     }
+    }
+   }
+  ]
+ },
  "cases": [
   {
    "id": "v001",

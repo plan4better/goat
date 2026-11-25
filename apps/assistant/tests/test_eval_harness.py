@@ -268,22 +268,6 @@ async def test_a_locked_layer_fails_the_call_and_the_run_goes_on(
     assert [call.failed for call in transcript.tool_calls] == [True]
 
 
-async def test_the_map_view_of_a_layer_is_proposed_and_graded(
-    backends: Backends, settings: AssistantSettings
-) -> None:
-    model = ScriptedModel(
-        calls=[("map_propose_view", {"title": "Bezirke", "fit_layer_project_id": 22})],
-        answer="The map now shows the Bezirke layer.",
-    )
-    transcript = await run_task(_task("proj-11"), model.model, backends, settings)
-    assert transcript.error is None, transcript.error
-    assert [g.passed for g in await grade(_task("proj-11"), transcript, backends)] == [
-        True,
-        True,
-        True,
-    ]
-
-
 #: An answer far longer than the room a run keeps for answering: it ends the
 #: run at the token limit (assistant.budget), after the run's look-ups.
 OVERLONG = "word " * 40_000

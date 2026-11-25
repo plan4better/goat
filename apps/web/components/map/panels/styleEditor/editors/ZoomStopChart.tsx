@@ -63,7 +63,7 @@ export interface ZoomStopChartProps {
   label: string;
   hiddenLabel: string;
   /** A stop's value drawn around (0, 0). */
-  glyph: (value: unknown) => ReactNode;
+  glyph: (value: unknown, index: number) => ReactNode;
   onSelect: (index: number) => void;
   /** Adds a stop at the zoom and returns its index. */
   onAdd: (zoom: number) => number;
@@ -339,7 +339,7 @@ export function ZoomStopChart({
                 {stopText(z)}
               </text>
             )}
-            <g transform={`translate(${x} ${GLYPH_Y})`}>{glyph(value)}</g>
+            <g transform={`translate(${x} ${GLYPH_Y})`}>{glyph(value, i)}</g>
             <circle
               cx={x}
               cy={TRACK_Y}

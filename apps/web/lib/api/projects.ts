@@ -334,6 +334,26 @@ export const addCatalogLayersToProject = async (projectId: string, catalogIds: s
   return await response.json();
 };
 
+/** Move a catalog layer entry, or a catalog bundle group, to the catalog's newer version. */
+export const updateCatalogEntry = async (
+  projectId: string,
+  target: { layer_project_id: number } | { group_id: number }
+) => {
+  const response = await apiRequestAuth(`${PROJECTS_API_BASE_URL}/${projectId}/catalog-update`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(target),
+  });
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((body) => (typeof body?.detail === "string" ? body.detail : undefined))
+      .catch(() => undefined);
+    throw new Error(detail ?? "Failed to update the catalog entry");
+  }
+  return await response.json();
+};
+
 export const addProjectLayers = async (projectId: string, layerIds: string[]) => {
   //todo: fix the api for this. This structure doesn't make sense.
   //layer_ids=1&layer_ids=2&layer_ids=3

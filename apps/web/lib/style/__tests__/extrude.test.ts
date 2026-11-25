@@ -1,10 +1,13 @@
 // Polygons with a height (spec 7.5): one fill-extrusion layer in place of the fill, labels on the roofs.
 import { describe, expect, it } from "vitest";
 
+import { isNone } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { LayerStyle } from "@/lib/style/generated/types";
+import { type LegendSection, buildLegend } from "@/lib/style/legend";
 
+import { mapLook } from "./legend/mapSwatch";
 import { evaluate, maplibreErrors } from "./maplibre";
 
 const tiles = { type: "tiles" as const, id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] };
@@ -105,6 +108,78 @@ describe("extruded polygons", () => {
     const height = paintOf(out)["fill-extrusion-height"];
     expect(evaluate(height, { use: "tower" })).toBe(10);
     expect(evaluate(height, { use: "house" })).toBe(0);
+  });
+
+  it("a class or rule whose fill is None leaves the volumes: it is not drawn and takes no clicks", () => {
+    const out = compileLayer({
+      id: "7",
+      style: {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: { fill: { color: "#d9d9d9" }, extrude: { height: 10 } },
+        classify: [
+          {
+            field: "kind",
+            method: "categories",
+            classes: [
+              { values: ["a"], fill: { color: "#d95f0200" } },
+              { values: ["b"], fill: { color: "#1b9e77" } },
+            ],
+          },
+        ],
+        rules: [{ when: { op: "=", args: [{ property: "flag" }, true] }, fill: { color: "#11111100" } }],
+      } as LayerStyle,
+      geometry: "polygon",
+      source: tiles,
+      fields: { kind: "string", flag: "boolean" },
+    });
+    expect(maplibreErrors(out.layers, out.sources, out.state)).toEqual([]);
+    const drawn = (properties: Record<string, unknown>) =>
+      mapLook(out, properties, 12, "polygon")["fill.color"] !== undefined;
+    expect(drawn({ kind: "a" })).toBe(false);
+    expect(drawn({ kind: "b", flag: true })).toBe(false);
+    expect(drawn({ kind: "b" })).toBe(true);
+    expect(drawn({ kind: "c" })).toBe(true);
+    // Without a None record the volumes have no filter of their own.
+    expect(
+      JSON.stringify(fillOf(poly({ fill: { color: "#d9d9d9" }, extrude: { height: 10 } })))
+    ).not.toContain("filter");
+  });
+
+  it("the legend draws a varying fill of volumes without its transparency, as the map does, and a None class not", () => {
+    const raised = (fill: object, extra: object = {}) =>
+      buildLegend(
+        { version: "1.0.0", kind: "vector", symbol: { fill, extrude: { height: 10 } }, ...extra },
+        { geometry: "polygon", zoom: 12 }
+      )!.sections;
+    const classes = raised(
+      { color: "#d9d9d9" },
+      {
+        classify: [
+          {
+            id: "k",
+            field: "kind",
+            method: "categories",
+            classes: [
+              { values: ["a"], fill: { color: "#1b9e7799" } },
+              { values: ["b"], fill: { color: "#d95f0200" } },
+              { values: ["c"], fill: { color: "#7570b3" } },
+            ],
+          },
+        ],
+      }
+    ).find((x) => x.id === "k") as Extract<LegendSection, { kind: "entries" }>;
+    const fills = classes.entries.map((e) => e.swatch.fill?.color);
+    expect(fills[0]).toBe("#1b9e77");
+    expect(fills[1] === undefined || isNone(fills[1])).toBe(true);
+    expect(fills[2]).toBe("#7570b3");
+    const ramp = raised({ color: { field: "v", palette: ["#44015499", "#21918c"], domain: [0, 1] } }).find(
+      (x) => x.kind === "ramp"
+    ) as Extract<LegendSection, { kind: "ramp" }>;
+    expect(ramp.colors.map((c) => c.slice(0, 7))).toEqual(ramp.colors);
+    // A fixed color's transparency reaches the volumes' opacity: the swatch keeps it.
+    const fixed = raised({ color: "#3366cc99" })[0] as Extract<LegendSection, { kind: "entries" }>;
+    expect(fixed.entries[0].swatch.fill?.color).toBe("#3366cc99");
   });
 
   it("extrudes says whether any record or the H3 render raises features", () => {

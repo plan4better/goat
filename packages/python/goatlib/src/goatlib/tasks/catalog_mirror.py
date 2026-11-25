@@ -65,6 +65,7 @@ from pathlib import Path
 
 import duckdb
 
+from goatlib.catalog.item import OWN_KINDS, PLAIN_BUNDLE_TYPES
 from goatlib.io.config import parquet_copy_options
 
 logger = logging.getLogger(__name__)
@@ -110,7 +111,11 @@ __all__ = [
 #:      the envelope of its extent -- a bbox cannot exclude Koblenz from NRW.
 #: v11: an item's `goat:layerType` is its own kind (feature, table, raster, wms,
 #:      wmts), not the `bundle` its dataset is published as.
-MIRROR_FORMAT_VERSION = 11
+#: v12: the layers of a typed bundle (`goat:bundleType` other than generic, an
+#:      XPlan plan) carry the bundle's type, so the catalog lists the plan as one.
+#: v13: a typed bundle's layers keep their own `goat:layerType`; the catalog's Data
+#:      type is `goat:dataType`, the bundle's type for them, else the layer's own.
+MIRROR_FORMAT_VERSION = 13
 
 ITEMS_FILENAME = "items.parquet"
 COLLECTIONS_FILENAME = "collections.parquet"
@@ -142,6 +147,7 @@ GUARANTEED_ITEM_COLUMNS: tuple[tuple[str, str], ...] = (
     ("created", "TIMESTAMPTZ"),
     ("parquet_url", "VARCHAR"),
     ("goat:layerType", "VARCHAR"),
+    ("goat:dataType", "VARCHAR"),
     ("goat:geometryType", "VARCHAR"),
     ("goat:geographical_code", "VARCHAR"),
 )
@@ -521,6 +527,9 @@ def build_mirror(
         inherited = coll_expr(
             _opt(collections, "goat:layerType", 'lower(c."goat:layerType")')
         )
+        bundle_type = coll_expr(
+            _opt(collections, "goat:bundleType", 'lower(c."goat:bundleType")')
+        )
 
         def has_link(rel: str) -> str:
             return item_expr(
@@ -534,7 +543,8 @@ def build_mirror(
 
         data_href = item_expr(_opt(items, "assets", "lower(i.assets.data.href)"))
         data_type = item_expr(_opt(items, "assets", "lower(i.assets.data.type)"))
-        own = "('table', 'feature', 'raster', 'wms', 'wmts')"
+        own = "(" + ", ".join(f"'{k}'" for k in sorted(OWN_KINDS)) + ")"
+        plain = "(" + ", ".join(f"'{t}'" for t in sorted(PLAIN_BUNDLE_TYPES)) + ")"
         layer_type = f"""CASE
             WHEN {item_expr(_opt(items, "goat:geometryType", 'i."goat:geometryType"'))}
                 IS NOT NULL THEN 'feature'
@@ -546,6 +556,11 @@ def build_mirror(
             WHEN {inherited} IN {own} THEN {inherited}
             WHEN {declared} = 'bundle' OR {inherited} = 'bundle' THEN 'table'
             ELSE 'feature'
+        END"""
+        # The catalog's Data type: a typed bundle (an XPlan plan) is found as one.
+        filter_type = f"""CASE
+            WHEN coalesce({bundle_type}, '') NOT IN {plain} THEN {bundle_type}
+            ELSE {layer_type}
         END"""
         # Description and keywords are published on the Collection ONLY -- 0 of
         # 10,793 items carry either, while 3,834 of 3,834 collections carry a
@@ -596,6 +611,7 @@ def build_mirror(
             "datetime_start",
             "datetime_end",
             "goat:layerType",
+            "goat:dataType",
             "goat:geographical_code",
             "license",
             "attribution",
@@ -612,6 +628,7 @@ def build_mirror(
                 {", ".join(_passthrough(items, "i", item_derived))},
                 {_geometry_expr(items, "i")}                  AS geometry,
                 {_text(layer_type)}                           AS "goat:layerType",
+                {_text(filter_type)}                          AS "goat:dataType",
                 {_text(geographical_code)}                    AS "goat:geographical_code",
                 {_text(f"COALESCE({item_expr(_opt(items, 'license', 'i.license'))}, "
                        f"{coll_expr(_opt(collections, 'license', 'c.license'))})")} AS license,

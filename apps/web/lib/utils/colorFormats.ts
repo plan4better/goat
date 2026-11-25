@@ -1,12 +1,14 @@
 // A color as people type it: a hex code, red, green and blue (0 to 255), or hue (0 to 360), saturation and
-// lightness (percent). Colors are stored as lower-case hex.
+// lightness (percent). Colors are stored as lower-case hex, with two more digits for a color's own transparency
+// (`#rrggbbaa`); people see six digits and a percent.
 
 export type ColorFormat = "hex" | "rgb" | "hsl";
 
-const HEX = /^#?([0-9a-f]{6})$/i;
+const HEX = /^#?([0-9a-f]{6}(?:[0-9a-f]{2})?)$/i;
+const HEX_COLOR = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
 
 function channels(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
+  const n = parseInt(hex.slice(1, 7), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
@@ -52,16 +54,17 @@ function hslToRgb(h: number, s: number, l: number): number[] {
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
-/** `hex` as text in `format`: "#833B21", "131, 59, 33" or "16, 60%, 32%". */
+/** `hex` as text in `format`, without its transparency: "#833B21", "131, 59, 33" or "16, 60%, 32%". */
 export function formatColor(hex: string, format: ColorFormat): string {
-  if (format === "hex") return hex.toUpperCase();
+  if (format === "hex") return hex.slice(0, 7).toUpperCase();
   const rgb = channels(hex);
   if (format === "rgb") return rgb.join(", ");
   const [h, s, l] = rgbToHsl(rgb).map(Math.round);
   return `${h}, ${s}%, ${l}%`;
 }
 
-/** The color typed in `format` (a hex code reads in any format), as lower-case hex; null while it is no color. */
+/** The color typed in `format` (a hex code reads in any format, eight digits with their transparency), as lower-case
+ * hex; null while it is no color. */
 export function parseColor(text: string, format: ColorFormat): string | null {
   const trimmed = text.trim();
   const hex = trimmed.match(HEX);
@@ -77,4 +80,24 @@ export function parseColor(text: string, format: ColorFormat): string | null {
   const [h, s, l] = numbers;
   if (h > 360 || s > 100 || l > 100) return null;
   return toHex(hslToRgb(h % 360, s, l));
+}
+
+/** A color's own transparency as a percent: 0 only for None, 100 only when opaque, 1 to 99 between; 100 for anything
+ * but a hex color. */
+export function percentOf(hex: string): number {
+  const digits = HEX_COLOR.exec(hex)?.[1];
+  const alpha = digits ? parseInt(digits, 16) : 255;
+  if (alpha === 0 || alpha === 255) return alpha === 0 ? 0 : 100;
+  return Math.min(99, Math.max(1, Math.round((alpha / 255) * 100)));
+}
+
+/** The alpha (0 to 255) of a percent of transparency. */
+export const alphaOfPercent = (percent: number): number =>
+  Math.round((Math.min(100, Math.max(0, percent)) / 100) * 255);
+
+/** `hex` at `alpha` (0 to 255), lower case: six digits when opaque, eight otherwise. */
+export function withAlpha(hex: string, alpha: number): string {
+  const color = hex.slice(0, 7).toLowerCase();
+  const a = Math.round(Math.min(255, Math.max(0, alpha)));
+  return a === 255 ? color : `${color}${a.toString(16).padStart(2, "0")}`;
 }

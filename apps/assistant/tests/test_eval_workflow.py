@@ -477,6 +477,35 @@ async def test_the_tools_check_counts_calls(backends: Backends) -> None:
     ]
 
 
+async def test_the_tools_check_bounds_the_calls_of_several_tools_together(
+    backends: Backends,
+) -> None:
+    """A key that joins tools with "+" bounds their calls in sum, failed
+    calls included."""
+    task = _check_task(
+        '{"kind": "tools", "at_most": '
+        '{"project_count_features+project_group_statistics": 1, "style_update": 2}}'
+    )
+
+    def calls(*names: str) -> list[ToolCall]:
+        return [ToolCall(name, {}, None, False) for name in names]
+
+    async def passed(made: list[ToolCall]) -> tuple[bool, str]:
+        [graded] = await grade(task, _transcript(made), backends)
+        return graded.passed, graded.detail
+
+    assert (await passed(calls("project_count_features", "style_update")))[0]
+    assert (await passed(calls("style_update", "style_update")))[0]
+    together, detail = await passed(
+        calls("project_count_features", "project_group_statistics")
+    )
+    assert not together
+    assert "project_count_features+project_group_statistics" in detail
+    failed = [ToolCall("project_group_statistics", {}, None, True)]
+    assert not (await passed(calls("project_count_features") + failed))[0]
+    assert not (await passed(calls("style_update", "style_update", "style_update")))[0]
+
+
 # What the delivered tools need from the fixture backends beyond the brief.
 
 
@@ -1420,9 +1449,15 @@ async def test_an_open_opportunitys_left_out_field_is_created_open(
         "routing_mode": "walking",
         "opportunity_1_potential_type": "field",
     }
-    model = ScriptedModel(calls=[("workflow_create", {"draft": draft})])
+    # wf-02 is on the map page, where the workflow tools come with the skill.
+    model = ScriptedModel(
+        calls=[
+            ("skills_load", {"name": "build-a-workflow"}),
+            ("workflow_create", {"draft": draft}),
+        ]
+    )
     transcript = await run_task(_task("wf-02"), model.model, backends, settings)
-    [create] = transcript.tool_calls
+    _, create = transcript.tool_calls
     assert not create.failed, create.result
     assert sorted(
         (issue["code"], issue["message"].split(": ")[1])

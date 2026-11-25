@@ -155,6 +155,9 @@ describe("label summaries", () => {
     expect(halo({ halo: { color: "#000000", width: 3 } })).toEqual({ text: "3 px", swatch: "#000000" });
     expect(halo({ halo: { width: 0 } }).text).toBe("None");
     expect(halo({ halo: { width: 0 } }, "de").text).toBe("Keiner");
+    // A None color is no halo either, whatever its width; a color with its own transparency keeps the width.
+    expect(halo({ halo: { color: "#00000000", width: 2 } }).text).toBe("None");
+    expect(halo({ halo: { color: "#00000080", width: 2 } }).text).toBe("2 px");
     expect(
       halo({
         halo: {

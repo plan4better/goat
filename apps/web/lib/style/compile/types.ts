@@ -3,6 +3,7 @@ import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { RasterTileset, RasterValues } from "@/lib/style/raster/values";
+import type { Tone } from "@/lib/style/tone";
 
 /** A field's type as the data describes it (goatlib `FieldType`). */
 export type FieldType = "string" | "number" | "integer" | "boolean" | "date" | "datetime";
@@ -58,6 +59,9 @@ export interface CompileInput {
   highlight?: boolean;
   /** Where an icon reference's image comes from; the default resolves GOAT's library and built-in images. */
   resolveIcon?: (ref: string) => { url: string; sdf: boolean } | null;
+  /** The tone of the basemap the layer draws on (`basemapTone`), which a derived color's rule reads as `inputs.tone`;
+   * light by default. */
+  tone?: Tone;
 }
 
 /** An image the map must have before the layers draw: loaded at `height` px with `pixelRatio`. */

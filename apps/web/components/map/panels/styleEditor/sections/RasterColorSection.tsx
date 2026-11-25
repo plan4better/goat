@@ -44,7 +44,8 @@ function ColorsRow() {
   const next = useNextLevel();
   const waiting = useRasterWaiting();
   const hillshade = render.type === "hillshade";
-  const colored = !hillshade || render.palette !== undefined;
+  // `palette: null` is no palette: shading only.
+  const colored = !hillshade || render.palette != null;
   const { colors, stepped } = renderColors(render);
   const classify = isObject(render.classify) ? render.classify : null;
   const method = classify && typeof classify.method === "string" ? classify.method : "manual";

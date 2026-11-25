@@ -241,7 +241,8 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: old answer through 304s.
 #: 2: an item says whether it has published tiles (`goat:tiles`), and a
 #: facet's repeated values all filter (before, only the last one did).
-DOCUMENT_VERSION = 2
+#: 3: a dataset that publishes its own thumbnail serves it, not a layer's.
+DOCUMENT_VERSION = 3
 
 
 #: Assets this API serves itself, and the ``/assets`` kind each is served as.
@@ -315,6 +316,8 @@ _INTERNAL_COLUMNS = frozenset(
         "language_code",
         "category",
         "parquet_url",
+        # What the Data type filter reads; the item states its own `goat:layerType`.
+        "goat:dataType",
         "bbox_xmin",
         "bbox_ymin",
         "bbox_xmax",
@@ -506,19 +509,18 @@ def collection_from_row(
 def _state_thumbnail(
     document: dict[str, Any], row: dict[str, Any], assets_base: str | None
 ) -> None:
-    """Give the dataset the thumbnail of the layer that has one.
+    """Give the dataset its own published thumbnail, else that of a layer.
 
-    A Collection publishes no thumbnail (only `collection-mirror`, which this API
-    never serves), so a dataset card would have nothing to show while 1,021 of
-    its layers do. The href points at the *layer* that owns the object, because
-    that is where the asset route resolves a key from -- the dataset is borrowing
-    a picture, not claiming an object of its own.
+    Most Collections publish none, so a card borrows one of its layers', and the
+    href points at the *layer* that owns the object.
 
     No `type`: the collection row does not know the layer's, and guessing one
     would be a claim about bytes this row has never seen. A client reads the type
     off the response, which is where it is authoritative.
     """
-    item_id = row.get("thumbnail_item")
+    own = (row.get("assets") or {}).get("thumbnail")
+    has_own = isinstance(own, dict) and bool(own.get("href"))
+    item_id = row.get("id") if has_own else row.get("thumbnail_item")
     if not item_id or not assets_base:
         return
     assets = document.get("assets")

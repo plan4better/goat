@@ -5,10 +5,12 @@ import userEvent from "@testing-library/user-event";
 import { I18nextProvider } from "react-i18next";
 import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { BASEMAPS } from "@/lib/constants/basemaps";
 import { layerReducer } from "@/lib/store/layer/slice";
-import { mapReducer } from "@/lib/store/map/slice";
+import { mapReducer, setActiveBasemap } from "@/lib/store/map/slice";
+import { RULES } from "@/lib/style/compile/derived";
 import { StyleStoresProvider, useStyleStores } from "@/lib/style/editor/StyleStores";
 import type { StyleStoreRegistry } from "@/lib/style/editor/registry";
 import type { LayerStyle } from "@/lib/style/generated/types";
@@ -33,6 +35,12 @@ vi.mock("@/lib/style/transports/core", () => ({
   },
 }));
 vi.mock("@/lib/api/fetcher", () => ({ renewAccessToken: async () => true }));
+// The project as the page loaded it: its saved basemap.
+const { project } = vi.hoisted(() => ({ project: { id: "p1", basemap: undefined as string | undefined } }));
+vi.mock("@/lib/api/projects", async (original) => ({
+  ...(await original<object>()),
+  useProject: () => ({ project }),
+}));
 const { styleData } = vi.hoisted(() => ({ styleData: vi.fn() }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: styleData }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
@@ -61,8 +69,10 @@ function Registry() {
   return null;
 }
 
-function renderProjectPanel(shown: MapLayer = layer) {
+function renderProjectPanel(shown: MapLayer = layer, stored?: { basemap: string; projectId: string }) {
   const store = configureStore({ reducer: { map: mapReducer, layers: layerReducer } });
+  const active = BASEMAPS.find((b) => b.value === stored?.basemap);
+  if (active) store.dispatch(setActiveBasemap({ basemap: active, projectId: stored!.projectId }));
   return renderWithProviders(
     <Provider store={store}>
       <SWRConfig value={{ provider: () => new Map() }}>
@@ -76,6 +86,43 @@ function renderProjectPanel(shown: MapLayer = layer) {
 }
 
 describe("the style panel on the project page", () => {
+  describe("the basemap's tone", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      project.basemap = undefined;
+    });
+    const outlined = {
+      ...layer,
+      style: {
+        ...layer.style!,
+        document: { ...DOC, symbol: { fill: { color: "#cccccc" }, outline: { color: "auto", width: 1 } } },
+      },
+    } as MapLayer;
+    const toneOfSwatches = async (stored?: { basemap: string; projectId: string }) => {
+      styleData.mockImplementation(() => ({ ...EMPTY_DATA, geometry: "polygon", featureCount: 10 }));
+      const shade = vi.spyOn(RULES, "shade");
+      renderProjectPanel(outlined, stored);
+      await screen.findByTestId("style-panel-body");
+      await waitFor(() => expect(shade).toHaveBeenCalled());
+      return [...new Set(shade.mock.calls.map(([, inputs]) => inputs.tone))];
+    };
+
+    it("shows derived colors for the tone of the basemap the map draws", async () => {
+      project.basemap = "dark";
+      expect(await toneOfSwatches()).toEqual(["dark"]);
+    });
+
+    it("takes the basemap chosen on the map for this project", async () => {
+      project.basemap = "light";
+      expect(await toneOfSwatches({ basemap: "dark", projectId: "p1" })).toEqual(["dark"]);
+    });
+
+    it("leaves a basemap stored for another project aside, as the map does", async () => {
+      project.basemap = "light";
+      expect(await toneOfSwatches({ basemap: "dark", projectId: "other" })).toEqual(["light"]);
+    });
+  });
+
   beforeEach(() => {
     styleData.mockImplementation(() => EMPTY_DATA);
     transports.length = 0;
@@ -294,7 +341,9 @@ describe("the style panel on the project page", () => {
       );
       await panel.show(raster(32, { type: "continuous", palette: "goat:elevation", band: 2 }));
       await waitFor(() =>
-        expect(styleData).toHaveBeenLastCalledWith(expect.objectContaining({ id: "dataset-32", breaksBand: 2 }))
+        expect(styleData).toHaveBeenLastCalledWith(
+          expect.objectContaining({ id: "dataset-32", breaksBand: 2 })
+        )
       );
       const asked = styleData.mock.calls
         .map(([arg]) => arg as { id: string; breaksBand?: number | string })

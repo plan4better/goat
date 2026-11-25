@@ -39,7 +39,13 @@ from pydantic_ai.usage import RunUsage
 from pydantic_core import to_jsonable_python
 
 from assistant.agent import PartIds, RunDeps, build_agent
-from assistant.asks import AskHistory, CardAnswer, answer_lines, answer_problem
+from assistant.asks import (
+    AskHistory,
+    CardAnswer,
+    answer_lines,
+    answer_problem,
+    typed_texts,
+)
 from assistant.budget import RunBudget
 from assistant.bus import CONTROL_CHANNEL, EventBus, events_channel
 from assistant.clock import AnswerClock
@@ -84,6 +90,7 @@ from assistant.surfaces import Locale, Surface
 from assistant.tools.http import ServiceClients
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.runtime import ToolEnv, client_secrets
+from assistant.tools.skills import loaded_skills
 from assistant.tools.toolset import earlier_writes
 from assistant.workflows.runs import ConversationRuns
 
@@ -156,6 +163,12 @@ class RunSetup:
     earlier_writes: Mapping[str, dict[str, Any]] = field(default_factory=dict)
     #: What the conversation created and ran (assistant.workflows.runs).
     runs: ConversationRuns = field(default_factory=ConversationRuns)
+    #: What the user typed in the conversation, this message included
+    #: (assistant.asks.typed_texts); None when not read from one.
+    typed: tuple[str, ...] | None = None
+    #: The skills the conversation's answers loaded
+    #: (assistant.tools.skills.loaded_skills); None when not read from one.
+    skills: frozenset[str] | None = None
 
     @classmethod
     def default(cls) -> "RunSetup":
@@ -503,6 +516,8 @@ class RunManager:
             asks=asks,
             earlier_writes=earlier_writes(stored),
             runs=ConversationRuns.from_stored(stored),
+            typed=typed_texts(stored, text, answer),
+            skills=frozenset(loaded_skills(stored)),
         )
         user_parts: list[dict[str, Any]] = [{"type": "user_text", "text": text}]
         # A home page with @ mentioned sources still has context worth showing.
@@ -656,6 +671,8 @@ class RunManager:
                     repo=self.repo,
                     extra_secrets=client_secrets(self.settings),
                     asks=setup.asks,
+                    typed=setup.typed,
+                    skills=None if setup.skills is None else set(setup.skills),
                     clock=clock,
                     runs=setup.runs,
                     stopping=lambda: self._stopping or run_id in self._lost,

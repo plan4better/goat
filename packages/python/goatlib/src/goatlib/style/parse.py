@@ -4,11 +4,18 @@
 error into an `Issue` with the specification's code and a JSON pointer. The raw
 document is only read: it is walked to name list items by their ids and to drop
 the labels Pydantic adds for union branches.
+
+Where a value can take one of several forms, Pydantic reports every form that
+failed. A form the value plainly is not (it failed at the value itself) is left
+out when another form failed inside the value; when every form failed at the
+value itself, one line names them all.
 """
 
-from typing import Any
+from functools import cache
+from types import UnionType
+from typing import Annotated, Any, Union, get_args, get_origin
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, Tag, TypeAdapter, ValidationError
 
 from goatlib.style import version as versions
 from goatlib.style.issues import CODES, Issue, make_issue
@@ -67,21 +74,105 @@ def parse(model: Any, raw: Any, *, base_path: str = "") -> tuple[Any, list[Issue
     except ValidationError as exc:
         issues: list[Issue] = []
         seen: set[tuple[str, str]] = set()
-        for error in exc.errors(include_url=False):
+        found = [
+            _Found(error, *_walk(raw, error["loc"], error["type"]))
+            for error in exc.errors(include_url=False)
+        ]
+        for one in _closest_forms(found):
+            error, segments = one.error, one.segments
             code = _TYPE_TO_CODE.get(error["type"]) or (
                 error["type"] if error["type"] in CODES else "invalid_value"
             )
-            segments = _segments(raw, error["loc"], error["type"])
             path = base_path + to_pointer(segments)
             if (code, path) in seen:
                 continue
             seen.add((code, path))
-            issues.append(make_issue(code, path, _message(code, segments, error)))
+            message = one.forms or _message(code, segments, error, model)
+            issues.append(make_issue(code, path, message))
         return None, issues
 
 
-def _segments(raw: Any, loc: tuple[Any, ...], error_type: str) -> list[str]:
+class _Found:
+    """A Pydantic error with its place in the document (`segments`) and the
+    union branches its `loc` went through (`labels`: the number of segments
+    before the label, and the label)."""
+
+    def __init__(
+        self, error: Any, segments: list[str], labels: list[tuple[int, Any]]
+    ) -> None:
+        self.error = error
+        self.segments = segments
+        self.labels = labels
+        #: The line naming every form a value failed, set on the one kept.
+        self.forms: str | None = None
+
+    def at_branch(self) -> bool:
+        """Whether the error is the branch's own: it failed at the value
+        itself, not inside it."""
+        return bool(self.labels) and self.labels[-1][0] == len(self.segments)
+
+    def unions(self) -> list[tuple[Any, Any]]:
+        """The unions the error went through, each as a key (the branches
+        taken before it, its depth and the document path to it) and the
+        branch taken."""
+        return [
+            ((tuple(self.labels[:n]), depth, tuple(self.segments[:depth])), label)
+            for n, (depth, label) in enumerate(self.labels)
+        ]
+
+
+def _closest_forms(found: list[_Found]) -> list[_Found]:
+    """`found` without the errors of forms the value plainly is not: an error
+    at a branch is left out when another branch of the union failed inside the
+    value. Where every branch failed at the value and each says what the value
+    should be, the first error's line names all of them in place of the rest."""
+    through: dict[Any, list[tuple[_Found, Any]]] = {}
+    for one in found:
+        for key, label in one.unions():
+            through.setdefault(key, []).append((one, label))
+    kept: list[_Found] = []
+    for one in found:
+        if not one.at_branch():
+            kept.append(one)
+            continue
+        key, label = one.unions()[-1]
+        siblings = [other for other, taken in through[key] if taken != label]
+        if any(len(other.segments) > len(one.segments) for other in siblings):
+            continue
+        if any(other.forms for other in siblings):
+            continue
+        forms = [_form(e.error) for e in [one, *siblings]]
+        if siblings and all(forms):
+            one.forms = "Input should be " + _or(
+                list(dict.fromkeys(f for f in forms if f))
+            )
+        kept.append(one)
+    return kept
+
+
+def _form(error: dict[str, Any]) -> str | None:
+    """What a branch's error says the value should be, in JSON's words."""
+    if error["type"] in ("model_type", "model_attributes_type", "dict_type"):
+        return "an object"
+    if error["type"] == "literal_error":
+        expected = str(error.get("ctx", {}).get("expected", ""))
+        return {"False": "false", "True": "true", "None": "null"}.get(
+            expected, expected
+        )
+    message = str(error["msg"])
+    prefix = "Input should be "
+    return message[len(prefix) :] if message.startswith(prefix) else None
+
+
+def _or(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else f"{', '.join(words[:-1])} or {words[-1]}"
+
+
+def _walk(
+    raw: Any, loc: tuple[Any, ...], error_type: str
+) -> tuple[list[str], list[tuple[int, Any]]]:
     segments: list[str] = []
+    labels: list[tuple[int, Any]] = []
     node = raw
     for i, part in enumerate(loc):
         last = i == len(loc) - 1
@@ -94,8 +185,84 @@ def _segments(raw: Any, loc: tuple[Any, ...], error_type: str) -> list[str]:
             node = node[part]
         elif last and error_type == "missing" and isinstance(part, str):
             segments.append(part)
-        # anything else is a label Pydantic adds for a union branch: not part of the document
-    return segments
+        else:
+            # a label Pydantic adds for a union branch: not part of the document
+            labels.append((len(segments), part))
+    return segments, labels
+
+
+#: An unknown key's message names at most this many keys of its place.
+MAX_KEYS_NAMED = 20
+
+
+def _keys_at(model: Any, loc: tuple[Any, ...]) -> list[str] | None:
+    """The keys the object holding the last part of `loc` takes, as JSON
+    writes them; None when `loc` does not lead to a model."""
+    node = model
+    for part in loc[:-1]:
+        node = _step(node, part)
+        if node is None:
+            return None
+    node = _unwrap(node)
+    if not (isinstance(node, type) and issubclass(node, BaseModel)):
+        return None
+    try:
+        return _schema_keys(node)
+    except Exception:  # a model without a JSON Schema keeps the short message
+        return None
+
+
+@cache
+def _schema_keys(model: type[BaseModel]) -> list[str]:
+    """The keys of a model's JSON Schema: names as JSON writes them, without
+    the fields a model refuses itself."""
+    schema = model.model_json_schema(by_alias=True)
+    if "$ref" in schema:  # a model that holds itself is one of its `$defs`
+        schema = schema["$defs"][schema["$ref"].rsplit("/", 1)[-1]]
+    return list(schema.get("properties", {}))
+
+
+def _unwrap(node: Any) -> Any:
+    """`node` without `Annotated` and without the None of an optional."""
+    while True:
+        if get_origin(node) is Annotated:
+            node = get_args(node)[0]
+        elif get_origin(node) in (Union, UnionType) and type(None) in get_args(node):
+            members = [a for a in get_args(node) if a is not type(None)]
+            node = members[0] if len(members) == 1 else Union[tuple(members)]
+        else:
+            return node
+
+
+def _label(member: Any) -> Any:
+    """The label Pydantic gives a union's member in an error's `loc`."""
+    if get_origin(member) is Annotated:
+        for meta in get_args(member)[1:]:
+            if isinstance(meta, Tag):
+                return meta.tag
+    member = _unwrap(member)
+    return member.__name__ if isinstance(member, type) else None
+
+
+def _step(node: Any, part: Any) -> Any:
+    """The annotation one part of an error's `loc` leads to from `node`."""
+    node = _unwrap(node)
+    origin = get_origin(node)
+    if origin in (Union, UnionType):
+        return next((m for m in get_args(node) if _label(m) == part), None)
+    if isinstance(node, type) and issubclass(node, BaseModel):
+        for name, field in node.model_fields.items():
+            if part in (name, field.alias):
+                return field.annotation
+        return None
+    args = get_args(node)
+    if origin is list and isinstance(part, int) and args:
+        return args[0]
+    if origin is tuple and isinstance(part, int) and args:
+        return args[0] if args[-1] is Ellipsis else args[min(part, len(args) - 1)]
+    if origin is dict and len(args) == 2:
+        return args[1]
+    return None
 
 
 #: Pydantic's bound errors: the bound's name in the error's `ctx`, and the message.
@@ -107,13 +274,19 @@ _BOUNDS = {
 }
 
 
-def _message(code: str, segments: list[str], error: dict[str, Any]) -> str:
+def _message(code: str, segments: list[str], error: dict[str, Any], model: Any) -> str:
     key = segments[-1] if segments else ""
     if code == "unknown_key":
         # A model that refuses a key itself (`PydanticCustomError`) says why.
         if error["type"] == "unknown_key":
             return str(error["msg"])
-        return f'"{key}" is not a key here.'
+        keys = _keys_at(model, error["loc"])
+        if not keys:
+            return f'"{key}" is not a key here.'
+        named = ", ".join(keys[:MAX_KEYS_NAMED])
+        if len(keys) > MAX_KEYS_NAMED:
+            named += f" and {len(keys) - MAX_KEYS_NAMED} more"
+        return f'"{key}" is not a key here. Keys here: {named}.'
     if code == "missing_required":
         return f'"{key}" is required here.'
     if error["type"] in _BOUNDS:

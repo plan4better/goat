@@ -1,10 +1,13 @@
 // The groups of the symbol section and the rows of each group's editor (prototype 2.5 and 4.1). A group edits one
 // part of the symbol; its rows name the part's keys. Ranges come from SLIDERS, values from DEFAULTS.
+import { isDerivedWord } from "@/lib/style/compile/derived";
 import { keepsColors } from "@/lib/style/compile/images";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { CompoundChoice } from "@/lib/style/editor/forms";
 import type { JsonObject } from "@/lib/style/json";
 import { drawsAsImage, isPin } from "@/lib/style/markerShapes";
+
+import type { ColorSentinel } from "@/components/map/panels/styleEditor/editors/ColorRow";
 
 interface RowBase {
   key: string;
@@ -24,8 +27,9 @@ interface RowBase {
 export type PartRow =
   | (RowBase & {
       type: "color";
-      /** A choice that takes the color from another part: writes `value` (undefined deletes the key). */
-      sentinel?: { label: string; value: "fill" | undefined };
+      /** The choices in front of the picker's swatches, in their order, where the row has one of its own ("Same as
+       * fill"); else those of its key (`colorChoices`). */
+      sentinels?: ColorSentinel[];
     })
   | (RowBase & { type: "number" })
   | (RowBase & { type: "switch" })
@@ -70,6 +74,25 @@ const OUTLINE_POSITIONS = ["center", "inside", "outside"] as const;
 /** A label's letter case (`label.transform`). */
 export const LETTER_CASES = ["none", "uppercase", "lowercase"] as const;
 const SAME_AS_FILL = "style_editor.same_as_fill";
+/** The color GOAT derives from what the style says (spec 18.10). */
+const AUTO: ColorSentinel = { label: "style_editor.auto", value: "auto" };
+/** The row's color at 0 % (spec 4.6). */
+const NONE: ColorSentinel = { label: "style_editor.none", none: true };
+/** A label's text, its lines' and a cluster's number: text always draws in a color, so it has no None. */
+const TEXT_KEYS = new Set(["label.color", "label.lines.color"]);
+
+/** Whether a color key takes a transparency of its own in the panel: the scene's colors (sky, fog, glow, light) do
+ * not, so they offer neither None nor the transparency bar. */
+export const takesTransparency = (key: string): boolean => !key.startsWith("scene.");
+
+/** The choices of a color key in front of the picker's swatches: Auto where the key takes `"auto"` (the table of
+ * color keys, held equal to the resolver), None but on a label's text and the scene's colors, then `same` (a row's
+ * "Same as fill"). */
+export function colorChoices(key: string, same: ColorSentinel[] = []): ColorSentinel[] {
+  const plain = key.replace(/\.\d+\./g, ".");
+  const none = !TEXT_KEYS.has(plain) && takesTransparency(plain);
+  return [...(isDerivedWord(plain, "auto") ? [AUTO] : []), ...(none ? [NONE] : []), ...same];
+}
 
 const repeats = (part: JsonObject) => part.placement === undefined || part.placement === "repeat";
 export const hasPattern = (part: JsonObject) => part.pattern !== undefined && part.pattern !== "none";
@@ -107,7 +130,7 @@ export function patternRows(dots: boolean): PartRow[] {
       key: "pattern_color",
       label: dots ? "style_editor.pattern_dot_color" : "style_editor.pattern_color",
       note: "style_editor.note_pattern_color",
-      sentinel: { label: SAME_AS_FILL, value: undefined },
+      sentinels: colorChoices("fill.pattern_color", [{ label: SAME_AS_FILL, value: undefined }]),
       when: hasPattern,
     },
     { type: "number", key: "pattern_spacing", label: "style_editor.pattern_spacing", when: hasPattern },
@@ -131,7 +154,7 @@ const OUTLINE: PartGroup = {
       type: "color",
       key: "color",
       label: "style_editor.color",
-      sentinel: { label: SAME_AS_FILL, value: "fill" },
+      sentinels: colorChoices("outline.color", [{ label: SAME_AS_FILL, value: "fill" }]),
     },
     { type: "number", key: "width", label: "style_editor.width" },
     { type: "number", key: "opacity", label: "style_editor.opacity" },
@@ -216,7 +239,7 @@ const ARROWS: PartGroup = {
       type: "color",
       key: "color",
       label: "style_editor.color",
-      sentinel: { label: "style_editor.same_as_line", value: undefined },
+      sentinels: colorChoices("arrows.color", [{ label: "style_editor.same_as_line", value: undefined }]),
       when: (a) => !keepsColors(a.icon),
     },
     {
@@ -283,9 +306,8 @@ const ICON: PartGroup = {
       type: "color",
       key: "icon_color",
       label: "style_editor.icon_color",
+      // On a hollow marker the icon takes the marker's hue until it has its own (spec 3.3): the row asks the resolver.
       when: (m) => tinted(m) && !alone(m),
-      // On a hollow marker the icon takes the marker color until it has its own (spec 3.3).
-      fallback: (m: JsonObject) => (m.fill === false && typeof m.color === "string" ? m.color : undefined),
     },
     { type: "number", key: "rotation", label: "style_editor.rotation", when: asImage },
     // A shift of the drawn image (MapLibre's icon offset); a plain circle has none.
@@ -373,6 +395,22 @@ export const GROUPS: Readonly<Record<Geometry, PartGroup[]>> = {
 export const groupOf = (geometry: Geometry, id: string): PartGroup | undefined =>
   GROUPS[geometry].find((group) => group.id === id);
 
+/** The choices of the color row of `key` (`outline.color`: Auto, None, Same as fill), else those of the key. */
+export function rowChoices(geometry: Geometry, key: string): ColorSentinel[] {
+  const [part, sub] = key.split(".");
+  const rows = GROUPS[geometry]
+    .filter((group) => group.part === part)
+    .flatMap((group) => (group.part === "fill" ? [...group.rows, ...patternRows(false)] : group.rows));
+  const row = rows.find((r) => r.key === sub && r.type === "color");
+  return (row?.type === "color" ? row.sentinels : undefined) ?? colorChoices(key);
+}
+
+/** The choices a zoom stop of a color key offers: its row's, without one that deletes the key, which a stop cannot. */
+export function stopSentinels(geometry: Geometry, key: string): ColorSentinel[] | undefined {
+  const choices = rowChoices(geometry, key).filter((s) => s.none || s.value !== undefined);
+  return choices.length ? choices : undefined;
+}
+
 /** Choice keys whose rows live outside GROUPS (the label editor's). */
 const OTHER_CHOICES: Record<string, readonly string[]> = {
   "label.font.weight": ["regular", "bold", "medium", "light"],
@@ -390,4 +428,19 @@ export function choiceValues(key: string): readonly string[] | undefined {
         for (const row of group.rows)
           if ((row.type === "choice" || row.type === "pattern") && row.key === sub) return row.values;
   return OTHER_CHOICES[key];
+}
+
+/** Keys of a point marker that its Icon group edits; the rest are its Fill's (and Size's). */
+const ICON_KEYS = new Set(["icon", "icon_color", "shape", "rotation", "anchor", "allow_overlap"]);
+
+/** The label key of a part as the symbol section names it for `geometry`: heights "Height", a polygon's or a line's
+ * marker "Marker"; a point marker "Icon" when `node` sets only icon keys, else "Fill". */
+export function partLabelKey(part: string, geometry: Geometry | undefined, node?: unknown): string {
+  if (part === "extrude") return "style_editor.height";
+  if (part !== "marker") return `style_editor.part_${part}`;
+  if (geometry !== "point") return "style_editor.part_marker";
+  const keys = node && typeof node === "object" ? Object.keys(node) : [];
+  return keys.length && keys.every((key) => ICON_KEYS.has(key))
+    ? "style_editor.part_icon"
+    : "style_editor.part_fill";
 }

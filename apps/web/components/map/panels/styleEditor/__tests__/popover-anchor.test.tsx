@@ -7,7 +7,17 @@ import { anchorTopOf, placeIn } from "@/components/map/panels/styleEditor/popove
 const box = (top: number, attrs: Record<string, string> = {}) => {
   const el = document.createElement("div");
   Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
-  el.getBoundingClientRect = () => ({ top, left: 0, right: 0, bottom: top, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) });
+  el.getBoundingClientRect = () => ({
+    top,
+    left: 0,
+    right: 0,
+    bottom: top,
+    width: 0,
+    height: 0,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  });
   document.body.appendChild(el);
   return el;
 };

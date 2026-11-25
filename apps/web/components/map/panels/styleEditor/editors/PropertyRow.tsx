@@ -6,7 +6,14 @@ import { Box } from "@mui/material";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { addClassification, classifyShape, scopedView } from "@/lib/style/editor/classify";
+import {
+  type ScopedView,
+  addClassification,
+  classifyShape,
+  recordPathOf,
+  scopedView,
+  withoutEmptyPart,
+} from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import {
   type Mode,
@@ -26,13 +33,15 @@ import {
   writeCompound,
   writeCompoundStops,
 } from "@/lib/style/editor/forms";
-import { type Path, getIn, setIn } from "@/lib/style/editor/store";
+import { issueText } from "@/lib/style/editor/issues";
+import { laterSetter, perLayerPath, summaryView } from "@/lib/style/editor/sources";
+import { type Path, type Scope, getIn, setIn } from "@/lib/style/editor/store";
 import {
   choiceLabel,
   compoundLabel,
   compoundOptions,
+  scopedSwatchOf,
   summarize,
-  swatchOf,
 } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -40,8 +49,10 @@ import { isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
+  useBasemapTone,
   useEditor,
   useMapZoom,
+  useRecordValuesAt,
   useScope,
   useScoped,
   useStyleData,
@@ -87,13 +98,20 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const store = useEditor();
   const data = useStyleData();
   const mapZoom = useMapZoom();
+  const tone = useBasemapTone();
   const popover = usePopover();
   const next = useNextLevel();
   const openClassification = useClassificationOpener();
   const path = base ? `${base}.${row.key}` : row.key;
   const key = keyOf(path);
   // In class scope the row shows the class's value and writes into its record (writePath).
-  const { value, writePath, overridden, scoped } = useScoped(path);
+  const shown = useScoped(path);
+  // A key set once for the layer may be held by a class or rule record (spec 6.1): the row reads and writes it there.
+  const holder = useStyleSelector((doc) => (shown.scoped ? shown.writePath : perLayerPath(doc, path)));
+  const held = useStyleValue(holder);
+  const { overridden, scoped } = shown;
+  const value = scoped || holder === path ? shown.value : held;
+  const writePath = scoped ? shown.writePath : holder;
   const iconName = useIconLabel(row.type === "icon" ? value : undefined);
   const scope = useScope();
   const compound = row.type === "choice" ? row.compound : undefined;
@@ -110,26 +128,37 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   );
   // A classification that targets this key changes its mode (its shape, not every class value).
   useStyleSelector((doc) => classifyShape(doc, data.geometry));
+  // So does a class or rule record that sets the key, or a value it holds there (the summary reads it).
+  useRecordValuesAt(compound ? compound.keys.map((k) => `${base}.${k}`) : path);
   useStyleValue(path);
   // Heights draw with one fill opacity for the whole layer.
   const extruded = useStyleSelector((doc) => drawsHeights(doc));
   const label = t(row.label);
-  const own = scoped && overridden ? writePath : path;
+  // The scope's view, built once per render for the reads below.
+  let scopedCache: ScopedView | undefined;
+  const scopedOnce = (): ScopedView => (scopedCache ??= scopedView(store.document, scope as Scope));
+  const own = scoped ? (overridden ? writePath : path) : writePath;
   // The keys of a compound the record sets itself; in scope the others are the layer's.
   const ownKeys = compound
     ? compound.keys.filter((k) => getIn(store.document, `${record}.${k}`) !== undefined)
     : [];
   const owned = compound ? scoped && ownKeys.length > 0 : overridden;
+  // The document the row's mode, summary and opener read: in scope, for a value the record leaves to the layer, what
+  // the scoped features draw (`summaryView`), so the row opens the classification it names.
+  const modeDoc =
+    !compound && scoped && !overridden && scope
+      ? summaryView(store.document, scope, path, scopedOnce()).doc
+      : store.document;
   const mode = compound
     ? compoundModeOf(
         store.document,
         compound.keys.map((k) => (scoped && ownKeys.includes(k) ? `${record}.${k}` : `${base}.${k}`)),
         data.geometry
       )
-    : modeOf(store.document, own, data.geometry);
+    : modeOf(modeDoc, own, data.geometry);
   const withColors = colorFields(data.fields, data.sample);
   // The document as the row shows it: in class or rule scope the record merged over the layer.
-  const shownDoc = scope ? scopedView(store.document, scope).view : store.document;
+  const shownDoc = scope ? scopedOnce().view : store.document;
   const modes = modesFor(key, {
     scoped,
     hasNumberField: data.fields.some((f) => isNumberField(f.type)),
@@ -148,7 +177,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
   const owner =
     mode === "classes"
       ? (compound ? compoundKeys(compound) : [key])
-          .map((k) => classificationFor(store.document, k, data.geometry))
+          .map((k) => classificationFor(modeDoc, k, data.geometry))
           .find(Boolean)
       : undefined;
   // The row is active while its value's editor is open, whether its field or the mode menu opened it.
@@ -178,7 +207,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
           );
         else store.set(writePath, structuredClone(getIn(view.view, path)));
     }
-    const editPath = scoped ? writePath : path;
+    const editPath = writePath;
     if (to === "attribute")
       popover.open(next, {
         key: `attr:${path}`,
@@ -221,20 +250,25 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     });
     // The new mode's editor opens at once (unless it is already open), so its values can be set right away.
     const editorKey = to === "zoom" ? `zoom:${path}` : `attr:${path}`;
-    if (
-      modeOf(store.document, scoped ? writePath : path, data.geometry) === to &&
-      popover.current(next)?.key !== editorKey
-    )
+    if (modeOf(store.document, writePath, data.geometry) === to && popover.current(next)?.key !== editorKey)
       openEditor(to, anchorTopOf(anchor));
   };
+  // Reset drops the record's own value, and the part with it when nothing of it is left over a part that is on.
   const reset =
-    scoped && owned
+    scoped && owned && scope
       ? () =>
-          compound
-            ? store.update((doc) =>
-                compound.keys.reduce((d, k) => setIn(d, `${record}.${k}`, undefined), doc)
-              )
-            : store.set(writePath, undefined)
+          store.update(
+            (doc) =>
+              withoutEmptyPart(
+                compound
+                  ? compound.keys.reduce((d, k) => setIn(d, `${record}.${k}`, undefined), doc)
+                  : setIn(doc, writePath, undefined),
+                recordPathOf(scope),
+                key.split(".")[0],
+                data.geometry ?? "polygon"
+              ),
+            compound ? undefined : writePath
+          )
       : undefined;
   const modeButton =
     modes.length > 1 || reset ? (
@@ -290,15 +324,20 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             .join(" → ")
         : compound && mode === "classes"
           ? t("style_editor.by_field", { field: fieldLabel(owner?.field), ...PLAIN })
-          : summarize(shownDoc, path, t, {
+          : summarize(store.document, path, t, {
               fields: data.fields,
               mapZoom,
               geometry: data.geometry,
               language: i18n.language,
+              scope,
+              view: scope ? scopedOnce() : undefined,
             });
     const swatch =
       CAPABILITIES[key]?.kind === "color"
-        ? { background: swatchOf(shownDoc, path, data.geometry, { scoped: !!scope }), wide: true }
+        ? {
+            background: scopedSwatchOf(store.document, path, data.geometry, { scope, view: shownDoc, tone }),
+            wide: true,
+          }
         : undefined;
     return (
       <GroupRow
@@ -323,7 +362,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
         curve={mode === "zoom" && !swatch}
         mode={modeButton}
         active={editorOpen}
-        warn={issues[0]?.message}
+        warn={issues[0] && issueText(t, issues[0])}
         onOpen={(anchor) => {
           if (mode === "classes") {
             const ci = classify.indexOf(owner);
@@ -353,7 +392,19 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
     const fallback =
       typeof row.fallback === "function" ? row.fallback(part) : (row.fallback ?? DEFAULTS[key]);
     const noteKey = typeof row.note === "function" ? row.note(part) : row.note;
-    const note = noteKey ? t(noteKey) : undefined;
+    // A class's or rule's own value a later classification or rule draws over where it applies.
+    const later =
+      scoped && overridden && scope ? laterSetter(store.document, scope, key, data.geometry) : undefined;
+    const overNote =
+      later === undefined
+        ? undefined
+        : later === "rules"
+          ? t("style_editor.scope_over_note_rules")
+          : t("style_editor.scope_over_note_field", {
+              field: data.fields.find((f) => f.name === later.field)?.label ?? String(later.field),
+              ...PLAIN,
+            });
+    const note = [noteKey ? t(noteKey) : undefined, overNote].filter(Boolean).join(" ") || undefined;
     switch (row.type) {
       case "color":
         return (
@@ -367,7 +418,7 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
                   ? fallback
                   : undefined
             }
-            sentinel={row.sentinel}
+            sentinels={row.sentinels}
             note={note}
             mode={modeButton}
           />

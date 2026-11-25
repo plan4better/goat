@@ -144,7 +144,7 @@ Ein gezeichneter Kreis behält seinen Mittelpunkt und seinen Umkreis. Um ihn auf
   <div class="content">Wählen Sie <code>Innerhalb</code>, um die Features im Gebiet zu behalten, oder <code>Außerhalb</code>, um die zu behalten, die es nicht berühren. Ein neues Gebiet beginnt mit <code>Innerhalb</code>.</div>
 </div>
 
-Die Zeile unter <code>Gebiet</code> nennt, woraus das Gebiet besteht, zum Beispiel <code>Kartenausschnitt</code>, <code>2 Formen</code> oder <code>3 Regionen</code>, und der Umriss des Gebiets wird auf der Karte gezeichnet, solange der Tab <code>Filtern</code> geöffnet ist.
+Die Zeile unter <code>Gebiet</code> nennt, woraus das Gebiet besteht, zum Beispiel <code>Kartenausschnitt</code>, <code>2 Formen</code>, <code>3 Regionen</code> oder <code>12 Objekte des Layers Stadtbezirke</code> (der Layer, aus dem sie stammen), und der Umriss des Gebiets wird auf der Karte gezeichnet, solange der Tab <code>Filtern</code> geöffnet ist: <code>Auf der Karte umrandet</code> unter der Zeile zeigt das an.
 
 ### Gebiet ändern, ausschalten oder entfernen
 

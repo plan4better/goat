@@ -261,7 +261,7 @@ workflow for it.
    send them again. When the workflow was changed elsewhere, read it again and send
    the operations for what it holds now.
 4. Then say what changed (each step and setting, before and after) and any issue
-   left, and that the dock's undo button below your answer takes the change back. A
+   left, and that the dock's undo button on the change's line takes it back. A
    rename shows on the canvas only on If steps; other steps show it in their
    settings.
 

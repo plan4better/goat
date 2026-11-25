@@ -74,3 +74,30 @@ async def test_a_server_error_or_overload_is_retryable(
 def test_the_refusal_is_a_kind_of_unavailable() -> None:
     """Readers answer the stored style for both; only saves tell them apart."""
     assert issubclass(processes.StyleCheckRefused, processes.StyleCheckUnavailable)
+
+
+@pytest.mark.asyncio
+async def test_core_asks_for_the_issues_params_with_a_query_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A processes from before `params` ignores the query parameter and answers
+    as before; a newer one sends issues with `params` only on this ask."""
+    queries: list[dict[str, str]] = []
+
+    async def handle(request: web.Request) -> web.Response:
+        queries.append(dict(request.query))
+        return web.json_response({"document": DOC, "issues": []})
+
+    app = web.Application()
+    app.router.add_post("/processes/style-check/execution", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]  # type: ignore[union-attr]
+    monkeypatch.setattr(settings, "GOAT_PROCESSES_URL", f"http://127.0.0.1:{port}")
+    try:
+        await check()
+    finally:
+        await runner.cleanup()
+    assert queries == [{"issue_params": "true"}]

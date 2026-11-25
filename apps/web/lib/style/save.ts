@@ -22,6 +22,9 @@ export interface StyleIssue {
   };
   /** Up to 20 valid choices for the value at `path`. */
   allowed?: unknown[];
+  /** What the message names, by name (a field, the classes asked for and made, and `case` where one code has several
+   * messages): the panel words the issue from them in its language. */
+  params?: Record<string, unknown>;
 }
 
 /** A save's answer; `status` 0 means no answer at all (offline, timeout, dropped connection). A refusal carries the

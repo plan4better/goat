@@ -7,8 +7,10 @@ import { type Translate, plainTranslate } from "@/lib/assistant/chips";
 import {
   ARGUMENT_CHARS,
   clip,
+  foldRepeatedWrites,
   groupSummary,
   staysVisible,
+  stepFailed,
   stepLabel,
   stepNames,
   stepResult,
@@ -285,6 +287,74 @@ describe("step rows", () => {
     expect(shape([lone, again])).toEqual([
       [lone.toolCallId, []],
       [again.toolCallId, []],
+    ]);
+  });
+
+  const mapChange = () => call("map_update", { operations: [] }, { applied: [{ op: "set_layer" }] });
+  const mapFailed = () => failed("map_update", { operations: [] });
+  const layers = () => call("project_get_layers", {}, { layers: [] });
+
+  it("fold a failed write into the next successful call of the same tool, wherever it follows", () => {
+    const [refused, refusedAgain, read, invalid, ok, okAgain] = [
+      mapFailed(),
+      mapFailed(),
+      layers(),
+      mapFailed(),
+      mapChange(),
+      mapChange(),
+    ];
+    expect(shape([refused, refusedAgain, read, invalid, ok, okAgain])).toEqual([
+      [read.toolCallId, []],
+      [ok.toolCallId, [refused.toolCallId, refusedAgain.toolCallId, invalid.toolCallId]],
+      [okAgain.toolCallId, []],
+    ]);
+    // Each success takes the attempts since the previous success of its tool.
+    const [first, second] = [mapFailed(), mapFailed()];
+    const [done, doneAgain] = [mapChange(), mapChange()];
+    expect(
+      shape([first, done, layers(), second, doneAgain]).filter(([, rejected]) => rejected.length)
+    ).toEqual([
+      [done.toolCallId, [first.toolCallId]],
+      [doneAgain.toolCallId, [second.toolCallId]],
+    ]);
+  });
+
+  it("keep a failed write whose tool did not succeed after it, also when it succeeded before", () => {
+    const [ok, read, broken] = [mapChange(), layers(), mapFailed()];
+    expect(shape([ok, read, broken])).toEqual([
+      [ok.toolCallId, []],
+      [read.toolCallId, []],
+      [broken.toolCallId, []],
+    ]);
+    // A later call still running, stopped, or of another write tool is no correction.
+    const busy = call("map_update", { operations: [] });
+    const style = call("style_update", { layer_project_id: 1 }, { created: false });
+    expect(shape([broken, style, busy])).toEqual([
+      [broken.toolCallId, []],
+      [style.toolCallId, []],
+      [busy.toolCallId, []],
+    ]);
+  });
+
+  it("judge a corrected write by the whole answer, and leave its attempt out of the group that holds it", () => {
+    const [refused, ok] = [mapFailed(), mapChange()];
+    const answer = [refused, layers(), ok];
+    // The attempt's group, before text: nothing left. The success's group takes the attempt.
+    expect(stepRows([refused], answer)).toEqual([]);
+    expect(shape([refused])).toEqual([[refused.toolCallId, []]]);
+    expect(stepRows([answer[1], ok], answer).map((row) => ids(row.rejected))).toEqual([
+      [],
+      [refused.toolCallId],
+    ]);
+  });
+
+  it("leave a failed read that a call of the same read tool follows later, not right after it, a failure", () => {
+    const broken = failed("project_count_features", { layer_project_id: 1 });
+    const later = call("project_count_features", { layer_project_id: 2 }, { count: 3 });
+    expect(shape([broken, layers(), later])).toEqual([
+      [broken.toolCallId, []],
+      [expect.any(String), []],
+      [later.toolCallId, []],
     ]);
   });
 
@@ -661,6 +731,167 @@ describe("added datasets", () => {
   });
 });
 
+describe("style and map steps", () => {
+  const summary = (steps: DynamicToolUIPart[], t: Translate = enTranslate) =>
+    groupSummary(stepRows(steps), t, false);
+  const de = (step: DynamicToolUIPart) => stepLabel(step, stepNames([step]), deTranslate);
+  const running = (step: DynamicToolUIPart, t: Translate = enTranslate) =>
+    stepLabel(step, stepNames([step]), t, true);
+  const styleRead = (layer: number, part?: string) =>
+    call("style_get", { layer_project_id: layer, ...(part && { part }) }, { layer_project_id: layer });
+  const catalog = () =>
+    call("style_catalog", { kind: "palettes" }, { kind: "palettes", results: [], total: 0 });
+  const styleChange = call(
+    "style_update",
+    { layer_project_id: 1, operations: [] },
+    { layer_project_id: 1, style_id: "s1", name: "Default", created: false, active: true }
+  );
+  const mapChange = call(
+    "map_update",
+    { operations: [{ op: "set_layer", layer_project_id: 1, visible: false }] },
+    { applied: [{ index: 0, op: "set_layer", layer_project_id: 1, fields: ["visible"], summary: "hidden" }] }
+  );
+
+  it("labels the four new tools in both languages, finished and running", () => {
+    expect(label(styleRead(1))).toBe("Read the style");
+    expect(de(styleRead(1))).toBe("Stil gelesen");
+    expect(label(catalog())).toBe("Looked up palettes and icons");
+    expect(de(catalog())).toBe("Paletten und Icons nachgeschlagen");
+    expect(label(styleChange)).toBe("Changed the style");
+    expect(de(styleChange)).toBe("Stil geändert");
+    expect(label(mapChange)).toBe("Changed the map");
+    expect(de(mapChange)).toBe("Karte geändert");
+
+    expect(running(call("style_get", { layer_project_id: 1 }))).toBe("Reading the style…");
+    expect(running(call("style_get", { layer_project_id: 1 }), deTranslate)).toBe("Liest den Stil…");
+    expect(running(call("style_catalog", { kind: "icons" }))).toBe("Looking up palettes and icons…");
+    expect(running(call("style_catalog", { kind: "icons" }), deTranslate)).toBe(
+      "Schlägt Paletten und Icons nach…"
+    );
+    const changingStyle = call("style_update", { layer_project_id: 1, new_style: { name: "Dichte" } });
+    expect(running(changingStyle)).toBe("Changing the style…");
+    expect(running(changingStyle, deTranslate)).toBe("Ändert den Stil…");
+    const changingMap = call("map_update", { operations: [] });
+    expect(running(changingMap)).toBe("Changing the map…");
+    expect(running(changingMap, deTranslate)).toBe("Ändert die Karte…");
+    // A failed change keeps the plain label.
+    expect(label(failed("style_update", { layer_project_id: 1 }))).toBe("Changed the style");
+    expect(label(failed("map_update", { operations: [] }))).toBe("Changed the map");
+  });
+
+  it("says Created the style with its name when the result created one", () => {
+    const created = (name: unknown) =>
+      call(
+        "style_update",
+        { layer_project_id: 1, new_style: { name: "x" } },
+        { layer_project_id: 1, style_id: "s2", name, created: true, active: true }
+      );
+    expect(label(created("Population density"))).toBe("Created the style “Population density”");
+    expect(de(created("Bevölkerungsdichte"))).toBe("Stil „Bevölkerungsdichte“ erstellt");
+    // A long name is cut, as every argument of a label is.
+    const long = "y".repeat(60);
+    expect(label(created(long))).toBe(`Created the style “${clip(long)}”`);
+    // Without a name, or for a style changed in place, the plain label.
+    expect(label(created(""))).toBe("Changed the style");
+    expect(label(styleChange)).toBe("Changed the style");
+  });
+
+  it("says Moved the map view for a change that only moved the view", () => {
+    const moved = call(
+      "map_update",
+      { operations: [{ op: "set_view", zoom: 12 }] },
+      // The tool lists the view among what it applied.
+      {
+        applied: [{ index: 0, op: "set_view", summary: "The page shows the view: zoom 12." }],
+        view: { camera: { zoom: 12 } },
+      }
+    );
+    expect(label(moved)).toBe("Moved the map view");
+    expect(de(moved)).toBe("Kartenansicht bewegt");
+    // A view beside other changes, or no view at all: the map label.
+    const both = call(
+      "map_update",
+      { operations: [] },
+      { applied: [{ index: 0, op: "set_basemap", summary: "light" }], view: { camera: { zoom: 3 } } }
+    );
+    expect(label(both)).toBe("Changed the map");
+    expect(label(call("map_update", { operations: [] }, { applied: [], view: null }))).toBe(
+      "Changed the map"
+    );
+    expect(running(call("map_update", { operations: [{ op: "set_view", zoom: 12 }] }))).toBe(
+      "Changing the map…"
+    );
+  });
+
+  it("says Checked what removing the layer affects for a removal that waits for the user", () => {
+    const ask = (layer: number) => ({
+      layer_project_id: layer,
+      name: `Layer ${layer}`,
+      value: `remove_layer:${layer}`,
+      facts: { used_by_workflows: [] },
+    });
+    const asked = (confirm: unknown, applied: unknown[] = []) =>
+      call(
+        "map_update",
+        { operations: [{ op: "remove_layer", layer_project_id: 1 }] },
+        { project_id: "p1", applied, confirm }
+      );
+    expect(label(asked([ask(1)]))).toBe("Checked what removing the layer affects");
+    expect(de(asked([ask(1)]))).toBe("Geprüft, was das Entfernen des Layers betrifft");
+    expect(label(asked([ask(1), ask(2)]))).toBe("Checked what removing the layers affects");
+    expect(de(asked([ask(1), ask(2)]))).toBe("Geprüft, was das Entfernen der Layer betrifft");
+    // It asks before the view: a view beside the question does not make it a move.
+    const askedWithView = call(
+      "map_update",
+      { operations: [] },
+      {
+        project_id: "p1",
+        applied: [{ index: 1, op: "set_view", summary: "The page shows the view: zoom 12." }],
+        confirm: [ask(1)],
+        view: { camera: { zoom: 12 } },
+      }
+    );
+    expect(label(askedWithView)).toBe("Checked what removing the layer affects");
+    // Something applied, or nothing to ask: the labels it has without the question.
+    const hiddenOp = {
+      index: 0,
+      op: "set_layer",
+      layer_project_id: 2,
+      fields: ["visible"],
+      summary: "hidden",
+    };
+    expect(label(asked([], [hiddenOp]))).toBe("Changed the map");
+    expect(label(asked([ask(1)], [hiddenOp]))).toBe("Changed the map");
+    expect(label(asked([]))).toBe("Changed the map");
+    expect(label(asked(null))).toBe("Changed the map");
+    expect(running(call("map_update", { operations: [{ op: "remove_layer", layer_project_id: 1 }] }))).toBe(
+      "Changing the map…"
+    );
+  });
+
+  it("never folds style_update and map_update into a summary", () => {
+    const rows = stepRows([styleRead(1), styleChange, catalog(), mapChange]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([
+      styleChange,
+      mapChange,
+    ]);
+    expect(groupSummary(rows, enTranslate, false)).toBe("Read a style, looked up palettes and icons");
+  });
+
+  it("counts style_get and style_catalog under their own kinds", () => {
+    // Two reads of one style (another part of it) are one style read.
+    expect(summary([styleRead(1), styleRead(1, "/popup"), styleRead(2)])).toBe("Read 2 styles");
+    expect(summary([styleRead(1)])).toBe("Read a style");
+    expect(summary([styleRead(1)], deTranslate)).toBe("Einen Stil gelesen");
+    expect(summary([styleRead(1), styleRead(2)], deTranslate)).toBe("2 Stile gelesen");
+    expect(summary([catalog()])).toBe("Looked up palettes and icons");
+    // The count of lookups says nothing to the reader: several read as one.
+    expect(summary([catalog(), catalog()])).toBe("Looked up palettes and icons");
+    expect(summary([catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
+    expect(summary([catalog(), catalog()], deTranslate)).toBe("Paletten und Icons nachgeschlagen");
+  });
+});
+
 describe("step results", () => {
   it("write counts with the UI language's thousands separator", () => {
     const counted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: 4766 });
@@ -679,5 +910,226 @@ describe("step results", () => {
     expect(stepResult(counted, deTranslate)).toBeUndefined();
     const uncounted = call("project_count_features", { layer_project_id: 1 }, { layer: "A", count: null });
     expect(stepResult(uncounted, enTranslate)).toBeUndefined();
+  });
+});
+
+describe("repeated writes", () => {
+  const styleChange = () =>
+    call(
+      "style_update",
+      { layer_project_id: 1, operations: [] },
+      {
+        project_id: "p1",
+        layer_project_id: 1,
+        style_id: "s1",
+        created: false,
+        revision_before: 1,
+        revision_after: 2,
+      }
+    );
+  const styleCreate = (name: string) =>
+    call("style_update", { layer_project_id: 1, operations: [] }, { style_id: "s2", created: true, name });
+  const read = (workflow: string, name: string) =>
+    call("workflow_get", { workflow_id: workflow }, { workflow_id: workflow, name, revision: 4 });
+  const edit = (workflow: string) =>
+    call(
+      "workflow_update",
+      { workflow_id: workflow, operations: [] },
+      { workflow_id: workflow, revision_before: 4, revision_after: 5, changed_steps: [] }
+    );
+  const search = (q: string) => call("catalog_search", { q }, { numberMatched: 3 });
+  /** Each row as its call and the further calls it stands for. */
+  const shape = (steps: DynamicToolUIPart[]) =>
+    foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate).map((row) => [
+      row.step.toolCallId,
+      (row.repeats ?? []).map((step) => step.toolCallId),
+    ]);
+
+  it("fold adjacent finished writes with the same label into the first one's row", () => {
+    const steps = [styleChange(), styleChange(), styleChange(), styleChange(), styleChange()];
+    const [first, ...rest] = steps;
+    expect(shape(steps)).toEqual([[first.toolCallId, rest.map((step) => step.toolCallId)]]);
+  });
+
+  it("keep writes with different labels apart", () => {
+    const a = edit("w1");
+    const b = edit("w2");
+    const steps = [read("w1", "A"), read("w2", "B"), a, b];
+    expect(shape(steps).slice(2)).toEqual([
+      [a.toolCallId, []],
+      [b.toolCallId, []],
+    ]);
+    const changed = styleChange();
+    const created = styleCreate("X");
+    expect(shape([created, changed])).toEqual([
+      [created.toolCallId, []],
+      [changed.toolCallId, []],
+    ]);
+    // The same workflow's name twice is the same label.
+    const again = edit("w1");
+    expect(shape([read("w1", "A"), a, again]).slice(1)).toEqual([[a.toolCallId, [again.toolCallId]]]);
+  });
+
+  it("break a run at a failed, running or other step, and keep failed and running writes on their own", () => {
+    const [one, two, three] = [styleChange(), styleChange(), styleChange()];
+    const broken = failed("style_update", { layer_project_id: 1, operations: [] });
+    const busy = call("style_update", { layer_project_id: 1, operations: [] });
+    const between = search("a");
+    expect(shape([one, busy, two])).toEqual([
+      [one.toolCallId, []],
+      [busy.toolCallId, []],
+      [two.toolCallId, []],
+    ]);
+    expect(shape([one, between, two, three])).toEqual([
+      [one.toolCallId, []],
+      [between.toolCallId, []],
+      [two.toolCallId, [three.toolCallId]],
+    ]);
+    // A failure followed by a success of the same tool is that call's corrected attempt, not a row between them.
+    expect(shape([one, broken, two, three])).toEqual([[one.toolCallId, [two.toolCallId, three.toolCallId]]]);
+    const lastBroken = failed("style_update", { layer_project_id: 1, operations: [] });
+    expect(shape([one, two, lastBroken])).toEqual([
+      [one.toolCallId, [two.toolCallId]],
+      [lastBroken.toolCallId, []],
+    ]);
+  });
+
+  it("fold the writes of a label wherever they sit when asked to, into the first one's row", () => {
+    const [one, two] = [styleChange(), styleChange()];
+    const map = call("map_update", { operations: [] }, { applied: [{ op: "set_layer" }] });
+    const between = search("a");
+    const rows = (anywhere: boolean) =>
+      foldRepeatedWrites(stepRows([one, between, map, two]), stepNames([]), enTranslate, anywhere).map(
+        (row) => [row.step.toolCallId, (row.repeats ?? []).map((step) => step.toolCallId)]
+      );
+    expect(rows(false)).toEqual([
+      [one.toolCallId, []],
+      [between.toolCallId, []],
+      [map.toolCallId, []],
+      [two.toolCallId, []],
+    ]);
+    expect(rows(true)).toEqual([
+      [one.toolCallId, [two.toolCallId]],
+      [between.toolCallId, []],
+      [map.toolCallId, []],
+    ]);
+  });
+
+  it("never fold reads, and leave the summary and the visible lines of a group as they were", () => {
+    const [a, b] = [search("a"), search("a")];
+    expect(shape([a, b])).toEqual([
+      [a.toolCallId, []],
+      [b.toolCallId, []],
+    ]);
+    const steps = [search("a"), styleChange(), styleChange(), search("b")];
+    const rows = foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate);
+    expect(groupSummary(rows, enTranslate, false)).toBe(groupSummary(stepRows(steps), enTranslate, false));
+    expect(rows.filter((row) => staysVisible(row, false))).toHaveLength(1);
+  });
+});
+
+describe("typed undo steps", () => {
+  const undo = (output: Record<string, unknown>) => call("undo_changes", {}, output);
+  const base = { workflows: [], styles: [], not_restored: [], summary: "…" };
+  const undoneMap = {
+    project_id: "p1",
+    layers: [32],
+    tree: false,
+    groups: false,
+    basemap: false,
+    scene: false,
+  };
+  const undone = undo({ ...base, status: "undone", run_id: "r1", map: undoneMap });
+  const changedOnly = undo({ ...base, status: "changed", run_id: "r1" });
+  const changedPartly = undo({
+    ...base,
+    status: "changed",
+    run_id: "r1",
+    workflows: [{ workflow_id: "wf-1", project_id: "p1", revision: 6 }],
+  });
+  const nothing = undo({ ...base, status: "nothing" });
+  const takenAlready = undo({ ...base, status: "nothing", run_id: "r1" });
+  const underWay = undo({ ...base, status: "under_way", run_id: "r1" });
+  const refusedByCore = undo({ ...base, status: "failed", run_id: "r1" });
+  const refused = failed("undo_changes", { confirm: "undo_anyway:x" });
+  const de = (step: DynamicToolUIPart) => stepLabel(step, stepNames([step]), deTranslate);
+  const running = (t: Translate) => stepLabel(call("undo_changes", {}), stepNames([]), t, true);
+  const mapChange = call(
+    "map_update",
+    { operations: [] },
+    { applied: [{ index: 0, op: "set_layer", layer_project_id: 1, fields: ["visible"], summary: "hidden" }] }
+  );
+
+  it("say what came of the undo in both languages, running and finished", () => {
+    expect(running(enTranslate)).toBe("Undoing the changes…");
+    expect(running(deTranslate)).toBe("Macht die Änderungen rückgängig…");
+    expect(label(undone)).toBe("Undid the changes");
+    expect(de(undone)).toBe("Änderungen rückgängig gemacht");
+    // Asked about what was changed since: a check, not a failure and not an undo.
+    expect(label(changedOnly)).toBe("Checked what was changed since");
+    expect(de(changedOnly)).toBe("Geprüft, was seitdem geändert wurde");
+    expect(label(changedPartly)).toBe("Undid part of the changes and checked what was changed since");
+    expect(de(changedPartly)).toBe(
+      "Einen Teil der Änderungen rückgängig gemacht und geprüft, was seitdem geändert wurde"
+    );
+    expect(label(nothing)).toBe("Found nothing to undo");
+    expect(de(nothing)).toBe("Nichts gefunden, was rückgängig zu machen ist");
+    expect(label(takenAlready)).toBe("Found nothing to undo");
+    // A call that did not go through keeps the plain label, as the other writes do.
+    for (const step of [underWay, refusedByCore, refused]) {
+      expect(label(step)).toBe("Undid the changes");
+      expect(de(step)).toBe("Änderungen rückgängig gemacht");
+    }
+  });
+
+  it("count an undo under way elsewhere, refused by core or refused as a call as a step that did not go through", () => {
+    expect([underWay, refusedByCore, refused].map(stepFailed)).toEqual([true, true, true]);
+    expect([undone, changedOnly, changedPartly, nothing, takenAlready].map(stepFailed)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // Only the undo reads its status: another tool's output with that word is its own business.
+    expect(stepFailed(call("workflow_last_run", {}, { status: "failed" }))).toBe(false);
+  });
+
+  it("keep one row per call, never folded into the change rows nor counted in the summary", () => {
+    const again = undo({ ...base, status: "undone", run_id: "r1", repeated_call: "…" });
+    const steps = [mapChange, undone, again, call("catalog_search", { q: "a" }, { numberMatched: 1 })];
+    const rows = foldRepeatedWrites(stepRows(steps), stepNames(steps), enTranslate, true);
+    expect(rows.map((row) => [row.step.toolCallId, (row.repeats ?? []).length])).toEqual([
+      [mapChange.toolCallId, 0],
+      [undone.toolCallId, 0],
+      [again.toolCallId, 0],
+      [steps[3].toolCallId, 0],
+    ]);
+    expect(rows.filter((row) => staysVisible(row, false)).map((row) => row.step)).toEqual([
+      mapChange,
+      undone,
+      again,
+    ]);
+    expect(groupSummary(rows, enTranslate, false)).toBe("Searched the catalog");
+    // A refused or under-way undo stays visible as a failure.
+    expect(staysVisible({ step: underWay, rejected: [] }, true)).toBe(true);
+  });
+
+  it("take in a refused call only with an undo that went through, never with one that did not", () => {
+    const shape = (steps: DynamicToolUIPart[]) =>
+      stepRows(steps).map((row) => [row.step.toolCallId, row.rejected.map((step) => step.toolCallId)]);
+    const first = failed("undo_changes", { confirm: "undo_anyway:x" });
+    for (const notRun of [
+      undo({ ...base, status: "under_way", run_id: "r1" }),
+      undo({ ...base, status: "failed", run_id: "r1" }),
+    ]) {
+      // Both did not go through: each is a failure of its own, none a corrected attempt.
+      expect(shape([first, notRun])).toEqual([
+        [first.toolCallId, []],
+        [notRun.toolCallId, []],
+      ]);
+    }
+    const done = undo({ ...base, status: "undone", run_id: "r1" });
+    expect(shape([first, done])).toEqual([[done.toolCallId, [first.toolCallId]]]);
   });
 });

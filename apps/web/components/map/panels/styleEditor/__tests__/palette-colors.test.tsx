@@ -50,6 +50,19 @@ const rows = () => Array.from(group().querySelectorAll<HTMLElement>("[data-class
 const swatches = () => within(group()).getAllByRole("button", { name: "style_editor.palette_color" });
 
 describe("a continuous palette's colors on the class grid", () => {
+  it("shows a color's own transparency as six digits and a percent, None at 0%, over the swatch checkerboard", () => {
+    draw(["#2f6b3a80", "#e8dc8f00", "#f2f2f2"]);
+    expect(rows().map((r) => r.getAttribute("title"))).toEqual([
+      "#2F6B3A · 50%",
+      "style_editor.none",
+      "#F2F2F2",
+    ]);
+    const [clear, none, opaque] = swatches().map((s) => getComputedStyle(s).backgroundImage);
+    expect(clear.match(/linear-gradient/g)).toHaveLength(3);
+    expect(none.match(/linear-gradient/g)).toHaveLength(3);
+    expect(opaque).toBe("none");
+  });
+
   it("is the class list's grid: a head of Color and Value, a row per color with its swatch", () => {
     draw(["#2f6b3a", "#e8dc8f", "#f2f2f2"]);
     // The shared grid of the class lists: its head and its rows.
@@ -79,7 +92,7 @@ describe("a continuous palette's colors on the class grid", () => {
     const { writes } = draw(["#2f6b3a", "#e8dc8f", "#f2f2f2"]);
     await userEvent.click(swatches()[1]);
     expect(screen.getByText("style_editor.palette_color_title")).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "#d7301f" }));
+    await userEvent.click(screen.getByRole("button", { name: "#D7301F" }));
     expect(writes.at(-1)).toEqual(["#2f6b3a", "#d7301f", "#f2f2f2"]);
   });
 

@@ -278,3 +278,52 @@ async def test_opening_the_panel_on_a_stale_style_recomputes_it(
     assert check.calls[0]["compute"] is True
     assert (result.revision, result.stale) == (2, False)
     assert result.document["classify"][0]["classes"][0]["to"] == 7
+
+
+MERGED = {
+    "level": "info",
+    "code": "classes_merged",
+    "path": "/classify/density",
+    "message": "Many values are the same.",
+    "params": {"case": "repeated_values", "asked": 6, "made": 5},
+}
+
+
+def answering(issues: list[dict[str, Any]]):
+    async def check(**kwargs: Any) -> dict[str, Any]:
+        return {"document": copy.deepcopy(kwargs["document"]), "issues": issues}
+
+    return check
+
+
+@pytest.mark.asyncio
+async def test_the_panel_gets_the_issues_params_and_a_newer_key_fails_nothing(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Opening the panel: the issues processes sent reach the browser with their
+    `params`; a key this core does not know is left out instead of failing the
+    read, whichever service was deployed first."""
+    style_id = await stale_style(db_session, style_world)
+    await db_session.execute(
+        text(f"UPDATE {S}.layer SET data_snapshot = 0 WHERE id = :id"),
+        {"id": style_world.layer_id},
+    )
+    await db_session.commit()
+    plain = {k: v for k, v in MERGED.items() if k != "params"}
+    newer = {**MERGED, "path": "/classify/other", "a_later_key": 1}
+    monkeypatch.setattr(style_service, "style_check", answering([MERGED, plain, newer]))
+    result = await read(db_session, style_id, check=True)
+    assert result.issues == [MERGED, plain, {**MERGED, "path": "/classify/other"}]
+
+
+@pytest.mark.asyncio
+async def test_a_save_check_reads_issues_with_a_newer_key(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    style_id = await stale_style(db_session, style_world)
+    stored = await read_stored(db_session, style_id)
+    monkeypatch.setattr(
+        style_service, "style_check", answering([{**MERGED, "a_later_key": 1}])
+    )
+    _, issues = await style_service.check_document(stored, stored.document, "t")
+    assert [i.model_dump(mode="json", exclude_none=True) for i in issues] == [MERGED]

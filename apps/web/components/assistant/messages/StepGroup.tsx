@@ -10,8 +10,12 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { plainTranslate } from "@/lib/assistant/chips";
 import {
   type StepNames,
+  type StepRow,
+  foldRepeatedWrites,
   groupSummary,
   staysVisible,
+  stepFailed,
+  stepNames,
   stepRows,
   stepRunning,
 } from "@/lib/assistant/stepLabels";
@@ -24,8 +28,13 @@ import { focusRing, mutedText, shimmerSx } from "@/components/assistant/styles";
  * steps (`open`) it lists them as they come; then it closes into one summary
  * line that opens the full list. Writes, failures and, once the answer ended,
  * steps it left without a result stay visible next to the summary as lines of
- * their own. A group with fewer than two steps to fold
- * shows its lines as they are.
+ * their own. Closed, the finished writes that say the same show as one line
+ * with their count, wherever they sit; open, the list keeps the answer's order
+ * and folds only writes right next to each other. A failed write that a later
+ * success of its tool in the answer corrected is part of that success's line,
+ * not a failure: it shows no line of its own and is not counted as failed. A
+ * group with fewer than two steps to fold shows its lines as they are; a group
+ * of corrected attempts only shows nothing.
  */
 export default function StepGroup({
   steps,
@@ -33,6 +42,7 @@ export default function StepGroup({
   running,
   openProject = null,
   names,
+  answerSteps,
 }: {
   steps: DynamicToolUIPart[];
   /** Still receiving steps: the newest group of a running answer. */
@@ -43,19 +53,25 @@ export default function StepGroup({
   openProject?: string | null;
   /** The names the whole answer's steps returned (`stepNames`): a step names what an earlier group read. */
   names?: StepNames;
+  /** All of the answer's steps, which tell a failed write the answer corrected later; the group's own when absent. */
+  answerSteps?: DynamicToolUIPart[];
 }) {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const listId = useId();
   const [expanded, setExpanded] = useState(false);
-  const rows = stepRows(steps);
+  const rows = stepRows(steps, answerSteps);
   const visible = rows.filter((row) => staysVisible(row, running));
+  // In the answer's order (`inOrder`) a line between two repeated writes ends their run; closed, it does not.
+  const shown = (lines: StepRow[], inOrder: boolean) =>
+    foldRepeatedWrites(lines, names ?? stepNames(steps), plainTranslate(t), !inOrder);
+  if (!rows.length) return null;
   if (open || rows.length - visible.length < 2) {
-    return <StepList steps={steps} rows={rows} running={running} names={names} />;
+    return <StepList steps={steps} rows={shown(rows, open)} running={running} names={names} />;
   }
 
-  const failed = rows.filter((row) => row.step.state === "output-error").length;
+  const failed = rows.filter((row) => stepFailed(row.step)).length;
   // One shimmer at a time: a line of its own shows its step under way, and so
   // does the open list.
   const underWay =
@@ -94,10 +110,10 @@ export default function StepGroup({
         id={listId}
         hidden={!expanded}
         sx={{ ml: "10px", pl: "6px", borderLeft: 1, borderColor: "divider" }}>
-        {expanded && <StepList steps={steps} rows={rows} running={running} names={names} />}
+        {expanded && <StepList steps={steps} rows={shown(rows, true)} running={running} names={names} />}
       </Box>
       {!expanded && visible.length > 0 && (
-        <StepList steps={steps} rows={visible} running={running} names={names} />
+        <StepList steps={steps} rows={shown(visible, false)} running={running} names={names} />
       )}
     </Stack>
   );

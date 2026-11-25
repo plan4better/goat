@@ -3,30 +3,32 @@
 // one fill-extrusion layer of the same id and the pattern is not drawn.
 import type { LayerSpecification } from "maplibre-gl";
 
+import { alphaOf, isNone } from "@/lib/style/colors";
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import { DASHES } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
 import {
   ACTIVE,
   type PartContext,
+  drawsNothing,
   highlightColor,
   highlightWidth,
   layerOpacity,
   makeLayer,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { NO_PATTERN_IMAGE, PATTERN_IMAGE } from "@/lib/style/compile/patternImage";
 import {
   type Expr,
-  FILL_COLOR,
   type Value,
   combine,
   fold,
   fromForm,
   isZoomed,
-  substitute,
   toProperty,
   valueAt,
 } from "@/lib/style/compile/values";
@@ -94,18 +96,60 @@ function extrusionLayer(ctx: PartContext, fillColor: Value): LayerSpecification 
   );
   // MapLibre's opacity of extrusions is one value for the layer: the base fill's, fixed or by zoom.
   const fill = symbol.fill;
-  const opacity =
+  const own =
     fill === false
       ? { expr: 0 }
       : fromForm(isObject(fill) ? fill.opacity : undefined, "number", DEFAULTS["fill.opacity"]);
+  // MapLibre's extrusion color has no alpha: a fixed color's goes into the opacity (one value for the layer).
+  const alpha = isZoomed(fillColor) ? undefined : alphaOf(fillColor.expr);
+  const opacity =
+    alpha !== undefined && alpha < 255
+      ? combine([own], ([o]) => ["*", o, alpha / 255], { kind: "number" })
+      : own;
   const paint: Record<string, unknown> = {};
   put(paint, "fill-extrusion-color", highlightColor(ctx, fillColor), ctx, "fill.color");
   paint["fill-extrusion-height"] = toProperty(height);
   const baseProperty = toProperty(base);
   if (baseProperty !== 0) paint["fill-extrusion-base"] = baseProperty;
   paint["fill-extrusion-opacity"] = toProperty(withLayerOpacity(ctx, opacity));
-  return makeLayer(ctx, "fill", "fill-extrusion", "fill", {}, paint, "default", { ordered: false });
+  // A record whose fill is a fixed None (spec 4.6) leaves the volumes: MapLibre would draw its color without the alpha.
+  const none = cascade(style, "fill.color", { fields: ctx.fields, map: (v) => isNone(v) });
+  // By zoom (a base color by zoom beside None classes): where the records' None does not change with the zoom.
+  const stops = isZoomed(none) ? none.stops.map(([, e]) => JSON.stringify(noneOutputs(e))) : [];
+  const filter = !isZoomed(none)
+    ? noneFilter(noneOutputs(none.expr))
+    : new Set(stops).size === 1
+      ? noneFilter(JSON.parse(stops[0]) as Expr)
+      : undefined;
+  return makeLayer(ctx, "fill", "fill-extrusion", "fill", {}, paint, "default", {
+    ordered: false,
+    ...(filter ? { filter } : {}),
+  });
 }
+
+/** Whether the `i`th item of a match, case or step is one of its outputs. */
+function isOutput(expr: Expr[], i: number): boolean {
+  const last = expr.length - 1;
+  if (expr[0] === "case") return i >= 2 && (i % 2 === 0 || i === last);
+  if (expr[0] === "match") return i >= 3 && (i % 2 === 1 || i === last);
+  if (expr[0] === "step") return i >= 2 && i % 2 === 0;
+  return false;
+}
+
+/** `expr` (a fill color's cascade with each fixed color turned into whether it is None) with every output that is no
+ * fixed color (a color read from a field, a palette over one) turned into `false`. */
+function noneOutputs(expr: Expr): Expr {
+  if (typeof expr === "boolean") return expr;
+  if (!Array.isArray(expr) || !["case", "match", "step"].includes(expr[0] as string)) return false;
+  return expr.map((e, i) => (isOutput(expr, i) ? noneOutputs(e) : e));
+}
+
+/** Whether some output of `none` says None. */
+const anyNone = (none: Expr): boolean =>
+  none === true || (Array.isArray(none) && none.some((e, i) => isOutput(none, i) && anyNone(e)));
+
+/** The filter that keeps the features `none` (whether a feature's fill is None) says are drawn; none where all are. */
+const noneFilter = (none: Expr): Expr | undefined => (anyNone(none) ? ["!", none] : undefined);
 
 /** How far before a position's zoom stop the offset of a blending width jumps to the new side. */
 const SIDE_CHANGE = 0.001;
@@ -143,23 +187,27 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
   const fillColor = cascade(style, "fill.color", c);
-  // The outline's "fill" and the pattern's default color: the fill color, class by class and stop by stop.
-  const inFill = (value: Value) => substitute(value, FILL_COLOR, fillColor);
+  const derived = { geometry: "polygon" as const, fields: ctx.fields, inputs: ruleInputs(ctx) };
+  // A fill that is None for all draws no layer (spec 4.6); its pattern still draws, unless its color is None too.
+  const filled = !drawsNothing(fillColor);
 
   if (extrudes(style)) {
-    layers.push(extrusionLayer(ctx, fillColor));
+    if (filled) layers.push(extrusionLayer(ctx, fillColor));
   } else if (partUsed(style, "fill", "polygon")) {
-    const fillOpacity = cascade(style, "fill.opacity", c);
-    const paint: Record<string, unknown> = {};
-    put(paint, "fill-color", fillColor, ctx, "fill.color");
-    put(paint, "fill-opacity", fillOpacity, ctx, "fill.opacity");
-    if (opacity) paint["fill-layer-opacity"] = toProperty(opacity);
-    layers.push(makeLayer(ctx, "fill", "fill", "fill", {}, paint));
+    if (filled) {
+      const fillOpacity = cascade(style, "fill.opacity", c);
+      const paint: Record<string, unknown> = {};
+      put(paint, "fill-color", fillColor, ctx, "fill.color");
+      put(paint, "fill-opacity", fillOpacity, ctx, "fill.opacity");
+      if (opacity) paint["fill-layer-opacity"] = toProperty(opacity);
+      layers.push(makeLayer(ctx, "fill", "fill", "fill", {}, paint));
+    }
 
     const patterns = setValues(style, "fill.pattern").filter(
       (p): p is string => typeof p === "string" && p !== "none"
     );
-    if (patterns.length) {
+    const patternColor = patterns.length ? derivedValue(style, "fill.pattern_color", derived) : null;
+    if (patternColor && !drawsNothing(patternColor)) {
       const shown = cascade(style, "fill.pattern", { ...c, map: (n) => (n === "none" ? 0 : 1) });
       // The image's name carries the look, feature by feature and stop by stop; lines in the fill color by default.
       const name = combine(
@@ -167,7 +215,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
           cascade(style, "fill.pattern", c),
           cascade(style, "fill.pattern_spacing", c),
           cascade(style, "fill.pattern_width", c),
-          everyZoom(inFill(cascade(style, "fill.pattern_color", { ...c, fallback: FILL_COLOR }))),
+          everyZoom(patternColor),
         ],
         ([kind, spacing, width, color]) => {
           if (kind === "none") return NO_PATTERN_IMAGE;
@@ -193,11 +241,10 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
     }
   }
 
-  if (partUsed(style, "outline", "polygon")) {
+  const color = partUsed(style, "outline", "polygon") ? derivedValue(style, "outline.color", derived) : null;
+  // An outline that is None for all draws as one switched off.
+  if (color && !drawsNothing(color)) {
     const paint: Record<string, unknown> = {};
-    const color = inFill(
-      cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) })
-    );
     put(paint, "line-color", highlightColor(ctx, color), ctx, "outline.color");
     const width = cascade(style, "outline.width", c);
     put(paint, "line-width", highlightWidth(ctx, width), ctx, "outline.width");

@@ -16,6 +16,7 @@ import { type AskCardState, answersCard, askCardOf, askCardState, openAskCard } 
 import { type Translate, fitContext, plain, plainTranslate, stripContext } from "@/lib/assistant/chips";
 import { refreshConversationLists } from "@/lib/assistant/conversations";
 import { assistantErrorKey, toRequestError } from "@/lib/assistant/errors";
+import { getMapBridge } from "@/lib/assistant/mapBridge";
 import {
   type AskInComposer,
   type QueuedMessage,
@@ -51,6 +52,9 @@ import {
 } from "@/components/assistant/styles";
 import { useComposerContext } from "@/components/assistant/useComposerContext";
 import { useFitRunResults } from "@/components/assistant/useFitRunResults";
+import { useFollowMapEdits } from "@/components/assistant/useFollowMapEdits";
+import { useFollowStyleEdits } from "@/components/assistant/useFollowStyleEdits";
+import { useFollowTypedUndo } from "@/components/assistant/useFollowTypedUndo";
 import { useFollowWorkflowEdits } from "@/components/assistant/useFollowWorkflowEdits";
 import { useLayerAddRefresh } from "@/components/assistant/useLayerAddRefresh";
 import { useOpenCreatedWorkflows } from "@/components/assistant/useOpenCreatedWorkflows";
@@ -190,6 +194,12 @@ export default function ChatView(props: ChatViewProps) {
    * when it carries an ask card's answer.
    */
   const inFlight = useRef<"send" | "queued" | "answer" | null>(null);
+  /**
+   * Set while a send waits for the map page's pending style saves: a further
+   * send waits, and a typed message is queued, as while an answer runs.
+   */
+  const settling = useRef(false);
+  const [settlePending, setSettlePending] = useState(false);
   /** The project an unbound conversation becomes bound to when the server accepts the send. */
   const pendingBind = useRef<{ projectId: string; name: string | null } | null>(null);
   /** A TypeError the AI SDK did not recognise as a dropped connection (Safari: "Load failed"). */
@@ -387,6 +397,12 @@ export default function ChatView(props: ChatViewProps) {
   useOpenCreatedWorkflows(messages, props.initialMessages);
   // A workflow the running answer edits loads in the open editor.
   useFollowWorkflowEdits(messages, props.initialMessages);
+  // A style the running answer edits is drawn by the open map and taken by its open style editor.
+  useFollowStyleEdits(messages, props.initialMessages);
+  // What the running answer changes of the map is read again by the open map page, and a view it asks for is shown.
+  useFollowMapEdits(messages, props.initialMessages);
+  // What a typed undo of the running answer wrote back is followed as the Undo button's reply is.
+  useFollowTypedUndo(messages, props.initialMessages);
   // The page reads the job lists (the Workflows canvas) and layers that a run changes.
   useWorkflowRunRefresh(messages, props.initialMessages);
   // The map shows the result of a run the answer started when it shows none of it yet.
@@ -415,7 +431,7 @@ export default function ChatView(props: ChatViewProps) {
     { fromQueue = false, answer }: { fromQueue?: boolean; answer?: AskAnswer } = {}
   ) => {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
+    if (!trimmed || busy || settling.current) return;
     lastSent.current = trimmed;
     replaying.current = false;
     inFlight.current = fromQueue ? "queued" : answer ? "answer" : "send";
@@ -436,6 +452,21 @@ export default function ChatView(props: ChatViewProps) {
     // An answer is not the composer's message: the draft's sources and chips stay.
     resetOnAccept.current = !answer;
     passedCard.current = answer ? answer.card_id : openId;
+    // The open map page's pending style saves go first, so the answer reads the styles the user sees. A wait cut
+    // short (time up, a failed save, the chat closed meanwhile) still sends.
+    const bridge = surface?.project ? getMapBridge(surface.project.id) : null;
+    if (bridge) {
+      settling.current = true;
+      setSettlePending(true);
+      try {
+        await bridge.settle();
+      } catch {
+        // The saves stay with the page; the message goes out.
+      } finally {
+        settling.current = false;
+        setSettlePending(false);
+      }
+    }
     addPendingRun({
       conversationId,
       title: props.title || trimmed.slice(0, 80),
@@ -476,7 +507,7 @@ export default function ChatView(props: ChatViewProps) {
    * again, so the card shows how it stands.
    */
   const sendAnswer = async (answer: AskAnswer, text: string) => {
-    if (answering.current || busy || stopping) return;
+    if (answering.current || busy || stopping || settling.current) return;
     answering.current = true;
     setAnswerPending(true);
     const page = stripContext(surface ? surface.getContext() : null, new Set());
@@ -600,13 +631,14 @@ export default function ChatView(props: ChatViewProps) {
   const readOnly = !!props.readOnly;
   // The queued message goes once nothing runs and no Stop is still settling (its late
   // cancel could stop the new run). The flag is cleared first: a further pass sends nothing.
-  // An answer on its way counts as running.
+  // An answer on its way, or a send waiting for the map page's style saves, counts as running.
   useEffect(() => {
-    if (!releaseQueued || busy || stopping || answerPending || props.waiting || readOnly) return;
+    if (!releaseQueued || busy || stopping || answerPending || settlePending || props.waiting || readOnly)
+      return;
     setReleaseQueued(false);
     const next = getDraft(conversationId)?.queued;
     if (next) void sendRef.current(next.text, contextRef.current, { fromQueue: true });
-  }, [releaseQueued, busy, stopping, answerPending, props.waiting, readOnly, conversationId]);
+  }, [releaseQueued, busy, stopping, answerPending, settlePending, props.waiting, readOnly, conversationId]);
 
   // The queued item and the ask panel take room from the transcript: its newest message stays in view.
   useEffect(() => {
@@ -725,7 +757,7 @@ export default function ChatView(props: ChatViewProps) {
   const submit = () => {
     const text = draft.trim();
     if (!text) return;
-    const running = busy || stopping || answerPending;
+    const running = busy || stopping || answerPending || settling.current;
     if (!running && !queued) {
       void send(draft, composer.context);
       return;
@@ -850,7 +882,7 @@ export default function ChatView(props: ChatViewProps) {
                 <AskPanel
                   key={panelCard.card_id}
                   card={panelCard}
-                  busy={busy || stopping || answerPending}
+                  busy={busy || stopping || answerPending || settlePending}
                   onSend={answerCard}
                   onReplyInText={() => replyInText(panelCard.card_id)}
                   autoFocus={focusPanel}
