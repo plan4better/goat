@@ -315,7 +315,7 @@ const SHORT = { abbreviate: true, decimals: 0 };
 
 /** The cluster symbol's count label on the cluster itself (spec 8.2: the placement is fixed), without the labels'
  * default halo unless the symbol sets one: the count sits on the cluster's own color. */
-function onCluster(symbol: unknown): unknown {
+export function onCluster(symbol: unknown): unknown {
   if (!isObject(symbol) || !isObject(symbol.label)) return symbol;
   const label: JsonObject = { ...symbol.label, placement: "center" };
   if (label.halo === undefined) label.halo = { width: 0 };
@@ -508,14 +508,19 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
     "text-ignore-placement": true,
   };
   const paint: Record<string, unknown> = {
+    // The badge draws its number without a halo, so the number is not read on one.
     "text-color": toProperty(
-      derivedValue(symbol, "cluster.symbol.label.color", {
-        geometry: "point",
-        // The badge's color as its image draws it: a color by zoom holds each stop up to the next.
-        follow: (map) => held(map ? cascade(symbol, "marker.color", { map }) : fill),
-        fallback: DEFAULT_CLUSTER_SYMBOL.label.color,
-        inputs: ruleInputs(clusters),
-      })
+      derivedValue(
+        { ...symbol, symbol: { ...own, label: { ...label, halo: { width: 0 } } } },
+        "cluster.symbol.label.color",
+        {
+          geometry: "point",
+          // The badge's color as its image draws it: a color by zoom holds each stop up to the next.
+          follow: (map) => held(map ? cascade(symbol, "marker.color", { map }) : fill),
+          fallback: DEFAULT_CLUSTER_SYMBOL.label.color,
+          inputs: ruleInputs(clusters),
+        }
+      )
     ),
   };
   return makeLayer(clusters, "badge", "symbol", "marker", layout, paint, "default", { ordered: false });

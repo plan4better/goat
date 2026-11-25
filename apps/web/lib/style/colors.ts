@@ -102,6 +102,21 @@ export function haloAgainst(text: string): string {
   return light >= dark ? LIGHT : DARK;
 }
 
+/** The text `"auto"` draws beside the halo the map draws (spec 18.10: a color the style sets, or the reference
+ * `#ffffff` where none is set), read without its alpha: `text` (by default the label pair's text for the tone) where
+ * it contrasts with the halo by at least the contrast floor; else the color's readable shade against the halo where
+ * it reaches the floor; else `haloAgainst` of the halo. A halo that is not a hex color or is "None" is no halo:
+ * `text`. For a color that is not a hex color the step of the readable shade is left out. */
+export function textAgainst(color: string, halo: string, tone?: string, text?: string): string {
+  const first = text ?? labelPair(color, tone).text;
+  if (!isHex(halo) || isNone(halo)) return first;
+  const on = opaque(halo);
+  if (contrastRatio(first, on) >= CONTRAST_FLOOR) return first;
+  const tinted = readableShade(color, on);
+  if (contrastRatio(tinted, on) >= CONTRAST_FLOOR) return tinted;
+  return haloAgainst(on);
+}
+
 /** White where the color underneath has a relative luminance below 0.5, else GOAT's dark text color; white for
  * anything but a hex color. */
 export function onColor(color: string): string {

@@ -1129,7 +1129,9 @@ function clusterSections(style: JsonObject, render: JsonObject, zoom: number): L
         derivedColor(
           "cluster.symbol.label.color",
           typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
-          typeof own.marker?.color === "string" ? own.marker.color : DEFAULTS["marker.color"]
+          typeof own.marker?.color === "string" ? own.marker.color : DEFAULTS["marker.color"],
+          // The badge draws its number without a halo.
+          { against: null }
         )
       ),
       // The cluster symbol's outline as its swatch draws it, "Same as fill" and "auto" resolved.

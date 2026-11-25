@@ -212,6 +212,7 @@ const CASES: Record<string, Case> = {
     color: "auto",
     halo: { color: "#222222" },
   }),
+  ...labelCases("polygon label text auto, halo absent", "polygon", ["fill", "color"], { color: "auto" }),
   ...labelCases("polygon label halo auto, text set light", "polygon", ["fill", "color"], {
     color: "#f0f0f0",
     halo: { color: "auto" },

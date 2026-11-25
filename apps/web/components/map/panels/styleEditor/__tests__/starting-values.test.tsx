@@ -8,7 +8,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { evaluate, maplibreErrors } from "@/lib/style/__tests__/maplibre";
-import { CONTRAST_FLOOR, contrastRatio, labelPair } from "@/lib/style/colors";
+import { CONTRAST_FLOOR, contrastRatio, labelPair, textAgainst } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
 import type { Geometry } from "@/lib/style/compile/types";
 import { defaultStyle } from "@/lib/style/defaults";
@@ -405,10 +405,12 @@ describe("the starting values draw a valid color on a light and on a dark basema
             expect(tone === "dark" ? text : halo).toBe("#ffffff");
             expect(contrastRatio(text!, halo!)).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
           } else {
-            // Auto text beside a set halo follows the basemap alone (spec 4.2): on a dark basemap it is white, as
-            // the light halo is.
+            // Auto text beside a set halo is read on that halo (spec 18.10): dark on the light halo on both
+            // basemaps, the contrast floor between them.
             expect(halo).toBe("#ffffff");
-            expect(text).toBe(tone === "dark" ? "#ffffff" : labelPair("#3969ac", "light").text);
+            expect(text).toBe(textAgainst("#3969ac", "#ffffff", tone));
+            expect(text).toBe(labelPair("#3969ac", "light").text);
+            expect(contrastRatio(text!, halo!)).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
           }
         }
       });

@@ -8,11 +8,12 @@ import {
   derivedColor,
   derivedSwitches,
   followedKey,
+  haloOff,
   isDerivedWord,
   pathOf,
   switchedRamp,
 } from "@/lib/style/compile/derived";
-import { h3Resolution, h3Scale } from "@/lib/style/compile/render";
+import { h3Resolution, h3Scale, onCluster } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { ScopedView } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
@@ -268,13 +269,25 @@ export function swatchOf(
         follow: undefined,
         zoom: typeof zoom === "number" ? zoom : undefined,
       });
-      // The partner a color is chosen against (a halo's text): the record's, else the base symbol's.
-      const partner = DERIVED[derived].against;
+      // The partner a color is chosen against (a halo's text) or read on (a text's halo): the record's, else the base
+      // symbol's, else (unset) its reference color. No halo is drawn, as on the map, where the record's width is 0
+      // (else the base symbol's), on a cluster label without a halo of its own and on a badge.
+      const { against, beside } = DERIVED[derived];
+      const partner = against ?? beside;
       const partnerPath = partner && pathOf(partner.key);
-      rule.against = partnerPath
-        ? (getIn(doc, `${prefix}${partnerPath}`) ??
-          (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)))
-        : undefined;
+      const badge = cluster && (getIn(doc, "render.count") ?? DEFAULTS["cluster.count"]) === "badge";
+      const width = partnerPath?.replace(/color$/, "width");
+      const drawnWidth = !width
+        ? undefined
+        : cluster
+          ? getIn(onCluster(getIn(doc, "render.symbol")), width)
+          : (getIn(doc, `${prefix}${width}`) ?? getIn(doc, `symbol.${width}`));
+      rule.against = !partnerPath
+        ? undefined
+        : beside && (badge || haloOff(drawnWidth))
+          ? null
+          : (getIn(doc, `${prefix}${partnerPath}`) ??
+            (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)));
     }
     const word = follows ? undefined : value;
     const turn = (color: string) => derivedColor(derived, word, color, rule);

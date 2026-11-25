@@ -7000,7 +7000,7 @@
     "fill-color": "#7f3c8d"
    },
    "1-label": {
-    "text-color": "#592a63",
+    "text-color": "#ffffff",
     "text-halo-color": "#222222"
    }
   },
@@ -7018,7 +7018,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#592a63",
+   "symbol.label.color": "#ffffff",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7029,7 +7029,7 @@
     "fill-color": "#7f3c8dcc"
    },
    "1-label": {
-    "text-color": "#592a63",
+    "text-color": "#ffffff",
     "text-halo-color": "#222222"
    }
   },
@@ -7047,7 +7047,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#592a63",
+   "symbol.label.color": "#ffffff",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7055,7 +7055,7 @@
   "valid": true,
   "map": {
    "1-label": {
-    "text-color": "#592a63",
+    "text-color": "#ffffff",
     "text-halo-color": "#222222"
    }
   },
@@ -7073,7 +7073,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#592a63",
+   "symbol.label.color": "#ffffff",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7084,7 +7084,7 @@
     "fill-color": "#2bb381"
    },
    "1-label": {
-    "text-color": "#1e7d5a",
+    "text-color": "#ffffff",
     "text-halo-color": "#222222"
    }
   },
@@ -7102,7 +7102,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#1e7d5a",
+   "symbol.label.color": "#ffffff",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7134,9 +7134,9 @@
       "zoom"
      ],
      8,
-     "#b30000",
+     "#ffffff",
      14,
-     "#0000b3"
+     "#ffffff"
     ],
     "text-halo-color": "#222222"
    }
@@ -7155,7 +7155,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "linear-gradient(90deg, #b30000, #0000b3)",
+   "symbol.label.color": "linear-gradient(90deg, #ffffff, #ffffff)",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7219,18 +7219,18 @@
        0
       ],
       0,
-      "#7d7162",
+      "#b2a28c",
       10,
-      "#9f3424"
+      "#ffffff"
      ],
-     "#1e7d5a"
+     "#ffffff"
     ],
     "text-halo-color": "#222222"
    }
   },
   "legend": [],
   "panel": {
-   "symbol.label.color": "linear-gradient(90deg, #7d7162, #9f3424)",
+   "symbol.label.color": "linear-gradient(90deg, #b2a28c, #ffffff)",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7248,7 +7248,7 @@
     ]
    },
    "1-label": {
-    "text-color": "#3a3541",
+    "text-color": "#ffffff",
     "text-halo-color": "#222222"
    }
   },
@@ -7301,10 +7301,10 @@
       ]
      ],
      "a",
-     "#0c7455",
+     "#ffffff",
      "b",
-     "#a22c51",
-     "#646464"
+     "#ffffff",
+     "#8f8f8f"
     ],
     "text-halo-color": "#222222"
    }
@@ -7334,7 +7334,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "linear-gradient(90deg, #0c7455, #a22c51)",
+   "symbol.label.color": "linear-gradient(90deg, #ffffff, #ffffff)",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7367,8 +7367,8 @@
       ],
       "a"
      ],
-     "#284a78",
-     "#646464"
+     "#ffffff",
+     "#8f8f8f"
     ],
     "text-halo-color": "#222222"
    }
@@ -7398,7 +7398,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#646464",
+   "symbol.label.color": "#8f8f8f",
    "symbol.label.halo.color": "#222222"
   }
  },
@@ -7809,6 +7809,824 @@
   "panel": {
    "symbol.label.color": "#ffffff",
    "symbol.label.halo.color": "#222222"
+  }
+ },
+ "polygon label text auto, halo absent, light / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / none": {
+  "valid": true,
+  "map": {
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-label": {
+    "text-color": "#1e7d5a",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#1e7d5a",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #b30000, #0000b3)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#7d7162",
+      10,
+      "#9f3424"
+     ],
+     "#1e7d5a"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #7d7162, #9f3424)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-label": {
+    "text-color": "#3a3541",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#646464"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #0c7455, #a22c51)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, light / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#646464"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#646464",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / fixed": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8d"
+   },
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / alpha": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#7f3c8dcc"
+   },
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / none": {
+  "valid": true,
+  "map": {
+   "1-label": {
+    "text-color": "#592a63",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#592a63",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / absent": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": "#2bb381"
+   },
+   "1-label": {
+    "text-color": "#1e7d5a",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#2bb381",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#1e7d5a",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / zoom": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#ff0000",
+     14,
+     "#0000ff"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#b30000",
+     14,
+     "#0000b3"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#95006a",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #b30000, #0000b3)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / palette": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c8",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#7d7162",
+      10,
+      "#9f3424"
+     ],
+     "#1e7d5a"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #7d7162, #9f3424)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / raw": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "to-color",
+     [
+      "get",
+      "c"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-label": {
+    "text-color": "#3a3541",
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#9aa3ad",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / classes": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a579",
+     "b",
+     "#e73f74",
+     "#cccccc"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#646464"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a579",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f74",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "linear-gradient(90deg, #0c7455, #a22c51)",
+   "symbol.label.halo.color": "#ffffff"
+  }
+ },
+ "polygon label text auto, halo absent, dark / rules": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#3969ac",
+     "#cccccc"
+    ]
+   },
+   "1-label": {
+    "text-color": [
+     "case",
+     [
+      "==",
+      [
+       "get",
+       "t"
+      ],
+      "a"
+     ],
+     "#284a78",
+     "#646464"
+    ],
+    "text-halo-color": "#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#3969ac",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   },
+   {
+    "id": "rest",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#cccccc",
+      "opacity": 1,
+      "pattern": "none"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.label.color": "#646464",
+   "symbol.label.halo.color": "#ffffff"
   }
  },
  "polygon label halo auto, text set light, light / fixed": {

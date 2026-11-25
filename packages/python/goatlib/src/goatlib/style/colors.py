@@ -177,6 +177,28 @@ def halo_against(text: Any) -> str:
     return LIGHT if light >= dark else DARK
 
 
+def text_against(
+    hex_color: Any, halo: Any, tone: Any = "light", text: Any = None
+) -> str:
+    """The text `"auto"` draws beside the halo the map draws (spec 18.10: a color the
+    style sets, or the reference `#ffffff` where none is set), read without its alpha:
+    `text` (by default the label pair's text for the tone) where it contrasts with the
+    halo by at least the contrast floor; else the color's readable shade against the
+    halo where it reaches the floor; else `halo_against` of the halo. A halo that is
+    not a hex color or is "None" is no halo: `text`. For a color that is not a hex
+    color the step of the readable shade is left out."""
+    first = label_pair(hex_color, tone)["text"] if text is None else text
+    if not _is_hex(halo) or is_none(halo):
+        return first
+    halo = opaque(halo)
+    if contrast_ratio(first, halo) >= CONTRAST_FLOOR:
+        return first
+    tinted = readable_shade(hex_color, halo)
+    if contrast_ratio(tinted, halo) >= CONTRAST_FLOOR:
+        return tinted
+    return halo_against(halo)
+
+
 def alpha(hex_color: Any) -> int | None:
     """The color's alpha, 0 to 255: its last two digits, 255 without them; None
     for anything but a six- or eight-digit hex color."""

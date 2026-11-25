@@ -21,6 +21,7 @@ from goatlib.style.colors import (
     rgb_to_hex,
     sample_colors,
     shade,
+    text_against,
 )
 
 from .conftest import FIXTURES
@@ -214,6 +215,57 @@ def test_a_label_pair_meets_the_floor_for_every_color_on_both_tones() -> None:
 )
 def test_shared_halos_against_a_text(row: dict[str, Any]) -> None:
     assert halo_against(row["text"]) == row["expected"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    COLOR_RULES["text_against"],
+    ids=lambda r: f"{r['color']}-{r['halo']}-{r['tone']}-{r.get('text')}",
+)
+def test_shared_texts_against_a_halo(row: dict[str, Any]) -> None:
+    assert (
+        text_against(row["color"], row["halo"], row["tone"], row.get("text"))
+        == row["expected"]
+    )
+
+
+#: Feature colors and halos the floor is checked over: neutrals, mid tones, saturated
+#: and light colors, a halo with its own transparency.
+_FEATURES = [
+    *palette_colors("carto:Bold"),
+    "#ffd400",
+    "#2bb381",
+    "#2166ac",
+    "#ffffff",
+    "#000000",
+    "#808080",
+    "#e7298a",
+    "#3a3541",
+]
+_HALOS = [*_FEATURES, "#ffffff80", "#777777", "#767676", "#595959", "#a0a0a0"]
+
+
+def test_a_text_against_a_set_halo_meets_the_floor_for_every_color_and_tone() -> None:
+    for color in [*_FEATURES, "fill", None]:
+        for halo in _HALOS:
+            for tone in ("light", "dark"):
+                for text in (None, on_color(color)):
+                    got = text_against(color, halo, tone, text)
+                    assert contrast_ratio(got, halo) >= 4.5, (color, halo, tone, text)
+    for row in COLOR_RULES["text_against"]:
+        if is_none(row["halo"]) or alpha(row["halo"]) is None:
+            continue
+        assert contrast_ratio(row["expected"], row["halo"]) >= 4.5, row
+
+
+def test_a_text_against_a_halo_that_is_not_set_follows_the_table() -> None:
+    for tone in ("light", "dark"):
+        for halo in ("#ffffff00", None, "auto"):
+            assert (
+                text_against("#7f3c8d", halo, tone)
+                == label_pair("#7f3c8d", tone)["text"]
+            )
+        assert text_against("#7f3c8d", None, tone, "#123456") == "#123456"
 
 
 def test_a_halo_against_a_text_meets_the_floor_for_every_grey() -> None:

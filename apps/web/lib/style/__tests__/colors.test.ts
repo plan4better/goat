@@ -12,6 +12,7 @@ import {
   opaque,
   readableShade,
   shade,
+  textAgainst,
 } from "@/lib/style/colors";
 import { PALETTES } from "@/lib/style/generated/catalog";
 
@@ -30,6 +31,13 @@ interface Rules {
   opaque: Array<{ color: string | null; expected: string | null }>;
   halo_against: Array<{ text: string | null; expected: string }>;
   label_pair: Array<{ color: string | null; tone: "light" | "dark" | null; text: string; halo: string }>;
+  text_against: Array<{
+    color: string | null;
+    halo: string | null;
+    tone: "light" | "dark";
+    text?: string;
+    expected: string;
+  }>;
 }
 
 const RULES = JSON.parse(
@@ -112,5 +120,34 @@ describe("color rules (with goatlib's)", () => {
       const text = `#${v.toString(16).padStart(2, "0").repeat(3)}`;
       expect(contrastRatio(text, haloAgainst(text)), text).toBeGreaterThanOrEqual(4.5);
     }
+  });
+
+  it.each(RULES.text_against.map((r) => [r.color, r.halo, r.tone, r.text, r.expected]))(
+    "text %s against the halo %s on %s (%s)",
+    (color, halo, tone, text, expected) => {
+      expect(textAgainst(color as string, halo as string, tone as string, text as string | undefined)).toBe(
+        expected
+      );
+    }
+  );
+
+  it("gives a text against a set halo that meets the floor for every color and tone", () => {
+    const features = [
+      ...PALETTES["carto:Bold"].colors,
+      "#ffd400",
+      "#2bb381",
+      "#2166ac",
+      "#ffffff",
+      "#000000",
+    ];
+    features.push("#808080", "#e7298a", "#3a3541");
+    const halos = [...features, "#ffffff80", "#777777", "#767676", "#595959", "#a0a0a0"];
+    for (const color of [...features, "fill", null as unknown as string])
+      for (const halo of halos)
+        for (const tone of ["light", "dark"])
+          for (const text of [undefined, onColor(color)]) {
+            const got = textAgainst(color, halo, tone, text);
+            expect(contrastRatio(got, halo), `${color} ${halo} ${tone} ${text}`).toBeGreaterThanOrEqual(4.5);
+          }
   });
 });

@@ -3770,21 +3770,44 @@ The rules:
   the feature the label belongs to (the polygon's fill, the line's color, the marker's color, without its alpha, class
   by class, rule by rule, zoom stop by zoom stop and palette stop by palette stop). On a light basemap the text is the
   feature's color darkened as the shade darkens it until it contrasts with white by at least 4.5 to 1 (WCAG), in a
-  `#ffffff` halo; on a dark basemap the text is `#ffffff` in a halo of that darkened color. Text Auto beside a set
-  halo follows the same table; a halo Auto beside a set or absent text is the one of `#ffffff` and `#3a3541` with the
-  higher contrast against it, `#000000` where neither reaches 4.5 to 1, so the floor holds for every text. A set color
-  is never changed. The built-in dark and satellite basemaps are dark, a solid or custom vector basemap by its
-  background color (dark below a relative luminance of 0.35), every other basemap is light (a custom image too).
-  Where the feature's color is read from a field as it is, every feature of that read gets `#3a3541` text in a
-  `#ffffff` halo on a light basemap and `#ffffff` text in a `#3a3541` halo on a dark one. Lines of a label
-  (`label.lines`) without their own color take the text's.
+  `#ffffff` halo; on a dark basemap the text is `#ffffff` in a halo of that darkened color. A text Auto beside a halo
+  the map draws (a color the style sets, or the default `#ffffff` where the key is absent), read without the halo's
+  alpha, is the table's text where it contrasts with that halo by at least 4.5 to 1; else the feature's color darkened
+  as the shade darkens it until it contrasts with the halo by at least 4.5 to 1, where that is reached; else the one
+  of `#ffffff` and `#3a3541` with the higher contrast against the halo, `#000000` where neither reaches 4.5 to 1.
+  Where a record's halo has width 0 (by zoom: where its width stays 0 up to the next stop), or its color is at alpha 0
+  (None) or read from a field as it is, the text there follows the table. A halo Auto beside a set or absent text is
+  the one of `#ffffff` and `#3a3541` with the higher contrast against it, `#000000` where neither reaches 4.5 to 1, so
+  the floor holds for every text. A set color is never changed. The built-in dark and satellite basemaps are dark, a
+  solid or custom vector basemap by its background color (dark below a relative luminance of 0.35), every other
+  basemap is light (a custom image too). Where the feature's color is read from a field as it is, every feature of
+  that read gets `#3a3541` text in a `#ffffff` halo on a light basemap and `#ffffff` text in a `#3a3541` halo on a
+  dark one; beside a halo the map draws, that text stands where it reaches 4.5 to 1 against the halo, else the last
+  step above applies. Lines of a label (`label.lines`) without their own color take the text's.
 - **on-color**: `#ffffff` where the relative luminance of the color underneath is below 0.5, else GOAT's dark text
   color `#3a3541`: an icon on its marker (on a hollow marker the icon takes the marker's hue, as when `icon_color` is
   absent) and a cluster's number on the cluster's marker; `#ffffff` for every feature where that color is read from a
-  field as it is. On a cluster, the halo contrasts with the number as it is drawn.
-- A color chosen among a few (on-color, a halo against its text) switches where its answer flips as the color it
-  looks at blends over a palette or over the zoom, never blending through grey; a marker image looks at the
-  marker's color of its whole zoom, a badge at the color of its zoom stop.
+  field as it is. On a cluster, the halo contrasts with the number as it is drawn, and a number Auto beside a halo the
+  cluster draws is read on it as a label's text is, with the on-color in place of the table's text (a cluster label
+  without a halo of its own and a badge draw none).
+- A color chosen among a few (on-color, a halo against its text) switches where its answer flips as the color it looks
+  at blends over a palette or over the zoom, never blending through grey; a marker image looks at the marker's color
+  of its whole zoom, a badge at the color of its zoom stop.
+- A text read on a halo follows the colors it is chosen from as they blend, within these limits:
+  - Where the feature's color blends over a palette or over the zoom beside one halo color, the text blends from one
+    stop's text to the next where both are lighter than the halo or both darker, and steps where they lie on either
+    side of it, so it never blends through the halo's own color. Between stops the blend is not checked: its contrast
+    with the halo can come out slightly below 4.5 to 1. Feature colors that change by zoom per class, rule or palette
+    step at five points of each stretch instead (as below), so beside one halo color the floor holds there and only
+    the tint lags.
+  - Where the feature's color is one color and the halo changes by zoom or over a field, or both change by zoom alone,
+    the text is worked out for every zoom or value and switches exactly where it changes.
+  - Where the halo changes by zoom or over a field and the feature's colors vary by class, rule or palette, the text
+    is worked out at five points of each stretch between two of the halo's stops (its two ends and three between) and
+    each answer is held from halfway to the point before until halfway to the next. It steps there and never blends to
+    the halo's own color, but between those points the halo moves on while the text stays: its contrast with the halo
+    can dip below 4.5 to 1, and below 3 to 1 where the halo turns from light to dark (or back) within the stretch,
+    down to about 2.8 to 1 in the cases tested.
 
 "Not yet" marks a rule this version refuses: `"auto"` there, like on a key without a rule, is `invalid_value` (a
 palette named `"auto"` is `unknown_palette`). `"fill"` stays a word of `outline.color` alone (3.1).

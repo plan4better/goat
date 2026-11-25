@@ -67,7 +67,8 @@ describe("the basemap's tone in the style panel", () => {
     });
 
     it("reaches the rule of the color the text color's picker starts at", async () => {
-      const text = vi.spyOn(RULES, "label_text");
+      // A text Auto without a halo key is read on the default halo the map draws.
+      const text = vi.spyOn(RULES, "text_against");
       render({ color: "auto" });
       await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
       expect(text).toHaveBeenCalled();
