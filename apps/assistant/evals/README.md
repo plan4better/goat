@@ -1,6 +1,6 @@
 # GOAT eval set
 
-36 catalog, 26 project, 13 workflow and 51 map tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
+36 catalog, 26 project, 13 workflow and 56 map tasks that grade a model on what GOAT's assistant does (spec §12). The agent,
 prompt, tools and limits are the production ones; the services behind the tools are fixed (decision E16): the
 catalog app over its fixture catalog plus its named rows, and canned answers for one fixture project
 ("Radverkehr Leipzig"). Checks are deterministic (expected records, filters, numbers, named values, tools, docs pages
@@ -67,7 +67,7 @@ core importable with its settings in the environment (the root `.env`, which `ru
 stored document only (it validates against the bands, it draws the asked form on the asked band): nothing reads their
 pixels. The harness records the project as core held it before each turn, when the eval user answered a card, after
 each turn and after the Undo, and the `style` and `map` checks (`map_graders.py`) grade those: the style the layer draws
-(edited in place, or new where the request asks for a new style or for options and then which of the styles made is drawn, its classification, paths, legend shares, no error stored), the map state (what is drawn, the
+(edited in place, or new where the request asks for a new style or for options and then which of the styles made is drawn, its classification, paths, legend shares, its colors as goatlib's color rules read them (an `"auto"` color resolved, a label's contrast, a None color, a color's own transparency against the part's opacity), no error stored), the map state (what is drawn, the
 order, groups, basemap, filters and their areas as the filter panel reads them, layers removed or kept, nothing
 stored) and that Undo brought back the state before,
 computed stamps aside. The `view` check reads the view the answer's `map_update` calls set. The `tools` check bounds the calls of a tool in an answer (`at_most`); a key that joins tools with `+` bounds their calls together. Its `loaded` names the skill reference files a `skills_load` call must have returned (`popups.md`). A task with
@@ -110,7 +110,8 @@ an error. Promotion recomputes the score from the per-task records and needs a j
 
 Each run writes `evals/results/<time>-<provider>-<model>.json` (not committed): per task the grades, the answer,
 the tools called, tokens, the time to the first text and in total, and for a conversation each turn; a summary with the score per suite and the
-critical tasks that failed.
+critical tasks that failed. With `--calls` each task (and each turn) also keeps its tool calls with their arguments and answers, scrubbed of the keys
+in use and cut, so a failed run can be read call by call.
 
 **Regression workflows.** `workflow_runs.json` keeps workflows the assistant builds in the workflow project's layers
 (`WORKFLOW_LAYERS` in `backends.py`): drafts written the way the assistant drafts, with the config `to_config` gives

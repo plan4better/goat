@@ -232,7 +232,9 @@ READMEs means section N of that file.
   `apply_edits` applies a list of them (`set`, `remove`, `retarget`,
   `use_field`, `round`, `add`, `move`) in order, all or none, and a refusal
   names what exists, so the model's next call can be right; validating the
-  result stays the server's check.
+  result stays the server's check. A key set under a part that is `false`
+  switches the part on, because models change a part key by key and rarely send
+  it as one object.
 - **A style in one line** (`style/summary.py`): `summarize` describes a
   document in plain words for the layer lists the AI reads, from the plain
   dict, so a damaged document gives a shorter line instead of an error.

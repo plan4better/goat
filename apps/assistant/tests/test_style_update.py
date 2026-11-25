@@ -587,13 +587,179 @@ async def test_an_operation_that_cannot_be_applied_is_input_invalid_and_names_it
     assert services.writes() == []
 
 
+async def test_a_class_of_a_classification_the_server_computes_is_not_there_yet() -> (
+    None
+):
+    """A classification set in the same call has no classes before the save:
+    the refusal says where a part for every class goes and that one class is
+    set in a later call, not to add class items the server would replace."""
+    state = MapState()
+    services = _Services(state)
+    classify = {
+        "op": "set",
+        "path": "/classify",
+        "value": [{"field": "density", "method": "quantile", "count": 5}],
+    }
+    outline = {
+        "op": "set",
+        "path": "/classify/density/classes/c1/outline/color",
+        "value": "auto",
+    }
+    with pytest.raises(InputInvalid) as raised:
+        await _update(services, layer_project_id=31, operations=[classify, outline])
+    message = raised.value.message
+    assert message.startswith("Operation 2: /classify/density/classes has no items")
+    assert "add one with the add operation" not in message
+    assert "/symbol/outline" in message and "later call" in message
+    assert services.writes() == []
+
+
+async def test_a_class_added_to_a_classification_the_server_rebuilds_is_said_lost() -> (
+    None
+):
+    """A class item added to a classification the server computes, as many
+    classes as its count, is rebuilt away on the save: the result names no id
+    for it and says that what it held was not saved."""
+    state = MapState()
+    services = _Services(state)
+    classify = {
+        "op": "set",
+        "path": "/classify",
+        "value": [{"field": "density", "method": "quantile", "count": 5}],
+    }
+    add = {
+        "op": "add",
+        "path": "/classify/density/classes",
+        "item": {"outline": {"color": "auto"}},
+    }
+    result = await _run(services, layer_project_id=31, operations=[classify, add])
+    assert result.revision_after == 2
+    assert result.added == {}
+    assert result.note is not None and "/classify/density/classes" in result.note
+    assert "not saved" in result.note and "/symbol/outline" in result.note
+    # Class records written inside the classification are rebuilt the same way.
+    inline = copy.deepcopy(classify)
+    inline["value"][0]["classes"] = [{"outline": {"color": "auto"}}]
+    again = await _run(services, layer_project_id=31, operations=[inline])
+    assert again.note is not None and "not saved" in again.note
+    # The classes of a computed classification that came back as written say nothing.
+    width = {"op": "set", "path": "/symbol/outline/width", "value": 0.5}
+    quiet = await _run(services, layer_project_id=31, operations=[width])
+    assert "not saved" not in (quiet.note or "")
+    # Another count rebuilds the classes as asked: no class was written.
+    for count in (7, 3):
+        recount = {"op": "set", "path": "/classify/density/count", "value": count}
+        counted = await _run(services, layer_project_id=31, operations=[recount])
+        assert counted.revision_after > counted.revision_before
+        assert "not kept" not in (counted.note or ""), counted.note
+    # A classification added with its classes inside is rebuilt the same way.
+    added_inline = {
+        "op": "add",
+        "path": "/classify",
+        "item": {
+            "field": "population",
+            "target": "outline.width",
+            "method": "quantile",
+            "count": 3,
+            "range": [0.5, 3],
+            "classes": [{"name": "Few"}],
+        },
+    }
+    lost_add = await _run(services, layer_project_id=31, operations=[added_inline])
+    assert lost_add.note is not None and "not kept" in lost_add.note, lost_add.note
+    # A rule added and removed again in the same call is no lost class.
+    rule_item = {
+        "when": {"op": "isNull", "args": [{"property": "name"}]},
+        "fill": {"color": "#cfcfcf"},
+    }
+    gone = await _run(
+        services,
+        layer_project_id=31,
+        operations=[
+            {"op": "add", "path": "/rules", "item": rule_item},
+            {"op": "remove", "path": "/rules/r1"},
+            width,
+        ],
+    )
+    assert "not kept" not in (gone.note or ""), gone.note
+    # An item that lands keeps its id in the result.
+    rule = {
+        "op": "add",
+        "path": "/rules",
+        "item": {
+            "when": {"op": "isNull", "args": [{"property": "name"}]},
+            "fill": {"color": "#cfcfcf"},
+        },
+    }
+    kept = await _run(services, layer_project_id=31, operations=[rule])
+    assert kept.added == {"0": "r1"} and "not saved" not in (kept.note or "")
+
+
+OUTLINE_KEY = "set one of its keys, for example /symbol/outline/color"
+
+
+async def test_a_part_switched_off_says_so_and_a_key_set_under_it_switches_it_on() -> (
+    None
+):
+    """Setting a part to false switches it off: the result states it and names
+    a key that draws it again, without asking for it. Setting it to false again
+    changes nothing, and the note names the operation and the value the path
+    holds. A key set under the switched-off part switches it on, and says so."""
+    state = MapState()
+    services = _Services(state)
+    off = {"op": "set", "path": "/symbol/outline", "value": False}
+    first = await _run(services, layer_project_id=31, operations=[off, off])
+    assert first.revision_after == 2
+    assert first.note == (
+        "/symbol/outline is now switched off (false). To draw it again, "
+        f"{OUTLINE_KEY}."
+    )
+    again = await _run(services, layer_project_id=31, operations=[off])
+    assert again.note is not None and again.note.startswith(NOTHING_CHANGED)
+    assert (
+        "Operation 1 sets /symbol/outline to false, the value it holds: the part "
+        f"is switched off; to draw it, {OUTLINE_KEY}."
+    ) in again.note
+    color = {"op": "set", "path": "/symbol/outline/color", "value": "auto"}
+    on = await _run(services, layer_project_id=31, operations=[color])
+    assert on.revision_after == 3
+    assert on.note == (
+        "/symbol/outline was switched off (false); operation 1 switched it on by "
+        "setting /symbol/outline/color."
+    )
+    style = state.styles[state.active_style_id(31)].document
+    assert style["symbol"]["outline"] == {"color": "auto"}
+    # Setting a part to {} resets it to its defaults, and the note says so.
+    reset = {"op": "set", "path": "/symbol/outline", "value": {}}
+    cleared = await _run(services, layer_project_id=31, operations=[reset])
+    assert cleared.note is not None
+    assert "resets it to its defaults" in cleared.note and OUTLINE_KEY in cleared.note
+    # A value equal to the stored one that is no part is named as well.
+    same = {"op": "set", "path": "/symbol/fill/color", "value": "#deebf7"}
+    plain = await _run(services, layer_project_id=31, operations=[same])
+    note = plain.note or ""
+    assert (
+        'Operation 1 sets /symbol/fill/color to "#deebf7", the value it holds' in note
+    )
+    assert "switched off" not in note
+
+
+def test_a_repeated_style_change_says_to_change_the_call() -> None:
+    from assistant.tools.styles import REPEATED_STYLE_EDIT
+
+    assert REPEATED_STYLE_EDIT.startswith("You made this style change earlier")
+    assert "Sending it again changes nothing" in REPEATED_STYLE_EDIT
+    assert "note" in REPEATED_STYLE_EDIT
+
+
 async def test_nothing_changed_has_no_undo_record() -> None:
     state = MapState()
     services = _Services(state)
     same = {"op": "set", "path": "/symbol/fill/color", "value": "#deebf7"}
     result = await _run(services, layer_project_id=31, operations=[same])
     assert result.revision_before == result.revision_after == 1
-    assert result.note == NOTHING_CHANGED and result.changed == []
+    assert result.note is not None and result.note.startswith(NOTHING_CHANGED)
+    assert result.changed == []
     assert result.undo() is None
     assert services.processes.requests == []
 
@@ -1487,7 +1653,9 @@ def test_the_registry_lists_it_as_a_write_that_makes_style_get_and_project_get_l
         UPDATE_STYLE.repeatable
         == REPEATED_STYLE_EDIT
         == (
-            "You made this style change earlier in this answer; this is its result again."
+            "You made this style change earlier in this answer; this is its result "
+            "again. Sending it again changes nothing: change the call as its note or "
+            "refusal says."
         )
     )
     assert UPDATE_STYLE.invalidates == frozenset(

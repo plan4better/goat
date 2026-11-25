@@ -421,6 +421,13 @@ _ICON_CLASSES: list[dict[str, Any]] = [
 ]
 
 
+def _hide_industrial_fill(document: Document) -> None:
+    """The industrial class's fill at None: its hue kept at 0 %."""
+    for record in document["classify"][0]["classes"]:
+        if record["values"] == ["industrial"]:
+            record["fill"]["color"] = record["fill"]["color"][:7] + "00"
+
+
 def _without_area(api: Api) -> None:
     stored = read_rows(api.state.layers[34]["query"], None)
     api.put_layer(34, query=write_rows(Rows(stored.match, stored.rows)))
@@ -1111,6 +1118,39 @@ ANSWERS: dict[str, Answer] = {
             ([_REMOVE_BOUNDARIES], "The layer Old boundaries is removed."),
         ]
     ),
+    "map-52": Answer(
+        lambda api: api.edit(
+            31,
+            lambda d: (
+                _set(
+                    classify=[
+                        {
+                            "field": "density",
+                            "method": "quantile",
+                            "count": 5,
+                            "palette": "colorbrewer:YlOrRd",
+                        }
+                    ]
+                )(d),
+                _symbol("outline", color="auto", width=0.5)(d),
+            ),
+        )
+    ),
+    "map-53": Answer(
+        lambda api: api.edit(
+            40,
+            _symbol(
+                "label",
+                text="{name}",
+                color="auto",
+                halo={"color": "auto"},
+                placement="above",
+            ),
+        )
+    ),
+    "map-54": Answer(lambda api: api.edit(36, _symbol("fill", opacity=0.5))),
+    "map-55": Answer(lambda api: api.edit(36, _symbol("fill", color="#00869500"))),
+    "map-56": Answer(lambda api: api.edit(34, _hide_industrial_fill)),
 }
 
 

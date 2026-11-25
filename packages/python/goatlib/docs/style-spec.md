@@ -3928,7 +3928,7 @@ its id (`/classify/density/palette`).
 
 | `op` | Arguments | Does |
 |---|---|---|
-| `set` | `path`, `value` | sets a value, creating missing objects on the way; a list item must exist (`add` adds one) |
+| `set` | `path`, `value` | sets a value, creating missing objects on the way; a key set under a part that is `false` switches the part on as an object holding that key (its other keys take their defaults); a list item must exist (`add` adds one) |
 | `remove` | `path` | removes a key or list item |
 | `add` | `path`, `item`, `after` | adds an item to an id list (`classify`, a classification's `classes`, `rules`, `popup.blocks`, `render.classify.classes`), after the item `after` names, or last |
 | `move` | `path`, `after` | moves an item of an id list after the item `after` names, or first |
