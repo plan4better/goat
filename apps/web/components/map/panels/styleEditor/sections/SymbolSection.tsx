@@ -12,7 +12,7 @@ import { classifyShape, partDiffers, recordPathOf, scopedView } from "@/lib/styl
 import { MAIN_COLOR, modeOf, targetsOf } from "@/lib/style/editor/forms";
 import { issueText } from "@/lib/style/editor/issues";
 import { templateField } from "@/lib/style/editor/labels";
-import { markerFilled, partOn, symbolShown } from "@/lib/style/editor/parts";
+import { markerFilled, markerOn, partOn, symbolShown } from "@/lib/style/editor/parts";
 import {
   fillSetter,
   iconSetter,
@@ -123,6 +123,8 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   const iconSome = useStyleSelector((doc) =>
     scope || group.summary !== "icon" ? "" : setterKey(iconSetter(doc, geometry))
   );
+  // For all features, the points' Icon row is off as its editor's switch is: no icon and no shape but the circle.
+  const iconOff = useStyleSelector((doc) => !scope && group.id === "icon" && !markerOn(doc));
   const label = t(`style_editor.part_${group.id}`);
   // Groups that share a part (point fill, outline, icon) each show the issues of their own keys.
   const issues = useIssueAt(
@@ -196,7 +198,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
   return (
     <GroupRow
       label={label}
-      off={!on && !some}
+      off={(!on && !some) || (iconOff && !iconSome)}
       overrideDot={differs}
       warn={issues[0] ? issueText(t, issues[0]) : invisible ? t("style_editor.marker_invisible") : undefined}
       value={iconValue ?? text}

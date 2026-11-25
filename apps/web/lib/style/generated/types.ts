@@ -1108,6 +1108,9 @@ export interface ColorClass {
   max_zoom?: number | null;
 }
 /**
+ * The cell borders of flat hexagons, drawn while this is present (also
+ * empty: white, 1 px); absent, no borders are drawn.
+ *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "H3Outline".
  */

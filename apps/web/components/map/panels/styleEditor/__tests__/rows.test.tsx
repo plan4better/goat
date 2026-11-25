@@ -125,6 +125,19 @@ describe("rows", () => {
     expect(onCommit).toHaveBeenCalledWith(7);
   });
 
+  it("SliderRow with commitOnLeave reports a typed number once, when its box is left", async () => {
+    const onChange = vi.fn();
+    renderPanel(
+      <SliderRow label="Size" min={2} max={60} step={1} value={40} commitOnLeave onChange={onChange} />
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    await userEvent.clear(input);
+    await userEvent.type(input, "30");
+    expect(onChange).not.toHaveBeenCalled();
+    await userEvent.tab();
+    expect(onChange.mock.calls).toEqual([[30]]);
+  });
+
   it("pct shows 0 to 100 and reports 0 to 1", async () => {
     const onChange = vi.fn();
     renderPanel(

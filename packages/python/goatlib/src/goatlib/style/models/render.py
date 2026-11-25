@@ -120,6 +120,9 @@ class H3Value(StyleModel):
 
 
 class H3Outline(StyleModel):
+    """The cell borders of flat hexagons, drawn while this is present (also
+    empty: white, 1 px); absent, no borders are drawn."""
+
     color: H3OutlineColor | None = None
     width: Px | None = None
 

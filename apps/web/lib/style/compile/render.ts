@@ -719,8 +719,9 @@ function h3ColumnPaint(ctx: PartContext, render: JsonObject, extrude: JsonObject
   return paint;
 }
 
-/** The hexagons over geoapi's H3 tiles: a fill and, unless its width is 0, an outline; up to `points_from_zoom`.
- * With `extrude` the fill is a fill-extrusion of columns and the outline is not drawn (3D spec 7.6). */
+/** The hexagons over geoapi's H3 tiles: a fill and, where `render.outline` is present and its width is not 0, an
+ * outline; up to `points_from_zoom`. With `extrude` the fill is a fill-extrusion of columns and the outline is not
+ * drawn (3D spec 7.6). */
 export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecification[] {
   const source = h3SourceId(ctx.sourceId);
   const zooms: { minzoom?: number; maxzoom?: number } = {};
@@ -746,7 +747,9 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
   const layers = [
     { id: `${ctx.id}-h3-fill`, type: "fill", source, "source-layer": "h3", ...zooms, paint: fillPaint },
   ] as LayerSpecification[];
-  const outline = isObject(render.outline) ? render.outline : {};
+  // No outline unless `render.outline` is present; the keys it leaves out are white and 1 px.
+  if (!isObject(render.outline)) return layers;
+  const outline = render.outline;
   const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
   const rule = ruleOf("h3.outline.color", outline.color);
   // An outline that is None draws as one of width 0 (spec 4.6).

@@ -4,7 +4,7 @@
 import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
-import { LABEL_FALLBACK, contrastRatio, isNone } from "@/lib/style/colors";
+import { LABEL_FALLBACK, contrastRatio, isNone, shade } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import { parseMarkerImage } from "@/lib/style/compile/markerImage";
@@ -736,6 +736,48 @@ describe("legend invariants", () => {
     const h3 = entriesOf(sections).find((s) => s.id === "h3")!;
     expect(h3.entries).toHaveLength(1);
     expect(h3.entries[0].swatch).toMatchObject({ geometry: "polygon", fill: { color: expect.any(String) } });
+  });
+
+  /** The outline on each H3 class swatch, for a classified render with `render` over it. */
+  const h3Swatches = (render: JsonObject) => {
+    const legend = buildLegend(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        render: {
+          type: "h3",
+          resolution: 8,
+          palette: ["#000001", "#000003"],
+          classify: { method: "quantile", count: 2 },
+          computed: {
+            at: "t",
+            data: "d",
+            scope: "dataset",
+            resolutions: { "8": { min: 0, max: 10, breaks: [5] } },
+          },
+          ...render,
+        },
+      },
+      { geometry: "point", zoom: 12 }
+    )!;
+    return entriesOf(legend.sections)
+      .find((s) => s.id === "h3")!
+      .entries.map((e) => e.swatch.outline);
+  };
+
+  it("H3 swatches carry an outline only where the style has an Auto one", () => {
+    expect(h3Swatches({})).toEqual([undefined, undefined]);
+    expect(h3Swatches({ outline: { color: "auto", width: 2 } })).toEqual([
+      { color: shade("#000001"), width: 2 },
+      { color: shade("#000003"), width: 2 },
+    ]);
+    // Columns draw no outline.
+    expect(h3Swatches({ outline: { color: "auto" }, extrude: {} })).toEqual([undefined, undefined]);
+  });
+
+  it("a white H3 outline that is switched on leaves the swatches without an outline", () => {
+    expect(h3Swatches({ outline: {} })).toEqual([undefined, undefined]);
+    expect(h3Swatches({ outline: { color: "#ffffff", width: 1 } })).toEqual([undefined, undefined]);
   });
 });
 

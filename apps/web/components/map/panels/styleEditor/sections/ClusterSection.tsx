@@ -1,11 +1,11 @@
 "use client";
 
 // Clusters (spec 8.2): how they look (circles or like the points) and where the count goes (in the middle
-// or on a badge), the circle or badge color and the number's color, the circles' smallest and largest size, the
-// distance within which points merge, the zoom from which single points show, and the fewest points a cluster takes.
-// Editing a cluster color or size writes out the default cluster symbol first, so the circles keep their size by
-// count and their count label.
-import { Slider, Typography } from "@mui/material";
+// or on a badge), the circle or badge color and the number's color, the circles' size (a row that opens its editor),
+// the distance within which points merge, the zoom from which single points show (a row that opens its slider), and
+// the fewest points a cluster takes. Editing a cluster color or size writes out the default cluster symbol first, so
+// the circles keep their size by count and their count label.
+import { Typography } from "@mui/material";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -18,12 +18,14 @@ import {
   withClusterValue,
 } from "@/lib/style/editor/parts";
 import { type Path, getIn, setIn } from "@/lib/style/editor/store";
-import { choiceLabel, summarize } from "@/lib/style/editor/summaries";
+import { choiceLabel, plainNumber, summarize, summaryNumber } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
+import type { LayerStyle } from "@/lib/style/generated/types";
 import { isObject } from "@/lib/style/json";
 
 import {
   useEditor,
+  useLiveMapZoom,
   useMapZoom,
   useStyleData,
   useStyleValue,
@@ -33,16 +35,16 @@ import { ZoomEditor } from "@/components/map/panels/styleEditor/editors/ZoomEdit
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import {
   anchorTopOf,
+  useCloseWhenGone,
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import {
   ChoiceRow,
   GroupRow,
-  MAX_ZOOM,
   PanelSection,
-  Row,
   SliderRow,
+  ZoomRangeRow,
 } from "@/components/map/panels/styleEditor/rows";
 import { ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
 import { ValueRow } from "@/components/map/panels/styleEditor/sections/H3Section";
@@ -51,8 +53,6 @@ import { DomainRow } from "@/components/map/panels/styleEditor/sections/HeatmapS
 const LOOKS = ["circle", "points"];
 const VALUE_OPS = ["sum", "mean", "min", "max"];
 const COUNTS = ["center", "badge"];
-/** Every whole zoom (spec: 0 to 24); a stored zoom between them is added (`withStored`). */
-const UNTIL_ZOOMS = Array.from({ length: MAX_ZOOM + 1 }, (_, z) => z);
 /** 2 to 20 points (spec: from 2); a stored count above them is added. */
 const MIN_POINTS = Array.from({ length: 19 }, (_, i) => i + 2);
 
@@ -72,9 +72,76 @@ function ClusterColorRow({ label, symbolKey }: { label: string; symbolKey: strin
 
 const SIZE: Path = "render.symbol.marker.size";
 
-/** The smallest and the largest cluster circle (px): the range of the size by count or by the clusters' value, which
- * keeps its scale and domain; a fixed size is both ends, and an edit sizes the circles by count (the default symbol's
- * scale). */
+const byZoom = (size: unknown) => isObject(size) && Array.isArray(size.zoom);
+
+/** The circles' size as its smallest and largest circle (px), from low to high: the range of the size by count or by
+ * the clusters' value; a fixed size is both ends. */
+function sizeRange(doc: LayerStyle): [number, number] {
+  const size = getIn(doc, SIZE) ?? clusterFallback(doc, "marker.size");
+  const fixed = typeof size === "number" ? size : (DEFAULTS["marker.size"] as number);
+  if (!(isObject(size) && Array.isArray(size.range))) return [fixed, fixed];
+  const [a, b] = size.range as [number, number];
+  return a <= b ? [a, b] : [b, a];
+}
+
+/** The Size editor: the smallest and the largest circle, and for a size by a value of a field the value's range. An
+ * edit writes the range from low to high and keeps the size's scale and domain; on a fixed size it sizes the circles
+ * by count (the default symbol's scale). An edit that leaves the range as it is writes nothing. It closes once the
+ * circles have no size of their own (like the points, another render) or one by zoom. */
+function ClusterSizeEditor() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const type = useStyleValue<unknown>("render.type");
+  const look = useStyleValue<unknown>("render.look") ?? DEFAULTS["cluster.look"];
+  const value = useStyleValue<unknown>("render.value");
+  useStyleValue("render.symbol");
+  const size = getIn(store.document, SIZE) ?? clusterFallback(store.document, "marker.size");
+  useCloseWhenGone(geometry !== "point" || type !== "cluster" || look === "points" || byZoom(size));
+  const range = sizeRange(store.document);
+  const bounds = SLIDERS["marker.size"];
+  const byValue = isObject(value) && value.op !== "count" && isObject(size) && size.field === "value";
+  const write = ([a, b]: number[]) => {
+    if (a === range[0] && b === range[1]) return;
+    store.update((doc) => {
+      const out = withClusterSymbol(doc);
+      const now = getIn(out, SIZE);
+      return isObject(now) && (now.field === "count" || now.field === "value")
+        ? setIn(out, `${SIZE}.range`, [a, b])
+        : setIn(out, SIZE, { ...DEFAULT_CLUSTER_SYMBOL.marker.size, range: [a, b] });
+    }, SIZE);
+  };
+  return (
+    <>
+      <SliderRow
+        label={t("style_editor.range_smallest")}
+        min={bounds.min}
+        max={bounds.max}
+        step={bounds.step}
+        unit={bounds.unit}
+        value={range[0]}
+        // A typed size counts as a whole, from the slider's smallest on; the range goes from low to high: Smallest
+        // stops at Largest.
+        commitOnLeave
+        onChange={(v) => write([Math.min(Math.max(v, bounds.min), range[1]), range[1]])}
+      />
+      <SliderRow
+        label={t("style_editor.range_largest")}
+        min={bounds.min}
+        max={bounds.max}
+        step={bounds.step}
+        unit={bounds.unit}
+        value={range[1]}
+        commitOnLeave
+        onChange={(v) => write([range[0], Math.max(v, bounds.min, range[0])])}
+      />
+      {byValue && <DomainRow path={`${SIZE}.domain`} />}
+    </>
+  );
+}
+
+/** The circles' size as one row: the smallest to the largest circle, opening the Size editor; a size by zoom reads
+ * its stops and opens the zoom editor. */
 function ClusterSizeRow() {
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
@@ -84,10 +151,10 @@ function ClusterSizeRow() {
   const next = useNextLevel();
   useStyleValue("render.symbol");
   const size = getIn(store.document, SIZE) ?? clusterFallback(store.document, "marker.size");
+  const label = t("style_editor.size");
   // A size by zoom: its stops, edited in the zoom editor; By count goes back to circles sized by count, over the
   // smallest and largest stop.
   if (isObject(size) && Array.isArray(size.zoom)) {
-    const label = t("style_editor.size");
     const ends = (size.zoom as unknown[]).flatMap((stop) =>
       Array.isArray(stop) && typeof stop[1] === "number" ? [stop[1] as number] : []
     );
@@ -129,36 +196,79 @@ function ClusterSizeRow() {
       />
     );
   }
-  const fixed = typeof size === "number" ? size : (DEFAULTS["marker.size"] as number);
-  const range: [number, number] =
-    isObject(size) && Array.isArray(size.range) ? (size.range as [number, number]) : [fixed, fixed];
-  const bounds = SLIDERS["marker.size"];
-  const write = ([a, b]: number[]) =>
-    store.update((doc) => {
-      const out = withClusterSymbol(doc);
-      const now = getIn(out, SIZE);
-      return isObject(now) && (now.field === "count" || now.field === "value")
-        ? setIn(out, `${SIZE}.range`, [a, b])
-        : setIn(out, SIZE, { ...DEFAULT_CLUSTER_SYMBOL.marker.size, range: [a, b] });
-    }, SIZE);
+  const range = sizeRange(store.document);
+  const smallest = plainNumber(range[0], i18n.language);
+  const largest = summaryNumber(range[1], "marker.size", i18n.language);
   return (
-    <Row label={t("style_editor.size")}>
-      <Slider
-        size="small"
-        min={bounds.min}
-        max={bounds.max}
-        step={bounds.step}
-        value={range.map((end) => Math.min(Math.max(end, bounds.min), bounds.max))}
-        getAriaLabel={(index) =>
-          t(index === 0 ? "style_editor.range_smallest" : "style_editor.range_largest")
-        }
-        onChange={(_, next) => write(next as number[])}
-        sx={{ flex: 1, minWidth: 0, ml: 1, mr: 1 }}
+    <GroupRow
+      label={label}
+      value={`${smallest} ${t("style_editor.to")} ${largest}`}
+      onOpen={(anchor) =>
+        popover.open(next, {
+          key: "cluster:size",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          render: () => <ClusterSizeEditor />,
+        })
+      }
+    />
+  );
+}
+
+const UNTIL: Path = "render.cluster_until_zoom";
+
+/** The zoom until which points cluster, as stored (between whole zooms too), else the default. */
+function useUntil(): number {
+  const until = useStyleValue<unknown>(UNTIL);
+  return typeof until === "number" ? until : (DEFAULTS["cluster.cluster_until_zoom"] as number);
+}
+
+/** The Until editor: the zoom on the zoom slider over every whole zoom (spec: 0 to 24), the map's zoom marked; a
+ * stored zoom between whole zooms or past the ends stays until the thumb moves. It closes once the points are not
+ * clustered. */
+function ClusterUntilEditor() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const type = useStyleValue<unknown>("render.type");
+  const mapZoom = useLiveMapZoom();
+  const until = useUntil();
+  useCloseWhenGone(geometry !== "point" || type !== "cluster");
+  return (
+    <>
+      <ZoomRangeRow
+        label={t("style_editor.zoom_until")}
+        value={until}
+        mapZoom={mapZoom}
+        onValue={(zoom) => store.set(UNTIL, zoom)}
       />
-      <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: "none" }}>
-        {`${range[0]} ${t("style_editor.to")} ${range[1]} ${bounds.unit}`}
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pt: 2 }}>
+        {t("style_editor.cluster_until_note")}
       </Typography>
-    </Row>
+    </>
+  );
+}
+
+/** Until as one row, "Zoom 14", opening its editor. */
+function ClusterUntilRow() {
+  const { t } = useTranslation("common");
+  const popover = usePopover();
+  const next = useNextLevel();
+  const until = useUntil();
+  const label = t("style_editor.until");
+  return (
+    <GroupRow
+      label={label}
+      value={t("style_editor.zoom_n", { zoom: until })}
+      onOpen={(anchor) =>
+        popover.open(next, {
+          key: "cluster:until",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          render: () => <ClusterUntilEditor />,
+        })
+      }
+    />
   );
 }
 
@@ -168,12 +278,9 @@ export function ClusterSection() {
   const { geometry, profiles } = useStyleData();
   const type = useStyleValue<unknown>("render.type");
   const radius = useStyleValue<unknown>("render.radius");
-  const until = useStyleValue<unknown>("render.cluster_until_zoom");
   const minPoints = useStyleValue<unknown>("render.min_points");
   const look = useStyleValue<unknown>("render.look") ?? DEFAULTS["cluster.look"];
   const count = useStyleValue<unknown>("render.count") ?? DEFAULTS["cluster.count"];
-  const value = useStyleValue<unknown>("render.value");
-  const size = useStyleValue<unknown>(SIZE);
   // Stops waiting for the range of the field picked last: a new pick or the section going away.
   const waiting = useRef<(() => void) | null>(null);
   const stopWaiting = () => {
@@ -182,7 +289,6 @@ export function ClusterSection() {
   };
   useEffect(() => stopWaiting, []);
   if (geometry !== "point" || type !== "cluster") return null;
-  const byValue = isObject(value) && value.op !== "count" && isObject(size) && size.field === "value";
   // A value by a field starts the size's range at the field's (spec 8.2): written with the pick, or once when the
   // field's profile arrives.
   const writeValue = (next: { op: string; field: string } | undefined) => {
@@ -224,7 +330,6 @@ export function ClusterSection() {
       )}
       <ClusterColorRow label={t("style_editor.cluster_number_color")} symbolKey="label.color" />
       {look !== "points" && <ClusterSizeRow />}
-      {look !== "points" && byValue && <DomainRow path={`${SIZE}.domain`} />}
       <SliderRow
         label={t("style_editor.merge_distance")}
         min={range.min}
@@ -234,15 +339,7 @@ export function ClusterSection() {
         value={number(radius, "cluster.radius")}
         onChange={(next) => store.set("render.radius", next)}
       />
-      <ChoiceRow<string>
-        label={t("style_editor.until")}
-        value={String(number(until, "cluster.cluster_until_zoom"))}
-        options={withStored(UNTIL_ZOOMS, until).map((z) => ({
-          value: String(z),
-          label: t("style_editor.zoom_n", { zoom: z }),
-        }))}
-        onChange={(value) => store.set("render.cluster_until_zoom", Number(value))}
-      />
+      <ClusterUntilRow />
       <ChoiceRow<string>
         label={t("style_editor.smallest")}
         value={String(number(minPoints, "cluster.min_points"))}

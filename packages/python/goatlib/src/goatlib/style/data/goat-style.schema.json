@@ -2854,6 +2854,7 @@
   },
   "H3Outline": {
    "additionalProperties": false,
+   "description": "The cell borders of flat hexagons, drawn while this is present (also\nempty: white, 1 px); absent, no borders are drawn.",
    "properties": {
     "color": {
      "anyOf": [

@@ -8167,16 +8167,6 @@
      "fill-color": "#21918c",
      "fill-opacity": 0.85
     }
-   },
-   {
-    "id": "1-h3-outline",
-    "type": "line",
-    "source": "s-h3",
-    "source-layer": "h3",
-    "paint": {
-     "line-color": "#ffffff",
-     "line-width": 1
-    }
    }
   ],
   "images": [],

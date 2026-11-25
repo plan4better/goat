@@ -336,11 +336,11 @@ async function decision(grounds: Record<GroundName, LabGround>): Promise<Section
 
 /** A hexagon layer over the lab's H3 tiles (fixtures/h3, as h3.lab.test.tsx draws them): the count of points in each
  * hexagon on the default palette, so neighbouring hexagons differ, with `outline` as given. */
-function hexagons(outline: JsonObject | undefined): LabCase {
+function hexagons(outline: JsonObject): LabCase {
   const { classify: _classify, ...render } = styles.classes.render as JsonObject;
   return {
     id: "Hexagons",
-    style: { ...(styles.classes as JsonObject), render: { ...render, ...(outline ? { outline } : {}) } },
+    style: { ...(styles.classes as JsonObject), render: { ...render, outline } },
     geometry: "point",
     zoom: facts.zoom,
     fields: { pop: "number" },
@@ -349,7 +349,7 @@ function hexagons(outline: JsonObject | undefined): LabCase {
 }
 
 async function hexagonDecision(grounds: Record<GroundName, LabGround>): Promise<Section> {
-  const white = hexagons(undefined);
+  const white = hexagons({});
   const auto = hexagons({ color: "auto" });
   // The map's middle, shown again at twice the size.
   const closeUp: Box = { x: MAP.width / 3, y: MAP.height / 3, w: MAP.width / 3, h: MAP.height / 3 };
@@ -376,19 +376,20 @@ async function hexagonDecision(grounds: Record<GroundName, LabGround>): Promise<
   tiles.push({
     title: "What both draw",
     note:
-      "The same hexagons twice, colored by how many points fall in each. The left one has no outline color set, " +
-      "so it draws the white outline of 1 px a new hexagon layer starts with; the right one sets the outline to Auto.",
+      "The same hexagons twice, colored by how many points fall in each. The left one has its outline switched on " +
+      "with nothing set, so it draws the white outline of 1 px an outline starts with; the right one sets the " +
+      "outline to Auto.",
     pictures: [],
     ...(drawnWhite.legend ? { legend: drawnWhite.legend } : {}),
-    keys: ["Outline white:", "render.outline: not set", "Outline Auto:", 'render.outline.color: "auto"'],
+    keys: ["Outline white:", "render.outline: {}", "Outline Auto:", 'render.outline.color: "auto"'],
   });
   return {
     id: "decide-hexagons",
     title: "Decide: a hexagon grid's outline",
     intro:
-      "A new hexagon layer draws a thin white line around every hexagon. With Auto each hexagon gets an edge in a " +
-      "darker shade of its own color instead. Look at whether you prefer even white grid lines or edges that " +
-      "belong to each hexagon, on all three maps.",
+      "A hexagon layer's outline is off until it is switched on, and then starts as a thin white line around every " +
+      "hexagon. With Auto each hexagon gets an edge in a darker shade of its own color instead. Look at whether " +
+      "you prefer even white grid lines or edges that belong to each hexagon, on all three maps.",
     tiles,
     layout: "wide",
   };

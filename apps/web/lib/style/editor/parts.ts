@@ -287,7 +287,7 @@ export function withClusterSymbol(doc: LayerStyle): LayerStyle {
 }
 
 /** The starting range of a cluster value by a field (spec 8.2): the field's for its mean, smallest or largest value;
- * for its sum, from the field's lowest value to ten times its highest. The panel's Range row changes it. */
+ * for its sum, from the field's lowest value to ten times its highest. The Range row of the Size editor changes it. */
 export function clusterValueDomain(
   op: string,
   profile?: { min?: number; max?: number }
