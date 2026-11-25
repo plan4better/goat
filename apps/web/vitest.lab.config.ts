@@ -125,14 +125,29 @@ function labFiles(): Plugin {
   };
 }
 
+// The gallery's paths, absolute, where they are set: AUTO_COLORS_GALLERY (the page written) and
+// AUTO_COLORS_GALLERY_GROUNDS (a folder with light.png, dark.png and satellite.png). Both are read and written through
+// the browser's file commands, which reach files inside the repository's folder only.
+function galleryPaths(): Record<string, string> {
+  const out: Record<string, string> = {};
+  // Asked for by hand only: no build or cached task reads them.
+  // eslint-disable-next-line turbo/no-undeclared-env-vars
+  const { AUTO_COLORS_GALLERY: page, AUTO_COLORS_GALLERY_GROUNDS: grounds } = process.env;
+  if (page) out.AUTO_COLORS_GALLERY = path.resolve(page);
+  if (grounds) out.AUTO_COLORS_GALLERY_GROUNDS = path.resolve(grounds);
+  return out;
+}
+
 export default defineConfig({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   plugins: [react(), labFiles()] as any,
   publicDir: "public",
   // The app reads its settings from process.env, which a browser has not: in
   // the lab only the API is set (uploaded icons, served above); every other
-  // setting is unset, so no URL points at another server.
-  define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: API_ROUTE }) },
+  // setting is unset, so no URL points at another server. The gallery of
+  // automatic colors (auto-colors-gallery.lab.test.tsx) gets its output file
+  // and its folder of ground pictures when they are asked for.
+  define: { "process.env": JSON.stringify({ NEXT_PUBLIC_API_URL: API_ROUTE, ...galleryPaths() }) },
   // Bundled before the first test file loads; finding them during the run
   // would reload the page under a running test.
   optimizeDeps: {

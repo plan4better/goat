@@ -18,7 +18,28 @@ export interface KnownDifference {
 const record = (node: unknown, key: string): JsonObject =>
   isObject(node) && isObject(node[key]) ? (node[key] as JsonObject) : {};
 
-export const KNOWN_DIFFERENCES: KnownDifference[] = [];
+/** Whether a point's marker takes part in collisions (an icon alone without `allow_overlap: true`, a marker image
+ * with `allow_overlap: false`; compile/labels.ts `markerCollides`) and its label sits on it (`placement: "center"`). */
+function labelOnCollidingMarker(c: LegendCase): boolean {
+  if (c.geometry !== "point") return false;
+  const symbol = record(c.style, "symbol");
+  const marker = record(symbol, "marker");
+  const label = record(symbol, "label");
+  if (label.placement !== "center" || label.text === undefined) return false;
+  const imaged = marker.shape !== undefined && marker.shape !== "circle" ? true : marker.icon !== undefined;
+  return marker.shape === "icon" ? marker.allow_overlap !== true : imaged && marker.allow_overlap === false;
+}
+
+export const KNOWN_DIFFERENCES: KnownDifference[] = [
+  {
+    check: "lab",
+    when: labelOnCollidingMarker,
+    reason:
+      "spec 3.4: `center` on a marker that collides hides the marker: the map places the label first, and the " +
+      "label's clearance covers the collision paddings only beside the marker",
+    finding: "notDrawn",
+  },
+];
 
 /** Properties the legend's data holds and its swatches do not draw: two entries that differ only in these look the
  * same on screen. The render check expects exactly that, so drawing one turns it red until its line is removed. */
