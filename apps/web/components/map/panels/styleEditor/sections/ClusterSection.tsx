@@ -2,9 +2,10 @@
 
 // Clusters (spec 8.2): how they look (circles or like the points) and where the count goes (in the middle
 // or on a badge), the circle or badge color and the number's color, the circles' size (a row that opens its editor),
-// the distance within which points merge, the zoom from which single points show, and the fewest points a cluster
-// takes. Editing a cluster color or size writes out the default cluster symbol first, so the circles keep their size
-// by count and their count label.
+// the distance within which points merge, the zoom from which single points show (a row that opens its slider), and
+// the fewest points a cluster takes. Editing a cluster color or size writes out the default cluster symbol first, so
+// the circles keep their size by count and their count label.
+import { Typography } from "@mui/material";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -24,6 +25,7 @@ import { isObject } from "@/lib/style/json";
 
 import {
   useEditor,
+  useLiveMapZoom,
   useMapZoom,
   useStyleData,
   useStyleValue,
@@ -40,9 +42,9 @@ import {
 import {
   ChoiceRow,
   GroupRow,
-  MAX_ZOOM,
   PanelSection,
   SliderRow,
+  ZoomRangeRow,
 } from "@/components/map/panels/styleEditor/rows";
 import { ValueModeButton } from "@/components/map/panels/styleEditor/rows/ValueModeButton";
 import { ValueRow } from "@/components/map/panels/styleEditor/sections/H3Section";
@@ -51,8 +53,6 @@ import { DomainRow } from "@/components/map/panels/styleEditor/sections/HeatmapS
 const LOOKS = ["circle", "points"];
 const VALUE_OPS = ["sum", "mean", "min", "max"];
 const COUNTS = ["center", "badge"];
-/** Every whole zoom (spec: 0 to 24); a stored zoom between them is added (`withStored`). */
-const UNTIL_ZOOMS = Array.from({ length: MAX_ZOOM + 1 }, (_, z) => z);
 /** 2 to 20 points (spec: from 2); a stored count above them is added. */
 const MIN_POINTS = Array.from({ length: 19 }, (_, i) => i + 2);
 
@@ -215,13 +215,69 @@ function ClusterSizeRow() {
   );
 }
 
+const UNTIL: Path = "render.cluster_until_zoom";
+
+/** The zoom until which points cluster, as stored (between whole zooms too), else the default. */
+function useUntil(): number {
+  const until = useStyleValue<unknown>(UNTIL);
+  return typeof until === "number" ? until : (DEFAULTS["cluster.cluster_until_zoom"] as number);
+}
+
+/** The Until editor: the zoom on the zoom slider over every whole zoom (spec: 0 to 24), the map's zoom marked; a
+ * stored zoom between whole zooms or past the ends stays until the thumb moves. It closes once the points are not
+ * clustered. */
+function ClusterUntilEditor() {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const type = useStyleValue<unknown>("render.type");
+  const mapZoom = useLiveMapZoom();
+  const until = useUntil();
+  useCloseWhenGone(geometry !== "point" || type !== "cluster");
+  return (
+    <>
+      <ZoomRangeRow
+        label={t("style_editor.zoom_until")}
+        value={until}
+        mapZoom={mapZoom}
+        onValue={(zoom) => store.set(UNTIL, zoom)}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pt: 2 }}>
+        {t("style_editor.cluster_until_note")}
+      </Typography>
+    </>
+  );
+}
+
+/** Until as one row, "Zoom 14", opening its editor. */
+function ClusterUntilRow() {
+  const { t } = useTranslation("common");
+  const popover = usePopover();
+  const next = useNextLevel();
+  const until = useUntil();
+  const label = t("style_editor.until");
+  return (
+    <GroupRow
+      label={label}
+      value={t("style_editor.zoom_n", { zoom: until })}
+      onOpen={(anchor) =>
+        popover.open(next, {
+          key: "cluster:until",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          render: () => <ClusterUntilEditor />,
+        })
+      }
+    />
+  );
+}
+
 export function ClusterSection() {
   const { t } = useTranslation("common");
   const store = useEditor();
   const { geometry, profiles } = useStyleData();
   const type = useStyleValue<unknown>("render.type");
   const radius = useStyleValue<unknown>("render.radius");
-  const until = useStyleValue<unknown>("render.cluster_until_zoom");
   const minPoints = useStyleValue<unknown>("render.min_points");
   const look = useStyleValue<unknown>("render.look") ?? DEFAULTS["cluster.look"];
   const count = useStyleValue<unknown>("render.count") ?? DEFAULTS["cluster.count"];
@@ -283,15 +339,7 @@ export function ClusterSection() {
         value={number(radius, "cluster.radius")}
         onChange={(next) => store.set("render.radius", next)}
       />
-      <ChoiceRow<string>
-        label={t("style_editor.until")}
-        value={String(number(until, "cluster.cluster_until_zoom"))}
-        options={withStored(UNTIL_ZOOMS, until).map((z) => ({
-          value: String(z),
-          label: t("style_editor.zoom_n", { zoom: z }),
-        }))}
-        onChange={(value) => store.set("render.cluster_until_zoom", Number(value))}
-      />
+      <ClusterUntilRow />
       <ChoiceRow<string>
         label={t("style_editor.smallest")}
         value={String(number(minPoints, "cluster.min_points"))}

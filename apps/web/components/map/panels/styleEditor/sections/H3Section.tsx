@@ -392,7 +392,7 @@ export function H3Section() {
       <HeightRows />
       {/* Columns draw no outline. */}
       {!extruded && <OutlineRow />}
-      <PointsRow never={t("style_editor.points_never_h3")} />
+      <PointsRow never={t("style_editor.points_never_h3")} note={t("style_editor.points_note_h3")} />
     </PanelSection>
   );
 }

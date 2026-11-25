@@ -38,7 +38,7 @@ Ein neuer Layer ist bei allen Zoomstufen sichtbar (<code>Alle Zoomstufen</code>)
   <div class="content">Ziehen Sie unter <code>Zoomstufen</code> <strong>die beiden Griffe der Skala</strong>, um festzulegen, wo der Layer erscheint und wo nicht mehr. Der Bereich steht neben der Skala, zum Beispiel <code>8 bis 14</code>. Ein Griff am Ende der Skala (0 oder 24) bedeutet: auf dieser Seite keine Grenze.</div>
 </div>
 
-Das Dreieck unter der Skala markiert den aktuellen Zoom der Karte, mit seiner Zahl. Klicken Sie unter die Skala, um die Karte auf diese Stufe zu zoomen, oder ziehen Sie das Dreieck, um sie stufenlos zu zoomen: So prüfen Sie sofort, wie der Layer an den Rändern seines Bereichs aussieht. Auch der Untertitel des Editors nennt den Zoom der Karte, zum Beispiel <code>Karte bei Zoom 12.5</code>.
+Das Dreieck unter der Skala markiert den aktuellen Zoom der Karte, mit seiner Zahl. Klicken Sie unter die Skala, um die Karte auf diese Stufe zu zoomen, oder ziehen Sie das Dreieck, um sie stufenlos zu zoomen: So prüfen Sie sofort, wie der Layer an den Rändern seines Bereichs aussieht.
 
 ## Zoombereiche von Teilen, Klassen und Regeln
 

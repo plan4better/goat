@@ -1,8 +1,8 @@
 "use client";
 
 // Heatmap (spec 8.1): the colors of the density ramp, radius and intensity (fixed or by zoom), the weight of each
-// point, and the zoom from which the points themselves show.
-import { Box } from "@mui/material";
+// point, and the zoom from which the points themselves show (a row that opens its switch and slider).
+import { Box, Typography } from "@mui/material";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,11 +15,13 @@ import { isObject } from "@/lib/style/json";
 import {
   type FieldProfile,
   useEditor,
+  useLiveMapZoom,
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { useRangeBoxes } from "@/components/map/panels/styleEditor/editors/AttributeEditor";
 import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
+import { HeaderSwitch, togglePart } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
@@ -30,13 +32,22 @@ import {
   useNextLevel,
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { ChoiceRow, NavRow, NumberInput, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
+import {
+  ChoiceRow,
+  GroupRow,
+  NavRow,
+  NumberInput,
+  PanelSection,
+  Row,
+  ZoomRangeRow,
+} from "@/components/map/panels/styleEditor/rows";
 
 const RADIUS: PartRow = { type: "number", key: "radius", label: "style_editor.radius" };
 const INTENSITY: PartRow = { type: "number", key: "intensity", label: "style_editor.intensity" };
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
-const POINT_ZOOMS = [10, 11, 12, 13, 14, 15, 16, 17, 18];
-const NEVER = "never";
+/** The zoom the points show from when their switch turns them on with nothing to bring back. */
+const POINTS_START = 10;
+const POINTS: Path = "render.points_from_zoom";
 
 type Palette = string | string[];
 
@@ -270,24 +281,78 @@ export function DomainRow({ path }: { path: Path }) {
   );
 }
 
-/** From which zoom the points themselves draw instead of the render; `never` names what draws instead. */
-export function PointsRow({ never }: { never: string }) {
+/** The points' switch, for their editor's header: on brings back the zoom it switched off, else zoom 10;
+ * off removes `render.points_from_zoom`: the points never show. */
+function PointsSwitch() {
   const { t } = useTranslation("common");
   const store = useEditor();
-  const zoom = useStyleValue<unknown>("render.points_from_zoom");
+  const on = typeof useStyleValue<unknown>(POINTS) === "number";
+  return (
+    <HeaderSwitch
+      name={t("style_editor.part_name_points")}
+      on={on}
+      onToggle={() => togglePart(store, POINTS, !on, undefined, POINTS_START, { offAbsent: true })}
+    />
+  );
+}
+
+/** The points' editor: while on, the zoom from which they show on the zoom slider, the map's zoom marked, and `note`
+ * on what the map shows on either side. It closes once the layer draws as another render than `type`. */
+function PointsEditor({ type, note }: { type: unknown; note: string }) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const renderType = useStyleValue<unknown>("render.type");
+  const zoom = useStyleValue<unknown>(POINTS);
+  const mapZoom = useLiveMapZoom();
+  useCloseWhenGone(geometry !== "point" || renderType !== type);
+  if (typeof zoom !== "number")
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
+        {t("style_editor.part_off_note")}
+      </Typography>
+    );
+  return (
+    <>
+      <ZoomRangeRow
+        label={t("style_editor.zoom_from")}
+        value={zoom}
+        mapZoom={mapZoom}
+        // Its own undo step, apart from the switch's.
+        onValue={(next) => store.update((doc) => setIn(doc, POINTS, next), `${POINTS}.zoom`)}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pt: 2 }}>
+        {note}
+      </Typography>
+    </>
+  );
+}
+
+/** From which zoom the points themselves draw instead of the render, as one row opening its editor; `never` names
+ * what draws instead, `note` says it in the editor. */
+export function PointsRow({ never, note }: { never: string; note: string }) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const zoom = useStyleValue<unknown>(POINTS);
+  const on = typeof zoom === "number";
   const label = t("style_editor.points");
   return (
-    <ChoiceRow<string>
+    <GroupRow
       label={label}
-      value={typeof zoom === "number" ? String(zoom) : NEVER}
-      options={[
-        { value: NEVER, label: never },
-        ...POINT_ZOOMS.map((z) => ({
-          value: String(z),
-          label: t("style_editor.points_from_zoom", { zoom: z }),
-        })),
-      ]}
-      onChange={(value) => store.set("render.points_from_zoom", value === NEVER ? undefined : Number(value))}
+      off={!on}
+      value={on ? t("style_editor.points_from_zoom", { zoom }) : never}
+      onOpen={(anchor) => {
+        const type = store.get("render.type");
+        popover.open(next, {
+          key: "render:points",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          actions: <PointsSwitch />,
+          render: () => <PointsEditor type={type} note={note} />,
+        });
+      }}
     />
   );
 }
@@ -305,7 +370,7 @@ export function HeatmapSection() {
       <PropertyRow row={OPACITY} base="render" />
       <WeightRow />
       <WeightRange />
-      <PointsRow never={t("style_editor.points_never")} />
+      <PointsRow never={t("style_editor.points_never")} note={t("style_editor.points_note")} />
     </PanelSection>
   );
 }

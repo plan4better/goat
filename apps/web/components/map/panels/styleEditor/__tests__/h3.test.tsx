@@ -181,7 +181,8 @@ describe("H3 hexagons", () => {
     const { store } = setup();
     fireEvent.change(within(rowOf("style_editor.opacity")).getByRole("slider"), { target: { value: 0.5 } });
     expect(store.get("render.opacity")).toBe(0.5);
-    await pick("style_editor.points", 1);
+    await userEvent.click(within(sectionRow("style_editor.points")).getByRole("button"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }));
     expect(store.get("render.points_from_zoom")).toBe(10);
   });
 

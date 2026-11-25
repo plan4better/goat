@@ -755,20 +755,27 @@ describe("draw as", () => {
     return { options, selected: options.findIndex((o) => o.getAttribute("aria-selected") === "true") };
   }
 
-  it("Until offers every zoom from 0 to 24 and shows a converted zoom 21", async () => {
+  /** Opens the Until row's editor and returns its slider. */
+  async function untilSlider() {
+    const row = within(clusterSection()).getByText("style_editor.until").parentElement as HTMLElement;
+    await userEvent.click(within(row).getByRole("button"));
+    return screen.getByRole("slider", { name: "style_editor.zoom_until" });
+  }
+
+  it("Until sets every zoom from 0 to 24 on its slider and shows a converted zoom 21", async () => {
     const { store } = render({ render: { type: "cluster", cluster_until_zoom: 21 } });
-    const { options, selected } = await clusterMenu("style_editor.until");
-    expect(options).toHaveLength(25);
-    expect(selected).toBe(21);
-    await userEvent.click(options[24]);
+    const slider = await untilSlider();
+    expect(slider.getAttribute("aria-valuemin")).toBe("0");
+    expect(slider.getAttribute("aria-valuemax")).toBe("24");
+    expect(slider.getAttribute("aria-valuenow")).toBe("21");
+    fireEvent.change(slider, { target: { value: 24 } });
     expect(store.get("render.cluster_until_zoom")).toBe(24);
   });
 
-  it("Until keeps a zoom between whole zooms as picked", async () => {
+  it("Until keeps a zoom between whole zooms as stored", async () => {
     const { store } = render({ render: { type: "cluster", cluster_until_zoom: 14.5 } });
-    const { options, selected } = await clusterMenu("style_editor.until");
-    expect(options).toHaveLength(26);
-    expect(selected).toBe(15);
+    const slider = await untilSlider();
+    expect(slider.getAttribute("aria-valuenow")).toBe("14.5");
     expect(store.get("render.cluster_until_zoom")).toBe(14.5);
   });
 
@@ -1058,13 +1065,10 @@ describe("draw as", () => {
 
   it("heatmap points write points_from_zoom and Never removes it", async () => {
     const { store } = render({ render: { type: "heatmap" } });
-    const row = rowOf("style_editor.points");
-    await userEvent.click(within(row).getByRole("combobox"));
-    await userEvent.click(
-      within(screen.getByRole("listbox")).getAllByText("style_editor.points_from_zoom")[0]
-    );
+    await userEvent.click(within(rowOf("style_editor.points")).getByRole("button"));
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }));
     expect(store.get("render.points_from_zoom")).toBe(10);
-    await choose("style_editor.points", "style_editor.points_from_zoom", "style_editor.points_never");
+    await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.turn_part_off" }));
     expect(store.get("render.points_from_zoom")).toBeUndefined();
   });
 });
