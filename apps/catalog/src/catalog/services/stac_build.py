@@ -100,8 +100,7 @@ class StacCollections(BaseModel):
     links: list[dict[str, Any]] = Field(default_factory=list)
     numberMatched: int | None = None  # noqa: N815 -- the wire name (OGC)
     numberReturned: int | None = None  # noqa: N815 -- the wire name (OGC)
-    #: Matches touching the map view (``bbox_boost``), which the order puts
-    #: first; only when the list is grouped by it.
+    #: Matches touching the map view (``bbox_boost``), listed first.
     numberInArea: int | None = None  # noqa: N815 -- the wire name
 
 

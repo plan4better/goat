@@ -367,7 +367,8 @@ class SearchQuery(_FilterMixin):
     language_boost: CsvList = Field(
         default=None,
         description="Rank rows in these metadata languages first, in this order, "
-        "without excluding the rest (e.g. `fr,en,de`); off under an explicit sortby",
+        "without excluding the rest (e.g. `fr,en`); defaults to the request's "
+        "Accept-Language; off under an explicit sortby and under q",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)
@@ -421,7 +422,8 @@ class CollectionSearchQuery(_FilterMixin):
     language_boost: CsvList = Field(
         default=None,
         description="Rank rows in these metadata languages first, in this order, "
-        "without excluding the rest (e.g. `fr,en,de`); off under an explicit sortby",
+        "without excluding the rest (e.g. `fr,en`); defaults to the request's "
+        "Accept-Language; off under an explicit sortby and under q",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)

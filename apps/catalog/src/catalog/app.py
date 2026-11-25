@@ -185,6 +185,8 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
             # longer. The ETag is stamped either way, so a stale client
             # revalidates into a 304 rather than a re-render.
             response.headers.setdefault("Cache-Control", "public, max-age=60")
+            # Searches rank by Accept-Language when no language_boost is given.
+            response.headers["Vary"] = "Accept-Language"
         return response
 
     @app.get("/healthz")

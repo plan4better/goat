@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
 
@@ -59,24 +59,15 @@ describe("buildSearchParams — viewport", () => {
     expect(params.sortby).toBe("title,id");
   });
 
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("asks for the browser's languages first, then German, on every surface", () => {
-    vi.stubGlobal("navigator", { languages: ["fr-FR", "fr", "en"] });
-    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBe("fr,en,de");
-    expect(buildSearchParams(state(), { viewport: MUNICH }).language_boost).toBe("fr,en,de");
-    // The service reads five; German stays among them.
-    vi.stubGlobal("navigator", { languages: ["en-US", "en", "fr", "it", "es", "nl"] });
-    expect(buildSearchParams(state()).language_boost).toBe("en,fr,it,es,de");
-  });
-
-  it("falls back to GOAT's language when the browser lists none", () => {
-    vi.stubGlobal("navigator", { languages: [] });
-    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBe("en,de");
-    expect(buildSearchParams(state()).language_boost).toBe("de");
+  it("asks for German when GOAT is German, else leaves it to the browser", () => {
+    expect(buildSearchParams(state(), { language: "de", viewport: MUNICH }).language_boost).toBe("de");
+    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBeUndefined();
+    expect(buildSearchParams(state()).language_boost).toBeUndefined();
   });
 
   it("drops the language boost under an explicit sort, like the viewport boost", () => {
-    expect(buildSearchParams(state({ sortby: "-updated" })).language_boost).toBeUndefined();
+    expect(
+      buildSearchParams(state({ sortby: "-updated" }), { language: "de" }).language_boost
+    ).toBeUndefined();
   });
 });

@@ -645,8 +645,7 @@ def _geojson_envelope(
 Box = tuple[float, float, float, float]
 
 
-#: Below this many square degrees (about 100 m square) a place counts as this
-#: big, so a point or a sliver has an area to divide by.
+#: Smallest place area (about 100 m square), so a point has an area to divide by.
 _MIN_PLACE_AREA = 1e-6
 
 
@@ -656,14 +655,9 @@ def _place(
     store: CatalogStore,
     con: duckdb.DuckDBPyConnection,
 ) -> tuple[Box, bool] | None:
-    """The one place this request is about, and whether it groups the list.
-
-    A spatial filter is the place when set, the map view (``bbox_boost``) only
-    without one: viewing Munich while filtering Augsburg means Augsburg. Only
-    the map view groups, because a filter already removed everything that does
-    not touch it. Ranking against the filter's envelope, not its exact shape:
-    the filter itself stays exact, this only orders what it returned.
-    """
+    """The place this request ranks by, as a box, and whether it groups the
+    list: the spatial filter when set, else the map view (``bbox_boost``),
+    which alone groups."""
     if p.sortby:
         return None
     if p.bbox is not None:
@@ -700,18 +694,10 @@ def _halves(box: Box) -> list[Box]:
 
 
 def _touches_sql(box: Box, geom: str) -> str:
-    """Whether the row's footprint touches the place; FALSE, never NULL, for a
-    row without one.
-
-    The footprint, not the ``bbox_*`` rectangle: a Hamburg dataset with a
-    59° x 49° rectangle touches Munich, its footprint does not. The rectangle
-    test in front only skips the spatial call for rows that cannot touch; a
-    CASE, because DuckDB evaluates every side of an AND in an ORDER BY key.
-
-    The bounds are inlined rather than bound: the order key repeats them, and
-    matching that order in a parameter list is a trap this file has fallen
-    into before.
-    """
+    """Whether the row's footprint (not its rectangle, which can over-claim)
+    touches the place; FALSE for a row without one. The rectangle test only
+    skips the spatial call, in a CASE since DuckDB evaluates both sides of an
+    AND."""
     halves = _halves(box)
     near = " OR ".join(
         f"(bbox_xmax >= {w} AND bbox_xmin <= {e} AND bbox_ymax >= {s} "
@@ -726,20 +712,10 @@ def _touches_sql(box: Box, geom: str) -> str:
 
 
 def _fit_sql(box: Box) -> str:
-    """How well a row fits the place, higher first: the overlap of its extent
-    rectangle with the place over their union, times the share of the rectangle
-    inside the place.
-
-    So data the size of the place leads, a small piece inside it comes before
-    data many times bigger, and data that mostly lies elsewhere comes late.
-    Kept to its first digit so similar fits tie and the score decides; a fixed
-    number of decimals put most big data at 0. The rectangle, not the
-    footprint: a nationwide layer's footprint can be a few scattered cells, and
-    it then passed for regional data. A zero-extent row has no ratio to take
-    and counts as fitting; a rectangle that misses the place is 0.
-
-    No footprint test here: under a filter every row already touches the place.
-    """
+    """How well a row's extent rectangle fits the place: overlap over union
+    times the share inside, rounded to its first digit so similar fits tie and
+    the score decides. A zero-extent row counts as fitting. The rectangle, since
+    a footprint of scattered cells makes nationwide data look regional."""
     halves = _halves(box)
     area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
     overlap = " + ".join(
@@ -780,13 +756,8 @@ def _build_order_by(
 
     prefix = ""
 
-    # Every ranking key below is skipped when the caller sorted explicitly: a
-    # sortby makes `q` filter-only (api spec §2.1.6), never a ranking signal,
-    # and `_place` returns None under one.
-    #
-    # Rows touching the map view first, whatever was typed: a title match in
-    # Hamburg must not beat the data around here. The typed word next, then
-    # the fit to the place.
+    # No ranking under an explicit sortby (api spec §2.1.6). Rows touching the
+    # map view first, whatever was typed, then the word, then the fit.
     if place is not None and place[1]:
         prefix += f"CASE WHEN {_touches_sql(place[0], geom)} THEN 0 ELSE 1 END, "
 
@@ -794,18 +765,15 @@ def _build_order_by(
     if q_terms and not p.sortby:
         prefix += _q_rank_sql(q_terms, add) + ", "
 
-    # Under a map view a row elsewhere fits 0 whatever its rectangle claims, so
-    # the word and the score order "Elsewhere", not over-claiming rectangles.
+    # Under a map view a row elsewhere fits 0, whatever its rectangle claims.
     if place is not None:
         fit = _fit_sql(place[0])
         if place[1]:
             fit = f"CASE WHEN {_touches_sql(place[0], geom)} THEN {fit} ELSE 0 END"
         prefix += fit + " DESC, "
 
-    # Rows in the reader's languages next, in the order given: behind the
-    # place, so what is around here still comes first. Not with a typed word,
-    # which already picks the language. Gated on the column, which a file
-    # without the Language extension does not carry.
+    # The reader's languages next, not with a typed word, which already picks
+    # the language.
     languages = list(
         dict.fromkeys(
             code.strip().lower() for code in p.language_boost or [] if code.strip()
@@ -948,10 +916,8 @@ def search_collections(
 def search_collections_in_area(
     store: CatalogStore, p: SearchParams
 ) -> tuple[list[dict[str, Any]], int, int | None]:
-    """``search_collections`` plus how many matched rows touch the map view,
-    the first group of its order; None when the order is not grouped. One
-    snapshot and one count query for both numbers, so they cannot come from two
-    mirror generations."""
+    """``search_collections`` plus how many matched rows touch the map view
+    (None when not grouped), counted on the same snapshot."""
     snap = store.snapshot()
     registry = snap.collection_registry
     boost = _validated_bbox_boost(p)

@@ -67,9 +67,7 @@ const CatalogBody = ({ controller }: { controller: CatalogFlow }) => {
   // Favourites are filtered by the API (`ids` on the search), so what arrives
   // is already the right list.
   const shown = catalog.datasets;
-  // The server puts the datasets touching the map view first and counts them, so
-  // the "Elsewhere" header goes before the card at that position. One group needs
-  // no header.
+  // The server lists the datasets touching the map view first; one group needs no header.
   const inArea = catalog.inArea ?? 0;
   const grouped = inArea > 0 && inArea < catalog.total;
   // The section label the Connect tab sets over its cards.

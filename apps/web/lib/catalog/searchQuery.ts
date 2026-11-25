@@ -48,30 +48,6 @@ const toDatetimeInterval = (from?: string | null, to?: string | null): string | 
  * omitting `sortby` asks for. In the menu so the pill matches what happens. */
 export const DEFAULT_SORT = "relevance";
 
-/** Always ranked last among the reader's languages: most of the catalog is
- * German, and a reader's own languages should not push it behind foreign rows. */
-export const CATALOG_HOME_LANGUAGE = "de";
-
-/** The catalog service reads only this many languages; German must stay among them. */
-const MAX_CATALOG_LANGUAGES = 5;
-
-/**
- * The metadata languages ranked first, in order, sent as `language_boost`: the
- * browser's own list (`fr-FR, en` -> `fr, en`), or GOAT's language when the
- * browser gives none, then German.
- */
-export const catalogLanguages = (goatLanguage?: string): string[] => {
-  const browser = typeof navigator === "undefined" ? [] : (navigator.languages ?? []);
-  const source = browser.length > 0 ? browser : [goatLanguage];
-  const codes = [...source, CATALOG_HOME_LANGUAGE]
-    .map((code) => code?.split("-")[0].toLowerCase())
-    .filter((code): code is string => !!code);
-  const unique = [...new Set(codes)];
-  return unique.indexOf(CATALOG_HOME_LANGUAGE) < MAX_CATALOG_LANGUAGES
-    ? unique.slice(0, MAX_CATALOG_LANGUAGES)
-    : [...unique.slice(0, MAX_CATALOG_LANGUAGES - 1), CATALOG_HOME_LANGUAGE];
-};
-
 export const buildSearchParams = (
   state: CatalogQueryState,
   {
@@ -80,17 +56,14 @@ export const buildSearchParams = (
     language,
   }: {
     pageSize?: number;
-    /** GOAT's own language, used only when the browser lists none. */
+    /** GOAT's language; only German is sent, otherwise the service uses Accept-Language. */
     language?: string;
     /**
      * The project's current map view, as `[west, south, east, north]`.
      *
-     * Sent as `bbox_boost`, which RANKS rather than filters: datasets whose
-     * footprint touches the view come first as "In this area" (the response
-     * counts them in `numberInArea`), the rest follow as "Elsewhere". Nothing is
-     * excluded, so the count is unchanged and everything is a scroll away. The
-     * service ignores it under a spatial filter, which is then the place. Absent
-     * outside a project, where there is no map to read.
+     * Sent as `bbox_boost`, which ranks rather than filters: datasets touching
+     * the view come first ("In this area", counted in `numberInArea`). Ignored
+     * under a spatial filter; absent outside a project.
      */
     viewport?: [number, number, number, number];
   } = {}
@@ -121,10 +94,9 @@ export const buildSearchParams = (
     // and text relevance it gates behind `sortby` — but someone who asked for
     // "Title A-Z" did not ask for it to be reshuffled by where the map is.
     bbox_boost: viewport && !explicitSort ? viewport.join(",") : undefined,
-    // Ranks rows in the reader's languages first, behind the viewport. The
-    // service ignores it under a typed word, which already picks the language; the
-    // same explicit-sort rule switches it off.
-    language_boost: explicitSort ? undefined : catalogLanguages(language).join(","),
+    // GOAT offers only German and English, so English may mean "not offered":
+    // then the browser's Accept-Language decides, in the service.
+    language_boost: !explicitSort && language === "de" ? "de" : undefined,
     q: state.q ?? undefined,
     nuts: state.spatial?.kind === "region" ? state.spatial.nutsIds : undefined,
     intersects: geometry ? JSON.stringify(geometry) : undefined,

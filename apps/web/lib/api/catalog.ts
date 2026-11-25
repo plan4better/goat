@@ -130,8 +130,8 @@ export const useCatalogDatasetPages = (
   const pages = data ?? [];
   const numberInArea = pages[0]?.numberInArea ?? undefined;
   // By id, because two requests are two moments: a mirror re-synced mid-scroll can
-  // shift a dataset across the boundary and hand it back twice. A duplicate dropped
-  // among the first `numberInArea` rows moves the "Elsewhere" boundary up by one.
+  // shift a dataset across the boundary and hand it back twice; a duplicate in the
+  // area moves the "Elsewhere" header up by one.
   const { datasets, inArea } = useMemo(() => {
     const seen = new Set<string>();
     let droppedInArea = 0;

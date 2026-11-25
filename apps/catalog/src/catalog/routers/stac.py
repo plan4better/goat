@@ -402,6 +402,29 @@ def stac_collection_queryables(
 # --------------------------------------------------------------------------
 
 
+def _with_reader_languages(params: SearchParams, request: Request) -> SearchParams:
+    """The request's ``Accept-Language`` as ``language_boost`` when none is
+    given, highest weight first, so any client ranks by its reader's language."""
+    if params.language_boost is not None:
+        return params
+    weighted = []
+    for position, part in enumerate(
+        request.headers.get("accept-language", "").split(",")
+    ):
+        tag, _, rest = part.partition(";")
+        code = tag.strip().lower().split("-")[0]
+        if not code or code == "*":
+            continue
+        try:
+            weight = float(rest.strip().removeprefix("q=")) if rest.strip() else 1.0
+        except ValueError:
+            weight = 0.0
+        if weight > 0:
+            weighted.append((-weight, position, code))
+    codes = list(dict.fromkeys(code for _, _, code in sorted(weighted)))
+    return params.model_copy(update={"language_boost": codes or None})
+
+
 @router.get(
     "/collections",
     summary="STAC collections (Collection Search)",
@@ -419,7 +442,9 @@ def stac_collections(
     # (`goat:geometryType` is per layer) so a filter naming it is a 400 here,
     # not a silent column reference that drops every mixed-type bundle. The
     # query-param path keeps its member semi-join promotion untouched.
-    params = query.to_search_params(store.collection_registry, limit=limit)
+    params = _with_reader_languages(
+        query.to_search_params(store.collection_registry, limit=limit), request
+    )
     rows, matched, in_area = search_collections_in_area(store, params)
     ui = _ui_base(request)
     assets = _assets_base(request)
@@ -549,6 +574,7 @@ def stac_search_get(
         default_filter_lang="cql2-text",
         limit=clamp_limit(query.limit, MAX_SEARCH_LIMIT),
     )
+    params = _with_reader_languages(params, request)
     features, matched = _run_search(
         store, base, params, _ui_base(request), _assets_base(request)
     )
@@ -591,6 +617,7 @@ async def stac_search_post(
         default_filter_lang="cql2-json",
         limit=clamp_limit(body.limit, MAX_SEARCH_LIMIT),
     )
+    params = _with_reader_languages(params, request)
     features, matched = await run_in_threadpool(
         _run_search, store, base, params, _ui_base(request), _assets_base(request)
     )

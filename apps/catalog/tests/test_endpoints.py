@@ -1174,6 +1174,17 @@ def test_search_language_boost_ranks_first_without_excluding(
     listed = [f["id"] for f in r_list.json()["features"]]
     assert set(listed[: len(english)]) == english
 
+    # Without it, the request's Accept-Language decides, and caches are told so.
+    r_header = client.get(
+        "/stac/search",
+        params={"limit": 200},
+        headers={"accept-language": "en-GB,en;q=0.9,de;q=0.8"},
+    )
+    assert [f["id"] for f in r_header.json()["features"]][: len(english)] == ids[
+        : len(english)
+    ]
+    assert r_header.headers["vary"] == "Accept-Language"
+
 
 def test_language_boost_is_off_under_a_sort_or_a_word(client: TestClient) -> None:
     """Like every ranking key, an explicit ``sortby`` switches it off; so does
