@@ -236,6 +236,36 @@ class TestComputedStyle:
         )
         assert again == doc
 
+    def test_a_tool_without_its_own_style_gets_the_new_layer_default_one_with_keeps_it(
+        self, con: duckdb.DuckDBPyConnection, tmp_path: Path
+    ) -> None:
+        # A result without a style of its own is an ordinary new layer, as an
+        # upload is: its polygons get the default outline in a darker shade of
+        # the fill. A tool that defines its look keeps it, without an outline.
+        from goatlib.style.defaults import default_style
+
+        relation = f"read_parquet('{cells(con, tmp_path)}')"
+        default = _Runner(con).computed_style(
+            None,
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:1",
+            seed="layer-1",
+        )
+        assert default == default_style(
+            DataContext(kind="vector", geometry="polygon"), seed="layer-1"
+        )
+        assert default["symbol"]["outline"] == {"color": "auto", "width": 1}
+        own = _Runner(con).computed_style(
+            tool_style.styled("polygon", seed="layer-1"),
+            relation=relation,
+            geometry="polygon",
+            fingerprint="ducklake:1",
+            seed="layer-1",
+        )
+        assert own["symbol"]["outline"] is False
+        assert own["symbol"]["fill"] == default["symbol"]["fill"]
+
 
 class TestTempMode:
     def test_temp_mode_writes_the_document_into_metadata_json_and_no_rows(

@@ -99,6 +99,32 @@ def test_the_web_mirror_reads_the_same_documents() -> None:
     ]
 
 
+STARTING_VALUES = json.loads((FIXTURES / "starting_values.json").read_text())
+
+
+@pytest.mark.parametrize(
+    "row", STARTING_VALUES, ids=[r["name"] for r in STARTING_VALUES]
+)
+def test_what_the_panel_writes_when_a_part_is_switched_on_is_valid(row: dict) -> None:
+    # fixtures/starting_values.json holds the documents the web panel writes when
+    # a label, an icon or clustering is switched on (the web's test:
+    # styleEditor/__tests__/starting-values.test.tsx), and both candidates for a
+    # point label's halo.
+    ctx = DataContext(kind="vector", geometry=row["geometry"], fields={})
+    assert [i for i in validate(row["style"], ctx) if i.level == "error"] == []
+
+
+def test_an_absent_key_keeps_its_color() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    # The starting values are written into a document; a document without them
+    # draws these reference colors.
+    assert REFERENCE_DEFAULTS["label.color"] == "#3a3541"
+    assert REFERENCE_DEFAULTS["label.halo.color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["marker.icon_color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["outline.color"] == "#ffffff"
+
+
 @pytest.mark.parametrize("source", ["xyz", "cog"])
 def test_raster_default_is_a_plain_image_at_full_opacity(source: str) -> None:
     # No opacity key: rasters draw at the schema's opacity 1, so the colors on the map match the legend.

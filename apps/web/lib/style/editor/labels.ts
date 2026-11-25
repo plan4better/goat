@@ -9,12 +9,12 @@ import { extrudes } from "@/lib/style/compile/polygons";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { LABEL_FONT_CHOICE, keyOf, modeOf } from "@/lib/style/editor/forms";
 import { type Path, getIn } from "@/lib/style/editor/paths";
-import { isPerLayer, perLayerPath, summaryView } from "@/lib/style/editor/sources";
+import { isPerLayer, perLayerPath, recordPaths, summaryView } from "@/lib/style/editor/sources";
 import type { Scope } from "@/lib/style/editor/store";
 import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import type { JsonObject } from "@/lib/style/json";
+import { type JsonObject, isObject } from "@/lib/style/json";
 import type { Tone } from "@/lib/style/tone";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
@@ -175,6 +175,25 @@ export function labelHaloSummary(
 }
 
 const DEFAULT_PLACEMENT: Record<Geometry, string> = { point: "auto", line: "line", polygon: "auto" };
+
+/** The halo color a point label starts with: `"auto"` (the label pair's halo, as on lines and polygons) or a fixed
+ * color such as `#ffffff` (a plain light halo). */
+export const POINT_LABEL_HALO = "auto";
+
+/** What a label starts with when its switch turns it on with nothing to bring back: text and halo on Auto. */
+export const startingLabel = (geometry: Geometry | undefined): JsonObject => ({
+  color: "auto",
+  halo: { color: geometry === "point" ? POINT_LABEL_HALO : "auto" },
+});
+
+/** The label a switch writes, for the layer or a class or rule, with nothing to bring back: the starting label while no
+ * record of the layer holds a label; else an empty one, which keeps the colors the layer's labels have (a class's
+ * label inherits the layer's). */
+export function labelStart(doc: LayerStyle, geometry: Geometry | undefined): JsonObject {
+  const held =
+    isObject(getIn(doc, "symbol.label")) || recordPaths(doc).some(({ record }) => isObject(record.label));
+  return held ? {} : startingLabel(geometry);
+}
 
 /** The Position row: the label's placement (one for the layer); polygons with a height put it on the roofs. */
 export function labelPositionSummary(

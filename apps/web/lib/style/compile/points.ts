@@ -397,7 +397,8 @@ function markerImageLayers(
   const { style } = ctx;
   const c = { fields: ctx.fields };
   refs.forEach((ref) => ctx.images.add(ref));
-  const largest = largestSize(style) ?? (DEFAULTS["marker.size"] as number);
+  // The layer's own markers only: a cluster symbol under `render` sizes the clusters, which compile apart.
+  const largest = largestSize({ ...style, render: undefined }) ?? (DEFAULTS["marker.size"] as number);
   const width = marker.outline
     ? haloWidth(cascade(style, "outline.width", c), cascade(style, "outline.opacity", c))
     : { expr: 0 };
