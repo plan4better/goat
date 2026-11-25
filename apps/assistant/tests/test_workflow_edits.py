@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import httpx
 import pytest
@@ -728,6 +729,47 @@ async def test_a_read_after_an_edit_in_the_same_answer_reads_the_edit() -> None:
     assert len(_puts(core)) == 1
 
 
+async def test_an_edit_made_again_after_another_one_runs_again() -> None:
+    """Ten minutes, twenty, ten again in one answer: the third edit is no
+    repeat, because the second changed the workflow in between."""
+    from pydantic_ai.messages import ToolReturnPart
+
+    from assistant.agent import RunDeps, build_agent
+    from assistant.tools.testing import ScriptedModel
+
+    core = _stateful_core()
+    _, processes, geoapi = _services()
+    twenty = {"op": "set_settings", "id": "tool-walk", "settings": {"max_cost": 20}}
+    ten = ("workflow_update", {"workflow_id": WF, "operations": [SET_TEN]})
+    other = ("workflow_update", {"workflow_id": WF, "operations": [twenty]})
+    script = ScriptedModel([ten, other, ten, ten])
+
+    async def emit(event: Any) -> None:
+        return None
+
+    deps = RunDeps(message_id="m1", emit=emit, env=_env(core, processes, geoapi))
+    await build_agent(script.model).run("walk 10 minutes", deps=deps)
+    first, second, third, fourth = [
+        part.content
+        for message in script.requests[-1]
+        for part in getattr(message, "parts", [])
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert [r["revision_after"] for r in (first, second, third)] == [5, 6, 7]
+    assert "repeated_call" not in third
+    # Twice in a row, with nothing saved in between, is a repeat.
+    assert fourth["repeated_call"] == UPDATE.repeatable
+    saved = [
+        node["data"]["config"]["max_cost"]
+        for put in _puts(core)
+        for node in put["config"]["nodes"]
+        if node["id"] == "tool-walk"
+    ]
+    assert saved == [10, 20, 10]
+    assert UPDATE.same == frozenset({"workflow_id"})
+    assert "workflow_update" in UPDATE.invalidates
+
+
 #: A second workflow of the project, which the edits leave as it is.
 OTHER_WF = "0b6f0000-0000-0000-0000-00000000f11f"
 
@@ -1068,7 +1110,7 @@ async def test_the_stored_and_the_edited_config_are_checked_at_once() -> None:
     assert [issue["existing"] for issue in result["issues"]] == [True]
 
 
-# -- fix round 1: Restricted ---------------------------------------------------------
+# -- filter values ------------------------------------------------------------------
 
 
 def _filtered_row(value: str = "Grundschule") -> dict[str, Any]:
@@ -1088,22 +1130,12 @@ def _filtered_row(value: str = "Grundschule") -> dict[str, Any]:
     return row
 
 
-async def test_get_withholds_filter_values_under_restricted() -> None:
+async def test_get_shows_filter_values() -> None:
     core, processes, geoapi = _services(row=_filtered_row())
-    standard = await execute(GET, _env(core, processes, geoapi), {"workflow_id": WF})
-    assert standard["steps"][0]["filter"]["where"] == [
+    result = await execute(GET, _env(core, processes, geoapi), {"workflow_id": WF})
+    assert result["steps"][0]["filter"]["where"] == [
         {"field": "art", "op": "=", "value": "Grundschule"}
     ]
-    restricted = await execute(
-        GET,
-        _env(core, processes, geoapi, data_policy="restricted"),
-        {"workflow_id": WF},
-    )
-    assert restricted["steps"][0]["filter"] == {
-        "where": [{"field": "art", "op": "="}],
-        "values_withheld": True,
-    }
-    assert "Grundschule" not in json.dumps(restricted)
 
 
 async def test_an_edits_result_carries_no_filter_value() -> None:
@@ -1241,6 +1273,66 @@ async def test_a_save_whose_revision_cannot_be_known_says_so() -> None:
         )
     assert failed.value.message == SAVED_REVISION_UNKNOWN
     assert len(_puts(core)) == 1
+
+
+async def test_a_stop_after_the_save_landed_keeps_the_edit_undoable() -> None:
+    """A Stop while the revision core did not name is read back: the save
+    landed, and its record carries the revision core gives a checked save."""
+    from assistant.undo import undo_run
+    from evals.harness import AuditRows
+
+    stored = copy.deepcopy(ROW)
+    reads = 0
+
+    def get(request: httpx.Request) -> httpx.Response:
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            raise asyncio.CancelledError()
+        return httpx.Response(200, json=stored)
+
+    def put(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if body["base_revision"] != stored["revision"]:
+            return httpx.Response(409, json={"detail": "changed_elsewhere"})
+        stored.update(config=body["config"], revision=stored["revision"] + 1)
+        # The answer names no revision.
+        return httpx.Response(200, json={"id": WF, "config": stored["config"]})
+
+    core, processes, geoapi = _services(put=put)
+    core.routes[("GET", WF_PATH)] = get
+    audit = AuditRows()
+    run_id = UUID(int=7)
+    env = _env(core, processes, geoapi, repo=audit, run_id=run_id)
+    with pytest.raises(asyncio.CancelledError):
+        await execute(UPDATE, env, {"workflow_id": WF, "operations": [SET_TEN]})
+    [row] = audit.rows
+    assert row["undo"] == {
+        "kind": "workflow",
+        "workflow_id": WF,
+        "project_id": PROJECT,
+        "revision_before": 4,
+        "revision_after": 5,
+        "before": {"config": CONFIG},
+    }
+    assert stored["revision"] == 5 and stored["config"] != CONFIG
+    await undo_run(audit, fake_clients(core=core), None, run_id, force=False)  # type: ignore[arg-type]
+    assert stored["config"] == CONFIG and stored["revision"] == 6
+
+
+async def test_a_stop_before_the_save_leaves_no_undo_record() -> None:
+    from evals.harness import AuditRows
+
+    def put(request: httpx.Request) -> httpx.Response:
+        raise asyncio.CancelledError()
+
+    core, processes, geoapi = _services(put=put)
+    audit = AuditRows()
+    env = _env(core, processes, geoapi, repo=audit, run_id=UUID(int=7))
+    with pytest.raises(asyncio.CancelledError):
+        await execute(UPDATE, env, {"workflow_id": WF, "operations": [SET_TEN]})
+    [row] = audit.rows
+    assert row["undo"] is None
 
 
 # -- a workflow this conversation created, by its draft's ids ----------------------------

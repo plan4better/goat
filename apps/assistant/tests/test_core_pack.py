@@ -33,11 +33,10 @@ async def test_whoami_names_the_user_their_organization_and_the_policy() -> None
             },
         }
     )
-    env = tool_env(fake_clients(core=core), data_policy="restricted", locale="de")
+    env = tool_env(fake_clients(core=core), locale="de")
     assert await execute(WHOAMI, env, {}) == {
         "name": "Ada Lovelace",
         "organization": "Stadt Beispiel",
-        "data_policy": "restricted",
         "language": "de",
         "page": "home, content or settings (no project or catalog page open)",
     }
@@ -355,9 +354,9 @@ async def test_find_layers_searches_layers_inside_projects() -> None:
     assert request.headers["Authorization"] == "Bearer user-token"
 
 
-async def test_find_layers_is_offered_everywhere_and_returns_no_data_values() -> None:
+async def test_find_layers_is_offered_everywhere_and_not_over_mcp() -> None:
     assert FIND_LAYERS.surfaces == frozenset(SURFACES)
-    assert FIND_LAYERS.returns_data is False and FIND_LAYERS.mcp is False
+    assert FIND_LAYERS.mcp is False
     assert "core_find" in FIND_LAYERS.description
     assert "inside" in FIND_LAYERS.description
 
@@ -626,9 +625,9 @@ async def test_show_items_group_title_uses_goats_terms_and_may_be_left_out() -> 
     )
 
 
-async def test_show_items_is_offered_everywhere_and_returns_no_data_values() -> None:
+async def test_show_items_is_offered_everywhere_and_not_over_mcp() -> None:
     assert SHOW_ITEMS.surfaces == frozenset(SURFACES)
-    assert SHOW_ITEMS.returns_data is False and SHOW_ITEMS.mcp is False
+    assert SHOW_ITEMS.mcp is False
     assert "catalog_show_records" in SHOW_ITEMS.description
 
 

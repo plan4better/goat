@@ -75,7 +75,6 @@ CREATE_THING: ToolSpec[CreateIn, Created] = ToolSpec(
     output_model=Created,
     run=_create,
     surfaces=frozenset(SURFACES),
-    returns_data=False,
     risk="write",
     scope="goat:write",
 )
@@ -139,7 +138,7 @@ def test_a_write_call_has_a_key_even_when_its_result_is_kept_as_a_card(
     )
     assert _call_key(CREATE_THING, {"name": "A"}) is not None
     assert _call_key(CREATE_THING, {"name": 3}) is None
-    assert _call_key(BY_WIRE_NAME["map_propose_view"], {}) is None
+    assert _call_key(BY_WIRE_NAME["catalog_propose_filters"], {}) is None
 
 
 def test_earlier_writes_keep_the_first_result_of_each_write_call(

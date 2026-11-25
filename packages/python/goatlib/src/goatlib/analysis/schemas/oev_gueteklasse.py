@@ -327,8 +327,9 @@ class OevGueteklasseParams(BaseModel):
 
     Attributes:
         reference_area_path: Path to polygon layer defining the analysis area.
-        stops_path: Path to GTFS stops parquet file.
-        stop_times_path: Path to GTFS stop_times parquet file.
+        stops_path, stop_times_path, trips_path, routes_path, calendar_path,
+            calendar_dates_path: The feed's GTFS tables (see below).
+        service_date: The date to count on.
         time_window: Time window for the analysis.
         output_path: Path for the output quality classes layer.
         station_config: Optional custom station configuration.
@@ -339,24 +340,21 @@ class OevGueteklasseParams(BaseModel):
         ...,
         description="Path to polygon layer defining the analysis area.",
     )
-    stops_path: str | Path = Field(
-        ...,
-        description="Path to GTFS stops parquet file.",
-    )
+    # -- The feed's GTFS tables --------------------------------------------
+    # A bundle's, as published, or the default network's, cut to the area and
+    # the date (``tools/pt_network.py``). Read for ``service_date``: a feed
+    # states its service per date, so a holiday timetable is counted as the
+    # feed declares it.
+    stops_path: str | Path = Field(..., description="GTFS stops parquet file.")
     stop_times_path: str | Path = Field(
-        ...,
-        description="Path to GTFS stop_times parquet file.",
+        ..., description="GTFS stop_times parquet file."
     )
-    # -- GTFS from an uploaded bundle -------------------------------------
-    # Set together or not at all; see the trip-count schema for why.
-    bundle_stops_path: str | Path | None = None
-    bundle_stop_times_path: str | Path | None = None
-    bundle_trips_path: str | Path | None = None
-    bundle_routes_path: str | Path | None = None
-    bundle_calendar_path: str | Path | None = None
-    bundle_calendar_dates_path: str | Path | None = None
-    #: ``YYYY-MM-DD``. Required with the bundle paths above.
-    service_date: str | None = None
+    trips_path: str | Path = Field(..., description="GTFS trips parquet file.")
+    routes_path: str | Path = Field(..., description="GTFS routes parquet file.")
+    #: GTFS requires one of the two calendar files, not both.
+    calendar_path: str | Path | None = None
+    calendar_dates_path: str | Path | None = None
+    service_date: str = Field(..., description="Date to count on (YYYY-MM-DD).")
 
     time_window: PTTimeWindow = Field(
         ...,

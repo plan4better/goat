@@ -1,0 +1,79 @@
+suite: 3D map sources (map.terrainTilesUrl, map.buildingsTilesUrl)
+# One value per source feeds both twins: the web's NEXT_PUBLIC_ variable (the
+# browser loads the tiles) and core's setting (core checks a project's scene
+# against it). Both are always rendered, so an empty value stays empty (the
+# feature off) instead of falling back to the image's default.
+templates:
+  - web/configmap.yaml
+  - core/configmap.yaml
+set:
+  postgresql.external.host: "pg.example.com"
+  postgresql.external.existingSecret: "pg-secret"
+tests:
+  - it: renders the public defaults into web and core
+    asserts:
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_TERRAIN_TILES_URL
+          value: https://tiles.mapterhorn.com/{z}/{x}/{y}.webp
+      - template: core/configmap.yaml
+        equal:
+          path: data.TERRAIN_TILES_URL
+          value: https://tiles.mapterhorn.com/{z}/{x}/{y}.webp
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_BUILDINGS_TILES_URL
+          value: https://tiles.openfreemap.org/planet
+      - template: core/configmap.yaml
+        equal:
+          path: data.BUILDINGS_TILES_URL
+          value: https://tiles.openfreemap.org/planet
+
+  - it: an empty value renders empty in both, not the default
+    set:
+      map.terrainTilesUrl: ""
+      map.buildingsTilesUrl: ""
+    asserts:
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_TERRAIN_TILES_URL
+          value: ""
+      - template: core/configmap.yaml
+        equal:
+          path: data.TERRAIN_TILES_URL
+          value: ""
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_BUILDINGS_TILES_URL
+          value: ""
+      - template: core/configmap.yaml
+        equal:
+          path: data.BUILDINGS_TILES_URL
+          value: ""
+
+  - it: an own copy reaches both twins
+    set:
+      map.terrainTilesUrl: https://dem.example.org/{z}/{x}/{y}.webp
+    asserts:
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_TERRAIN_TILES_URL
+          value: https://dem.example.org/{z}/{x}/{y}.webp
+      - template: core/configmap.yaml
+        equal:
+          path: data.TERRAIN_TILES_URL
+          value: https://dem.example.org/{z}/{x}/{y}.webp
+
+  - it: a service's own config value wins and renders once
+    set:
+      core.config.TERRAIN_TILES_URL: https://core.example.org/{z}/{x}/{y}.webp
+      web.config.NEXT_PUBLIC_TERRAIN_TILES_URL: https://web.example.org/{z}/{x}/{y}.webp
+    asserts:
+      - template: core/configmap.yaml
+        equal:
+          path: data.TERRAIN_TILES_URL
+          value: https://core.example.org/{z}/{x}/{y}.webp
+      - template: web/configmap.yaml
+        equal:
+          path: data.NEXT_PUBLIC_TERRAIN_TILES_URL
+          value: https://web.example.org/{z}/{x}/{y}.webp

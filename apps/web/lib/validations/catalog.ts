@@ -22,7 +22,7 @@
  */
 
 /** GOAT layer vocabulary. `bundle` means the item stands in for several layers. */
-export type CatalogLayerType = "feature" | "table" | "raster" | "bundle";
+export type CatalogLayerType = "feature" | "table" | "raster" | "wms" | "wmts" | "bundle";
 
 export type CatalogGeometryType = "point" | "line" | "polygon";
 
@@ -83,6 +83,8 @@ export type CatalogItemProperties = {
   keywords?: string[] | null;
   version?: string | null;
   "goat:geometryType"?: CatalogGeometryType | null;
+  /** The layer has published tiles: geoapi reads them for its preview (`catalogTilesUrl`). */
+  "goat:tiles"?: boolean | null;
   "goat:geographical_code"?: string | null;
   /** Publisher name, denormalised from the parent collection's `providers`. */
   "goat:publisher"?: string | null;

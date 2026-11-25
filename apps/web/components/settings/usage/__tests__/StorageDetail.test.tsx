@@ -89,8 +89,9 @@ const PAGE: StorageByLayer = {
 /** The last request the detail made. */
 const lastCall = () => api.layers.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined;
 
-const renderDetail = (balance: CreditBalance = BALANCE) =>
-  render(<StorageDetail balance={balance} />, {
+/** `null`: the balance has not answered yet. */
+const renderDetail = (balance: CreditBalance | null = BALANCE) =>
+  render(<StorageDetail balance={balance ?? undefined} />, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <ThemeProvider theme={theme}>
         <I18nextProvider i18n={commonI18n("en")}>{children}</I18nextProvider>
@@ -118,6 +119,15 @@ afterEach(() => {
 });
 
 describe("StorageDetail", () => {
+  it("lists the layers before the balance answers, and fills the amount in when it does", () => {
+    const view = renderDetail(null);
+    expect(screen.getByText("1–10 of 48 layers")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 3, name: "Storage" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0 MB/)).not.toBeInTheDocument();
+    view.rerender(<StorageDetail balance={BALANCE} />);
+    expect(screen.getByRole("heading", { level: 3, name: "Storage" })).toBeInTheDocument();
+  });
+
   it("asks the server for one filtered page", async () => {
     renderDetail();
     expect(lastCall()).toEqual({ sort: "size", dir: "desc", limit: 10, offset: 0 });
@@ -162,7 +172,7 @@ describe("StorageDetail", () => {
     expect(lastCall()).toEqual(expect.objectContaining({ owner: "u1", type: "point", offset: 0 }));
     expect(screen.getByText("Owner: Anna Weber")).toBeInTheDocument();
     expect(screen.getByText("Type: Points")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove all" }));
     expect(lastCall()).toEqual({ sort: "size", dir: "desc", limit: 10, offset: 0 });
   });
 

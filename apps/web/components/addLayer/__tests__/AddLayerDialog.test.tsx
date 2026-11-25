@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { forwardRef, useImperativeHandle } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,27 +24,45 @@ vi.mock("react-i18next", () => ({
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }));
 
-/** The project's map, when a test puts one behind the dialog. */
+/** The project's map, when a test puts one behind the dialog, and the dialog's own preview by its id. */
 const mapState = vi.hoisted(() => ({ map: undefined as unknown }));
-const mapProps = vi.hoisted(() => ({ opened: [] as unknown[], fitBounds: vi.fn() }));
+const mapProps = vi.hoisted(() => ({
+  opened: [] as unknown[],
+  fitBounds: vi.fn(),
+  cursor: undefined as unknown,
+  /** What each source of the preview draws. */
+  sources: {} as Record<string, GeoJSON.FeatureCollection | undefined>,
+}));
+const preview = vi.hoisted(() => ({
+  getBounds: () => ({
+    toArray: () => [
+      [0.2, 47.62],
+      [3.8, 49.8],
+    ],
+  }),
+  on: () => undefined,
+  off: () => undefined,
+}));
 vi.mock("react-map-gl/maplibre", () => ({
-  useMap: () => ({ map: mapState.map }),
+  useMap: () => ({ map: mapState.map, "fetch-features-preview": preview }),
+  MapProvider: ({ children }: { children?: React.ReactNode }) => children,
   Map: forwardRef(function MapMock(
     {
       onMoveEnd,
-      onClick,
       initialViewState,
+      cursor,
       children,
     }: {
       onMoveEnd?: (event: unknown) => void;
-      onClick?: (event: unknown) => void;
       initialViewState?: unknown;
+      cursor?: string;
       children?: React.ReactNode;
     },
     ref
   ) {
     useImperativeHandle(ref, () => ({ fitBounds: mapProps.fitBounds }));
     mapProps.opened.push(initialViewState);
+    mapProps.cursor = cursor;
     return (
       <>
         <button
@@ -59,14 +77,63 @@ vi.mock("react-map-gl/maplibre", () => ({
             })
           }
         />
-        <button data-testid="tap" onClick={() => onClick?.({ lngLat: { lng: 11, lat: 48 } })} />
         {children}
       </>
     );
   }),
-  Source: ({ id }: { id: string }) => <i data-testid={`source-${id}`} />,
+  Source: ({ id, data }: { id: string; data?: GeoJSON.FeatureCollection }) => {
+    mapProps.sources[id] = data;
+    return <i data-testid={`source-${id}`} />;
+  },
   Layer: () => null,
 }));
+vi.mock("@/components/map/controls/Draw", () => ({ DrawControl: () => <i data-testid="draw-control" /> }));
+
+/** The draw tool on the preview: what was started, and the shape the test finishes. */
+const draw = vi.hoisted(() => ({
+  target: undefined as unknown,
+  start: vi.fn(),
+  done: undefined as ((drawn: unknown) => void) | undefined,
+  edit: vi.fn(),
+  /** Finishes the edit with these polygons. */
+  edited: undefined as ((polygons: unknown) => void) | undefined,
+}));
+vi.mock("@/components/map/panels/filter/area/useAreaDraw", async () => {
+  const { useState } = await import("react");
+  return {
+    useAreaDraw: (target: unknown) => {
+      draw.target = target;
+      const [drawing, setDrawing] = useState<string | null>(null);
+      const [editing, setEditing] = useState(false);
+      return {
+        available: true,
+        drawing,
+        editing,
+        start: (shape: string, onDone: (drawn: unknown) => void) => {
+          draw.start(shape);
+          setDrawing(shape);
+          draw.done = (drawn) => {
+            setDrawing(null);
+            onDone(drawn);
+          };
+        },
+        edit: (polygons: unknown, onDone: (polygons: unknown) => void) => {
+          draw.edit(polygons);
+          setEditing(true);
+          draw.edited = (next) => {
+            setEditing(false);
+            onDone(next);
+          };
+        },
+        finish: vi.fn(),
+        cancel: () => {
+          setDrawing(null);
+          setEditing(false);
+        },
+      };
+    },
+  };
+});
 
 const controller = { action: { label: "add", disabled: false, run: vi.fn() }, isBusy: false, reset: vi.fn() };
 const selection = { selectedItems: [], toggle: vi.fn(), clear: vi.fn() };
@@ -102,6 +169,7 @@ vi.mock("@/lib/api/processes", () => ({
   getMirrorValues: vi.fn(),
   getMirrorColumns: vi.fn(),
   getMirrorSample: vi.fn(),
+  usePtNetworkCoverageMask: () => ({ mask: undefined, isLoading: false }),
 }));
 vi.mock("@/lib/api/content", () => ({ refreshContentFeed: vi.fn(), useSpaces: () => ({ spaces: [] }) }));
 vi.mock("@/lib/api/folders", () => ({
@@ -144,8 +212,15 @@ const SAXONY: GeoJSON.Polygon = {
     ],
   ],
 };
-const outlines = { geometries: { DE2: BAVARIA, DED: SAXONY }, names: {} };
-vi.mock("@/hooks/catalog/useCatalogNutsGeometries", () => ({ useCatalogNutsGeometries: () => outlines }));
+const outlines: Record<string, { geometry: GeoJSON.Polygon }> = {
+  DE2: { geometry: BAVARIA },
+  DED: { geometry: SAXONY },
+};
+vi.mock("@/hooks/catalog/useCatalogNutsGeometries", () => ({
+  useCatalogNutsGeometries: (ids: string[]) => ({
+    shapes: Object.fromEntries(ids.map((id) => [id, outlines[id] ?? {}])),
+  }),
+}));
 
 /** The region search, answering with Bayern. */
 vi.mock("@/lib/api/catalog", () => ({
@@ -207,11 +282,10 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     return user;
   };
 
-  const areaSelect = () => screen.getByRole("combobox", { name: "fetch_features_area_by" });
-  /** The way the area is chosen, from the settings column's dropdown. */
-  const chooseArea = async (user: ReturnType<typeof userEvent.setup>, mode: string) => {
-    await user.click(areaSelect());
-    await user.click(await screen.findByRole("option", { name: `fetch_features_area_mode_${mode}` }));
+  /** One way of "Add to area", from the area's menu. */
+  const addToArea = async (user: ReturnType<typeof userEvent.setup>, way: string) => {
+    await user.click(screen.getByRole("button", { name: "filter_panel.area_add" }));
+    await user.click(screen.getByRole("menuitem", { name: new RegExp(`filter_panel.area_add_${way}`) }));
   };
 
   // Through the picker: a key from the area's list, then its values, then Done.
@@ -223,10 +297,10 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     await user.click(screen.getByRole("button", { name: "done" }));
   };
 
-  // Picked inline: the search sits over the map in the same dialog.
+  // Picked from the regions' list, which opens under the area's pieces.
   const pickBayern = async (user: ReturnType<typeof userEvent.setup>) => {
-    await chooseArea(user, "region");
-    await user.type(screen.getByPlaceholderText("catalog_search_region"), "Bay");
+    await addToArea(user, "regions");
+    await user.type(screen.getByRole("textbox", { name: "filter_panel.area_search_regions" }), "Bay");
     await user.click(await screen.findByRole("option", { name: /Bayern/ }));
   };
 
@@ -398,9 +472,8 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     expect(screen.getByRole("button", { name: "fetch_features_tag" }).textContent).toBe("highway");
     // Values show as chips in the row.
     expect(screen.getByRole("button", { name: "primary" })).toBeInTheDocument();
-    expect(areaSelect().textContent).toContain("fetch_features_area_mode_region");
-    expect(screen.getByRole("button", { name: "Bayern" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sachsen" })).toBeInTheDocument();
+    // Both regions, as the one piece they were picked in.
+    expect(screen.getByRole("button", { name: /filter_panel.area_regions/ })).toBeInTheDocument();
 
     await waitFor(() => expect(useButton().disabled).toBe(false));
     await user.click(useButton());
@@ -412,7 +485,10 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     const onUse = vi.fn();
     const user = await openOsm({ onUse });
 
-    expect(areaSelect().textContent).toContain("fetch_features_area_mode_view");
+    expect(screen.getByText("filter_panel.area_view")).toBeInTheDocument();
+    expect(screen.getByText("fetch_features_area_view_hint")).toBeInTheDocument();
+    expect(draw.target).toEqual({ id: "fetch-features-preview", main: false });
+    expect(screen.getByTestId("draw-control")).toBeInTheDocument();
     expect(screen.getByText("fetch_data")).toBeInTheDocument();
     expect(screen.queryByText("connect_service")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /connect_data_ogc/ })).not.toBeInTheDocument();
@@ -449,12 +525,14 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     return onUse;
   };
 
-  it("fetches the box the map shows after another mode moved it", async () => {
+  it("fetches the box the map shows after another piece replaced the map view and the map moved", async () => {
     const onUse = vi.fn();
     const user = await openOsm({ onUse });
-    await chooseArea(user, "region");
+    await pickBayern(user);
+    expect(screen.queryByText("filter_panel.area_view")).not.toBeInTheDocument();
     await user.click(screen.getByTestId("pan"));
-    await chooseArea(user, "view");
+    await addToArea(user, "view");
+    expect(screen.queryByRole("button", { name: /Bayern/ })).not.toBeInTheDocument();
     await waitFor(() => expect(useButton().disabled).toBe(false));
     await user.click(useButton());
     await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
@@ -481,7 +559,6 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
 
     cleanup();
     reopen(saved());
-    expect(screen.queryByTestId("source-fetch-area")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("source-spatial-draft")).toHaveLength(1);
   });
 
@@ -494,18 +571,12 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     expect(onUse.mock.calls[0][0].areaChoice).toEqual(view);
   });
 
-  it("keeps a saved area when a polygon is only started", async () => {
-    const onUse = reopen(saved());
-    const user = userEvent.setup();
-    await user.click(screen.getByTestId("tap"));
-    await waitFor(() => expect(useButton().disabled).toBe(false));
-    await user.click(useButton());
-    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
-    expect(onUse.mock.calls[0][0].params.area).toEqual(BAVARIA);
-  });
-
   it("lets filters be deleted while the area is too large", async () => {
-    vi.mocked(getMirrorSize).mockResolvedValue({ estimate: 9e9, tooLarge: true, filtersCanFit: false } as never);
+    vi.mocked(getMirrorSize).mockResolvedValue({
+      estimate: 9e9,
+      tooLarge: true,
+      filtersCanFit: false,
+    } as never);
     reopen(saved({ kind: "point", lng: 11, lat: 48, km: 5 }));
     await waitFor(() => expect(screen.getByText("fetch_features_filters_paused")).toBeInTheDocument());
 
@@ -592,23 +663,96 @@ describe("AddLayerDialog — Connect service in a workflow", () => {
     );
   });
 
-  it("puts each way's controls under the area choice, and clears and frames a placed point", async () => {
-    const user = await openOsm({ onUse: vi.fn() });
-    await chooseArea(user, "region");
-    // The region search sits in the settings column, under the choice.
-    expect(screen.getByLabelText("fetch_features_area_region")).toBeInTheDocument();
-    await pickBayern(user);
-    expect(screen.getByText("Bayern")).toBeInTheDocument();
+  it("places a point on the preview: a circle with its radius, the map framed on it", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+    await addToArea(user, "point");
+    expect(draw.start).toHaveBeenCalledWith("point");
+    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
+    expect(mapProps.cursor).toBe("crosshair");
 
     mapProps.fitBounds.mockClear();
-    await chooseArea(user, "point");
-    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
-    await user.click(screen.getByTestId("tap"));
+    act(() => draw.done?.({ shape: "point", at: [11, 48] }));
+    // The map view gave way to the circle, and the map moved to it.
+    expect(screen.queryByText("filter_panel.area_view")).not.toBeInTheDocument();
+    expect(screen.getByText("filter_panel.area_shape_circle")).toBeInTheDocument();
+    expect(mapProps.cursor).toBeUndefined();
     expect(mapProps.fitBounds).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("48.0000, 11.0000")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "clear_all" }));
-    expect(screen.queryByRole("button", { name: "clear_all" })).not.toBeInTheDocument();
-    expect(screen.getByText("fetch_features_area_pick_on_map")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("slider"), { target: { value: 5 } });
+    // A new radius moves nothing.
+    expect(mapProps.fitBounds).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(useButton().disabled).toBe(false), { timeout: 3000 });
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].areaChoice).toEqual({ kind: "point", lng: 11, lat: 48, km: 5 });
+  });
+
+  it("adds several pieces to one area, and sends them together", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+    await pickBayern(user);
+    await addToArea(user, "polygon");
+    expect(draw.start).toHaveBeenCalledWith("polygon");
+    act(() => draw.done?.({ shape: "polygon", polygons: [SAXONY.coordinates] }));
+
+    await waitFor(() => expect(useButton().disabled).toBe(false), { timeout: 3000 });
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    const connection = onUse.mock.calls[0][0] as DatasetConnection;
+    expect(connection.params.area).toEqual({
+      type: "MultiPolygon",
+      coordinates: [BAVARIA.coordinates, SAXONY.coordinates],
+    });
+    expect(connection.areaChoice).toEqual({
+      kind: "pieces",
+      pieces: [
+        { kind: "region", nutsIds: ["DE2"], names: { DE2: "Bayern" } },
+        { kind: "polygon", ring: SAXONY.coordinates[0].slice(0, -1) },
+      ],
+    });
+  });
+
+  it("edits a drawn polygon on the preview: drawn by the tool alone meanwhile, the map kept still, the edit fetched", async () => {
+    const onUse = vi.fn();
+    const user = await openOsm({ onUse });
+    await addToArea(user, "polygon");
+    act(() => draw.done?.({ shape: "polygon", polygons: [SAXONY.coordinates] }));
+    const drawn = () =>
+      (mapProps.sources["spatial-draft"]?.features ?? []).map((feature) => feature.geometry);
+    expect(drawn()).toEqual([SAXONY]);
+
+    mapProps.fitBounds.mockClear();
+    await user.click(screen.getByRole("button", { name: "filter_panel.area_edit_piece" }));
+    expect(draw.edit).toHaveBeenCalledExactlyOnceWith([SAXONY.coordinates]);
+    expect(screen.getByText("filter_panel.area_editing")).toBeInTheDocument();
+    // The tool draws the corners: no second outline under them, and no crosshair over them.
+    expect(drawn()).toEqual([]);
+    expect(mapProps.cursor).toBeUndefined();
+
+    const moved: GeoJSON.Polygon = {
+      type: "Polygon",
+      coordinates: [
+        [
+          [12, 50],
+          [14.5, 50],
+          [14, 51.5],
+          [12, 51],
+          [12, 50],
+        ],
+      ],
+    };
+    act(() => draw.edited?.([moved.coordinates]));
+    expect(drawn()).toEqual([moved]);
+    expect(mapProps.fitBounds).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(useButton().disabled).toBe(false), { timeout: 3000 });
+    await user.click(useButton());
+    await waitFor(() => expect(onUse).toHaveBeenCalledTimes(1));
+    expect(onUse.mock.calls[0][0].areaChoice).toEqual({
+      kind: "polygon",
+      ring: moved.coordinates[0].slice(0, -1),
+    });
   });
 
   it("turns a quick pick into a filter row and back", async () => {

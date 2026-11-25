@@ -28,7 +28,7 @@ Mit den Pfeiltasten wechseln Sie zwischen den Treffern, mit `Enter` öffnen Sie 
 Unter dem Suchfeld stehen drei Schaltflächen:
 
 - `Neues Projekt`: ein leeres Projekt beginnen oder ein aus GOAT exportiertes importieren
-- `Datensatz hochladen`: eine Datei von Ihrem Gerät hochladen (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet). Externe Dienste wie WFS oder WMS verbinden Sie über `Daten abrufen / verbinden`, unter [Neu](content#eine-externe-quelle-verbinden) auf der Seite Inhalt oder [Layer hinzufügen](../map/layers#layer-hinzufügen) in einem Projekt
+- `Datensatz hochladen`: eine Datei von Ihrem Gerät hochladen (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet). Externe Dienste wie WFS oder WMS verbinden Sie über `Daten abrufen / verbinden`, unter [Neu](content#eine-externe-quelle-verbinden) auf der Seite Inhalt oder [Layer hinzufügen](../map/layers#layer-hinzufügen) in einem Projekt
 - `Katalog durchsuchen`: den [Katalog](../workspace/catalog.md) öffnen, um fertige Daten zu finden
 
 ## Weitermachen
@@ -41,7 +41,7 @@ Mit Vorlagen beginnen Sie mit einem bereits eingerichteten Projekt, Workflow ode
 
 ## Aktuelle Datensätze
 
-Die Datensätze, mit denen Sie zuletzt gearbeitet haben, jeweils mit Besitzer und Bereich. Über `Alle Datensätze` gelangen Sie zur Seite [Inhalt](../workspace/content.md).
+Die Datensätze, mit denen Sie zuletzt gearbeitet haben, jeweils mit Eigentümer und Bereich. Über `Alle Datensätze` gelangen Sie zur Seite [Inhalt](../workspace/content.md).
 
 ## Ihre Teams
 

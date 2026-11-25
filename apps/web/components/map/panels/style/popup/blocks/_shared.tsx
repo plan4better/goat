@@ -1,86 +1,35 @@
-import { ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import type { ReactNode } from "react";
+// What the popup's block editors share: a block's color as the style editor's color row, opening the editor's color
+// picker beside the block's popover (the picker reads the block where it is stored, so it follows every pick).
+import type { PopupBlock } from "@/lib/validations/layer";
 
-/**
- * Uppercase mini-label used above each control in the popup block
- * editors (LABEL / URL TEMPLATE / STYLE / COLOR / SOURCE / SIZING / ...).
- */
-export function MiniLabel({ children }: { children: ReactNode }) {
-  return (
-    <Typography
-      variant="caption"
-      sx={{
-        display: "block",
-        color: "text.secondary",
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
-        fontSize: 10,
-        fontWeight: "bold",
-        mb: 0.75,
-      }}>
-      {children}
-    </Typography>
-  );
-}
+import { ColorField, Row } from "@/components/map/panels/styleEditor/rows";
 
-/**
- * Primary-tinted full-width pill toggle. Same Felt-style look used by the
- * popup mode toggle (Simple / HTML) — used inside block editors for
- * 2- or 3-option choices like SOURCE, SIZING, STYLE.
- */
-export function PillToggleGroup<T extends string>({
+/** Opens the color picker for one color of a block: `read` takes it from the block as stored now, `write` returns the
+ * block with the picked color. */
+export type OpenBlockColor = <B extends PopupBlock>(
+  anchor: HTMLElement,
+  title: string,
+  read: (block: B) => string | undefined,
+  write: (block: B, hex: string) => B
+) => void;
+
+export function BlockColorRow<B extends PopupBlock>({
+  label,
   value,
-  onChange,
-  options,
+  openColor,
+  read,
+  write,
 }: {
-  value: T;
-  onChange: (next: T) => void;
-  options: Array<{ value: T; label: string }>;
+  label: string;
+  /** The color shown (the block's, or the color drawn while it has none). */
+  value: string;
+  openColor: OpenBlockColor;
+  read: (block: B) => string | undefined;
+  write: (block: B, hex: string) => B;
 }) {
   return (
-    <ToggleButtonGroup
-      exclusive
-      size="small"
-      fullWidth
-      value={value}
-      onChange={(_, v) => v && onChange(v as T)}
-      sx={(theme) => ({
-        border: `1px solid ${theme.palette.primary.main}`,
-        borderRadius: 999,
-        overflow: "hidden",
-        "& .MuiToggleButton-root": {
-          border: "none",
-          borderRadius: 0,
-          textTransform: "none",
-          color: theme.palette.primary.main,
-          fontSize: 13,
-          fontWeight: "bold",
-          lineHeight: 1.4,
-          py: 1.25,
-          px: 2,
-          whiteSpace: "nowrap",
-          "&:hover": {
-            backgroundColor: alpha(theme.palette.primary.main, 0.06),
-          },
-          "&.Mui-selected": {
-            backgroundColor: alpha(theme.palette.primary.main, 0.14),
-            color: theme.palette.primary.main,
-            fontWeight: "bold",
-          },
-          "&.Mui-selected:hover": {
-            backgroundColor: alpha(theme.palette.primary.main, 0.22),
-          },
-          "&:not(:first-of-type)": {
-            borderLeft: `1px solid ${theme.palette.primary.main}`,
-          },
-        },
-      })}>
-      {options.map((o) => (
-        <ToggleButton key={o.value} value={o.value}>
-          {o.label}
-        </ToggleButton>
-      ))}
-    </ToggleButtonGroup>
+    <Row label={label}>
+      <ColorField value={value} onOpenPicker={(anchor) => openColor<B>(anchor, label, read, write)} />
+    </Row>
   );
 }

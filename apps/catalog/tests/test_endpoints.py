@@ -605,6 +605,8 @@ def test_cors_preflight_from_the_goat_ui_origin(client: TestClient) -> None:
     )
     assert r.status_code == 200
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
+    # Chromium's cap: the browser keeps this answer for two hours.
+    assert r.headers["access-control-max-age"] == "7200"
 
 
 def test_cors_preflight_from_a_foreign_origin_is_not_allowed(
@@ -838,16 +840,17 @@ def test_openapi_advertises_no_security_on_public_reads(client: TestClient) -> N
     Depending on ``oauth2_scheme`` would register an OpenAPI security
     requirement and make Swagger draw a padlock on every public read endpoint
     -- telling readers of a public API that they need a token they do not.
+    The one route that does need a sign-in says so: the sample of a dataset's
+    own data.
     """
     schema = client.get("/api/openapi.json").json()
-    assert not schema.get("components", {}).get("securitySchemes")
     advertising = [
         path
         for path, ops in schema["paths"].items()
         for op in ops.values()
         if isinstance(op, dict) and op.get("security")
     ]
-    assert advertising == []
+    assert advertising == ["/stac/items/{item_id}/preview"]
 
 
 def test_invalid_token_is_rejected_not_downgraded_to_anonymous(

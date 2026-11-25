@@ -461,7 +461,6 @@ def test_the_proposal_and_the_cards_are_not_published_over_mcp() -> None:
         "catalog_suggest_terms",
         "catalog_find_region",
     }
-    assert not any(spec.returns_data for spec in CATALOG_TOOLS)
 
 
 def _strings(value: Any) -> list[str]:
@@ -1162,6 +1161,33 @@ async def test_a_record_lists_its_layers_without_geometry_links_or_assets() -> N
     }
     assert first["columns"] == [{"name": "art", "type": "string"}]
     assert len(first["description"]) == 300
+
+
+def test_a_field_keeps_its_value_examples_and_statistics_within_bounds() -> None:
+    """What tells the assistant what a field holds: a few of its values and a
+    number field's range. Bounded, since a record lists up to 25 layers of up
+    to 60 fields each and is sent again with every later model call."""
+    from assistant.tools.catalog import _compact_columns
+
+    statistics = {"minimum": 0.0, "maximum": 9.5, "mean": 4.2, "valid_percent": 99.0}
+    [field, number] = _compact_columns(
+        [
+            {
+                "name": "art",
+                "type": "VARCHAR",
+                "description": "Art des Weges",
+                "keywords": [f"Wert {n} " + "x" * 80 for n in range(20)],
+                "statistics": None,
+                "extra": "x",
+            },
+            {"name": "laenge", "type": "DOUBLE", "statistics": statistics},
+        ]
+    )
+    assert set(field) == {"name", "type", "description", "keywords"}
+    assert len(field["keywords"]) == 8
+    assert all(len(value) <= 40 for value in field["keywords"])
+    assert field["keywords"][0].startswith("Wert 0 ")
+    assert number == {"name": "laenge", "type": "DOUBLE", "statistics": statistics}
 
 
 async def test_show_records_shows_the_first_ten_and_reports_the_rest() -> None:

@@ -152,6 +152,90 @@ async def test_a_run_calls_a_tool_with_the_users_login_and_audits_it(
     }
 
 
+async def test_an_organization_once_on_restricted_reads_features_like_any_other(
+    repo: Repository, db: Database, settings: AssistantSettings
+) -> None:
+    """The Restricted data policy is gone: an organization whose stored row
+    still says ``restricted`` gets the data tools' full results, as every
+    organization does."""
+    await db.pool.execute(
+        f"INSERT INTO {db.t('organization_settings')} (organization_id, data_policy) "
+        "VALUES ($1, 'restricted')",
+        ORG,
+    )
+    project_id = UUID(int=500)
+    layer_id = "11111111-1111-1111-1111-111111111111"
+    core = Recorder(
+        {
+            ("GET", f"/api/v2/project/{project_id}/layer"): [
+                {
+                    "id": 11,
+                    "layer_id": layer_id,
+                    "name": "Radwege",
+                    "type": "feature",
+                    "feature_layer_geometry_type": "line",
+                    "layer_project_group_id": None,
+                    "order": 0,
+                    "locked": False,
+                }
+            ],
+        }
+    )
+    geoapi = Recorder(
+        {
+            ("GET", f"/collections/{layer_id}/queryables"): {
+                "properties": {"art": {"name": "art", "type": "string"}}
+            },
+            ("GET", f"/collections/{layer_id}/items"): {
+                "type": "FeatureCollection",
+                "numberMatched": 1,
+                "features": [
+                    {
+                        "type": "Feature",
+                        "id": 1,
+                        "geometry": None,
+                        "properties": {"art": "Radweg"},
+                    }
+                ],
+            },
+        }
+    )
+    script = ScriptedModel(
+        [
+            (
+                "project_sample_features",
+                {"project_id": str(project_id), "layer_project_id": 11},
+            )
+        ],
+        answer="Ein Radweg.",
+    )
+    manager = RunManager(
+        repo,
+        InMemoryEventBus(),
+        settings,
+        owner="a",
+        agent_factory=_factory(script),
+        tool_services=fake_clients(core=core, geoapi=geoapi),
+    )
+    run_id, _ = await manager.start_run(
+        await _conversation(repo),
+        USER,
+        "Zeig mir einen Radweg.",
+        None,
+        login=StaticLogin(SECRET_ACCESS),
+    )
+    await manager.wait(run_id)
+    events = [event for _, event in await repo.list_events(run_id)]
+    [returned] = [e for e in events if isinstance(e, ToolReturned)]
+    assert returned.output["features"] == [
+        {"feature_id": 1, "properties": {"art": "Radweg"}}
+    ]
+    assert "Restricted" not in script.note(0)
+    async with db.pool.acquire() as conn:
+        [row] = await conn.fetch(f"SELECT status FROM {db.t('tool_call')}")
+    assert row["status"] == "ok"
+
+
 async def test_tokens_never_reach_storage(
     repo: Repository,
     db: Database,
@@ -362,7 +446,8 @@ async def test_a_run_on_home_offers_the_project_and_catalog_tools(
 ) -> None:
     """Decision T16: on Home the agent can read another project by its ID. The
     public catalog is searchable from every page, and its filter suggestion
-    (a card that opens the catalog) is offered too; only the map view is not."""
+    (a card that opens the catalog) is offered too; the tools that change the
+    map are not."""
     script = ScriptedModel()
     manager = RunManager(
         repo,
@@ -379,7 +464,7 @@ async def test_a_run_on_home_offers_the_project_and_catalog_tools(
     offered = {tool.name for tool in script.infos[0].function_tools}
     assert "project_get_layers" in offered and "core_find" in offered
     assert {"catalog_search", "catalog_propose_filters"} <= offered
-    assert "map_propose_view" not in offered
+    assert "map_update" not in offered and "style_update" not in offered
 
 
 async def test_a_422_never_echoes_the_refresh_token(
@@ -595,7 +680,6 @@ async def test_the_login_is_dropped_when_the_run_was_already_swept(
     assert goat_ai is not None
     resolution = Resolution(
         organization_id=UUID(int=100),
-        data_policy="standard",
         main=goat_ai,
         fallback=None,
     )
@@ -750,7 +834,6 @@ async def test_unavailable_ai_is_reported_before_any_login(
         ORG,
         enabled=False,
         active_connection_id=None,
-        data_policy="standard",
         allow_default_fallback=False,
         updated_by=ADMIN,
     )

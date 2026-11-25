@@ -154,7 +154,6 @@ WORKFLOW_TOOL_LIST: ToolSpec[WorkflowToolsInput, ToolList] = ToolSpec(
     output_model=ToolList,
     run=_tools,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
 )
 
 
@@ -236,7 +235,6 @@ DESCRIBE_TOOL: ToolSpec[DescribeInput, ToolDetailsList] = ToolSpec(
     output_model=ToolDetailsList,
     run=_describe,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
 )
 
 TOOL_CATALOG_TOOLS = (WORKFLOW_TOOL_LIST, DESCRIBE_TOOL)

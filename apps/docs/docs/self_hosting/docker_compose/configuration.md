@@ -29,7 +29,7 @@ Apply changes with `docker compose up -d`.
 | `GOAT_ACME_EMAIL` | empty | Optional contact for Let's Encrypt expiry notices (`auto` only) |
 | `GOAT_TRUSTED_PROXIES` | `private_ranges` | Addresses allowed to set `X-Forwarded-*` headers (your load balancer), as CIDRs separated by spaces |
 | `GOAT_ADMIN_ALLOW_CIDRS` | `0.0.0.0/0 ::/0` | Networks allowed to open the Keycloak admin console under `/keycloak/admin` |
-| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak, SMTP relay or the model server of the AI assistant; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
+| `GOAT_CA_BUNDLE` | empty | Path inside the containers of extra CA certificates (PEM) in `./certs`, e.g. your company CA for your load balancer, Keycloak, SMTP relay, the model server of the AI assistant or a host of raster files; set by setup.sh in `internal` mode. See [Company CA](./https.md#company-ca). |
 | `GOAT_HTTP_PORT` | `80` | Port for HTTP; set by setup.sh from the URL or `--http-port` |
 | `GOAT_HTTPS_PORT` | `443` | Port for HTTPS; set by setup.sh from the URL |
 | `GOAT_HOSTNAME`, `GOAT_NETWORK_ALIAS`, `GOAT_SITE_ADDRESS`, `GOAT_HTTPS_PUBLISH`, `GOAT_KEYCLOAK_SSL_REQUIRED` | | Derived; set by setup.sh |
@@ -104,7 +104,7 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | empty | MapTiler key for the satellite/hybrid basemap (hidden when empty) |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | empty | Mapbox token for the place search |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | empty | The GOAT data catalog (read-only bucket with the harmonised datasets). The OpenStreetMap and Overture Maps panes under *Add layer › Fetch / Connect data* read their mirror from the same bucket; see [OpenStreetMap and Overture Maps](./external_services.md#open-data-mirror). |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | empty | The GOAT data catalog (read-only bucket with the harmonised datasets, from which the catalog page also shows signed-in users a dataset's own data before they add it). The OpenStreetMap and Overture Maps panes under *Add layer › Fetch / Connect data* read their mirror from the same bucket; see [OpenStreetMap and Overture Maps](./external_services.md#open-data-mirror). |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | empty | Geocoding service used by analysis tools |
 | `NEXT_PUBLIC_WEBSITE_URL` | empty | A website that publishes GOAT's blog and changelog feeds. It fills the news on the Home page and provides the welcome video and the privacy link in the menu and in the AI assistant's notice; while empty, none of these are shown. |
 | `NEXT_PUBLIC_STATUS_FEED_URL` | empty | Status feed shown in the app |
@@ -116,6 +116,10 @@ GOAT's services name their database sessions after themselves (`goat-core`, `goa
 | `ODOO_SUPPORT_POST_ACTION` | `GOAT: post message as ticket participant` | Odoo server action that posts a message as the ticket participant |
 | `OTEL_ENABLED` | `false` | Export traces, metrics and logs through OpenTelemetry |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Your OpenTelemetry (OTLP) endpoint |
+| `RASTER_PRIVATE_HOSTS` | empty | Hosts geoapi and processes may read raster layers' COG files from although they resolve to a private, loopback or link-local address, comma-separated: an object store on your own network. Every other host must resolve to public addresses, so a layer cannot make GOAT read from inside your network. If such a host has a certificate from your company CA, set `GOAT_CA_BUNDLE` too. |
+| `TERRAIN_TILES_URL` | `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | Elevation tiles of the terrain in the map's 3D view (Terrarium-encoded, 512 px), from Mapterhorn by default. Viewers' browsers load them. Empty hides *Terrain*. See [3D view sources](./external_services.md#map-3d). |
+| `BUILDINGS_TILES_URL` | `https://tiles.openfreemap.org/planet` | TileJSON of a vector source in the OpenMapTiles schema for 3D buildings on basemaps without their own (raster, single color and custom basemaps), from OpenFreeMap by default. Viewers' browsers load it. Empty hides *3D buildings* on those basemaps. See [3D view sources](./external_services.md#map-3d). |
+| `GOAT_GEOAPI_URL` | *(commented out)*, `http://geoapi:8000` | Where core reaches geoapi: when a raster layer is added from a COG file or its file address changes, core asks geoapi for the file's bounds and stores them as the layer's extent. Change it only if geoapi runs outside the bundle. |
 
 If you add `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` to a service, never include `Authorization`: the login tokens of users and external agents would land in your traces.
 
@@ -150,7 +154,7 @@ See [AI assistant](./external_services.md#assistant) for how these work together
 | `ASSISTANT_ALLOWED_PROVIDERS` | all seven types | Provider types organizations may use, comma-separated |
 | `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | `false` | Lets organizations' connections reach private and internal addresses and plain `http` |
 | `ASSISTANT_SECRETS_KEY` | set by setup.sh | Encrypts the credentials organizations store. Keep it with your backups; see [The assistant's key](./operations.md#assistant-key). |
-| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(commented out)*: `40`, `200000`, `900` | Limits per answer. Tokens read from the model provider's cache count at a tenth toward `ASSISTANT_RUN_MAX_TOKENS`. Reading a finished workflow run's result may take up to 7 tool calls beyond `ASSISTANT_RUN_MAX_TOOL_CALLS`. |
+| `ASSISTANT_RUN_MAX_TOOL_CALLS`, `ASSISTANT_RUN_MAX_TOKENS`, `ASSISTANT_RUN_MAX_SECONDS` | *(commented out)*: `40`, `400000`, `900` | Limits per answer. Tokens read from the model provider's cache count at a tenth toward `ASSISTANT_RUN_MAX_TOKENS`. Its default leaves answers in the `Map` view of a project, where every model call carries many tool definitions, enough room even when a call misses the cache or the provider has none. Reading a finished workflow run's result may take up to 7 tool calls beyond `ASSISTANT_RUN_MAX_TOOL_CALLS`. |
 | `ASSISTANT_RUN_WAIT_MAX_SECONDS` | *(commented out)*: `1800` | How long in all an answer may take that waits for a workflow run; the run itself goes on after it. Takes effect only above `ASSISTANT_RUN_MAX_SECONDS` |
 | `ASSISTANT_USER_MAX_CONCURRENT_RUNS` | *(commented out)*: `3` | Answers one user may have running at once |
 | `ASSISTANT_TOOL_TIMEOUT_SECONDS` | *(commented out)*: `30` | Seconds per request the assistant makes to the other services |

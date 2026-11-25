@@ -1,10 +1,12 @@
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from goatlib.api import mount_api_docs
+from goatlib.style.map_rows import MAX_DOCUMENT_BYTES
 from goatobs import setup_observability
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.cors import CORSMiddleware
@@ -17,7 +19,7 @@ from core.crud.crud_billing_terms import seed_default_credit_rates
 from core.db.session import session_manager
 from core.endpoints.v2.api import router as api_router_v2
 from core.health import build_prober
-from core.support.body_limit import SupportBodyLimit
+from core.support.body_limit import BodyLimit, SupportBodyLimit
 from core.support.deps import close_support_provider
 
 
@@ -101,14 +103,47 @@ app.add_middleware(
     max_bytes=55 * 1024 * 1024,
     prefix=f"{settings.API_V2_STR}/support",
 )
+
+# The routes that take a style document, a map state or a scene: a body above
+# the cap is refused before FastAPI reads and parses it. A style body is
+# {base_rev, document} with a document of at most MAX_DOCUMENT_BYTES of compact
+# UTF-8 JSON; the cap leaves room for the same document in ASCII escapes (six
+# bytes for a two-byte character) with default separators, so a document within
+# its limit is never refused here and the handler's own check answers for it.
+STYLE_BODY_MAX_BYTES = 4 * MAX_DOCUMENT_BYTES
+STYLE_BODY_PATHS = (
+    rf"{re.escape(settings.API_V2_STR)}/("
+    r"project/[^/]+/layer/[^/]+/style(/[^/]+(/check)?)?"
+    r"|layer/[^/]+/style"
+    r"|project/[^/]+/(layer|group)/[^/]+/map-state"
+    r")/?"
+)
+# The project update carries the scene and a whole dashboard (`builder_config`,
+# which has no limit of its own): a cap far above any dashboard the builder
+# saves, which still bounds what is parsed.
+PROJECT_BODY_MAX_BYTES = 8 * 1024 * 1024
+PROJECT_BODY_PATHS = rf"{re.escape(settings.API_V2_STR)}/project/[^/]+/?"
+for max_bytes, paths in (
+    (STYLE_BODY_MAX_BYTES, STYLE_BODY_PATHS),
+    (PROJECT_BODY_MAX_BYTES, PROJECT_BODY_PATHS),
+):
+    app.add_middleware(
+        BodyLimit,
+        max_bytes=max_bytes,
+        paths=paths,
+        detail={"code": "body_too_large"},
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # The web app names a downloaded export (CSV) from this header.
-    expose_headers=["Content-Disposition"],
+    # The web app runs on another origin: it reads the map request's ETag to ask with If-None-Match,
+    # and names a downloaded export (CSV) from Content-Disposition.
+    expose_headers=["ETag", "Content-Disposition"],
+    # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+    max_age=7200,
 )
 
 from goatlib.auth import JOSEError  # noqa: E402

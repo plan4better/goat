@@ -13,6 +13,8 @@ class ClassBreakMethod(StrEnum):
     equal_interval = "equal_interval"
     standard_deviation = "standard_deviation"
     heads_and_tails = "heads_and_tails"
+    natural_breaks = "natural_breaks"
+    geometric_interval = "geometric_interval"
 
 
 class HistogramBreakMethod(StrEnum):

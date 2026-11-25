@@ -11,21 +11,28 @@ import type { MapRef, ViewStateChangeEvent } from "react-map-gl/maplibre";
 import { MapProvider } from "react-map-gl/maplibre";
 import { shallowEqual, useSelector } from "react-redux";
 
+import type { StyleRead } from "@/lib/api/map";
 import { usePublicProject } from "@/lib/api/projects";
+import { SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import { MeasureProvider } from "@/lib/providers/MeasureProvider";
 import { PublicProjectProvider } from "@/lib/providers/PublicProjectProvider";
+import { shownMode } from "@/lib/scene/support";
+import { openingMode, openingTilt } from "@/lib/scene/view";
 import type { RootState } from "@/lib/store";
-import { selectFilteredProjectLayers, selectProjectLayers } from "@/lib/store/layer/selectors";
+import { selectProjectLayers } from "@/lib/store/layer/selectors";
 import { setProjectLayerGroups, setProjectLayers } from "@/lib/store/layer/slice";
-import { setMapMode, setProject } from "@/lib/store/map/slice";
+import { initView, setMapMode, setProject } from "@/lib/store/map/slice";
+import { filterSelectableProjectLayers } from "@/lib/utils/map/layer";
 import { getLocFromUrl, writeLocToUrl, writeMapLocToUrl } from "@/lib/utils/map/loc-url";
 import type { ProjectLayerGroup } from "@/lib/validations/project";
 import { type Project, type ProjectLayer, projectSchema } from "@/lib/validations/project";
 
 import { useBrandedTheme } from "@/hooks/dashboard/useBrandedTheme";
 import { useBasemap } from "@/hooks/map/MapHooks";
-import { useAppDispatch } from "@/hooks/store/ContextHooks";
+import { type MapLayer, foldVisibility, publishedGroups, usePublicMapLayers } from "@/hooks/map/useMapLayers";
+import { SceneStoreProvider, useSceneDocument, useSceneStoreContext } from "@/hooks/map/useSceneStore";
+import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { AnalyticsTracker } from "@/components/analytics/AnalyticsTracker";
 import type { AnalyticsConfig } from "@/components/analytics/AnalyticsTracker";
@@ -33,6 +40,12 @@ import { ConsentBanner } from "@/components/analytics/ConsentBanner";
 import { LoadingPage } from "@/components/common/LoadingPage";
 import MapViewer from "@/components/map/MapViewer";
 import PublicProjectLayout from "@/components/map/layouts/desktop/PublicProjectLayout";
+/** The published map with the scene as the viewer changes it (View button), from the published one. */
+function SceneMapViewer(props: React.ComponentProps<typeof MapViewer>) {
+  const scene = useSceneDocument(useSceneStoreContext());
+  return <MapViewer {...props} scene={scene ?? props.scene} />;
+}
+
 const MobileProjectLayout = dynamic(() => import("@/components/map/layouts/mobile/MobileProjectLayout"), { ssr: false });
 
 export default function MapPage(props: { params: Promise<{ projectId: string }> }) {
@@ -45,14 +58,33 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   const { sharedProject, isLoading, isError: projectError } = usePublicProject(projectId);
   const theme = useTheme();
   const dispatch = useAppDispatch();
-  const { mapStyle, setActiveBasemap } = useBasemap(sharedProject?.config?.["project"] as Project);
-  const projectLayers = useMemo(() => {
-    return sharedProject?.config?.["layers"] ?? ([] as ProjectLayer[]);
-  }, [sharedProject]);
+  const { mapStyle, setActiveBasemap, activeBasemap } = useBasemap(
+    sharedProject?.config?.["project"] as Project
+  );
+  // The published map's layers with their styles; what the viewer changes (visibility, a named style) is view state
+  // kept on these rows in Redux.
+  const publicConfig = useMemo(
+    () =>
+      sharedProject
+        ? {
+            layers: (sharedProject.config.layers ?? []) as unknown as ProjectLayer[],
+            map: sharedProject.config.map,
+            styles: sharedProject.config.styles as Record<string, StyleRead[]> | null | undefined,
+          }
+        : undefined,
+    [sharedProject]
+  );
+  const projectLayers = usePublicMapLayers(publicConfig);
 
-  const projectLayerGroups = useMemo(() => {
-    return sharedProject?.config?.["layer_groups"] ?? ([] as ProjectLayerGroup[]);
-  }, [sharedProject]);
+  // The groups with their visibility from the published map document.
+  const projectLayerGroups = useMemo(
+    () =>
+      publishedGroups({
+        layer_groups: (sharedProject?.config?.["layer_groups"] ?? []) as ProjectLayerGroup[],
+        map: sharedProject?.config?.map,
+      }),
+    [sharedProject]
+  );
 
   const _project = sharedProject?.config?.["project"] as Project;
   const mapRef = useRef<MapRef | null>(null);
@@ -61,6 +93,17 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
   // Read ?loc= once on mount; it wins over the published initial view. Nothing is
   // persisted on public maps — the URL is the only carrier of position across reloads.
   const urlLoc = useMemo(() => getLocFromUrl(), []);
+  // 2D or 3D and the projection: the published view's (a tilted URL view opens in 3D), then the viewer's own.
+  const openingView = openingMode(sharedProject?.config.map?.view ?? initialView, urlLoc?.pitch);
+  const openingProjection = sharedProject?.config.map?.view?.projection ?? "mercator";
+  const storedView = useAppSelector((state) => state.map.view);
+  const ownView = storedView?.projectId === projectId ? storedView : undefined;
+  const viewMode = ownView?.mode ?? openingView;
+  const projection = ownView?.projection ?? openingProjection;
+  useEffect(() => {
+    if (sharedProject && !ownView)
+      dispatch(initView({ projectId, mode: openingView, projection: openingProjection }));
+  }, [sharedProject, ownView, dispatch, projectId, openingView, openingProjection]);
 
   const handleMoveEnd = useCallback((e: ViewStateChangeEvent) => {
     writeLocToUrl(e.viewState);
@@ -72,15 +115,21 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
     writeMapLocToUrl(map);
   }, []);
 
-  const _projectLayers = useSelector(
-    (state: RootState) => selectFilteredProjectLayers(state, ["table"], []),
-    shallowEqual
-  );
-
   // Include all layers (with tables) for widgets — use unfiltered selector so that
   // data widgets (filters, numbers, tables, etc.) still work when a layer or its
   // parent group has visibility toggled off.
-  const _allProjectLayers = useSelector(selectProjectLayers, shallowEqual);
+  const _allProjectLayers = useSelector((state: RootState) => selectProjectLayers(state), shallowEqual);
+  const viewGroups = useSelector((state: RootState) => state.layers.projectLayerGroups, shallowEqual);
+  // On this page the rows in Redux are the published map's layers (above), in the map's order, with the viewer's
+  // changes (view state) folded through the groups.
+  const mapLayers = useMemo(
+    () => foldVisibility(_allProjectLayers as MapLayer[], viewGroups),
+    [_allProjectLayers, viewGroups]
+  );
+  const drawnLayers = useMemo(
+    () => filterSelectableProjectLayers(mapLayers, ["table"], SYSTEM_LAYERS_IDS) as MapLayer[],
+    [mapLayers]
+  );
 
   const project = useMemo(() => {
     if (!_project) return undefined;
@@ -99,7 +148,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
 
   useEffect(() => {
     if (projectLayers && project) {
-      dispatch(setProjectLayers(projectLayers as ProjectLayer[]));
+      dispatch(setProjectLayers(projectLayers));
       dispatch(setProjectLayerGroups((projectLayerGroups || []) as ProjectLayerGroup[]));
       dispatch(setProject(project));
       dispatch(setMapMode("public"));
@@ -167,6 +216,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
           {analytics && trackingRequireConsent && (
             <ConsentBanner provider={analytics.provider} />
           )}
+          <SceneStoreProvider projectId={projectId} initial={sharedProject?.config.map?.scene} editable={false}>
           <MapProvider>
           <DrawProvider>
             <MeasureProvider>
@@ -199,6 +249,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                         <PublicProjectLayout
                           project={project}
                           projectLayers={_allProjectLayers}
+                          mapLayers={mapLayers}
                           projectLayerGroups={projectLayerGroups}
                           viewOnly
                           onProjectUpdate={onProjectUpdate}
@@ -206,8 +257,9 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                       )}
                   </Box>
                 </Box>
-                <MapViewer
-                  layers={_projectLayers}
+                <SceneMapViewer
+                  layers={drawnLayers}
+                  locale={sharedProject?.config.map?.locale}
                   mapRef={mapRef}
                   touchZoomRotate
                   maxExtent={project?.max_extent || undefined}
@@ -217,7 +269,13 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                     zoom: urlLoc?.zoom ?? initialView?.zoom ?? 3,
                     latitude: urlLoc?.latitude ?? initialView?.latitude ?? 48.13,
                     longitude: urlLoc?.longitude ?? initialView?.longitude ?? 11.57,
-                    pitch: urlLoc?.pitch ?? initialView?.pitch ?? 0,
+                    // A 3D view opens tilted, at the URL's or the saved tilt.
+                    pitch: openingTilt(
+                      sharedProject?.config.map?.view ?? initialView,
+                      urlLoc?.pitch,
+                      urlLoc?.zoom ?? initialView?.zoom ?? 3,
+                      projection
+                    ),
                     bearing: urlLoc?.bearing ?? initialView?.bearing ?? 0,
                     fitBoundsOptions: {
                       minZoom: initialView?.min_zoom ?? 0,
@@ -225,14 +283,21 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                     },
                   }}
                   mapStyle={mapStyle}
+                  mode={shownMode(viewMode)}
+                  projection={projection}
+                  scene={sharedProject?.config.map?.scene}
+                  basemap={activeBasemap}
                   onMoveEnd={handleMoveEnd}
                   onLoad={handleMapLoaded}
                   isEditor={false}
+                  // The phone layout shows the popup in its bottom drawer.
+                  popupInDrawer={isMobile}
                 />
               </Box>
             </MeasureProvider>
           </DrawProvider>
         </MapProvider>
+          </SceneStoreProvider>
         </>
       )}
       </ThemeProvider>

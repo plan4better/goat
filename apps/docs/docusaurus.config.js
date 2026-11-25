@@ -117,6 +117,26 @@ const config = {
     ],
   ],
 
+  themes: [
+    [
+      // Search runs in the browser on an index written at build time, one per
+      // locale, so the site needs no external search service.
+      "@easyops-cn/docusaurus-search-local",
+      {
+        language: ["en", "de"],
+        // Docs and tutorials both live under the site root.
+        docsRouteBasePath: "/",
+        // The index hash covers these, so a docs change gives a new index URL.
+        docsDir: ["docs", "tutorials", "i18n"],
+        indexBlog: false,
+        hashed: true,
+        // The hover preview of a glossary term would show up in every snippet.
+        ignoreCssSelectors: [".glossary-preview"],
+        highlightSearchTermsOnTargetPage: true,
+      },
+    ],
+  ],
+
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
@@ -203,12 +223,6 @@ const config = {
       prism: {
         theme: prismThemes.github,
         darkTheme: prismThemes.vsDark,
-      },
-      algolia: {
-        indexName: 'goat-plan4better',
-        appId: 'LLUCN6LJ7S',
-        apiKey: '638cac0d311f215315b3313f679af50a',
-        contextualSearch: true,
       },
     }),
 };

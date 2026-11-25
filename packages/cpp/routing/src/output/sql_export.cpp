@@ -12,6 +12,15 @@
 namespace routing::output
 {
 
+int64_t count_rows(duckdb::Connection &con, std::string const &table)
+{
+    auto result = con.Query("SELECT count(*) FROM " + table);
+    if (result->HasError())
+        throw std::runtime_error("Failed to count rows in " + table + ": " +
+                                 result->GetError());
+    return result->GetValue(0, 0).GetValue<int64_t>();
+}
+
 std::string sql_escape(std::string const &s)
 {
     std::string out;

@@ -1,5 +1,8 @@
 {
   "extends": "@p4b/tsconfig/react-library.json",
+  "compilerOptions": {
+    "lib": ["ES2020", "DOM"]
+  },
   "include": ["."],
   "exclude": ["dist", "build", "node_modules"]
 }

@@ -23,6 +23,7 @@ import { DEFAULT_CONTROL_POSITIONS, DEFAULT_FAVICON_URL, readBuilderConfig } fro
 
 import InteractionsModal, { InteractionsEntryButton } from "@/components/builder/InteractionsModal";
 import MapControlsLayout from "@/components/builder/MapControlsLayout";
+import NumberLocaleSelect from "@/components/builder/settings/NumberLocaleSelect";
 import { SearchSettingsSection } from "@/components/builder/settings/SearchSettings";
 import SocialPreviewImagePicker from "@/components/builder/SocialPreviewImagePicker";
 import SettingsGroupHeader from "@/components/builder/widgets/common/SettingsGroupHeader";
@@ -511,6 +512,12 @@ const SettingsTab: React.FC<SettingsTabProps> = ({
                 ))}
               </Select>
             </FormControl>
+            {project && onProjectUpdate && (
+              <NumberLocaleSelect
+                value={project.locale}
+                onChange={(locale) => onProjectUpdate("locale", locale)}
+              />
+            )}
           </Stack>
         </Box>
         {project && onProjectUpdate && (

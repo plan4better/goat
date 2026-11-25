@@ -1,0 +1,24 @@
+data: {"type":"start","messageId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c"}
+
+data: {"type":"start-step"}
+
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","providerMetadata":{"goat":{"partId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"}}}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","delta":"Die Antwort."}
+
+data: {"type":"text-end","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"}
+
+data: {"type":"data-replaced-text","data":{"part_ids":["0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1"]}}
+
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2","providerMetadata":{"goat":{"partId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}}}
+
+data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2","delta":"The answer."}
+
+data: {"type":"text-end","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}
+
+data: {"type":"finish-step"}
+
+data: {"type":"finish"}
+
+data: [DONE]
+

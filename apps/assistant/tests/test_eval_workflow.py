@@ -30,6 +30,7 @@ from assistant.tools.catalog import NO_SUCH_WORD, NOTHING_FOUND
 from assistant.tools.runtime import InputInvalid, execute
 from assistant.tools.testing import ScriptedModel, TurnModel, stage_note, tool_env
 from assistant.tools.toolset import FRUITLESS_SEARCHES, SEARCHED_ENOUGH
+from assistant.tools.workflow_edits import GET_NOTE, VIEWER_EDITS
 from assistant.tools.workflow_tools import clear_description_cache
 from assistant.workflows.draft import Draft, ProjectLayer, to_config
 from evals.backends import (
@@ -186,9 +187,9 @@ def _codes(issues: list[dict[str, Any]]) -> list[str]:
     return [issue["code"] for issue in issues if issue["level"] != "warning"]
 
 
-def test_the_suite_has_twelve_tasks_on_the_two_workflow_pages() -> None:
+def test_the_suite_has_thirteen_tasks_on_the_two_workflow_pages() -> None:
     tasks = load_tasks("workflow")
-    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 13)]
+    assert [task.id for task in tasks] == [f"wf-{n:02d}" for n in range(1, 14)]
     # The existing-workflow task: the eval user presses Undo after the answer.
     assert [task.id for task in tasks if task.undo] == ["wf-12"]
     assert {task.context["surface"] for task in tasks} == {
@@ -379,6 +380,38 @@ async def test_the_asked_check_reads_the_cards_values(backends: Backends) -> Non
     assert [g.passed for g in await grade(task, _transcript([]), backends)] == [False]
 
 
+async def test_the_asked_check_counts_the_datasets_an_option_adds(
+    backends: Backends,
+) -> None:
+    """wf-09: an option that uses data not yet in the project carries the
+    dataset's catalog id in ``adds`` and a short key as its value, as the
+    skill says; the check counts the ids it adds as offered."""
+    task = _check_task(
+        '{"kind": "asked", "offers_any": ["eval-supermaerkte-bayern"]}',
+        '{"kind": "asked", "offers": ["eval-schulen-bayern"]}',
+    )
+    card = {
+        "questions": [
+            {
+                "question": "Which data should the workflow use?",
+                "header": "Data",
+                "options": [
+                    {
+                        "label": "Supermärkte and Schulen Bayern",
+                        "description": "Adds them to the project",
+                        "recommended": True,
+                        "value": "both",
+                        "adds": ["eval-supermaerkte-bayern", "eval-schulen-bayern"],
+                    },
+                    {"label": "Leave it open", "description": "Choose it later"},
+                ],
+            }
+        ]
+    }
+    asked = _transcript([ToolCall("ask_user", card, {"card_id": "ask-1"}, False)])
+    assert [g.passed for g in await grade(task, asked, backends)] == [True, True]
+
+
 async def test_the_workflow_created_check_reads_what_was_saved(
     backends: Backends,
 ) -> None:
@@ -442,6 +475,35 @@ async def test_the_tools_check_counts_calls(backends: Backends) -> None:
     assert [g.passed for g in await grade(task, _transcript(once * 2), backends)] == [
         False
     ]
+
+
+async def test_the_tools_check_bounds_the_calls_of_several_tools_together(
+    backends: Backends,
+) -> None:
+    """A key that joins tools with "+" bounds their calls in sum, failed
+    calls included."""
+    task = _check_task(
+        '{"kind": "tools", "at_most": '
+        '{"project_count_features+project_group_statistics": 1, "style_update": 2}}'
+    )
+
+    def calls(*names: str) -> list[ToolCall]:
+        return [ToolCall(name, {}, None, False) for name in names]
+
+    async def passed(made: list[ToolCall]) -> tuple[bool, str]:
+        [graded] = await grade(task, _transcript(made), backends)
+        return graded.passed, graded.detail
+
+    assert (await passed(calls("project_count_features", "style_update")))[0]
+    assert (await passed(calls("style_update", "style_update")))[0]
+    together, detail = await passed(
+        calls("project_count_features", "project_group_statistics")
+    )
+    assert not together
+    assert "project_count_features+project_group_statistics" in detail
+    failed = [ToolCall("project_group_statistics", {}, None, True)]
+    assert not (await passed(calls("project_count_features") + failed))[0]
+    assert not (await passed(calls("style_update", "style_update", "style_update")))[0]
 
 
 # What the delivered tools need from the fixture backends beyond the brief.
@@ -1127,7 +1189,7 @@ class _Slow(TurnModel):
     async def _stream(
         self, messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls]:
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(1.0)
         async for item in super()._stream(messages, info):
             yield item
 
@@ -1141,9 +1203,11 @@ async def test_each_turn_has_its_own_time_limit(
             ([("catalog_find_region", {"name": "München"})], "Thanks."),
         ]
     )
-    # The card ends the first turn after one call (about 0.6 s), the second
-    # takes two (about 1.2 s): each fits the limit, both together do not.
-    limited = settings.model_copy(update={"run_max_seconds": 1.5})
+    # The card ends the first turn after one call (about 1 s), the second
+    # takes two (about 2 s): each fits the limit, both together do not. The
+    # limit leaves the second turn most of a second for everything besides the
+    # model's wait, since a loaded runner takes several times longer for it.
+    limited = settings.model_copy(update={"run_max_seconds": 2.8})
     transcript = await run_task(_task("wf-09"), model.model, backends, limited)
     assert transcript.error is None, transcript.error
     assert len(model.requests) == 3
@@ -1385,9 +1449,15 @@ async def test_an_open_opportunitys_left_out_field_is_created_open(
         "routing_mode": "walking",
         "opportunity_1_potential_type": "field",
     }
-    model = ScriptedModel(calls=[("workflow_create", {"draft": draft})])
+    # wf-02 is on the map page, where the workflow tools come with the skill.
+    model = ScriptedModel(
+        calls=[
+            ("skills_load", {"name": "build-a-workflow"}),
+            ("workflow_create", {"draft": draft}),
+        ]
+    )
     transcript = await run_task(_task("wf-02"), model.model, backends, settings)
-    [create] = transcript.tool_calls
+    _, create = transcript.tool_calls
     assert not create.failed, create.result
     assert sorted(
         (issue["code"], issue["message"].split(": ")[1])
@@ -1880,6 +1950,121 @@ async def test_the_build_and_run_task_can_pass(
         {key: row[key] for key in ("group", "then", "value")} for row in rows
     ]
     grades = await grade(_task("wf-10"), transcript, backends)
+    assert [g.passed for g in grades] == [True] * 6, grades
+
+
+#: wf-10 by the heatmap, which the skill builds when both methods fit and
+#: no card is shown anyway (SKILL.md, step 1; heatmap.md, Shares per district).
+HEAT_BANDS_DRAFT: dict[str, Any] = {
+    "name": "Residents by walking time to a supermarket per district",
+    "steps": [
+        {"id": "shops", "kind": "dataset", "layer": 34},
+        {"id": "people", "kind": "dataset", "layer": 33},
+        {"id": "districts", "kind": "dataset", "layer": 35},
+        {
+            "id": "heat",
+            "kind": "tool",
+            "tool": "heatmap_closest_average",
+            "settings": {
+                "routing_mode": "walking",
+                "show_advanced": True,
+                "opportunity_1_n_destinations": 1,
+            },
+        },
+        {"id": "cut", "kind": "tool", "tool": "intersection", "settings": {}},
+        {
+            "id": "count",
+            "kind": "tool",
+            "tool": "aggregate_polygon",
+            "settings": {
+                "area_type": "polygon",
+                "column_statistics": [{"operation": "sum", "field": "einwohner"}],
+            },
+        },
+        {"id": "save", "kind": "export", "name": "Residents per district"},
+    ],
+    "connections": [
+        {"from": "shops", "to": "heat", "input": "opportunity_layer_1_id"},
+        {"from": "districts", "to": "heat", "input": "reference_area_layer_id"},
+        {"from": "heat", "to": "cut", "input": "input_layer_id"},
+        {"from": "districts", "to": "cut", "input": "overlay_layer_id"},
+        {"from": "cut", "to": "count", "input": "area_layer_id"},
+        {"from": "people", "to": "count", "input": "source_layer_id"},
+        {"from": "count", "to": "save"},
+    ],
+}
+
+
+async def test_the_build_and_run_task_passes_with_the_heatmap(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-10 by the heatmap: the skill recommends it for residents near the
+    nearest of many places, so the task accepts it as it accepts catchment
+    areas; the numbers are graded the same."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": HEAT_BANDS_DRAFT}),
+            ("workflow_create", {"draft": HEAT_BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+        ],
+        answer=(
+            "Within 5 minutes on foot of a supermarket live 1,200 residents in "
+            "Mitte and 300 in Nord; the table has the 10 and 15 minutes too."
+        ),
+    )
+    task = _task("wf-10")
+    transcript = await run_task(task, model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    assert transcript.tool_calls[0].result["blocking"] == 0
+    grades = await grade(task, transcript, backends)
+    assert [g.passed for g in grades] == [True] * 6, grades
+
+
+async def test_the_saved_result_is_read_right_after_its_run(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-13 end to end on the fixture: the statistics of the layer the run
+    has just saved are read in the same answer, a total over one band and
+    the largest single value. The fixture's processes reads the layer at
+    once; that processes itself does is its own test
+    (apps/processes/tests/test_analytics_service.py, TestLayerJustSaved)."""
+    created = "0b6f0000-0000-0000-0000-000000000001"
+    result = RESULT_LAYER.layer_project_id
+    band_15 = {"conditions": [{"field": "band", "op": "=", "value": 15}]}
+    model = ScriptedModel(
+        calls=[
+            ("workflow_check_draft", {"draft": BANDS_DRAFT}),
+            ("workflow_create", {"draft": BANDS_DRAFT}),
+            ("workflow_run", {"workflow_id": created}),
+            (
+                "project_group_statistics",
+                {
+                    "layer_project_id": result,
+                    "operation": "sum",
+                    "field": "einwohner",
+                    "filter": band_15,
+                },
+            ),
+            (
+                "project_field_statistics",
+                {"layer_project_id": result, "field": "einwohner"},
+            ),
+        ],
+        answer=(
+            "The 15-minute band holds 8,500 residents across all districts; the "
+            "largest value for one district and band is 4,100."
+        ),
+    )
+    task = _task("wf-13")
+    transcript = await run_task(task, model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    assert not any(call.failed for call in transcript.tool_calls), transcript.tool_calls
+    total, described = (call.result for call in transcript.tool_calls[3:])
+    assert total["rows"][0]["value"] == 8500.0
+    assert described["max"] == 4100.0
+    grades = await grade(task, transcript, backends)
     assert [g.passed for g in grades] == [True] * 5, grades
 
 
@@ -1990,6 +2175,111 @@ async def test_the_run_task_runs_after_the_card_and_can_pass(
     assert "band edges" in issue
     grades = await grade(_task("wf-11"), transcript, backends)
     assert [g.passed for g in grades] == [True] * 4, grades
+
+
+async def test_a_change_of_the_run_task_workflow_ends_at_its_refusal(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 asks to run the project's workflow, not to change it. A change
+    the model makes anyway is refused for good, as for a user who may not
+    change the workflow, never with a refusal that asks to try again, so a
+    run cannot spend its steps on retries; nothing is saved."""
+    fix = {
+        "workflow_id": RUN_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"step_sizes": [5, 10, 15]},
+            }
+        ],
+    }
+    model = ScriptedModel(
+        calls=[
+            ("workflow_get", {"workflow_id": RUN_WORKFLOW_ID}),
+            ("workflow_update", fix),
+        ],
+        answer="I could not change the workflow.",
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    read, update = transcript.tool_calls
+    assert not read.failed, read.result
+    # Reading a workflow invites no change of it: only one the user asks for.
+    assert read.result["note"].startswith("When the user asks to change it,")
+    assert read.result["note"] == GET_NOTE
+    assert update.failed and VIEWER_EDITS in str(update.result), update.result
+    assert transcript.saved == []
+    # The attempt itself is the harm in production, where the save succeeds.
+    grades = await grade(_task("wf-11"), transcript, backends)
+    [tools] = [g for g in grades if g.check == "tools"]
+    assert tools.passed is False and "workflow_update" in tools.detail, tools
+
+
+#: A card that offers to correct the run task's workflow instead of its run.
+FIX_CARD: dict[str, Any] = {
+    "questions": [
+        {
+            "question": "The band edges of 15 Minuten zu Fuß do not rise. Correct them?",
+            "header": "Band edges",
+            "options": [
+                {
+                    "label": "Correct to 5, 10, 15",
+                    "description": "Changes the step, then runs it",
+                    "recommended": True,
+                    "value": "fix",
+                },
+                {"label": "Keep them", "description": "The workflow stays as it is"},
+            ],
+        }
+    ]
+}
+
+
+async def test_a_card_that_offers_a_correction_fails_the_run_task(
+    backends: Backends, settings: AssistantSettings
+) -> None:
+    """wf-11 runs showed, after workflow_get named the issue that stops the
+    run, a card offering to correct it instead of the Run card, then changed
+    the workflow on that pick. The read's note says that a workflow to run
+    stays as it is with such issues too and gets its Run card, and the task
+    fails such an answer: no Run card, no run, and a change."""
+    fix = {
+        "workflow_id": RUN_WORKFLOW_ID,
+        "operations": [
+            {
+                "op": "set_settings",
+                "id": "tool-walk",
+                "settings": {"step_sizes": [5, 10, 15]},
+            }
+        ],
+    }
+    model = TurnModel(
+        [
+            (
+                [
+                    ("project_get_workflows", {}),
+                    ("workflow_get", {"workflow_id": RUN_WORKFLOW_ID}),
+                    ("ask_user", FIX_CARD),
+                ],
+                "The band edges of this workflow do not rise, so a run would be refused.",
+            ),
+            (
+                [("workflow_update", fix)],
+                "I could not correct the band edges: the workflow stays as it is.",
+            ),
+        ]
+    )
+    transcript = await run_task(_task("wf-11"), model.model, backends, settings)
+    assert transcript.error is None, transcript.error
+    _, read, card, update = transcript.tool_calls
+    assert [issue["blocking"] for issue in read.result["issues"]] == [True]
+    assert "also when its issues stop a run" in read.result["note"]
+    assert "Run card" in read.result["note"]
+    assert not card.failed and update.failed
+    grades = {g.check: g for g in await grade(_task("wf-11"), transcript, backends)}
+    assert grades["asked"].passed is False, grades["asked"]
+    assert grades["tools"].passed is False, grades["tools"]
 
 
 def _edit(max_cost: int) -> dict[str, Any]:

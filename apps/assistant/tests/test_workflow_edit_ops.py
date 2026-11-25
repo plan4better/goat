@@ -475,6 +475,28 @@ def test_a_step_left_open_gets_a_label_naming_what_is_missing() -> None:
         )
 
 
+DEM = ProjectLayer(37, "e2000000-0000-0000-0000-000000000037", "DEM", "raster")
+
+
+def test_a_raster_layer_is_refused_like_a_locked_one() -> None:
+    context = _context(layers={**LAYERS, 37: DEM})
+    with pytest.raises(EditError, match="'DEM' is a raster layer") as added:
+        plan(
+            STORED,
+            _ops(
+                {"op": "add_step", "step": {"id": "x", "kind": "dataset", "layer": 37}}
+            ),
+            context,
+        )
+    assert str(added.value).startswith("operation 0 (add_step): ")
+    with pytest.raises(EditError, match="'DEM' is a raster layer"):
+        plan(
+            STORED,
+            _ops({"op": "set_layer", "id": "dataset-a", "layer": 37}),
+            context,
+        )
+
+
 def test_set_layer_refuses_a_locked_layer_and_a_step_of_another_kind() -> None:
     with pytest.raises(EditError, match="no access to its data"):
         plan(
@@ -1201,40 +1223,21 @@ def test_the_view_names_the_settings_it_shortens() -> None:
     assert step.shortened == ["step_sizes", "start_time", "note_text"]
 
 
-def test_the_restricted_view_withholds_literal_values() -> None:
+def test_the_view_keeps_literal_values() -> None:
     view = workflow_view(STORED)
-    steps = [step.restricted() for step in view.steps]
-    dataset, _, condition, _ = (s.model_dump(exclude_none=True) for s in steps)
-    assert dataset["filter"] == {
-        "where": [{"field": "art", "op": "="}],
-        "values_withheld": True,
-    }
-    assert condition["condition"] == [
-        {"method": "count", "op": ">"},
-        {"field": "art", "op": "="},
-    ]
-    assert condition["values_withheld"] is True
-    variables = [v.restricted().model_dump(exclude_none=True) for v in view.variables]
-    assert variables == [
-        {"name": "minutes", "type": "number", "default": 15},
-        {"name": "kind", "type": "string", "default_withheld": True},
-    ]
-    # The view itself keeps them, for Standard.
     assert view.steps[0].filter is not None
     assert view.steps[0].filter.where == [{"field": "art", "op": "=", "value": "GS"}]
     assert isinstance(view.steps[0], StepView)
     assert isinstance(view.variables[1], VariableView)
 
 
-def test_a_custom_if_expression_is_withheld_under_restricted() -> None:
+def test_a_custom_if_expression_is_shown() -> None:
     config = copy.deepcopy(STORED)
     _node(config, "if-big")["data"].update(
         mode="custom", customExpression="name = 'Jane Doe'"
     )
     step = workflow_view(config).steps[2]
     assert step.expression == "name = 'Jane Doe'"
-    hidden = step.restricted()
-    assert hidden.expression is None and hidden.values_withheld is True
 
 
 def test_the_notes_of_a_workflow_are_capped_as_a_drafts() -> None:

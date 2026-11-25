@@ -15,6 +15,7 @@ from catalog.deps import get_store
 from catalog.errors import ApiError, NotModifiedError
 from catalog.routers.assets import router as assets_router
 from catalog.routers.nuts import router as nuts_router
+from catalog.routers.stac import data_router as stac_data_router
 from catalog.routers.stac import router as stac_router
 from catalog.services.assets import AssetReader
 from catalog.services.preview import PreviewReader
@@ -78,6 +79,8 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
+        # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+        max_age=7200,
     )
     app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
@@ -197,6 +200,7 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         }
 
     app.include_router(stac_router)
+    app.include_router(stac_data_router)
     app.include_router(nuts_router)
     app.include_router(assets_router)
 

@@ -9,13 +9,13 @@ import { downloadLayerDirect, startDatasetExport } from "@/lib/api/layers";
 import { useJobs } from "@/lib/api/processes";
 import { useUserProfile } from "@/lib/api/users";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
+import { isCatalogLayer } from "@/lib/utils/catalog-layer";
 import { creditsErrorMessage } from "@/lib/utils/credits";
 import { getSuggestedCRS } from "@/lib/utils/map/crs-suggestions";
 import type { FeatureDataExchangeType } from "@/lib/validations/common";
 import { featureDataExchangeType, tableDataExchangeType } from "@/lib/validations/common";
 import type { DatasetDownloadRequest, Layer } from "@/lib/validations/layer";
 import type { ProjectLayer } from "@/lib/validations/project";
-import { isCatalogLayer } from "@/lib/utils/catalog-layer";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -83,7 +83,8 @@ const DatasetDownloadModal: React.FC<DownloadDatasetDialogProps> = ({
       if (isPublicMode) {
         // Public mode: download directly from GeoAPI (no auth needed)
         const crs = dataCrs ? `EPSG:${dataCrs}` : undefined;
-        await downloadLayerDirect(layerId, dataDownloadType, dataset.name, crs);
+        const cql = dataset["layer_id"] ? dataset["query"]?.["cql"] : undefined;
+        await downloadLayerDirect(layerId, dataDownloadType, dataset.name, crs, cql);
         onDownload?.();
       } else {
         // Authenticated mode: use async job via OGC API Processes

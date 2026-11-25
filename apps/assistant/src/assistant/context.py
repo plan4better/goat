@@ -30,8 +30,21 @@ _FACET_KEY = r"^[a-z][a-z0-9_]{0,39}$"
 NUTS_ID_PATTERN = r"^[A-Z]{2}[A-Z0-9]{0,3}$"
 #: Fields with no reason to hold prose are constrained (Decision T19).
 SORTBY_PATTERN = r"^-?[A-Za-z0-9_.:]+(,-?[A-Za-z0-9_.:]+)*$"
-RECORD_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,300}$"
+#: A catalog record id. Its length limit is max_length, not a count in the
+#: pattern: a provider that enforces tool schemas strictly may reject a long
+#: counted repeat as a malformed tool definition.
+RECORD_ID_PATTERN = r"^[A-Za-z0-9._:-]+$"
+RECORD_ID_MAX_LENGTH = 300
+_RECORD_ID = re.compile(RECORD_ID_PATTERN)
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def is_record_id(value: str) -> bool:
+    """Whether ``value`` is a catalog record id (pattern and length)."""
+    return (
+        len(value) <= RECORD_ID_MAX_LENGTH and _RECORD_ID.fullmatch(value) is not None
+    )
+
 
 FacetValue = Annotated[str, Field(max_length=200)]
 FacetValues = Annotated[list[FacetValue], Field(max_length=50)]
@@ -87,7 +100,9 @@ class CatalogContext(_Page):
     to_date: date | None = Field(default=None, alias="to")
     nuts: list[NutsId] = Field(default_factory=list, max_length=20)
     sortby: str | None = Field(default=None, max_length=100, pattern=SORTBY_PATTERN)
-    selected_record_id: str | None = Field(default=None, pattern=RECORD_ID_PATTERN)
+    selected_record_id: str | None = Field(
+        default=None, max_length=RECORD_ID_MAX_LENGTH, pattern=RECORD_ID_PATTERN
+    )
 
     @field_validator("from_date", "to_date", mode="before")
     @classmethod
@@ -114,11 +129,28 @@ class Viewport(_Context):
     bbox: tuple[Longitude, Latitude, Longitude, Latitude] | None = None
 
 
+class BasemapInfo(_Context):
+    """A basemap of the project: its tone is the one its colors read as, and
+    ``imagery`` marks aerial or satellite pictures."""
+
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=80)
+    tone: Literal["light", "dark"]
+    imagery: bool = False
+
+
 class ProjectMapContext(_Page):
     surface: Literal["project.map"]
     project_id: UUID
     selected_layer_project_id: int | None = Field(default=None, ge=1, strict=True)
     viewport: Viewport | None = None
+    #: The basemap shown now.
+    basemap: BasemapInfo | None = None
+    #: The basemaps the project offers; left out of the note
+    #: (``assistant.prompt``).
+    basemaps: tuple[BasemapInfo, ...] = Field(default=(), max_length=30)
+    view_mode: Literal["2d", "3d"] | None = None
+    projection: Literal["mercator", "globe"] | None = None
 
 
 class ProjectWorkflowsContext(_Page):
@@ -175,11 +207,19 @@ def dump_context(page: PageContext) -> dict[str, Any]:
     dumped: dict[str, Any] = page.model_dump(
         mode="json", by_alias=True, exclude_none=True
     )
-    if not dumped.get("sources"):
-        dumped.pop("sources", None)
+    for empty_by_default in ("sources", "basemaps"):
+        if not dumped.get(empty_by_default):
+            dumped.pop(empty_by_default, None)
     return dumped
 
 
 def project_of(page: PageContext) -> UUID | None:
     project_id: UUID | None = getattr(page, "project_id", None)
     return project_id
+
+
+def offered_basemaps(page: PageContext) -> tuple[BasemapInfo, ...]:
+    """The basemaps the map page says the project offers; none elsewhere."""
+    if isinstance(page, ProjectMapContext):
+        return page.basemaps
+    return ()

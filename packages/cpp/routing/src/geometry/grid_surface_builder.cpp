@@ -17,7 +17,8 @@ namespace
 {
 
 constexpr double kEarthCircumference = 40075016.68557849;
-constexpr double kHaloMeters = 200.0;
+// The smallest snap radius, in EPSG:3857 units.
+constexpr double kMinSnapRadius = 200.0;
 // Web Mercator sphere radius. Distances in EPSG:3857 are inflated by
 // 1/cos(lat); ground metres = mercator metres * cos(lat) = merc / cosh(y/R).
 constexpr double kMercatorRadius = 6378137.0;
@@ -45,95 +46,7 @@ double merc_y_to_pixel(double y, int zoom)
 // land in different clusters.
 double snap_radius_for_step(double step)
 {
-    return std::max(kHaloMeters, step * 8.0);
-}
-
-// Interpolate sample points along edge geometries stored in C++ Edge structs.
-// Used for active mobility modes where geometry is loaded upfront.
-void split_edges_cpp(
-    ReachabilityField const &field,
-    double split_distance,
-    double budget,
-    std::vector<SamplePoint> &out)
-{
-    if (!field.network)
-        return;
-
-    auto const &net = *field.network;
-    for (size_t i = 0; i < net.edges.size(); ++i)
-    {
-        int32_t src = net.source[i];
-        int32_t tgt = net.target[i];
-        if (src < 0 || tgt < 0 ||
-            src >= static_cast<int32_t>(field.costs.size()) ||
-            tgt >= static_cast<int32_t>(field.costs.size()))
-            continue;
-
-        double src_cost = field.costs[src];
-        double tgt_cost = field.costs[tgt];
-        if (!std::isfinite(src_cost) || !std::isfinite(tgt_cost))
-            continue;
-
-        auto const &geom = net.edges[i].geometry;
-        if (geom.size() < 2)
-            continue;
-
-        double total_length = net.length_3857[i];
-        if (total_length <= 0.0)
-            continue;
-
-        double prev_agg = 0.0;
-        for (size_t g = 0; g + 1 < geom.size(); ++g)
-        {
-            double dx = geom[g + 1].x - geom[g].x;
-            double dy = geom[g + 1].y - geom[g].y;
-            double seg_len = std::sqrt(dx * dx + dy * dy);
-            double agg = prev_agg + seg_len;
-
-            int n_splits = static_cast<int>(std::floor(seg_len / split_distance));
-            for (int n = 1; n <= n_splits; ++n)
-            {
-                double d = n * split_distance;
-                double frac_seg = d / seg_len;
-                double x = geom[g].x + frac_seg * dx;
-                double y = geom[g].y + frac_seg * dy;
-                double frac_edge = (prev_agg + d) / total_length;
-                double cost = src_cost + frac_edge * (tgt_cost - src_cost);
-                if (cost <= budget)
-                    out.push_back({x, y, cost});
-            }
-
-            if (g + 2 < geom.size())
-            {
-                double frac_edge = agg / total_length;
-                double cost = src_cost + frac_edge * (tgt_cost - src_cost);
-                if (cost <= budget)
-                    out.push_back({geom[g + 1].x, geom[g + 1].y, cost});
-            }
-
-            prev_agg = agg;
-        }
-    }
-}
-
-std::vector<SamplePoint> collect_field_samples(
-    ReachabilityField const &field, double split_distance, double budget)
-{
-    std::vector<SamplePoint> samples;
-    if (!field.network || field.costs.empty())
-        return samples;
-    auto const &net = *field.network;
-    samples.reserve(net.node_count);
-    for (int32_t i = 0; i < net.node_count; ++i)
-    {
-        double cost = field.costs[i];
-        if (!std::isfinite(cost) || cost > budget)
-            continue;
-        auto const &c = net.node_coords[i];
-        samples.push_back({c.x, c.y, cost});
-    }
-    split_edges_cpp(field, split_distance, budget, samples);
-    return samples;
+    return std::max(kMinSnapRadius, step * 8.0);
 }
 
 } // namespace
@@ -146,7 +59,8 @@ std::vector<FieldCluster> cluster_field(
     double const step = mercator_pixel_size(zoom);
     double const link_distance = 2.0 * snap_radius_for_step(step);
 
-    auto samples = collect_field_samples(field, step, cfg.cost_budget());
+    auto samples = sample_reachability_field(
+        field, cfg.cost_budget(), cfg.cost_type == CostType::Distance, step);
     if (samples.empty())
         return result;
 
@@ -231,14 +145,15 @@ CostGrid build_cost_grid_from_cluster(
     if (cluster.samples.empty())
         return grid;
 
-    double const budget = cfg.cost_budget();
-
-    // Pad the tight cluster bbox by the kernel halo so off-network cells
-    // along the edge get a neighbor within snap range.
-    double min_x = cluster.min_x - kHaloMeters;
-    double min_y = cluster.min_y - kHaloMeters;
-    double max_x = cluster.max_x + kHaloMeters;
-    double max_y = cluster.max_y + kHaloMeters;
+    // Cells farther than this from every sample stay no-data. The grid is
+    // padded by as much, so a cell the kernel fills never falls outside it:
+    // a smaller pad cut the contour off straight where the budget still
+    // reached past it.
+    double const max_snap = snap_radius_for_step(mercator_pixel_size(zoom));
+    double min_x = cluster.min_x - max_snap;
+    double min_y = cluster.min_y - max_snap;
+    double max_x = cluster.max_x + max_snap;
+    double max_y = cluster.max_y + max_snap;
 
     double const px_bl_x = std::floor(merc_x_to_pixel(min_x, zoom));
     double const px_bl_y = std::floor(merc_y_to_pixel(min_y, zoom));
@@ -282,10 +197,6 @@ CostGrid build_cost_grid_from_cluster(
         kd_coords[i] = {dedup[i].x, dedup[i].y};
     kernel::KdTree2D tree(kd_coords);
 
-    double const speed_m_per_s = (cfg.speed_km_h > 0.0)
-        ? (cfg.speed_km_h * 1000.0 / 3600.0)
-        : (5.0 * 1000.0 / 3600.0);
-    double const max_snap = snap_radius_for_step(std::max(step_x, step_y));
     double const kNoData = std::numeric_limits<int32_t>::max();
 
     std::vector<double> surface(
@@ -305,14 +216,12 @@ CostGrid build_cost_grid_from_cluster(
             auto [idx, dist] = tree.nearest_within({gx, gy}, max_snap);
             if (idx < 0) continue;
 
-            double base_cost = dedup[idx].cost;
-            double ground_dist = dist * ground_scale;
-            double walk_cost = (cfg.cost_type == CostType::Distance)
-                ? ground_dist
-                : (ground_dist / speed_m_per_s) / 60.0;
-            double total = std::round(base_cost + walk_cost);
-            if (total <= budget)
-                surface[static_cast<size_t>(row) * width_px + col] = total;
+            // Neither rounded nor capped at the budget: the contour at a
+            // cutoff is interpolated between the cells either side of it, so
+            // a cell just past the budget keeps its cost, and a rounded cost
+            // would move the line by up to half a unit (half a minute).
+            surface[static_cast<size_t>(row) * width_px + col] =
+                dedup[idx].cost + off_street_cost(dist * ground_scale, cfg);
         }
     }
 

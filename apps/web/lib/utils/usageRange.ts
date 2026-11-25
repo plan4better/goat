@@ -153,6 +153,28 @@ export const rangeWindow = (
   return { since: iso(since), until: iso(until), perMonth: range.preset === "m12" || !since || long };
 };
 
+/** A balance not read yet: no period known. */
+export const NO_PERIOD = { period_start: null, credits_reset_at: null, on_trial: false } as const;
+
+/**
+ * The bounds a breakdown request sends. This period sends none: core's
+ * `/credits/breakdown` counts from the period start `/credits/balance`
+ * reports, so the open tile's breakdowns start with the balance instead of
+ * after it (Settings load, L4). The last period needs the balance's start
+ * (null until it is there); the other ranges count from today. Exports keep
+ * the exact window from `rangeWindow`.
+ */
+export const requestWindow = (
+  range: UsageRange,
+  balance: Pick<CreditBalance, "period_start" | "credits_reset_at" | "on_trial"> | undefined,
+  now: Date = new Date()
+): { since?: string; until?: string } | null => {
+  if (range.preset === "period") return {};
+  if (range.preset === "last" && !balance) return null;
+  const { since, until } = rangeWindow(range, balance ?? NO_PERIOD, now);
+  return { since, until };
+};
+
 const dateFormat = (language: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat =>
   new Intl.DateTimeFormat(language?.startsWith("de") ? "de-DE" : "en-GB", {
     ...options,

@@ -1,7 +1,8 @@
 """The dock's Undo of an answer's workflow edits
 (``POST /conversations/{id}/runs/{run_id}/undo``): it writes back what the
 answer's edits replaced, through core's save on the revision the answer
-left, under the user's own sign-in.
+left, under the user's own sign-in. Its style changes are in
+``test_undo_styles``.
 
 ``api`` and ``make_project`` are conftest fixtures; core is a stateful fake
 that checks ``base_revision`` as core does."""
@@ -222,7 +223,10 @@ async def test_undo_writes_back_the_workflow_as_it_was_before_the_answer(
         assert response.json() == {
             "workflows": [
                 {"workflow_id": "wf-1", "project_id": str(project_id), "revision": 6}
-            ]
+            ],
+            "styles": [],
+            "map": None,
+            "not_restored": [],
         }
         assert core.puts() == [
             ("wf-1", {"config": config("10 min"), "base_revision": 5})
@@ -233,6 +237,38 @@ async def test_undo_writes_back_the_workflow_as_it_was_before_the_answer(
         assert stored["id"] == str(message_id)
         assert stored["metadata"]["run_id"] == str(run_id)
         assert stored["metadata"]["undone"] is True
+
+
+async def test_the_stored_answer_says_whether_its_undo_can_act(
+    api: Api, repo: Repository, make_project: ProjectFactory
+) -> None:
+    """``metadata.undoable``: an answer stopped after its edit landed has no
+    finished step that names the edit, and still offers its Undo. One that
+    only read offers none, nor one undone already."""
+    project_id = await make_project()
+    core = Core(project_id)
+    core.add("wf-1", Stored(config("15 min"), revision=5))
+    conversation_id, run_id, stopped_id = await answer(
+        repo,
+        project_id,
+        [edit(project_id, "wf-1", 4, 5, "10 min")],
+        status="cancelled",
+    )
+    _, _, read_id = await answer(repo, project_id, [], conversation_id=conversation_id)
+
+    async def metadata(client: httpx.AsyncClient) -> dict[str, dict[str, Any]]:
+        body = (await client.get(f"/conversations/{conversation_id}")).json()
+        return {m["id"]: m.get("metadata", {}) for m in body["messages"]}
+
+    async with api(tools=fake_clients(core=core.recorder)) as client:
+        before = await metadata(client)
+        assert before[str(stopped_id)]["undoable"] is True
+        assert "undoable" not in before[str(read_id)]
+        response = await client.post(url(conversation_id, run_id), json={})
+        assert response.status_code == 200, response.text
+        after = await metadata(client)
+    assert after[str(stopped_id)]["undone"] is True
+    assert "undoable" not in after[str(stopped_id)]
 
 
 async def test_two_edits_of_one_workflow_go_back_in_one_save(
@@ -273,7 +309,7 @@ async def test_a_save_after_the_answer_asks_and_force_saves_on_top(
         assert asked.status_code == 409, asked.text
         assert asked.json()["detail"] == {
             "code": "changed_since",
-            "message": "The workflow was changed after this answer edited it.",
+            "message": "Something was changed after this answer edited it.",
             "workflows": [
                 {
                     "workflow_id": "wf-1",
@@ -284,7 +320,12 @@ async def test_a_save_after_the_answer_asks_and_force_saves_on_top(
                     "between": False,
                 }
             ],
+            "styles": [],
+            "map": [],
             "undone": [],
+            "undone_styles": [],
+            "undone_map": None,
+            "not_restored": [],
         }
         # Nothing was written, and the answer is not undone.
         assert core.workflows["wf-1"].config == config("15 min, moved")
@@ -511,7 +552,12 @@ async def test_a_deleted_workflow_leaves_nothing_to_undo(
     async with api(tools=fake_clients(core=core.recorder)) as client:
         response = await client.post(url(conversation_id, run_id), json={})
         assert response.status_code == 200, response.text
-        assert response.json() == {"workflows": []}
+        assert response.json() == {
+            "workflows": [],
+            "styles": [],
+            "map": None,
+            "not_restored": [],
+        }
         assert (await stored_answer(client, conversation_id))["metadata"][
             "undone"
         ] is True

@@ -38,10 +38,17 @@ from assistant.events import (
 
 
 class EventTranslator:
-    def __init__(self, part_ids: PartIds) -> None:
+    """``response_texts``: kept as the ids of the text parts of the response
+    streamed last (a response starts with its part 0), for the answer check
+    that replaces them (``RunDeps.response_texts``)."""
+
+    def __init__(
+        self, part_ids: PartIds, response_texts: list[str] | None = None
+    ) -> None:
         self._part_ids = part_ids
         self._text_parts: dict[int, str] = {}
         self._needs_step = True
+        self._response_texts = response_texts if response_texts is not None else []
 
     def _step(self) -> list[RunEvent]:
         if not self._needs_step:
@@ -53,9 +60,12 @@ class EventTranslator:
     def translate(self, event: AgentStreamEvent) -> list[RunEvent]:
         if isinstance(event, PartStartEvent):
             out = self._step()
+            if event.index == 0:
+                self._response_texts.clear()
             if isinstance(event.part, TextPart):
                 part_id = self._part_ids.next()
                 self._text_parts[event.index] = part_id
+                self._response_texts.append(part_id)
                 out.append(TextStarted(part_id=part_id))
                 if event.part.content:
                     out.append(TextDelta(part_id=part_id, delta=event.part.content))

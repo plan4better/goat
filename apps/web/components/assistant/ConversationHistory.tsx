@@ -12,7 +12,6 @@ import {
   ListItem,
   ListItemButton,
   Menu,
-  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -46,10 +45,10 @@ import {
 } from "@/lib/assistant/store";
 import type { ConversationSummary } from "@/lib/assistant/types";
 
-import { CARD_RADIUS, accentSoft, accentText, focusRing, mutedText } from "@/components/assistant/styles";
+import { accentSoft, accentText, focusRing, mutedText } from "@/components/assistant/styles";
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import { MenuRow } from "@/components/common/MenuRow";
 import NameDialog from "@/components/dashboard/common/NameDialog";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 
 const SEARCH_DELAY_MS = 300;
 
@@ -362,41 +361,36 @@ export default function ConversationHistory({
         PaperProps={{
           sx: {
             minWidth: 180,
-            mt: "4px",
-            borderRadius: CARD_RADIUS,
-            border: 1,
-            borderColor: "divider",
-            boxShadow: surfaceShadows(theme).hover,
+            mt: "6px",
           },
-        }}
-        MenuListProps={{ dense: true, sx: { py: "6px" } }}>
+        }}>
         {(
           [
             {
               key: "rename",
               icon: ICON_NAME.EDIT,
-              color: undefined,
+              danger: false,
               run: (conversation: ConversationSummary) => (picked.current = { kind: "rename", conversation }),
             },
             {
               key: "delete",
               icon: ICON_NAME.TRASH,
-              color: "error.main",
+              danger: true,
               run: (conversation: ConversationSummary) => (picked.current = { kind: "delete", conversation }),
             },
           ] as const
         ).map((item) => (
-          <MenuItem
+          <MenuRow
             key={item.key}
+            icon={item.icon}
+            label={t(item.key)}
+            danger={item.danger}
             onClick={() => {
               if (!menu) return;
               item.run(menu.conversation);
               setMenu(null);
             }}
-            sx={{ gap: "12px", px: "14px", py: "7px", fontSize: 13, color: item.color ?? "text.primary" }}>
-            <Icon iconName={item.icon} style={{ fontSize: 14, color: "inherit" }} />
-            {t(item.key)}
-          </MenuItem>
+          />
         ))}
       </Menu>
       {renaming && (

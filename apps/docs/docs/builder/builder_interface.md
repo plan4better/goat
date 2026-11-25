@@ -21,6 +21,7 @@ GOAT saves your changes to the dashboard as you make them. If the dashboard was 
 The following controls are available on the dashboard map. Their position can be configured in [Settings](./settings).
 
 - **Location search**: search for an address or place and pan the map to it
+- **3D view**: the **View** button, to switch between 2D and 3D, show the globe when zoomed out, and in 3D turn terrain and 3D buildings on or off
 - **Zoom controls**: zoom in and out buttons
 - **Basemaps**: switch between available basemaps. See [Basemaps](../map/basemaps)
 - **Measurements**: measure distances, areas, and routes directly on the map. See [Measurements](../map/measurements)
@@ -98,7 +99,7 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">You can click on the <code>delete icon</code> to <b>remove the widget</b> from your dashboard.</div>
+  <div class="content">You can click on the <code>delete icon</code> to <b>remove the widget</b> from your dashboard. Click <code>Duplicate</code> to <b>copy the widget</b>: the copy is placed right below it with the same settings, and a <code>Tabs</code> widget is copied with its widgets. Click <code>Select panel</code> to <b>select the panel</b> the widget sits in, which helps when the widget fills the whole panel.</div>
 </div>
 
 <div class="step">
@@ -109,7 +110,7 @@ To delete a panel, click <code>Delete Panel</code> at the bottom of the settings
 For more details, see [Widgets](../category/widgets).
 
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-  <Video src={require('/img/builder/widget_drag.mp4').default} alt="recent datasets" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
+  <Video src={require('/img/builder/widget_drag.mp4').default} alt="Dragging a Layers widget into a panel and setting its title and description" style={{ maxHeight: "400px", maxWidth: "auto", objectFit: "cover"}}/>
 </div> 
 
 

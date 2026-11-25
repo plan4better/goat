@@ -70,7 +70,65 @@ jobs:
       # more memory, which a CI runner has room for and a laptop may not, so the
       # pool is chosen here rather than in vitest.config.ts.
       - name: 🧪 Vitest
-        run: pnpm --filter web exec vitest run --pool=vmForks --maxWorkers=4
+        run: pnpm --filter web exec vitest run --pool=vmForks --maxWorkers=4 --exclude "**/*.next.test.ts"
+      # Tests named *.next.test.ts run Next's own server code (next.config
+      # redirects, the proxy matcher), which needs Node's CommonJS globals that
+      # the vmForks pool does not give it; they run on the default pool.
+      - name: 🧪 Vitest (Next's server code)
+        run: pnpm --filter web exec vitest run next.test.ts
+
+  web-style-lab:
+    name: web (style lab)
+    if: ${{ inputs.web }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # REQUIRED. GOAT Styles drawn on a real MapLibre map in headless Chromium
+    # (vitest browser mode, apps/web/vitest.lab.config.ts). Its own job beside
+    # the jsdom suite, which excludes the lab's *.lab.test.tsx files. The
+    # screenshot baselines are made with this Chromium on Linux.
+    steps:
+      - name: ⏱️ Start the clock
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+      - name: 📥 Monorepo install
+        uses: ./.github/actions/pnpm-install
+      # The same browser cache as the vitest job: one entry per Playwright
+      # release.
+      - name: 🎭 Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter web exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: 💾 Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: 📥 Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: 🧪 Style lab
+        run: pnpm --filter @p4b/web lab
+      # A screenshot that differs leaves the picture this Chromium took
+      # (<id>-actual-chromium-linux.png, and <id>-reference-chromium-linux.png
+      # where no baseline exists) under apps/web/.vitest/attachments/: to look
+      # at, or to take as the new baseline in lab/__screenshots__/. The folder
+      # name starts with a dot, which upload-artifact leaves out unless told.
+      - name: 📤 Style lab screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: style-lab-screenshots
+          path: apps/web/.vitest/attachments/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+      - name: ⏱️ Duration
+        if: always()
+        run: |
+          elapsed=$(( $(date +%s) - JOB_STARTED ))
+          echo "### style lab: $((elapsed / 60)) min $((elapsed % 60)) s (budget 5 min)" >> "$GITHUB_STEP_SUMMARY"
+          [ "$elapsed" -le 300 ] || echo "::warning::style lab took ${elapsed}s, over its 5 minute budget"
 
   core:
     name: core (pytest)
@@ -121,7 +179,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -175,7 +233,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -242,7 +300,7 @@ jobs:
       # first to finish saves it, which was never this one, the only job that
       # compiles a wheel (gdal) the cache is there to keep.
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -250,12 +308,9 @@ jobs:
           cache-suffix: goatlib
       # Only suite that needs real gdal (WFS/converter tests). The compiled
       # wheel lands in the uv cache, so the source build runs once per
-      # lockfile change, not per run. `tippecanoe` is needed because
-      # `PMTilesGenerator.__init__` refuses to construct without the binary
-      # on PATH, so the tests/io and tests/unit/io PMTiles suites cannot even
-      # reach their assertions without it.
-      - name: 🌍 Install libgdal-dev and tippecanoe
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgdal-dev tippecanoe
+      # lockfile change, not per run.
+      - name: 🌍 Install libgdal-dev
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgdal-dev
       # routing is the C++ package, and building it is most of this job's
       # install. uv rebuilds a path dependency after every checkout because its
       # files look new, so the wheel is cached here instead. The key covers what
@@ -360,7 +415,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -403,7 +458,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -494,7 +549,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -515,7 +570,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -536,7 +591,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -559,7 +614,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true
@@ -619,7 +674,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v7
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.2"
           enable-cache: true

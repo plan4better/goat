@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogKindOf } from "@/lib/catalog/kind";
+import { ICON_NAME } from "@p4b/ui/components/Icon";
+
+import {
+  catalogKindOf,
+  catalogRasterSource,
+  catalogServiceTiles,
+  catalogTilesUrl,
+  markFor,
+} from "@/lib/catalog/kind";
 import type { CatalogItem, CatalogItemProperties } from "@/lib/validations/catalog";
 
 /**
@@ -54,5 +62,90 @@ describe("catalogKindOf", () => {
     expect(catalogKindOf(item({ "goat:layerType": "raster" }))).toBe("raster");
     expect(catalogKindOf(item({ "goat:layerType": "table" }))).toBe("table");
     expect(catalogKindOf(item({ "goat:layerType": "feature" }))).toBe("vector");
+  });
+
+  it("reads a WMS or WMTS item as such, also as a member that inherited `bundle`", () => {
+    expect(catalogKindOf(item({ "goat:layerType": "wms" }))).toBe("wms");
+    expect(catalogKindOf(item({ "goat:layerType": "wmts" }))).toBe("wmts");
+    const member = {
+      ...item({ "goat:layerType": "bundle", "goat:member_count": 3 }),
+      links: [{ rel: "wmts", href: "https://h/WMTSCapabilities.xml", title: "x" }],
+    };
+    expect(catalogKindOf(member, true)).toBe("wmts");
+    // A vector layer that also offers a map view stays a vector layer.
+    expect(catalogKindOf({ ...member, properties: { ...member.properties, "goat:geometryType": "polygon" } }, true)).toBe(
+      "vector"
+    );
+  });
+
+  it("marks map services and rasters apart", () => {
+    expect(markFor({ kind: "wms" })).toBe(ICON_NAME.WMS);
+    expect(markFor({ kind: "wmts" })).toBe(ICON_NAME.WMS);
+    expect(markFor({ kind: "raster" })).toBe(ICON_NAME.RASTER);
+  });
+});
+
+describe("catalogServiceTiles", () => {
+  it("builds the GetMap tiles from the item's wms links", () => {
+    const wms = {
+      ...item({ "goat:layerType": "wms" }),
+      links: [
+        { rel: "wms", href: "https://vogis.cnv.at/geoserver/ows", title: "vogis:mountainbike_weglaenge" },
+      ],
+    };
+    const tiles = catalogServiceTiles(wms);
+    expect(tiles).toContain("https://vogis.cnv.at/geoserver/ows?bbox={bbox-epsg-3857}");
+    expect(tiles).toContain("layers=vogis:mountainbike_weglaenge");
+    expect(catalogServiceTiles(item({}))).toBeNull();
+    // Only a WMS item draws live; a bundle or feature carrying a WMS link keeps its sample.
+    // A bundle member inherits `bundle` but is still a WMS by its own link; one with geometry is not.
+    expect(catalogServiceTiles({ ...wms, properties: { ...wms.properties, "goat:layerType": "bundle" } })).toContain(
+      "layers=vogis:mountainbike_weglaenge"
+    );
+    expect(
+      catalogServiceTiles({
+        ...wms,
+        properties: { ...wms.properties, "goat:layerType": "bundle", "goat:geometryType": "polygon" },
+      })
+    ).toBeNull();
+    const several = catalogServiceTiles({ ...wms, links: [{ rel: "wms", href: "https://g/ows", title: "a, b" }] });
+    expect(several).toContain("&layers=a,b&");
+    const wmts = {
+      ...item({ "goat:layerType": "wmts" }),
+      links: [
+        { rel: "wmts", href: "https://h/WMTSCapabilities.xml", title: "ortho" },
+        { rel: "xyz", href: "https://h/ortho/{z}/{y}/{x}.png" },
+      ],
+    };
+    expect(catalogServiceTiles(wmts)).toBe("https://h/ortho/{z}/{y}/{x}.png");
+    expect(catalogServiceTiles({ ...wmts, links: wmts.links.slice(0, 1) })).toBeNull();
+  });
+});
+
+const GEOAPI = "https://geoapi.example";
+
+describe("catalogTilesUrl", () => {
+  it("reads the published tiles from geoapi, for an item that says it has them", () => {
+    expect(catalogTilesUrl(item({ "goat:tiles": true }), GEOAPI)).toBe(
+      "https://geoapi.example/collections/catalog:x/tiles/WebMercatorQuad/{z}/{x}/{y}"
+    );
+    // Without published tiles the detail map draws the sample.
+    expect(catalogTilesUrl(item({}), GEOAPI)).toBeNull();
+    // No geoapi address, nowhere to read them from.
+    expect(catalogTilesUrl(item({ "goat:tiles": true }), "")).toBeNull();
+  });
+});
+
+describe("catalogRasterSource", () => {
+  it("reads a raster item from geoapi's raster routes, as a layer's file", () => {
+    expect(catalogRasterSource(item({ "goat:layerType": "raster" }), GEOAPI)).toEqual({
+      tiles: "https://geoapi.example/collections/catalog:x/raster/tiles/{z}/{x}/{y}.webp",
+      tileset: "https://geoapi.example/collections/catalog:x/raster/tiles",
+      coverage: "https://geoapi.example/collections/catalog:x/coverage/tiles/WebMercatorQuad",
+    });
+    // A map service is drawn by its provider, a vector layer by its tiles or its sample.
+    expect(catalogRasterSource(item({ "goat:layerType": "wms" }), GEOAPI)).toBeNull();
+    expect(catalogRasterSource(item({}), GEOAPI)).toBeNull();
+    expect(catalogRasterSource(item({ "goat:layerType": "raster" }), "")).toBeNull();
   });
 });

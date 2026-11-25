@@ -48,6 +48,8 @@ Richten Sie Ihren eigenen Speicher ein, bevor Sie GOAT zum ersten Mal starten. D
 
 - **Assets-Bucket** (`ASSETS_BUCKET_NAME`, Vorgabe `goat-assets`) für Profilbilder und Bilder. Er muss ohne Zugangsdaten unter der Adresse lesbar sein, die Sie als `ASSETS_URL` eintragen. Erlaubt Ihr Speicher keinen öffentlich lesbaren Bucket, lassen Sie ihn weg: Setzen Sie `ASSETS_SERVED_BY_CORE=true` und `ASSETS_URL=<GOAT_PUBLIC_URL>/api/v2/asset/file`. GOAT legt die Bilder dann im Upload-Bucket unter `assets/` ab und liefert sie selbst aus.
 
+Projektexporte und -importe nehmen hochgeladene Symbole und Bilder über die API von GOAT mit: Die Analyse-Worker laden jedes Bild über seinen Link, sie müssen also die Adresse in `ASSETS_URL` erreichen (mit `ASSETS_SERVED_BY_CORE` auch die öffentliche Adresse des Upload-Buckets). processes gibt diesen Jobs die Adresse von core als `CORE_URL` mit; das Bundle setzt sie auf `http://core:8000`.
+
 Auf beide Buckets wird mit demselben Zugangsschlüssel zugegriffen.
 
 ### 2. `.env` einrichten {#s3-env}
@@ -217,7 +219,7 @@ Der Assistent gehört zu jeder Installation. Er bleibt verborgen, bis ein Sprach
   ```
 
   Welche von `ASSISTANT_DEFAULT_API_KEY`, `ASSISTANT_DEFAULT_BASE_URL` und `ASSISTANT_DEFAULT_REGION` ein Anbieter braucht, steht in der [Konfigurationsreferenz](./configuration.md#assistant).
-- **Eine eigene Verbindung der Organisation.** Ein Administrator der Organisation legt sie unter <code>Einstellungen</code> → <code>KI</code> an. Die Zugangsdaten werden mit `ASSISTANT_SECRETS_KEY` verschlüsselt gespeichert, den `setup.sh` erzeugt.
+- **Eine eigene Verbindung der Organisation.** Ein Admin der Organisation legt sie unter <code>Einstellungen</code> → <code>KI</code> an. Die Zugangsdaten werden mit `ASSISTANT_SECRETS_KEY` verschlüsselt gespeichert, den `setup.sh` erzeugt.
 
 Übernehmen Sie Änderungen mit `docker compose up -d`. Danach finden die Benutzer <code>KI fragen</code> in der oberen Leiste.
 
@@ -256,7 +258,15 @@ docker compose exec assistant python -m assistant.dbcheck
 
 Der Befehl gibt `ok` aus oder listet jedes fehlende Recht auf.
 
-**Datenverarbeitung.** Fragen von Benutzern und, je nach Datenrichtlinie der Organisation, Daten aus GOAT gehen an den Modellanbieter der verwendeten Verbindung. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Die Datenrichtlinie einer Organisation ist **Eingeschränkt**, bis eine Administratorin oder ein Administrator der Organisation unter **Einstellungen → KI** **Standard** wählt: Bis dahin verlassen nur Feldnamen, Typen, Anzahlen und Statistiken GOAT, niemals Zeilen oder Geometrien.
+**Datenverarbeitung.** Fragen von Benutzern und die Daten, die der Assistent für die Antwort liest, gehen an den Modellanbieter der verwendeten Verbindung: alles, was der Benutzer in GOAT sehen kann, einschließlich Beispielzeilen und Abfrageergebnissen. Bei GOAT AI ist das der Anbieter, den Sie einrichten; bei einer eigenen Verbindung der Anbieter der Organisation. Eine Organisation, deren Daten nicht an den Anbieter von GOAT AI gehen sollen, schaltet KI unter **Einstellungen → KI** aus oder nutzt eine eigene Verbindung ohne Ausweichen auf GOAT AI. Informieren Sie die Admins Ihrer Organisationen, bevor Sie GOAT AI aktivieren, und stellen Sie sicher, dass Ihre Vereinbarung mit dem Modellanbieter deren Daten abdeckt.
+
+**Upgrade von einem Release mit Datenrichtlinien.** Frühere Releases hatten eine zweite Datenrichtlinie, **Eingeschränkt**, die Zeilen, Objekte, Geometrien, Summen und Mittelwerte vom Modell zurückhielt. Sie entfällt. Eine Organisation, die Eingeschränkt gewählt hatte, behält GOAT AI eingeschaltet und sendet ab dem Upgrade, was jede andere Organisation sendet. Solche Organisationen finden Sie vor dem Upgrade mit dieser Abfrage in der Datenbank von GOAT:
+
+```sql
+SELECT organization_id FROM assistant.organization_settings WHERE data_policy = 'restricted';
+```
+
+Informieren Sie deren Admins, damit sie KI ausschalten oder eine eigene Verbindung wählen können, wenn sie das nicht möchten. Führen Sie die Abfrage vor dem Upgrade aus: Sobald eine Organisation ihre KI-Einstellungen im neuen Release speichert, steht in ihrer Zeile `standard`.
 
 ## Optionale Integrationen {#integrations}
 
@@ -266,9 +276,11 @@ GOAT funktioniert ohne jede dieser Integrationen. Jede schaltet eine Funktion fr
 |---|---|---|
 | `NEXT_PUBLIC_MAPTILER_KEY` | Die Satelliten-/Hybrid-Grundkarte von MapTiler | Diese Grundkarte wird ausgeblendet; die anderen Grundkarten funktionieren |
 | `NEXT_PUBLIC_MAPBOX_TOKEN` | Die Ortssuche im Suchfeld der Karte (über Mapbox) | Das Suchfeld findet keine Orte |
-| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | Den GOAT-Datenkatalog: ein schreibgeschützter Bucket mit den harmonisierten Datensätzen, der regelmäßig gespiegelt wird. Er enthält auch den Spiegel von OpenStreetMap und Overture Maps ([Details](#open-data-mirror)) | Der Katalog bleibt leer, seine Synchronisierung ist ausgeschaltet, und die Bereiche OpenStreetMap und Overture Maps finden keine Daten |
+| `CATALOG_S3_BUCKET`, `CATALOG_S3_ENDPOINT_URL`, `CATALOG_S3_ACCESS_KEY_ID`, `CATALOG_S3_SECRET_ACCESS_KEY`, `CATALOG_S3_REGION` | Den GOAT-Datenkatalog: ein schreibgeschützter Bucket mit den harmonisierten Datensätzen, der regelmäßig gespiegelt wird. Auf der Katalogseite sehen angemeldete Nutzer außerdem die Daten eines Datensatzes, bevor sie ihn hinzufügen; sie werden aus diesem Bucket gelesen. Er enthält auch den Spiegel von OpenStreetMap und Overture Maps ([Details](#open-data-mirror)) | Der Katalog bleibt leer, seine Synchronisierung ist ausgeschaltet, und die Bereiche OpenStreetMap und Overture Maps finden keine Daten |
 | `GEOCODING_URL`, `GEOCODING_AUTHORIZATION` | Den Geocoding-Dienst, den Analyse-Werkzeuge verwenden | Analyseschritte, die Geocoding benötigen, können nicht laufen |
 | `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT` | Den Export von Traces, Metriken und Logs an Ihren OpenTelemetry-Collector | Es wird nichts exportiert |
+
+Gelände und Gebäude der 3D-Ansicht sind standardmäßig eingeschaltet; siehe [Quellen der 3D-Ansicht](#map-3d).
 
 Die Links, die in der App erscheinen, und die Quelle der Produktgrafiken finden Sie in der [Konfigurationsreferenz](./configuration.md#integrations). Die Quelle der Routing-Basisdaten ist unter [Routing-Basisdaten](./operations.md#base-data) beschrieben.
 
@@ -277,3 +289,29 @@ Die Links, die in der App erscheinen, und die Quelle der Produktgrafiken finden 
 Die Bereiche OpenStreetMap und Overture Maps unter *Layer hinzufügen › Daten abrufen / verbinden* kopieren die Features eines Gebiets in einen GOAT-Layer. Sie lesen aus einem Spiegel beider Datensätze, der als GeoParquet im Katalog-Bucket (`CATALOG_S3_*`) unter `mirror/osm` und `mirror/overture` liegt. Der Spiegel gehört nicht zu einer GOAT-Installation; eine eigene Pipeline legt ihn dort neben dem Katalog ab. Zwei Teile von GOAT lesen ihn: `processes` füllt die Attribut- und Wertelisten im Dialog, und der Windmill-Worker `tools` führt das Kopieren aus. Mehr ist nicht einzustellen: Ohne Katalog-Bucket finden die beiden Bereiche keine Daten.
 
 Die Lizenz wird an jedem neuen Layer vermerkt: ODbL 1.0 für OpenStreetMap, CDLA-Permissive 2.0 für Overture-Orte und ODbL 1.0 für die übrigen Overture-Typen.
+
+## Quellen der 3D-Ansicht {#map-3d}
+
+In 3D kann die Karte Gelände und 3D-Gebäude zeigen (siehe [3D-Ansicht](../../map/map_interface.md#3d-view)). Beides kommt von Kachelservern außerhalb Ihrer Installation, und die Browser der Betrachter laden es direkt. Beides ist standardmäßig eingeschaltet und braucht weder ein Konto noch einen Schlüssel.
+
+| Einstellung | Was sie ist | Standard | Wenn leer |
+|---|---|---|---|
+| `TERRAIN_TILES_URL` | Höhenkacheln für das Gelände und seine Schummerung: Terrarium-kodierte Kacheln, 512 px, mit `{z}/{x}/{y}` in der Adresse | Der öffentliche Server von Mapterhorn, `https://tiles.mapterhorn.com/{z}/{x}/{y}.webp` | *Gelände* ist ausgeblendet, und es wird keine Geländekachel angefragt |
+| `BUILDINGS_TILES_URL` | Das TileJSON einer Vektorquelle im OpenMapTiles-Schema. Ihr Layer `building` liefert 3D-Gebäude auf Grundkarten, die keine mitbringen: Raster-, einfarbige und eigene Grundkarten. Die eingebauten Vektor-Grundkarten bringen eigene Gebäude mit und nutzen sie nicht. | OpenFreeMap, `https://tiles.openfreemap.org/planet` | *3D-Gebäude* ist auf diesen Grundkarten ausgeblendet |
+
+Das Paket gibt jeden Wert an die Web-App und an core: Der Browser lädt die Kacheln, und core prüft die 3D-Einstellungen eines Projekts gegen die Quellen, die Ihre Installation hat. Mapterhorn ist ein ehrenamtliches Projekt ohne Service-Level-Vereinbarung. Ist sein Server nicht erreichbar, lädt das Gelände nicht, und die Karte bleibt nutzbar.
+
+### Datenschutz {#map-3d-privacy}
+
+Solange eine Karte Gelände zeigt, fragt der Browser jedes Betrachters Kacheln beim Server von Mapterhorn an. Er läuft bei Cloudflare, das IP-Adresse, Referrer und User-Agent jeder Anfrage bis zu 30 Tage protokolliert (siehe die [Datenschutzerklärung von Mapterhorn](https://mapterhorn.com/privacy-policy/)). Die Gebäudekacheln werden auf dieselbe Weise bei OpenFreeMap angefragt. Nennen Sie diese Anbieter in Ihrer Datenschutzerklärung, lassen Sie die Einstellungen auf eine selbst betriebene Kopie zeigen, oder setzen Sie sie leer, um die Funktionen auszuschalten.
+
+### Quellenangaben {#map-3d-credits}
+
+Solange Gelände eingeschaltet ist, zeigen die Quellenangaben der Karte "© Mapterhorn" mit einem Link auf [mapterhorn.com/attribution](https://mapterhorn.com/attribution), wo jede Quelle der Höhendaten aufgeführt ist. 3D-Gebäude tragen die Quellenangaben ihrer Quelle, etwa OpenFreeMap, OpenMapTiles und OpenStreetMap. Gedruckte Layouts und Vorschaubilder zeigen keine Quellenangaben der Karte; fügen Sie einem Layout, das sie braucht, ein Textelement hinzu.
+
+### Eigene Geländekacheln {#map-3d-own-terrain}
+
+Mapterhorn veröffentlicht seine Daten als PMTiles-Dateien ([Data Access](https://mapterhorn.com/data-access)). Die ganze Welt bis Zoomstufe 12 umfasst etwa 330 GiB, und `pmtiles extract --bbox=...` schneidet die Region aus, die Sie brauchen. Stellen Sie die Kacheln als Terrarium-WebP unter `{z}/{x}/{y}` bereit, etwa mit einem PMTiles-Kachelserver, und tragen Sie diese Adresse in `TERRAIN_TILES_URL` ein. Die Quellenangabe bleibt "© Mapterhorn". Stellen Sie die Daten selbst bereit, gelten die Lizenzen ihrer Quellen für Ihre Installation: Machen Sie die auf [mapterhorn.com/attribution](https://mapterhorn.com/attribution) aufgeführten Quellenangaben für die Regionen, die Sie bereitstellen, von GOAT aus erreichbar, etwa den Copernicus-Hinweis, die Quellenvermerke der Bundesländer (`dl-de/by-2-0`) und ©swisstopo.
+
+Für die Gebäude eignet sich jede Vektorkachelquelle im OpenMapTiles-Schema mit einem TileJSON, etwa Ihr eigener OpenFreeMap- oder OpenMapTiles-Server.
+

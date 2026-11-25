@@ -1,4 +1,4 @@
-"""One execution path for every tool call (spec §4.7, §7.1, §7.5)."""
+"""One execution path for every tool call (spec §7.1, §7.5)."""
 
 import asyncio
 import json
@@ -12,7 +12,6 @@ from pydantic_ai.exceptions import ToolFailed
 from assistant.db import Database
 from assistant.login import LoginFailed, StaticLogin
 from assistant.repo import Repository
-from assistant.tools.policy import Withheld, apply_policy
 from assistant.tools.runtime import (
     MAX_RESULT_BYTES,
     InputInvalid,
@@ -35,28 +34,8 @@ class EchoOut(BaseModel):
     echoed: str
 
 
-class Rows(BaseModel):
-    rows: list[dict[str, Any]]
-    count: int
-
-    def restricted(self) -> "Rows":
-        return Rows(rows=[], count=self.count)
-
-
-class Unrestrictable(BaseModel):
-    rows: list[dict[str, Any]]
-
-
 async def _echo(env: ToolEnv, args: EchoIn) -> EchoOut:
     return EchoOut(echoed=args.text * args.times)
-
-
-async def _rows(env: ToolEnv, args: EchoIn) -> Rows:
-    return Rows(rows=[{"name": "A"}], count=1)
-
-
-async def _raw_rows(env: ToolEnv, args: EchoIn) -> Unrestrictable:
-    return Unrestrictable(rows=[{"name": "A"}])
 
 
 async def _huge(env: ToolEnv, args: EchoIn) -> EchoOut:
@@ -67,9 +46,7 @@ async def _broken(env: ToolEnv, args: EchoIn) -> EchoOut:
     raise RuntimeError("database password is hunter2")
 
 
-def _spec(
-    run: Any, output: type[BaseModel] = EchoOut, *, returns_data: bool
-) -> ToolSpec[Any, Any]:
+def _spec(run: Any, output: type[BaseModel] = EchoOut) -> ToolSpec[Any, Any]:
     return ToolSpec(
         name="test.echo",
         description="Echo a text.",
@@ -77,7 +54,6 @@ def _spec(
         output_model=output,
         run=run,
         surfaces=frozenset({"none"}),
-        returns_data=returns_data,
     )
 
 
@@ -94,7 +70,7 @@ async def _audit(db: Database) -> list[dict[str, Any]]:
 async def test_a_call_runs_and_is_audited(repo: Repository, db: Database) -> None:
     env = tool_env(fake_clients(), repo=repo)
     payload = await execute(
-        _spec(_echo, returns_data=False),
+        _spec(_echo),
         env,
         {"text": "ab", "times": 2},
         tool_call_id="call-1",
@@ -119,47 +95,16 @@ async def test_invalid_arguments_tell_the_model_what_to_fix(
 ) -> None:
     env = tool_env(fake_clients(), repo=repo)
     with pytest.raises(InputInvalid) as caught:
-        await execute(_spec(_echo, returns_data=False), env, {"times": 9})
+        await execute(_spec(_echo), env, {"times": 9})
     assert "text" in caught.value.message and "times" in caught.value.message
     [row] = await _audit(db)
     assert row["status"] == "invalid"
 
 
-async def test_the_data_policy_applies_to_data_tools_only() -> None:
-    standard = tool_env(fake_clients())
-    restricted = tool_env(fake_clients(), data_policy="restricted")
-    assert await execute(
-        _spec(_rows, Rows, returns_data=True), standard, {"text": "a"}
-    ) == {
-        "rows": [{"name": "A"}],
-        "count": 1,
-    }
-    assert await execute(
-        _spec(_rows, Rows, returns_data=True), restricted, {"text": "a"}
-    ) == {
-        "rows": [],
-        "count": 1,
-    }
-    # Not flagged: the policy does not touch it.
-    assert await execute(
-        _spec(_echo, returns_data=False), restricted, {"text": "a"}
-    ) == {"echoed": "a"}
-
-
-async def test_data_tool_without_restricted_form_fails_closed() -> None:
-    """Review Focus 4: a data tool that forgot its Restricted form sends nothing."""
-    env = tool_env(fake_clients(), data_policy="restricted")
-    payload = await execute(
-        _spec(_raw_rows, Unrestrictable, returns_data=True), env, {"text": "a"}
-    )
-    assert payload == Withheld().model_dump(mode="json")
-    assert "rows" not in payload
-
-
 async def test_an_oversized_result_is_refused(repo: Repository, db: Database) -> None:
     env = tool_env(fake_clients(), repo=repo)
     with pytest.raises(ToolFailed, match="too large"):
-        await execute(_spec(_huge, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_huge), env, {"text": "a"})
     [row] = await _audit(db)
     assert row["status"] == "error"
     assert row["result_bytes"] > MAX_RESULT_BYTES
@@ -170,7 +115,7 @@ async def test_an_unexpected_error_does_not_leak(
 ) -> None:
     env = tool_env(fake_clients(), repo=repo)
     with pytest.raises(ToolFailed) as caught:
-        await execute(_spec(_broken, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_broken), env, {"text": "a"})
     assert "hunter2" not in caught.value.message
     [row] = await _audit(db)
     assert row["error"] == "internal error"
@@ -182,9 +127,7 @@ async def test_a_failing_audit_does_not_fail_the_tool() -> None:
             raise RuntimeError("database down")
 
     env = tool_env(fake_clients(), repo=BrokenRepo())  # type: ignore[arg-type]
-    assert await execute(_spec(_echo, returns_data=False), env, {"text": "a"}) == {
-        "echoed": "a"
-    }
+    assert await execute(_spec(_echo), env, {"text": "a"}) == {"echoed": "a"}
 
 
 async def test_an_expired_login_is_a_tool_failure() -> None:
@@ -201,7 +144,7 @@ async def test_an_expired_login_is_a_tool_failure() -> None:
 
     env = tool_env(fake_clients(), login=Expired())
     with pytest.raises(ToolFailed, match="sign-in has expired"):
-        await execute(_spec(_calls, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_calls), env, {"text": "a"})
 
 
 async def test_a_cancelled_call_is_audited_as_cancelled(
@@ -215,15 +158,115 @@ async def test_a_cancelled_call_is_audited_as_cancelled(
         return EchoOut(echoed="late")
 
     env = tool_env(fake_clients(), repo=repo)
-    task = asyncio.create_task(
-        execute(_spec(_slow, returns_data=False), env, {"text": "a"})
-    )
+    task = asyncio.create_task(execute(_spec(_slow), env, {"text": "a"}))
     await started.wait()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
     [row] = await _audit(db)
     assert (row["status"], row["error"]) == ("error", "cancelled")
+
+
+class _Rows:
+    """The audit rows a call leaves, in memory."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+
+    async def insert_tool_call(self, **row: Any) -> None:
+        self.rows.append(row)
+
+
+class _Written(BaseModel):
+    echoed: str
+
+    def undo(self) -> dict[str, Any] | None:
+        return {"kind": "test", "from": "result"}
+
+
+def _landing(stop: BaseException | None) -> Any:
+    """A write tool whose first write lands, then ``stop`` ends the call (None:
+    it returns its result)."""
+
+    async def run(env: ToolEnv, args: EchoIn) -> _Written:
+        env.landed.keep(lambda: {"kind": "test", "from": "holder", "text": args.text})
+        if stop is not None:
+            raise stop
+        return _Written(echoed=args.text)
+
+    return run
+
+
+@pytest.mark.parametrize(
+    ("stop", "raised"),
+    [
+        (asyncio.CancelledError(), asyncio.CancelledError),
+        (ToolFailed("core refused the second write"), ToolFailed),
+        (RuntimeError("boom"), ToolFailed),
+        (InputInvalid("a late refusal"), InputInvalid),
+    ],
+)
+async def test_a_call_that_ends_after_a_landed_write_keeps_its_undo_record(
+    stop: BaseException, raised: type[BaseException]
+) -> None:
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(raised):
+        await execute(_spec(_landing(stop), _Written), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] == {"kind": "test", "from": "holder", "text": "a"}
+    assert row["status"] in ("error", "invalid")
+
+
+async def test_a_returned_result_s_undo_record_comes_before_the_holder() -> None:
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    await execute(_spec(_landing(None), _Written), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] == {"kind": "test", "from": "result"}
+
+
+async def test_a_call_stopped_before_any_write_leaves_no_undo_record() -> None:
+    async def _stopped(env: ToolEnv, args: EchoIn) -> EchoOut:
+        raise asyncio.CancelledError()
+
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(asyncio.CancelledError):
+        await execute(_spec(_stopped), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] is None
+
+
+async def test_each_call_gets_its_own_undo_holder() -> None:
+    seen: list[Any] = []
+
+    async def _sees(env: ToolEnv, args: EchoIn) -> EchoOut:
+        seen.append(env.landed)
+        return EchoOut(echoed="a")
+
+    env = tool_env(fake_clients())
+    await execute(_spec(_sees), env, {"text": "a"})
+    await execute(_spec(_sees), env, {"text": "a"})
+    assert seen[0] is not seen[1] and seen[0] is not env.landed
+
+
+async def test_a_holder_that_fails_to_build_its_record_does_not_fail_the_audit() -> (
+    None
+):
+    async def _broken_holder(env: ToolEnv, args: EchoIn) -> EchoOut:
+        def broken() -> dict[str, Any]:
+            raise KeyError("x")
+
+        env.landed.keep(broken)
+        raise asyncio.CancelledError()
+
+    rows = _Rows()
+    env = tool_env(fake_clients(), repo=rows)  # type: ignore[arg-type]
+    with pytest.raises(asyncio.CancelledError):
+        await execute(_spec(_broken_holder), env, {"text": "a"})
+    [row] = rows.rows
+    assert row["undo"] is None and row["error"] == "cancelled"
 
 
 def test_long_arguments_are_shortened_for_the_audit() -> None:
@@ -240,7 +283,7 @@ def test_long_arguments_are_shortened_for_the_audit() -> None:
 
 
 def test_wire_names_use_underscores() -> None:
-    spec = _spec(_echo, returns_data=False)
+    spec = _spec(_echo)
     assert spec.wire_name == "test_echo"
     schema = spec.json_schema()
     assert "title" not in schema
@@ -267,12 +310,12 @@ async def test_tokens_never_reach_the_audit_row_or_the_log(
         extra_secrets=[CLIENT_SECRET],
     )
     with pytest.raises(ToolFailed) as caught:
-        await execute(_spec(_leaky, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_leaky), env, {"text": "a"})
     assert TOKEN not in caught.value.message
     assert CLIENT_SECRET not in caught.value.message
     assert caught.value.message == "The service rejected … and …"
     with caplog.at_level("ERROR"), pytest.raises(ToolFailed):
-        await execute(_spec(_crashing, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_crashing), env, {"text": "a"})
     rows = await _audit(db)
     assert len(rows) == 2
     for row in rows:
@@ -302,7 +345,7 @@ async def test_invalid_input_messages_are_masked(
         extra_secrets=[CLIENT_SECRET],
     )
     with pytest.raises(InputInvalid) as caught:
-        await execute(_spec(_quoting, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_quoting), env, {"text": "a"})
     assert caught.value.message == "The service rejected the filter: … …"
     [row] = await _audit(db)
     assert (row["status"], row["error"]) == (
@@ -320,34 +363,9 @@ async def test_a_failing_audit_log_masks_secrets(
 
     env = tool_env(fake_clients(), repo=BrokenRepo(), login=StaticLogin(TOKEN))  # type: ignore[arg-type]
     with caplog.at_level("ERROR"):
-        await execute(_spec(_echo, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_echo), env, {"text": "a"})
     assert "Recording the call" in caplog.text
     assert TOKEN not in caplog.text
-
-
-class Same(BaseModel):
-    rows: list[int]
-
-    def restricted(self) -> "Same":
-        return self
-
-
-def test_a_restricted_form_that_reduces_nothing_is_withheld() -> None:
-    result = Same(rows=[1])
-    assert apply_policy("restricted", result) == Withheld()
-    assert apply_policy("standard", result) is result
-
-
-async def test_a_withheld_result_is_audited_as_withheld(
-    repo: Repository, db: Database
-) -> None:
-    env = tool_env(fake_clients(), repo=repo, data_policy="restricted")
-    payload = await execute(
-        _spec(_raw_rows, Unrestrictable, returns_data=True), env, {"text": "a"}
-    )
-    assert payload == Withheld().model_dump(mode="json")
-    [row] = await _audit(db)
-    assert (row["status"], row["error"]) == ("withheld", None)
 
 
 async def test_an_unclassified_exit_is_audited_as_an_error(
@@ -358,7 +376,7 @@ async def test_an_unclassified_exit_is_audited_as_an_error(
 
     env = tool_env(fake_clients(), repo=repo)
     with pytest.raises(KeyboardInterrupt):
-        await execute(_spec(_exits, returns_data=False), env, {"text": "a"})
+        await execute(_spec(_exits), env, {"text": "a"})
     [row] = await _audit(db)
     assert row["status"] == "error"
 

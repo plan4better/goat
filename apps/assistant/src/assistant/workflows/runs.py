@@ -135,6 +135,21 @@ class RunSummary(BaseModel):
     #: saved layer's fields the run added first (``first_added``); never
     #: serialized.
     added: frozenset[str] = Field(default=frozenset(), exclude=True)
+    #: The tool started this run (not refused, not a wait on a run already
+    #: going); never serialized.
+    started_here: bool = Field(default=False, exclude=True)
+
+    def created(self) -> dict[str, Any] | None:
+        """What the audit row keeps as created: the job of a run the tool
+        started, None for one that started nothing (``undo_changes`` reads
+        it to tell them apart)."""
+        if not self.started_here or self.job_id is None:
+            return None
+        return {
+            "kind": "workflow_run",
+            "ids": [self.job_id],
+            "workflow_id": self.workflow_id,
+        }
 
 
 def _clip(value: Any) -> str | None:

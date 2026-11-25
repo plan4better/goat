@@ -105,7 +105,11 @@ Dieser Tab enthält kategorisierte Werkzeuge, die für die Workflow-Konstruktion
 - **Daten I/O**
   - <code>+ Datensatz hinzufügen</code>: Erstellt Datensatz-Knoten
   - <code>Daten abrufen</code>: Ruft OpenStreetMap- oder Overture-Maps-Features aus der Kopie von GOAT ab, bei jeder Ausführung neu. Der Knoten hat keinen Eingang. Beschrieben unten unter **Knoten Daten abrufen**.
-  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Konfigurieren Sie den **Datensatznamen** (Feld <code>Datensatzname</code>), aktivieren Sie **Zum Projekt hinzufügen**, um das Ergebnis automatisch zur Projektlayerliste hinzuzufügen, und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das zuvor exportierte Dataset bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen. Direkt mit einem Datensatz-Knoten verbunden, speichert der Knoten die Features, die dem Filter des Datensatz-Knotens entsprechen, im Stil des Datensatzes.
+  - <code>Als Datensatz speichern</code>: Speichert Workflow-Ergebnisse als permanente Datensätze. Wählen Sie unter **Speichern in** eine der beiden Optionen:
+    - `Neuer Datensatz`: Das Ergebnis wird ein eigener Datensatz. Geben Sie den **Datensatznamen** ein und aktivieren Sie **Bei erneutem Ausführen überschreiben**, um das vorherige Ergebnis bei jeder Ausführung des Workflows zu ersetzen, anstatt einen neuen Datensatz zu erstellen.
+    - `Bestehender Datensatz`: Die Zeilen werden an einen Datensatz angehängt, den Sie bearbeiten dürfen. Klicken Sie auf `Datensatz wählen` und wählen Sie den **Zieldatensatz**, einen Feature-Layer oder eine Tabelle. Ohne Bearbeitungsrechte schlägt der Schritt beim Ausführen des Workflows fehl.
+
+    In beiden Fällen fügt **Zum Projekt hinzufügen** das Ergebnis zur Projektlayerliste hinzu. Direkt mit einem Datensatz-Knoten verbunden, speichert der Knoten die Features, die dem Filter des Datensatz-Knotens entsprechen, im Stil des Datensatzes.
 
 :::tip Gute Praxis
 Vergeben Sie für jeden **Als Datensatz speichern**-Knoten einen aussagekräftigen Namen und aktivieren Sie **Bei erneutem Ausführen überschreiben**, wenn Sie denselben Workflow mehrfach ausführen. So bleibt Ihr Projekt übersichtlich und es entstehen keine doppelten Layer nach jeder Ausführung.
@@ -146,12 +150,7 @@ Wenn ein **Datensatz-Knoten** ausgewählt ist, erscheint das Datensatz-Panel mit
 
 **Quelle Tab**: Zeigen Sie Metadaten aus der Datenquelle an und greifen Sie auf Tabellen- und Kartenansichten zu. Sie können auch den dem Knoten zugewiesenen Datensatz von diesem Tab aus ändern.
 
-Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen.
-
-**Filter Tab** schon vor der ersten Ausführung eingerichtet werden können. Mit <code>Bearbeiten</code> öffnen Sie die Auswahl erneut.
-- Jede Ausführung holt die Daten neu, das Ergebnis folgt also Änderungen in der Quelle.
-- Kann die Verbindung nicht ausgeführt werden, zeigt der Knoten ein Hinweis-Symbol mit dem Grund, zum Beispiel wenn eine Ausführung stoppte, weil der WFS nicht erreichbar war.
-- Es werden höchstens 1.000.000 Features abgerufen, sehr große Gebiete werden abgelehnt. <code>Im Workflow verwenden</code> bleibt deaktiviert, bis die Auswahl gültig ist, und nennt den Grund.
+Ein leerer Datensatz-Knoten zeigt <code>Datensatz hinzufügen</code> mit zwei Quellen: <code>Aus Projekt</code> und <code>Meine Datensätze</code>. Sobald ein Datensatz gesetzt ist, wählen Sie mit <code>Datensatz ändern</code> einen anderen. Workflows verwenden Feature-Layer und Tabellen; Raster-Layer werden nicht angeboten und lassen sich nicht auf die Leinwand ziehen.
 
 **Filter Tab**: Wenden Sie spezifische Filter für den Workflow an, ohne die ursprüngliche Ebene zu beeinträchtigen.
 
@@ -300,8 +299,8 @@ Sie können den Assistenten auch bitten, einen Workflow des geöffneten Projekts
 - Der Assistent liest den Workflow zuerst und ändert nur, worum Sie bitten: Schritte, Einstellungen, Verbindungen und Textkarten. Einen Workflow löscht er nie.
 - Er prüft den geänderten Workflow mit derselben Prüfung wie der Editor und speichert keine Änderung, die einen Fehler hinzufügt. In seiner Antwort nennt er, was er geändert hat.
 - Ist der Workflow im Editor geöffnet, zeigt die Leinwand die Änderung sofort. `Strg+Z` (unter macOS `⌘+Z`) auf der Leinwand nimmt die Änderung in einem Schritt zurück.
-- Unter einer Antwort, die einen Workflow geändert hat, steht <code>Rückgängig</code>; bei älteren Antworten zeigen Sie auf die Antwort, um es zu sehen. Ein Klick nimmt alle Änderungen dieser Antwort zurück, auch wenn der Workflow nicht geöffnet ist. Die Schaltfläche lautet danach <code>Rückgängig gemacht</code>.
-- Wurde der Workflow nach der Antwort erneut gespeichert, fragt <code>Rückgängig</code> zuerst nach und nennt, wer ihn wann geändert hat. <code>Trotzdem rückgängig machen</code> nimmt auch diese späteren Änderungen zurück. Hat der Editor Änderungen, die noch nicht gespeichert sind, fragt <code>Rückgängig</code> ebenfalls; nach <code>Trotzdem rückgängig machen</code> wählen Sie im Hinweis oben auf der Leinwand, welche Fassung bleibt.
+- Bei einer Antwort, die einen Workflow geändert hat, steht <code>Rückgängig</code> am Ende der Zeile, die die Änderung nennt, zum Beispiel <code>Workflow geändert</code>; bei älteren Antworten zeigen Sie auf die Antwort, um es zu sehen. Ein Klick nimmt alle Änderungen dieser Antwort zurück, auch wenn der Workflow nicht geöffnet ist. Die Zeile zeigt danach <code>Rückgängig gemacht</code>.
+- Wurde der Workflow nach der Antwort erneut gespeichert, fragt <code>Rückgängig</code> zuerst nach; zeigen Sie auf die Frage, um zu sehen, wer ihn wann geändert hat. <code>Trotzdem rückgängig machen</code> nimmt auch diese späteren Änderungen zurück. Hat der Editor Änderungen, die noch nicht gespeichert sind, fragt <code>Rückgängig</code> ebenfalls; nach <code>Trotzdem rückgängig machen</code> wählen Sie im Hinweis oben auf der Leinwand, welche Fassung bleibt.
 
 ### Einen Workflow mit dem KI-Assistenten ausführen
 

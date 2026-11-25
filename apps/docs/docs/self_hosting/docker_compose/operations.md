@@ -14,7 +14,7 @@ User accounts live in Keycloak; organizations, teams and roles live in GOAT.
 
 The Keycloak admin console is at `<GOAT URL>/keycloak/admin`. Sign in with the user `admin` and the password `KEYCLOAK_ADMIN_PASSWORD` from `.env`. GOAT's users are in the realm `goat` (`REALM_NAME`).
 
-To add a user, invite them in GOAT: open <code>Settings</code> → <code>Organization</code> → <code>Members</code>, click <code>New Member</code>, enter the email address, choose the role and click <code>Send Invite</code>.
+To add a user, invite them in GOAT: open <code>Settings</code> → <code>Organization</code> → <code>Members</code>, click <code>Invite members</code>, enter one or more email addresses, choose the role and click <code>Send invitation</code>.
 
 Self-registration is switched off in the bundled realm, so GOAT creates the login account for an address that does not have one yet:
 
@@ -29,7 +29,7 @@ A user belongs to exactly one organization. Whoever signs in without an organiza
 
 To prevent this, set `ALLOW_ORGANIZATION_CREATION=false`. Only accounts with the Keycloak realm role `superuser` can then create organizations; everyone else sees the page <code>Waiting for an invitation</code> until an invitation arrives, which then opens by itself. The bundled realm gives no account that role, so set up your organization before you switch creation off, or create the realm role `superuser` in the admin console and assign it to your account.
 
-If someone already set up an organization by mistake, a superuser can delete it permanently with `DELETE /api/v2/organizations/{organization_id}/permanent` (`GET /api/v2/organizations` lists all organizations with their ids). This works only while the organization has at most one member and nothing in it: no content in its space or in the member's personal space (trash included), no teams, no pending invitations, no custom domains and no analytics settings. Otherwise GOAT answers `409` and names what is left. The person keeps their account and can then be invited. An organization whose last member is gone can be deleted the same way. <code>Delete Organization</code> in the organization settings only suspends an organization.
+If someone already set up an organization by mistake, a superuser can delete it permanently with `DELETE /api/v2/organizations/{organization_id}/permanent` (`GET /api/v2/organizations` lists all organizations with their ids). This works only while the organization has at most one member and nothing in it: no content in its space or in the member's personal space (trash included), no teams, no pending invitations, no custom domains and no analytics settings. Otherwise GOAT answers `409` and names what is left. The person keeps their account and can then be invited. An organization whose last member is gone can be deleted the same way. <code>Delete organization</code> in the organization settings only suspends an organization.
 
 Billing is not touched. With Stripe billing on, the organization's Stripe customer and its subscription stay in Stripe; the answer names the customer in `stripe_id`. Cancel that customer in Stripe. Until then, Stripe's events for it find no organization to change, and its former owner gets no email.
 
@@ -151,6 +151,24 @@ The assistant keeps its conversations in the `assistant` schema of GOAT's databa
    docker compose up -d   # database migrations run automatically
    ./smoke.sh --quick
    ```
+
+Releases that convert stored data say so in their release notes. The release that introduces GOAT Style, the new layer styles, converts every stored style while the database migrates (tens of thousands of styles take about a minute) and keeps the old styles for one release. To go back, restore the backup from step 1: style changes made after the upgrade are lost. Map thumbnails are drawn again once, the next time the thumbnail job runs. A published project whose layers were restyled after its last publish lists those layers as unpublished changes: they never were published, and the public map stays as it is until you publish again.
+
+From that release on, GOAT stores the extent of a raster layer added from a COG file, so zoom to layer and map previews find it. Layers added before have none. Once the new release runs, fill them in once:
+
+```bash
+docker compose run --rm --no-deps geoapi python -m geoapi.scripts.backfill_raster_extents
+```
+
+It reads only each file's header and changes only layers without an extent, so running it again does no harm; `--dry-run` lists what it would store. A file it cannot reach is logged and its layer keeps no extent; the map then asks for the file's bounds when it needs them. It runs in a new geoapi container, which trusts `GOAT_CA_BUNDLE` as the service does.
+
+The same release tiles point layers with a new recipe. In [Windmill](#windmill), run the task `f/goat/tasks/sync_pmtiles` once with `force` off: it rebuilds the tiles of existing point layers and leaves the layers whose tiles are current.
+
+Ask users to reload GOAT tabs that were open during the upgrade: a tab that still runs the old version sends styles the old way, and core refuses those saves (422) until the tab is reloaded. API scripts that still send `properties` when they update a layer, a project layer or a layer group get the same answer, with a message that names the style routes.
+
+The upgrade also converts saved filters with a negation ("is not", "is none of", "does not contain the text" and the negated date conditions) into the form the filter panel writes now: they keep the features without a value, so a map with such a filter can show more features than before.
+
+The migration commits the new columns first and then converts the styles while the running release keeps serving. If a long-running transaction holds one of the tables, the migration stops after a few seconds with a lock timeout error and changes nothing more: run the upgrade again.
 
 ## Logs {#logs}
 

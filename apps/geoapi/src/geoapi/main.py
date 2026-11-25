@@ -14,9 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from goatlib.api import RootPathMiddleware, mount_api_docs
 from goatlib.auth import JOSEError
 from goatobs import build_auth_context_middleware, setup_observability
+from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.gzip import GZipMiddleware, GZipResponder
 from starlette.responses import JSONResponse
+from starlette.types import Message
 
 from geoapi.catalog_events import start_subscriber, stop_subscriber
 from geoapi.config import settings
@@ -36,6 +38,7 @@ from geoapi.routers import (
     features_write_router,
     metadata_router,
     pt_edits_router,
+    rasters_router,
     tiles_router,
 )
 from geoapi.routers.explorer import cleanup_explorer_dir
@@ -81,14 +84,36 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
             )
 
 
+class _GZipResponderExceptImages(GZipResponder):
+    """Starlette's gzip responder that leaves images as they are: a raster
+    tile is compressed already (gzip makes it larger), and passed on as it is
+    it keeps its Content-Length. The responder decides on the response's
+    start; an excluded content type passes through unbuffered."""
+
+    async def send_with_compression(self, message: Message) -> None:
+        await super().send_with_compression(message)
+        if message["type"] == "http.response.start":
+            content_type = Headers(raw=message["headers"]).get("content-type", "")
+            if content_type.startswith("image/"):
+                self.content_type_is_excluded = True
+
+
 class GZipExceptParquet(GZipMiddleware):
-    """Compression, except for the Explorer's Parquet files: they are zstd
-    already, and gzipping them would cost CPU and drop the Content-Length a
-    browser reports download progress from."""
+    """Compression, except for the Explorer's Parquet files and images: they
+    are compressed already, and gzipping them would cost CPU and drop the
+    Content-Length (a browser reports download progress from it)."""
 
     async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
         if scope["type"] == "http" and scope["path"].endswith(".parquet"):
             await self.app(scope, receive, send)
+            return
+        if scope["type"] == "http" and "gzip" in Headers(scope=scope).get(
+            "Accept-Encoding", ""
+        ):
+            responder = _GZipResponderExceptImages(
+                self.app, self.minimum_size, compresslevel=self.compresslevel
+            )
+            await responder(scope, receive, send)
             return
         await super().__call__(scope, receive, send)
 
@@ -198,6 +223,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    # Chromium caps preflight caching at two hours (Safari keeps 600 s, Firefox allows more).
+    max_age=7200,
 )
 
 # Add compression middleware. Level 6 over the default 9: on multi-MB items
@@ -215,6 +242,7 @@ app.include_router(features_router)
 app.include_router(features_write_router)
 app.include_router(bundle_edits_router)
 app.include_router(tiles_router)
+app.include_router(rasters_router)
 app.include_router(expressions_router)
 app.include_router(download_router)
 app.include_router(explorer_router)

@@ -166,7 +166,7 @@ describe("AiCreditsRing", () => {
       "Neu ab 1. Dez.",
       "38 von 1.000 KI-Credits übrig",
       "Eine Antwort kostet 1 KI-Credit, 2 bei mehr als 10 Schritten, 3 bei mehr als 20.",
-      "Die Administratoren Ihrer Organisation verwalten deren KI-Credits.",
+      "Die Admins Ihrer Organisation verwalten deren KI-Credits.",
     ])
       expect(within(dialog).getByText(text)).toBeTruthy();
   });
@@ -222,9 +222,7 @@ describe("AiCreditsUsedUp", () => {
   it("speaks German", () => {
     wrap(<AiCreditsUsedUp usedUp={USED_UP} isAdmin={false} />, "de");
     expect(screen.getByText("Die KI-Credits dieses Monats sind aufgebraucht. Neu ab 1. Dez.")).toBeTruthy();
-    expect(
-      screen.getByText("Ein Administrator Ihrer Organisation kann weitere KI-Credits anfragen.")
-    ).toBeTruthy();
+    expect(screen.getByText("Ein Admin Ihrer Organisation kann weitere KI-Credits anfragen.")).toBeTruthy();
   });
 });
 

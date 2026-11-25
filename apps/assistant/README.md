@@ -76,7 +76,10 @@ two reasons: at the step that answers, which offered only `ask_user`, a model th
 refused in at most two responses per result (`REPORT_REFUSALS`), a repeat of the card refused before it with a shorter
 note, and the gate lets the next one through. A card that fails validation (a placeholder label, say) gets that error
 instead, which leaves the count alone. Validation refuses test cards and generic option labels ("Test", "Option 1",
-"Erste Option", `asks.LABEL_RULE`): a probe card with such options reached a user. A header names a topic within the
+"Erste Option", `asks.LABEL_RULE`): a probe card with such options reached a user. Cards are for what only the user can decide (which of two real options, a removal): the instructions allow at most two
+short sentences before one and never a full answer followed by a card, nor a card whose options all lead to the same
+result (`prompt.py`), since a complete answer followed by a question card asked the user about what the answer had
+already done. A header names a topic within the
 chain of picks that answers one request, the cards answered since the user's last typed message (`AskHistory.chain`):
 a card with a question under the header of one the user answered in that chain, with a pick or with text, is refused
 whatever it offers, while after a typed message a common header ("Zeitraum") may name another topic. A card that
@@ -115,11 +118,14 @@ layer of the project or the dataset's own id needs no `adds`. An id the model th
 with that call, as any argument is. The card is not on `/mcp`: its clients cannot show one.
 
 **Write tools.** Next to read tools and proposals there is a third risk class, `write` (`ToolSpec.risk` in
-`tools/runtime.py`): tools that create a workflow in the open project, run one, change one or add a dataset to it.
-They create, a run replaces its workflow's previous results, and `workflow_update` changes a workflow (Changing
-workflows, below); nothing else changes or deletes what exists. They belong to the workflows pack
+`tools/runtime.py`): tools that create a workflow in the open project, run one, change one or add a dataset to it,
+and on the Map page tools that change a layer's style or the map. They create, a run replaces its workflow's previous
+results, `workflow_update` changes a workflow (Changing workflows, below), and `style_update` and `map_update` change
+styles and the map (Changing styles and the map, below), where a layer is removed only after the user picked that in a
+card; nothing else changes or deletes what exists. The workflow tools belong to the workflows pack
 (`tools/workflows.py`, the runs in `tools/workflow_runs.py`, the edits in `tools/workflow_edits.py`), which is offered
-on the Map and Workflows pages only and never on `/mcp`. Every write goes
+on the Map and Workflows pages only; the style and map tools (`tools/styles.py`, `tools/map_edits.py`) are offered on
+the Map page only. None of them is on `/mcp`. Every write goes
 into the project of the page: no write tool takes a project id, so text inside a dataset, a template or a tool
 description cannot make the assistant write into another project. The user's rights apply, since every call carries
 their token: a viewer is told they can view the project but not create or change workflows or add datasets in it, and the
@@ -154,7 +160,10 @@ again after `HEARTBEAT_SECONDS` without a change, `tools/workflow_runs.py`). A r
 results, so it starts without asking only for a workflow this conversation created, with no export set to overwrite and
 whose latest run, if any, this conversation started (`run_permission` in `workflows/runs.py`, read from the
 conversation's stored parts); any other run needs the user's pick of Run in a card, one pick per run, and the refusal
-names the condition that failed, so the card says what a run does. A workflow with a dataset step without a layer is
+names the condition that failed, so the card says what a run does. Asked to run such a workflow, the assistant shows
+the Run card first, also when the workflow shows issues that stop a run, and never offers a correction in its place,
+changes it or replaces it unless the user asks in their own words (build-a-workflow skill, `workflow_get`'s note): an
+edit there saves over the user's workflow, and a refused run's issues are what the answer reports. A workflow with a dataset step without a layer is
 not started: processes refuses such a run anyway, and the refusal names the steps whose layer the user chooses first.
 A run processes refuses and a wait on a run already going use up the pick as well. A run already going is waited for, never started twice. The answer keeps one clock:
 `ASSISTANT_RUN_MAX_SECONDS`, which a waiting run moves to `ASSISTANT_RUN_WAIT_MAX_SECONDS` from the answer's start
@@ -198,12 +207,10 @@ to `DENOMINATOR_GROUPS` groups too: processes sorts by value, so a small group w
 residents in reach) comes last in its order, where a model reading a long list misses it. A filtered numerator has no
 row for a group with no features in it (no resident in reach), so a ranked count or sum gets a row of 0 for each group
 the denominator lists: the lowest shares would miss them otherwise. A denominator from another layer gets a note: if the
-layers come from different sources, check that both count the same population (source and year). Under Restricted it
-sends counts only, for few groups (judged over the whole layer, also with a filter), no count of a group under
-`MIN_RESTRICTED_GROUP` features, nothing for a filter that matches fewer features than that, and nothing at all with
-`share_of`. A join names the fields it adds `join_<name>`, and models often leave the prefix out, so the statistics
-tools and the count's filter read `join_x` for a field `x` the layer lacks and say so in the result's note. The name is
-resolved before anything else, so the Restricted checks judge `join_x` exactly as when the model names it.
+layers come from different sources, check that both count the same population (source and year). A join names the
+fields it adds `join_<name>`, and models often leave the prefix out, so the statistics tools and the count's filter read
+`join_x` for a field `x` the layer lacks and say so in the result's note. The name is resolved before anything else, so
+`join_x` is checked exactly as when the model names it.
 
 **Building a workflow.** The model is shown only the tools of the user's toolbox (`offered` in
 `tools/workflow_tools.py`: `GET /processes` for the user, without the tools hidden from the toolbox, such as custom
@@ -230,8 +237,6 @@ for a travel cost matrix with more origin and destination pairs than one run tak
 against the limits in goatlib's `tools/limits.py`), which the run would otherwise fail on only once it reaches that
 step. The count follows merge and centroid steps, whose rows are their inputs' together, and stops at any other
 step, whose rows only its run knows; a sum with a count that could not be read is left out rather than reported low.
-Under Restricted, a filtered count below `MIN_RESTRICTED_GROUP` counts as one that could not be read: the issues'
-messages name the counts, and `project_count_features` withholds such a count too.
 The check's issues come back in the draft's ids, the message of a one-step issue starting with the step's name
 (`draft_issues`). It needs the user's toolbox and the tools' process descriptions, for the steps'
 titles, the layer inputs and the field settings: without them a draft is unchecked and `workflow_create` refuses.
@@ -275,14 +280,98 @@ results in later answers. A create's rules hold for an edit, and the stored conf
 edited one: only a blocking issue the edit adds refuses it (issues are compared by code, steps and field, never the
 message), so a workflow with an unrelated error stays editable. The save goes through core's PUT on the revision the
 edit read (`base_revision`), so no edit silently overwrites another; a damaged stored config is refused, never repaired
-by a guess. Edits are direct, with no card, because the dock's Undo takes them back (`undo.py`): the call's audit row
+by a guess. Edits are direct, with no card, because the dock's Undo takes them back (`undo.py`, which takes back an
+answer's style and map changes too: Changing styles and the map, below): the call's audit row
 keeps the config before the edit and both revisions, outside what the model reads, and Undo writes that config back
 under the user's own sign-in, so core decides whether they may still change the workflow. It saves once per workflow,
 the oldest content on the newest revision, since saving edit by edit would conflict with itself, and it asks before it
 writes over a save made between or after the answer's edits. Its mark (under way, undone) lives in those audit rows
-rather than a column of its own. Filters and If conditions hold literals picked from the data, so `workflow_get`
-withholds them under Restricted, as `project_get_layers` does a layer's filter. An edit makes the answer's earlier reads
-of workflows stale, so a later read runs again (`ToolSpec.invalidates`).
+rather than a column of its own. Whether the dock offers an answer's Undo comes from those rows by the route's own
+rule (`undo.undoable`, sent as the message's `undoable` and at the end of its stream), so a write whose call a Stop or
+the time limit ended, which no finished step names, can still be taken back. An edit makes the answer's earlier reads of workflows stale, so a later read runs
+again (`ToolSpec.invalidates`), and an earlier edit of the same workflow sent again after it is a new edit, not a
+repeat (`ToolSpec.same`): an answer that sets a value, changes it and then sends the first edit again makes all three
+changes.
+
+**Changing styles and the map.** On the Map page `style_update` changes a layer's style and `map_update` the map
+itself: which layers show, their names, order, groups and filters, the basemap, the 3D scene and the view. The
+`style-a-map` skill says how to use them (Skills, below). A style is changed with operations, not with a whole new
+document, for the reason a workflow is: the model cannot drop or garble what it did not mean to touch. goatlib applies
+them in process (`goatlib.style.edit`); a whole document is taken only where the user wants a whole style, a new named
+style written from scratch or a style replaced whole, which needs the user's pick in a card. Before anything is saved,
+core's check route judges the edited document, and only an error the change adds, or one at a path the call itself
+wrote, refuses it (issues are compared by code and path), so a style with an old error stays editable, as a workflow
+does. The style the layer draws is edited in place, whatever the size of the change, and Undo is the way back: a new
+named style per change, or variants and a card, left the user to pick a style where they had asked for one change. A new named style, or two or three variants to pick from, is made only when the user
+asks for one in words, and the tool checks that, not only the instructions: `new_style.asked` must quote words the user
+typed in this conversation (`ToolEnv.typed`, compared on letters and digits only), because a model that had not loaded
+the skill answered "improve this" with two new styles and a card. Core creates a style only as a copy of another (a
+name and the style to copy), so a new style is created as a copy of the active one and the edited document is then
+saved on its first revision. One call can reach core several times (create, save, rename, make active), and once a
+write landed the call returns whatever fails after it, with `incomplete` saying what did not happen. Every write tool
+also hands its undo record to `ToolEnv.landed` as soon as its first write landed, and the runtime writes that record
+into the audit row when the call ends without a result (a Stop, the answer's clock, any exception), so a change that
+landed never loses its Undo. No result carries a style document; the web reads a changed style again
+by id when it sees the tool's part, as it does for a workflow. A result carries the legend numbers of the
+classifications the change touched instead, counted by processes with the requests the web's legend makes, under the
+layer's saved filter (`styles/legend.py`): they are the class counts, so the model judges a lopsided split without a
+count of its own. For the same reason `project_field_statistics` takes the style's method names and answers how many
+features have a value and how many have none: models counted empty values and classes one `project_count_features` call
+at a time, each a step the answer is charged for, and the tool refused a style's method name such as `natural_breaks`,
+which failed the statistics step (`std_dev` is sent as the endpoint's `standard_deviation`, since processes reads a
+name it does not know as quantile). The project read tools apply a layer's saved filter only with `as_drawn`, which sends
+`query.cql` as core stores it (the rows and the area that are on, as the map draws them): the server classes a computed
+method over the whole dataset, so a filtered layer's legend came back lopsided, and an area cannot be written in the
+tools' own `filter`. With the statistics as drawn the skill writes the breaks as manual classes. Nothing here needs DuckDB, numpy or shapely, which the production image does not have
+(`tests/test_production_imports.py`): the check goes through core, computed classes come back in the stored document,
+counts come from processes, and only the evals' stand-ins use `goatlib.style.data`.
+`map_update` plans every operation of a call on one read of the map before its first write, so an operation that does
+not fit refuses the call with nothing written; after that the writes stop at the first one core refuses, and the
+result lists what was applied and what failed. A removed layer is the one change Undo cannot bring back, since core
+deletes it with its styles, so `remove_layer` runs only after the user picked the removal in a card, read from the
+stored conversation (`asks.consented`), never from the model's words. The pick counts only within the chain of card
+answers since the user's last typed message and only without text of the user's own on that question, and `ask_user`
+offers such a value (`remove_layer:`, `replace_style:`) only as a tool of the same answer named it, on one option of
+a single-select question beside one that keeps the layer or the style (`asks.consent_problem`), and only that option
+picked alone counts: a card whose every option carried the value, or
+a pick from an earlier request, allowed a removal the user never chose. A call without that pick is no failure: it
+writes nothing, also not its other operations, and answers `confirm` with what goes with the layer (its styles and its
+filter) and where it is still used (dashboard widgets, workflows, print layouts, custom basemaps: `maps/uses.py`), so
+the card can say so. A removal loads no skill, so the map page's note says to call the tool before asking: a model that
+asked with a value of its own first had the right card refused as a repeat. A card that offers a value a `confirm` of
+the same answer named, and no answered card of the current chain offered, is therefore no repeat
+(`asks.repeated_question`), so a user who kept the layer earlier and asks again later gets the card again. As a refusal it showed the user a failed step before any question; the dock labels this step as
+a check of what the removal affects instead. Filter rows are read and written as the Filter tab does it
+(`goatlib.filter.rows`), and an area (the filter operation's `area`, beside its rows) is built from regions, features of another polygon layer or the
+current view exactly as the tab builds it (`goatlib.filter.areas`, held to the web's code by a shared fixture), so the
+tab shows and edits what the assistant wrote; what an operation does not touch (switched-off and custom rows, the notes)
+is written back as stored. The outlines come from where the tab reads them (`maps/area_sources.py`): a region's from the
+catalog, another layer's features from geoapi as far as that layer's saved filter shows them, the view from the page
+context. An outline over the filter's limits (its points, and the length of a map request, which a large region
+reaches first) is simplified to fit, several outlines of one call sharing the room, and the result says which were
+simplified. The simplification is pure Python, since the production image has no shapely, and its cost grows faster
+than an outline's positions: a very detailed outline is thinned first (`THIN_ABOVE` in `maps/filter_area.py`), and a
+plan that builds an area runs off the event loop, so other answers keep streaming. The assistant draws no shape and
+switches no row or area on or off; those stay the tab's. As in the tab, an `area` with `add` keeps a switched-off area
+switched off, and an area that replaces one (without `add`) is switched on, which the result says. The view is not saved by the tool: it is the user's own (core
+keeps a view per user), so the result hands the page one target, the page moves its map and stores the view as when
+the user moves it, and a call that only sets a view reaches no core route, which lets a viewer have it too. Undo leaves
+the view alone; the dock offers a way back to the previous view instead.
+Undo reads three kinds of records from the audit rows (`tool_call.undo`). For an edited or replaced style
+(`undo_styles.py`) it saves the oldest document of the answer on the newest revision the answer left; core merges that
+save, so the answer's paths go back and a person's later saves on other paths stay. A style saved since the answer, or
+between two of its edits, is asked about first, since a save on the same path would be written over, and once core no
+longer keeps the answer's revision, Undo anyway restores the whole document. A created style is deleted after the
+layer draws the style it drew before again. Core keeps no revisions of the map, so a map change records the state
+before and the state written, and Undo compares them with what the map holds now (`undo_map.py`): it writes the state
+before where the map still holds what the answer wrote, asks first where a person changed it since, and creates a
+removed group again under a new id. A removed layer is recorded only so that the Undo can say it does not come back;
+the view has no record.
+A typed "undo that" runs the same Undo: `undo_changes` (`tools/undo.py`) calls `undo_run` for the newest earlier answer
+whose Undo can still act, so core decides under the user's sign-in as for the button and that answer reads Undone
+afterwards. A model that reversed the change by hand with the other write tools could get it wrong and would leave the
+button offering to undo a change that is already gone. What was changed since is written over only after the user
+picked that in a card (`undo_anyway:<run>`, a consent value like a removal's).
 
 **Templates.** `workflow_find_templates` searches the whole query and also its longer words (`MAX_SEARCH_WORDS` and
 `MIN_SEARCH_WORD_CHARS` in `tools/workflows.py`), because core matches the whole query as one piece of a template's
@@ -330,15 +419,62 @@ and distances), and its `SKILL.md` says which file a question needs: every file 
 sent again with every later call, so a conversation loads only the one it uses. Its tests
 (`tests/test_build_a_workflow_skill.py`) check that every assistant tool it names exists, that each recipe sits in
 exactly one file, and that its example drafts use only tools, inputs, settings and choices found in process
-descriptions captured from processes (`tests/fixtures/process_descriptions.json`).
+descriptions captured from processes (`tests/fixtures/process_descriptions.json`). The second, `style-a-map`, is
+loaded before the model styles a layer or changes a layer's filter (the Map page's instructions name it): its
+`SKILL.md` holds the forms, palettes, classes and map operations, with a reference file each for rasters, for
+looks that could mean an analysis and for popups beyond a list of fields. Its tests (`tests/test_style_a_map_skill.py`)
+apply every example's operations with goatlib, validate every example document, check every palette, icon and tool it
+names, and keep `SKILL.md` within 34,500 bytes, since a loaded skill is resent with every later call.
+
+A page can offer some of its tools only once the conversation loaded a skill (`tools/registry.SKILL_TOOLS`): every
+call sends the definitions of every tool it offers, and when a call misses the provider's cache they count in full
+against the answer's budget. On the Map page the tools that build, check, change and run workflows come with
+`build-a-workflow`, about a quarter of that page's definitions, which a conversation about styling never calls. The
+reads of workflows stay, since they answer questions without building anything. Until the skill is loaded the call
+leaves those tools out (`agent.SkillTools`), and the page note says they come with it; the call after `skills_load`
+offers them, in the same answer or a later one (`ToolEnv.skills`). They follow the other tools
+(`registry.offered_tools`), so the definitions before them stay as they were. The call after the load still misses
+the cache once. Its request is marked (`budget.TOOLS_ADDED_KEY`), and the budget plans the calls after it at the input
+it wrote to the cache: an answer whose first call also read nothing (a cache that expired between messages) would
+otherwise see two misses in a row, take them as a provider without a cache, and stop looking things up right after
+loading the skill. The run's tool
+manager keeps them, so a model that names one anyway is told which skill to load (`toolset.skill_first`) rather than
+that the tool is unknown. Where the skills are not known (over `/mcp`, which lists its own tools) nothing is left
+out, and the Workflows page offers its workflow tools from the start.
+
+**User docs.** Questions about GOAT itself (where a button is, how a feature works, whether GOAT can do something)
+are answered from GOAT's user documentation, the docs site's own pages (`apps/docs`, English and German): asked such
+questions, the assistant said it could not see the interface, after half a minute of unrelated tool calls. The pages
+are read and cleaned to plain text at import (`assistant/user_docs`: numbered steps, tables, code and the interface
+labels stay; screenshots, videos and layout markup go, which takes an interface page to about half its length), so they
+are those of the running version and need no network. A source checkout reads them in `apps/docs`, so a dev stack and
+the tests need no step of their own; the image has no `apps/docs`, so its Dockerfile copies both trees into the package
+(`user_docs/pages`) before the wheel is built, the release's smoke check confirms the package reads them there, and a
+service that finds neither does not start. The instructions list every English page in one line, grouped by folder
+(`DOCS_INDEX`, in the cached prefix after the skills, about 2,900 tokens), so the model goes from the question to
+`docs_read` in one step: a tool that returned the list would add a model call to every such question. `docs_read`
+serves only what was read (a page id is looked up, never opened as a path), in the interface language when the page has
+a German version, since its labels are the ones the user sees, and in English otherwise. Each page read is sent
+again with every later call of the answer, so a page longer than `MAX_PAGE_CHARS` comes in parts: a part ends where a
+section starts, names the headings it leaves out (`left_out`), and `section` reads the page from one of them on, so
+no part of a page is out of reach. A section that is not on the page gets the page's headings back. An answer reads
+at most `MAX_PAGES_PER_ANSWER` pages and `MAX_PARTS_PER_ANSWER` reads in all; another part of a page it has read is no
+new page, so two long pages can each be read in two parts. An earlier answer's page goes to the model as its id and
+title only. There is no search service
+(embeddings, a vector store): some 80 pages with a one-line description each fit the instructions, and a list plus
+page loading needs no moving part. The tool is not on `/mcp`, whose clients can read the docs site and its
+`llms.txt` directly. Pages in a category the docs sidebar hides (`"className": "hidden"`) are left out,
+as the site's `llms.txt` leaves them out; every other page needs a `description` in its front matter, which the list
+shows and `tests/test_user_docs.py` checks. The assistant's tests run on every docs change (`.github/workflows/checks.yml`).
 
 Prompt caching: every model call of an answer resends the instructions, tool definitions and the conversation so
 far. OpenAI, Azure OpenAI, DeepSeek and Mistral cache that prefix by themselves; Claude (direct, Bedrock, Vertex) and
 models behind OpenRouter that need it get explicit cache markers (`llm/providers.py`). The page note (language,
 page, filters) travels in each user message (`prompt.with_note`), not in the instructions: it changes when the user
 moves or filters, and anything that changed ahead of the conversation would make every call read it again. For the
-same reason every call of an answer offers the same tools, and the note on the answer's stage near the run's limits
-comes after the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
+same reason every call of an answer offers the same tools, except that the call after loading a skill that brings
+tools adds them after the others (Skills, above), and the note on the answer's stage near the run's limits comes after
+the conversation (`agent.StageNote`, below). Cached tokens are recorded per run and shown in the answer
 details.
 
 OpenRouter sends one model to many providers, which differ in price, speed and precision (some serve 4-bit weights),
@@ -370,16 +506,20 @@ way. So the run ends instead (`agent.StageNote.after_node_run`): after a step no
 that step wrote, which the user has already seen; after a first such step without text, or with a card call that
 failed (one more step for the corrected call), the run answers (`RunDeps.insisted`), and a second ends it with the
 text written so far, or, when there is none, with a short closing text in the interface language
-(`agent.CLOSING_TEXT`) in place of the model call. The step that answers with room for a card still runs two kinds
+(`agent.CLOSING_TEXT`) in place of the model call. The step that answers with room for a card still runs three kinds
 of calls besides the card, since a card that asks whether to do them takes the user a turn for a choice already
-made: `workflow_run` of a workflow the answer created and has not run, while a read step and the answer step still
-fit and no other result waits to be written about, so its result is read before the answer; and
+made: the change the user asked for (`style_update`, `map_update`, `workflow_update` where the page offers them,
+`toolset.ANSWER_WRITES`), while that step and the answer step after it fit and the look-ups did not end for good
+(a result refused for its size, responses without text), so reads that took an answer's look-ups never leave it
+without the change it was for; `workflow_run` of a workflow the answer created and has not run, while
+a read step and the answer step still fit and no other result waits to be written about, so its result is read
+before the answer; and
 `project_add_catalog_layer` of a dataset the user picked in the card that came with the message, as the add tool's
 own check reads that pick (an id in a picked option's value or `adds`, or a member of a bundle one names;
 `asks.answered_pick`). Nothing else: a workflow from an earlier answer, a second run in the step, a workflow whose
 run the answer already started, whatever came of it (`RunDeps.run_attempts`), or a dataset picked in an earlier card
 is refused (`ANSWER_STEP_REFUSALS`). The note offers them only when they apply, and the room for the run is decided
-with the stage (`RunDeps.run_room`), so the note and the call agree.
+with the stage (`RunDeps.run_room`), so the note and the call agree; the room for a change is the same.
 The note on the stage is the last content of the call, after the conversation, and goes only into what the model is
 sent, not into the history (`agent.StageNote`); the stored request records its stage in its metadata instead
 (`agent.STAGE_KEY`). An answer step that changed the tools and the instructions made the provider read almost none of
@@ -404,17 +544,25 @@ note names no budget, and says a card ends the answer: models repeated the word 
 the next answer a fresh budget made them ask with a card for permission to go on. The instructions name it as a third
 kind of GOAT note, after the language and page notes, to follow and never to quote, and tell answers to leave out how
 the assistant works (budgets, limits, stages, its look-up steps).
+`ASSISTANT_RUN_MAX_TOKENS` is sized for the map page: every call there carries the definitions of about 40 tools and,
+once loaded, the `style-a-map` skill, so a call is several times larger than on the pages the budget was first sized for. Read
+from the cache, an answer stays far below it; at half the size, an answer whose calls missed the cache, or that ran on
+a provider without one, ended its look-ups after about three calls. With `ASSISTANT_RUN_MAX_TOOL_CALLS` it still
+bounds a runaway answer.
 `ASSISTANT_RUN_MAX_TOKENS` counts tokens read from the provider's cache at a tenth, roughly what they cost: every call
 rereads the cached prefix, and counting it fully stopped answers on cheap rereads. The budget and the
 hard limit count the same way, and the hard limit leaves room beyond the budget for one call that misses the
-provider's cache (`budget.RunLimits`): the calls that end an answer are planned at the newest call's cache reads, a
-miss charges those tokens in full, and such an overshoot costs tokens while a run failed at the limit costs the answer.
+provider's cache (`budget.RunLimits`): the calls that end an answer are planned at the newest call's cache reads, or
+the call's before it when that read more (`budget.NextCall.cached`), a miss charges those tokens in full, and such an overshoot costs tokens while a run failed at the limit costs the answer.
 A provider that read nothing from its cache in the run gets room for one call of the newest call's context instead:
 a call more than planned (a card refused until the result is written about, a call its stage refused) costs that
 much.
 The calls that end an answer are sized at their whole context, read from the run's messages (the newest call's input and
 output plus the tool results the next call sends), with what the newest call read from the cache counted as cached
-(`budget.call_cost`); a provider that reports no cache reads pays the whole context for each. One more look-up is
+(`budget.call_cost`), or what the call before it read when the newest read less: a provider can serve one call
+without its cache and writes the cache as it does, and planning every later call as a miss after one ended the
+look-ups of a long conversation before the change it asked for. Two misses in a row are planned as misses, and a
+provider that reports no cache reads pays the whole context for each. One more look-up is
 allowed only while, after it, the read step and the answer step still fit with the run's largest step added; the card
 while the answer step fits, since a card ends the answer, and otherwise the step answers in text. Within a step, calls
 past the run's tool-call limit are refused as they run, and
@@ -431,7 +579,21 @@ reasoning, or nothing), with the same tools, and a model that gave one often gav
 on its output retries ("Exceeded maximum output retries"). It also takes any text that is not empty as the answer, so
 an answer could end after its cards with a single space. Such an answer is asked for its text
 (`agent.ends_with_text`); only the last retry's answer is taken as it is, since failing the run then would lose what
-the user has already seen. And the second response of a run without a tool call or text beyond whitespace ends its
+the user has already seen. The same check asks once per run for an answer in the other language than the user's
+message, English or German (`agent.wrong_language`): the instructions and the note after a longer message say it
+already, and still some answers came in the language of the data or of the interface. More wording did not help.
+It reads both languages from grammar words and the verbs a request starts with (`assistant/language.py`, shared with
+the evals' language check), only prose (no code, bold names, quotes, table rows or titles in a list), and acts only
+when both are clear. A message of three words or more with no grammar word of either language (nouns, names, numbers)
+shows none: the note names the interface language for it, as for a shorter one, and the check holds the answer to
+that language, unless a German answer follows nouns with German letters. A message under three words, a card's answer,
+a message that names a language or asks to translate, one with a few grammar words but no clear language, and an
+answer of names or titles are never asked again, nor is an answer when another answer step does not fit in the run's
+tokens. The answer already streamed is replaced, not added to: the check names its text parts
+(`events.TextReplaced`, a `data-replaced-text` part naming them by the id each text-start carries in its provider
+metadata), the dock leaves them out, live and after a reload (the stored parts keep them, marked), and the next
+answer's history holds only the answer that replaced them (`runs/turn.py`, `without_replaced`). The retry counts with
+the others, and its answer goes out whatever its language. And the second response of a run without a tool call or text beyond whitespace ends its
 look-ups (`SILENT_RESPONSES` in `assistant/tools/toolset.py`): the next call is the answer step, told why
 (`prompt.ANSWER_IN_TEXT`). A model can still give no text until Pydantic AI gives up. After a `workflow_run` that
 succeeded and saved layers, with nothing written since, that would end the answer as a failure while the run card and
@@ -439,6 +601,22 @@ the layers are there: such an answer ends with a fixed text instead (`runs/turn.
 dock shows in the user's language by its kind, the run completes, and a warning is logged. The next answer finds the
 text in the history after everything the run found, so the user can ask for the numbers. Otherwise the answer still
 fails: after a failed run or one without layers there are no numbers, and `workflow_last_run` shows no run card.
+
+**One data policy.** The data tools send the model what the user can see, as far as a result fits the size cap
+(`MAX_RESULT_BYTES` in `tools/runtime.py`): the same for every organization, in a run and over MCP. There was a second
+mode, Restricted, which an admin could choose: it kept back rows, features, geometries, sums and means, sent nothing
+that fewer than five features made up, and refused filters that compared values. It was removed. Two modes confused
+admins and users; no organization in production used it; and it kept back what most analyses ask for, so the
+assistant could build and run an analysis but not name its result, the residents reached. It also cost every data
+tool a second, reduced form of its result and extra calls to processes to judge group sizes, and every new data tool
+had to get one. An organization that does not want its data to reach GOAT AI's model switches GOAT AI off or connects
+a model of its own choice (an own connection, without the fallback to GOAT AI). The dock's notice and the privacy policy say that the data the assistant reads
+goes to the model. The column `organization_settings.data_policy` is no longer read: core keeps it until a later
+migration drops it, so assistant pods of the earlier release keep working during a rolling deploy, and every save
+writes `standard` to it (not the column's default, `restricted`), so such a pod, during the rollout or after a
+rollback, reads every organization saved by this release as Standard. `PUT /settings` ignores the `data_policy` field
+a web bundle of that release still sends. An organization that had chosen Restricted behaves like every other one;
+its AI stays on.
 
 **AI credits.** Answers of GOAT AI draw on the organization's pool of AI credits, which core owns with the
 allowance, the trial amount and the price tiers (`apps/core/README.md`); the assistant holds none of these numbers and

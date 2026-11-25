@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -252,6 +253,99 @@ async def test_unconfigured_admin_client_keeps_todays_flow(
     create_invitation.assert_awaited_once()
     send_email.assert_called_once()
     assert result.account_setup is None
+
+
+@pytest.mark.unit
+async def test_the_invitation_records_when_its_mail_went_out(
+    provisioning_on: None,
+) -> None:
+    result, _, _ = await _invite(_admin())
+    sent = datetime.fromisoformat(result.payload["last_sent_at"])
+    assert abs(datetime.now(timezone.utc) - sent) < timedelta(minutes=1)
+
+
+@pytest.mark.unit
+async def test_pending_setup_finds_an_account_still_without_a_password(
+    provisioning_on: None,
+) -> None:
+    admin = _admin(
+        existing_users=[
+            {
+                "id": "kc-new",
+                "email": EMAIL.upper(),
+                "requiredActions": ["UPDATE_PASSWORD"],
+            }
+        ]
+    )
+    with patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)):
+        assert await keycloak_deps.pending_setup_user_id(EMAIL) == "kc-new"
+    admin.get_users.assert_called_once_with({"email": EMAIL, "exact": True})
+
+
+@pytest.mark.unit
+async def test_pending_setup_is_none_once_the_password_is_set_or_without_an_account(
+    provisioning_on: None,
+) -> None:
+    for users in (
+        [],
+        [{"id": "kc-done", "email": EMAIL, "requiredActions": []}],
+        [
+            {
+                "id": "kc-other",
+                "email": f"x{EMAIL}",
+                "requiredActions": ["UPDATE_PASSWORD"],
+            }
+        ],
+    ):
+        admin = _admin(existing_users=users)
+        with patch.object(
+            keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)
+        ):
+            assert await keycloak_deps.pending_setup_user_id(EMAIL) is None, users
+
+
+@pytest.mark.unit
+async def test_pending_setup_is_none_without_provisioning_or_admin_client(
+    provisioning_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    with patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=None)):
+        assert await keycloak_deps.pending_setup_user_id(EMAIL) is None
+    monkeypatch.setattr(
+        keycloak_deps.settings, "KEYCLOAK_PROVISION_INVITED_USERS", False
+    )
+    admin = _admin(
+        existing_users=[
+            {"id": "kc-new", "email": EMAIL, "requiredActions": ["UPDATE_PASSWORD"]}
+        ]
+    )
+    with patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)):
+        assert await keycloak_deps.pending_setup_user_id(EMAIL) is None
+    assert admin.mock_calls == []
+
+
+@pytest.mark.unit
+async def test_pending_setup_is_none_with_auth_off(
+    provisioning_on: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(keycloak_deps.settings, "AUTH", False)
+    admin = _admin(
+        existing_users=[
+            {"id": "kc-new", "email": EMAIL, "requiredActions": ["UPDATE_PASSWORD"]}
+        ]
+    )
+    with patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)):
+        assert await keycloak_deps.pending_setup_user_id(EMAIL) is None
+    assert admin.mock_calls == []
+
+
+@pytest.mark.unit
+async def test_pending_setup_lookup_errors_count_as_none(provisioning_on: None) -> None:
+    admin = _admin()
+    admin.get_users.side_effect = KeycloakGetError(
+        error_message=b'{"error":"unknown_error"}', response_code=503
+    )
+    with patch.object(keycloak_deps, "keycloak_admin", AsyncMock(return_value=admin)):
+        assert await keycloak_deps.pending_setup_user_id(EMAIL) is None
 
 
 @pytest.mark.unit

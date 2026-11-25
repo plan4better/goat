@@ -183,6 +183,28 @@ export function PopupBlockRenderer({
 
 const EMPTY_VALUE_PLACEHOLDER = "—";
 
+/** A small square of a value's color before it: a raster cell's color as the map draws it. */
+function ValueSwatch({ color }: { color: string }) {
+  return (
+    <Box
+      component="span"
+      data-testid="popup-swatch"
+      aria-hidden
+      style={{ backgroundColor: color }}
+      sx={{
+        display: "inline-block",
+        width: 10,
+        height: 10,
+        mr: 0.75,
+        borderRadius: 0.5,
+        verticalAlign: "-1px",
+        border: 1,
+        borderColor: ROW_DIVIDER_SX,
+      }}
+    />
+  );
+}
+
 function isEmpty(v: unknown): boolean {
   return v === undefined || v === null || v === "";
 }
@@ -221,11 +243,16 @@ function FieldListBlock({
     }));
   }, [block.attributes, layerFields]);
   const rows = effectiveAttributes.map((attr) => {
+    // A row of several fields' values in one (an image's bands): those there, joined.
+    const joined = attr.join
+      ?.map((f) => rawValues?.[f] ?? valuesByColumn[f])
+      .filter((v) => !isEmpty(v))
+      .join(", ");
     // Source of truth for "is this empty" is the raw value, since the
     // pre-formatted byColumn string can be "0" / "false" / etc., which
     // shouldn't count as empty.
-    const raw = rawValues?.[attr.name];
-    const empty = isEmpty(raw) && isEmpty(valuesByColumn[attr.name]);
+    const raw = attr.join ? joined : rawValues?.[attr.name];
+    const empty = attr.join ? !joined : isEmpty(raw) && isEmpty(valuesByColumn[attr.name]);
     let value: string;
     if (empty) {
       value = EMPTY_VALUE_PLACEHOLDER;
@@ -233,9 +260,11 @@ function FieldListBlock({
       const field = fieldByName.get(attr.name);
       const isNumber = attr.type === "number" || field?.type === "number";
       const hasFormatConfig = !!attr.format_config && Object.keys(attr.format_config).length > 0;
-      if (isNumber && hasFormatConfig && raw != null && raw !== "" && !Number.isNaN(Number(raw))) {
+      if (joined !== undefined) {
+        value = joined;
+      } else if (isNumber && hasFormatConfig && raw != null && raw !== "" && !Number.isNaN(Number(raw))) {
         // Composable number config takes precedence over the legacy enum.
-        value = formatFieldValue(Number(raw), "number", attr.format_config!);
+        value = formatFieldValue(Number(raw), "number", attr.format_config!, lang);
       } else if (isNumber && attr.format && raw != null && raw !== "" && !Number.isNaN(Number(raw))) {
         value = formatNumber(Number(raw), attr.format, lang ?? "en");
       } else {
@@ -249,6 +278,7 @@ function FieldListBlock({
       label: attr.label || attr.name,
       value,
       empty,
+      swatch: empty ? undefined : attr.swatch,
     };
   });
   const visible =
@@ -309,6 +339,7 @@ function FieldListBlock({
                       opacity: r.empty ? 0.45 : 1,
                       ...(isFirst ? { width: "60%" } : null),
                     }}>
+                    {r.swatch && <ValueSwatch color={r.swatch} />}
                     {r.value}
                   </Box>
                 </Box>
@@ -342,6 +373,7 @@ function FieldListBlock({
                   overflowWrap: "anywhere",
                   wordBreak: "break-word",
                 }}>
+                {r.swatch && <ValueSwatch color={r.swatch} />}
                 {r.value}
               </Typography>
             </Stack>

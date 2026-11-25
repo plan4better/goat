@@ -50,7 +50,7 @@ import {
   resolvePageMm,
 } from "@/lib/print/units";
 import type { SaveOutcome } from "@/lib/utils/revisionedSaver";
-import type { Project, ProjectLayer } from "@/lib/validations/project";
+import type { Project } from "@/lib/validations/project";
 import type {
   AtlasConfig,
   AtlasFeatureCoverage,
@@ -64,6 +64,7 @@ import type { TemplateRead, TemplateUseResult } from "@/lib/validations/template
 
 import type { SelectorItem } from "@/types/map/common";
 
+import type { MapLayer } from "@/hooks/map/useMapLayers";
 import type { LayoutRequest } from "@/hooks/map/useMapUrlIntent";
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
 import { usePrintConfig } from "@/hooks/reports/usePrintConfig";
@@ -107,7 +108,7 @@ const DPI_LABEL_KEYS: Record<(typeof EXPORT_DPI_OPTIONS)[number], string> = {
 
 interface ReportsConfigPanelProps {
   project?: Project;
-  projectLayers?: ProjectLayer[];
+  projectLayers?: MapLayer[];
   selectedReport: ReportLayout | null;
   onSelectReport: (report: ReportLayout | null) => void;
   /** Saves a layout in turn with the editor's other saves, on its revision

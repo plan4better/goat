@@ -426,7 +426,7 @@ describe("SaveTemplateDialog", () => {
     createTemplateMock.mockResolvedValue({ id: "tmpl-1" } as unknown as TemplateRead);
 
     render(
-      <SaveTemplateDialog source={projectSource} defaultName="Bonn training" onClose={noop} onSaved={noop} />
+      <SaveTemplateDialog source={projectSource} defaultName="City training" onClose={noop} onSaved={noop} />
     );
 
     const choice = await screen.findByRole("combobox", {

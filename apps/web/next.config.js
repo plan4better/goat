@@ -1,6 +1,22 @@
+const fs = require("node:fs");
+const path = require("node:path");
+const { PHASE_DEVELOPMENT_SERVER, PHASE_PRODUCTION_BUILD } = require("next/constants");
+
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true",
 });
+
+/** MapLibre's worker, copied into public/vendor/maplibre where
+ * lib/utils/map/maplibre.ts points setWorkerUrl. MapLibre builds the worker
+ * URL at runtime, so Next.js does not bundle it. Copied here rather than in a
+ * package script so that every way of starting a dev server or a build has it. */
+const copyMaplibreWorker = () => {
+  const target = path.join(__dirname, "public", "vendor", "maplibre");
+  fs.mkdirSync(target, { recursive: true });
+  for (const file of ["maplibre-gl-worker.mjs", "maplibre-gl-worker.mjs.map"]) {
+    fs.copyFileSync(require.resolve(`maplibre-gl/dist/${file}`), path.join(target, file));
+  }
+};
 
 /** `next/image` hosts besides the defaults: the static product asset host
  * when `NEXT_PUBLIC_ASSETS_URL` is an absolute URL at build time. The
@@ -59,6 +75,24 @@ const nextConfig = {
   images: {
     remotePatterns: imageRemotePatterns(),
   },
+  // A typed /settings lands on the profile, as a 307 before rendering and
+  // before the proxy runs. A page.tsx with redirect() under settings/loading.tsx
+  // would stream a 200 page that reloads the whole app (Settings load, L1).
+  async redirects() {
+    return [{ source: "/settings", destination: "/settings/profile", permanent: false }];
+  },
 };
 
-module.exports = withBundleAnalyzer(nextConfig);
+module.exports = (phase) => {
+  if (phase === PHASE_DEVELOPMENT_SERVER || phase === PHASE_PRODUCTION_BUILD) {
+    copyMaplibreWorker();
+  }
+  // A production build type-checks the app without its tests: some tests read
+  // fixtures of other packages, and an image is built from this package's
+  // pruned sources alone. `pnpm typecheck` checks the tests too.
+  const config =
+    phase === PHASE_PRODUCTION_BUILD
+      ? { ...nextConfig, typescript: { tsconfigPath: "tsconfig.build.json" } }
+      : nextConfig;
+  return withBundleAnalyzer(config);
+};

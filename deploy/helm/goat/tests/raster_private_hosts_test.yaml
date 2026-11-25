@@ -1,0 +1,47 @@
+suite: raster files on private hosts (global.rasterPrivateHosts)
+# geoapi and processes read raster layers' COGs where their address points and
+# refuse hosts that resolve to private addresses, unless listed.
+# global.rasterPrivateHosts becomes RASTER_PRIVATE_HOSTS for both; empty (the
+# default) renders nothing, so only public hosts are read.
+templates:
+  - geoapi/configmap.yaml
+  - processes/configmap.yaml
+set:
+  postgresql.external.host: "pg.example.com"
+  postgresql.external.existingSecret: "pg-secret"
+tests:
+  - it: renders nothing by default
+    asserts:
+      - template: geoapi/configmap.yaml
+        notExists:
+          path: data.RASTER_PRIVATE_HOSTS
+      - template: processes/configmap.yaml
+        notExists:
+          path: data.RASTER_PRIVATE_HOSTS
+
+  - it: gives the list to geoapi and processes, comma-separated
+    set:
+      global.rasterPrivateHosts: [garage, files.internal]
+    asserts:
+      - template: geoapi/configmap.yaml
+        equal:
+          path: data.RASTER_PRIVATE_HOSTS
+          value: garage,files.internal
+      - template: processes/configmap.yaml
+        equal:
+          path: data.RASTER_PRIVATE_HOSTS
+          value: garage,files.internal
+
+  - it: a service's own config value wins and renders once
+    set:
+      global.rasterPrivateHosts: [garage]
+      geoapi.config.RASTER_PRIVATE_HOSTS: minio.internal
+    asserts:
+      - template: geoapi/configmap.yaml
+        equal:
+          path: data.RASTER_PRIVATE_HOSTS
+          value: minio.internal
+      - template: processes/configmap.yaml
+        equal:
+          path: data.RASTER_PRIVATE_HOSTS
+          value: garage

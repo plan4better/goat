@@ -2,6 +2,17 @@ import type { Theme } from "@mui/material/styles";
 
 const Button = (theme: Theme) => {
   return {
+    // Every button in the app's font. A ButtonBase is a <button>, which the
+    // browser gives its own font, and the theme's typography only inherits:
+    // without this, bare ButtonBases (tool pills, toggles, role pickers)
+    // were drawn in the browser's button font.
+    MuiButtonBase: {
+      styleOverrides: {
+        root: {
+          fontFamily: "inherit",
+        },
+      },
+    },
     MuiButton: {
       defaultProps: {
         variant: "contained",

@@ -1,11 +1,12 @@
 """Periodic reconciliation for custom domains. Runs every 5 min via k8s CronJob.
 
-For each domain still in ``dns_status=pending`` state: re-check DNS resolution.
+For each domain not verified yet (``dns_status`` pending, or failed: a record
+that pointed elsewhere): re-check DNS resolution.
 If the customer's CNAME now points at us, flip ``dns_status=verified`` and
 ``cert_status=active``. Caddy handles cert lifecycle lazily on the first
 inbound request to that hostname, so there's nothing for ``core`` to wait on.
 
-Domains stuck in pending for >7 days stay in pending — admin can still click
+Domains stuck in pending (or failed) for >7 days stay so — admin can still click
 "Recheck" to re-run the verification on demand. We don't auto-fail them
 since the customer might just be slow setting up DNS.
 """
@@ -18,7 +19,7 @@ from core.core.config import settings
 from core.crud.crud_organization_domain import organization_domain as crud
 from core.db.models.organization_domain import CertStatus, DnsStatus
 from core.db.session import session_manager
-from core.services.domain_reconciliation import check_dns
+from core.services.domain_reconciliation import refresh_dns
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,9 @@ async def reconcile() -> tuple[int, int]:
         async with session_manager.session() as db:
             domains = await crud.list_pending_dns(async_session=db)
             for d in domains:
-                new_dns, msg = await check_dns(
-                    d.base_domain,
-                    canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET,
+                new_dns = await refresh_dns(
+                    d, canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET
                 )
-                d.dns_status = new_dns
-                d.dns_status_message = msg
                 if (
                     new_dns == DnsStatus.VERIFIED
                     and d.cert_status == CertStatus.PENDING
@@ -58,9 +56,10 @@ async def reconcile() -> tuple[int, int]:
                     )
                 else:
                     logger.debug(
-                        "reconciled %s: still pending (%s)",
+                        "reconciled %s: %s (%s)",
                         d.base_domain,
-                        msg or "no message",
+                        d.dns_status.value,
+                        d.dns_status_message or "no message",
                     )
             await db.commit()
             return len(domains), transitioned

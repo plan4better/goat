@@ -1,0 +1,345 @@
+"use client";
+
+// A value by attribute (spec 4.3): the field, then a palette over it (colors, its colors as a list to edit at the
+// bottom) or a range and a scale (numbers), and
+// the values the server computed for the field. A field or scale change saves at once; the values follow with the
+// reply. "Fixed range" writes the domain as a clamp the server never replaces.
+import { Box, Typography } from "@mui/material";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
+
+import { domainPending } from "@/lib/style/editor/classify";
+import { SLIDERS } from "@/lib/style/editor/defaults";
+import { keyOf } from "@/lib/style/editor/forms";
+import { formatNumberText } from "@/lib/style/editor/labels";
+import { paletteList } from "@/lib/style/editor/paletteList";
+import { type Path, setIn } from "@/lib/style/editor/store";
+import { CAPABILITIES } from "@/lib/style/generated/capabilities";
+import { PALETTES } from "@/lib/style/generated/catalog";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
+import { type JsonObject, isObject } from "@/lib/style/json";
+import { scaleValue } from "@/lib/style/legend";
+
+import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
+import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import type { FieldProfile } from "@/components/map/panels/styleEditor/context";
+import { ColorRow } from "@/components/map/panels/styleEditor/editors/ColorRow";
+import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
+import { FieldPickerButton } from "@/components/map/panels/styleEditor/pickers/FieldPicker";
+import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
+import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
+import {
+  anchorTopOf,
+  useCloseWhenGone,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import {
+  ChoiceRow,
+  NavRow,
+  NumberInput,
+  Row,
+  SliderRow,
+  SwitchRow,
+  TextRow,
+} from "@/components/map/panels/styleEditor/rows";
+
+const SCALES = ["linear", "sqrt", "log"];
+
+/** A range typed in two boxes (a fixed range, a weight's range): each box takes its number when it is left, and the
+ * pair is written once both have a number and it goes from low to high, as goatlib takes a domain. Until then the
+ * typed numbers stay in the boxes; `invalid` while both have one that does not go from low to high. */
+export function useRangeBoxes(
+  stored: readonly [number, number] | undefined | null,
+  write: (next: [number, number]) => void
+) {
+  const [typed, setTyped] = useState<[number | undefined, number | undefined] | null>(null);
+  // A range changed elsewhere (undo, the field's profile) replaces what was typed.
+  const storedKey = stored ? `${stored[0]}|${stored[1]}` : "";
+  useEffect(() => setTyped(null), [storedKey]);
+  const shown: [number | undefined, number | undefined] = typed ?? [stored?.[0], stored?.[1]];
+  const commit = (index: 0 | 1, value: number) => {
+    const next: [number | undefined, number | undefined] = [shown[0], shown[1]];
+    next[index] = value;
+    const [low, high] = next;
+    if (low !== undefined && high !== undefined && low < high) {
+      setTyped(null);
+      write([low, high]);
+    } else setTyped(next);
+  };
+  const invalid = typed !== null && typed[0] !== undefined && typed[1] !== undefined;
+  return { shown, commit, invalid };
+}
+
+/** "12 to 9,800" for a number field's profile. */
+export function profileRange(
+  profile: FieldProfile | undefined,
+  locale: string,
+  to: string
+): string | undefined {
+  if (profile?.min === undefined || profile.max === undefined) return undefined;
+  return `${formatNumberText(profile.min, {}, locale)} ${to} ${formatNumberText(profile.max, {}, locale)}`;
+}
+
+function AttributePalettePicker({ path }: { path: Path }) {
+  const store = useEditor();
+  const palette = useStyleValue<string | string[]>(`${path}.palette`);
+  const reverse = useStyleValue<boolean | undefined>(`${path}.reverse`);
+  return (
+    <PalettePicker
+      value={palette}
+      reverse={reverse === true}
+      kinds={["sequential", "diverging"]}
+      onChange={(next) => store.set(`${path}.palette`, next)}
+      onReverse={(next) => store.set(`${path}.reverse`, next || undefined)}
+    />
+  );
+}
+
+/** A color by attribute's palette as its list edits it; an edit writes an inline palette, Reverse folded in. */
+function useAttributePalette(path: Path): PaletteSource {
+  const store = useEditor();
+  const value = useStyleValue<unknown>(path);
+  const form: JsonObject = isObject(value) ? value : {};
+  const palette = (form.palette ?? "goat:green") as string | string[];
+  // The rows name where their colors sit over the field's range, by the form's scale.
+  const computed =
+    isObject(form.computed) && Array.isArray(form.computed.domain) ? form.computed.domain : null;
+  const domain = (Array.isArray(form.domain) ? form.domain : computed) as [number, number] | null;
+  return {
+    colors: paletteList(palette, { reverse: form.reverse === true }),
+    ...(domain ? { valueAt: (t: number) => scaleValue(form, domain, t) } : {}),
+    write: (colors) =>
+      store.update(
+        (doc) => setIn(setIn(doc, `${path}.palette`, colors), `${path}.reverse`, undefined),
+        `${path}.palette`
+      ),
+  };
+}
+
+/** A value by attribute: a field with a palette (colors) or a range (numbers). */
+const byAttribute = (form: unknown): form is Record<string, unknown> & { field: string } =>
+  isObject(form) && typeof form.field === "string" && ("palette" in form || "range" in form);
+
+export function AttributeEditor({ path }: { path: Path }) {
+  const { t, i18n } = useTranslation("common");
+  const store = useEditor();
+  const data = useStyleData();
+  const popover = usePopover();
+  const form = useStyleValue<unknown>(path);
+  const issues = useIssueAt(path);
+  // Each reply changes the stored document: the values may stop pending.
+  const subscribe = useCallback((listener: () => void) => store.saver.subscribe(listener), [store]);
+  const readStored = () => store.saver.stored;
+  useSyncExternalStore(subscribe, readStored, readStored);
+  // The fixed range's boxes (written as `write({ domain })` writes it, one undo step for typing).
+  const domainBoxes = useRangeBoxes(
+    isObject(form) && Array.isArray(form.domain) ? (form.domain as [number, number]) : undefined,
+    (next) => store.update((doc) => setIn(doc, `${path}.domain`, next), `${path}.domain`)
+  );
+  // Made fixed (or by zoom) while open, by the row's mode or an undo: the editor closes.
+  useCloseWhenGone(!byAttribute(form));
+  if (!byAttribute(form))
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
+        {t("style_editor.not_by_attribute")}
+      </Typography>
+    );
+
+  const key = keyOf(path);
+  const isColor = CAPABILITIES[key]?.kind === "color";
+  const slider = SLIDERS[key];
+  const locale = i18n.language;
+  const number = (n: number) => formatNumberText(n, {}, locale);
+  const field = form.field;
+  const fieldLabel = data.fields.find((f) => f.name === field)?.label ?? field;
+  const computed =
+    isObject(form.computed) && Array.isArray(form.computed.domain) ? form.computed.domain : undefined;
+  const domain = (Array.isArray(form.domain) ? form.domain : computed) as [number, number] | undefined;
+  const pending = domainPending(store, path);
+  // Edits of one key coalesce into one undo step (a slider drag, typing a number).
+  const write = (patch: JsonObject) =>
+    store.update(
+      (doc) => Object.entries(patch).reduce((next, [k, v]) => setIn(next, `${path}.${k}`, v), doc),
+      `${path}.${Object.keys(patch).join(",")}`
+    );
+
+  let values: string;
+  if (pending || !domain) values = t("style_editor.values_pending");
+  else if (isColor)
+    values = t("style_editor.values_along_palette", { min: number(domain[0]), max: number(domain[1]) });
+  else {
+    const [a, b] = (Array.isArray(form.range) ? form.range : [0, 0]) as [number, number];
+    const unit = (n: number) =>
+      slider?.pct ? `${Math.round(n * 100)}%` : `${number(n)}${slider?.unit ? ` ${slider.unit}` : ""}`;
+    values = t("style_editor.values_map", {
+      min: number(domain[0]),
+      max: number(domain[1]),
+      a: unit(a),
+      b: unit(b),
+      ...PLAIN,
+    });
+  }
+
+  const range = (Array.isArray(form.range) ? form.range : [0, 1]) as [number, number];
+  // The fixed value's bounds, so a drag cannot raise its own end; a value past them is typed in the number. They start
+  // at 0 at the latest: the smallest value may draw nothing, which keeps proportional symbols proportional.
+  const fixedBounds = slider ?? { min: 0, max: 100, step: 1 };
+  const bounds = { ...fixedBounds, min: Math.min(0, fixedBounds.min) };
+  const fixed = Array.isArray(form.domain);
+  const palette = (form.palette ?? "goat:green") as string | string[];
+  // A copy: an inline palette is the stored list itself.
+  const colors = [...paletteColors(palette)];
+  if (form.reverse === true) colors.reverse();
+
+  return (
+    <>
+      <Row label={t("style_editor.field")}>
+        <FieldPickerButton
+          ariaLabel={t("style_editor.field")}
+          text={fieldLabel}
+          fields={data.fields}
+          filter="number"
+          value={field}
+          profile={(_, loaded) => profileRange(loaded, locale, t("style_editor.to"))}
+          // A domain written for the old field means nothing for the new one; the server computes the new one.
+          onChange={(name) => write({ field: name, domain: undefined, computed: undefined })}
+        />
+      </Row>
+      {isColor ? (
+        <>
+          <NavRow
+            label={t("style_editor.palette")}
+            value={`${
+              Array.isArray(palette) ? t("style_editor.palette_custom") : (PALETTES[palette]?.name ?? palette)
+            }${form.reverse === true ? `, ${t("style_editor.reversed")}` : ""}`}
+            swatch={{ background: `linear-gradient(90deg, ${colors.join(", ")})`, wide: true }}
+            onOpen={(anchor) =>
+              popover.open("picker", {
+                key: `attr-palette:${path}`,
+                title: t("style_editor.palette"),
+                anchorTop: anchorTopOf(anchor),
+                anchorEl: anchor,
+                render: () => <AttributePalettePicker path={path} />,
+              })
+            }
+          />
+        </>
+      ) : (
+        <>
+          <SliderRow
+            label={t("style_editor.range_smallest")}
+            min={bounds.min}
+            max={bounds.max}
+            step={bounds.step}
+            unit={bounds.unit}
+            pct={bounds.pct}
+            value={range[0]}
+            // goatlib takes a range from low to high: Smallest stops at Largest.
+            onChange={(v) => write({ range: [Math.min(v, range[1]), range[1]] })}
+          />
+          <SliderRow
+            label={t("style_editor.range_largest")}
+            min={bounds.min}
+            max={bounds.max}
+            step={bounds.step}
+            unit={bounds.unit}
+            pct={bounds.pct}
+            value={range[1]}
+            onChange={(v) => write({ range: [range[0], Math.max(v, range[0])] })}
+          />
+        </>
+      )}
+      <ChoiceRow<string>
+        label={t("style_editor.scale")}
+        value={typeof form.scale === "string" ? form.scale : "linear"}
+        options={SCALES.map((s) => ({
+          value: s,
+          label: t(`style_editor.scale_${s}`),
+          sub: t(
+            isColor && s === "sqrt" ? "style_editor.scale_sqrt_sub_color" : `style_editor.scale_${s}_sub`
+          ),
+        }))}
+        onChange={(scale) => write({ scale })}
+      />
+      {/* What features without a value in the field draw with, and the ramp's title in the legend. */}
+      {isColor ? (
+        <ColorRow
+          label={t("style_editor.no_data")}
+          path={`${path}.no_data`}
+          fallback={DEFAULTS[key] as string | undefined}
+          note={t("style_editor.note_no_data")}
+        />
+      ) : (
+        <SliderRow
+          label={t("style_editor.no_data")}
+          min={bounds.min}
+          max={bounds.max}
+          step={bounds.step}
+          unit={bounds.unit}
+          pct={bounds.pct}
+          value={typeof form.no_data === "number" ? form.no_data : (DEFAULTS[key] as number)}
+          note={t("style_editor.note_no_data")}
+          onChange={(v) => write({ no_data: v })}
+        />
+      )}
+      <TextRow
+        label={t("style_editor.legend_heading")}
+        value={typeof form.title === "string" ? form.title : ""}
+        placeholder={fieldLabel}
+        onChange={(value) => write({ title: value || undefined })}
+      />
+      <Row label={t("style_editor.values")}>
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 0 }}>
+          {values}
+        </Typography>
+      </Row>
+      <SwitchRow
+        label={t("style_editor.fixed_range")}
+        note={t("style_editor.note_fixed_range")}
+        on={fixed}
+        onToggle={() => {
+          if (fixed) write({ domain: undefined });
+          else {
+            const profile = data.profile(field);
+            const start = computed ?? [profile?.min ?? 0, profile?.max ?? 1];
+            write({ domain: [...start] });
+          }
+        }}
+      />
+      {fixed && (
+        <Row
+          label={t("style_editor.domain")}
+          note={domainBoxes.invalid ? t("style_editor.range_low_to_high") : undefined}>
+          <NumberInput
+            value={domainBoxes.shown[0]}
+            width={72}
+            ariaLabel={t("style_editor.domain_from")}
+            commitOnLeave
+            onChange={(v) => domainBoxes.commit(0, v)}
+          />
+          <Typography variant="caption" color="text.secondary">
+            {t("style_editor.to")}
+          </Typography>
+          <NumberInput
+            value={domainBoxes.shown[1]}
+            width={72}
+            ariaLabel={t("style_editor.domain_to")}
+            commitOnLeave
+            onChange={(v) => domainBoxes.commit(1, v)}
+          />
+        </Row>
+      )}
+      {/* The palette's colors to edit, at the bottom after the range. */}
+      {isColor && (
+        <PaletteColors useSource={useAttributePalette} args={path} pickerKey={`attr-palette:${path}`} />
+      )}
+      {issues.length > 0 && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, px: 3, pt: 2 }}>
+          {issues.map((issue, i) => (
+            <IssueNotice key={`${issue.code}-${i}`} issue={issue} />
+          ))}
+        </Box>
+      )}
+    </>
+  );
+}

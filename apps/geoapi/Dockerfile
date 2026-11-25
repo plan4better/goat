@@ -18,31 +18,18 @@ ENV PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH"
 
 # ca-certificates is what OpenSSL's default verify paths read: the build
 # stage needs it to download the DuckDB extensions, the runtime for any HTTPS
-# the service makes. Installed in the shared base so both stages have it.
+# the service makes. libexpat1 is the one library rasterio's wheel loads from
+# the system (its GDAL is inside the wheel). Installed in the shared base so
+# both stages have them.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install --no-install-recommends -y tzdata ca-certificates \
+    && apt-get install --no-install-recommends -y tzdata ca-certificates libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ==== STAGE 2: Build tippecanoe ====
-FROM linux-base AS tippecanoe-builder
-
-ARG TIPPECANOE_VERSION=2.79.0
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    libsqlite3-dev \
-    zlib1g-dev \
-    && curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
-    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
-    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
-    && make -j$(nproc) \
-    && make install \
-    && rm -rf /tmp/tippecanoe*
-
-# ===== STAGE 3: Python environment ====
-# geoapi only uses goatlib's light "serving" surface (storage/query/models), so
-# no GDAL, routing or build toolchain is needed — all deps ship manylinux wheels.
+# ===== STAGE 2: Python environment ====
+# geoapi only uses goatlib's light "serving" surface (storage/query/models) and
+# its `raster` extra, so no system GDAL, routing or build toolchain is needed —
+# all deps ship manylinux wheels (rasterio's bundles its own GDAL), manby (the
+# `manby` program that cuts tiles from stored ones) among them.
 FROM linux-base AS python-base
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.2 /uv /usr/local/bin/uv
@@ -69,14 +56,8 @@ RUN uv sync --frozen --no-dev --no-editable --package=geoapi
 RUN python -c "import duckdb; from goatlib.storage.ducklake import REQUIRED_DUCKDB_EXTENSIONS as X, COMMUNITY_DUCKDB_EXTENSIONS as C; con=duckdb.connect(config={'extension_directory':'/opt/duckdb-extensions'}); [con.execute(f'INSTALL {e}') for e in X]; [con.execute(f'INSTALL {e} FROM community') for e in C]" \
     && chmod -R a+rX /opt/duckdb-extensions
 
-# ==== STAGE 4: Webapp environment ====
+# ==== STAGE 3: Webapp environment ====
 FROM linux-base AS webapp
-
-# Install zlib runtime needed by tippecanoe
-RUN apt-get update && apt-get install --no-install-recommends -y zlib1g && rm -rf /var/lib/apt/lists/*
-
-# Copy tippecanoe binaries (tippecanoe-overzoom for variable-depth tile pyramids)
-COPY --from=tippecanoe-builder /usr/local/bin/tippecanoe-overzoom /usr/local/bin/
 
 RUN useradd -m appuser
 

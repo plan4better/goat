@@ -11,6 +11,7 @@ import type { ContentItem } from "@/lib/validations/content";
 import { canAddToProject } from "@/hooks/templates/useUseTemplate";
 
 import { focusRing } from "@/components/assistant/styles";
+import { POPOVER_ROW_SX } from "@/components/common/popoverRow";
 import { DialogSearchField } from "@/components/modals/content/ContentDialogChrome";
 
 /** How many recent projects the menu lists. */
@@ -54,7 +55,7 @@ export default function ProjectPickerMenu({
       onClose={onClose}
       anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       transformOrigin={{ vertical: "top", horizontal: "right" }}
-      slotProps={{ paper: { sx: { width: 300, p: "10px", borderRadius: "12px" } } }}>
+      slotProps={{ paper: { sx: { width: 300, p: "10px", mt: 1.5 } } }}>
       <Typography sx={{ fontSize: 12, fontWeight: 700, mb: "8px" }}>
         {t("assistant_item_add_to_project_choose")}
       </Typography>
@@ -80,13 +81,14 @@ export default function ProjectPickerMenu({
             key={project.id}
             onClick={() => onPick(project)}
             sx={{
+              // The app's menu row; a thumbnail is higher than an icon, so less padding.
+              ...POPOVER_ROW_SX,
+              p: "6px",
               fontFamily: "inherit",
               display: "flex",
               justifyContent: "flex-start",
-              gap: "10px",
-              p: "6px",
-              borderRadius: "8px",
               textAlign: "left",
+              color: "text.primary",
               "&:hover": { bgcolor: "action.hover" },
               ...focusRing(theme),
             }}>
@@ -104,10 +106,10 @@ export default function ProjectPickerMenu({
               }}
             />
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontSize: 12.5, fontWeight: 700 }}>
+              <Typography noWrap sx={{ fontSize: "inherit", fontWeight: "inherit" }}>
                 {project.name}
               </Typography>
-              <Typography noWrap sx={{ fontSize: 11, color: "text.secondary" }}>
+              <Typography noWrap sx={{ fontSize: 11.5, fontWeight: 400, color: "text.secondary" }}>
                 {spaceDisplayName(
                   spaces.find((space) => space.id === project.space_id),
                   t

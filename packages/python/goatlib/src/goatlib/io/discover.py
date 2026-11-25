@@ -16,6 +16,7 @@ import boto3
 import duckdb
 
 from goatlib.io.formats import ALL_EXTS, FileFormat
+from goatlib.io.gml import NotGmlError, gml_classes
 from goatlib.io.utils import detect_path_type
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,11 @@ ARCHIVE_SKIP_EXTS = frozenset({FileFormat.TXT.value, FileFormat.DSV.value})
 
 # The first bytes of every SQLite database, so of every GeoPackage.
 _SQLITE_HEADER = b"SQLite format 3\x00"
+
+
+#: The most an uploaded archive may unpack to, by the sizes its directory
+#: states; a member is never written past the size stated for it.
+ZIP_MAX_UNPACKED_BYTES = 500 * 1024 * 1024
 
 
 class DiscoveryError(Exception):
@@ -135,6 +141,21 @@ def _discover_gpkg_layers(gpkg: Path) -> list[str]:
         return [str(gpkg)]
 
 
+def _discover_gml_layers(gml: Path) -> list[str]:
+    """The GML's feature classes as virtual paths 'file::class'; the file
+    alone when it is no GML that can be read (its conversion then says so).
+
+    Not from `ST_Read_Meta`, which names no drivers: `io/gml.py` lists them
+    with the GML driver alone.
+    """
+    try:
+        classes = gml_classes(gml)
+    except NotGmlError as e:
+        logger.warning("No GML classes in %s: %s", gml, e)
+        return [str(gml)]
+    return [f"{gml}::{name}" for name in classes]
+
+
 def _discover_from_dir(directory: Path) -> Iterator[Path]:
     """
     Discover convertible files in a directory recursively.
@@ -157,6 +178,8 @@ def _discover_from_dir(directory: Path) -> Iterator[Path]:
 
             if ext == FileFormat.GPKG.value:
                 yield from (Path(v) for v in _discover_gpkg_layers(path))
+            elif ext == FileFormat.GML.value:
+                yield from (Path(v) for v in _discover_gml_layers(path))
             elif ext == FileFormat.ZIP.value:
                 yield from _discover_from_zip(path)
             elif ext in ALL_EXTS:
@@ -167,9 +190,13 @@ def _discover_from_dir(directory: Path) -> Iterator[Path]:
 
 
 @contextmanager
-def _extract_zip_safely(zip_path: Path) -> Iterator[Path]:
+def extract_zip_safely(zip_path: Path) -> Iterator[Path]:
     """
     Safely extract ZIP contents to temporary directory.
+
+    The one place an uploaded archive is unpacked: a dataset upload and a
+    bundle importer that takes an archive (a zipped XPlan plan) both use it.
+    The directory stays after a normal exit, for the caller to remove.
 
     The archive's own directory structure is preserved. Flattening to basenames loses
     data: an archive holding `wien/stops.geojson` and `graz/stops.geojson` — the shape a
@@ -188,7 +215,7 @@ def _extract_zip_safely(zip_path: Path) -> Iterator[Path]:
         with zipfile.ZipFile(zip_path) as zf:
             # Check for potentially malicious ZIP files
             total_size = sum(zf.getinfo(name).file_size for name in zf.namelist())
-            if total_size > 500 * 1024 * 1024:  # 500MB limit
+            if total_size > ZIP_MAX_UNPACKED_BYTES:
                 raise DiscoveryError(f"ZIP file too large: {total_size} bytes")
 
             root = tmp_dir.resolve()
@@ -250,7 +277,7 @@ def _discover_from_zip(
     top_level = _skipped is None
     skipped: list[Path] = [] if _skipped is None else _skipped
     found = False
-    with _extract_zip_safely(zip_path) as tmp_dir:
+    with extract_zip_safely(zip_path) as tmp_dir:
         # Recursively, because the archive's folders are kept: a dataset can sit at any
         # depth, and `sorted` so the order a caller sees does not depend on the
         # filesystem.
@@ -275,6 +302,12 @@ def _discover_from_zip(
             # Handle GeoPackages
             if ext == FileFormat.GPKG.value:
                 for layer in _discover_gpkg_layers(item_path):
+                    found = True
+                    yield Path(layer)
+                continue
+
+            if ext == FileFormat.GML.value:
+                for layer in _discover_gml_layers(item_path):
                     found = True
                     yield Path(layer)
                 continue
@@ -360,5 +393,7 @@ def _discover_local_inputs(path: Path) -> list[str]:
         return [str(p) for p in _discover_from_zip(path)]
     elif ext == FileFormat.GPKG.value:
         return _discover_gpkg_layers(path)
+    elif ext == FileFormat.GML.value:
+        return _discover_gml_layers(path)
     else:
         return [str(path)]

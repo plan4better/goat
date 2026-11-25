@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 # images — there is no second list to keep in sync.
 REQUIRED_DUCKDB_EXTENSIONS = ["spatial", "httpfs", "postgres", "ducklake"]
 # Community-repository extensions the analysis tools load on their own
-# connections (``INSTALL h3 FROM community``). Not loaded by the managers,
+# connections (``INSTALL h3 FROM community``) and geoapi's pool loads for its H3
+# tiles (``DuckLakePool.COMMUNITY_EXTENSIONS``). Not loaded by the managers,
 # but baked into the images alongside the list above so those INSTALLs
 # resolve from disk instead of community-extensions.duckdb.org.
 COMMUNITY_DUCKDB_EXTENSIONS = ["h3"]
@@ -86,6 +87,9 @@ CONNECTION_ERROR_PATTERNS = [
     "connection reset",
     "broken pipe",
     "failed to get data file list",
+    # DuckDB invalidates a database after an internal error in any of its
+    # queries; every connection to it fails until it is opened again.
+    "database has been invalidated",
 ]
 
 # TCP keepalive settings to prevent SSL EOF errors on idle PostgreSQL connections
@@ -947,6 +951,9 @@ class DuckLakePool:
     """
 
     REQUIRED_EXTENSIONS = REQUIRED_DUCKDB_EXTENSIONS
+    # Community extensions a service's queries use (geoapi's H3 tiles). A
+    # connection that cannot load one still serves everything else.
+    COMMUNITY_EXTENSIONS: tuple[str, ...] = ()
 
     # Max age for connections in seconds - older connections are recreated
     # This helps prevent stale PostgreSQL connections inside DuckLake
@@ -1232,6 +1239,13 @@ class DuckLakePool:
             self._extensions_installed = True
         for ext in self.REQUIRED_EXTENSIONS:
             con.execute(f"LOAD {ext}")
+        for ext in self.COMMUNITY_EXTENSIONS:
+            try:
+                if not baked:
+                    con.execute(f"INSTALL {ext} FROM community")
+                con.execute(f"LOAD {ext}")
+            except duckdb.Error as e:
+                logger.warning("Could not load extension %s: %s", ext, e)
 
         apply_duckdb_s3_settings(
             con,
@@ -1462,8 +1476,29 @@ class DuckLakePool:
         self._pool.put((con, time.time(), self._generation))
 
     # A rebuild completed this recently satisfies an allow_same re-apply
-    # request (reconnect storms after a PG blip coalesce onto one rebuild).
+    # request (reconnect storms after a PG blip coalesce onto one rebuild),
+    # as long as its base still answers.
     REBUILD_DEDUP_SECONDS = 5.0
+
+    def _current_base_answers(self) -> bool:
+        """Whether the serving base still runs a query.
+
+        DuckDB invalidates a database after an internal error in one of its
+        queries; a base built moments ago is then rebuilt rather than kept.
+        """
+        with self._rebuild_lock:
+            entry = self._bases.get(self._generation)
+        if entry is None:
+            return False
+        try:
+            cursor = entry[0].cursor()
+            try:
+                cursor.execute("SELECT 1").fetchone()
+            finally:
+                cursor.close()
+        except Exception:
+            return False
+        return True
 
     def _apply_snapshot(self, snapshot_id: int, allow_same: bool = False) -> None:
         """Swap the pool to cursors of a fresh base pinned at snapshot_id.
@@ -1499,7 +1534,10 @@ class DuckLakePool:
                     return
                 if applied == snapshot_id and (
                     not allow_same
-                    or time.monotonic() - applied_at < self.REBUILD_DEDUP_SECONDS
+                    or (
+                        time.monotonic() - applied_at < self.REBUILD_DEDUP_SECONDS
+                        and self._current_base_answers()
+                    )
                 ):
                     return
 

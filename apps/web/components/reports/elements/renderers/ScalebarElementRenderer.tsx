@@ -2,6 +2,7 @@
 
 import { Box, Typography } from "@mui/material";
 import React, { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { TypographyStyle } from "@/lib/constants/typography";
 import { DEFAULT_FONT_FAMILY } from "@/lib/constants/typography";
@@ -408,6 +409,9 @@ const NumericScalebar: React.FC<{
   );
 };
 
+/** Above this pitch (degrees) the bound map counts as tilted. */
+const TILTED_ABOVE = 0.5;
+
 /**
  * Scalebar Element Renderer for print reports
  *
@@ -420,6 +424,7 @@ const ScalebarElementRenderer: React.FC<ScalebarElementRendererProps> = ({
   mapElements = [],
   zoom = 1,
 }) => {
+  const { t } = useTranslation("common");
   // Extract config
   const config = (element.config || {}) as ScalebarElementConfig;
   const mapElementId = config.mapElementId;
@@ -460,6 +465,10 @@ const ScalebarElementRenderer: React.FC<ScalebarElementRendererProps> = ({
   );
 
   const labelSx = useMemo(() => typographyToSx(config.typography), [config.typography]);
+
+  // A tilted map has no single scale: distances change across the view (3D spec 10).
+  const boundView = mapElements.find((el) => el.id === mapElementId)?.config?.viewState;
+  const notToScale = ((boundView?.pitch as number | undefined) ?? 0) > TILTED_ABOVE;
 
   const renderScalebar = () => {
     const commonProps: ScalebarStyleProps = {
@@ -505,9 +514,18 @@ const ScalebarElementRenderer: React.FC<ScalebarElementRendererProps> = ({
         transform: `scale(${zoom})`,
         transformOrigin: "top left",
       }}>
-      <Box data-testid="scalebar-bar" style={{ width: style === "numeric" ? "100%" : `${barFraction * 100}%` }}>
-        {renderScalebar()}
-      </Box>
+      {notToScale ? (
+        <Typography
+          data-testid="scalebar-not-to-scale"
+          variant="caption"
+          sx={{ fontSize: "0.65rem", ...labelSx, textAlign: "center", lineHeight: 1.2 }}>
+          {t("report_scalebar_not_to_scale")}
+        </Typography>
+      ) : (
+        <Box data-testid="scalebar-bar" style={{ width: style === "numeric" ? "100%" : `${barFraction * 100}%` }}>
+          {renderScalebar()}
+        </Box>
+      )}
     </Box>
   );
 };

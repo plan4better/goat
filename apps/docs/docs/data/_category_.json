@@ -1,6 +1,6 @@
 {
   "label": "Data",
-  "position": 2,
+  "position": 3,
   "link": {
     "type": "generated-index",
     "description": "High-quality input data is a crucial part of perfoming analyses. GOAT is therefore equipped with a variety of such datasets and also allows you to upload your own."

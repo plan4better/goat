@@ -365,6 +365,59 @@ RESOURCES_PERMISSIONS = [
         "method": ["POST"],
         "permissions": ["read-layer", "update-project"],
     },
+    # GOAT Style routes: exact rows, because check_resource's `LIKE pattern || '/%'`
+    # fallback picks any matching row (`project` POST would ask for create-project).
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style",
+        "method": ["POST"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}",
+        "method": ["PUT", "PATCH", "DELETE"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}/check",
+        "method": ["POST"],
+        "permissions": ["read-project"],
+    },
+    {
+        # The dataset's edit rights are checked in code: the path names no layer id.
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/style/{style_id}/set-as-default",
+        "method": ["POST"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/layer/{layer_project_id}/map-state",
+        "method": ["PATCH"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/group/{group_id}/map-state",
+        "method": ["PATCH"],
+        "permissions": ["update-project"],
+    },
+    {
+        "url_pattern": "project/{project_id}/map",
+        "method": ["GET"],
+        "permissions": ["read-project"],
+    },
+    {
+        "url_pattern": "layer/{layer_id}/style",
+        "method": ["GET"],
+        "permissions": ["read-layer"],
+    },
+    {
+        "url_pattern": "layer/{layer_id}/style",
+        "method": ["PUT"],
+        "permissions": ["update-layer"],
+    },
     {
         "url_pattern": "project/{project_id}/bundle/{bundle_id}",
         "method": ["POST"],
@@ -466,6 +519,13 @@ RESOURCES_PERMISSIONS = [
         "method": ["DELETE", "PATCH"],
         "permissions": ["manage-organization-invitation"],
     },
+    # Resending has its own row: the `invitations` row's prefix fallback would
+    # match too, but an exact row keeps the lookup unambiguous.
+    {
+        "url_pattern": "organizations/{organization_id}/invitations/{invitation_id}/resend",
+        "method": ["POST"],
+        "permissions": ["manage-organization-invitation"],
+    },
     {
         "url_pattern": "space",
         "method": ["GET"],
@@ -486,8 +546,15 @@ RESOURCES_PERMISSIONS = [
     },
     {
         "url_pattern": "teams",
-        "method": ["GET", "POST"],
+        "method": ["GET"],
         "permissions": ["read-team"],
+    },
+    # Creating a team is for editors and up (decision 5): a team brings a
+    # space for content, and viewers create no content.
+    {
+        "url_pattern": "teams",
+        "method": ["POST"],
+        "permissions": ["create-team"],
     },
     {
         "url_pattern": "teams/{team_id}",
@@ -502,6 +569,13 @@ RESOURCES_PERMISSIONS = [
     {
         "url_pattern": "teams/{team_id}/profile",
         "method": ["PATCH"],
+        "permissions": ["update-team"],
+    },
+    # Naming a team's owner: the handler decides (the team's owner, or an
+    # owner or admin of the organization), as for renaming.
+    {
+        "url_pattern": "teams/{team_id}/owner",
+        "method": ["PUT"],
         "permissions": ["update-team"],
     },
     {

@@ -17,6 +17,7 @@ Docs-writing rules and diagram exports live in `apps/docs/AGENTS.md`; adding or 
 ## Working rules
 
 - Prefer the simplest change that solves the actual problem. Extend an existing pattern before adding a new one; no new dependency, service or moving part without a concrete reason.
+- In the web app, reuse the shared UI components where possible (menus, pickers, condition rows, value lists, sliders, switches, popovers), and prefer extending a shared one over building a second version next to it. A screen with a real reason to differ may differ.
 - On a task with several steps, keep a short checklist in the replies (done, in progress, next) and update it as you go.
 - No em dashes (—) or en dashes (–) inside sentences: not in UI copy, docs, commit messages or PR text. In code comments, match the file you are in.
 

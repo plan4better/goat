@@ -1,5 +1,8 @@
 #include "polygon_builder.h"
 
+#include "sql_export.h"
+#include "steps.h"
+
 #include <algorithm>
 #include <duckdb.hpp>
 #include <cmath>
@@ -15,17 +18,6 @@ namespace
 {
 static constexpr char kPolygonFeaturesTempTable[] = "routing_polygon_features_tmp";
 static constexpr double kConcaveHullRatio = 0.2;
-
-int64_t count_rows(duckdb::Connection &con, std::string const &table)
-{
-    auto result = con.Query("SELECT count(*) FROM " + table);
-    if (result->HasError())
-    {
-        throw std::runtime_error("Failed to count rows in " + table + ": " +
-                                 result->GetError());
-    }
-    return result->GetValue(0, 0).GetValue<int64_t>();
-}
 
 // Union-find: assign a contiguous component ID to every node whose cost is
 // within max_cost. Nodes connected via traversable edges both within budget
@@ -82,33 +74,6 @@ std::vector<int32_t> compute_node_components(ReachabilityField const &field,
     return components;
 }
 
-// Derive the ordered list of step cost thresholds from the request config.
-std::vector<double> make_step_costs(RequestConfig const &cfg)
-{
-    // Explicit cutoffs take priority over the steps/max_traveltime derivation.
-    if (!cfg.cutoffs.empty())
-    {
-        std::vector<double> steps;
-        steps.reserve(cfg.cutoffs.size());
-        for (int c : cfg.cutoffs)
-            steps.push_back(static_cast<double>(c));
-        return steps;
-    }
-
-    std::vector<double> steps;
-    if (cfg.steps <= 0)
-    {
-        steps.push_back(cfg.cost_budget());
-    }
-    else
-    {
-        double const step_size = cfg.cost_budget() / static_cast<double>(cfg.steps);
-        for (int i = 1; i <= cfg.steps; ++i)
-            steps.push_back(step_size * static_cast<double>(i));
-    }
-    return steps;
-}
-
 } // namespace
 
 std::string const &polygon_features_table_name()
@@ -162,7 +127,7 @@ int64_t materialize_polygon_features_table(
     // Boundary nodes (cost near a step threshold) are always kept.
     static constexpr int32_t kDownsampleThreshold = 50000;
     static constexpr int32_t kDownsampleFactor = 10;
-    auto const step_costs = make_step_costs(cfg);
+    auto const step_costs = compute_step_cutoffs(cfg);
 
     int64_t total_reached_across_fields = 0;
     int64_t reached_node_total = 0;

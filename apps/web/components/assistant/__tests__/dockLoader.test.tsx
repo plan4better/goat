@@ -47,7 +47,6 @@ const available = {
   is_admin: false,
   provider: "test",
   model: "test",
-  data_policy: "standard",
 };
 
 /** The page's idle callbacks, run when a test says the page is idle. */

@@ -97,6 +97,12 @@ msgstr ""
 msgid "User has already been invited"
 msgstr ""
 
+msgid "A team with this name already exists in the organization"
+msgstr ""
+
+msgid "The organization owner cannot delete their account while the organization exists."
+msgstr ""
+
 #: src/endpoints/v1/organizations.py:339 src/endpoints/v1/organizations.py:348
 msgid "You have been invited to join an organization"
 msgstr ""

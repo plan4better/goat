@@ -116,7 +116,8 @@ def _assert_costs_valid(costs, budget):
 
 
 def _assert_step_bucket(cost: float, step_cost: float, step_size: float) -> None:
-    expected = math.ceil(cost / step_size) * step_size
+    # The first step at or above the cost; cost 0 (the start) is in the first.
+    expected = max(math.ceil(cost / step_size), 1) * step_size
     assert step_cost >= cost
     assert math.isclose(step_cost, expected, rel_tol=1e-9, abs_tol=1e-9)
 
@@ -441,12 +442,12 @@ class TestOutputTypes:
         ) == sorted((r["id"], r["cost"], r["cost_step"]) for r in rows.to_pylist())
 
     def test_point_grid_cost_step_follows_its_steps(self, tmp_path):
-        """The PointGrid output rounds each point's cost to a whole number, so
-        costs land on step boundaries: in 12 steps of a 10 minute budget, 5
-        minutes is exactly 6 steps, and the grid reaches it. Each `cost_step`
-        is the cost rounded up to the next step, then cast to a whole number
-        as DuckDB casts a DOUBLE (halves to even, as Python's round does), and
-        never above the budget."""
+        """Each point keeps its exact cost, and its `cost_step` is the first
+        step at or above that cost (the first step for the start itself),
+        rounded to a whole number with halves away from zero, as the other
+        outputs' ROUND does, and never above the budget. The step comes
+        from the exact cost: 10.4 minutes is in the 15 minute band, not the
+        10 minute one."""
         _, pq = _pyarrow()
         grid_path = _write_grid_points(tmp_path / "grid_points.parquet", 600)
         cfg = _make_config(
@@ -459,10 +460,11 @@ class TestOutputTypes:
         routing.compute_catchment(cfg)
         rows = pq.read_table(cfg.output_path, columns=["cost", "cost_step"]).to_pylist()
 
-        assert 5.0 in {row["cost"] for row in rows}
+        assert any(row["cost"] != round(row["cost"]) for row in rows)
         step_size = cfg.max_cost / cfg.steps
         for row in rows:
-            expected = round(math.ceil(row["cost"] / step_size) * step_size)
+            step = max(math.ceil(row["cost"] / step_size), 1) * step_size
+            expected = math.floor(step + 0.5)
             assert row["cost_step"] == expected, row
             assert row["cost_step"] <= cfg.max_cost
 

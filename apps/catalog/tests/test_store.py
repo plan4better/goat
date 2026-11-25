@@ -492,3 +492,18 @@ def test_a_search_that_straddles_a_reload_stays_on_one_generation(
     assert len(ran_on) == 2, "count and page"
     assert all(con is pinned for con in ran_on)
     assert len(rows) == 5 and matched > 0
+
+
+def test_the_etag_changes_when_the_served_documents_change(
+    catalog_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same mirror files, new document shape (an asset the API now announces):
+    the tag must change, or browsers keep the old answer through 304s."""
+    import catalog.services.stac_build as stac_build
+
+    before = CatalogStore(CatalogSettings(data_dir=catalog_dir))
+    before.ensure_current()
+    monkeypatch.setattr(stac_build, "DOCUMENT_VERSION", stac_build.DOCUMENT_VERSION + 1)
+    after = CatalogStore(CatalogSettings(data_dir=catalog_dir))
+    after.ensure_current()
+    assert before.etag_seed != after.etag_seed

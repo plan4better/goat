@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { popoverSurface } from "@p4b/ui/theme/popoverSurface";
 
 import { refreshWorkflowList } from "@/lib/api/workflows";
 import { addItemToProject } from "@/lib/assistant/addToProject";
@@ -34,6 +35,7 @@ import {
 import { openCreatedWorkflow, workflowHref } from "@/lib/assistant/createdWorkflows";
 import { assistantErrorKey } from "@/lib/assistant/errors";
 import { conversationTitle, provisionalTitle } from "@/lib/assistant/history";
+import { followMapChange, followStyleChanges } from "@/lib/assistant/mapBridge";
 import {
   getActiveSurface,
   getDockState,
@@ -59,7 +61,6 @@ import DockPanel from "@/components/assistant/DockPanel";
 import { DialogLoadFailed, DockErrorBoundary, orLoadFailed } from "@/components/assistant/LoadFailed";
 import NewConversation from "@/components/assistant/NewConversation";
 import {
-  CARD_RADIUS,
   accentSoft,
   accentText,
   dockBackdropSx,
@@ -69,7 +70,6 @@ import {
   focusRing,
   headerIconButtonSx,
 } from "@/components/assistant/styles";
-import { surfaceShadows } from "@/components/dashboard/common/surfaceShadows";
 import { TOOLBAR_HEIGHT } from "@/components/header/Toolbar";
 
 // What a dropped file, a card's "All details" or a bundle opens: each carries the
@@ -268,6 +268,9 @@ export default function AssistantDock({
           requestReload: (id, revision) => appStore.dispatch(requestWorkflowReload({ id, revision })),
           refreshList: refreshWorkflowList,
         }),
+      // The map page follows them through its bridge, when it shows their project.
+      followStyleChanges: (changes) => followStyleChanges(changes),
+      followMapChange: (change) => followMapChange(change),
       unsavedWorkflowChanges: (workflowIds) => {
         // A pan alone does not count: it is saved after the change is loaded.
         const { selectedWorkflowId, contentDirty } = appStore.getState().workflow;
@@ -451,10 +454,7 @@ export default function AssistantDock({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          borderRadius: CARD_RADIUS,
-          border: 1,
-          borderColor: "divider",
-          boxShadow: surfaceShadows(theme).hover,
+          ...popoverSurface(theme),
         }}>
         <ConversationHistory onPicked={() => setHistoryOpen(false)} />
       </Paper>

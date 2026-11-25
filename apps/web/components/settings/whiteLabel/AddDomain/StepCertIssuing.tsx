@@ -1,22 +1,15 @@
 "use client";
 
-import { Alert, Stack, Typography } from "@mui/material";
+import { Alert } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
-/** The cert-issuing notice alone — "Close" now lives in the dialog's shared
- * footer. */
+/** Step 3, "Zertifikat": DNS is confirmed, the certificate follows. An alert,
+ * so a check that moves the dialog on while it is open is read out. */
 export function StepCertIssuing() {
   const { t } = useTranslation("common");
   return (
-    <Stack spacing={3}>
-      <Alert severity="success" variant="outlined">
-        <Typography variant="body2">
-          {t(
-            "white_label_add_domain_cert_issuing",
-            "DNS verified. Issuing SSL certificate from Let's Encrypt — usually under 2 minutes."
-          )}
-        </Typography>
-      </Alert>
-    </Stack>
+    <Alert severity="success" variant="outlined">
+      {t("settings_domains_cert_text")}
+    </Alert>
   );
 }

@@ -1,19 +1,30 @@
 "use client";
 
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography, useTheme } from "@mui/material";
 import type { DynamicToolUIPart, TextUIPart } from "ai";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { GOATLogoIconOnlyGreen } from "@p4b/ui/assets/svg/GOATLogoIconOnlyGreen";
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { answerChanges, hasChanges, savesChange } from "@/lib/assistant/answerChanges";
 import { type AskCardState, askCardOf, askCardState, askStepReturned } from "@/lib/assistant/ask";
 import { contextChips, plainTranslate } from "@/lib/assistant/chips";
 import { CREATE_WORKFLOW_TOOLS, SHOW_TOOLS, itemKey, shownGroups, uniqueGroups } from "@/lib/assistant/items";
+import { mapEdit, viewUndoKey } from "@/lib/assistant/mapEdits";
 import { messageTime } from "@/lib/assistant/messageTimes";
 import { stepNames, stepRunning } from "@/lib/assistant/stepLabels";
+import {
+  hasProposalUndo,
+  markProposal,
+  takeProposalUndo,
+  useActiveSurface,
+  useDockState,
+} from "@/lib/assistant/store";
+import type { Restored } from "@/lib/assistant/transport";
 import type { AnswerFeedback, AssistantMessage, PageContext } from "@/lib/assistant/types";
-import { answerEdits } from "@/lib/assistant/workflowEdits";
+import { runsUndoneByWords, typedRestores } from "@/lib/assistant/undoReply";
 
 import AnswerDetails from "@/components/assistant/messages/AnswerDetails";
 import AskCard from "@/components/assistant/messages/AskCard";
@@ -27,9 +38,9 @@ import ResultCards from "@/components/assistant/messages/ResultCards";
 import RunStatusNote from "@/components/assistant/messages/RunStatusNote";
 import SafeMarkdown from "@/components/assistant/messages/SafeMarkdown";
 import StepGroup from "@/components/assistant/messages/StepGroup";
-import UndoAnswer from "@/components/assistant/messages/UndoAnswer";
+import UndoAnswer, { UndoNote } from "@/components/assistant/messages/UndoAnswer";
 import WorkflowRunNote from "@/components/assistant/messages/WorkflowRunNote";
-import { accentSoft, shimmerSx } from "@/components/assistant/styles";
+import { accentSoft, accentText, pillButtonSx, shimmerSx } from "@/components/assistant/styles";
 
 export interface MessageListProps {
   messages: AssistantMessage[];
@@ -161,6 +172,48 @@ function AnsweringLine({ quiet = false }: { quiet?: boolean }) {
   );
 }
 
+/**
+ * The way back from the view a `map_update` step showed on the map, while the page that applied it keeps one (the
+ * newest applied view of the open map page): pressing it puts the camera, mode and projection back, once.
+ */
+function PreviousView({ toolCallId, projectId }: { toolCallId: string; projectId: string }) {
+  const { t } = useTranslation("common");
+  const theme = useTheme();
+  // The way back is kept outside React: the dock's state changes when one is kept or taken, the surface when
+  // the page that keeps it goes.
+  useDockState();
+  const surface = useActiveSurface();
+  const key = viewUndoKey(toolCallId);
+  if (surface?.surface !== "project.map" || surface.project?.id !== projectId || !hasProposalUndo(key)) {
+    return null;
+  }
+  const back = () => {
+    // Taken first, so a second press cannot run it again.
+    try {
+      takeProposalUndo(key)?.();
+    } finally {
+      markProposal(key, null);
+    }
+  };
+  return (
+    <Box sx={{ mt: "-8px" }}>
+      <Button
+        size="small"
+        variant="text"
+        onClick={back}
+        startIcon={<Icon iconName={ICON_NAME.UNDO} style={{ fontSize: 11, color: "inherit" }} />}
+        sx={{
+          ...pillButtonSx,
+          "&&": { ...pillButtonSx["&&"], px: "10px", py: "3px" },
+          color: accentText(theme),
+          "& .MuiButton-startIcon": { mr: "5px" },
+        }}>
+        {t("assistant_view_back")}
+      </Button>
+    </Box>
+  );
+}
+
 function Answer({
   message,
   time,
@@ -176,6 +229,8 @@ function Answer({
   panelAskId,
   heldAskId,
   onShowAsk,
+  undoneByWords,
+  restoredByWords,
 }: {
   message: AssistantMessage;
   /** When the answer was given, if known. */
@@ -195,13 +250,27 @@ function Answer({
   panelAskId: string | null;
   heldAskId: string | null;
   onShowAsk?: (cardId: string) => void;
+  /** A typed undo of a later answer took this answer's changes back. */
+  undoneByWords: boolean;
+  /** What typed undos of later answers wrote back of this answer's changes. */
+  restoredByWords?: Restored[];
 }) {
+  const { t } = useTranslation("common");
   const blocks: ReactNode[] = [];
   let tools: DynamicToolUIPart[] = [];
-  // What the answer's steps named, for every group: a change names the workflow an earlier group read.
-  const names = stepNames(
-    message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool")
+  // Text the run asked for again in the message's language: the answer after it replaces it.
+  // A reloaded answer no longer holds such text.
+  const replaced = new Set(
+    message.parts.flatMap((part) => (part.type === "data-replaced-text" ? part.data.part_ids : []))
   );
+  const shownText = (part: TextUIPart) => {
+    const partId = part.providerMetadata?.goat?.partId;
+    return typeof partId !== "string" || !replaced.has(partId);
+  };
+  // What the answer's steps named, for every group: a change names the workflow an earlier group read. A
+  // failed write that a later group corrected is part of that group's line.
+  const answerSteps = message.parts.filter((part): part is DynamicToolUIPart => part.type === "dynamic-tool");
+  const names = stepNames(answerSteps);
   // Only the answer's last list of each show tool becomes cards: a model that
   // names them more than once has refined what it points to. Every workflow
   // the answer created gets its card.
@@ -237,8 +306,22 @@ function Answer({
         running={running}
         openProject={openProject}
         names={names}
+        answerSteps={answerSteps}
       />
     );
+    // Below the group, so the way back shows also when the step's line is folded into the summary.
+    group.forEach((part) => {
+      const edit = mapEdit(part);
+      if (edit?.view) {
+        blocks.push(
+          <PreviousView
+            key={`view-${part.toolCallId}`}
+            toolCallId={part.toolCallId}
+            projectId={edit.projectId}
+          />
+        );
+      }
+    });
     // In the answer's order, when it shows several kinds of cards.
     group.filter(showsCards).forEach((part) => {
       const groups = uniqueGroups(shownGroups(part), seen);
@@ -252,7 +335,8 @@ function Answer({
       tools.push(part);
       return;
     }
-    if (part.type === "step-start") return;
+    if (part.type === "step-start" || part.type === "data-replaced-text") return;
+    if (part.type === "text" && !shownText(part)) return;
     flush(String(index));
     if (part.type === "text") {
       blocks.push(<SafeMarkdown key={index}>{part.text}</SafeMarkdown>);
@@ -308,7 +392,7 @@ function Answer({
   });
   flush("end");
   const text = message.parts
-    .filter((part): part is TextUIPart => part.type === "text")
+    .filter((part): part is TextUIPart => part.type === "text" && shownText(part))
     .map((part) => part.text)
     .join("\n\n");
   // A stopped or failed answer keeps Copy for what it said; it has details only when it was
@@ -318,11 +402,17 @@ function Answer({
   // A step under way shimmers in its line or its group's summary: one shimmer at a time.
   const stepUnderWay =
     running && message.parts.some((part) => part.type === "dynamic-tool" && stepRunning(part));
-  // An answer that saved workflow edits offers Undo, also when it then failed without a word.
+  // An answer that saved edits (workflows, styles, the map) offers Undo, also when it then failed without a word.
+  // The server's word covers a write of a call that a Stop or the time limit ended: no finished step names it.
   const runId = message.metadata?.run_id;
-  const edits = answerEdits(message);
-  const undoable = !running && !readOnly && !!runId && edits.length > 0;
-  const actions = !running && (text.trim() || !ended || undoable || charged);
+  const changes = answerChanges(message);
+  const undoable =
+    !running && !readOnly && !!runId && (message.metadata?.undoable === true || hasChanges(changes));
+  // An answer whose only change was a removal has nothing to undo: a line says the layer does not come back.
+  const removedOnly = !running && !undoable && changes.layersRemoved && !hasChanges(changes);
+  // An ended answer with nothing to copy or rate keeps the row for its time while it offers Undo.
+  const actions =
+    !running && (text.trim() || !ended || charged || removedOnly || (undoable && time !== null));
   return (
     <Stack
       gap="14px"
@@ -333,32 +423,36 @@ function Answer({
         "&:hover .answer-actions, &:focus-within .answer-actions": { opacity: 1 },
         "@media (hover: none)": { "& .answer-actions": { opacity: 1 } },
       }}>
-      {blocks}
+      {/* The Undo sits on the lines of the answer's changes, the last one carrying its button. */}
+      <UndoAnswer
+        conversationId={conversationId}
+        runId={undoable && runId ? runId : null}
+        changes={changes}
+        changeSteps={answerSteps.filter(savesChange).map((step) => step.toolCallId)}
+        undone={message.metadata?.undone === true || undoneByWords}
+        restores={restoredByWords}>
+        {blocks}
+      </UndoAnswer>
       {/* Below whatever came so far, between steps (the model decides what to do next) and
           while text streams in; a step under way says what it does instead. */}
       {running && <AnsweringLine quiet={stepUnderWay} />}
       {actions && (
-        // The 28px buttons sit 6px out, so their icons start where the answer's text does.
+        // The 28px buttons sit 6px out, so their icons start where the answer's text does. The note of
+        // a removal that Undo cannot put back wraps to a line of its own below them.
         <Stack
           className="answer-actions"
           direction="row"
           gap="4px"
           alignItems="center"
+          flexWrap="wrap"
           sx={{ mt: "-8px", ml: "-6px" }}>
-          {undoable && runId && (
-            <UndoAnswer
-              conversationId={conversationId}
-              runId={runId}
-              workflowIds={[...new Set(edits.map((edit) => edit.workflowId))]}
-              undone={message.metadata?.undone}
-            />
-          )}
           <CopyAnswer text={text} />
           {(!ended || charged) && <AnswerDetails usage={message.metadata?.usage} />}
           {!ended && (
             <FeedbackButtons conversationId={conversationId} messageId={message.id} initial={feedback} />
           )}
           {time !== null && <MessageTime time={time} />}
+          {removedOnly && <UndoNote>{t("assistant_undone_layer_removed")}</UndoNote>}
         </Stack>
       )}
     </Stack>
@@ -376,6 +470,8 @@ export default function MessageList(props: MessageListProps) {
   const runs = (index: number) => props.busy && index === props.messages.length - 1;
   const newestProposal = lastProposalId(props.messages);
   const latestAnswer = props.messages.findLast((message) => message.role === "assistant")?.id;
+  const undoneByWords = runsUndoneByWords(props.messages);
+  const restoredByWords = typedRestores(props.messages);
   // A question's time reserves no space in the flow. Last in the list, with no
   // Answering line after it, the question keeps that space below it in the
   // list, so what follows the list (an alert) does not cover its time.
@@ -407,6 +503,8 @@ export default function MessageList(props: MessageListProps) {
             panelAskId={props.panelAskId ?? null}
             heldAskId={props.heldAskId ?? null}
             onShowAsk={props.onShowAsk}
+            undoneByWords={undoneByWords.has(message.metadata?.run_id ?? "")}
+            restoredByWords={restoredByWords.get(message.metadata?.run_id ?? "")}
           />
         ) : null
       )}

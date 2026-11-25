@@ -21,6 +21,7 @@ from assistant.tools.project import ProjectInput, SampleInput
 from assistant.tools.registry import BY_WIRE_NAME
 from assistant.tools.skills import SkillsLoadInput
 from assistant.tools.workflows import CHECK_DRAFT
+from assistant.user_docs import DOCS_INDEX
 from assistant.workflows import issues, tool_info
 from assistant.workflows.draft import DatasetStep, Draft, ExportStep, ToolStep
 from assistant.workflows.tool_info import SettingInfo
@@ -32,7 +33,9 @@ DESCRIPTIONS: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))[
 SKILL = BUILT_IN["build-a-workflow"]
 TEXTS = {"SKILL.md": SKILL.instructions, **SKILL.files}
 NUMBERED = re.compile(r"^opportunity_[123]_(?P<name>[a-z_]+)$")
-TOOL_NAME = re.compile(r"\b(?:workflow|project|catalog|core|ask|skills)_[a-z_]+\b")
+TOOL_NAME = re.compile(
+    r"\b(?:workflow|project|catalog|core|map|style|ask|skills)_[a-z_]+\b"
+)
 #: The recipe files, one per kind of question, and the sections each holds,
 #: in order. Every section sits in exactly one file, so a question loads one.
 RECIPE_SECTIONS = {
@@ -63,7 +66,7 @@ def _drafts() -> list[tuple[str, dict[str, Any]]]:
 def test_the_skill_loads_and_is_in_the_instructions() -> None:
     assert set(SKILL.files) == set(RECIPE_SECTIONS)
     assert f"- `build-a-workflow`: {SKILL.description}" in SKILLS_INDEX
-    assert static_instructions() == [INSTRUCTIONS, SKILLS_INDEX]
+    assert static_instructions() == [INSTRUCTIONS, SKILLS_INDEX, DOCS_INDEX]
 
 
 def test_each_recipe_sits_in_exactly_one_file() -> None:
@@ -475,6 +478,29 @@ def test_the_run_card_is_no_question_whether_to_run() -> None:
     assert "it is the permission workflow_run needs" in flat
 
 
+def test_a_workflow_the_user_asked_to_run_is_run_not_changed() -> None:
+    """wf-11: asked to run a workflow whose settings looked invalid, the
+    assistant skipped the Run card, changed the workflow unasked (in
+    production that saves) and reported the numbers of another one it built.
+    The Run card comes first, the workflow stays as it is unless the user
+    asks to change it, and a refused run's issues go into the answer. Later
+    runs showed a card that offered to correct the settings instead: "unless
+    the user asks" let a card of the assistant's own ask, so the Run card
+    offers the run only and a change waits for the user's own words."""
+    running = _plain(
+        SKILL.instructions.split("## Running and explaining")[1].split("\n## ")[0]
+    )
+    assert (
+        "When the user asked to run such a workflow, the Run card comes first, "
+        "with Run and Not now only, also when it shows issues" in running
+    )
+    assert (
+        "never offer a correction, change it or build another in its place "
+        "unless the user asked for that in their own words" in running
+    )
+    assert "refused: the same, from its issues; nothing ran." in running
+
+
 def test_an_area_result_and_residents_by_area_share_are_labelled_apart() -> None:
     """Square metres are an area; residents spread by area share are people,
     as an estimate. The rule in the skill and the recipe say the same."""
@@ -782,8 +808,7 @@ def test_a_dataset_of_the_users_own_is_read_before_it_is_recommended() -> None:
     )
     for phrase in (
         "For one of the user's own datasets, read its extent and a sample of "
-        "its features (its fields and counts when the data policy withholds the "
-        "sample)",
+        "its features:",
         "core_find_layers finds a project that holds it",
         "held by no project, it cannot be checked",
         "An option you have not checked, or that does not answer the question, "

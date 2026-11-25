@@ -1,4 +1,4 @@
-import { Box, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { Box, ToggleButton, ToggleButtonGroup } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,26 +48,15 @@ const SingleColorSelector = (props: SingleColorSelectorProps) => {
     <CustomStyledSingleColorSelector ref={containerRef}>
       <ToggleButtonGroup
         fullWidth
-        color="primary"
         size="small"
         exclusive
         value={colorSelectionType}
         onChange={handleSelectionTypeChange}>
-        <ToggleButton
-          value={SingleColorType.Picker}
-          aria-label={t("color_picker")}
-          sx={{ overflow: "hidden" }}>
-          <Typography variant="caption" color="inherit">
-            {t("color_picker")}
-          </Typography>
+        <ToggleButton value={SingleColorType.Picker} sx={{ overflow: "hidden" }}>
+          {t("color_picker")}
         </ToggleButton>
-        <ToggleButton
-          sx={{ overflow: "hidden" }}
-          value={SingleColorType.Preset}
-          aria-label={t("preset_colors")}>
-          <Typography variant="caption" color="inherit">
-            {t("preset_colors")}
-          </Typography>
+        <ToggleButton value={SingleColorType.Preset} sx={{ overflow: "hidden" }}>
+          {t("preset_colors")}
         </ToggleButton>
       </ToggleButtonGroup>
 

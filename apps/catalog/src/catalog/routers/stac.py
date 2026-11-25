@@ -37,7 +37,7 @@ from goatlib.api import DEFAULT_OPENAPI_URL
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from catalog.auth import optional_auth
+from catalog.auth import optional_auth, require_auth
 from catalog.deps import check_not_modified, get_preview_reader, get_store
 from catalog.errors import ApiError
 from catalog.limits import MAX_LIST_LIMIT, MAX_SEARCH_LIMIT, clamp_limit
@@ -82,6 +82,16 @@ router = APIRouter(
     prefix="/stac",
     tags=["STAC"],
     dependencies=[Depends(optional_auth), Depends(check_not_modified)],
+)
+
+#: Routes that answer a dataset's own data: for signed-in users (the README's
+#: "Previews of the data"). The sign-in is checked before anything else, the
+#: "your copy is current" answer included. `require_auth` is the same check
+#: geoapi runs (`goatlib.auth`); with `AUTH=False` it lets everyone through.
+data_router = APIRouter(
+    prefix="/stac",
+    tags=["STAC"],
+    dependencies=[Depends(require_auth), Depends(check_not_modified)],
 )
 
 _SCHEMA_JSON = "application/schema+json"
@@ -782,9 +792,9 @@ def stac_resolve(
     }
 
 
-@router.get(
+@data_router.get(
     "/items/{item_id}/preview",
-    summary="A bounded sample of an item's data (GOAT extension)",
+    summary="A bounded sample of an item's data, for signed-in users (GOAT extension)",
     response_class=GeoJSONResponse,
 )
 def stac_item_preview(
@@ -801,7 +811,8 @@ def stac_item_preview(
     An item with no geometry samples its rows instead, as Features with a
     `null` geometry — the same shape, with nothing to draw on a map.
 
-    Answers 404 where a deployment does not offer previews.
+    Needs a sign-in (401 without a valid token). Answers 404 where a
+    deployment does not offer previews.
     """
     # Everything below is implementation, kept out of the description above --
     # this docstring is the endpoint's public text in `/openapi.json`, and a
@@ -826,7 +837,8 @@ def stac_item_preview(
     return Response(
         content=payload,
         media_type=GeoJSONResponse.media_type,
-        headers={"Cache-Control": f"public, max-age={max_age}"},
+        # Read with a sign-in: the browser may keep it, no shared cache.
+        headers={"Cache-Control": f"private, max-age={max_age}"},
     )
 
 

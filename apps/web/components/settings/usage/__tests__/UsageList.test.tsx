@@ -9,6 +9,8 @@ import { createAppTheme } from "@p4b/ui/theme/ThemeProvider";
 
 import { commonI18n } from "@/i18n/__tests__/commonI18n";
 
+import { declaredStyle } from "@/lib/__tests__/declaredStyle";
+
 import {
   type UsageColumn,
   UsageList,
@@ -111,7 +113,20 @@ describe("UsageList", () => {
     expect(onSort).toHaveBeenCalledWith("name");
   });
 
-  it("shows chips and Clear all from two on", async () => {
+  it("writes its buttons in the app's font, not the browser's button font", () => {
+    renderList({
+      chips: [
+        { label: "A", onRemove: vi.fn() },
+        { label: "B", onRemove: vi.fn() },
+      ],
+      onClearAll: vi.fn(),
+    });
+    for (const name of ["Workflow", "Remove all"]) {
+      expect(declaredStyle(screen.getByRole("button", { name }), "font-family")).toBe("inherit");
+    }
+  });
+
+  it("shows chips and Remove all from two on", async () => {
     const removeMember = vi.fn();
     const removeSearch = vi.fn();
     const onClearAll = vi.fn();
@@ -120,7 +135,7 @@ describe("UsageList", () => {
       onClearAll,
     });
     expect(screen.getByText("Member: Anna Weber")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear all" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove all" })).not.toBeInTheDocument();
     unmount();
 
     renderList({
@@ -130,7 +145,7 @@ describe("UsageList", () => {
       ],
       onClearAll,
     });
-    await userEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove all" }));
     expect(onClearAll).toHaveBeenCalledTimes(1);
     const remove = screen.getByTitle("Remove the filter Search: kita").closest("svg");
     fireEvent.click(remove as SVGElement);

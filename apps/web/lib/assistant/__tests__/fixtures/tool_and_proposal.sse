@@ -14,7 +14,7 @@ data: {"type":"start-step"}
 
 data: {"type":"data-proposal","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:1","data":{"title":"Put these on the page","rows":[{"k":"SEARCH","v":"Berlin"}]}}
 
-data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}
+data: {"type":"text-start","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2","providerMetadata":{"goat":{"partId":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2"}}}
 
 data: {"type":"text-delta","id":"0b3c6f0e-6a1d-4b8f-9a77-1d2f3e4a5b6c:2","delta":"Done."}
 

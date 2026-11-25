@@ -61,6 +61,8 @@ import {
 } from "@/lib/api/layers";
 import { updateProjectLayer, useProject, useProjectLayers } from "@/lib/api/projects";
 import { useUserProfile } from "@/lib/api/users";
+import { isCustomRow } from "@/lib/filter/model";
+import { activeParts } from "@/lib/filter/read";
 import {
   addPendingFeature,
   commitFeature,
@@ -73,7 +75,6 @@ import { setActiveRightPanel, setHighlightedFeature, setPopupInfo } from "@/lib/
 import type { EditableField, FieldEditability } from "@/lib/utils/allowedValues";
 import { fieldEditability } from "@/lib/utils/allowedValues";
 import { isCatalogLayer } from "@/lib/utils/catalog-layer";
-import { filterColumnType } from "@/lib/utils/columnFilterOperators";
 import { getBooleanSelectItems, parseBooleanInput } from "@/lib/utils/fieldInput";
 import { formatFieldValue } from "@/lib/utils/formatFieldValue";
 import { canEditLayerFeatures, canEditLayerFields } from "@/lib/utils/layerPermissions";
@@ -84,13 +85,13 @@ import type { ProjectLayer } from "@/lib/validations/project";
 import { MapSidebarItemID } from "@/types/map/common";
 
 import useLayerFields from "@/hooks/map/CommonHooks";
-import useProjectLayerFilterController from "@/hooks/map/useProjectLayerFilterController";
+import useLayerTableFilter from "@/hooks/map/useLayerTableFilter";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import CatalogLayerTag from "@/components/common/CatalogLayerTag";
 import FieldKindIcon, { fieldIndicatorKind } from "@/components/common/FieldKindIcon";
 import { COLUMN_MENU_DIVIDER_SX, COLUMN_MENU_PAPER_SX } from "@/components/common/columnMenuStyles";
-import ColumnFilterPopover from "@/components/map/panels/ColumnFilterPopover";
+import ColumnFilterPopover, { canFilterColumn } from "@/components/map/panels/ColumnFilterPopover";
 import ColumnStatsPanel from "@/components/map/panels/ColumnStatsPanel";
 import ConfirmModal from "@/components/modals/Confirm";
 import EditFieldsModal from "@/components/modals/EditFields";
@@ -172,8 +173,7 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
   const { queryables, mutate: mutateQueryables } = useLayerQueryables(layerId);
 
   // CQL filter from layer settings — applied to table queries and stats
-  const cqlArgs = projectLayer?.query?.cql?.args;
-  const activeFilterCount = cqlArgs?.length ?? 0;
+  const activeFilterCount = useMemo(() => activeParts(projectLayer?.query?.cql), [projectLayer?.query?.cql]);
   const cqlFilter = useMemo(() => {
     const cql = projectLayer?.query?.cql;
     if (!cql || !cql.args?.length) return undefined;
@@ -236,17 +236,13 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
   const [quickFilterColumn, setQuickFilterColumn] = useState<string | null>(null);
 
   // Filters live on the project layer, shared with the layer Filter panel.
-  const filterController = useProjectLayerFilterController({
-    projectId: projectId as string,
-    projectLayer,
-    canEdit: isEditor,
-  });
+  const filterController = useLayerTableFilter(projectId as string, projectLayer, isEditor);
 
   // Drives the column menu's "Filter" vs "Edit filter" wording. Filter state is
   // shown in the layer Filter panel and the toolbar's badge, not on the column.
   const filteredColumns = useMemo(
-    () => new Set(filterController.expressions.map((e) => e.attribute)),
-    [filterController.expressions]
+    () => new Set(filterController.model.rows.flatMap((row) => (isCustomRow(row) ? [] : [row.field]))),
+    [filterController.model.rows]
   );
 
   // Row context menu state
@@ -429,7 +425,11 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
   }, [page, rowsPerPage, sortBy, sortDirection, sortLayerId, layerId, combinedFilter]);
 
   // Fetch data
-  const { data: collectionData, isLoading, mutate } = useDatasetCollectionItems(layerId, queryParams, {
+  const {
+    data: collectionData,
+    isLoading,
+    mutate,
+  } = useDatasetCollectionItems(layerId, queryParams, {
     keepPreviousPage: true,
   });
 
@@ -557,22 +557,12 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
     if (!isEditing) {
       const feature = collectionData?.features.find((f, i) => `${f.id}-${page}-${i}` === rowId);
       if (feature) {
-        // Determine the MapLibre layer type from the geometry type
-        const geomType = projectLayer.feature_layer_geometry_type;
-        const isCustomMarker = !!projectLayer.properties?.["custom_marker"];
-        const layerType =
-          geomType === "polygon"
-            ? "fill"
-            : geomType === "line"
-              ? "line"
-              : isCustomMarker
-                ? "symbol"
-                : "circle";
+        // The renderer marks the feature on every map layer of the project layer it names.
         dispatch(
           setHighlightedFeature({
             id: feature.id != null ? Number(feature.id) : undefined,
             properties: feature.properties || {},
-            layer: { id: projectLayer.id.toString(), type: layerType },
+            layer: { id: projectLayer.id.toString() },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any)
         );
@@ -781,11 +771,11 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
       // Refresh data and schema
       mutate();
       mutateQueryables();
-      // Optimistically update project layers for tile cache busting
+      // Optimistically move the dataset's data change time: the tile URLs' cache-buster follows it
       if (projectLayers) {
         const now = new Date().toISOString();
         mutateProjectLayers(
-          projectLayers.map((l) => (l.layer_id === layerId ? { ...l, updated_at: now } : l)),
+          projectLayers.map((l) => (l.layer_id === layerId ? { ...l, dataset_updated_at: now } : l)),
           { revalidate: false }
         );
       }
@@ -828,7 +818,9 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
       await mutateProjectLayers(layers, false);
       if (isEditor) {
         try {
-          await updateProjectLayer(projectId as string, projectLayer.id, layers[index]);
+          await updateProjectLayer(projectId as string, projectLayer.id, {
+            other_properties: layers[index].other_properties,
+          });
         } catch (error) {
           console.error("Failed to persist table config:", error);
           await mutateProjectLayers();
@@ -1140,11 +1132,11 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
           setEditFieldsOpen(false);
           setEditFieldsInitialField(null);
           mutate();
-          // Optimistically update updated_at so tile URLs get a new cache-buster
+          // Optimistically move the dataset's data change time so tile URLs get a new cache-buster
           if (projectLayers) {
             const now = new Date().toISOString();
             mutateProjectLayers(
-              projectLayers.map((l) => (l.layer_id === layerId ? { ...l, updated_at: now } : l)),
+              projectLayers.map((l) => (l.layer_id === layerId ? { ...l, dataset_updated_at: now } : l)),
               { revalidate: false }
             );
           }
@@ -1687,23 +1679,25 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
           </ListItemIcon>
           <ListItemText>{t("view_stats", { defaultValue: "View stats" })}</ListItemText>
         </MenuItem>
-        <MenuItem
-          onClick={() => {
-            if (columnMenuField && columnMenuAnchor) {
-              setQuickFilterColumn(columnMenuField);
-              setQuickFilterAnchor(columnMenuAnchor.closest("th") ?? columnMenuAnchor);
-            }
-            handleColumnMenuClose();
-          }}>
-          <ListItemIcon>
-            <FilterAltIcon />
-          </ListItemIcon>
-          <ListItemText>
-            {columnMenuField && filteredColumns.has(columnMenuField)
-              ? t("edit_filter", { defaultValue: "Edit filter" })
-              : t("add_filter", { defaultValue: "Add filter" })}
-          </ListItemText>
-        </MenuItem>
+        {columnMenuField && canFilterColumn(filterController, columnMenuField) && (
+          <MenuItem
+            onClick={() => {
+              if (columnMenuAnchor) {
+                setQuickFilterColumn(columnMenuField);
+                setQuickFilterAnchor(columnMenuAnchor.closest("th") ?? columnMenuAnchor);
+              }
+              handleColumnMenuClose();
+            }}>
+            <ListItemIcon>
+              <FilterAltIcon />
+            </ListItemIcon>
+            <ListItemText>
+              {filteredColumns.has(columnMenuField)
+                ? t("edit_filter", { defaultValue: "Edit filter" })
+                : t("add_filter", { defaultValue: "Add filter" })}
+            </ListItemText>
+          </MenuItem>
+        )}
         {canEditFields && (
           <MenuItem disabled>
             <ListItemIcon>
@@ -1763,10 +1757,6 @@ const EditableDataTable: React.FC<EditableDataTableProps> = ({
           key={quickFilterColumn}
           anchorEl={quickFilterAnchor}
           columnName={quickFilterColumn}
-          columnType={filterColumnType({
-            type: displayFields.find((f) => f.name === quickFilterColumn)?.type,
-            kind: columnMeta[quickFilterColumn]?.kind,
-          })}
           iconKind={
             columnMeta[quickFilterColumn]?.iconKind ??
             fieldIndicatorKind(displayFields.find((f) => f.name === quickFilterColumn) ?? {})

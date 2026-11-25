@@ -69,7 +69,6 @@ jobs:
     secrets: inherit
     with:
       web: ${{ needs.file-changes.outputs.web == 'true' }}
-      storybook: ${{ needs.file-changes.outputs.storybook == 'true' }}
       keycloak-theme: ${{ needs.file-changes.outputs.keycloak-theme == 'true' }}
       docs: ${{ needs.file-changes.outputs.docs == 'true' }}
 

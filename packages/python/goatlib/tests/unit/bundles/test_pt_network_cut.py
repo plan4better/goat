@@ -6,6 +6,7 @@ its own right, read back by the importer like any upload.
 """
 
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -172,17 +173,23 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
         if role not in by_role:
             continue
         ours = tables / by_role[role]["file"]
+        # Indexed: the line number is the store's own, not the importer's.
+        exclude = (
+            f"EXCLUDE ({store.LINE_NO})" if role in ("stop_times", "shapes") else ""
+        )
         assert by_role[role]["layer_type"] == layer.layer_type
         assert by_role[role]["geometry_type"] == layer.geometry_type
         # The same rows, typed the same: a cut is ingested as an import is.
         assert (
-            con.execute(f"DESCRIBE SELECT * FROM read_parquet('{ours}')").fetchall()
+            con.execute(
+                f"DESCRIBE SELECT * {exclude} FROM read_parquet('{ours}')"
+            ).fetchall()
             == con.execute(
                 f"DESCRIBE SELECT * FROM read_parquet('{layer.file_path}')"
             ).fetchall()
         )
         diff = con.execute(
-            f"SELECT count(*) FROM (SELECT * FROM read_parquet('{ours}') "
+            f"SELECT count(*) FROM (SELECT * {exclude} FROM read_parquet('{ours}') "
             f"EXCEPT ALL SELECT * FROM read_parquet('{layer.file_path}'))"
         ).fetchone()[0]
         assert diff == 0, role
@@ -191,16 +198,96 @@ def test_the_tables_are_the_importers_output(tables: Path, tmp_path: Path) -> No
             == con.execute(f"SELECT count(*) FROM read_parquet('{ours}')").fetchone()[0]
         )
 
-    # Sorted for the cut, which reads stop times by trip.
-    trips = [
-        r[0]
-        for r in con.execute(
-            f"SELECT trip_id FROM read_parquet('{tables / 'stop_times.parquet'}')"
-        ).fetchall()
-    ]
-    assert trips == sorted(trips)
+    # Sorted for the cut, which reads stop times by line, then trip.
+    order = con.execute(
+        f"SELECT {store.LINE_NO}, trip_id, stop_sequence "
+        f"FROM read_parquet('{tables / 'stop_times.parquet'}')"
+    ).fetchall()
+    assert order == sorted(order, key=lambda r: (r[0] is None, r))
     assert info["schema"] == store.STORE_SCHEMA and info["license"] == "CC-BY-4.0"
+    assert set(info["index"]) == set(store.INDEX_FILES)
     assert len(info["source"]["sha256"]) == 64
+
+
+def _unindexed(tables: Path, out: Path) -> Path:
+    """``tables`` as schema 1 wrote them: no index, no line numbers."""
+    shutil.copytree(tables, out)
+    info = json.loads((out / store.INFO_FILENAME).read_text())
+    con = duckdb.connect()
+    for role in ("stop_times", "shapes"):
+        path = out / f"{role}.parquet"
+        con.execute(
+            f"COPY (SELECT * EXCLUDE ({store.LINE_NO}) FROM read_parquet('{path}')) "
+            f"TO '{out / 'tmp.parquet'}' (FORMAT PARQUET)"
+        )
+        (out / "tmp.parquet").replace(path)
+    for name in store.INDEX_FILES.values():
+        (out / name).unlink()
+    info.pop("index")
+    (out / store.INFO_FILENAME).write_text(json.dumps({**info, "schema": 1}))
+    return out
+
+
+def _cut_rows(tables: Path, tmp_path: Path, name: str, **options) -> dict:
+    con = duckdb.connect()
+    return {
+        role: sorted(
+            con.execute(f"SELECT * FROM read_parquet('{path}')").fetchall(), key=str
+        )
+        for role, path in _cut_lines(tables, tmp_path, name, **options).items()
+        if role != "shape_lines"
+    }
+
+
+@pytest.mark.parametrize("options", [{}, {"exclude_long_distance": True}])
+def test_unindexed_tables_cut_the_same(
+    tables_with_town_line: Path, tmp_path: Path, options: dict
+) -> None:
+    old = _unindexed(tables_with_town_line, tmp_path / "schema1")
+    indexed = _cut_rows(tables_with_town_line, tmp_path, "indexed", **options)
+    assert indexed == _cut_rows(old, tmp_path, "unindexed", **options)
+    # The line number stays in the store: nothing cut carries it.
+    con = duckdb.connect()
+    for path in _cut_lines(tables_with_town_line, tmp_path, "cols", **options).values():
+        columns = [
+            r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{path}'").fetchall()
+        ]
+        assert store.LINE_NO not in columns
+
+
+def test_old_tables_are_indexed_and_indexing_again_changes_nothing(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    tables = tables_with_town_line
+    old = _unindexed(tables, tmp_path / "schema1")
+    once = store.index_store(old)
+    con = duckdb.connect()
+    rows = lambda d, role: con.execute(  # noqa: E731
+        f"SELECT * FROM read_parquet('{d / (role + '.parquet')}')"
+    ).fetchall()
+    assert once["schema"] == store.STORE_SCHEMA
+    for role in ("stop_times", "shapes", "stop_lines", "line_numbers"):
+        assert rows(old, role) == rows(tables, role)
+    store.index_store(old)
+    for role in ("stop_times", "shapes"):
+        assert rows(old, role) == rows(tables, role)
+    # The unused shape is still there, after every numbered one.
+    assert rows(old, "shapes")[-1][0] is None
+
+
+def test_a_failed_index_leaves_the_tables_as_they_were(
+    tables: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = _unindexed(tables, tmp_path / "schema1")
+    before = {p.name: p.read_bytes() for p in old.iterdir()}
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(store, "_write_index", fail)
+    with pytest.raises(RuntimeError, match="disk full"):
+        store.index_store(old)
+    assert {p.name: p.read_bytes() for p in old.iterdir()} == before
 
 
 def test_an_existing_store_is_not_overwritten(tables: Path, tmp_path: Path) -> None:
@@ -291,6 +378,123 @@ def test_the_cut_is_a_feed_the_importer_reads(cut: dict, tmp_path: Path) -> None
         layer.role for layer in importer.extract_layers(str(archive), str(workdir))
     }
     assert {"stops", "routes", "trips", "stop_times", "shape_lines"} <= roles
+
+
+def _cut_modes(tables: Path, tmp_path: Path, modes: list) -> dict:
+    workdir = tmp_path / ("modes_" + "_".join(modes))
+    workdir.mkdir()
+    layers = pt_network.export_pt_network(
+        duckdb.connect(),
+        area=AREA,
+        store_dir=str(tables),
+        workdir=str(workdir),
+        modes=modes,
+    )
+    return {layer.role: layer.file_path for layer in layers}
+
+
+def test_lines_are_kept_by_mode(tables: Path, tmp_path: Path) -> None:
+    # Line 1 is a bus (route_type 3), line 3 rail (2).
+    rail = _cut_modes(tables, tmp_path, ["rail"])
+    assert _values(rail["routes"], "route_id") == {"R3"}
+    assert _values(rail["trips"], "trip_id") == {"T3"}
+    bus = _cut_modes(tables, tmp_path, ["bus", "tram"])
+    assert _values(bus["routes"], "route_id") == {"R1"}
+    # Every mode is no filter at all.
+    every = _cut_modes(tables, tmp_path, list(pt_network.MODE_ROUTE_TYPES))
+    assert _values(every["routes"], "route_id") == {"R1", "R3"}
+
+
+def test_an_area_without_lines_of_the_modes_is_refused(
+    tables: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValueError, match="no service of the chosen modes"):
+        _cut_modes(tables, tmp_path, ["ferry"])
+
+
+# A town line in the area, stopping about every 500 m as local service does.
+TOWN_LINE = {
+    "stops.txt": (
+        "L1,Town one,48.12,11.100,0,,\n"
+        "L2,Town two,48.12,11.107,0,,\n"
+        "L3,Town three,48.12,11.114,0,,\n"
+        "L4,Town four,48.12,11.121,0,,\n"
+    ),
+    "routes.txt": "R5,A,5,3\n",
+    "trips.txt": "R5,WK,T5,\n",
+    # A shape no trip uses: kept by the index, last and without a number.
+    "shapes.txt": "SH9,48.12,11.1,1\nSH9,48.12,11.2,2\n",
+    "stop_times.txt": (
+        "T5,08:00:00,08:00:00,L1,1\nT5,08:02:00,08:02:00,L2,2\n"
+        "T5,08:04:00,08:04:00,L3,3\nT5,08:06:00,08:06:00,L4,4\n"
+    ),
+}
+
+
+@pytest.fixture
+def tables_with_town_line(tmp_path: Path) -> Path:
+    feed = {**FEED, **{name: FEED[name] + rows for name, rows in TOWN_LINE.items()}}
+    out = tmp_path / "gtfs_tables_town"
+    store.build_store(
+        str(_zip(tmp_path / "town_gtfs.zip", feed)),
+        str(out),
+        lineage="GOAT's combined feed",
+        license="CC-BY-4.0",
+    )
+    return out
+
+
+def _cut_lines(tables: Path, tmp_path: Path, name: str, **options) -> dict:
+    workdir = tmp_path / name
+    workdir.mkdir()
+    layers = pt_network.export_pt_network(
+        duckdb.connect(),
+        store_dir=str(tables),
+        workdir=str(workdir),
+        **{"area": AREA, **options},
+    )
+    return {layer.role: layer.file_path for layer in layers}
+
+
+def test_long_distance_lines_are_left_out_on_request(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    every = _cut_lines(tables_with_town_line, tmp_path, "every")
+    local = _cut_lines(
+        tables_with_town_line, tmp_path, "local", exclude_long_distance=True
+    )
+    assert {"R1", "R3", "R5"} <= _values(every["routes"], "route_id")
+    # The ICE stops twice, 250 km apart; line 1 runs 70 km in two hops and
+    # 13 km in one: long-distance by how they travel, whatever their type. The
+    # town line stops every 500 m.
+    assert _values(local["routes"], "route_id") == {"R5"}
+    assert _values(local["trips"], "trip_id") == {"T5"}
+
+
+def test_an_area_with_only_long_distance_lines_is_refused(
+    tables_with_town_line: Path, tmp_path: Path
+) -> None:
+    # Around platform five, which only the ICE serves.
+    around_p5 = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [11.185, 48.095],
+                [11.195, 48.095],
+                [11.195, 48.105],
+                [11.185, 48.105],
+                [11.185, 48.095],
+            ]
+        ],
+    }
+    with pytest.raises(ValueError, match="only long-distance lines"):
+        _cut_lines(
+            tables_with_town_line,
+            tmp_path,
+            "only_long",
+            area=around_p5,
+            exclude_long_distance=True,
+        )
 
 
 def test_an_area_without_stops_is_refused(tables: Path, tmp_path: Path) -> None:

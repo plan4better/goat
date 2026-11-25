@@ -1,6 +1,7 @@
 #include "hexagon_builder.h"
 #include "hex_resolution.h"
 #include "sql_export.h"
+#include "steps.h"
 
 #include "../geometry/field_sampler.h"
 
@@ -14,16 +15,8 @@ namespace routing::output
 namespace
 {
 static constexpr char kHexagonFeaturesTempTable[] = "routing_hexagon_features_tmp";
-
-int64_t count_rows(duckdb::Connection &con, std::string const &table)
-{
-    auto result = con.Query("SELECT count(*) FROM " + table);
-    if (result->HasError())
-        throw std::runtime_error("Failed to count rows in " + table + ": " +
-                                 result->GetError());
-    return result->GetValue(0, 0).GetValue<int64_t>();
-}
-
+// EPSG:3857 units between samples along an edge: well under a cell's width.
+static constexpr double kSampleSpacing = 20.0;
 } // namespace
 
 std::string const &hexagon_features_table_name()
@@ -48,7 +41,8 @@ int64_t materialize_hexagon_features_table(ReachabilityField const &field,
         return 0;
 
     // Build (x, y, cost) samples using the shared field sampler.
-    auto const samples = geometry::sample_reachability_field(field, budget);
+    auto const samples = geometry::sample_reachability_field(
+        field, budget, cfg.cost_type == CostType::Distance, kSampleSpacing);
 
     con.Query("DROP TABLE IF EXISTS hex_sample_points");
     con.Query("CREATE TEMP TABLE hex_sample_points (x DOUBLE, y DOUBLE, cost DOUBLE)");
@@ -57,39 +51,15 @@ int64_t materialize_hexagon_features_table(ReachabilityField const &field,
         for (auto const &s : samples)
         {
             appender.BeginRow();
-            appender.Append(s.x_3857);
-            appender.Append(s.y_3857);
+            appender.Append(s.x);
+            appender.Append(s.y);
             appender.Append(s.cost);
             appender.EndRow();
         }
     }
 
-    // Build step_cost expression
-    std::string step_cost_expr;
-    if (!cfg.cutoffs.empty())
-    {
-        std::ostringstream cases;
-        cases << "CASE ";
-        for (int c : cfg.cutoffs)
-            cases << "WHEN min_cost <= " << c << " THEN " << c << " ";
-        cases << "ELSE " << cfg.cutoffs.back() << " END";
-        step_cost_expr = cases.str();
-    }
-    else
-    {
-        double const step_size = (cfg.steps > 0)
-            ? (budget / static_cast<double>(cfg.steps))
-            : 0.0;
-        if (cfg.steps <= 0 || step_size <= 0.0)
-            step_cost_expr = "min_cost";
-        else
-        {
-            std::ostringstream expr;
-            expr << "CEIL(min_cost / " << sql_double(step_size) << ") * "
-                 << sql_double(step_size);
-            step_cost_expr = expr.str();
-        }
-    }
+    std::string const step_cost_expr =
+        step_for_cost_sql("min_cost", compute_step_cutoffs(cfg));
 
     int32_t resolution = hex_resolution_for_mode(cfg.mode);
 

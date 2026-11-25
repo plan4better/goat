@@ -91,10 +91,9 @@ x-env-worker: &env-worker
   BUNDLES_DATA_DIR: /app/data/bundles
   POSTGRES_DATABASE_URI: postgresql://goat:${POSTGRES_PASSWORD}@postgres:5432/goat
   OD_MATRIX_BASE_PATH: /app/data/traveltime_matrices
-  GTFS_DATA_PATH: /app/data/gtfs
   STREET_NETWORK_EDGES_BASE_PATH: /app/data/street_network/edges
   STREET_NETWORK_NODES_BASE_PATH: /app/data/street_network/nodes
-  PT_NETWORK_BASE_PATH: /app/data/pt_network/gtfs.bin
+  PT_NETWORK_BASE_PATH: &pt-network-base-path /app/data/pt_network/gtfs.bin
   CATALOG_LAYERS_DIR: /app/data/catalog/layers
   CATALOG_TILES_DIR: /app/data/catalog/tiles
   SCHEMA: customer
@@ -114,7 +113,7 @@ x-env-worker: &env-worker
   KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
   # Windmill passes only these variables on to the jobs it runs.
   WHITELIST_ENVS: >-
-    MAX_UPLOAD_DATASET_FILE_SIZE,POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,POSTGRES_DATABASE_URI,DUCKLAKE_POSTGRES_SERVER,DUCKLAKE_DATA_DIR,DUCKLAKE_CATALOG_SCHEMA,TILES_DATA_DIR,BUNDLES_DATA_DIR,DATA_DIR,CATALOG_LAYERS_DIR,CATALOG_TILES_DIR,SCHEMA,ENVIRONMENT,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,S3_BUCKET_NAME,S3_REGION,AWS_REQUEST_CHECKSUM_CALCULATION,AWS_RESPONSE_CHECKSUM_VALIDATION,CATALOG_S3_BUCKET,CATALOG_S3_ENDPOINT_URL,CATALOG_S3_ACCESS_KEY_ID,CATALOG_S3_SECRET_ACCESS_KEY,CATALOG_S3_REGION,OD_MATRIX_BASE_PATH,STREET_NETWORK_EDGES_BASE_PATH,STREET_NETWORK_NODES_BASE_PATH,PT_NETWORK_BASE_PATH,GTFS_DATA_PATH,GEOCODING_URL,GEOCODING_AUTHORIZATION,GOAT_BASE_DATA_URL,PRINT_BASE_URL,KEYCLOAK_SERVER_URL,REALM_NAME,KEYCLOAK_CLIENT_ID,KEYCLOAK_CLIENT_SECRET,ATLAS_BATCH_SIZE,GOAT_CA_BUNDLE,PMTILES_ENABLED
+    MAX_UPLOAD_DATASET_FILE_SIZE,POSTGRES_SERVER,POSTGRES_PORT,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,POSTGRES_DATABASE_URI,DUCKLAKE_POSTGRES_SERVER,DUCKLAKE_DATA_DIR,DUCKLAKE_CATALOG_SCHEMA,TILES_DATA_DIR,BUNDLES_DATA_DIR,DATA_DIR,CATALOG_LAYERS_DIR,CATALOG_TILES_DIR,SCHEMA,ENVIRONMENT,S3_PROVIDER,S3_FORCE_PATH_STYLE,S3_ENDPOINT_URL,S3_PUBLIC_ENDPOINT_URL,S3_ACCESS_KEY_ID,S3_SECRET_ACCESS_KEY,S3_BUCKET_NAME,S3_REGION,AWS_REQUEST_CHECKSUM_CALCULATION,AWS_RESPONSE_CHECKSUM_VALIDATION,CATALOG_S3_BUCKET,CATALOG_S3_ENDPOINT_URL,CATALOG_S3_ACCESS_KEY_ID,CATALOG_S3_SECRET_ACCESS_KEY,CATALOG_S3_REGION,OD_MATRIX_BASE_PATH,STREET_NETWORK_EDGES_BASE_PATH,STREET_NETWORK_NODES_BASE_PATH,PT_NETWORK_BASE_PATH,GEOCODING_URL,GEOCODING_AUTHORIZATION,GOAT_BASE_DATA_URL,PRINT_BASE_URL,KEYCLOAK_SERVER_URL,REALM_NAME,KEYCLOAK_CLIENT_ID,KEYCLOAK_CLIENT_SECRET,ATLAS_BATCH_SIZE,GOAT_CA_BUNDLE,PMTILES_ENABLED
 
 x-healthcheck: &healthcheck
   interval: 15s
@@ -462,6 +461,13 @@ services:
       ALLOW_ORGANIZATION_CREATION: ${ALLOW_ORGANIZATION_CREATION:-true}
       CLIENT_URL: ${GOAT_PUBLIC_URL}
       API_URL: ${GOAT_PUBLIC_URL}/api/v2
+      # A COG layer's bounds, which core stores as its extent when it is added
+      # or its file address changes.
+      GOAT_GEOAPI_URL: ${GOAT_GEOAPI_URL:-http://geoapi:8000}
+      # The 3D sources the browser loads (the web's NEXT_PUBLIC_ twins below);
+      # core checks a project's scene against them. Empty stays empty: no source.
+      TERRAIN_TILES_URL: ${TERRAIN_TILES_URL-https://tiles.mapterhorn.com/{z}/{x}/{y}.webp}
+      BUILDINGS_TILES_URL: ${BUILDINGS_TILES_URL-https://tiles.openfreemap.org/planet}
       POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-5}
       POSTGRES_MAX_OVERFLOW: ${POSTGRES_MAX_OVERFLOW:-10}
       # User-uploaded avatars and images
@@ -539,7 +545,9 @@ services:
     # Shares the data volume with the root-run Windmill workers.
     user: "0"
     environment:
-      <<: [*env-db, *env-s3, *env-auth, *env-service]
+      # The catalog bucket: the catalog page's previews of data that is not a
+      # layer yet (published tiles, rasters), for signed-in users.
+      <<: [*env-db, *env-s3, *env-catalog-s3, *env-auth, *env-service]
       ROOT_PATH: /geoapi
       REDIS_URL: redis://redis:6379/0
       # DuckDB spills to disk only at its own budget, so the budgets fit the
@@ -550,8 +558,20 @@ services:
       # bundle revision. Raise them together.
       GEOAPI_DUCKLAKE_POOL_SIZE: "2"
       GEOAPI_DUCKDB_MEMORY_LIMIT: 512MB
+      # Raster layers are COG addresses read over HTTPS; hosts that resolve
+      # to a private address are refused unless listed (see .env.example).
+      RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
+      # Company CA for raster hosts and S3 (see init/ca/ca-bundle.sh)
+      GOAT_CA_BUNDLE: ${GOAT_CA_BUNDLE:-}
+    # The wrapper builds the CA file GDAL and boto3 trust, then runs the
+    # image's own command.
+    entrypoint: ["sh", "/init/ca-bundle.sh"]
+    command: ["fastapi", "run", "apps/geoapi/src/geoapi/main.py"]
     volumes:
       - goat-data:/app/data
+      - ./init/ca/ca-bundle.sh:/init/ca-bundle.sh:ro
+      - ./certs:/certs:ro
+      - caddy-data:/caddy-data:ro
     networks: [goat]
     healthcheck:
       <<: *healthcheck
@@ -581,12 +601,29 @@ services:
       WINDMILL_TOKEN_FILE: /app/data/windmill/.token
       TRAVELTIME_MATRICES_DIR: /app/data/traveltime_matrices
       PRINT_BASE_URL: http://web:3000
+      # Where the project export and import jobs reach core: they carry icons
+      # and images through core's API (export reads them, import uploads them).
+      CORE_URL: http://core:8000
       # Three DuckDB connections (analytics, SQL previews, layer search) get
       # this budget each; with the mirror lists' fixed 256 MB they fit the
       # memory limit below.
       PROCESSES_DUCKDB_MEMORY_LIMIT: 384MB
+      # The workers' public transport network, so the dialog that cuts it shows
+      # its coverage mask, which lies next to it (GET /pt-network/coverage-mask).
+      PT_NETWORK_BASE_PATH: *pt-network-base-path
+      # Reads raster files for style statistics, like geoapi.
+      RASTER_PRIVATE_HOSTS: ${RASTER_PRIVATE_HOSTS:-}
+      # Company CA for raster hosts and S3 (see init/ca/ca-bundle.sh)
+      GOAT_CA_BUNDLE: ${GOAT_CA_BUNDLE:-}
+    # The wrapper builds the CA file GDAL and boto3 trust, then runs the
+    # image's own command.
+    entrypoint: ["sh", "/init/ca-bundle.sh"]
+    command: ["fastapi", "run", "apps/processes/src/processes/main.py"]
     volumes:
       - goat-data:/app/data
+      - ./init/ca/ca-bundle.sh:/init/ca-bundle.sh:ro
+      - ./certs:/certs:ro
+      - caddy-data:/caddy-data:ro
     networks: [goat]
     healthcheck:
       <<: *healthcheck
@@ -679,7 +716,7 @@ services:
       ASSISTANT_ALLOW_PRIVATE_ENDPOINTS: ${ASSISTANT_ALLOW_PRIVATE_ENDPOINTS:-false}
       ASSISTANT_SECRETS_KEY: ${ASSISTANT_SECRETS_KEY:-}
       ASSISTANT_RUN_MAX_TOOL_CALLS: ${ASSISTANT_RUN_MAX_TOOL_CALLS:-40}
-      ASSISTANT_RUN_MAX_TOKENS: ${ASSISTANT_RUN_MAX_TOKENS:-200000}
+      ASSISTANT_RUN_MAX_TOKENS: ${ASSISTANT_RUN_MAX_TOKENS:-400000}
       ASSISTANT_RUN_MAX_SECONDS: ${ASSISTANT_RUN_MAX_SECONDS:-900}
       ASSISTANT_RUN_WAIT_MAX_SECONDS: ${ASSISTANT_RUN_WAIT_MAX_SECONDS:-1800}
       ASSISTANT_USER_MAX_CONCURRENT_RUNS: ${ASSISTANT_USER_MAX_CONCURRENT_RUNS:-3}
@@ -733,6 +770,9 @@ services:
       NEXT_PUBLIC_APP_ENVIRONMENT: prod
       NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      # 3D sources (`-`, not `:-`: an empty value turns the source off)
+      NEXT_PUBLIC_TERRAIN_TILES_URL: ${TERRAIN_TILES_URL-https://tiles.mapterhorn.com/{z}/{x}/{y}.webp}
+      NEXT_PUBLIC_BUILDINGS_TILES_URL: ${BUILDINGS_TILES_URL-https://tiles.openfreemap.org/planet}
       NEXT_PUBLIC_WEBSITE_URL: ${NEXT_PUBLIC_WEBSITE_URL:-}
       NEXT_PUBLIC_STATUS_FEED_URL: ${NEXT_PUBLIC_STATUS_FEED_URL:-}
       NEXT_PUBLIC_DOCS_URL: ${NEXT_PUBLIC_DOCS_URL:-}

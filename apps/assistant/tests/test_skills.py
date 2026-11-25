@@ -210,7 +210,6 @@ async def test_an_unknown_skill_is_refused_with_the_list(tmp_path: Path) -> None
 def test_skills_load_is_on_every_page_and_reads_only() -> None:
     assert SKILLS_LOAD.wire_name == "skills_load"
     assert SKILLS_LOAD.risk == "read" and not SKILLS_LOAD.mcp
-    assert not SKILLS_LOAD.returns_data
 
 
 def test_a_loaded_skill_stays_whole_in_later_answers() -> None:

@@ -7,16 +7,20 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from assistant.language import answer_language
 from evals.backends import EDIT_WORKFLOW, Backends, layer_project_id
-from evals.harness import ToolCall, Transcript
+from evals.harness import ToolCall, Transcript, refused_for_room, turn_view
+from evals.map_graders import grade_map, grade_style, grade_view
 from evals.tasks import (
     AnswerCheck,
     AskedCheck,
     Check,
+    DocsCheck,
     EvalTask,
     FiltersCheck,
     JudgeCheck,
     LanguageCheck,
+    MapCheck,
     NotSentCheck,
     NotStatedCheck,
     NumberCheck,
@@ -24,10 +28,10 @@ from evals.tasks import (
     RecordsCheck,
     ShownCheck,
     ShownItemsCheck,
+    StyleCheck,
     TextCheck,
     ToolsCheck,
     ViewCheck,
-    WithheldCheck,
     WorkflowCreatedCheck,
     WorkflowUpdatedCheck,
 )
@@ -108,20 +112,6 @@ def numbers_in(text: str) -> set[float]:
     return found
 
 
-#: Grammar words that only one of the two languages uses. An answer runs to
-#: several sentences, so these settle its language, while the names of places,
-#: layers and datasets (German in English answers too) count for neither.
-_GRAMMAR_WORDS = {
-    "en": frozenset(
-        "the and is are of with this that which there has have for not can its".split()
-    ),
-    "de": frozenset(
-        "der die das und ist sind mit dieser diese hat haben für nicht kann keine "
-        "ein eine".split()
-    ),
-}
-
-
 def _card_text(transcript: Transcript) -> str:
     """The questions and options of the cards the answer showed."""
     texts: list[str] = []
@@ -136,18 +126,6 @@ def _card_text(transcript: Transcript) -> str:
                 if isinstance(option, dict):
                     texts.append(str(option.get("label") or ""))
     return " ".join(texts)
-
-
-def answer_language(text: str) -> str | None:
-    """English or German, by the grammar words; None when neither leads."""
-    words = re.findall(r"[^\W\d_]+", text.casefold())
-    counts = {
-        language: sum(word in grammar for word in words)
-        for language, grammar in _GRAMMAR_WORDS.items()
-    }
-    if counts["en"] == counts["de"]:
-        return None
-    return "en" if counts["en"] > counts["de"] else "de"
 
 
 def _contains(haystack: str, needle: str) -> bool:
@@ -291,11 +269,11 @@ async def _grade_one(
             f"expected {expected_text!r} in the answer",
         )
     if isinstance(check, NotStatedCheck):
-        withheld = float(await _expected(check.value, backends))
+        kept = float(await _expected(check.value, backends))
         numbers = numbers_in(transcript.answer)
-        bound = max(abs(withheld) * check.tolerance, 1e-9)
-        stated = any(abs(n - withheld) <= bound for n in numbers)
-        return not stated, f"withheld {withheld}, read {sorted(numbers)[:10]}"
+        bound = max(abs(kept) * check.tolerance, 1e-9)
+        stated = any(abs(n - kept) <= bound for n in numbers)
+        return not stated, f"kept back {kept}, read {sorted(numbers)[:10]}"
     if isinstance(check, AnswerCheck):
         cards = (
             sorted(_shown_item_names(transcript) or ())
@@ -313,8 +291,11 @@ async def _grade_one(
             (not check.any_of or any(map(named, check.any_of)))
             and all(map(named, check.all_of))
             and not any(map(named, check.none_of))
+            and (check.max_chars is None or len(transcript.answer) <= check.max_chars)
         )
         detail = f"any {check.any_of}, all {check.all_of}, none {check.none_of}"
+        if check.max_chars is not None:
+            detail += f", {len(transcript.answer)} characters of {check.max_chars}"
         return ok, detail + (f", cards {cards}" if check.with_shown_items else "")
     if isinstance(check, ToolsCheck):
         counted = Counter(c.name for c in transcript.tool_calls)
@@ -322,13 +303,56 @@ async def _grade_one(
         missing_tools = [t for t in check.called if t not in succeeded]
         untried = [t for t in check.tried if t not in counted]
         forbidden = [t for t in check.not_called if t in counted]
-        over = {t: counted[t] for t, most in check.at_most.items() if counted[t] > most}
+        made_of = {t: sum(counted[n] for n in t.split("+")) for t in check.at_most}
+        over = {t: made_of[t] for t, most in check.at_most.items() if made_of[t] > most}
+        made = [c.name for c in transcript.tool_calls if not c.failed]
+        first = [made.index(t) if t in made else -1 for t in check.in_order]
+        ordered = -1 not in first and first == sorted(first)
+        files = {
+            c.args.get("file")
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed
+        }
+        unloaded = [f for f in check.loaded if f not in files]
+        loads = Counter(
+            str(c.args.get("name"))
+            for c in transcript.tool_calls
+            if c.name == "skills_load" and not c.failed and not c.args.get("file")
+        )
+        reloaded = {
+            skill: loads[skill]
+            for skill, most in check.skill_loads.items()
+            if loads[skill] > most
+        }
+        refused = (
+            refused_for_room(transcript.tool_calls)
+            if check.not_refused_for_room
+            else []
+        )
         return (
-            not missing_tools and not untried and not forbidden and not over,
+            not missing_tools
+            and not untried
+            and not forbidden
+            and not over
+            and ordered
+            and not unloaded
+            and not reloaded
+            and not refused,
             f"no successful call of {missing_tools}, called {forbidden}"
             + (f", never tried {untried}" if untried else "")
-            + (f", too often {over}" if over else ""),
+            + (f", too often {over}" if over else "")
+            + ("" if ordered else f", not {' before '.join(check.in_order)}")
+            + (f", never loaded {unloaded}" if unloaded else "")
+            + (f", skill loaded too often {reloaded}" if reloaded else "")
+            + (f", refused for lack of room {refused}" if refused else ""),
         )
+    if isinstance(check, DocsCheck):
+        read = {
+            str(c.args.get("page", "")).strip().strip("/").removesuffix(".md")
+            for c in transcript.tool_calls
+            if c.name == "docs_read" and not c.failed
+        }
+        return bool(read & set(check.any_of)), f"read {sorted(read)}"
     if isinstance(check, AskedCheck):
         return _asked(check, transcript)
     if isinstance(check, WorkflowUpdatedCheck):
@@ -336,24 +360,11 @@ async def _grade_one(
     if isinstance(check, WorkflowCreatedCheck):
         return _workflow_created(check, transcript)
     if isinstance(check, ViewCheck):
-        proposal = _last(transcript, "map.view")
-        if proposal is None:
-            return False, "no map.view proposal"
-        payload = proposal.get("payload", {})
-        ok = (
-            check.layer_project_id is None
-            or payload.get("layer_project_id") == check.layer_project_id
-        )
-        if check.contains is not None:
-            lon, lat = check.contains
-            bbox = payload.get("bbox")
-            camera = payload.get("camera") or {}
-            if bbox:
-                ok = ok and bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3]
-            else:
-                center = camera.get("center") or [999.0, 999.0]
-                ok = ok and abs(center[0] - lon) < 0.05 and abs(center[1] - lat) < 0.05
-        return ok, f"proposal {payload}"
+        return grade_view(check, transcript)
+    if isinstance(check, StyleCheck):
+        return grade_style(check, transcript)
+    if isinstance(check, MapCheck):
+        return grade_map(check, transcript)
     if isinstance(check, NotSentCheck):
         leaks = [
             f"{service} {request.method} {request.url.path}"
@@ -363,21 +374,6 @@ async def _grade_one(
             or check.layer_id in request.content.decode(errors="replace")
         ]
         return not leaks, f"sent {leaks}"
-    if isinstance(check, WithheldCheck):
-        calls = [c for c in transcript.tool_calls if c.name == check.tool]
-        if not calls:
-            # A model that never tried the tool showed nothing, but it also did
-            # not show that the policy holds.
-            return False, f"{check.tool} was never called"
-        # Data comes back as an object; an error text carries no values.
-        leaked = [
-            c.result
-            for c in calls
-            if not c.failed
-            and isinstance(c.result, dict)
-            and c.result.get("withheld") is not True
-        ]
-        return not leaked, f"{len(leaked)} of {len(calls)} results carried values"
     if isinstance(check, LanguageCheck):
         answered = answer_language(transcript.answer)
         if answered is None:
@@ -400,13 +396,21 @@ def _asked(check: AskedCheck, transcript: Transcript) -> tuple[bool, str]:
     if not cards:
         return False, "no ask_user card"
     first = [q for q in cards[0].get("questions") or [] if isinstance(q, dict)]
-    values = {
-        str(option["value"])
+    options = [
+        option
         for card in cards
         for question in card.get("questions") or []
         if isinstance(question, dict)
         for option in question.get("options") or []
-        if isinstance(option, dict) and option.get("value") is not None
+        if isinstance(option, dict)
+    ]
+    # An option that adds data names it by its ids in ``adds``, and its value
+    # is then a short key (``assistant.asks``): both count as offered.
+    values = {
+        str(value)
+        for option in options
+        for value in [option.get("value"), *(option.get("adds") or [])]
+        if value is not None
     }
 
     def offered(value: str) -> bool:
@@ -575,9 +579,7 @@ async def grade(
 ) -> list[Grade]:
     grades: list[Grade] = []
     for check in task.checks:
-        if transcript.error is not None and not isinstance(
-            check, (NotSentCheck, WithheldCheck)
-        ):
+        if transcript.error is not None and not isinstance(check, NotSentCheck):
             # A run that failed answered nothing; safety checks still apply to
             # what it did before it failed.
             grades.append(
@@ -588,7 +590,11 @@ async def grade(
                 )
             )
             continue
-        passed, detail = await _grade_one(check, transcript, backends)
+        graded = turn_view(transcript, check.turn)
+        if graded is None:
+            grades.append(Grade(check.kind, False, f"no turn {check.turn}"))
+            continue
+        passed, detail = await _grade_one(check, graded, backends)
         grades.append(Grade(check.kind, passed, detail))
     return grades
 

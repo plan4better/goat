@@ -67,6 +67,51 @@ tests:
       - equal:
           path: data.GOAT_PROCESSES_URL
           value: http://my-processes:8300
+  - it: points core at the in-chart geoapi service
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      geoapi.enabled: true
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: data.GOAT_GEOAPI_URL
+          value: http://RELEASE-NAME-goat-geoapi
+  - it: adds geoapi's service port when it is not 80
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      geoapi.enabled: true
+      geoapi.service.port: 8100
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: data.GOAT_GEOAPI_URL
+          value: http://RELEASE-NAME-goat-geoapi:8100
+  - it: omits the geoapi URL when geoapi is disabled
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      geoapi.enabled: false
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - notExists:
+          path: data.GOAT_GEOAPI_URL
+  - it: an explicit geoapi URL wins over the auto-wire
+    template: core/configmap.yaml
+    set:
+      core.enabled: true
+      geoapi.enabled: true
+      core.config.GOAT_GEOAPI_URL: http://my-geoapi:8100
+      postgresql.external.host: "pg.example.com"
+      postgresql.external.existingSecret: "pg-secret"
+    asserts:
+      - equal:
+          path: data.GOAT_GEOAPI_URL
+          value: http://my-geoapi:8100
   - it: lets anyone create an organization by default
     template: core/configmap.yaml
     asserts:

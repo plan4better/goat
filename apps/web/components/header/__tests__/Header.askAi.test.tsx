@@ -27,7 +27,10 @@ vi.mock("@/hooks/store/ContextHooks", () => ({
   useAppDispatch: () => vi.fn(),
   useAppSelector: (select: (state: unknown) => unknown) => select({ map: { mapMode: "data" } }),
 }));
-vi.mock("@/components/assistant/dockLoader", () => ({ prefetchAssistant: vi.fn() }));
+vi.mock("@/components/assistant/dockLoader", () => ({
+  prefetchAssistant: vi.fn(),
+  whenIdle: () => () => undefined,
+}));
 // Leaving the Explorer asks only with unsaved edits; there are none here.
 vi.mock("@/hooks/explorer/useExplorerLeave", () => ({
   useExplorerLeave: () => (proceed: () => void) => proceed(),

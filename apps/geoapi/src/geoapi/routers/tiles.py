@@ -17,6 +17,7 @@ from fastapi import (
     Request,
     Response,
 )
+from goatlib.utils.column_types import type_class
 
 from geoapi.dependencies import (
     BBoxDep,
@@ -36,8 +37,9 @@ from geoapi.models import (
     TileMatrixSetsResponse,
     TileSet,
 )
+from geoapi.services.catalog_items import catalog_item_id
 from geoapi.services.layer_service import layer_service
-from geoapi.services.tile_service import tile_service
+from geoapi.services.tile_service import FilteredTile, tile_service
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,8 @@ logger = logging.getLogger(__name__)
 # latest tile.
 #
 # PMTiles are immutable files and keep using max-age=3600 without ETags.
+# Filtered tiles cut from them carry an ETag from the file's version instead
+# (see TileService.get_filtered_tile_from_pmtiles).
 # ---------------------------------------------------------------------------
 _layer_versions: dict[str, int] = {}
 _version_counter = int(time.time())
@@ -74,6 +78,7 @@ def build_tile_etag_seed(
     bbox: list[float] | None = None,
     decoration: str | None = None,
     pinned_snapshot_id: int | None = None,
+    h3: str | None = None,
 ) -> str:
     """Build the seed string hashed into a dynamic tile's ETag.
 
@@ -94,12 +99,118 @@ def build_tile_etag_seed(
         etag_seed += f":b={bbox}"
     if decoration:
         etag_seed += f":d={decoration}"
+    if h3:
+        etag_seed += f":h={h3}"
     if pinned_snapshot_id is not None:
         etag_seed += f":s={pinned_snapshot_id}"
     return etag_seed
 
 
 router = APIRouter(tags=["Tiles"])
+
+DECORATION_KINDS = ("start", "end", "center")
+
+
+def decoration_kinds(decoration: str | None) -> list[str] | None:
+    """The kinds of decoration points a tile request asks for, in a fixed order;
+    `start_and_end` is both ends (style spec 15)."""
+    if decoration is None:
+        return None
+    asked = decoration.split(",")
+    unknown = [k for k in asked if k not in DECORATION_KINDS and k != "start_and_end"]
+    if unknown or not asked:
+        raise HTTPException(
+            status_code=400,
+            detail='decoration takes "start", "end" and "center", comma-separated.',
+        )
+    if "start_and_end" in asked:
+        asked += ["start", "end"]
+    return [k for k in DECORATION_KINDS if k in asked]
+
+
+def check_h3_request(
+    op: str,
+    field: str | None,
+    columns: list[dict],
+    geometry_type: str | None,
+) -> None:
+    """H3 hexagons group points; a sum or mean needs a numeric field."""
+    if not geometry_type or "point" not in geometry_type.lower():
+        raise HTTPException(
+            status_code=400, detail="H3 hexagons are drawn for point layers only."
+        )
+    if op == "count":
+        return
+    types = {c["name"]: c.get("type", "") for c in columns}
+    if not field or field not in types:
+        raise HTTPException(
+            status_code=400, detail=f"h3_value {op} needs a field of the layer."
+        )
+    if type_class(types[field]) not in ("integer", "number"):
+        raise HTTPException(
+            status_code=400, detail=f"h3_field {field!r} is not a number."
+        )
+
+
+def tile_feature_ids(ids: str | None, h3: str | None) -> list[str] | None:
+    """The features an H3 tile counts (an atlas page's); vector tiles draw
+    every feature and filter in the browser."""
+    if ids is None:
+        return None
+    if h3 is None:
+        raise HTTPException(status_code=400, detail="ids applies to H3 tiles only.")
+    return ids.split(",")
+
+
+async def _h3_tile_response(
+    *,
+    layer_info: Any,
+    z: int,
+    x: int,
+    y: int,
+    resolution: str,
+    op: str,
+    field: str | None,
+    columns: list[dict],
+    geometry_column: str,
+    geometry_type: str | None,
+    cql_filter: dict[str, Any] | None,
+    bbox: list[float] | None,
+    ids: list[str] | None,
+    headers: dict[str, str],
+    start_time: float,
+) -> Response:
+    check_h3_request(op, field, columns, geometry_type)
+    try:
+        tile = await tile_service.get_h3_tile(
+            layer_info=layer_info,
+            z=z,
+            x=x,
+            y=y,
+            resolution=resolution,
+            op=op,
+            field=field if op != "count" else None,
+            column_names=[c["name"] for c in columns],
+            geometry_column=geometry_column,
+            cql_filter=cql_filter,
+            bbox=bbox,
+            ids=ids,
+        )
+    except TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"H3 tile query timeout for z={z}, x={x}, y={y}.",
+        )
+    headers = {
+        **headers,
+        "X-Tile-Source": "h3",
+        "X-Response-Time": f"{(time.monotonic() - start_time) * 1000:.1f}ms",
+    }
+    if not tile:
+        return Response(status_code=204, headers=headers)
+    return Response(
+        content=tile, media_type="application/vnd.mapbox-vector-tile", headers=headers
+    )
 
 
 async def _reject_unknown_tile_properties(
@@ -170,6 +281,62 @@ def _pmtiles_tile_response(
     )
 
 
+#: How long a browser keeps a tile of a catalog item's published tiles:
+#: goat-data replaces the file under the same name, so not for long.
+CATALOG_TILE_MAX_AGE_S = 300
+
+
+async def _catalog_tile_response(
+    request: Request, item_id: str, z: int, x: int, y: int
+) -> Response:
+    """A tile of a catalog item that is not a layer yet (the collection
+    `catalog:<item id>`), from the tiles goat-data published for it. No
+    filter, label points or dynamic tiles: a preview draws the stored tiles.
+    Read with a sign-in, it is no shared cache's to keep."""
+    tile_data, is_gzip = await tile_service.get_catalog_tile(item_id, z, x, y)
+    audience = "private" if request.headers.get("authorization") else "public"
+    headers = {
+        "Cache-Control": f"{audience}, max-age={CATALOG_TILE_MAX_AGE_S}",
+        "X-Tile-Source": "catalog-pmtiles",
+    }
+    if not tile_data:
+        return Response(status_code=204, headers=headers)
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+    return Response(
+        content=tile_data,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers=headers,
+    )
+
+
+def _filtered_tile_response(
+    filtered: FilteredTile, request_id: str, start_time: float
+) -> Response:
+    """The response for a filtered tile cut from PMTiles: revalidated like a
+    dynamic tile (304 when the client's copy is current, 204 when empty)."""
+    elapsed_ms = (time.monotonic() - start_time) * 1000
+    headers = {
+        "ETag": filtered.etag,
+        "Cache-Control": "no-cache",
+        "X-Request-ID": request_id,
+        "X-Response-Time": f"{elapsed_ms:.1f}ms",
+    }
+    if filtered.tile is None:
+        return Response(status_code=304, headers=headers)
+    tile_data, is_gzip, source = filtered.tile
+    if not tile_data:
+        return Response(status_code=204, headers=headers)
+    headers["X-Tile-Source"] = source
+    if is_gzip:
+        headers["Content-Encoding"] = "gzip"
+    return Response(
+        content=tile_data,
+        media_type="application/vnd.mapbox-vector-tile",
+        headers=headers,
+    )
+
+
 @router.get(
     "/collections/{collectionId}/tiles/{tileMatrixSetId}/{z}/{x}/{y}",
     summary="Get vector tile",
@@ -200,12 +367,33 @@ async def get_tile(
         default=False,
         description="Merge polygon label anchor points into tile response",
     ),
-    decoration: Literal["start", "end", "start_and_end", "center"] | None = Query(
+    decoration: str | None = Query(
         default=None,
-        description="If set, emit per-line decoration placement points + bearings in a separate MVT layer.",
+        description="Line layers: emit decoration points of these kinds, comma-separated "
+        '("start", "end", "center"; "start_and_end" is both ends), in a separate MVT layer '
+        "`default_decoration`. Each point has its line's properties, a `bearing` and its "
+        "kind in `_decoration`.",
     ),
     dynamic: bool = Query(
         default=False, description="Force dynamic tile generation, bypassing PMTiles"
+    ),
+    h3: str | None = Query(
+        default=None,
+        pattern=r"^(auto|[5-9]|10)$",
+        description="Draw a point layer as H3 hexagons of this resolution (5 to 10, "
+        'or "auto" from the zoom) in an MVT layer `h3`, instead of its features.',
+    ),
+    h3_value: Literal["count", "sum", "mean"] = Query(
+        default="count",
+        description="A hexagon's value: its points, or the sum or mean of h3_field.",
+    ),
+    h3_field: str | None = Query(
+        default=None, description="The numeric field h3_value sums or averages."
+    ),
+    ids: str | None = Query(
+        default=None,
+        pattern=r"^\d+(,\d+)*$",
+        description="H3 tiles only: count only these features (comma-separated ids).",
     ),
     temp: bool = Query(
         default=False,
@@ -214,8 +402,14 @@ async def get_tile(
     if_none_match: str | None = Header(default=None, alias="if-none-match"),
 ) -> Response:
     """Get a vector tile for the specified collection and tile coordinates."""
+    item_id = catalog_item_id(collection_id)
+    if item_id is not None:
+        return await _catalog_tile_response(request, item_id, z, x, y)
+    kinds = decoration_kinds(decoration)
+    decoration = ",".join(kinds) if kinds else None
     request_id = str(uuid.uuid4())[:8]
     start_time = time.monotonic()
+    feature_ids = tile_feature_ids(ids, h3)
 
     # Ultra-fast path: Try PMTiles by layer_id without ANY database lookup
     # This completely bypasses DuckDB schema lookup for cached tile serving
@@ -233,6 +427,7 @@ async def get_tile(
         if (
             not dynamic
             and decoration is None
+            and h3 is None
             and tile_service.can_serve_from_pmtiles_by_layer_id(
                 layer_id, cql_filter, bbox
             )
@@ -283,6 +478,7 @@ async def get_tile(
     if (
         not dynamic
         and decoration is None
+        and h3 is None
         and tile_service.can_serve_from_pmtiles(layer_info, cql_filter, bbox)
     ):
         result = await tile_service.get_tile_from_pmtiles_only(
@@ -326,6 +522,38 @@ async def get_tile(
         geometry_column=metadata.geometry_column or "geometry",
     )
 
+    # A filter on a layer whose PMTiles manby built: the stored tiles are
+    # filtered. They hold every property and the features the tiler kept, so
+    # a request for some `properties` or a `limit` stays with DuckDB, and so
+    # do H3 hexagons, which count the features instead of drawing them. None
+    # (or a failure) leaves the request to DuckDB, as below.
+    if (
+        (cql_filter or bbox)
+        and not dynamic
+        and decoration is None
+        and h3 is None
+        and not properties
+        and limit is None
+    ):
+        try:
+            filtered = await tile_service.get_filtered_tile_from_pmtiles(
+                layer_info=layer_info,
+                z=z,
+                x=x,
+                y=y,
+                cql_filter=cql_filter,
+                bbox=bbox,
+                columns=metadata.columns,
+                label=label,
+                geometry_column=metadata.geometry_column or "geometry",
+                if_none_match=if_none_match,
+            )
+        except Exception as e:
+            logger.warning("Filtered PMTiles path failed for %s: %s", layer_id, e)
+            filtered = None
+        if filtered is not None:
+            return _filtered_tile_response(filtered, request_id, start_time)
+
     # --- ETag check: skip tile generation if client already has current version ---
     from geoapi.ducklake_pool import ducklake_pool
 
@@ -340,6 +568,9 @@ async def get_tile(
         bbox=bbox,
         decoration=decoration,
         pinned_snapshot_id=ducklake_pool.pinned_snapshot_id,
+        h3=f"{h3}:{h3_value}:{h3_field or ''}{f':i={ids}' if ids else ''}"
+        if h3
+        else None,
     )
     etag = f'W/"{hashlib.md5(etag_seed.encode()).hexdigest()[:16]}"'
 
@@ -357,6 +588,29 @@ async def get_tile(
 
     columns = metadata.columns
     geometry_column = metadata.geometry_column or "geometry"
+
+    if h3 is not None:
+        return await _h3_tile_response(
+            layer_info=layer_info,
+            z=z,
+            x=x,
+            y=y,
+            resolution=h3,
+            op=h3_value,
+            field=h3_field,
+            columns=columns,
+            geometry_column=geometry_column,
+            geometry_type=metadata.geometry_type,
+            cql_filter=cql_filter,
+            bbox=bbox,
+            ids=feature_ids,
+            headers={
+                "ETag": etag,
+                "Cache-Control": "no-cache",
+                "X-Request-ID": request_id,
+            },
+            start_time=start_time,
+        )
 
     try:
         # Get tile - the service handles threading internally for sync operations

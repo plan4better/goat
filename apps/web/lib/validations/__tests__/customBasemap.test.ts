@@ -41,6 +41,23 @@ describe("customBasemapSchema", () => {
     expect(parsed.type).toBe("raster");
   });
 
+  it("accepts a raster basemap with TMS rows or subdomains", () => {
+    for (const url of [
+      "https://tiles.example.org/{z}/{x}/{-y}.png",
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      "https://{switch:a,b}.tiles.example.org/{z}/{x}/{-y}.png",
+    ])
+      expect(customBasemapSchema.parse({ ...baseFields, type: "raster", url })).toMatchObject({ url });
+  });
+
+  it("rejects a raster basemap whose subdomain list is more than host labels", () => {
+    for (const url of [
+      "https://{switch:a,evil.example/x?}.tiles.example.org/{z}/{x}/{y}.png",
+      "https://{switch:}.tiles.example.org/{z}/{x}/{y}.png",
+    ])
+      expect(customBasemapSchema.safeParse({ ...baseFields, type: "raster", url }).success).toBe(false);
+  });
+
   it("rejects raster URLs missing placeholders", () => {
     expect(() =>
       customBasemapSchema.parse({

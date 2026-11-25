@@ -34,6 +34,7 @@ const TOOLS = [
   "project_sample_features",
   "ask_user",
   "skills_load",
+  "docs_read",
   "workflow_tools",
   "workflow_describe_tool",
   "workflow_find_templates",
@@ -44,6 +45,10 @@ const TOOLS = [
   "workflow_update",
   "project_add_catalog_layer",
   "project_add_dataset",
+  "style_get",
+  "style_catalog",
+  "style_update",
+  "map_update",
 ];
 const ROWS = [
   "q",
@@ -172,11 +177,12 @@ describe("assistant texts", () => {
     expect(DE.assistant_caveat_fallback).toBe(
       "Der KI-Anbieter Ihrer Organisation ist nicht erreichbar. Diese Antwort verwendet GOAT AI, die Anfrage wurde daher vom Modell-Anbieter von GOAT AI verarbeitet."
     );
-    expect(EN.ai_settings_description).toMatch(
-      / When AI is on, members' messages and the data the assistant reads are processed by the selected model provider\. Make sure your organization may share this data with it\.$/
+    // The AI settings page says who processes what, and that the organization must allow it.
+    expect(EN.settings_ai_subtitle).toMatch(
+      / While AI is on, the chosen provider processes the messages and the data the assistant reads\. Check that your organization allows this\.$/
     );
-    expect(DE.ai_settings_description).toMatch(
-      / Ist KI aktiviert, verarbeitet der gewählte Modell-Anbieter die Nachrichten der Mitglieder und die Daten, die der Assistent liest\. Stellen Sie sicher, dass Ihre Organisation diese Daten mit ihm teilen darf\.$/
+    expect(DE.settings_ai_subtitle).toMatch(
+      / Ist KI an, verarbeitet der gewählte Anbieter die Nachrichten und die Daten, die der Assistent liest\. Prüfen Sie, ob Ihre Organisation das erlaubt\.$/
     );
   });
 
@@ -220,7 +226,10 @@ describe("assistant texts", () => {
     // A key read with a count (`t(key, { count })`) exists as its plural forms only.
     const missing = usedKeys().filter((key) => !(key in EN) && !(`${key}_one` in EN && `${key}_other` in EN));
     expect(missing).toEqual([]);
-    for (const tool of TOOLS) expect(EN, tool).toHaveProperty(`assistant_tool_${tool}`);
+    for (const tool of TOOLS) {
+      expect(EN, tool).toHaveProperty(`assistant_tool_${tool}`);
+      expect(EN, tool).toHaveProperty(`assistant_tool_${tool}_running`);
+    }
     for (const code of RUN_ERROR_CODES) expect(EN, code).toHaveProperty(`assistant_run_error_${code}`);
     for (const row of ROWS) expect(EN, row).toHaveProperty(`assistant_proposal_row_${row}`);
     for (const group of GROUPS) {

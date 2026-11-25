@@ -1,13 +1,14 @@
 "use client";
 
-import { Divider, ListItemIcon, ListSubheader, Menu, MenuItem, Typography, useTheme } from "@mui/material";
+import { Divider, Menu } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { type ICON_NAME } from "@p4b/ui/components/Icon";
 
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 import { ADD_LAYER_GROUPS, type AddLayerSourceId, sourcesFor } from "@/components/addLayer/sources";
+import { MenuHeading, MenuRow } from "@/components/common/MenuRow";
 
 /**
  * Where a layer comes from: a menu of sources, and the dialog the chosen one opens.
@@ -53,7 +54,6 @@ const AddLayerMenu = ({
   onSourceClose?: () => void;
 }) => {
   const { t } = useTranslation("common");
-  const theme = useTheme();
   const [openSource, setOpenSource] = useState<AddLayerSourceId | null>(null);
 
   const sources = sourcesFor({ hasProject: !!projectId }).filter(
@@ -97,44 +97,23 @@ const AddLayerMenu = ({
           "& .MuiPaper-root": {
             width: 260,
             maxWidth: "calc(100vw - 32px)",
-            boxShadow: "0px 0px 10px 0px rgba(58, 53, 65, 0.1)",
           },
         }}
         anchorOrigin={{ vertical: placement === "top" ? "top" : "bottom", horizontal: "center" }}
-        transformOrigin={{ vertical: placement === "top" ? "bottom" : -5, horizontal: "center" }}
-        MenuListProps={{ sx: { py: 2 } }}>
+        transformOrigin={{ vertical: placement === "top" ? "bottom" : -5, horizontal: "center" }}>
         {groups.flatMap((group, index) => [
-          index > 0 ? <Divider key={`divider-${group.id}`} sx={{ my: 2 }} /> : null,
-          showHeadings ? (
-            <ListSubheader
-              key={`heading-${group.id}`}
-              disableSticky
-              sx={{
-                px: 4,
-                py: 1,
-                lineHeight: 2,
-                fontSize: 12,
-                fontWeight: 700,
-                color: theme.palette.text.secondary,
-                backgroundColor: "transparent",
-              }}>
-              {t(group.labelKey)}
-            </ListSubheader>
-          ) : null,
+          index > 0 ? <Divider key={`divider-${group.id}`} sx={{ my: "4px" }} /> : null,
+          showHeadings ? <MenuHeading key={`heading-${group.id}`}>{t(group.labelKey)}</MenuHeading> : null,
           ...group.items.map((item) => (
-            <MenuItem
+            <MenuRow
               key={item.key}
+              icon={item.icon}
+              label={item.label}
               onClick={() => {
                 onClose();
                 item.onSelect();
               }}
-              sx={{ px: 4, py: 2 }}>
-              {/* Tighter than MUI's 56px default, which left the label adrift of its icon. */}
-              <ListItemIcon sx={{ minWidth: 30 }}>
-                <Icon iconName={item.icon} style={{ fontSize: 15 }} />
-              </ListItemIcon>
-              <Typography variant="body2">{item.label}</Typography>
-            </MenuItem>
+            />
           )),
         ])}
       </Menu>

@@ -23,6 +23,7 @@ from core.schemas.workflow import (
 from core.schemas.workflow import (
     request_examples as workflow_request_examples,
 )
+from core.services.style import checked_config_styles
 
 router = APIRouter()
 
@@ -131,6 +132,7 @@ async def create_workflow(
     # 404 if the project itself is trashed.
     await crud_project.get_live_or_404(async_session, project_id)
     _refuse_damaged(workflow_in.config)
+    workflow_in.config = checked_config_styles(workflow_in.config)
 
     wf = await crud_workflow.create_for_project(
         async_session, project_id=project_id, obj_in=workflow_in, user_id=user_id
@@ -177,6 +179,7 @@ async def update_workflow(
     # `"config": null` would replace it, so it is checked like any config.
     if "config" in workflow_in.model_fields_set:
         _refuse_damaged(workflow_in.config)
+        workflow_in.config = checked_config_styles(workflow_in.config)
 
     wf = await crud_workflow.update_for_project(
         async_session,

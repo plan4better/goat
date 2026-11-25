@@ -23,6 +23,7 @@ from core.core.config import settings
 from core.core.content import fetch_grants_by_resource, granted_ids
 from core.crud.crud_space import space as crud_space
 from core.db.models.folder import Folder
+from core.db.models.layer import TILE_LEADING_LABEL, tile_addresses
 from core.db.models.space import Space, SpaceKind
 from core.schemas.content import (
     ContentCreator,
@@ -98,13 +99,21 @@ _DEFAULT_THUMBNAILS: dict[str, str | None] = {
 
 
 def _host_of(url: str | None) -> str | None:
-    """The host of a stored service address, or None; never the rest of it."""
+    """The host of a stored http(s) address, or None; never the rest of it.
+
+    A storage path (`s3://bucket/...`) or another scheme names no host: the web
+    reads a host as the web address a layer is drawn or copied from. A tile
+    address is named after its host less a subdomain placeholder that is its
+    whole first label, else after its first address's host, the only one of
+    its addresses that is built."""
     if not url:
         return None
     try:
-        return urlparse(url).hostname
+        first = next(tile_addresses(TILE_LEADING_LABEL.sub("", url, count=1)))
+        parsed = urlparse(first)
     except ValueError:
         return None
+    return parsed.hostname if parsed.scheme.lower() in ("http", "https") else None
 
 
 def _thumbnail_url(resource_type: str, stored: str | None) -> str | None:

@@ -29,7 +29,11 @@ class CRUDUserProject(CRUDBase[Any, Any, Any]):
             user_project: UserProjectLink = await self.update(
                 async_session,
                 db_obj=existing_user_project[0],
-                obj_in={"initial_view_state": initial_view_state.model_dump()},
+                obj_in={
+                    "initial_view_state": initial_view_state.model_dump(
+                        exclude_none=True
+                    )
+                },
             )
         else:
             # Shared-folder user saving their view state for the first time — create the row.
@@ -38,7 +42,7 @@ class CRUDUserProject(CRUDBase[Any, Any, Any]):
                 obj_in=UserProjectLink(
                     user_id=user_id,
                     project_id=project_id,
-                    initial_view_state=initial_view_state.model_dump(),
+                    initial_view_state=initial_view_state.model_dump(exclude_none=True),
                 ).model_dump(),
             )
 

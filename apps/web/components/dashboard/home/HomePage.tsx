@@ -7,6 +7,7 @@ import { useState } from "react";
 import { refreshContentFeed } from "@/lib/api/content";
 import { useTemplates } from "@/lib/api/templates";
 import { useUserProfile } from "@/lib/api/users";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
 import type { TemplateKind, TemplateRead, TemplateSourceFilter } from "@/lib/validations/template";
 
 import { useHomeCreate } from "@/hooks/dashboard/home/useHomeCreate";
@@ -95,7 +96,7 @@ const HomePage = () => {
       newProject,
       addDataset,
       browseCatalog,
-      goToTeam: () => router.push("/settings/teams"),
+      goToTeam: () => router.push(SETTINGS_ROUTES.teams),
       openTemplates,
     });
   };

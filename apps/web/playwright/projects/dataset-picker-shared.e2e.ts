@@ -57,7 +57,7 @@ test("a dataset shared with a team is offered by the picker under the team's spa
     await page.getByRole("button", { name: "New project" }).click();
     await page.getByRole("menuitem", { name: "Blank project" }).click();
     await expect(page.getByRole("dialog").getByText("New project", { exact: true })).toBeVisible();
-    const nameField = page.getByLabel("New project");
+    const nameField = page.getByRole("textbox", { name: "New project" });
     await nameField.click();
     await nameField.fill(projectName);
     await page.getByRole("button", { name: "Create project" }).click();

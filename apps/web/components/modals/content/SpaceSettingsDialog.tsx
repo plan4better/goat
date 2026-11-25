@@ -1,6 +1,6 @@
 "use client";
 
-import { FormControlLabel, Radio, RadioGroup, Typography } from "@mui/material";
+import { Typography } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -11,6 +11,7 @@ import { updateSpaceDefaultRole, useSpaces } from "@/lib/api/content";
 import type { Space, SpaceDefaultRole } from "@/lib/validations/content";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import RadioCardGroup from "@/components/settings/common/RadioCardGroup";
 
 interface SpaceSettingsDialogProps {
   space: Space;
@@ -65,19 +66,19 @@ const SpaceSettingsDialog = ({ space, onClose, onSaved }: SpaceSettingsDialogPro
           primaryDisabled={saving || role === space.default_role}
         />
       }>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+      {/* A field's label, as `LabeledField` draws one, over the settings' radio cards. */}
+      <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.5 }}>
         {t("default_content_role")}
       </Typography>
-      <RadioGroup value={role} onChange={(_event, value) => setRole(value as SpaceDefaultRole)}>
-        <FormControlLabel value="editor" control={<Radio />} label={t("editor")} />
-        <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1, mb: 1 }}>
-          {t("space_default_editor_hint")}
-        </Typography>
-        <FormControlLabel value="viewer" control={<Radio />} label={t("viewer")} />
-        <Typography variant="caption" color="text.secondary" sx={{ ml: 4, mt: -1 }}>
-          {t("space_default_viewer_hint")}
-        </Typography>
-      </RadioGroup>
+      <RadioCardGroup<SpaceDefaultRole>
+        label={t("default_content_role")}
+        value={role}
+        onChange={setRole}
+        options={[
+          { value: "editor", label: t("editor"), line: t("space_default_editor_hint") },
+          { value: "viewer", label: t("viewer"), line: t("space_default_viewer_hint") },
+        ]}
+      />
     </AppDialog>
   );
 };

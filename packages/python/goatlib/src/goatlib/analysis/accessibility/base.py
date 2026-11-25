@@ -122,6 +122,50 @@ _GTFS_WEEKDAY_COLUMNS = (
 )
 
 
+def active_services_sql(
+    service_date: str,
+    calendar_path: str | None = None,
+    calendar_dates_path: str | None = None,
+) -> str:
+    """A query of the ``service_id``s running on ``service_date`` (``YYYY-MM-DD``).
+
+    The regular schedule, minus removals, plus additions: ``calendar_dates`` is
+    the authority where it speaks. Either file may be absent — GTFS requires
+    one of them, not both — so each contributes only if it is there.
+
+    Dates and enums are compared as text, which reads the same whether the
+    table stores them typed (``DATE``, ``INTEGER``) or as published text: a
+    ``DATE`` prints ``YYYY-MM-DD``, so its dashes are dropped to match GTFS's
+    ``YYYYMMDD``.
+    """
+    day = datetime.strptime(service_date, "%Y-%m-%d").date()
+    gtfs_date = day.strftime("%Y%m%d")
+    weekday_column = _GTFS_WEEKDAY_COLUMNS[day.weekday()]
+    regular = (
+        f"""
+        SELECT service_id FROM read_parquet('{calendar_path}')
+        WHERE {weekday_column} IN ('1', 1)
+          AND replace(CAST(start_date AS VARCHAR), '-', '') <= '{gtfs_date}'
+          AND replace(CAST(end_date AS VARCHAR), '-', '') >= '{gtfs_date}'
+        """
+        if calendar_path
+        else "SELECT NULL AS service_id WHERE FALSE"
+    )
+    added = removed = "SELECT NULL AS service_id WHERE FALSE"
+    if calendar_dates_path:
+        added = f"""
+            SELECT service_id FROM read_parquet('{calendar_dates_path}')
+            WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
+              AND CAST(exception_type AS VARCHAR) = '1'
+        """
+        removed = f"""
+            SELECT service_id FROM read_parquet('{calendar_dates_path}')
+            WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
+              AND CAST(exception_type AS VARCHAR) = '2'
+        """
+    return f"(({regular}) EXCEPT ({removed})) UNION ({added})"
+
+
 class HeatmapToolBase(AnalysisTool):
     """Base class for heatmap analysis tools."""
 
@@ -547,70 +591,18 @@ class PTToolBase(AnalysisTool):
         self.con.execute("INSTALL h3 FROM community; LOAD h3;")
         logger.debug("H3 extension loaded for PT tool.")
 
-    def _import_gtfs_stops(self: Self, stops_path: str) -> None:
-        """Import GTFS stops parquet.
-
-        Creates a view 'gtfs_stops' with standardized columns:
-        - stop_id, stop_name, stop_lat, stop_lon, location_type,
-          parent_station, h3_3, geom
-
-        Args:
-            stops_path: Path to GTFS stops parquet file.
-        """
-        self.con.execute(f"""
-            CREATE OR REPLACE VIEW gtfs_stops AS
-            SELECT
-                stop_id,
-                stop_name,
-                stop_lat,
-                stop_lon,
-                location_type,
-                parent_station,
-                h3_3,
-                ST_Point(stop_lon, stop_lat) AS geom
-            FROM read_parquet('{stops_path}')
-            WHERE location_type IS NULL OR location_type = '0' OR location_type = ''
-        """)
-
-    def _import_gtfs_stop_times(self: Self, stop_times_path: str) -> None:
-        """Import GTFS stop_times parquet.
-
-        Creates a view 'gtfs_stop_times' with standardized columns:
-        - stop_id, route_type, arrival_time, is_weekday, is_saturday,
-          is_sunday, h3_3
-
-        Args:
-            stop_times_path: Path to GTFS stop_times parquet file.
-        """
-        self.con.execute(f"""
-            CREATE OR REPLACE VIEW gtfs_stop_times AS
-            SELECT
-                stop_id,
-                route_type,
-                arrival_time,
-                is_weekday,
-                is_saturday,
-                is_sunday,
-                h3_3
-            FROM read_parquet('{stop_times_path}')
-        """)
-
-    # -- GTFS from an uploaded bundle --------------------------------------
+    # -- The feed's GTFS tables -------------------------------------------
     #
-    # The shipped feed arrives pre-digested: `stop_times_optimized` carries the
-    # route type, an h3 cell and three booleans for an *average* weekday,
-    # Saturday and Sunday. A bundle carries the feed as published, so the same
-    # columns are derived here — and for one real date rather than an average,
-    # which is what the user picks. Service on a date is what `calendar` says
-    # for that weekday within its window, plus or minus what `calendar_dates`
-    # says about that date specifically.
+    # A bundle's tables as published, or the default network's cut to the
+    # area and the date (``tools/pt_network.py``): the feed as GTFS states it,
+    # so the columns the counting needs are derived here, for one real date.
+    # Service on a date is what `calendar` says for that weekday within its
+    # window, plus or minus what `calendar_dates` says about that date.
 
-    def _import_bundle_gtfs_stops(self: Self, stops_path: str) -> None:
-        """`gtfs_stops` from a bundle's stops layer.
-
-        The same view the shipped feed produces, with `h3_3` computed here: the
-        published file has no such column, and the join in `_count_pt_services`
-        is on it as well as the stop id.
+    def _import_gtfs_stops(self: Self, stops_path: str) -> None:
+        """`gtfs_stops` from the feed's stops table: the stops a vehicle
+        stops at (no stations, entrances or nodes), with `h3_3` computed here,
+        as the join in `_count_pt_services` is on it as well as the stop id.
         """
         self.con.execute("INSTALL h3 FROM community; LOAD h3;")
         self.con.execute(f"""
@@ -632,7 +624,7 @@ class PTToolBase(AnalysisTool):
                    OR CAST(location_type AS VARCHAR) IN ('0', ''))
         """)
 
-    def _import_bundle_gtfs_stop_times(
+    def _import_gtfs_stop_times(
         self: Self,
         stop_times_path: str,
         trips_path: str,
@@ -641,66 +633,30 @@ class PTToolBase(AnalysisTool):
         calendar_path: str | None = None,
         calendar_dates_path: str | None = None,
     ) -> None:
-        """`gtfs_stop_times` for one date, from a bundle's published tables.
+        """`gtfs_stop_times` for one date, from the feed's tables.
 
         `service_date` is ``YYYY-MM-DD``. The three day booleans survive because
-        everything downstream filters on them: exactly one is set, the one the
-        date falls on, so a caller that asks for "the Saturday window" of a date
-        that is a Saturday gets what it expects and the counting SQL is
-        unchanged.
+        everything downstream filters on them, and all three are set: the rows
+        are that date's service already, so the date decides, not the kind of
+        day the time window names. (With only the date's own flag set, a window
+        left at "weekday", as a tool sends it when a date is picked, counted
+        nothing on a Saturday, a Sunday or a holiday.)
 
-        Either calendar file may be absent — GTFS requires one of them, not both
-        — so each contributes only if it is there.
-
-        Dates and enums are compared as text, which reads the same whether the
-        layer stores them typed (``DATE``, ``INTEGER``) or as published text
-        (a bundle imported before typing): a ``DATE`` prints ``YYYY-MM-DD``, so
-        its dashes are dropped to match GTFS's ``YYYYMMDD``.
+        Either calendar file may be absent; which services run is
+        ``active_services_sql``'s answer.
         """
-        day = datetime.strptime(service_date, "%Y-%m-%d").date()
-        gtfs_date = day.strftime("%Y%m%d")
-        weekday_column = _GTFS_WEEKDAY_COLUMNS[day.weekday()]
-        is_weekday = day.weekday() < 5
-        is_saturday = day.weekday() == 5
-        is_sunday = day.weekday() == 6
-
-        # Services running on the date: the regular schedule, minus removals,
-        # plus additions. `calendar_dates` is the authority where it speaks.
-        regular = (
-            f"""
-            SELECT service_id FROM read_parquet('{calendar_path}')
-            WHERE {weekday_column} IN ('1', 1)
-              AND replace(CAST(start_date AS VARCHAR), '-', '') <= '{gtfs_date}'
-              AND replace(CAST(end_date AS VARCHAR), '-', '') >= '{gtfs_date}'
-            """
-            if calendar_path
-            else "SELECT NULL AS service_id WHERE FALSE"
-        )
-        added = removed = "SELECT NULL AS service_id WHERE FALSE"
-        if calendar_dates_path:
-            added = f"""
-                SELECT service_id FROM read_parquet('{calendar_dates_path}')
-                WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
-                  AND CAST(exception_type AS VARCHAR) = '1'
-            """
-            removed = f"""
-                SELECT service_id FROM read_parquet('{calendar_dates_path}')
-                WHERE replace(CAST(date AS VARCHAR), '-', '') = '{gtfs_date}'
-                  AND CAST(exception_type AS VARCHAR) = '2'
-            """
+        active = active_services_sql(service_date, calendar_path, calendar_dates_path)
 
         self.con.execute(f"""
             CREATE OR REPLACE VIEW gtfs_stop_times AS
-            WITH active_services AS (
-                (({regular}) EXCEPT ({removed})) UNION ({added})
-            )
+            WITH active_services AS ({active})
             SELECT
                 st.stop_id,
                 r.route_type,
                 st.arrival_time,
-                {str(is_weekday).lower()} AS is_weekday,
-                {str(is_saturday).lower()} AS is_saturday,
-                {str(is_sunday).lower()} AS is_sunday,
+                true AS is_weekday,
+                true AS is_saturday,
+                true AS is_sunday,
                 s.h3_3
             FROM read_parquet('{stop_times_path}') st
             JOIN read_parquet('{trips_path}') t ON t.trip_id = st.trip_id

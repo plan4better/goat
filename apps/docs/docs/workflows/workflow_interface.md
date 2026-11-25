@@ -105,7 +105,11 @@ This tab contains categorized tools available for workflow construction, similar
 - **Data I/O**
   - <code>+ Add dataset</code>: Create dataset nodes
   - <code>Fetch data</code>: Fetch OpenStreetMap or Overture Maps features from GOAT's copy of them, fresh on every run. The node has no input. Described below under **Fetch data Node**.
-  - <code>Save as dataset</code>: Save workflow results as permanent datasets. Configure the **Dataset name**, toggle **Add to project** to automatically add the result to the project layer list, and enable **Overwrite on re-run** to replace the previously exported dataset each time the workflow runs instead of creating a new one. Connected directly to a dataset node, it saves the features that match the node's filter, in the dataset's style.
+  - <code>Save as dataset</code>: Save workflow results as permanent datasets. Under **Save to**, choose one of the two options:
+    - `New dataset`: the result becomes its own dataset. Enter the **Dataset name** and enable **Overwrite on re-run** to replace the previous result each time the workflow runs instead of creating a new dataset.
+    - `Existing dataset`: the rows are added to a dataset you can edit. Click `Choose dataset` and pick the **Target dataset**, a feature layer or a table. Without edit rights on it, the step fails when the workflow runs.
+
+    In both cases, **Add to project** adds the result to the project layer list. Connected directly to a dataset node, it saves the features that match the node's filter, in the dataset's style.
 
 :::tip Good practice
 Give each **Save as dataset** node a descriptive name and enable **Overwrite on re-run** when running the same workflow repeatedly. This keeps your project clean by avoiding duplicate layers after each run.
@@ -147,7 +151,7 @@ When a **dataset node** is selected, the dataset panel appears with two availabl
 
 **Source Tab**: View metadata from the data source and access table and map views. You can also change the dataset assigned to the node from this tab.
 
-An empty dataset node shows <code>Add dataset</code>, with two sources: <code>From Project</code> and <code>My datasets</code>. Once a dataset is set, use <code>Change Dataset</code> to pick another.
+An empty dataset node shows <code>Add dataset</code>, with two sources: <code>From Project</code> and <code>My datasets</code>. Once a dataset is set, use <code>Change Dataset</code> to pick another. Workflows use feature layers and tables; raster layers are not offered and can't be dropped onto the canvas.
 
 **Filter Tab**: Apply filters specific to the workflow without affecting the original layer.
 
@@ -297,8 +301,8 @@ You can also ask the assistant to change a workflow of the open project, for exa
 - The assistant reads the workflow first and changes only what you asked for: steps, settings, connections and text cards. It never deletes a workflow.
 - It checks the changed workflow with the same check as the editor and doesn't save a change that adds an error. Its answer says what it changed.
 - If the workflow is open in the editor, the canvas shows the change at once. `Ctrl+Z` (`⌘+Z` on macOS) in the canvas takes the change back as one step.
-- An answer that changed a workflow shows <code>Undo</code> below it; on older answers, point at the answer to see it. Click it to take back all the changes of that answer, also when the workflow isn't open. The button then reads <code>Undone</code>.
-- If the workflow was saved again after the answer, <code>Undo</code> asks first and says who changed it and when. <code>Undo anyway</code> takes back those later changes too. If the editor has changes that aren't saved yet, <code>Undo</code> asks as well; after <code>Undo anyway</code>, the notice at the top of the canvas lets you choose which version to keep.
+- An answer that changed a workflow shows <code>Undo</code> at the end of the line that names the change, for example <code>Changed the workflow</code>; on older answers, point at the answer to see it. Click it to take back all the changes of that answer, also when the workflow isn't open. That line then reads <code>Undone</code>.
+- If the workflow was saved again after the answer, <code>Undo</code> asks first; point at the question to see who changed it and when. <code>Undo anyway</code> takes back those later changes too. If the editor has changes that aren't saved yet, <code>Undo</code> asks as well; after <code>Undo anyway</code>, the notice at the top of the canvas lets you choose which version to keep.
 
 ### Run a workflow with the AI assistant
 

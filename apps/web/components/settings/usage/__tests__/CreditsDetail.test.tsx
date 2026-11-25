@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
   failing: null as string | null,
   loading: null as string | null,
   directoryLoading: false,
+  organizationFailing: false,
   breakdown: vi.fn(),
   download: vi.fn(),
 }));
@@ -34,28 +35,36 @@ vi.mock("@/lib/api/usage", async (importOriginal) => ({
 vi.mock("@/hooks/map/useOgcProcesses", () => ({
   useProcessList: () => ({ processes: [{ id: "buffer", title: "Buffer" }] }),
 }));
-vi.mock("@/lib/api/users", () => ({ useOrganization: () => ({ organization: { id: "org1" } }) }));
+vi.mock("@/lib/api/users", () => ({
+  useOrganization: () =>
+    api.organizationFailing
+      ? { organization: undefined, isLoading: false, isError: new Error("500") }
+      : { organization: { id: "org1" }, isLoading: false, isError: undefined },
+}));
 vi.mock("@/lib/api/organizations", () => ({
-  useOrganizationMembers: () =>
-    api.directoryLoading
-      ? { members: undefined, isLoading: true }
-      : {
-          members: [
-            {
-              id: "0b6f3c2e-1a4d-4e8b-9c7f-2d5e8a1b4c01",
-              firstname: "Anna",
-              lastname: "Weber",
-              roles: ["organization-admin"],
-            },
-            {
-              id: "0b6f3c2e-1a4d-4e8b-9c7f-2d5e8a1b4c02",
-              firstname: "Tim",
-              lastname: "Braun",
-              roles: ["organization-editor"],
-            },
-          ],
-          isLoading: false,
-        },
+  // Without an id there is no request, as SWR's null key.
+  useOrganizationMembers: (organizationId: string) =>
+    !organizationId
+      ? { members: undefined, isLoading: false }
+      : api.directoryLoading
+        ? { members: undefined, isLoading: true }
+        : {
+            members: [
+              {
+                id: "0b6f3c2e-1a4d-4e8b-9c7f-2d5e8a1b4c01",
+                firstname: "Anna",
+                lastname: "Weber",
+                roles: ["organization-admin"],
+              },
+              {
+                id: "0b6f3c2e-1a4d-4e8b-9c7f-2d5e8a1b4c02",
+                firstname: "Tim",
+                lastname: "Braun",
+                roles: ["organization-editor"],
+              },
+            ],
+            isLoading: false,
+          },
 }));
 vi.mock("@/components/support/SupportMenu", () => ({ useReportProblemHref: () => null }));
 
@@ -106,9 +115,10 @@ const lastCall = (group: string) => {
 
 const onUrlUpdate = vi.fn();
 
-const renderDetail = (balance: CreditBalance = BALANCE, searchParams = "") => {
+/** `null`: the balance has not answered yet. */
+const renderDetail = (balance: CreditBalance | null = BALANCE, searchParams = "") => {
   const Nuqs = withNuqsTestingAdapter({ searchParams, onUrlUpdate });
-  return render(<CreditsDetail balance={balance} />, {
+  return render(<CreditsDetail balance={balance ?? undefined} />, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <Nuqs>
         <ThemeProvider theme={theme}>
@@ -158,6 +168,7 @@ beforeEach(() => {
   api.failing = null;
   api.loading = null;
   api.directoryLoading = false;
+  api.organizationFailing = false;
   api.breakdown.mockReset();
   api.breakdown.mockImplementation((group: string, query: Record<string, unknown> = {}, enabled = true) => {
     if (enabled === false) return { breakdown: undefined, isLoading: false, isError: undefined };
@@ -184,13 +195,68 @@ describe("CreditsDetail", () => {
   it("asks for one page of workflows in the chosen range", () => {
     renderDetail();
     expect(lastCall("workflow")).toEqual(
-      expect.objectContaining({ since: SINCE_PERIOD, limit: 10, offset: 0, sort: "credits", dir: "desc" })
+      expect.objectContaining({ limit: 10, offset: 0, sort: "credits", dir: "desc" })
     );
+    // This period: core counts from its start, so the request names none.
+    expect(lastCall("workflow")?.since).toBeUndefined();
     // The chart reads the days of the same range.
-    expect(lastCall("day")).toEqual(expect.objectContaining({ since: SINCE_PERIOD }));
+    expect(lastCall("day")?.since).toBeUndefined();
     expect(screen.getByText("1–10 of 48 workflows")).toBeInTheDocument();
     expect(screen.getAllByText("Radnetz")).toHaveLength(10);
     expect(screen.getAllByText("3 runs")).toHaveLength(10);
+  });
+
+  it("asks for this period's breakdowns before the balance answers, and draws the frame meanwhile", async () => {
+    const view = renderDetail(null);
+    expect(lastCall("day")).toBeDefined();
+    expect(lastCall("day")?.since).toBeUndefined();
+    expect(lastCall("workflow")).toEqual(expect.objectContaining({ limit: 10, offset: 0 }));
+    // The figures fill in with the balance: the amount, the split and the chart.
+    expect(screen.queryByText("2,204")).toBeNull();
+    expect(screen.queryByText(/^Compute \d/)).toBeNull();
+    expect(screen.queryByRole("img", { name: /^Credits per day/ })).toBeNull();
+    // The chart's heading names days, as a period with a start reads, not months first.
+    expect(screen.getByText("Credits per day")).toBeInTheDocument();
+    expect(screen.queryByText("Credits per month")).toBeNull();
+    // The range pill names no range yet: a trial's period is the whole trial.
+    expect(screen.queryByRole("button", { name: "This period" })).toBeNull();
+    const pill = screen.getByRole("button", { name: "Period" });
+    await expect(pill).toBeDisabled();
+    // Nothing to describe: the pill waits for the period, it is not whole periods.
+    expect(pill.getAttribute("aria-describedby")).toBeNull();
+    // Without the period's start the export would hold the whole ledger.
+    await expect(screen.getByRole("button", { name: "Export CSV" })).toBeDisabled();
+    view.rerender(<CreditsDetail balance={BALANCE} />);
+    expect(screen.getByText("2,204")).toBeInTheDocument();
+    expect(screen.getByText("Compute 15 credits")).toBeInTheDocument();
+    // The balance changes no request: what was asked for is what is shown.
+    const queries = (group: string) =>
+      new Set(
+        api.breakdown.mock.calls.filter(([g]) => g === group).map(([, query]) => JSON.stringify(query))
+      );
+    expect(queries("day").size).toBe(1);
+    expect(queries("workflow").size).toBe(1);
+  });
+
+  it("names a trial's range only once the balance says it is one", () => {
+    const view = renderDetail(null);
+    expect(screen.queryByRole("button", { name: "This period" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Whole trial" })).toBeNull();
+    view.rerender(
+      <CreditsDetail balance={{ ...BALANCE, on_trial: true, plan_renewal_date: "2026-11-14T12:00:00" }} />
+    );
+    expect(screen.getByRole("button", { name: "Whole trial" })).toBeInTheDocument();
+  });
+
+  it("holds an empty list of this period until the balance says whether the period is empty", () => {
+    api.rows.day = [];
+    api.rows.workflow = [];
+    api.totals = {};
+    const view = renderDetail(null);
+    expect(screen.queryByText("No workflows in this range")).toBeNull();
+    view.rerender(<CreditsDetail balance={{ ...BALANCE, used_credits: 0 }} />);
+    expect(screen.getByText("No credits used in this period yet")).toBeInTheDocument();
+    expect(screen.queryByText("No workflows in this range")).toBeNull();
   });
 
   it("starts again on page 1 when the range changes", async () => {
@@ -312,7 +378,7 @@ describe("CreditsDetail", () => {
     await userEvent.click(groupBy().getByRole("button", { name: "Tools" }));
     expect(screen.getByText("1–10 of 23 tools")).toBeInTheDocument();
     expect(screen.queryByText("assistant")).not.toBeInTheDocument();
-    expect(lastCall("tool")).toEqual(expect.objectContaining({ since: SINCE_PERIOD }));
+    expect(lastCall("tool")?.since).toBeUndefined();
     expect(lastCall("tool")?.limit).toBeUndefined();
     await userEvent.click(screen.getByRole("button", { name: "Go to page 3" }));
     expect(screen.getByText("21–23 of 23 tools")).toBeInTheDocument();
@@ -394,7 +460,7 @@ describe("CreditsDetail", () => {
 
   it("tells an organization without usage where credits come from, and keeps the way to another range", async () => {
     // Nothing in this period; the last one has workflows.
-    const inThisPeriod = (query: Record<string, unknown>) => query.since === SINCE_PERIOD;
+    const inThisPeriod = (query: Record<string, unknown>) => query.since === undefined;
     const days = api.rows.day as BreakdownRow[];
     const workflows = api.rows.workflow as BreakdownRow[];
     api.rows.day = (query) => (inThisPeriod(query) ? [] : days);
@@ -457,6 +523,12 @@ describe("CreditsDetail", () => {
     expect(screen.getByText("credits used by Unknown this period.")).toBeInTheDocument();
     expect(screen.queryByText(/out of/)).not.toBeInTheDocument();
     expect(screen.queryByText(/When the credits are used up/)).not.toBeInTheDocument();
+  });
+
+  it("names a chosen member Unknown when the organization cannot be read", () => {
+    api.organizationFailing = true;
+    renderDetail(BALANCE, "?member=0b6f3c2e-1a4d-4e8b-9c7f-2d5e8a1b4c09");
+    expect(screen.getByText("Member: Unknown")).toBeInTheDocument();
   });
 
   it("holds the member's place while the names load, and says Unknown only once they have", () => {

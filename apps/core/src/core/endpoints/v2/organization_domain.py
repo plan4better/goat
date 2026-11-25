@@ -34,8 +34,8 @@ from core.schemas.organization_domain import (
     OrganizationDomainRead,
 )
 from core.services.domain_reconciliation import (
-    check_dns,
     provision_domain,
+    refresh_dns,
     release_domain,
 )
 from core.services.provisioner import CustomDomainProvisioner
@@ -140,12 +140,9 @@ async def create_domain(
             detail=str(exc.orig) if exc.orig else str(exc),
         )
 
-    dns_status, dns_message = await check_dns(
-        domain.base_domain,
-        canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET,
+    dns_status = await refresh_dns(
+        domain, canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET
     )
-    domain.dns_status = dns_status
-    domain.dns_status_message = dns_message
 
     if dns_status == DnsStatus.VERIFIED:
         await provision_domain(domain, provisioner=provisioner)
@@ -206,8 +203,9 @@ async def recheck_domain(
     """Synchronously re-verify DNS for a domain.
 
     If DNS now resolves to the canonical target and we haven't kicked off
-    cert issuance yet, we notify the provisioner here as well so the user
-    gets immediate feedback rather than waiting for the cron.
+    cert issuance yet, or the certificate failed, we notify the provisioner
+    here as well so the user gets immediate feedback rather than waiting for
+    the cron.
     """
     _require_custom_domains()
     domain = await crud.get(async_session, id=domain_id)
@@ -216,14 +214,16 @@ async def recheck_domain(
             status_code=status.HTTP_404_NOT_FOUND, detail="domain not found"
         )
 
-    dns_status, dns_message = await check_dns(
-        domain.base_domain,
-        canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET,
+    dns_status = await refresh_dns(
+        domain, canonical_target=settings.CUSTOM_DOMAIN_CNAME_TARGET
     )
-    domain.dns_status = dns_status
-    domain.dns_status_message = dns_message
 
-    if dns_status == DnsStatus.VERIFIED and domain.cert_status == CertStatus.PENDING:
+    # A failed certificate gets the same new start as a pending one: Caddy
+    # issues on the first request, so there is no "issuing" state to wait in.
+    if dns_status == DnsStatus.VERIFIED and domain.cert_status in (
+        CertStatus.PENDING,
+        CertStatus.FAILED,
+    ):
         await provision_domain(domain, provisioner=provisioner)
         domain.cert_status = CertStatus.ACTIVE
         domain.cert_status_message = None

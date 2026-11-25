@@ -5,7 +5,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -570,7 +570,7 @@ def test_ask_user_is_never_answered_from_an_earlier_call() -> None:
 
 def test_ask_user_is_on_every_page_and_not_on_mcp() -> None:
     assert ASK_USER.wire_name == "ask_user"
-    assert ASK_USER.risk == "read" and not ASK_USER.mcp and not ASK_USER.returns_data
+    assert ASK_USER.risk == "read" and not ASK_USER.mcp
 
 
 async def test_a_shown_card_ends_the_answer_before_the_model_is_called_again() -> None:
@@ -1789,6 +1789,166 @@ async def test_a_card_to_run_the_same_workflow_again_is_shown() -> None:
     await _shown(RUN_ANSWERED, card, used=["ask-r1"])
 
 
+#: A removal card the model made up before calling map_update: its value is
+#: none the tool takes as the user's pick.
+OWN_REMOVAL_CARD = AskUserInput.model_validate(
+    _asking(
+        'Should the layer "Old boundaries" be removed from this project?',
+        {"label": "Remove it", "value": "remove:39"},
+        {"label": "Just hide it", "value": "hide:39"},
+        header="Remove",
+    )
+)
+#: The card map_update's confirm asks for, under the same header.
+CONFIRMED_REMOVAL = _asking(
+    'Remove "Old boundaries" even though a dashboard widget uses it?',
+    {"label": "Remove anyway", "value": "remove_layer:39"},
+    {"label": "Just hide it", "value": "hide:39"},
+    header="Remove",
+)
+
+
+def _removal_answered(card: AskUserInput, option: int) -> AskHistory:
+    return AskHistory(cards={"ask-o1": card}).with_answer(
+        CardAnswer.model_validate(
+            {"card_id": "ask-o1", "answers": [{"question": 0, "options": [option]}]}
+        )
+    )
+
+
+async def _asked_with_confirm(
+    history: AskHistory, card: dict[str, Any], confirm: set[str]
+) -> dict[str, Any] | str:
+    """The card's result, or its refusal, after map_update of this answer
+    answered ``confirm`` with those values."""
+    env, _ = _picks_env(history)
+    env.confirm_values.update(confirm)
+    try:
+        return await execute(ASK_USER, env, card, tool_call_id="c1")
+    except InputInvalid as refused:
+        return refused.message
+
+
+async def test_a_card_with_the_value_a_removal_answered_is_no_repeat() -> None:
+    """The model asked about a removal on its own; map_update then answered
+    the value it takes (confirm). The earlier pick carried no such value, so
+    it cannot be used: the card that offers the value is shown, under the
+    same header."""
+    history = _removal_answered(OWN_REMOVAL_CARD, 0)
+    # Before map_update named the value, the card cannot offer it.
+    assert "no tool of this answer asked" in await _refusal(history, CONFIRMED_REMOVAL)
+    shown = await _asked_with_confirm(history, CONFIRMED_REMOVAL, {"remove_layer:39"})
+    assert isinstance(shown, dict) and shown["status"] == "asked"
+    # A value map_update did not answer in this answer is not offered at all.
+    refused = await _asked_with_confirm(history, CONFIRMED_REMOVAL, {"remove_layer:34"})
+    assert isinstance(refused, str) and "no tool of this answer asked" in refused
+
+
+async def test_a_question_beside_the_removal_is_still_checked() -> None:
+    """The exception covers the question that offers the value, not the
+    other questions of its card."""
+    history = _districts_answered([0])
+    card = {
+        "questions": [
+            CONFIRMED_REMOVAL["questions"][0],
+            _asking(
+                "Which areas?",
+                {"label": "Grid cells"},
+                {"label": "Postcode areas"},
+                header="Districts",
+            )["questions"][0],
+        ]
+    }
+    refused = await _asked_with_confirm(history, card, {"remove_layer:39"})
+    assert refused == PICK_REFUSED.format(question=DISTRICTS_QUESTION)
+
+
+async def test_a_removal_declined_on_a_card_with_the_value_is_not_asked_again() -> None:
+    """The user was offered the value the tool takes and kept the layer:
+    that answer can be used, and the same card again is refused."""
+    offered = AskUserInput.model_validate(CONFIRMED_REMOVAL)
+    history = _removal_answered(offered, 1)
+    refused = await _asked_with_confirm(history, CONFIRMED_REMOVAL, {"remove_layer:39"})
+    assert isinstance(refused, str) and refused.startswith("The user already answered")
+
+
+REMOVAL_QUESTION = 'Remove the layer "Old boundaries" from this project?'
+
+
+@pytest.mark.parametrize(
+    ("options", "said"),
+    [
+        # The value on both options: whatever the user picks would allow it.
+        (
+            [
+                {"label": "Yes, tidy up", "value": "remove_layer:39"},
+                {"label": "No, keep it", "value": "remove_layer:39"},
+            ],
+            "more than one option",
+        ),
+        # No option that keeps the layer.
+        (
+            [
+                {"label": "Remove Old boundaries", "value": "remove_layer:39"},
+                {"label": "Remove Land use", "value": "remove_layer:34"},
+            ],
+            "keeps it as it is",
+        ),
+    ],
+)
+async def test_a_consent_card_that_cannot_keep_the_layer_is_refused(
+    options: list[dict[str, Any]], said: str
+) -> None:
+    card = _asking(REMOVAL_QUESTION, *options, header="Remove")
+    refused = await _asked_with_confirm(
+        AskHistory(), card, {"remove_layer:39", "remove_layer:34"}
+    )
+    assert isinstance(refused, str) and said in refused
+
+
+async def test_a_consent_value_on_a_multi_select_question_is_refused() -> None:
+    card = _asking(
+        REMOVAL_QUESTION,
+        {"label": "Remove it", "value": "remove_layer:39"},
+        {"label": "Keep it"},
+        header="Remove",
+    )
+    card["questions"][0]["multi_select"] = True
+    refused = await _asked_with_confirm(AskHistory(), card, {"remove_layer:39"})
+    assert isinstance(refused, str) and "single-select" in refused
+
+
+@pytest.mark.parametrize("value", ["remove_layer:39", "replace_style:s-1"])
+async def test_a_consent_value_no_tool_of_this_answer_named_is_refused(
+    value: str,
+) -> None:
+    card = _asking(
+        REMOVAL_QUESTION,
+        {"label": "Yes", "value": value},
+        {"label": "No, keep it"},
+        header="Remove",
+    )
+    refused = await _asked_with_confirm(AskHistory(), card, set())
+    assert isinstance(refused, str) and "no tool of this answer asked" in refused
+    shown = await _asked_with_confirm(AskHistory(), card, {value})
+    assert isinstance(shown, dict) and shown["status"] == "asked"
+
+
+async def test_a_removal_kept_before_a_typed_request_is_asked_again() -> None:
+    """The user kept the layer; later they type "remove it now". That answer
+    lies before their last typed message, so the card the tool asks for is
+    shown again."""
+    offered = AskUserInput.model_validate(CONFIRMED_REMOVAL)
+    kept = _removal_answered(offered, 1)
+    later = replace(kept, chain=frozenset()).with_typed_message()
+    shown = await _asked_with_confirm(later, CONFIRMED_REMOVAL, {"remove_layer:39"})
+    assert isinstance(shown, dict) and shown["status"] == "asked"
+    # Within the same chain it is still a repeat.
+    same = replace(kept, chain=frozenset({"ask-o1"}))
+    refused = await _asked_with_confirm(same, CONFIRMED_REMOVAL, {"remove_layer:39"})
+    assert isinstance(refused, str) and refused.startswith("The user already answered")
+
+
 #: The run card answered: not now, on a weekday.
 RUN_DECLINED = AskHistory(
     cards={"ask-r1": RUN_CARD},
@@ -2053,6 +2213,11 @@ async def _answer_run(
             ("GET", f"/api/v2/project/{RUN_PROJECT}"): {"name": "Run project"},
             ("GET", f"/api/v2/project/{RUN_PROJECT}/layer"): layers or [],
             ("GET", f"/api/v2/project/{RUN_PROJECT}/group"): [],
+            ("GET", f"/api/v2/project/{RUN_PROJECT}/map"): {
+                "map": {"version": "1.0.0", "layers": []},
+                "styles": {},
+                "unpublished": [],
+            },
             **(core_routes or {}),
         }
     )
@@ -2375,11 +2540,10 @@ def test_the_result_is_read_with_the_project_reads_and_tool_descriptions() -> No
     assert "project_group_statistics" in RESULT_READ_TOOLS
     # What a result's scale or field means, from the tool that made it.
     assert "workflow_describe_tool" in RESULT_READ_TOOLS
-    assert BY_WIRE_NAME["workflow_describe_tool"].returns_data is False
     for name in RESULT_READ_TOOLS:
         assert BY_WIRE_NAME[name].risk == "read"
     # Not a proposal, and not a run read, which would arm the gate again.
-    assert "map_propose_view" not in RESULT_READ_TOOLS
+    assert "catalog_propose_filters" not in RESULT_READ_TOOLS
     assert "workflow_last_run" not in RESULT_READ_TOOLS
 
 
@@ -2540,7 +2704,7 @@ LOOK_UPS_THEN_RUN: list[Usage] = [
 async def test_at_the_default_budget_an_answer_that_ran_its_workflow_looks_on() -> None:
     """After the run's call, about 67,800 weighted tokens in, one more
     look-up and the read step and the answer step after it still fit (about
-    117,700 of 200,000): each reads the answer so far from the cache, so the
+    117,700 of 400,000): each reads the answer so far from the cache, so the
     answer reads its result with every tool."""
     defaults = AssistantSettings.model_fields
     budget = RunBudget(

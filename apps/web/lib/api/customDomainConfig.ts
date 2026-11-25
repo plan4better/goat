@@ -19,10 +19,16 @@ const url = new URL(
   process.env.NEXT_PUBLIC_API_URL
 ).href;
 
-export function useCustomDomainConfig() {
-  const { data } = useSWR<CustomDomainConfig>([url], fetcher, {
+/** The config with its read state, for a part that shows a failed read. */
+export function useCustomDomainConfigRead() {
+  const { data, error, mutate } = useSWR<CustomDomainConfig>([url], fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 60_000,
   });
-  return data;
+  return { config: data, isError: error, mutate };
+}
+
+/** The config alone: undefined until it answers (or while its read fails). */
+export function useCustomDomainConfig() {
+  return useCustomDomainConfigRead().config;
 }

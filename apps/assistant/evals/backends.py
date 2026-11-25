@@ -20,11 +20,17 @@ refuses before it starts, and processes' runs are a stand-in too
 the assistant changes (``EDIT_WORKFLOW``): core saves it on its revision only,
 as core checks ``base_revision``, and keeps each version it saved in the
 saved workflows too.
+
+The map project and its viewer's copy (``map_fixture``) are answered by
+``map_backends``: core's style and map routes over one ``MapState`` per task.
 """
 
 import contextlib
+import functools
 import importlib.util
+import itertools
 import json
+import math
 import os
 import random
 import re
@@ -36,11 +42,12 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI
+from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document
 from goatlib.tools.registry import get_tool
 from goatlib.tools.workflow_arguments import build_check_arguments
 from goatlib.tools.workflow_runner import (
@@ -51,6 +58,8 @@ from goatlib.tools.workflow_runner import (
 from goatlib.workflows.checks import Issue, dangling_edges, find_loops, shape_issues
 from goatlib.workflows.visibility import is_shown
 from pydantic import ValidationError
+from shapely.geometry import shape
+from shapely.geometry.base import BaseGeometry
 
 from assistant.tools.http import ServiceClients
 from assistant.tools.testing import Recorder, RecordingTransport, fake_clients
@@ -61,6 +70,9 @@ from assistant.workflows.tool_info import (
     OPPORTUNITIES,
 )
 from evals.tasks import Oracle
+
+if TYPE_CHECKING:
+    from evals.map_backends import MapState
 
 ROOT = Path(__file__).resolve().parents[3]
 GEN_CATALOG = ROOT / "apps" / "catalog" / "tests" / "fixtures" / "gen_catalog.py"
@@ -264,6 +276,57 @@ STATE_BOXES: dict[str, tuple[float, float, float, float]] = {
 }
 
 
+def _detailed_ring(positions: int) -> list[list[float]]:
+    """A closed ring around the map project's data with a wavy edge of many
+    positions, star-shaped so that it never crosses itself."""
+    ring = []
+    for i in range(positions - 1):
+        angle = 2 * math.pi * i / (positions - 1)
+        radius = 0.07 + 0.006 * math.sin(23 * angle) + 0.002 * math.sin(211 * angle)
+        ring.append(
+            [
+                round(12.4 + 1.6 * radius * math.cos(angle), 6),
+                round(51.35 + radius * math.sin(angle), 6),
+            ]
+        )
+    return [*ring, ring[0]]
+
+
+#: Two invented regions where the map project's data lies, as
+#: catalog_find_region finds them: id, name and outline. Auental's edge has
+#: more positions than a filter's area takes, so the filter panel (and
+#: map_update) simplifies it; Bergfeld is a rectangle.
+AREA_REGIONS: dict[str, tuple[str, dict[str, Any]]] = {
+    "DEZ01": (
+        "Auental",
+        {"type": "Polygon", "coordinates": [_detailed_ring(3000)]},
+    ),
+    "DEZ02": (
+        "Bergfeld",
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [12.27, 51.36],
+                    [12.36, 51.36],
+                    [12.36, 51.44],
+                    [12.27, 51.44],
+                    [12.27, 51.36],
+                ]
+            ],
+        },
+    ),
+}
+
+
+def _wkt(polygon: dict[str, Any]) -> str:
+    rings = (
+        "(" + ",".join(f"{x} {y}" for x, y in ring) + ")"
+        for ring in polygon["coordinates"]
+    )
+    return f"POLYGON({','.join(rings)})"
+
+
 def _inside(
     box: tuple[float, float, float, float],
 ) -> tuple[float, float, float, float]:
@@ -390,9 +453,13 @@ def write_eval_catalog(path: Path) -> None:
         (city_id, city_name, 3, "DE", _box(*PLACE_BOXES[place])[0])
         for city_id, city_name, place in CITY_REGIONS
     ]
+    areas = [
+        (region_id, region_name, 3, "DE", _wkt(outline))
+        for region_id, (region_name, outline) in AREA_REGIONS.items()
+    ]
     gen.write_nuts(
         path,
-        extra_regions=[(nuts_id, name, level, country, _box(*box)[0]), *cities],
+        extra_regions=[(nuts_id, name, level, country, _box(*box)[0]), *cities, *areas],
         replace_regions={key: _box(*value)[0] for key, value in STATE_BOXES.items()},
     )
 
@@ -511,6 +578,16 @@ def _build_layers() -> tuple[FixtureLayer, ...]:
         for b in racks_by_district
     )
     planung = tuple({"status": "Entwurf", "_at": _at(rng)} for _ in range(5))
+    # Fixed, not drawn: the other layers keep the values the seed gives them.
+    zaehlstellen = tuple(
+        {"standort": standort, "radfahrten_jahr": count, "_at": at}
+        for standort, count, at in (
+            ("Zählstelle A", 184_250, (12.37, 51.34)),
+            ("Zählstelle B", 96_730, (12.41, 51.32)),
+            ("Zählstelle C", 141_905, (12.33, 51.36)),
+            ("Zählstelle D", None, (12.39, 51.30)),
+        )
+    )
     return (
         FixtureLayer(
             21,
@@ -552,6 +629,15 @@ def _build_layers() -> tuple[FixtureLayer, ...]:
             {"status": "string"},
             planung,
             locked=True,
+        ),
+        FixtureLayer(
+            25,
+            "e1000000-0000-0000-0000-000000000025",
+            "Fahrradzählstellen",
+            "point",
+            {"standort": "string", "radfahrten_jahr": "integer"},
+            zaehlstellen,
+            group_id=1,
         ),
     )
 
@@ -664,13 +750,16 @@ RESULT_LAYER = FixtureLayer(
 )
 #: The run project's workflow: walking catchments in three bands whose band
 #: edges do not rise, so the check finds its catchment's settings invalid and
-#: processes refuses its run before it starts.
+#: processes refuses its run before it starts. The task asks to run it, not
+#: to change it: core refuses a save of it as for a user who may not change
+#: it (``_workflow_core_routes``), a refusal the assistant does not retry.
 RUN_WORKFLOW: dict[str, Any] = {
     "id": RUN_WORKFLOW_ID,
     "project_id": RUN_PROJECT_ID,
     "name": "Schulwege 15 Minuten",
     "description": None,
     "is_default": False,
+    "revision": 1,
     "config": {
         "nodes": [
             {
@@ -912,7 +1001,8 @@ def _layer_named(name: str | None) -> FixtureLayer:
 
 
 # CQL2-JSON as plan 3's filters produce it (=, <>, <, <=, >, >=, in, like,
-# isNull, not, and, or; date-times as {"timestamp": ...}).
+# isNull, not, and, or; date-times as {"timestamp": ...}), and the filter
+# panel's between and drawn areas (s_intersects).
 def _value(arg: Any, properties: Mapping[str, Any]) -> Any:
     if isinstance(arg, dict) and "property" in arg:
         return properties.get(arg["property"])
@@ -927,24 +1017,48 @@ def _like(pattern: str) -> str:
     )
 
 
+@functools.lru_cache(maxsize=64)
+def _area_shape(geojson: str) -> BaseGeometry:
+    return shape(json.loads(geojson))
+
+
 def matches(
-    expression: Mapping[str, Any] | None, properties: Mapping[str, Any]
+    expression: Mapping[str, Any] | None,
+    properties: Mapping[str, Any],
+    geometry: Mapping[str, Any] | None = None,
 ) -> bool:
+    """Whether a feature with ``properties`` and ``geometry`` (GeoJSON) meets
+    the filter. A feature without a geometry (a table's row) is in every
+    area."""
     if expression is None:
         return True
     op = expression["op"]
     args = expression.get("args", [])
     if op == "and":
-        return all(matches(arg, properties) for arg in args)
+        return all(matches(arg, properties, geometry) for arg in args)
     if op == "or":
-        return any(matches(arg, properties) for arg in args)
+        return any(matches(arg, properties, geometry) for arg in args)
     if op == "not":
-        return not matches(args[0], properties)
+        return not matches(args[0], properties, geometry)
+    if op == "s_intersects":
+        if geometry is None:
+            return True
+        area = _area_shape(json.dumps(args[1], sort_keys=True))
+        return bool(area.intersects(_area_shape(json.dumps(geometry, sort_keys=True))))
     left = _value(args[0], properties)
     if op == "isNull":
         return left is None
     if op == "in":
         return left in [_value(arg, properties) for arg in args[1]]
+    if op == "between":
+        low, high = (
+            _value(bound, properties)
+            for bound in (args[1:] if len(args) == 3 else args[1])
+        )
+        try:
+            return left is not None and bool(low <= left <= high)
+        except TypeError:
+            return False
     right = _value(args[1], properties)
     if left is None or right is None:
         return False
@@ -965,9 +1079,25 @@ def matches(
         return False
 
 
-def _selected(layer: FixtureLayer, raw_filter: Any) -> list[dict[str, Any]]:
+def _feature_geometry(
+    layer: FixtureLayer, feature: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """The geometry the stand-ins answer for a feature; None for a table's
+    row."""
+    if layer.geometry not in ("point", "line", "polygon") or "_at" not in feature:
+        return None
+    return _geometry(layer, feature["_at"])
+
+
+def selected_features(layer: FixtureLayer, raw_filter: Any) -> list[dict[str, Any]]:
+    """The features of ``layer`` a CQL2-JSON filter (an object or its text)
+    keeps, an area tested against each feature's geometry."""
     expression = json.loads(raw_filter) if isinstance(raw_filter, str) else raw_filter
-    return [feature for feature in layer.features if matches(expression, feature)]
+    return [
+        feature
+        for feature in layer.features
+        if matches(expression, feature, _feature_geometry(layer, feature))
+    ]
 
 
 def _geometry(layer: FixtureLayer, at: tuple[float, float]) -> dict[str, Any]:
@@ -1036,6 +1166,38 @@ def _content_search(request: httpx.Request) -> httpx.Response:
     )
 
 
+def _map_reply(
+    rows: Sequence[Mapping[str, Any]], groups: Sequence[Mapping[str, Any]] = ()
+) -> dict[str, Any]:
+    """Core's map request of a project whose layers have no styles: the tree
+    from its layer rows and groups (``build_map_document``), all shown."""
+    document = build_map_document(
+        basemap=None,
+        locale=None,
+        view_state=None,
+        bounds=None,
+        groups=[
+            GroupRow(g["id"], g["name"], g.get("parent_id"), g["order"], True, True)
+            for g in groups
+        ],
+        layers=[
+            LayerRow(
+                row["id"],
+                row.get("layer_project_group_id"),
+                row["order"],
+                True,
+                "top",
+                row.get("query"),
+                None,
+                True,
+                None,
+            )
+            for row in rows
+        ],
+    )
+    return {"map": document, "styles": {}, "unpublished": []}
+
+
 def _core_routes() -> dict[tuple[str, str], Any]:
     base = f"/api/v2/project/{PROJECT_ID}"
     layers = [
@@ -1051,12 +1213,12 @@ def _core_routes() -> dict[tuple[str, str], Any]:
         }
         for order, layer in enumerate(FIXTURE_LAYERS)
     ]
+    groups = [{"id": 1, "name": "Verkehr", "parent_id": None, "order": 0}]
     return {
         ("GET", base): {"id": PROJECT_ID, "name": PROJECT_NAME, "folder_id": FOLDER_ID},
         ("GET", f"{base}/layer"): layers,
-        ("GET", f"{base}/group"): [
-            {"id": 1, "name": "Verkehr", "parent_id": None, "order": 0}
-        ],
+        ("GET", f"{base}/group"): groups,
+        ("GET", f"{base}/map"): _map_reply(layers, groups),
         # The project has no workflows and no print layouts.
         ("GET", f"{base}/workflow"): [],
         ("GET", f"{base}/report-layout"): [],
@@ -1082,19 +1244,22 @@ def _layer_routes(layer: FixtureLayer) -> dict[tuple[str, str], Any]:
         "$ref": "https://geojson.org/schema/Geometry.json"
     }
 
+    #: A feature's id is its place in the table, from 1, whatever the filter.
+    ids = {id(feature): n for n, feature in enumerate(layer.features, start=1)}
+
     def items(request: httpx.Request) -> httpx.Response:
         params = request.url.params
-        selected = _selected(layer, params.get("filter"))
+        selected = selected_features(layer, params.get("filter"))
         limit = int(params.get("limit", "10"))
         fields = params["properties"].split(",") if "properties" in params else None
         features = [
             {
                 "type": "Feature",
-                "id": index + 1,
+                "id": ids[id(feature)],
                 "geometry": _geometry(layer, feature["_at"]),
                 "properties": _public(feature, fields),
             }
-            for index, feature in enumerate(selected[:limit])
+            for feature in selected[:limit]
         ]
         return httpx.Response(
             200,
@@ -1124,16 +1289,64 @@ def _bbox(layer: FixtureLayer, features: list[dict[str, Any]]) -> list[float]:
     return [min(lons), min(lats), max(lons), max(lats)]
 
 
+def _histogram(
+    selected: list[dict[str, Any]], inputs: Mapping[str, Any]
+) -> dict[str, Any]:
+    """The service's histogram (goatlib's ``calculate_histogram``): edges from
+    the minimum over the breaks inside the range to the maximum, each bin
+    counting from its lower edge up to its upper one, the last one included.
+    Breaks are the given ones (``custom_breaks``), else equal intervals."""
+    column = str(inputs.get("column"))
+    numbers = [float(f[column]) for f in selected if f.get(column) is not None]
+    result: dict[str, Any] = {
+        "bins": [],
+        "missing_count": len(selected) - len(numbers),
+        "total_rows": len(selected),
+    }
+    if not numbers:
+        return result
+    low, high = min(numbers), max(numbers)
+    if inputs.get("method") == "custom_breaks":
+        inside = [float(b) for b in inputs.get("custom_breaks") or []]
+    else:
+        n = max(int(inputs.get("num_bins", 10)), 1)
+        inside = [low + (high - low) * k / n for k in range(1, n)]
+    edges = [low, *sorted({b for b in inside if low < b < high}), high]
+    for index, (lower, upper) in enumerate(itertools.pairwise(edges)):
+        last = index == len(edges) - 2
+        count = sum(lower <= v < upper or (last and v == upper) for v in numbers)
+        result["bins"].append(
+            {"range": [round(lower, 6), round(upper, 6)], "count": count}
+        )
+    return result
+
+
+#: The methods of the service's ``class-breaks`` (goatlib's
+#: ``ClassBreakMethod``, whose module the stand-ins do not load).
+BREAK_METHODS = frozenset(
+    {
+        "quantile",
+        "equal_interval",
+        "standard_deviation",
+        "heads_and_tails",
+        "natural_breaks",
+        "geometric_interval",
+    }
+)
+
+
 def _process(
     name: str, layer: FixtureLayer, inputs: Mapping[str, Any]
 ) -> dict[str, Any]:
-    selected = _selected(layer, inputs.get("filter"))
+    selected = selected_features(layer, inputs.get("filter"))
     attribute = inputs.get("attribute")
     values = [
         f[attribute] for f in selected if attribute and f.get(attribute) is not None
     ]
     if name == "feature-count":
         return {"count": len(selected)}
+    if name == "histogram":
+        return _histogram(selected, inputs)
     if name == "unique-values":
         counted = Counter(values).most_common(int(inputs.get("limit", 50)))
         return {
@@ -1143,10 +1356,14 @@ def _process(
         }
     if name == "class-breaks":
         numbers = sorted(float(v) for v in values)
+        # The service reads a method it does not know as quantile.
+        method = inputs.get("method")
+        if method not in BREAK_METHODS:
+            method = "quantile"
         if not numbers:
             return {
                 "attribute": attribute,
-                "method": inputs.get("method"),
+                "method": method,
                 "breaks": [],
                 "min": None,
                 "max": None,
@@ -1155,7 +1372,7 @@ def _process(
             }
         # ``breaks`` internal points make ``breaks + 1`` classes (the service's contract).
         n = max(int(inputs.get("breaks", 5)), 2)
-        if inputs.get("method") == "equal_interval":
+        if method == "equal_interval":
             breaks = [
                 numbers[0] + (numbers[-1] - numbers[0]) * k / (n + 1)
                 for k in range(1, n + 1)
@@ -1167,7 +1384,7 @@ def _process(
             ]
         return {
             "attribute": attribute,
-            "method": inputs.get("method"),
+            "method": method,
             "breaks": breaks,
             "min": numbers[0],
             "max": numbers[-1],
@@ -1296,6 +1513,7 @@ def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
         ("POST", f"/processes/{name}/execution"): answer(name)
         for name in (
             "feature-count",
+            "histogram",
             "unique-values",
             "class-breaks",
             "area-statistics",
@@ -1324,14 +1542,18 @@ def _processes_routes(layer_of: LayerOf) -> dict[tuple[str, str], Any]:
 
 
 def _run_routes(
-    saved: list[dict[str, Any]], add_result: Callable[[str], None], layer_of: LayerOf
+    saved: list[dict[str, Any]],
+    add_result: Callable[[str, str], FixtureLayer],
+    layer_of: LayerOf,
 ) -> dict[tuple[str, str], Any]:
     """Processes' runs for one task. As processes' execute does, a run first
     gets the workflow check (``fixture_check`` of the stored config, with the
     task's layer fields): a damaged or error issue refuses it with 422 and
     every issue, and nothing is submitted. Any other run of a workflow core
-    saved finishes at once and saves RESULT_LAYER for each export step. Job
-    ids are j-1, j-2, ... in the order runs start."""
+    saved finishes at once and saves, for each export step, the result layer
+    of its project (``add_result``, given the project and the export's
+    name: RESULT_LAYER, or the map project's own). Job ids are j-1, j-2, ...
+    in the order runs start."""
     jobs: list[dict[str, Any]] = []
     fields = _fields_of(layer_of)
 
@@ -1378,12 +1600,13 @@ def _run_routes(
                         "feature_count": len(RESULT_ROWS),
                     }
                 elif data.get("type") == "export":
-                    add_result(project_id)
+                    name = str(data.get("datasetName") or "")
+                    layer = add_result(project_id, name)
                     results[node["id"]] = {
-                        "layer_id": RESULT_LAYER.layer_id,
-                        "layer_name": data.get("datasetName") or RESULT_LAYER.name,
-                        "layer_project_id": RESULT_LAYER.layer_project_id,
-                        "feature_count": len(RESULT_ROWS),
+                        "layer_id": layer.layer_id,
+                        "layer_name": name or layer.name,
+                        "layer_project_id": layer.layer_project_id,
+                        "feature_count": len(layer.features),
                     }
             job.update(
                 status="successful",
@@ -2228,13 +2451,16 @@ def _workflow_core_routes(
     register: Callable[[FixtureLayer], None],
     saved: list[dict[str, Any]],
     results: dict[str, list[FixtureLayer]],
+    builds_in: Sequence[str] = (),
 ) -> dict[tuple[str, str], Any]:
     """Core for the workflow suite's projects, fresh for each task: adding a
     catalog dataset or the user's own (``ORG_DATASET``) puts its layers into
     the project's list (and geoapi's, through ``register``), and every
     workflow core saves goes into ``saved``, where the graders read it.
     ``results`` holds, by project id, the layers the task's runs saved, which
-    the project's list ends with."""
+    the project's list ends with. ``builds_in`` names projects whose other
+    routes are answered elsewhere (the map project): a workflow is created
+    and read there the same way."""
     layers: dict[str, list[FixtureLayer]] = {
         WF_PROJECT_ID: list(WORKFLOW_LAYERS),
         VIEWER_PROJECT_ID: list(WORKFLOW_LAYERS),
@@ -2291,6 +2517,13 @@ def _workflow_core_routes(
                 200,
                 json=_layer_rows([*layers[project_id], *results.get(project_id, [])]),
             )
+
+        return respond
+
+    def map_of(project_id: str) -> Callable[[httpx.Request], httpx.Response]:
+        def respond(request: httpx.Request) -> httpx.Response:
+            rows = _layer_rows([*layers[project_id], *results.get(project_id, [])])
+            return httpx.Response(200, json=_map_reply(rows))
 
         return respond
 
@@ -2457,6 +2690,7 @@ def _workflow_core_routes(
         routes[("GET", base)] = {"id": project_id, "name": name, "folder_id": FOLDER_ID}
         routes[("GET", f"{base}/layer")] = layer_list(project_id)
         routes[("GET", f"{base}/group")] = []
+        routes[("GET", f"{base}/map")] = map_of(project_id)
         routes[("GET", f"{base}/workflow")] = []
         routes[("GET", f"{base}/report-layout")] = []
         routes[("POST", f"{base}/workflow")] = create(project_id)
@@ -2466,9 +2700,18 @@ def _workflow_core_routes(
         for n in range(1, 6):
             workflow_id = f"0b6f0000-0000-0000-0000-{n:012d}"
             routes[("GET", f"{base}/workflow/{workflow_id}")] = workflow(workflow_id)
+    for project_id in builds_in:
+        base = f"/api/v2/project/{project_id}/workflow"
+        routes[("POST", base)] = create(project_id)
+        for n in range(1, 6):
+            workflow_id = f"0b6f0000-0000-0000-0000-{n:012d}"
+            routes[("GET", f"{base}/{workflow_id}")] = workflow(workflow_id)
     run_base = f"/api/v2/project/{RUN_PROJECT_ID}"
     routes[("GET", f"{run_base}/workflow")] = [RUN_WORKFLOW]
     routes[("GET", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = RUN_WORKFLOW
+    routes[("PUT", f"{run_base}/workflow/{RUN_WORKFLOW_ID}")] = httpx.Response(
+        403, json={"detail": "Changing this workflow requires editor access"}
+    )
     edit_base = f"/api/v2/project/{EDIT_PROJECT_ID}/workflow"
     routes[("GET", edit_base)] = lambda request: httpx.Response(200, json=[editable])
     routes[("GET", f"{edit_base}/{EDIT_WORKFLOW_ID}")] = lambda request: httpx.Response(
@@ -2498,9 +2741,23 @@ class _Processes(Recorder):
 class _Core(Recorder):
     """Core's routes; a dataset or a bundle it does not have answers 404, as
     core does, so a card that adds an id no dataset has is refused as it
-    would be."""
+    would be. ``answers`` reply first to the requests they know (the map
+    projects' routes, whose style ids are made while a task runs)."""
+
+    def __init__(
+        self,
+        routes: Mapping[tuple[str, str], Any],
+        answers: Sequence[Callable[[httpx.Request], httpx.Response | None]] = (),
+    ) -> None:
+        super().__init__(routes)
+        self.answers = list(answers)
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        for answer in self.answers:
+            response = answer(request)
+            if response is not None:
+                self.requests.append(request)
+                return response
         # Checked before the routes answer: some answer with a coroutine.
         if (
             request.method == "GET"
@@ -2525,10 +2782,22 @@ class Backends:
         self.catalog.state.store.snapshot().con.close()
 
     def clients(
-        self,
+        self, maps: Mapping[str, "MapState"] | None = None
     ) -> tuple[ServiceClients, dict[str, list[httpx.Request]], list[dict[str, Any]]]:
         """Fresh services for one task, the requests they get, and the
-        workflows core saves while the task runs."""
+        workflows core saves while the task runs. ``maps`` holds, by project
+        id, the state core keeps of a map project in this task (where the
+        graders read it); a map project left out starts afresh."""
+        # map_backends builds on this module, so it is imported here.
+        from evals import map_backends, map_fixture
+
+        states = {
+            project_id: (maps or {}).get(project_id) or map_backends.MapState()
+            for project_id in (
+                map_fixture.MAP_PROJECT_ID,
+                map_fixture.MAP_VIEW_PROJECT_ID,
+            )
+        }
         geoapi = Recorder(_geoapi_routes())
         added: dict[str, FixtureLayer] = {}
         saved: list[dict[str, Any]] = []
@@ -2541,16 +2810,40 @@ class Backends:
         def layer_of(layer_id: str) -> FixtureLayer | None:
             return _BY_ID.get(layer_id) or added.get(layer_id)
 
-        def add_result(project_id: str) -> None:
-            if RESULT_LAYER not in results.setdefault(project_id, []):
-                results[project_id].append(RESULT_LAYER)
-            register(RESULT_LAYER)
+        def add_result(project_id: str, name: str) -> FixtureLayer:
+            """The layer a run saves in a project: the map project keeps it
+            in its state, any other in its list."""
+            state = states.get(project_id)
+            if state is not None:
+                layer = map_fixture.MAP_RESULT_LAYER
+                state.add_result(layer, name or layer.name)
+            else:
+                layer = RESULT_LAYER
+                if layer not in results.setdefault(project_id, []):
+                    results[project_id].append(layer)
+            register(layer)
+            return layer
 
+        for layer in map_fixture.MAP_LAYERS:
+            if layer.layer_type == "feature":
+                register(layer)
         core = _Core(
             {
                 **_core_routes(),
-                **_workflow_core_routes(self.catalog, register, saved, results),
-            }
+                **_workflow_core_routes(
+                    self.catalog,
+                    register,
+                    saved,
+                    results,
+                    builds_in=[map_fixture.MAP_PROJECT_ID],
+                ),
+            },
+            [
+                map_backends.map_core(states[map_fixture.MAP_PROJECT_ID]).answer,
+                map_backends.map_core(
+                    states[map_fixture.MAP_VIEW_PROJECT_ID], read_only=True
+                ).answer,
+            ],
         )
         processes = _Processes(
             {**_processes_routes(layer_of), **_run_routes(saved, add_result, layer_of)}

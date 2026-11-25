@@ -23,10 +23,6 @@ on:
         description: "Keycloak theme changed"
         value: ${{ jobs.checks.outputs.keycloak-theme }}
 
-      storybook:
-        description: "Storybook changed"
-        value: ${{ jobs.checks.outputs.storybook }}
-
       processes:
         description: "Processes API changed"
         value: ${{ jobs.checks.outputs.processes }}
@@ -67,21 +63,23 @@ jobs:
       pull-requests: read
       contents: read
     # A manual run (workflow_dispatch) counts every area as changed, so
-    # running a workflow by hand rebuilds and retests everything.
+    # running a workflow by hand rebuilds and retests everything. So does a
+    # pull request of 3,000 or more files: GitHub lists at most 3,000 files of
+    # a pull request, so the filter cannot see the rest. On a push (and any
+    # other event) there is no pull request and the count reads as 0.
     outputs:
-      web: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.web }}
-      core: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.core }}
-      geoapi: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.geoapi }}
-      docs: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.docs }}
-      keycloak-theme: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.keycloak-theme }}
-      storybook: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.storybook }}
-      processes: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.processes }}
-      workers: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.workers }}
-      windmill: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.windmill }}
-      catalog: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.catalog }}
-      assistant: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.assistant }}
-      compose-bundle: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.compose-bundle }}
-      helm: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.changes.outputs.helm }}
+      web: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.web }}
+      core: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.core }}
+      geoapi: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.geoapi }}
+      docs: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.docs }}
+      keycloak-theme: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.keycloak-theme }}
+      processes: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.processes }}
+      workers: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.workers }}
+      windmill: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.windmill }}
+      catalog: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.catalog }}
+      assistant: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.assistant }}
+      compose-bundle: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.compose-bundle }}
+      helm: ${{ (github.event_name == 'workflow_dispatch' || github.event.pull_request.changed_files >= 3000) && 'true' || steps.changes.outputs.helm }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v7
@@ -93,10 +91,18 @@ jobs:
           filters: |
             # The editor draws the configs the assistant builds, read from the
             # assistant's shared fixture (lib/validations/__tests__/workflowDrafts.test.ts).
+            # The goatlib paths are the data and fixtures web tests and
+            # generators read.
             web:
                 - 'apps/web/**'
                 - 'apps/assistant/tests/fixtures/workflow_drafts.json'
                 - 'packages/js/**'
+                - 'packages/python/goatlib/src/goatlib/style/data/**'
+                - 'packages/python/goatlib/src/goatlib/filter/data/**'
+                - 'packages/python/goatlib/src/goatlib/workflows/visibility_cases.json'
+                - 'packages/python/goatlib/tests/unit/style/fixtures/**'
+                - 'packages/python/goatlib/tests/unit/filter/fixtures/**'
+                - 'packages/python/goatlib/tests/unit/raster/fixtures/**'
                 - '.prettier*'
                 - 'pnpm-lock.yaml'
 
@@ -129,9 +135,12 @@ jobs:
             # the catalog pack against the catalog app.
             # test_image_contract.py reads the compose file and the Helm values;
             # test_encoding compares against the web's golden stream fixtures.
+            # The image bundles the user docs and the tests clean every page.
             assistant:
                 - 'apps/assistant/**'
                 - 'apps/web/lib/assistant/__tests__/fixtures/**'
+                - 'apps/docs/docs/**'
+                - 'apps/docs/i18n/de/docusaurus-plugin-content-docs/current/**'
                 - 'apps/core/**'
                 - 'apps/catalog/**'
                 - 'deploy/compose/compose.yaml'
@@ -154,17 +163,6 @@ jobs:
                 - 'packages/js/tsconfig/**'
                 - 'packages/js/types/**'
                 - 'packages/js/ui/**'
-                - '.prettier*'
-                - 'pnpm-lock.yaml'
-
-            storybook:
-                - 'apps/storybook/**'
-                - 'packages/js/keycloak-theme/**'
-                - 'packages/js/ui/**'
-                - 'packages/js/eslint-config-p4b/**'
-                - 'packages/js/prettier-config/**'
-                - 'packages/js/tsconfig/**'
-                - 'packages/js/types/**'
                 - '.prettier*'
                 - 'pnpm-lock.yaml'
 

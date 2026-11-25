@@ -22,6 +22,8 @@ vi.mock("@/lib/api/catalog", () => ({
   useCatalogResolve: () => resolved,
   useCatalogPreview: () => ({ preview: { features: previewRows }, isLoading: false }),
 }));
+// The card is drawn for a signed-in user: the rows of a dataset are asked for only with a sign-in.
+vi.mock("@/hooks/catalog/useCatalogPreviewAccess", () => ({ useCatalogPreviewAccess: () => true }));
 vi.mock("@/components/dashboard/catalog/CatalogFootprintMap", () => ({
   default: ({ item }: { item: { id: string } }) => <div data-testid="map">{item.id}</div>,
 }));

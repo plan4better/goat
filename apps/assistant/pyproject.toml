@@ -10,7 +10,7 @@ dependencies = [
   # Extras for the provider types of spec §4.2. No `bedrock` extra: it needs boto3>=1.42.63, which
   # conflicts with core's boto3 pin in the shared lock; Bedrock and Vertex AI go through the
   # Anthropic SDK's clients instead (anthropic[bedrock,vertex]).
-  "pydantic-ai-slim[anthropic,openai,mistral]==2.52.0",
+  "pydantic-ai-slim[anthropic,openai,mistral]==2.53.0",
   "anthropic[bedrock,vertex]>=1.9.0",
   "cryptography>=43",
   # pydantic_ai.models.mistral imports httpx (legacy) directly; today it is present only through goatlib.

@@ -22,11 +22,11 @@ The authz SQL functions that read `resource_grant` instead of these tables
 (`effective_role`, `layer_write_allowed`, `check_layer`, `check_project`) are
 installed by `0005_home_templates`, the head of the chain: their bodies read
 `layer.space_id`, `folder.parent_id`, the `restricted` columns and
-`customer.template`, none of which exist yet at this point. `env.py` wraps the
-whole upgrade in one transaction, so no session ever sees these tables gone
-while the old function bodies are still in place; without that install, a pod
-still on the old bodies would get `relation does not exist` on every request
-between the commit and the next `initial_data` run.
+`customer.template`, none of which exist yet at this point. `env.py` commits
+each revision on its own, so a database that starts below `0005` runs without
+these tables, on the old function bodies, between this revision's commit and
+`0005`'s: a pod serving it then gets `relation does not exist`. Upgrade such a
+database while nothing serves it.
 
 A fresh database is built by `init` from the current models: it has none of
 the legacy tables, so the copy, the verification and the drops are all

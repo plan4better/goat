@@ -34,7 +34,8 @@ export default function WorkflowsEmptyState({ creation }: WorkflowsEmptyStatePro
     <Box sx={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", p: 2 }}>
       <Paper
         variant="outlined"
-        sx={{ width: "100%", maxWidth: 400, p: 4, textAlign: "center", borderRadius: 2 }}>
+        // Wide enough for both ways to start side by side in German.
+        sx={{ width: "100%", maxWidth: 480, p: 6, textAlign: "center", borderRadius: 2 }}>
         <Stack spacing={2} alignItems="center">
           <Box
             sx={{
@@ -55,16 +56,23 @@ export default function WorkflowsEmptyState({ creation }: WorkflowsEmptyStatePro
           <Typography variant="body2" color="text.secondary">
             {t("workflow_empty_body")}
           </Typography>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1}
-            sx={{ width: "100%", justifyContent: "center" }}>
+          {/* A label never breaks inside its button: where both do not fit
+              in a row, the second button moves below the first. */}
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              justifyContent: "center",
+              gap: 2,
+              width: "100%",
+              pt: 2,
+            }}>
             <Button
               variant="contained"
               disabled={!creation.canCreate || creation.isCreating}
               onClick={() => void creation.createFromScratch()}
               startIcon={<Icon iconName={ICON_NAME.PLUS} style={{ fontSize: 12 }} />}
-              sx={{ textTransform: "none" }}>
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
               {t("workflow_empty_new")}
             </Button>
             {hasTemplates && (
@@ -73,11 +81,11 @@ export default function WorkflowsEmptyState({ creation }: WorkflowsEmptyStatePro
                 disabled={!creation.canCreate}
                 onClick={creation.openTemplateBrowser}
                 startIcon={<Icon iconName={ICON_NAME.CLONE} style={{ fontSize: 12 }} />}
-                sx={{ textTransform: "none" }}>
+                sx={{ textTransform: "none", whiteSpace: "nowrap" }}>
                 {t("workflow_empty_template")}
               </Button>
             )}
-          </Stack>
+          </Box>
           <Link
             href={workflowDocsUrl(i18n.language)}
             target="_blank"

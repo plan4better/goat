@@ -6,23 +6,25 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { useCatalogPreview } from "@/lib/api/catalog";
-import { catalogKindOf } from "@/lib/catalog/kind";
+import { catalogKindOf, catalogServiceTiles } from "@/lib/catalog/kind";
 import { datasetPeriod, itemPeriod } from "@/lib/catalog/period";
 import type { CatalogCollection, CatalogItem } from "@/lib/validations/catalog";
 
 import { describedBy, linkHref, useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
+import { useCatalogPreviewAccess } from "@/hooks/catalog/useCatalogPreviewAccess";
+import { useCatalogSample } from "@/hooks/catalog/useCatalogSample";
 
 import CatalogFeatureTable, { TABLE_ROWS } from "@/components/dashboard/catalog/CatalogFeatureTable";
 import CatalogFootprintMap from "@/components/dashboard/catalog/CatalogFootprintMap";
 import CatalogProviderCard from "@/components/dashboard/catalog/CatalogProviderCard";
+import CatalogSignInHint from "@/components/dashboard/catalog/CatalogSignInHint";
 import {
   BUNDLE_ACCENT,
   DetailHeader,
   DetailTabs,
   KeywordSection,
-  LicenseNotices,
   LicenseBadge,
+  LicenseNotices,
   LicenseTerms,
   type MetaField,
   MetaSidebar,
@@ -62,7 +64,9 @@ const CatalogLayerDetail = ({
   const columns = props["table:columns"] ?? [];
   // The same SWR key the map uses, so the two share one request: the tab shows
   // the sample as rows and the map draws it as geometry.
-  const { preview } = useCatalogPreview(item.id);
+  const { preview } = useCatalogSample(item);
+  // The dataset's own data is shown to signed-in users; a map service is drawn by its publisher's server for everyone.
+  const signedIn = useCatalogPreviewAccess();
   const hasMap = !!item.geometry;
   const memberCount = (collection?.["goat:member_count"] as number | undefined) ?? 1;
   const inBundle = memberCount > 1;
@@ -137,10 +141,7 @@ const CatalogLayerDetail = ({
       label: t("metadata.headings.language"),
       value: labels.languageLabel(props.language?.code),
     },
-    (!!licenseLabel ||
-      !!licenseHref ||
-      !!collection?.attribution ||
-      !!props["processing:lineage"]) && {
+    (!!licenseLabel || !!licenseHref || !!collection?.attribution || !!props["processing:lineage"]) && {
       icon: ICON_NAME.LICENSE,
       label: t("metadata.headings.license"),
       value: (
@@ -150,10 +151,7 @@ const CatalogLayerDetail = ({
           ) : (
             <LicenseTerms href={licenseHref} />
           )}
-          <LicenseNotices
-            attribution={collection?.attribution}
-            lineage={props["processing:lineage"]}
-          />
+          <LicenseNotices attribution={collection?.attribution} lineage={props["processing:lineage"]} />
         </Stack>
       ),
     },
@@ -250,6 +248,7 @@ const CatalogLayerDetail = ({
                   <CatalogFootprintMap item={item} fill />
                 </Box>
               )}
+              {hasMap && !signedIn && !catalogServiceTiles(item) && <CatalogSignInHint />}
             </>
           )}
 

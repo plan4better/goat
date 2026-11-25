@@ -182,6 +182,9 @@ describe("the Undo of an answer's edits", () => {
     new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   const restored = { workflow_id: "wf-1", project_id: "p1", revision: 6 };
   const ada = { id: "u7", firstname: "Ada", lastname: "Lovelace", avatar: null };
+  const nothing = { workflows: [], styles: [], map: null, notRestored: [] };
+  const style = { project_id: "p1", layer_project_id: 12, style_id: "s1", revision: 6, removed: false };
+  const map = { project_id: "p1", layers: [12], tree: false, groups: true, basemap: false, scene: false };
 
   it("posts to the answer's run and tells the workflows it wrote back", async () => {
     fetchMock.mockResolvedValueOnce(json(200, { workflows: [restored] }));
@@ -191,7 +194,7 @@ describe("the Undo of an answer's edits", () => {
     expect(sent().body).toEqual({ force: false });
     expect(outcome).toEqual({
       kind: "undone",
-      restored: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
+      restored: { ...nothing, workflows: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }] },
     });
   });
 
@@ -227,11 +230,15 @@ describe("the Undo of an answer's edits", () => {
     expect(sent().body).toEqual({ force: true });
     expect(outcome).toEqual({
       kind: "changed",
-      restored: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
-      changed: [
-        { id: "wf-2", revision: 3, updatedAt: "2026-10-25T09:12:03+00:00", updatedBy: ada, between: false },
-        { id: "wf-3", revision: null, updatedAt: null, updatedBy: null, between: true },
-      ],
+      restored: { ...nothing, workflows: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }] },
+      changed: {
+        workflows: [
+          { id: "wf-2", revision: 3, updatedAt: "2026-10-25T09:12:03+00:00", updatedBy: ada, between: false },
+          { id: "wf-3", revision: null, updatedAt: null, updatedBy: null, between: true },
+        ],
+        styles: [],
+        map: [],
+      },
     });
   });
 
@@ -239,7 +246,116 @@ describe("the Undo of an answer's edits", () => {
     fetchMock.mockResolvedValueOnce(json(200, { workflows: [{ ...restored, revision: null }] }));
     expect(await undoAnswer("c1", "r1")).toEqual({
       kind: "undone",
-      restored: [{ workflowId: "wf-1", projectId: "p1", revision: null }],
+      restored: { ...nothing, workflows: [{ workflowId: "wf-1", projectId: "p1", revision: null }] },
+    });
+  });
+
+  it("reads styles and the map from the undo reply and tolerates a reply without them", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(200, {
+        workflows: [restored],
+        styles: [
+          style,
+          { ...style, style_id: "s2", revision: null, removed: true },
+          { ...style, style_id: "s3", partial: true },
+          { ...style, layer_project_id: "12" },
+          { project_id: "p1", style_id: "s4" },
+          "s5",
+        ],
+        map,
+        not_restored: ["layer_removed", 7, "style"],
+      })
+    );
+    expect(await undoAnswer("c1", "r1")).toEqual({
+      kind: "undone",
+      restored: {
+        workflows: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
+        styles: [
+          { projectId: "p1", layerProjectId: 12, styleId: "s1", revision: 6, removed: false, partial: false },
+          {
+            projectId: "p1",
+            layerProjectId: 12,
+            styleId: "s2",
+            revision: null,
+            removed: true,
+            partial: false,
+          },
+          { projectId: "p1", layerProjectId: 12, styleId: "s3", revision: 6, removed: false, partial: true },
+        ],
+        map: { projectId: "p1", layers: [12], tree: false, groups: true, basemap: false, scene: false },
+        notRestored: ["layer_removed", "style"],
+      },
+    });
+
+    // An assistant of the release before answers workflows only.
+    fetchMock.mockResolvedValueOnce(json(200, { workflows: [restored] }));
+    expect(await undoAnswer("c1", "r1")).toEqual({
+      kind: "undone",
+      restored: { ...nothing, workflows: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }] },
+    });
+    fetchMock.mockResolvedValueOnce(json(200, { styles: "s1", map: [map], not_restored: "style" }));
+    expect(await undoAnswer("c1", "r1")).toEqual({ kind: "undone", restored: nothing });
+    fetchMock.mockResolvedValueOnce(json(200, { map: { ...map, project_id: 3, layers: [12, "x", 1.5] } }));
+    expect(await undoAnswer("c1", "r1")).toEqual({ kind: "undone", restored: nothing });
+    fetchMock.mockResolvedValueOnce(json(200, { map: { project_id: "p1", layers: [12, "x", 1.5] } }));
+    expect((await undoAnswer("c1", "r1")).restored.map).toEqual({
+      projectId: "p1",
+      layers: [12],
+      tree: false,
+      groups: false,
+      basemap: false,
+      scene: false,
+    });
+  });
+
+  it("reads changed_since with styles, with between and too_old", async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(409, {
+        detail: {
+          code: "changed_since",
+          message: "changed",
+          workflows: [],
+          styles: [
+            { ...style, revision: 9, between: false, too_old: false },
+            { ...style, style_id: "s2", revision: 9, between: true, too_old: false },
+            { ...style, style_id: "s3", revision: 9, between: false, too_old: true },
+            { project_id: "p1", layer_project_id: 12 },
+          ],
+          map: [
+            { object: "filter", layer_project_id: 12 },
+            { object: "group_name", group_id: 7 },
+            { object: "basemap" },
+            { layer_project_id: 12 },
+          ],
+          undone: [restored],
+          undone_styles: [style],
+          undone_map: map,
+        },
+      })
+    );
+    expect(await undoAnswer("c1", "r1")).toEqual({
+      kind: "changed",
+      restored: {
+        workflows: [{ workflowId: "wf-1", projectId: "p1", revision: 6 }],
+        styles: [
+          { projectId: "p1", layerProjectId: 12, styleId: "s1", revision: 6, removed: false, partial: false },
+        ],
+        map: { projectId: "p1", layers: [12], tree: false, groups: true, basemap: false, scene: false },
+        notRestored: [],
+      },
+      changed: {
+        workflows: [],
+        styles: [
+          { projectId: "p1", layerProjectId: 12, styleId: "s1", between: false, tooOld: false },
+          { projectId: "p1", layerProjectId: 12, styleId: "s2", between: true, tooOld: false },
+          { projectId: "p1", layerProjectId: 12, styleId: "s3", between: false, tooOld: true },
+        ],
+        map: [
+          { object: "filter", layerProjectId: 12 },
+          { object: "group_name", groupId: 7 },
+          { object: "basemap" },
+        ],
+      },
     });
   });
 

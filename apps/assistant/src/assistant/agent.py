@@ -39,10 +39,17 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.result import FinalResult
 from pydantic_graph import End
 
-from assistant.budget import RunBudget, StepGuard
-from assistant.events import DataPart, RunEvent
+from assistant.budget import TOOLS_ADDED_KEY, RunBudget, StepGuard, next_call
+from assistant.events import DataPart, RunEvent, TextReplaced
 from assistant.history import shorten_earlier_results
-from assistant.llm.types import DataPolicy
+from assistant.language import (
+    LANGUAGE_FALLBACK_WORDS,
+    MESSAGE_LANGUAGE_WORDS,
+    clear_language,
+    may_be_german,
+    names_a_language,
+    shows_no_language,
+)
 from assistant.prompt import (
     ADD_WHAT_WAS_PICKED,
     ANSWER_IN_TEXT,
@@ -52,7 +59,9 @@ from assistant.prompt import (
     INSTRUCTIONS,
     NO_ANSWER_TEXT,
     RUN_WHAT_YOU_BUILT,
+    answer_in_language,
     as_note,
+    make_the_change,
     read_the_result,
     static_instructions,
 )
@@ -63,6 +72,7 @@ from assistant.tools.toolset import (
     TOOL_RETRIES,
     Stage,
     answer_step,
+    answer_writes,
     card_failed,
     goat_toolset,
     pickable_datasets,
@@ -72,6 +82,7 @@ from assistant.tools.toolset import (
     runnable_workflows,
     silent_responses,
     step_refused,
+    withheld_now,
     written_so_far,
 )
 
@@ -81,6 +92,7 @@ __all__ = [
     "STAGE_KEY",
     "PartIds",
     "RunDeps",
+    "SkillTools",
     "StageNote",
     "build_agent",
     "dev_model",
@@ -104,9 +116,6 @@ class RunDeps:
     message_id: str
     emit: Callable[[RunEvent], Awaitable[None]]
     part_ids: PartIds | None = None
-    #: The organization's data policy (spec §4.7); the tool layer (plan 3)
-    #: filters what data-returning tools send to the model by it.
-    data_policy: DataPolicy = "restricted"
     #: The run's tool environment (assistant.tools.runtime); None runs without
     #: GOAT's tools (the run machinery's own tests).
     env: ToolEnv | None = None
@@ -117,6 +126,21 @@ class RunDeps:
     #: The user's answer to a card, as the model reads it (assistant.asks);
     #: it follows the text of the user message (assistant.prompt.with_note).
     prompt_answer: str = ""
+    #: The text of the user message, without the notes: the answer's language
+    #: is checked against it (``ends_with_text``). Empty: no check.
+    prompt_text: str = ""
+    #: The interface language: the note names it for a message that shows no
+    #: language (assistant.prompt.render_note), and the answer to such a
+    #: message is checked against it. None: no such check.
+    prompt_locale: Locale | None = None
+    #: The runs (their ids) whose answer was asked for again in the language
+    #: of the user message (``ends_with_text``): once per run.
+    language_asked: set[str | None] = field(default_factory=set)
+    #: The ids of the text parts of the response streamed last, kept by the
+    #: run's event translator (``assistant.runs.translate``): the parts an
+    #: answer asked for again replaces (``events.TextReplaced``). Empty
+    #: without a translator (the eval harness).
+    response_texts: list[str] = field(default_factory=list)
     #: The run's limits; near them the model is told to answer, or to ask with
     #: a card, and its other calls are refused as they run (assistant.budget).
     #: None: no early answer (the hard limits still apply).
@@ -181,7 +205,9 @@ class RunDeps:
     #: a step that reads a run's result and the answer step still fit
     #: (``assistant.budget.RunBudget.read_fits``), decided with the stage:
     #: only then may the step run a workflow this answer built, so its result
-    #: is read before the answer (``assistant.tools.toolset.runnable_workflows``).
+    #: is read before the answer (``assistant.tools.toolset.runnable_workflows``),
+    #: or make the change the user asked for and answer after it
+    #: (``assistant.tools.toolset.answer_writes``).
     run_room: dict[str | None, int] = field(default_factory=dict)
     #: By run id: the workflows this answer started a run of, each with its
     #: step, whatever came of the run (``assistant.tools.toolset._note_run``).
@@ -208,6 +234,11 @@ class RunDeps:
     #: of failed or refused calls that wrote text still gets one more step,
     #: for the corrected call (``StageNote.after_node_run``).
     failed_cards: dict[str | None, int] = field(default_factory=dict)
+    #: By run id: the latest step prepared (its number) and the tools its
+    #: request left out, those of a skill the conversation had not loaded
+    #: (``assistant.tools.toolset.withheld_now``); the step's calls of them
+    #: are refused as they run.
+    withheld: dict[str | None, tuple[int, frozenset[str]]] = field(default_factory=dict)
     #: The step (run id, step number) prepared for reading a finished run's
     #: result past the look-up budget: its reads count as such
     #: (``assistant.tools.toolset.RESULT_READ_TOOLS``). Matched by the step
@@ -294,6 +325,8 @@ def stage_note(ctx: RunContext[RunDeps]) -> str:
             lead = f"{lead} {RUN_WHAT_YOU_BUILT}"
         if pickable_datasets(ctx):
             lead = f"{lead} {ADD_WHAT_WAS_PICKED}"
+        if writes := answer_writes(ctx):
+            lead = f"{lead} {make_the_change(writes)}"
     # Named only while the stage lets the card run (assistant.tools.toolset),
     # always with the text before it: a card that comes alone leaves the user
     # a question with nothing said before it.
@@ -319,8 +352,9 @@ CLOSING_TEXT: dict[Locale, str] = {
 class StageNote(AbstractCapability[RunDeps]):
     """Sends the note on the run's stage (``stage_note``) as the last content
     of the model call, after the conversation: the instructions and the tools
-    stay the same in every call of an answer, so the provider reads all that
-    comes before the note from its cache.
+    stay the same in every call of an answer (but for the tools a skill
+    brings once loaded, ``SkillTools``), so the provider reads all that comes
+    before the note from its cache.
 
     The note goes into the request the model is sent, not into the run's
     history: a later call, and the next answer, never see an earlier note.
@@ -407,22 +441,125 @@ class StageNote(AbstractCapability[RunDeps]):
         return End(FinalResult(text))
 
 
-def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
+@dataclass
+class SkillTools(AbstractCapability[RunDeps]):
+    """Leaves out of the model call the tools of a skill the conversation
+    has not loaded (``assistant.tools.toolset.withheld_now``): the
+    definitions of every offered tool go with every call, and a page can
+    offer some only with a skill (``assistant.tools.registry.SKILL_TOOLS``).
+    Decided at each call, so the call after the one that loaded the skill
+    offers its tools. They follow the others (``registry.offered_tools``):
+    the definitions before them stay as they were. That call misses the
+    provider's cache all the same; its request in the history says so
+    (``assistant.budget.TOOLS_ADDED_KEY``). The run's tool manager
+    keeps them, so a call that names one anyway is refused with the skill
+    to load rather than as an unknown tool."""
+
+    async def wrap_model_request(
+        self,
+        ctx: RunContext[RunDeps],
+        *,
+        request_context: ModelRequestContext,
+        handler: WrapModelRequestHandler,
+    ) -> ModelResponse:
+        previous = ctx.deps.withheld.get(ctx.run_id)
+        withheld = withheld_now(ctx)
+        stored = ctx.messages[-1] if ctx.messages else None
+        if (
+            previous is not None
+            and previous[0] != ctx.run_step
+            and previous[1] - withheld
+            and isinstance(stored, ModelRequest)
+        ):
+            # The budget plans the calls after this one at what it writes to
+            # the provider's cache (``assistant.budget.NextCall.cached``).
+            stored.metadata = {**(stored.metadata or {}), TOOLS_ADDED_KEY: True}
+        if withheld:
+            parameters = request_context.model_request_parameters
+            request_context.model_request_parameters = replace(
+                parameters,
+                function_tools=[
+                    tool
+                    for tool in parameters.function_tools
+                    if tool.name not in withheld
+                ],
+            )
+        return await handler(request_context)
+
+
+#: The grammar words (``assistant.language.clear_language``) an answer needs
+#: at the least for its language to count.
+ANSWER_LANGUAGE_WORDS = 5
+
+
+def wrong_language(deps: RunDeps, output: str) -> str | None:
+    """What to ask again when ``output`` is clearly in the other language than
+    the one asked for; None in doubt. The language asked for is the user
+    message's when it is clear, and the interface language when the message
+    shows no language (``shows_no_language``, as the note says): nouns, names
+    and numbers, unless they hold German letters and the answer is German. A
+    message under ``LANGUAGE_FALLBACK_WORDS`` words (which the interface
+    language answers too, but which can still show one), a card's answer (the
+    labels of the options picked), a message that names a language and one
+    with a few grammar words but no clear language are not checked."""
+    message = deps.prompt_text
+    if (
+        deps.prompt_answer
+        or len(message.split()) < LANGUAGE_FALLBACK_WORDS
+        or names_a_language(message)
+    ):
+        return None
+    answered = clear_language(output, ANSWER_LANGUAGE_WORDS)
+    if answered is None:
+        return None
+    if not shows_no_language(message):
+        asked = clear_language(message, MESSAGE_LANGUAGE_WORDS)
+        if asked is None or asked == answered:
+            return None
+        return answer_in_language(asked, answered)
+    asked = deps.prompt_locale
+    if asked is None or asked == answered:
+        return None
+    if answered == "de" and may_be_german(message):
+        return None
+    return answer_in_language(asked, answered, interface=True)
+
+
+async def ends_with_text(ctx: RunContext[RunDeps], output: str) -> str:
     """Asks again for an answer whose last response holds only whitespace:
     Pydantic AI asks again only after a response without any text, and takes
     a single space as the answer, so an answer could end after its cards
-    without a word on them. The last retry's answer is taken as it is: a run
-    that fails at that point would lose an answer the user has partly seen."""
-    if output.strip() or ctx.partial_output or ctx.retry >= ctx.max_retries:
+    without a word on them. Asks again, once per run, for a last response in
+    the other language than the user message (``wrong_language``), while
+    another answer step fits in the run's tokens: past them the retry would
+    end the run at its limit. The dock then leaves out the text the answer
+    asked for again replaces (``TextReplaced``). The last retry's answer is
+    taken as it is: a run that fails at that point would lose an answer the
+    user has partly seen."""
+    if ctx.partial_output or ctx.retry >= ctx.max_retries:
         return output
-    raise ModelRetry(NO_ANSWER_TEXT)
+    if not output.strip():
+        raise ModelRetry(NO_ANSWER_TEXT)
+    wrong = wrong_language(ctx.deps, output)
+    if wrong is None or ctx.run_id in ctx.deps.language_asked:
+        return output
+    budget = ctx.deps.budget
+    if budget is not None and not budget.answer_fits(
+        ctx.usage, next_call(ctx.messages, ctx.run_id)
+    ):
+        return output
+    ctx.deps.language_asked.add(ctx.run_id)
+    if ctx.deps.response_texts:
+        await ctx.deps.emit(TextReplaced(part_ids=list(ctx.deps.response_texts)))
+    raise ModelRetry(wrong)
 
 
 def build_agent(model: Model | str) -> Agent[RunDeps, str]:
     """The assistant's agent on ``model``; a string selects a development model
     (``test`` or ``demo``). Fixed instructions only (cached; the run's note
     travels in the user message, the note on the run's stage after the
-    conversation), GOAT's tools for the run's surface in a fixed order."""
+    conversation), GOAT's tools for the run's surface in a fixed order,
+    without those of a skill the conversation has not loaded (``SkillTools``)."""
     agent: Agent[RunDeps, str] = Agent(
         dev_model(model) if isinstance(model, str) else model,
         deps_type=RunDeps,
@@ -432,6 +569,7 @@ def build_agent(model: Model | str) -> Agent[RunDeps, str]:
             # Earlier answers' long tool results go to the model as counts.
             ProcessHistory(shorten_earlier_results),
             StageNote(),
+            SkillTools(),
         ],
         # Also the budget for a tool name the surface does not offer: a history
         # from another page can make the model call one (spec §4.8).

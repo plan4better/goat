@@ -101,6 +101,12 @@ msgstr "Eingeladener Benutzer hat bereits eine Organisation"
 msgid "User has already been invited"
 msgstr "Benutzer wurde bereits eingeladen"
 
+msgid "A team with this name already exists in the organization"
+msgstr "Ein Team mit diesem Namen gibt es in der Organisation schon"
+
+msgid "The organization owner cannot delete their account while the organization exists."
+msgstr "Als Eigentümer können Sie Ihr Konto erst löschen, wenn die Organisation gelöscht ist."
+
 #: src/endpoints/v1/organizations.py:339 src/endpoints/v1/organizations.py:348
 msgid "You have been invited to join an organization"
 msgstr "Sie sind eingeladen worden, einer Organisation beizutreten"

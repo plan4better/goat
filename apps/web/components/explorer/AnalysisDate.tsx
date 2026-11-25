@@ -131,7 +131,7 @@ export function AnalysisDate({ compact = false }: { compact?: boolean }) {
         onClose={() => setAnchor(null)}
         anchorOrigin={{ vertical: "top", horizontal: "center" }}
         transformOrigin={{ vertical: "bottom", horizontal: "center" }}
-        slotProps={{ paper: { sx: { mt: -1, borderRadius: 2 } } }}>
+        slotProps={{ paper: { sx: { mt: -1.5 } } }}>
         <TemporalCalendar
           locale={locale}
           value={date}

@@ -28,6 +28,7 @@ from goatlib.utils.layer import (
     catalog_layers_dir,
     catalog_tiles_dir,
     layer_id_to_table_name,
+    stored_raster_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,7 @@ class CatalogGCTask:
         ]
         return [
             catalog_dir / f"{table}.parquet",
+            stored_raster_file(layer_id),
             *(catalog_tiles / name for name in names),
             *(tiles_dir / name for name in names),
         ]

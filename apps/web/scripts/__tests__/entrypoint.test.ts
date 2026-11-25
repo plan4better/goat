@@ -115,10 +115,38 @@ describe.each(shells())("entrypoint.sh under $name", (shell) => {
     expect(bundle()).toContain('x="https://h.test";');
   });
 
+  it.each(["NEXT_PUBLIC_TERRAIN_TILES_URL", "NEXT_PUBLIC_BUILDINGS_TILES_URL"])(
+    "%s: the container's value, empty when set empty (off), the bare prefix when unset (the app's default)",
+    (name) => {
+      writeFileSync(path.join(webDir, ".next/static/a.js"), `t="APP_${name}";u="APP_NEXT_PUBLIC_API_URL"`);
+      execFileSync("tar", ["-cf", ".next-templates.tar", ".next/static/a.js"], { cwd: webDir });
+      run({ [name]: "https://tiles.example.org/{z}/{x}/{y}.webp" });
+      expect(bundle()).toBe('t="https://tiles.example.org/{z}/{x}/{y}.webp";u=""');
+      run({ [name]: "" });
+      expect(bundle()).toBe('t="";u=""');
+      // Unset: `publicEnv` reads the bare prefix as "not set", so the app falls back to its default; every other
+      // unset variable is still cleared to empty.
+      run({});
+      expect(bundle()).toBe('t="APP_NEXT_PUBLIC_";u=""');
+    }
+  );
+
   it("runs the given command", () => {
     const out = run({}, ["echo", "started"]);
     expect(out.trim().split("\n").pop()).toBe("started");
   });
+});
+
+describe("Dockerfile", () => {
+  // The image is built with a placeholder for every NEXT_PUBLIC_ value the app reads at run time; a value without
+  // one is fixed at build time and the container's setting never reaches the browser.
+  it.each(["NEXT_PUBLIC_TERRAIN_TILES_URL", "NEXT_PUBLIC_BUILDINGS_TILES_URL"])(
+    "builds %s as a placeholder the entrypoint replaces",
+    (name) => {
+      const dockerfile = readFileSync(path.resolve(__dirname, "../../Dockerfile"), "utf8");
+      expect(dockerfile).toContain(`ARG ${name}=APP_${name}\n`);
+    }
+  );
 });
 
 /** What the bundle is compiled from: the entrypoint rewrites all of it. */

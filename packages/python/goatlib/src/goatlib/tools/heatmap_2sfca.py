@@ -34,7 +34,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import get_heatmap_style
+from goatlib.tools.style import SUNSET, classified
 
 logger = logging.getLogger(__name__)
 
@@ -151,41 +151,15 @@ class Heatmap2SFCAToolRunner(BaseToolRunner[Heatmap2SFCAToolParams]):
     output_geometry_type = "polygon"  # H3 cells
     default_output_name = get_default_layer_name("heatmap_2sfca", "en")
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: Heatmap2SFCAToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return heatmap style for 2SFCA accessibility with quantile breaks."""
-        # 2SFCA outputs "accessibility" representing the accessibility index
-        color_field = "total_accessibility"
-
-        # Compute quantile breaks from the DuckLake table (6 breaks for 7 colors)
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if table_name or parquet_path:
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        # Use Sunset (orange/red) for 2SFCA - represents supply-demand ratio
-        return get_heatmap_style(
-            color_field_name=color_field,
-            color_scale_breaks=color_scale_breaks,
-            color_range_name="Sunset",
-        )
+        """The 2SFCA index in sunset colors: the supply-demand ratio."""
+        return classified("total_accessibility", SUNSET, geometry)
 
     def process(
         self: Self, params: Heatmap2SFCAToolParams, temp_dir: Path

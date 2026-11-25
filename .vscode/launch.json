@@ -133,18 +133,6 @@
       }
     },
     {
-      "name": "Storybook Debug",
-      "type": "node-terminal",
-      "request": "launch",
-      "envFile": "${workspaceFolder}/.env",
-      "command": "pnpm run storybook",
-      "presentation": {
-        "hidden": false,
-        "group": "frontend",
-        "order": 2
-      }
-    },
-    {
       "name": "Core (tmux)",
       "type": "node-terminal",
       "request": "launch",

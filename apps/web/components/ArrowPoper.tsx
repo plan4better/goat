@@ -7,6 +7,8 @@ import type { ReactElement } from "react";
 import { useState } from "react";
 import React from "react";
 
+import { POPOVER_GAP } from "@p4b/ui/theme/popoverSurface";
+
 interface Props {
   content: ReactElement;
   children: ReactElement<Record<string, unknown>>;
@@ -32,7 +34,7 @@ const Popper = styled(MuiPopper, {
   },
   '&[data-popper-placement*="bottom"]': {
     "& > div": {
-      marginTop: 4,
+      marginTop: POPOVER_GAP,
     },
     "& .MuiPopper-arrow": {
       top: 0,
@@ -48,7 +50,7 @@ const Popper = styled(MuiPopper, {
   },
   '&[data-popper-placement*="top"]': {
     "& > div": {
-      marginBottom: 4,
+      marginBottom: POPOVER_GAP,
     },
     "& .MuiPopper-arrow": {
       bottom: 0,
@@ -64,7 +66,7 @@ const Popper = styled(MuiPopper, {
   },
   '&[data-popper-placement*="right"]': {
     "& > div": {
-      marginLeft: 4,
+      marginLeft: POPOVER_GAP,
     },
     "& .MuiPopper-arrow": {
       left: 0,
@@ -79,7 +81,7 @@ const Popper = styled(MuiPopper, {
   },
   '&[data-popper-placement*="left"]': {
     "& > div": {
-      marginRight: 4,
+      marginRight: POPOVER_GAP,
     },
     "& .MuiPopper-arrow": {
       right: 0,

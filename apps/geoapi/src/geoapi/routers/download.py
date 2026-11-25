@@ -1,5 +1,6 @@
 """Download router for public layer exports."""
 
+import json
 import logging
 import os
 import re
@@ -8,6 +9,7 @@ import tempfile
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from typing import Annotated, Optional
 from uuid import UUID
 
@@ -16,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from geoapi.config import settings
-from geoapi.dependencies import LayerInfoDep
+from geoapi.dependencies import CqlFilterDep, LayerInfoDep
 from geoapi.ducklake import ducklake_manager
 from geoapi.middleware.credit_metering import charge_download
 from geoapi.services.layer_service import layer_service
@@ -136,11 +138,32 @@ def _build_wkt_column_exprs(
     return ", ".join(exprs)
 
 
+def _filter_clause(
+    con: duckdb.DuckDBPyConnection, relation: str, cql_filter: dict | None
+) -> str:
+    """The WHERE clause of the layer's filter, its values inlined (COPY takes no parameters);
+    empty without a filter. A filter the export cannot apply raises `UnreadableFilterError`
+    (a ValueError): a file of the whole layer would look right."""
+    if not cql_filter:
+        return ""
+    from goatlib.storage import checked_cql_filter, inline_params
+
+    columns = {
+        str(row[0]): str(row[1])
+        for row in con.execute(f"DESCRIBE {relation}").fetchall()
+    }
+    filters = checked_cql_filter(cql_filter, columns)
+    if not filters.clauses:
+        return ""
+    return f"WHERE {inline_params(filters.to_full_where(), filters.params)}"
+
+
 def _export_layer_to_file(
     table_name: str,
     output_path: str,
     output_format: str,
     crs: str | None = None,
+    cql_filter: dict | None = None,
 ) -> None:
     """Export a layer from DuckLake to a file.
 
@@ -151,9 +174,11 @@ def _export_layer_to_file(
         output_path: Path for the output file
         output_format: GDAL driver name
         crs: Target CRS (e.g. "EPSG:4326")
+        cql_filter: The layer's filter as the map sends it (CQL2-JSON); the file holds
+            the features it keeps
 
     Raises:
-        ValueError: If crs is not an EPSG code.
+        ValueError: If crs is not an EPSG code, or the filter cannot be applied.
     """
     crs = _normalize_crs(crs)
     with ducklake_manager.connection() as con:
@@ -164,6 +189,7 @@ def _export_layer_to_file(
             raise ValueError(f"No exportable columns found for table {table_name}")
 
         has_geometry = _has_geometry_column(con, table_name)
+        where = _filter_clause(con, table_name, cql_filter)
 
         source_crs = "EPSG:4326"
         column_exprs = []
@@ -194,7 +220,7 @@ def _export_layer_to_file(
             )
             con.execute(f"""
                 COPY (
-                    SELECT {csv_columns_sql} FROM {full_table}
+                    SELECT {csv_columns_sql} FROM {full_table} {where}
                 ) TO '{output_path}'
                 WITH (FORMAT CSV, HEADER TRUE)
             """)
@@ -208,14 +234,14 @@ def _export_layer_to_file(
             )
             con.execute(f"""
                 COPY (
-                    SELECT {xlsx_columns_sql} FROM {full_table}
+                    SELECT {xlsx_columns_sql} FROM {full_table} {where}
                 ) TO '{output_path}'
                 WITH (FORMAT GDAL, DRIVER 'XLSX')
             """)
         elif output_format == "Parquet":
             con.execute(f"""
                 COPY (
-                    SELECT {columns_sql} FROM {full_table}
+                    SELECT {columns_sql} FROM {full_table} {where}
                 ) TO '{output_path}'
                 WITH (FORMAT PARQUET)
             """)
@@ -228,7 +254,7 @@ def _export_layer_to_file(
             csv_output_path = output_path.rsplit(".", 1)[0] + ".csv"
             con.execute(f"""
                 COPY (
-                    SELECT {columns_sql} FROM {full_table}
+                    SELECT {columns_sql} FROM {full_table} {where}
                 ) TO '{csv_output_path}'
                 WITH (FORMAT CSV, HEADER TRUE)
             """)
@@ -236,7 +262,7 @@ def _export_layer_to_file(
             srs_option = f", SRS '{crs}'" if crs else ""
             con.execute(f"""
                 COPY (
-                    SELECT {columns_sql} FROM {full_table}
+                    SELECT {columns_sql} FROM {full_table} {where}
                 ) TO '{output_path}'
                 WITH (FORMAT GDAL, DRIVER '{output_format}'{srs_option})
             """)
@@ -277,6 +303,7 @@ def _run_export(
     file_type: str,
     gdal_format: str,
     crs: str | None,
+    cql_filter: dict | None = None,
 ) -> str:
     """Run the full export pipeline synchronously. Returns path to zip file."""
     export_dir = tempfile.mkdtemp(prefix="goat_download_")
@@ -292,6 +319,7 @@ def _run_export(
             output_path=output_path,
             output_format=gdal_format,
             crs=crs,
+            cql_filter=cql_filter,
         )
 
         zip_path = os.path.join(export_dir, f"{file_name}.zip")
@@ -337,6 +365,7 @@ def _cleanup_export(zip_path: str) -> None:
 async def download_layer(
     layer_info: LayerInfoDep,
     background_tasks: BackgroundTasks,
+    cql_filter: CqlFilterDep,
     format: Annotated[
         str,
         Query(
@@ -353,7 +382,8 @@ async def download_layer(
     """Download a layer as a file.
 
     Only layers that belong to a published (public) project can be downloaded
-    via this endpoint. No authentication is required.
+    via this endpoint. No authentication is required. `filter` is the layer's
+    filter as the public map sends it, so the file holds what the map shows.
     """
     # Validate format
     format_lower = format.lower()
@@ -370,6 +400,15 @@ async def download_layer(
         target_crs = _normalize_crs(crs)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # The filter as the export applies it: the CQL2-JSON object the map sends.
+    export_filter = None
+    if cql_filter:
+        if cql_filter.get("lang") != "cql2-json":
+            raise HTTPException(
+                status_code=400, detail="A download takes its filter as CQL2-JSON."
+            )
+        export_filter = json.loads(cql_filter["filter"])
 
     # Check that this layer belongs to a public project
     layer_uuid = UUID(
@@ -404,12 +443,15 @@ async def download_layer(
     try:
         zip_path = await loop.run_in_executor(
             _export_executor,
-            _run_export,
-            table_name,
-            file_name,
-            format_lower,
-            gdal_format,
-            target_crs,
+            partial(
+                _run_export,
+                table_name,
+                file_name,
+                format_lower,
+                gdal_format,
+                target_crs,
+                cql_filter=export_filter,
+            ),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

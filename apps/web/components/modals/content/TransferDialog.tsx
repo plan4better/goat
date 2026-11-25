@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
@@ -67,6 +67,8 @@ const targetLabel = (space: Space, t: (key: string) => string): string =>
  */
 const TransferDialog = ({ items, spaces, presetTargetId, onClose, onTransferred }: TransferDialogProps) => {
   const { t } = useTranslation("common");
+  // Named by its title, as every AppDialog is.
+  const titleId = useId();
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("md"));
 
@@ -208,9 +210,11 @@ const TransferDialog = ({ items, spaces, presetTargetId, onClose, onTransferred 
     <Dialog
       open
       onClose={onClose}
+      aria-labelledby={titleId}
       fullScreen={fullScreen}
       PaperProps={{ sx: contentDialogPaperSx(540, fullScreen) }}>
       <ContentDialogHeader
+        titleId={titleId}
         icon={ICON_NAME.CROWN}
         tone="warning"
         title={t("transfer_title", { name: primaryName, more })}

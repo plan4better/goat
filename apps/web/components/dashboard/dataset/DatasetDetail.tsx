@@ -6,13 +6,17 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import { layerSourceLine, layerSourceOf, layerTypeLabelKey } from "@/lib/utils/content";
+import { useUserProfile } from "@/lib/api/users";
+import { layerTypeLabelKey } from "@/lib/utils/content";
+import { hasAddress, layerOrigin, sourceLabel } from "@/lib/utils/layerOrigin";
+import { canEditDataset } from "@/lib/utils/layerPermissions";
 import { DEFAULT_ROWS_PER_PAGE_OPTIONS } from "@/lib/utils/pagination";
 import type { Layer } from "@/lib/validations/layer";
 
 import { useCatalogLabels } from "@/hooks/catalog/useCatalogLabels";
 import { useFeaturePage } from "@/hooks/useFeaturePage";
 
+import LayerAddress from "@/components/common/LayerAddress";
 import {
   DetailHeader,
   DetailTabs,
@@ -123,6 +127,7 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
   const labels = useCatalogLabels();
+  const { userProfile } = useUserProfile();
   const [tab, setTab] = useState<TabId>("summary");
 
   const typeLabelKey = layerTypeLabelKey(dataset.type);
@@ -149,7 +154,10 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
   const stringOf = (value: string | number | null | undefined) =>
     value === null || value === undefined || value === "" ? undefined : String(value);
 
-  const sourceLine = layerSourceLine(layerSourceOf(dataset), t);
+  // Where the data comes from, by the Metadata tab's rule and with its address row. Who may edit the dataset sees the
+  // address whole, as there: with no project here, the dataset alone decides, that is its owner.
+  const origin = layerOrigin(dataset);
+  const canEdit = canEditDataset(dataset, { currentUserId: userProfile?.id, isProjectEditor: true });
 
   const fields: (MetaField | false | undefined)[] = [
     {
@@ -157,7 +165,12 @@ const DatasetDetail = ({ dataset, actions }: DatasetDetailProps) => {
       label: t("metadata.headings.type"),
       value: t(typeLabelKey),
     },
-    !!sourceLine && { icon: ICON_NAME.LINK, label: t("source"), value: sourceLine },
+    !!origin && { icon: ICON_NAME.GLOBE, label: t("source"), value: sourceLabel(origin, t) },
+    hasAddress(origin) && {
+      icon: ICON_NAME.LINK,
+      label: t("address"),
+      value: <LayerAddress origin={origin} canEdit={canEdit} />,
+    },
     {
       icon: ICON_NAME.MAP,
       label: t("metadata.headings.geometry_type"),

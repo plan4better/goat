@@ -9,8 +9,6 @@ import {
   homeFolderOf,
   iconFor,
   iconForType,
-  layerSourceLine,
-  layerSourceOf,
   markKindOf,
   restrictedAncestorName,
   sectionOf,
@@ -402,58 +400,5 @@ describe("folderLocationLabel", () => {
   it("is undefined for an item at the root", () => {
     expect(folderLocationLabel(folders, "root")).toBeUndefined();
     expect(folderLocationLabel(folders, null)).toBeUndefined();
-  });
-});
-
-describe("layerSourceLine", () => {
-  const t = (key: string, values?: Record<string, string>) =>
-    `${key}${
-      values
-        ? `(${Object.entries(values)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(",")})`
-        : ""
-    }`;
-
-  it("names the format and host of a linked layer", () => {
-    expect(layerSourceLine({ dataType: "wms", isLinked: true, host: "www.wms.nrw.de" }, t)).toBe(
-      "layer_source_linked(format=WMS,host=www.wms.nrw.de)"
-    );
-  });
-
-  it("still says linked when the host could not be read", () => {
-    expect(layerSourceLine({ dataType: "xyz", isLinked: true, host: null }, t)).toBe(
-      "layer_source_linked_no_host(format=XYZ)"
-    );
-  });
-
-  it("names where a WFS copy came from, without calling it linked", () => {
-    expect(layerSourceLine({ dataType: "wfs", isLinked: false, host: "www.wfs.nrw.de" }, t)).toBe(
-      "layer_source_imported(format=WFS,host=www.wfs.nrw.de)"
-    );
-  });
-
-  it("says nothing for data GOAT holds", () => {
-    expect(layerSourceLine({ dataType: null, isLinked: false, host: null }, t)).toBeNull();
-    // A future hosted COG: a format, but no stored address and no service it came from.
-    expect(layerSourceLine({ dataType: "cog", isLinked: false, host: null }, t)).toBeNull();
-  });
-});
-
-describe("layerSourceOf", () => {
-  it("reads a linked layer's host from its stored url, dropping the rest", () => {
-    expect(
-      layerSourceOf({ url: "https://tiles.example.org/{z}/{x}/{y}.png?key=secret", data_type: "xyz" })
-    ).toEqual({ dataType: "xyz", isLinked: true, host: "tiles.example.org" });
-  });
-
-  it("reads a WFS copy's origin from other_properties, and does not call it linked", () => {
-    expect(
-      layerSourceOf({ data_type: "wfs", other_properties: { url: "https://www.wfs.nrw.de/geobasis/wfs" } })
-    ).toEqual({ dataType: "wfs", isLinked: false, host: "www.wfs.nrw.de" });
-  });
-
-  it("treats an empty url as none", () => {
-    expect(layerSourceOf({ url: "" })).toEqual({ dataType: null, isLinked: false, host: null });
   });
 });

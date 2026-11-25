@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field
 
 from goatlib.config.postgres import TASKS_APPLICATION_NAME
 from goatlib.storage import BaseDuckLakeManager
+from goatlib.style.fingerprint import advance_data_snapshots_sql
 from goatlib.tools.base import ToolSettings
 from goatlib.utils.credentials import postgres_attach_target
 
@@ -230,6 +231,20 @@ class DuckLakeMaintenanceTask:
             "tracked_bytes": int(bytes_row[0]) if bytes_row else 0,
         }
 
+    def _advance_data_snapshots(self: Self, con: Any) -> None:
+        """Moves core's `layer.data_snapshot` past every change in the log before
+        expiring snapshots removes it (GOAT Style spec 12). A failure is logged and
+        the run goes on: a change that expires unseen makes the tracker recompute
+        every layer's classes once, which is safe."""
+        sql = advance_data_snapshots_sql(
+            self.settings.customer_schema,  # type: ignore[union-attr]
+            self.settings.ducklake_catalog_schema,  # type: ignore[union-attr]
+        )
+        try:
+            con.execute("CALL postgres_execute('pg', '" + sql.replace("'", "''") + "')")
+        except Exception:
+            logger.warning("data snapshot tracker failed", exc_info=True)
+
     def run(self: Self, params: DuckLakeMaintenanceParams) -> dict[str, Any]:
         manager = self._get_manager()
         with manager.connection() as con:
@@ -308,6 +323,16 @@ class DuckLakeMaintenanceTask:
                 }
 
             # ---- Real run -------------------------------------------------
+            # Read-write Postgres: the data snapshot tracker writes core's
+            # layers, and the schema-versions prune below deletes catalog rows
+            # directly (no DuckLake function exposes this). The cleanup reads
+            # the schedule table through it to learn the bytes it frees.
+            uri = postgres_attach_target(
+                con,
+                self.settings.ducklake_postgres_uri,  # type: ignore[union-attr]
+            )
+            con.execute(f"ATTACH IF NOT EXISTS 'postgres:{uri}' AS pg")
+            self._advance_data_snapshots(con)
             con.execute(
                 "CALL ducklake_expire_snapshots('lake', older_than => NOW() "
                 f"- INTERVAL '{params.retention_days} days')"
@@ -319,19 +344,6 @@ class DuckLakeMaintenanceTask:
                 expired,
                 after_expire["snapshots"],
             )
-
-            # Attach Postgres read-only so we can join the schedule table
-            # with data_file / delete_file to learn how many bytes the
-            # cleanup will actually free (the catalog-tracked metric
-            # tracked_bytes doesn't change because superseded files
-            # aren't counted there).
-            # Read-write: the schema-versions prune below deletes catalog
-            # rows directly (no DuckLake function exposes this).
-            uri = postgres_attach_target(
-                con,
-                self.settings.ducklake_postgres_uri,  # type: ignore[union-attr]
-            )
-            con.execute(f"ATTACH IF NOT EXISTS 'postgres:{uri}' AS pg")
 
             files_deleted = 0
             cleanup_bytes_freed = 0

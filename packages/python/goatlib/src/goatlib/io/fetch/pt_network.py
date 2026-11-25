@@ -14,17 +14,29 @@ between a kept and a dropped stop goes, a feed-wide row (feed_info, a fare
 product) stays. The lines drawn for the map are drawn again from the cut, as
 the import draws them.
 
+Lines can be kept by mode (``modes``, the routing tools' modes): only those
+whose ``route_type`` is one of them, as the routing groups route types into
+modes (``packages/cpp/routing/src/pt/nigiri_routing.cpp``). No modes, or all
+of them, keeps every line: coaches and any other type too.
+
 The tables cut from are the GTFS importer's own output
 (``goatlib.bundles.importers.pt_network.store``), and so is what this writes.
+Indexed tables (schema 2) are read through their index: the lines from
+``stop_lines``, and ``stop_times`` and ``shapes`` only in the row groups of
+the kept lines' numbers, which are left out of what is written.
 """
 
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 from goatlib.bundles.importers.base import ExtractedLayer
 from goatlib.bundles.importers.pt_network.gtfs import GtfsImporter
-from goatlib.bundles.importers.pt_network.store import read_store, store_layers
+from goatlib.bundles.importers.pt_network.store import (
+    LINE_NO,
+    read_store,
+    store_layers,
+)
 from goatlib.io.config import parquet_copy_options
 from goatlib.io.fetch import street_network
 from goatlib.io.fetch.area import area_table
@@ -44,6 +56,53 @@ TOO_MANY_TRIPS = (
     "This area is served by too many lines to cut out. Draw a smaller area, or "
     "fewer parts on major stations."
 )
+
+#: Each mode's GTFS route types, basic and extended (``rt`` an integer), as the
+#: routing groups them: rail is regional, long-distance and suburban rail; a
+#: cable car is an aerial lift, as a gondola is.
+MODE_ROUTE_TYPES: Dict[str, str] = {
+    "bus": "rt IN (3, 11) OR rt BETWEEN 700 AND 899",
+    "tram": "rt IN (0, 5) OR rt BETWEEN 900 AND 999",
+    "rail": "rt = 2 OR rt BETWEEN 100 AND 199 OR rt BETWEEN 300 AND 399",
+    "subway": "rt IN (1, 12) OR rt BETWEEN 400 AND 699",
+    "ferry": "rt = 4 OR rt BETWEEN 1000 AND 1099 OR rt BETWEEN 1200 AND 1299",
+    "cable_car": "rt = 6 OR rt BETWEEN 1300 AND 1399",
+    "gondola": "rt = 6 OR rt BETWEEN 1300 AND 1399",
+    "funicular": "rt = 7 OR rt BETWEEN 1400 AND 1499",
+}
+NO_SERVICE_OF_MODES = (
+    "The GOAT public transport network has no service of the chosen modes in this area."
+)
+
+#: A line is long-distance, and left out of a cut that asks for local lines,
+#: by how its trips travel rather than its mode: when their median stop spacing
+#: exceeds LONG_DISTANCE_SPACING_KM, or their median span exceeds
+#: LONG_DISTANCE_SPAN_KM while they stop less often than every
+#: LONG_DISTANCE_SPAN_SPACING_KM. A trip's span is the diagonal of the box
+#: around its stops, its spacing that span over its hops. Set from Europe's
+#: network: local and regional service stops every 0.3 to 7 km, high-speed,
+#: InterCity, night trains, coaches and international ferries every 15 to 60 km.
+#: Fast regional trains (Swiss InterRegio) and coaches that stop often in town
+#: stay; longer fjord express boats go.
+LONG_DISTANCE_SPACING_KM = 20.0
+LONG_DISTANCE_SPAN_KM = 150.0
+LONG_DISTANCE_SPAN_SPACING_KM = 12.0
+ONLY_LONG_DISTANCE = (
+    "The GOAT public transport network has only long-distance lines in this area."
+)
+
+
+def _modes_filter(modes: Optional[Sequence[str]]) -> Optional[str]:
+    """The route types of ``modes`` as a condition on ``rt``; None to keep every
+    line (no modes, or all of them)."""
+    chosen = set(modes or ())
+    if not chosen or set(MODE_ROUTE_TYPES) <= chosen:
+        return None
+    unknown = chosen - set(MODE_ROUTE_TYPES)
+    if unknown:
+        raise ValueError(f"Unknown mode(s): {', '.join(sorted(unknown))}")
+    return " OR ".join(f"({MODE_ROUTE_TYPES[m]})" for m in sorted(chosen))
+
 
 #: Columns naming an id a cut can drop, by their GTFS name, and the kept set
 #: they must be in. A reference column not listed here names something every
@@ -110,8 +169,66 @@ def _kept(column: str, keep: str) -> str:
     )
 
 
-def _select_lines(con: Any, src: Dict[str, str]) -> int:
-    """keep_routes: the lines serving a stop in the area or its station."""
+def on_lines(
+    con: Any, relation: str, numbers_of: str, ids: str, index: Dict[str, str]
+) -> str:
+    """``relation`` (an indexed table) read only where its line number is one
+    of those ``numbers_of`` (an index role) gives ``ids`` (a query of ids),
+    without the number. The numbers are written out, not a subquery: DuckDB
+    skips a row group by a constant list, not by a join."""
+    numbers = [
+        str(n)
+        for (n,) in con.execute(f"""
+            SELECT DISTINCT {LINE_NO} FROM read_parquet('{_q(index[numbers_of])}')
+            WHERE {"route_id" if numbers_of == "line_numbers" else "shape_id"} IN ({ids})
+        """).fetchall()
+    ]
+    return (
+        f"(SELECT * EXCLUDE ({LINE_NO}) FROM {relation} "
+        f"WHERE {LINE_NO} IN ({', '.join(numbers) or 'NULL'}))"
+    )
+
+
+def _drop_long_distance(con: Any, src: Dict[str, str]) -> None:
+    """Remove the long-distance lines from keep_routes (see
+    LONG_DISTANCE_SPACING_KM), judged on all of their trips."""
+    con.execute(f"""
+        DELETE FROM keep_routes WHERE id IN (
+            SELECT route_id FROM (
+                SELECT route_id,
+                       median(span_km) AS span_km,
+                       median(span_km / greatest(n - 1, 1)) AS spacing_km
+                FROM (
+                    SELECT t.route_id, st.trip_id, count(*) AS n,
+                           111.2 * sqrt(
+                               power(max(s.stop_lat) - min(s.stop_lat), 2)
+                               + power((max(s.stop_lon) - min(s.stop_lon))
+                                       * cos(radians(avg(s.stop_lat))), 2)
+                           ) AS span_km
+                    FROM {src["stop_times"]} st
+                    JOIN {src["trips"]} t USING (trip_id)
+                    JOIN {src["stops"]} s USING (stop_id)
+                    WHERE t.route_id IN (SELECT id FROM keep_routes)
+                    GROUP BY 1, 2
+                ) GROUP BY 1
+            )
+            WHERE spacing_km > {LONG_DISTANCE_SPACING_KM}
+               OR (span_km > {LONG_DISTANCE_SPAN_KM}
+                   AND spacing_km > {LONG_DISTANCE_SPAN_SPACING_KM}))
+    """)
+
+
+def _select_lines(
+    con: Any,
+    src: Dict[str, str],
+    modes: Optional[Sequence[str]] = None,
+    exclude_long_distance: bool = False,
+    index: Optional[Dict[str, str]] = None,
+) -> int:
+    """keep_routes: the lines serving a stop in the area or its station, of
+    ``modes`` where given, without the long-distance ones if asked; through
+    ``index`` where the tables have one."""
+    by_mode = _modes_filter(modes)
     stops = src["stops"]
     con.execute(f"""
         CREATE OR REPLACE TEMP TABLE area_stations AS
@@ -122,21 +239,57 @@ def _select_lines(con: Any, src: Dict[str, str]) -> int:
     (hits,) = con.execute("SELECT count(*) FROM area_stations").fetchone()
     if not hits:
         raise ValueError("The GOAT public transport network has no stops in this area.")
-    con.execute(f"""
-        CREATE OR REPLACE TEMP TABLE keep_routes AS
-        SELECT DISTINCT t.route_id AS id
-        FROM {src["stop_times"]} st
-        JOIN {src["trips"]} t USING (trip_id)
-        WHERE st.stop_id IN (
-            SELECT stop_id FROM {stops}
-            WHERE stop_id IN (SELECT id FROM area_stations)
-               OR parent_station IN (SELECT id FROM area_stations))
-    """)
+    area_stops = f"""
+        SELECT stop_id FROM {stops}
+        WHERE stop_id IN (SELECT id FROM area_stations)
+           OR parent_station IN (SELECT id FROM area_stations)"""
+    if index:
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE keep_routes AS
+            SELECT DISTINCT route_id AS id
+            FROM read_parquet('{_q(index["stop_lines"])}')
+            WHERE stop_id IN ({area_stops})
+        """)
+    else:
+        con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE keep_routes AS
+            SELECT DISTINCT t.route_id AS id
+            FROM {src["stop_times"]} st
+            JOIN {src["trips"]} t USING (trip_id)
+            WHERE st.stop_id IN ({area_stops})
+        """)
+    if by_mode is not None:
+        con.execute(f"""
+            DELETE FROM keep_routes WHERE id NOT IN (
+                SELECT route_id FROM (
+                    SELECT route_id, TRY_CAST(route_type AS INTEGER) AS rt FROM {src["routes"]}
+                ) WHERE {by_mode})
+        """)
     (lines,) = con.execute("SELECT count(*) FROM keep_routes").fetchone()
     if not lines:
         raise ValueError(
-            "The GOAT public transport network has no service in this area."
+            NO_SERVICE_OF_MODES
+            if by_mode is not None
+            else "The GOAT public transport network has no service in this area."
         )
+    if exclude_long_distance:
+        if index:
+            src = {
+                **src,
+                "stop_times": on_lines(
+                    con,
+                    src["stop_times"],
+                    "line_numbers",
+                    "SELECT id FROM keep_routes",
+                    index,
+                ),
+            }
+        _drop_long_distance(con, src)
+        (local,) = con.execute("SELECT count(*) FROM keep_routes").fetchone()
+        if not local:
+            raise ValueError(ONLY_LONG_DISTANCE)
+        logger.info("left out %d long-distance line(s)", lines - local)
+        lines = local
     return int(lines)
 
 
@@ -261,10 +414,17 @@ def _cut_table(con: Any, table: Dict[str, Any], relation: str, workdir: str) -> 
 
 
 def export_pt_network(
-    con: Any, *, area: dict, store_dir: str, workdir: str
+    con: Any,
+    *,
+    area: dict,
+    store_dir: str,
+    workdir: str,
+    modes: Optional[Sequence[str]] = None,
+    exclude_long_distance: bool = False,
 ) -> List[ExtractedLayer]:
-    """Cut the network in ``store_dir`` to ``area``; return the bundle's layers,
-    written to ``workdir``."""
+    """Cut the network in ``store_dir`` to ``area``, its lines of ``modes``
+    (none: all), without long-distance lines if ``exclude_long_distance``;
+    return the bundle's layers, written to ``workdir``."""
     con.execute("INSTALL spatial; LOAD spatial;")
     if area_cells(con, area) > MAX_CELLS:
         raise ValueError(TOO_LARGE)
@@ -275,8 +435,18 @@ def export_pt_network(
     if missing:
         raise ValueError(f"The network's tables lack {', '.join(sorted(missing))}.")
 
-    lines = _select_lines(con, src)
+    index = info["index"]
+    lines = _select_lines(con, src, modes, exclude_long_distance, index)
+    if index:
+        # Read from here on only where the kept lines' rows lie.
+        src["stop_times"] = on_lines(
+            con, src["stop_times"], "line_numbers", "SELECT id FROM keep_routes", index
+        )
     _close(con, src)
+    if index and "shapes" in src and "shape_numbers" in index:
+        src["shapes"] = on_lines(
+            con, src["shapes"], "shape_numbers", "SELECT id FROM keep_shapes", index
+        )
     (trips,) = con.execute("SELECT count(*) FROM keep_trips").fetchone()
     if trips > MAX_TRIPS:
         raise ValueError(TOO_MANY_TRIPS)

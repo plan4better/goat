@@ -1,7 +1,18 @@
 """Tests for analytics service."""
 
+import json
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import duckdb
+import pytest
+from fastapi import HTTPException
+from goatlib.filter.area import CROSSES_ITSELF
+from goatlib.filter.limits import REQUEST_MAX_DEPTH, REQUEST_MAX_VALUES
+from goatlib.storage import UnreadableFilterError
+
+from processes.routers import processes as analytics_router
 from processes.services.analytics_service import (
     AnalyticsService,
     analytics_service,
@@ -69,17 +80,249 @@ class TestAnalyticsServiceBuildWhereClause:
         assert where == "TRUE"
         assert params == []
 
-    def test_build_where_clause_invalid_json(self):
-        """Test with invalid JSON filter returns TRUE."""
+    def test_build_where_clause_blank(self):
+        """A filter of white space only is no filter."""
         service = AnalyticsService()
 
-        # Invalid JSON should fall back to TRUE
-        where, params = service._build_where_clause(
-            "not valid json", "lake.schema.table"
-        )
+        where, params = service._build_where_clause("  ", "lake.schema.table")
 
         assert where == "TRUE"
         assert params == []
+
+    @pytest.mark.parametrize("filter_expr", ["{}", " { } ", {}])
+    def test_an_empty_object_is_no_filter(self, filter_expr):
+        """What a client sends for a layer without conditions."""
+        service = AnalyticsService()
+
+        where, params = service._build_where_clause(filter_expr, "lake.schema.table")
+
+        assert where == "TRUE"
+        assert params == []
+
+    def test_a_filter_that_parses_is_built(self):
+        """A filter the query path reads becomes the WHERE clause."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("kind", "VARCHAR"))):
+            where, params = service._build_where_clause(
+                json.dumps({"op": "=", "args": [{"property": "kind"}, "park"]}),
+                "lake.schema.table",
+            )
+
+        assert "kind" in where
+        assert params == ["park"]
+
+    def test_a_filter_given_as_an_object_is_built(self):
+        """The filter may arrive parsed already."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("kind", "VARCHAR"))):
+            where, params = service._build_where_clause(
+                {"op": "=", "args": [{"property": "kind"}, "park"]},
+                "lake.schema.table",
+            )
+
+        assert "kind" in where
+        assert params == ["park"]
+
+    @pytest.mark.parametrize(
+        ("filter_expr", "message"),
+        [
+            ("not valid json", "The filter is not valid JSON."),
+            ("[1, 2]", "The filter is not valid CQL2 JSON."),
+            ('{"op": "nonsense", "args": [1]}', "The filter is not valid CQL2 JSON."),
+            ('{"op": "and", "args": []}', "The filter is not valid CQL2 JSON."),
+            (
+                '{"op": "=", "args": [{"property": "kind"}]}',
+                "The filter is not valid CQL2 JSON.",
+            ),
+            (
+                {"op": "nonsense", "args": [1]},
+                "The filter is not valid CQL2 JSON.",
+            ),
+        ],
+    )
+    def test_a_filter_that_does_not_parse_is_refused(self, filter_expr, message):
+        """Never read as no filter: the answer would cover every feature."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(filter_expr, "lake.schema.table")
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == message
+
+    @pytest.mark.parametrize(
+        ("cql", "reason"),
+        [
+            ({"op": "=", "args": [{"property": "gone"}, "park"]}, 'no field "gone"'),
+            ({"op": "=", "args": [{"property": "lanes"}, "many"]}, "does not fit"),
+        ],
+        ids=["field-the-layer-lost", "value-the-field-cannot-hold"],
+    )
+    def test_a_filter_that_parses_but_cannot_be_applied_is_refused(self, cql, reason):
+        """It parses, so `_checked_filter` takes it; the builder then dropped
+        it and the statistic covered every feature."""
+        service = AnalyticsService()
+        layer = _describes(("kind", "VARCHAR"), ("lanes", "INTEGER"))
+
+        with patch.object(service, "_connection", layer):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(json.dumps(cql), "lake.schema.table")
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail.startswith("The layer's filter cannot be applied")
+        assert reason in refused.value.detail
+
+    def test_a_relative_day_is_built_for_today(self):
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _describes(("seen", "DATE"))):
+            where, params = service._build_where_clause(
+                {"op": ">=", "args": [{"property": "seen"}, {"op": "daysAgo", "args": [7]}]},
+                "lake.schema.table",
+            )
+
+        since = (datetime.now(UTC).date() - timedelta(days=7)).isoformat()
+        assert "seen" in where
+        assert any(since in str(p) for p in params)
+
+    def test_a_sql_preview_refuses_a_filter_its_layer_cannot_take(self):
+        """The alias view fell back to the unfiltered layer."""
+        con = duckdb.connect()
+        with pytest.raises(UnreadableFilterError, match='no field "gone"'):
+            AnalyticsService()._create_alias_view(
+                con,
+                "input_1",
+                "SELECT 'park' AS kind",
+                '{"op": "=", "args": [{"property": "gone"}, "park"]}',
+            )
+
+    def test_a_filter_over_a_request_ceiling_is_refused(self):
+        """Held against the request ceilings before it is parsed."""
+        service = AnalyticsService()
+        values = list(range(REQUEST_MAX_VALUES + 1))
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(
+                    json.dumps({"op": "in", "args": [{"property": "kind"}, values]}),
+                    "lake.schema.table",
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == (
+            f"A condition takes at most {REQUEST_MAX_VALUES} values; "
+            f"this one has {REQUEST_MAX_VALUES + 1}."
+        )
+
+    def test_an_area_that_crosses_itself_too_often_is_refused(self):
+        """Its repair is never started."""
+        service = AnalyticsService()
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(
+                    json.dumps(
+                        {
+                            "op": "s_intersects",
+                            "args": [{"property": "geometry"}, _weave(20)],
+                        }
+                    ),
+                    "lake.schema.table",
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == CROSSES_ITSELF
+
+    def test_a_filter_that_nests_too_deeply_is_refused(self):
+        """Refused by its depth: the parser would recurse through it."""
+        service = AnalyticsService()
+        deep = {"op": "=", "args": [{"property": "kind"}, "park"]}
+        for _ in range(REQUEST_MAX_DEPTH + 1):
+            deep = {"op": "not", "args": [deep]}
+
+        with patch.object(service, "_connection", _no_connection):
+            with pytest.raises(HTTPException) as refused:
+                service._build_where_clause(json.dumps(deep), "lake.schema.table")
+
+        assert refused.value.status_code == 400
+
+    def test_a_refused_filter_reaches_the_caller_as_a_400(self):
+        """The process answers it as it was raised."""
+        with (
+            patch.object(
+                analytics_router.analytics_service,
+                "_get_table_name",
+                return_value="lake.schema.table",
+            ),
+            patch.object(
+                analytics_router.analytics_service,
+                "_detect_geometry_column",
+                return_value="geometry",
+            ),
+        ):
+            with pytest.raises(HTTPException) as refused:
+                analytics_router._execute_analytics_sync(
+                    "feature-count",
+                    {"collection": "abc", "filter": "not valid json"},
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == "The filter is not valid JSON."
+
+    def test_a_sql_preview_refuses_a_filter_that_does_not_parse(self):
+        """The preview never runs over the layers unfiltered instead."""
+        service = AnalyticsService()
+
+        with patch(
+            "processes.services.analytics_service.preview_ducklake_manager"
+        ) as manager:
+            with pytest.raises(HTTPException) as refused:
+                service.preview_sql(
+                    "SELECT * FROM input_1",
+                    {"input_1": "abc"},
+                    filter_expr='{"op": "nonsense", "args": [1]}',
+                )
+
+        assert refused.value.status_code == 400
+        assert refused.value.detail == "The filter is not valid CQL2 JSON."
+        manager.connection.assert_not_called()
+
+
+def _describes(*columns):
+    """A stand-in for `_connection` whose DESCRIBE answers these columns."""
+
+    @contextmanager
+    def connection(table_name, manager=None):
+        con = MagicMock()
+        con.execute.return_value.fetchall.return_value = [
+            (name, kind, "YES", None, None, None) for name, kind in columns
+        ]
+        yield con
+
+    return connection
+
+
+@contextmanager
+def _no_connection(table_name, manager=None):
+    """A stand-in for `_connection` where none may be opened."""
+    raise AssertionError("a refused filter opens no connection")
+    yield
+
+
+def _weave(lines):
+    """An area swept in rows and then in columns: every row crosses every column."""
+    size = lines + 1
+    ring = []
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[start, i], [end, i]]
+    for i in range(1, lines + 1):
+        start, end = (0, size) if i % 2 else (size, 0)
+        ring += [[i, start], [i, end]]
+    return {"type": "Polygon", "coordinates": [ring + [ring[0]]]}
 
 
 class TestAnalyticsServiceFeatureCount:
@@ -459,3 +702,139 @@ def test_validate_sql_loads_spatial_through_goatlib(monkeypatch) -> None:
 
     assert result["valid"], result
     assert loaded == [("spatial",)]
+
+
+class TestLayerJustSaved:
+    """Analytics read a pinned DuckLake snapshot that the poll moves forward
+    off the request path, which takes several seconds. A layer a workflow run
+    has just saved is in the catalog (its schema resolves from Postgres) but
+    not yet in the pin, and its table "does not exist" for that long: the
+    statistics asked right after the run answered 500.
+    """
+
+    LAYER_ID = "5f0c2a8e-1b7d-4c3e-9a6f-2d8e4b1c7a90"
+    TABLE = "t_5f0c2a8e1b7d4c3e9a6f2d8e4b1c7a90"
+
+    class _Pinned:
+        """A manager whose connections see the table only once the pin has
+        moved: `force_pin_refresh` moves it, or the poll after `swap_after`
+        connections (a swap landing in the middle of a request)."""
+
+        def __init__(
+            self,
+            table: str,
+            *,
+            refreshes: bool = True,
+            swap_after: int | None = None,
+            error: str | None = None,
+        ) -> None:
+            import duckdb as _duckdb
+
+            self.db = _duckdb.connect()
+            self.db.execute("ATTACH ':memory:' AS lake")
+            self.table = table
+            self.visible = False
+            self.refreshes = refreshes
+            self.swap_after = swap_after
+            self.error = error
+            self.connections = 0
+            self.refresh_calls = 0
+
+        def _show(self) -> None:
+            if not self.visible:
+                self.db.execute(
+                    f"CREATE TABLE lake.main.{self.table} AS SELECT * FROM "
+                    "(VALUES ('road', 10), ('road', 20), ('rail', 30)) "
+                    "AS t(source, level)"
+                )
+                self.visible = True
+
+        def connection(self):
+            import contextlib
+
+            @contextlib.contextmanager
+            def connect():
+                if self.swap_after is not None and self.connections >= self.swap_after:
+                    self._show()
+                self.connections += 1
+                if self.error is not None:
+                    raise RuntimeError(self.error)
+                yield self.db.cursor()
+
+            return connect()
+
+        def force_pin_refresh(self) -> bool:
+            self.refresh_calls += 1
+            if self.refreshes:
+                self._show()
+            return self.refreshes
+
+    def _service(self, monkeypatch, manager) -> AnalyticsService:
+        monkeypatch.setattr(
+            "processes.services.analytics_service.get_schema_for_layer",
+            lambda layer_id: "main",
+        )
+        monkeypatch.setattr(
+            "processes.services.analytics_service.ducklake_manager", manager
+        )
+        return AnalyticsService()
+
+    def test_a_layer_the_pin_does_not_hold_yet_is_read_after_a_refresh(
+        self, monkeypatch
+    ):
+        manager = self._Pinned(self.TABLE)
+        service = self._service(monkeypatch, manager)
+
+        assert service.feature_count(self.LAYER_ID)["count"] == 3
+        assert service.class_breaks(self.LAYER_ID, "level", "quantile", 2)["max"] == 30
+        assert manager.refresh_calls == 1
+
+    def test_every_layer_statistic_refreshes_a_pin_that_misses(self, monkeypatch):
+        reads = {
+            "unique_values": lambda s: s.unique_values(self.LAYER_ID, "source"),
+            "aggregation_stats": lambda s: s.aggregation_stats(self.LAYER_ID),
+            "histogram": lambda s: s.histogram(self.LAYER_ID, "level"),
+        }
+        for name, read in reads.items():
+            manager = self._Pinned(self.TABLE)
+            read(self._service(monkeypatch, manager))
+            assert manager.refresh_calls == 1, name
+
+    def test_a_filter_is_not_dropped_when_the_pin_moves_mid_request(self, monkeypatch):
+        """The filter's columns are read on a connection of their own: one
+        that missed must not leave the statistic unfiltered once the next
+        connection sees the table."""
+        manager = self._Pinned(self.TABLE, swap_after=1)
+        service = self._service(monkeypatch, manager)
+        road = json.dumps({"op": "=", "args": [{"property": "source"}, "road"]})
+
+        result = service.aggregation_stats(self.LAYER_ID, filter_expr=road)
+
+        assert result["total_count"] == 2
+
+    def test_a_table_missing_after_the_refresh_is_still_an_error(self, monkeypatch):
+        manager = self._Pinned(self.TABLE)
+        manager.force_pin_refresh = lambda: True  # the pin is current: no table
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(duckdb.CatalogException, match="does not exist"):
+            service.feature_count(self.LAYER_ID)
+
+    def test_a_failed_refresh_is_not_retried(self, monkeypatch):
+        manager = self._Pinned(self.TABLE, refreshes=False)
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(duckdb.CatalogException, match="does not exist"):
+            service.feature_count(self.LAYER_ID)
+        assert manager.refresh_calls == 1
+
+    def test_other_errors_do_not_refresh_the_pin(self, monkeypatch):
+        manager = self._Pinned(
+            self.TABLE,
+            error='Binder Error: Referenced column "x" not found in FROM clause!',
+        )
+        service = self._service(monkeypatch, manager)
+
+        with pytest.raises(RuntimeError, match="Binder Error"):
+            service.feature_count(self.LAYER_ID)
+        assert manager.refresh_calls == 0

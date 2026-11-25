@@ -115,13 +115,12 @@ class LayerExportParams(ToolInputBase):
             widget="crs-selector",
         ),
     )
-    query: str | dict[str, Any] | None = Field(
+    query: dict[str, Any] | None = Field(
         None,
-        description="WHERE clause or CQL2 filter to filter features",
+        description="CQL2 filter to filter features",
         json_schema_extra=ui_field(
             section="options",
             field_order=2,
-            widget="sql-editor",
         ),
     )
     layer_owner_id: str | None = Field(
@@ -178,8 +177,8 @@ class LayerExportRunner(SimpleToolRunner):
 
         return self.resolve_layer_table_path(layer_id)
 
-    def _get_column_names(self: Self, table_name: str) -> list[str]:
-        """Get column names for a table.
+    def _get_column_types(self: Self, table_name: str) -> dict[str, str]:
+        """Get the column names of a table with their DuckDB types.
 
         DESCRIBE loads only this table's metadata; information_schema.columns
         would lazily load every table in the catalog to answer.
@@ -187,7 +186,7 @@ class LayerExportRunner(SimpleToolRunner):
         result = self.duckdb_con.execute(
             f"DESCRIBE {quoted_relation(table_name)}"
         ).fetchall()
-        return [row[0] for row in result]
+        return {str(row[0]): str(row[1]) for row in result}
 
     def _get_exportable_columns(self: Self, table_name: str) -> list[tuple[str, str]]:
         """Get column names and types that can be exported to OGR formats.
@@ -249,34 +248,35 @@ class LayerExportRunner(SimpleToolRunner):
         return f'"{col}"'
 
     def _convert_cql2_to_sql(
-        self: Self, query: str | dict[str, Any] | None, table_name: str
+        self: Self, query: dict[str, Any] | None, table_name: str
     ) -> str | None:
         """Convert CQL2 filter dict to SQL WHERE clause.
 
         Args:
-            query: SQL string or CQL2 filter dict
+            query: CQL2 filter dict; text is refused, as it would reach the query as SQL
             table_name: Table name for column validation
 
         Returns:
             SQL WHERE clause string with parameters substituted, or None
+
+        Raises:
+            UnreadableFilterError: A CQL2 filter it cannot apply. Exported
+                without it, the file would hold the whole layer.
         """
         if query is None:
             return None
 
-        # If already a string, return as-is (raw SQL)
-        if isinstance(query, str):
-            return query
+        # Only a CQL2 object, which becomes a checked clause with its values as parameters.
+        if not isinstance(query, dict):
+            raise ValueError("The export filter must be a CQL2 object.")
 
-        # Convert CQL2 dict to SQL using shared utility
-        try:
-            from goatlib.storage import cql_to_where_clause
+        from goatlib.storage import checked_cql_filter, inline_params
 
-            column_names = self._get_column_names(table_name)
-            # Use inline=True since COPY doesn't support parameterized queries
-            return cql_to_where_clause(query, column_names, "geometry", inline=True)
-        except Exception as e:
-            logger.warning("Failed to convert CQL2 filter to SQL: %s", e)
+        filters = checked_cql_filter(query, self._get_column_types(table_name))
+        if not filters.clauses:
             return None
+        # Inlined: COPY doesn't support parameterized queries
+        return inline_params(filters.to_full_where(), filters.params)
 
     def _has_geometry_column(self: Self, table_name: str) -> bool:
         """Check if table has a geometry column.
@@ -299,7 +299,7 @@ class LayerExportRunner(SimpleToolRunner):
         output_path: str,
         output_format: str,
         crs: str | None = None,
-        query: str | dict[str, Any] | None = None,
+        query: dict[str, Any] | None = None,
         layer_owner_id: str | None = None,
     ) -> None:
         """Export layer from DuckLake to file.
@@ -310,7 +310,7 @@ class LayerExportRunner(SimpleToolRunner):
             output_path: Path for output file
             output_format: GDAL driver name (GPKG, GeoJSON, etc.)
             crs: Target CRS for reprojection (e.g., "EPSG:4326")
-            query: WHERE clause filter (string or CQL2 dict)
+            query: CQL2 filter dict
             layer_owner_id: Explicit owner UUID for shared/catalog layers
         """
         table_name = self._get_table_name(layer_id, user_id, layer_owner_id)

@@ -1,8 +1,8 @@
 "use client";
 
-import { Alert, Box, Typography } from "@mui/material";
+import { Alert, Stack, Typography } from "@mui/material";
 import { useState } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
@@ -11,115 +11,73 @@ import type { CustomDomain } from "@/lib/validations/customDomain";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
 
-interface DeleteDomainDialogProps {
-  open: boolean;
-  onClose: () => void;
-  domain: CustomDomain | null;
-  /** Pass a project name when the domain is currently assigned. Triggers the heavier copy. */
-  assignedProjectName?: string;
-  onConfirm: () => Promise<void>;
-}
+const PLAIN = { interpolation: { escapeValue: false } } as const;
 
+/** "Domain löschen": says what goes offline when the domain is assigned. */
 export function DeleteDomainDialog({
-  open,
-  onClose,
   domain,
-  assignedProjectName,
+  onClose,
   onConfirm,
-}: DeleteDomainDialogProps) {
+}: {
+  domain: CustomDomain;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
   const { t } = useTranslation("common");
-  const [isBusy, setIsBusy] = useState(false);
-
-  const isAssigned = Boolean(assignedProjectName);
-
-  const handleConfirm = async () => {
-    setIsBusy(true);
+  const [busy, setBusy] = useState(false);
+  const assigned = Boolean(domain.assigned_project_id);
+  const confirm = async () => {
+    setBusy(true);
     try {
       await onConfirm();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : t("white_label_delete_failed", "Failed to delete domain");
-      toast.error(message);
+    } catch {
+      toast.error(t("settings_domains_delete_error"));
     } finally {
-      setIsBusy(false);
+      setBusy(false);
     }
   };
-
   return (
     <AppDialog
-      open={open}
+      open
       onClose={onClose}
       icon={ICON_NAME.TRASH}
       tone="warning"
-      title={t("white_label_delete_title", "Delete custom domain")}
-      maxWidth={600}
-      closeDisabled={isBusy}
+      title={t("settings_domains_delete_title")}
+      closeDisabled={busy}
       footer={
         <AppDialogFooter
           onCancel={onClose}
-          cancelDisabled={isBusy}
-          primaryLabel={
-            isAssigned
-              ? t("white_label_delete_confirm_assigned", "Delete domain")
-              : t("white_label_delete_confirm_unassigned", "Delete")
-          }
-          onPrimary={() => void handleConfirm()}
+          cancelDisabled={busy}
+          primaryLabel={t("settings_domains_delete_confirm")}
           primaryColor="error"
-          primaryLoading={isBusy}
+          primaryLoading={busy}
+          onPrimary={() => void confirm()}
         />
       }>
-      {domain && (
-        <Box sx={{ pt: 1 }}>
-          <Typography variant="body2" sx={{ mb: 2 }}>
-            <Trans
-              i18nKey="common:white_label_delete_identify"
-              defaults="You are about to delete <b>{{domain}}</b>."
-              values={{ domain: domain.base_domain }}
-              components={{ b: <b /> }}
-            />
-          </Typography>
-
-          {isAssigned ? (
-            <>
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                <Trans
-                  i18nKey="common:white_label_delete_assigned_warning"
-                  defaults="This domain is currently assigned to <b>{{project}}</b>. Deleting it will immediately stop serving the dashboard at this URL."
-                  values={{ project: assignedProjectName ?? "" }}
-                  components={{ b: <b /> }}
-                />
-              </Alert>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {t("white_label_delete_consequences_intro", "This action will:")}
-              </Typography>
-              <Box component="ul" sx={{ pl: 3, m: 0 }}>
-                <li>
-                  <Typography variant="body2" color="text.secondary">
-                    {t("white_label_delete_consequence_unassign", "Unassign the domain from the project")}
-                  </Typography>
-                </li>
-                <li>
-                  <Typography variant="body2" color="text.secondary">
-                    {t("white_label_delete_consequence_cert", "Remove the SSL certificate")}
-                  </Typography>
-                </li>
-                <li>
-                  <Typography variant="body2" color="text.secondary">
-                    {t("white_label_delete_consequence_serve", "Stop serving the dashboard at this URL")}
-                  </Typography>
-                </li>
-              </Box>
-            </>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {t(
-                "white_label_delete_unassigned_description",
-                "This domain is not assigned to any project. Removing it will free the certificate slot."
-              )}
+      <Stack spacing={3}>
+        <Typography variant="body2">
+          {t("settings_domains_delete_intro", { domain: domain.base_domain, ...PLAIN })}
+        </Typography>
+        {assigned ? (
+          <>
+            <Alert severity="warning">
+              {t("settings_domains_delete_assigned", {
+                project: domain.assigned_project_name ?? "",
+                ...PLAIN,
+              })}
+            </Alert>
+            <Typography variant="body2" component="ul" sx={{ m: 0, pl: 5 }}>
+              <li>{t("settings_domains_delete_point_unassign")}</li>
+              <li>{t("settings_domains_delete_point_cert")}</li>
+              <li>{t("settings_domains_delete_point_serve")}</li>
             </Typography>
-          )}
-        </Box>
-      )}
+          </>
+        ) : (
+          <Typography variant="body2">{t("settings_domains_delete_free")}</Typography>
+        )}
+      </Stack>
     </AppDialog>
   );
 }
+
+export default DeleteDomainDialog;

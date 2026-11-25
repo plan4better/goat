@@ -42,6 +42,15 @@ class TextEnded(BaseModel):
     part_id: str
 
 
+class TextReplaced(BaseModel):
+    """The text parts of a response the run asked for again: the answer that
+    follows replaces them (``assistant.agent.ends_with_text``). They stay in
+    the stored parts, marked, and the dock leaves them out."""
+
+    type: Literal["text_replaced"] = "text_replaced"
+    part_ids: list[str]
+
+
 class ToolCalled(BaseModel):
     type: Literal["tool_called"] = "tool_called"
     tool_call_id: str
@@ -141,6 +150,7 @@ RunEvent = Annotated[
     | TextStarted
     | TextDelta
     | TextEnded
+    | TextReplaced
     | ToolCalled
     | ToolReturned
     | ToolFailed
@@ -174,6 +184,10 @@ def fold_parts(events: list[RunEvent]) -> list[dict[str, Any]]:
                 texts[event.part_id] = {"type": "text", "id": event.part_id, "text": ""}
                 parts.append(texts[event.part_id])
             texts[event.part_id]["text"] += event.delta
+        elif isinstance(event, TextReplaced):
+            for part_id in event.part_ids:
+                if part_id in texts:
+                    texts[part_id]["replaced"] = True
         elif isinstance(event, ToolCalled):
             tools[event.tool_call_id] = {
                 "type": "tool",
@@ -266,6 +280,7 @@ def to_ui_message(
     *,
     run_id: str | None = None,
     undone: bool = False,
+    undoable: bool = False,
 ) -> dict[str, Any]:
     """Render stored neutral parts as an AI SDK ``UIMessage`` for ``useChat``.
 
@@ -273,16 +288,24 @@ def to_ui_message(
     types statically, so every GOAT tool is dynamic from its point of view.
     ``created_at`` (the message's time) goes into the metadata as ISO 8601 in
     UTC to the millisecond, for the time the dock shows under the message.
-    An answer's ``run_id`` and whether its edits were undone go there too,
-    for the dock's Undo.
+    An answer's ``run_id``, whether its edits were undone and whether its
+    Undo has something to take back (``undoable``) go there too, for the
+    dock's Undo.
     """
     ui_parts: list[dict[str, Any]] = []
     metadata: dict[str, Any] | None = None
     if run_id is not None:
-        metadata = {"run_id": run_id, **({"undone": True} if undone else {})}
+        metadata = {
+            "run_id": run_id,
+            **({"undone": True} if undone else {}),
+            **({"undoable": True} if undoable else {}),
+        }
     for part in parts:
         if part["type"] == "text":
-            ui_parts.append({"type": "text", "text": part["text"], "state": "done"})
+            # Text a later answer of the run replaced (``TextReplaced``) is
+            # kept for the record, never shown.
+            if not part.get("replaced"):
+                ui_parts.append({"type": "text", "text": part["text"], "state": "done"})
         elif part["type"] == "tool":
             ui_part: dict[str, Any] = {
                 "type": "dynamic-tool",

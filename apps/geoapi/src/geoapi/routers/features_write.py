@@ -17,6 +17,7 @@ from goatlib.computed_columns import (
     is_computed_kind,
     validate_display_config,
 )
+from goatlib.utils.column_types import type_class
 from goatlib.utils.field_config import coerce_allowed_values
 from goatlib.utils.generated_fields import (
     GENERATED_STORAGE_TYPES,
@@ -233,17 +234,12 @@ async def _load_field_config(layer_info: LayerInfo) -> dict[str, Any]:
 
 def _duckdb_type_to_kind(duckdb_type: str) -> str:
     """Map a formula's inferred DuckDB result type to a public field kind."""
-    t = duckdb_type.lower()
-    if "bool" in t:
-        return "boolean"
-    if "timestamp" in t or "date" in t:
+    cls = type_class(duckdb_type)
+    if cls in ("date", "datetime"):
         return "datetime"
-    # Before the number check, which "int" in "interval" would match.
-    if "interval" in t:
-        return "string"
-    if any(x in t for x in ("int", "double", "float", "decimal", "numeric", "real")):
+    if cls in ("integer", "number"):
         return "number"
-    return "string"
+    return "boolean" if cls == "boolean" else "string"
 
 
 async def _validate_and_infer_formula(
@@ -427,7 +423,8 @@ async def create_features(
                 for f in body.features
             ]
             async with locked_layer_write(layer_info.layer_id) as write:
-                ids = feature_write_service.create_features_bulk(
+                ids = await asyncio.to_thread(
+                    feature_write_service.create_features_bulk,
                     layer_info=layer_info,
                     features=features_data,
                     column_names=metadata.column_names,
@@ -440,7 +437,8 @@ async def create_features(
         else:
             # Single creation
             async with locked_layer_write(layer_info.layer_id) as write:
-                feature_id = feature_write_service.create_feature(
+                feature_id = await asyncio.to_thread(
+                    feature_write_service.create_feature,
                     layer_info=layer_info,
                     geometry=body.geometry,
                     properties=body.properties,
@@ -478,7 +476,8 @@ async def update_feature(
 
     try:
         async with locked_layer_write(layer_info.layer_id) as write:
-            found = feature_write_service.update_feature_properties(
+            found = await asyncio.to_thread(
+                feature_write_service.update_feature_properties,
                 layer_info=layer_info,
                 feature_id=itemId,
                 properties=body.properties,
@@ -515,7 +514,8 @@ async def replace_feature(
 
     try:
         async with locked_layer_write(layer_info.layer_id) as write:
-            found = feature_write_service.replace_feature(
+            found = await asyncio.to_thread(
+                feature_write_service.replace_feature,
                 layer_info=layer_info,
                 feature_id=itemId,
                 geometry=body.geometry,
@@ -551,7 +551,8 @@ async def delete_feature(
     await _get_authorized_metadata(layer_info, user_id)
 
     try:
-        found = feature_write_service.delete_feature(
+        found = await asyncio.to_thread(
+            feature_write_service.delete_feature,
             layer_info=layer_info,
             feature_id=itemId,
         )
@@ -580,7 +581,8 @@ async def bulk_delete_features(
     await _get_authorized_metadata(layer_info, user_id)
 
     try:
-        count = feature_write_service.delete_features_bulk(
+        count = await asyncio.to_thread(
+            feature_write_service.delete_features_bulk,
             layer_info=layer_info,
             feature_ids=body.ids,
         )
@@ -725,7 +727,8 @@ async def add_column(
         elif body.start is not None:
             raise ValueError("Only a serial field has a start value.")
 
-        feature_write_service.add_column_with_sql(
+        await asyncio.to_thread(
+            feature_write_service.add_column_with_sql,
             layer_info=layer_info,
             name=body.name,
             duckdb_type=duckdb_type,
@@ -810,8 +813,11 @@ async def add_column(
                 {body.name: {"kind": body.kind}},
                 reset=[body.name],
             ) as counters:
-                feature_write_service.backfill_generated_column(
-                    layer_info, field, counters
+                await asyncio.to_thread(
+                    feature_write_service.backfill_generated_column,
+                    layer_info,
+                    field,
+                    counters,
                 )
 
         await _invalidate_caches_and_pmtiles(layer_info)
@@ -890,16 +896,24 @@ async def update_column(
                 layer_info, metadata, body.formula, exclude_column=columnName
             )
             compute_sql = f"({body.formula})"
-            current_types = feature_write_service.get_column_types(layer_info)
+            current_types = await asyncio.to_thread(
+                feature_write_service.get_column_types, layer_info
+            )
             if current_types.get(columnName, "").upper() == duckdb_type.upper():
-                feature_write_service.backfill_column(
-                    layer_info, columnName, compute_sql
+                await asyncio.to_thread(
+                    feature_write_service.backfill_column,
+                    layer_info,
+                    columnName,
+                    compute_sql,
                 )
             else:
                 # Result type changed: replace the column. Note the column
                 # moves to the end of the physical column order.
-                feature_write_service.delete_column(layer_info, columnName)
-                feature_write_service.add_column_with_sql(
+                await asyncio.to_thread(
+                    feature_write_service.delete_column, layer_info, columnName
+                )
+                await asyncio.to_thread(
+                    feature_write_service.add_column_with_sql,
                     layer_info=layer_info,
                     name=columnName,
                     duckdb_type=duckdb_type,
@@ -932,7 +946,8 @@ async def update_column(
                         f"{', '.join(sorted(dependents))}. Update those formulas first."
                     ),
                 )
-            feature_write_service.rename_column(
+            await asyncio.to_thread(
+                feature_write_service.rename_column,
                 layer_info=layer_info,
                 old_name=columnName,
                 new_name=body.new_name,
@@ -971,7 +986,7 @@ async def update_column(
                             formula_update["output_kind"], None
                         ).model_dump()
 
-                def config_kind() -> str:
+                async def config_kind() -> str:
                     """The kind a display_config or a vocabulary is read against.
 
                     Prefers the JSONB entry, and infers from the actual DuckDB
@@ -985,7 +1000,9 @@ async def update_column(
                     """
                     kind = entry.get("kind")
                     if not kind:
-                        col_types = feature_write_service.get_column_types(layer_info)
+                        col_types = await asyncio.to_thread(
+                            feature_write_service.get_column_types, layer_info
+                        )
                         # The rename above has already landed, so the column
                         # answers to its new name by now.
                         duckdb_type = col_types.get(body.new_name or columnName, "")
@@ -1003,7 +1020,7 @@ async def update_column(
                     return str(kind)
 
                 if body.display_config is not None:
-                    cfg_kind = config_kind()
+                    cfg_kind = await config_kind()
                     try:
                         entry["display_config"] = validate_display_config(
                             cfg_kind, body.display_config
@@ -1045,7 +1062,7 @@ async def update_column(
                         # resolves (entry, else the DuckDB type) because the
                         # request does not carry it.
                         entry["allowed_values"] = coerce_allowed_values(
-                            config_kind(), body.allowed_values
+                            await config_kind(), body.allowed_values
                         )
                         entry["allow_other"] = bool(body.allow_other)
                     else:
@@ -1170,7 +1187,8 @@ async def _convert_column_kind(
                         status_code=400,
                         detail=f"'{column}' cannot become a serial number.",
                     )
-                result = feature_write_service.convert_to_serial(
+                result = await asyncio.to_thread(
+                    feature_write_service.convert_to_serial,
                     layer_info,
                     GeneratedField(name=column, kind="serial", start=start),
                     write.counters,
@@ -1258,7 +1276,8 @@ async def delete_column(
                 ),
             )
 
-        feature_write_service.delete_column(
+        await asyncio.to_thread(
+            feature_write_service.delete_column,
             layer_info=layer_info,
             name=columnName,
         )

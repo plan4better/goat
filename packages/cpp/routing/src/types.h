@@ -280,6 +280,22 @@ namespace routing
         std::vector<Point3857> geometry; // populated for jsolines only
     };
 
+    // Where snapping split a street edge: the point a snapped origin hangs
+    // off (`node`), at `frac` of the way from the edge's source. The edge
+    // stays in the network next to its two halves.
+    struct EdgeSplit
+    {
+        int32_t edge;
+        int32_t node;
+        double frac;
+    };
+
+    // Ids of the edges snapping adds; street edges keep their own,
+    // non-negative ids.
+    constexpr int64_t kConnectorEdgeId = -1;     // snapped point to the street
+    constexpr int64_t kSplitToTargetEdgeId = -2; // split point to the edge's target
+    constexpr int64_t kSplitToSourceEdgeId = -3; // split point to the edge's source
+
     struct SubNetwork
     {
         std::vector<EdgeInfo> edges;
@@ -290,6 +306,7 @@ namespace routing
         std::vector<double> length_3857;
         std::vector<Point3857> node_coords;
         int32_t node_count;
+        std::vector<EdgeSplit> splits;
     };
 
     struct ReachabilityField

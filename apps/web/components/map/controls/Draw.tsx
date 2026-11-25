@@ -18,6 +18,7 @@ import {
 
 import { fetchRoute as osrmFetchRoute } from "@/lib/api/osrm";
 import { useDraw } from "@/lib/providers/DrawProvider";
+import { drawEvents } from "@/lib/utils/map/drawEvents";
 
 // Adapter to match the RouteFetcher signature from @p4b/draw
 const fetchRoute: RouteFetcher = async (waypoints: [number, number][], profile: RoutingProfile) => {
@@ -93,14 +94,14 @@ export const DrawControl = (props: DrawControlProps) => {
   const drawControl = useControl<MapboxDraw>(
     () => new MapboxDraw(mergedProps),
     ({ map }) => {
-      props.onCreate && map.on(constants.events.CREATE, props.onCreate);
-      props.onUpdate && map.on(constants.events.UPDATE, props.onUpdate);
-      props.onDelete && map.on(constants.events.DELETE, props.onDelete);
+      props.onCreate && drawEvents(map).on(constants.events.CREATE, props.onCreate);
+      props.onUpdate && drawEvents(map).on(constants.events.UPDATE, props.onUpdate);
+      props.onDelete && drawEvents(map).on(constants.events.DELETE, props.onDelete);
     },
     ({ map }) => {
-      props.onCreate && map.off(constants.events.CREATE, props.onCreate);
-      props.onUpdate && map.off(constants.events.UPDATE, props.onUpdate);
-      props.onDelete && map.off(constants.events.DELETE, props.onDelete);
+      props.onCreate && drawEvents(map).off(constants.events.CREATE, props.onCreate);
+      props.onUpdate && drawEvents(map).off(constants.events.UPDATE, props.onUpdate);
+      props.onDelete && drawEvents(map).off(constants.events.DELETE, props.onDelete);
     },
     {
       position: props.position,

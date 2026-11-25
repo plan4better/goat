@@ -11,6 +11,8 @@ dependencies = [
   # extra, so -- like geoapi and processes -- this app declares the libraries it
   # actually imports. pygeofilter backs goatlib.storage.cql_evaluator (CQL2).
   "pygeofilter>=0.2.0",
+  # goatlib.filter.area unions a filter's area before DuckDB reads it.
+  "shapely>=2.0.0",
   "goatlib",
   "goatobs",
 ]

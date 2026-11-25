@@ -39,6 +39,7 @@ from assistant.agent import STAGE_KEY, RunDeps, build_agent
 from assistant.budget import (
     MAX_RESULT_READS,
     TOOL_CALL_RESERVE,
+    TOOLS_ADDED_KEY,
     NextCall,
     RunBudget,
     next_call,
@@ -46,7 +47,7 @@ from assistant.budget import (
 )
 from assistant.bus import InMemoryEventBus
 from assistant.config import AssistantSettings
-from assistant.context import parse_context
+from assistant.context import PageContext, parse_context
 from assistant.history import (
     KEPT_READ_CHARS,
     KEPT_READS,
@@ -65,7 +66,7 @@ from assistant.prompt import (
 from assistant.repo import Repository
 from assistant.runs.manager import RunManager
 from assistant.tools.http import ServiceClients
-from assistant.tools.registry import BY_WIRE_NAME
+from assistant.tools.registry import BY_WIRE_NAME, SKILL_TOOLS
 from assistant.tools.testing import (
     Recorder,
     ScriptedModel,
@@ -411,6 +412,41 @@ def _spent_so_far(weighted: int) -> RunUsage:
             ),
             True,
         ),
+        # So also after two such calls in a row.
+        (
+            _spent_so_far(47_000),
+            NextCall(
+                newest=RequestUsage(input_tokens=40_000, output_tokens=1_000),
+                raw=43_000,
+                growth=3_000,
+                before=RequestUsage(input_tokens=37_000, output_tokens=1_000),
+            ),
+            True,
+        ),
+        # One call that read nothing after one that read from the cache is a
+        # miss of the provider's, which wrote its cache as it served the
+        # call: the calls after it are planned at the cache reads of the call
+        # before, 59,500 as for LONG, 199,500 at 140,000 spent.
+        (
+            _spent_so_far(140_000),
+            NextCall(
+                newest=RequestUsage(input_tokens=40_000, output_tokens=1_000),
+                raw=43_000,
+                growth=3_000,
+                before=CACHED,
+            ),
+            False,
+        ),
+        (
+            _spent_so_far(141_000),
+            NextCall(
+                newest=RequestUsage(input_tokens=40_000, output_tokens=1_000),
+                raw=43_000,
+                growth=3_000,
+                before=CACHED,
+            ),
+            True,
+        ),
     ],
 )
 def test_one_more_look_up_only_when_what_follows_it_fits(
@@ -625,6 +661,72 @@ def test_the_next_call_is_sized_from_the_runs_messages() -> None:
     assert call.raw == 13_000 + 300 + 4_000
     # The step between the inputs of the run's two calls.
     assert call.growth == 3_000
+
+
+def _cached(input_tokens: int, cached: int, run_id: str) -> ModelResponse:
+    usage = RequestUsage(
+        input_tokens=input_tokens, cache_read_tokens=cached, output_tokens=100
+    )
+    return ModelResponse(parts=[TextPart(content="a")], usage=usage, run_id=run_id)
+
+
+@pytest.mark.parametrize(
+    ("reads", "planned"),
+    [
+        # The newest call's cache reads.
+        ([45_000, 47_000], 47_000),
+        # One miss after a hit: the call before it.
+        ([45_000, 0], 45_000),
+        ([45_000, 47_000, 0], 47_000),
+        # Two misses in a row, and a first call that missed: none.
+        ([45_000, 0, 0], 0),
+        ([0], 0),
+        # The run's own calls only: an earlier answer's are not the run's.
+        ([], 0),
+    ],
+)
+def test_the_next_calls_are_planned_at_the_newest_two_calls_cache_reads(
+    reads: list[int], planned: int
+) -> None:
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content="q")], run_id="r1"),
+        _cached(50_000, 49_000, "r1"),
+        ModelRequest(parts=[UserPromptPart(content="next")], run_id="r2"),
+    ]
+    for n, read in enumerate(reads):
+        messages.append(_cached(50_000 + n * 1_000, read, "r2"))
+        messages.append(_returns(1_000, "r2"))
+    assert next_call(messages, "r2").cached == planned
+
+
+@pytest.mark.parametrize(
+    ("reads", "planned"),
+    [
+        # The call that offered more tools read nothing, nor did the cold
+        # call before it: planned at its input, which it wrote to the cache.
+        ([0, 0], 51_000),
+        # It read part of its input: still its whole input.
+        ([45_000, 20_000], 51_000),
+        # A miss after it as well: no cache.
+        ([0, 0, 0], 0),
+    ],
+)
+def test_a_call_that_offered_more_tools_is_planned_as_written_to_the_cache(
+    reads: list[int], planned: int
+) -> None:
+    """The call after loading a skill that brings tools offers a longer tool
+    list (``assistant.agent.SkillTools``) and misses the provider's cache for
+    that: its request is marked (``TOOLS_ADDED_KEY``), and the calls after it
+    read from the cache what it wrote."""
+    messages: list[ModelMessage] = [
+        ModelRequest(parts=[UserPromptPart(content="next")], run_id="r2"),
+    ]
+    for n, read in enumerate(reads):
+        if n == 1:
+            messages[-1].metadata = {TOOLS_ADDED_KEY: True}
+        messages.append(_cached(50_000 + n * 1_000, read, "r2"))
+        messages.append(_returns(1_000, "r2"))
+    assert next_call(messages, "r2").cached == planned
 
 
 def test_a_run_that_continues_a_conversation_has_no_call_of_its_own_yet() -> None:
@@ -864,6 +966,7 @@ class _Provider(FunctionModel):
         look_up: str = "core_page_context",
         parallel: dict[int, int] | None = None,
         tools: dict[int, str] | None = None,
+        args: dict[int, str] | None = None,
     ) -> None:
         super().__init__(stream_function=self._stream)
         self.start, self.growth, self.cached, self.asks = start, growth, cached, asks
@@ -871,6 +974,8 @@ class _Provider(FunctionModel):
         self.look_up = look_up
         self.parallel = parallel or {}
         self.tools = tools or {}
+        #: The arguments of the calls in call ``n``, as JSON; ``{}`` otherwise.
+        self.args = args or {}
         #: Per call: the tools offered, the instructions, the note on the
         #: stage (None in a look-up step), and (input tokens, cache reads,
         #: output tokens).
@@ -910,7 +1015,7 @@ class _Provider(FunctionModel):
         elif self.look_up in names:
             tool = self.tools.get(n, self.look_up)
             yield {
-                i: _delta(tool, "{}", f"call-{n}-{i}")
+                i: _delta(tool, self.args.get(n, "{}"), f"call-{n}-{i}")
                 for i in range(self.parallel.get(n, 1))
             }
         else:
@@ -939,15 +1044,22 @@ def look_ups(max_tool_calls: int) -> int:
     return max_tool_calls - min(TOOL_CALL_RESERVE, max_tool_calls // 6)
 
 
+#: The token limit the runs below with large steps or results are sized for:
+#: they set it, so their steps stay where they cross the budget.
+SIZED_TOKENS = 200_000
+
+
 async def _run(
     repo: Repository,
     settings: AssistantSettings,
     model: FunctionModel,
     services: ServiceClients | None = None,
+    context: PageContext | None = None,
     **limits: int,
 ) -> dict[str, Any]:
     """A run through the run manager on ``model`` (and the tools on
-    ``services``) with the settings changed by ``limits``; the run as stored."""
+    ``services``) on the page ``context`` (the catalog's when None) with the
+    settings changed by ``limits``; the run as stored."""
     manager = RunManager(
         repo,
         InMemoryEventBus(),
@@ -956,14 +1068,58 @@ async def _run(
         agent_factory=lambda _: build_agent(model),
         tool_services=services or fake_clients(),
     )
-    conversation = await repo.create_conversation(USER, "catalog", None, None)
+    surface = context.surface if context is not None else "catalog"
+    conversation = await repo.create_conversation(USER, surface, None, None)
     run_id, _ = await manager.start_run(
-        UUID(str(conversation["id"])), USER, "which schools?", None
+        UUID(str(conversation["id"])), USER, "which schools?", context
     )
     await manager.wait(run_id)
     run = await repo.get_run(run_id)
     assert run is not None
     return dict(run)
+
+
+@pytest.mark.parametrize("start", [40_000, 60_000])
+async def test_loading_a_skill_that_brings_tools_costs_one_miss_and_no_look_ups(
+    repo: Repository, settings: AssistantSettings, start: int
+) -> None:
+    """On the map page build-a-workflow brings the workflow tools
+    (``SKILL_TOOLS``): the call after skills_load offers a longer tool list
+    and misses the provider's cache. Also in an answer whose first call read
+    nothing from the cache either, the calls after the miss are planned at
+    what it wrote to the cache (``TOOLS_ADDED_KEY``): with the default limits
+    the answer's steps after loading the skill stay look-ups that call the
+    workflow tools, and they read from the cache again. The calls themselves
+    fail on the stand-in services; what counts is that they are offered and
+    let run."""
+    model = _Provider(
+        start=start,
+        growth=3_000,
+        tools={
+            0: "skills_load",
+            1: "workflow_tools",
+            2: "workflow_describe_tool",
+            3: "workflow_check_draft",
+            4: "workflow_create",
+            5: "workflow_run",
+        },
+        args={0: json.dumps({"name": "build-a-workflow"})},
+    )
+    page = parse_context({"surface": "project.map", "project_id": str(UUID(int=7))})
+    run = await _run(repo, settings, model, context=page)
+    assert run["status"] == "succeeded", run["error"]
+    deferred = SKILL_TOOLS["project.map"]["build-a-workflow"]
+    assert not deferred & set(model.offered[0])
+    assert deferred <= set(model.offered[1])
+    # The miss: the call after skills_load reads nothing from the cache, the
+    # ones after it read again.
+    assert model.usages[1][1] == 0
+    assert all(cached > 0 for _, cached, _ in model.usages[2:])
+    # Every call up to the one that runs the workflow was a look-up: no note
+    # to answer, and each named tool was offered when it was called.
+    assert model.notes[:7] == [None] * 7
+    for n in range(1, 6):
+        assert model.tools[n] in model.offered[n]
 
 
 async def test_the_answer_step_reads_from_the_cache_like_the_look_ups(
@@ -1037,7 +1193,7 @@ async def test_after_a_step_larger_than_any_before_the_answer_step_still_fits(
     look-ups, and the answer step still has its room: with it the card, which
     ends the answer without another call."""
     model = _Provider(start=20_000, growth=2_000, asks=True, spikes={9: 20_000})
-    run = await _run(repo, settings, model)
+    run = await _run(repo, settings, model, run_max_tokens=SIZED_TOKENS)
     assert run["status"] == "succeeded", run["error"]
     assert model.notes[:10] == [None] * 10
     assert model.notes[10:] == [ANSWER_OR_ASK]
@@ -1106,7 +1262,9 @@ async def test_a_step_whose_results_would_cross_the_reserve_answers(
     model = _Provider(
         start=20_000, growth=2_000, parallel={5: 7}, tools={5: "core_whoami"}
     )
-    run = await _run(repo, settings, model, _profile(40_000))
+    run = await _run(
+        repo, settings, model, _profile(40_000), run_max_tokens=SIZED_TOKENS
+    )
     assert run["status"] == "succeeded", run["error"]
     step = [
         p
@@ -1129,7 +1287,9 @@ async def test_a_large_result_makes_the_next_call_the_answer_step(
     """The results the next call sends count before that call: one large
     result makes the very next call the answer step."""
     model = _Provider(start=20_000, growth=1_000, tools={2: "core_whoami"})
-    run = await _run(repo, settings, model, _profile(80_000))
+    run = await _run(
+        repo, settings, model, _profile(80_000), run_max_tokens=SIZED_TOKENS
+    )
     assert run["status"] == "succeeded", run["error"]
     assert model.notes == [None] * 3 + [ANSWER_OR_ASK]
 
@@ -1141,7 +1301,9 @@ async def test_a_large_first_step_still_gets_a_result_it_can_answer_from(
     nothing read from the cache: a result that leaves room for the answer
     step is sent, and the run answers from it."""
     model = _Provider(start=76_000, growth=0, tools={0: "core_whoami"})
-    run = await _run(repo, settings, model, _profile(16_000))
+    run = await _run(
+        repo, settings, model, _profile(16_000), run_max_tokens=SIZED_TOKENS
+    )
     assert run["status"] == "succeeded", run["error"]
     [whoami] = await _stored_tools(repo, run)
     assert whoami["state"] == "output"
@@ -1158,7 +1320,9 @@ async def test_a_refused_result_ends_the_look_ups(
     model = _Provider(
         start=10_000, growth=0, tools={n: "core_whoami" for n in range(2, 60)}
     )
-    run = await _run(repo, settings, model, fake_clients(core=core))
+    run = await _run(
+        repo, settings, model, fake_clients(core=core), run_max_tokens=SIZED_TOKENS
+    )
     assert run["status"] == "succeeded", run["error"]
     assert [p["state"] for p in await _stored_tools(repo, run)][2] == "error"
     assert model.notes[:3] == [None] * 3

@@ -106,7 +106,9 @@ export const DateRangePill = ({
 }: {
   value: UsageRange;
   onChange: (range: UsageRange) => void;
-  onTrial: boolean;
+  /** undefined until the balance answers: the pill names no range yet, as a
+   * trial's period is the whole trial and a subscription's this period. */
+  onTrial: boolean | undefined;
   /** The balance knows where the current period began (`period_start`). */
   hasPeriod: boolean;
   /** The balance's `period_start`: this period and the last one name their
@@ -124,11 +126,12 @@ export const DateRangePill = ({
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const presets = presetsFor(onTrial).filter((preset) => preset !== "last" || hasPeriod);
-  const label = rangeLabel(value, t, language, onTrial);
+  const trial = onTrial ?? false;
+  const presets = presetsFor(trial).filter((preset) => preset !== "last" || hasPeriod);
+  const label = onTrial === undefined ? "" : rangeLabel(value, t, language, onTrial);
   // The periods name their days from the period's start, and without one stay
   // unnamed; the day ranges count back from today.
-  const period = { period_start: periodStart ?? null, credits_reset_at: null, on_trial: onTrial };
+  const period = { period_start: periodStart ?? null, credits_reset_at: null, on_trial: trial };
   // The days a date field offers (UTC days, as the ledger's); a day typed
   // past them is moved to the nearest one on Apply (customRange).
   const dayBounds = { min: FIRST_USAGE_DAY, max: utcToday() };
@@ -148,6 +151,8 @@ export const DateRangePill = ({
       ref={anchor}
       icon={ICON_NAME.CALENDAR}
       label={label}
+      // While the range is not named yet the pill shows none; it is still the period pill.
+      ariaLabel={label ? undefined : t("usage_period")}
       chevron
       active={!disabled && (open || value.preset !== "period")}
       disabled={disabled}
@@ -196,7 +201,7 @@ export const DateRangePill = ({
             return (
               <MenuItem key={preset} selected={selected} onClick={() => choose(preset)}>
                 <OptionContent
-                  label={rangeLabel({ preset }, t, language, onTrial)}
+                  label={rangeLabel({ preset }, t, language, trial)}
                   sub={rangeSpan({ preset }, period, t, language)}
                   selected={selected}
                 />
@@ -335,8 +340,14 @@ export const MemberPill = ({
 };
 
 /** Saves a detail's rows as CSV; the pill waits while the file is made, and a
- * failed export says so. */
-export const ExportPill = ({ onExport }: { onExport: () => Promise<void> }) => {
+ * failed export says so. `disabled`: the window to export is not known yet. */
+export const ExportPill = ({
+  onExport,
+  disabled = false,
+}: {
+  onExport: () => Promise<void>;
+  disabled?: boolean;
+}) => {
   const { t } = useTranslation("common");
   const [running, setRunning] = useState(false);
   const run = async () => {
@@ -353,7 +364,7 @@ export const ExportPill = ({ onExport }: { onExport: () => Promise<void> }) => {
     <ToolPill
       icon={ICON_NAME.DOWNLOAD}
       label={t("usage_export_csv")}
-      disabled={running}
+      disabled={running || disabled}
       onClick={() => void run()}
     />
   );

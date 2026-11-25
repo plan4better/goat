@@ -17,6 +17,7 @@ from assistant.tools.testing import (
     tool_env,
 )
 from assistant.tools.toolset import REPEATED_CALL
+from assistant.user_docs import DOCS_INDEX
 
 _URLISH = {"url", "href", "uri", "link", "endpoint", "host"}
 
@@ -39,7 +40,8 @@ def test_names_are_unique_namespaced_and_sorted() -> None:
     assert names == sorted(names) and len(set(names)) == len(names)
     for spec in ALL_TOOLS:
         assert re.fullmatch(
-            r"(core|catalog|project|map|ask|skills|workflow)\.[a-z_]+", spec.name
+            r"(core|catalog|project|map|style|ask|skills|docs|workflow|undo)\.[a-z_]+",
+            spec.name,
         )
         assert re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", spec.wire_name)
         assert BY_WIRE_NAME[spec.wire_name] is spec
@@ -63,6 +65,7 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "core_page_context",
         "core_show_items",
         "core_whoami",
+        "docs_read",
         "skills_load",
     }
     catalog_read = {
@@ -102,13 +105,21 @@ def test_packs_per_surface_follow_the_spec() -> None:
         "workflow_tools",
         "workflow_update",
     }
+    # The pages whose answers' changes the dock's undo takes back take them
+    # back on a typed request too.
+    undo = {"undo_changes"}
     # Decision T16: Home reads other projects (with an explicit project_id).
-    # Only the map can apply a view proposal.
+    # Only the map page changes the map and reads, looks up and changes styles.
     expected = {
         "catalog": core | catalog,
         "none": core | catalog | project_read,
-        "project.map": core | catalog | project_read | {"map_propose_view"} | workflows,
-        "project.workflows": core | catalog | project_read | workflows,
+        "project.map": core
+        | catalog
+        | project_read
+        | {"map_update", "style_catalog", "style_get", "style_update"}
+        | workflows
+        | undo,
+        "project.workflows": core | catalog | project_read | workflows | undo,
         "project.layouts": core | catalog | project_read,
         "project.dashboard": core | catalog | project_read,
     }
@@ -118,9 +129,11 @@ def test_packs_per_surface_follow_the_spec() -> None:
     for surface in SURFACES:
         # The spec's target is 10-20 per page (§7.3); the map and Workflows pages
         # carry the workflows pack (with runs, edits and both add tools), the
-        # card and the skills, 36 on the map. Raising this again is a decision,
-        # not a fix.
-        assert len(tools_for(surface)) <= 36
+        # card, the skills and the user docs, and the map its style and map
+        # tools, at most 41 on the map, counted with the tools a skill brings
+        # (``SKILL_TOOLS``), and 40 elsewhere. Raising this again is a
+        # decision, not a fix.
+        assert len(tools_for(surface)) <= (41 if surface == "project.map" else 40)
         assert [s.wire_name for s in tools_for(surface)] == sorted(
             s.wire_name for s in tools_for(surface)
         )
@@ -134,14 +147,20 @@ def test_mcp_publishes_the_five_read_only_catalog_tools() -> None:
         "catalog_suggest_terms",
         "catalog_find_region",
     }
-    assert all(spec.risk == "read" and not spec.returns_data for spec in MCP_TOOLS)
+    assert all(spec.risk == "read" for spec in MCP_TOOLS)
 
 
 #: The write tools (spec 2026-10-17 §3): they create, run a workflow or change
-#: one; none deletes what exists, beyond a step removed in a workflow edit.
+#: one, change a layer's style or the map, or take an answer's changes back;
+#: none deletes what exists, beyond a step removed in a workflow edit, a part
+#: removed in a style edit, an empty group removed from the map and a style an
+#: answer created that its undo removes.
 WRITE_TOOLS = {
+    "map_update",
     "project_add_catalog_layer",
     "project_add_dataset",
+    "style_update",
+    "undo_changes",
     "workflow_create",
     "workflow_create_from_template",
     "workflow_run",
@@ -158,6 +177,14 @@ def test_risk_classes() -> None:
             assert spec.scope == "goat:read"
 
 
+def test_the_typed_undo_takes_no_id_from_the_model() -> None:
+    """Which answer goes back follows from the conversation; the one argument
+    is a card value the tool itself named."""
+    schema = BY_WIRE_NAME["undo_changes"].json_schema()
+    assert set(schema["properties"]) == {"confirm"}
+    assert schema.get("required", []) == []
+
+
 def test_write_tools_take_no_project_id() -> None:
     """The project a write goes into is the page's: no argument can name another."""
     writes = [spec for spec in ALL_TOOLS if spec.risk == "write"]
@@ -171,23 +198,51 @@ def test_what_a_write_makes_stale_are_tools_whose_results_repeat() -> None:
     """A name in ``ToolSpec.invalidates`` that names no tool, or one whose
     repeated call runs again anyway, would silently keep a stale result: the
     reads of a workflow, and its run, whose repeat in an answer returns the
-    earlier summary (``ToolSpec.repeatable``)."""
+    earlier summary (``ToolSpec.repeatable``); the reads of a style and of the
+    layers with their styles."""
     named = {name for spec in ALL_TOOLS for name in spec.invalidates}
     assert named == {
         "workflow_get",
         "project_get_workflows",
         "workflow_run",
         "workflow_last_run",
+        "style_get",
+        "project_get_layers",
+        # The filtered reads, which can count under the saved filters.
+        "project_count_features",
+        "project_field_statistics",
+        "project_group_statistics",
+        "project_area_statistics",
+        "project_sample_features",
+        # A landed edit also forgets the earlier edits of what it changed.
+        "workflow_update",
+        "style_update",
+        "map_update",
     }
     for name in named:
         spec = BY_WIRE_NAME[name]
         assert spec.risk == "read" or spec.repeatable is not None, name
 
 
-def test_every_data_tool_has_a_restricted_form() -> None:
+#: The largest count a pattern in a tool's schema may repeat up to. A provider
+#: that enforces tool schemas strictly (melious on Requesty) rejected the tool
+#: list as malformed with a ``{1,300}`` in it; longer limits go in max_length.
+_MAX_PATTERN_COUNT = 64
+
+
+def test_patterns_keep_long_limits_out_of_the_pattern() -> None:
     for spec in ALL_TOOLS:
-        if spec.returns_data:
-            assert hasattr(spec.output_model, "restricted"), spec.wire_name
+        for name, sub in _walk(spec.json_schema()):
+            for upper in re.findall(r"\{\d*,(\d+)\}", sub.get("pattern", "")):
+                assert int(upper) <= _MAX_PATTERN_COUNT, f"{spec.wire_name}.{name}"
+
+
+def test_record_ids_keep_their_length_limit() -> None:
+    from assistant.context import is_record_id
+
+    assert is_record_id("de-bkg-vg250") and is_record_id("a" * 300)
+    assert not is_record_id("a" * 301)
+    assert not is_record_id("") and not is_record_id("a/b")
 
 
 def test_no_tool_can_send_data_out() -> None:
@@ -236,9 +291,10 @@ async def test_the_model_sees_fixed_instructions_the_tools_in_order_and_the_note
     # Only the fixed instructions, identical in every request: the cached prefix.
     for info in (first, second):
         parts = info.model_request_parameters.instruction_parts or []
-        # The skills index follows the instructions in the same cached part.
+        # The skills index and the docs list follow the instructions in the
+        # same cached part.
         assert [(p.content, p.dynamic) for p in parts] == [
-            (f"{INSTRUCTIONS}\n\n{SKILLS_INDEX}", False)
+            (f"{INSTRUCTIONS}\n\n{SKILLS_INDEX}\n\n{DOCS_INDEX}", False)
         ]
     # The note leads the user message.
     note = script.note(0)
@@ -251,9 +307,11 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
     call a tool it doesn't have improvises with the others."""
     from assistant.prompt import (
         _DOCUMENT_LIMITS,
+        _MAP_STYLES,
         _NO_PROJECT,
         _OPEN_PROJECT,
         _WORKFLOWS_PAGE_LIMITS,
+        MAP_WORKFLOWS,
     )
 
     text = " ".join(
@@ -261,13 +319,18 @@ def test_the_instructions_and_page_notes_name_only_tools_that_exist() -> None:
             INSTRUCTIONS,
             _DOCUMENT_LIMITS,
             _WORKFLOWS_PAGE_LIMITS,
+            _MAP_STYLES,
+            MAP_WORKFLOWS,
             _NO_PROJECT,
             _OPEN_PROJECT,
         )
     )
     # project_id is an argument, not a tool.
     named = set(
-        re.findall(r"\b(?:catalog|core|project|workflow|ask|skills)_[a-z_]+\b", text)
+        re.findall(
+            r"\b(?:catalog|core|project|workflow|map|style|ask|skills|undo)_[a-z_]+\b",
+            text,
+        )
     ) - {"project_id"}
     assert named, "the prompt names tools"
     assert named <= set(BY_WIRE_NAME), named - set(BY_WIRE_NAME)
@@ -347,7 +410,8 @@ async def test_an_argument_named_ctx_reaches_execute(
 async def test_a_tool_of_another_surface_does_not_end_the_run(
     catalog_transport: RecordingTransport,
 ) -> None:
-    """History from another page can name tools this page does not offer."""
+    """History from another page can name tools this page does not offer,
+    and an older conversation a tool that no longer exists."""
     script = ScriptedModel([("map_propose_view", {})] * 2, answer="ok")
     result = await build_agent(script.model).run(
         "hi", deps=_deps(parse_context({"surface": "catalog"}), catalog_transport)
@@ -397,9 +461,9 @@ def test_proposals_and_cards_are_never_answered_from_an_earlier_call() -> None:
     from assistant.tools.toolset import _call_key
 
     shown = BY_WIRE_NAME["core_show_items"]
-    proposal = BY_WIRE_NAME["map_propose_view"]
+    proposal = BY_WIRE_NAME["catalog_propose_filters"]
     assert proposal.risk == "propose"
-    assert _call_key(proposal, {"title": "Munich", "center": [11.5, 48.1]}) is None
+    assert _call_key(proposal, {"title": "Cycling", "q": "cycling"}) is None
     assert (
         _call_key(shown, {"groups": [{"items": [{"kind": "project", "id": "p"}]}]})
         is None

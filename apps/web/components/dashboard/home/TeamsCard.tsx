@@ -8,6 +8,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { useSpaces } from "@/lib/api/content";
 import { useTeams } from "@/lib/api/teams";
+import { SETTINGS_ROUTES } from "@/lib/settingsRoutes";
 import type { Space } from "@/lib/validations/content";
 import type { Team } from "@/lib/validations/team";
 
@@ -43,7 +44,7 @@ const TeamsCard = () => {
           variant="text"
           size="small"
           endIcon={<Icon iconName={ICON_NAME.CHEVRON_RIGHT} style={{ fontSize: 12 }} />}
-          onClick={() => router.push("/settings/teams")}
+          onClick={() => router.push(SETTINGS_ROUTES.teams)}
           sx={{ borderRadius: 0 }}>
           {`${t("all_teams")} · ${teams.length}`}
         </Button>

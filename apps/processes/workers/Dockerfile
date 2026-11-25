@@ -22,7 +22,6 @@ ARG UV_VERSION=0.11.24
 # build on Debian 13 and the windmill binary needs its glibc (2.39), which the
 # Debian 12 worker base below doesn't have.
 ARG WINDMILL_EXTRA_PYTHON_VERSIONS="3.12"
-ARG TIPPECANOE_VERSION=2.79.0
 # Pinned because worker-print installs the browser before goatlib and the
 # package after it (see there); both steps must name the same release.
 ARG PLAYWRIGHT_VERSION=1.63.0
@@ -108,25 +107,6 @@ RUN uv build --wheel /src/routing --out-dir /wheels \
     --config-setting=cmake.define.FETCHCONTENT_SOURCE_DIR_NIGIRI_SDK=/opt/nigiri-sdk
 
 # =============================================================================
-# Stage: Tippecanoe Build - PMTiles generation for worker-tools
-# =============================================================================
-FROM linux-base AS tippecanoe-build
-
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    build-essential \
-    libsqlite3-dev \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-ARG TIPPECANOE_VERSION
-RUN curl -fsSL https://github.com/felt/tippecanoe/archive/refs/tags/${TIPPECANOE_VERSION}.tar.gz -o /tmp/tippecanoe.tar.gz \
-    && tar -xzf /tmp/tippecanoe.tar.gz -C /tmp \
-    && cd /tmp/tippecanoe-${TIPPECANOE_VERSION} \
-    && make -j$(nproc) \
-    && make install PREFIX=/opt/tippecanoe \
-    && rm -rf /tmp/tippecanoe*
-
-# =============================================================================
 # Stage: Playwright Build - a standalone Playwright CLI for worker-print
 # =============================================================================
 FROM linux-base AS playwright-build
@@ -166,13 +146,15 @@ RUN uv python install ${WINDMILL_EXTRA_PYTHON_VERSIONS}
 
 # Third-party dependencies first, from the lockfile and goatlib's manifest
 # alone, so a goatlib source change reuses this layer. routing comes from
-# routing-build.
+# routing-build. Not the `raster` extra: its rasterio wheel bundles a GDAL of
+# its own next to the system GDAL the tools use, and only geoapi and processes
+# read raster files.
 COPY pyproject.toml uv.lock /app/
 COPY packages/python/goatlib/pyproject.toml /app/packages/python/goatlib/
-RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-workspace --no-install-package routing --package=goatlib
+RUN uv sync --extra full --extra api --frozen --no-dev --no-editable --no-install-workspace --no-install-package routing --package=goatlib
 
 COPY packages/python/goatlib /app/packages/python/goatlib
-RUN uv sync --all-extras --frozen --no-dev --no-editable --no-install-package routing --package=goatlib
+RUN uv sync --extra full --extra api --frozen --no-dev --no-editable --no-install-package routing --package=goatlib
 
 # After the last sync, which would remove a package it was told not to install.
 COPY --from=routing-build /wheels /wheels
@@ -255,14 +237,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     libgeos-dev \
     libproj-dev \
-    # Build toolchain, and the libraries tippecanoe links against
-    build-essential \
-    libsqlite3-dev \
-    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# tippecanoe for PMTiles generation
-COPY --from=tippecanoe-build /opt/tippecanoe/ /usr/local/
 
 # Python, venv and extensions last (see worker-base)
 COPY --from=python-build $UV_PYTHON_INSTALL_DIR $UV_PYTHON_INSTALL_DIR

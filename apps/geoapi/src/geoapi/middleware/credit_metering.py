@@ -1,6 +1,12 @@
 """Per-response egress metering: org × layer × service, with bytes /
 request count / anonymous count, attributed to the layer owner.
 
+The bytes counted are the bytes of the body as they leave geoapi, after
+compression and whatever the framing (with or without a Content-Length):
+the middleware is a plain ASGI one, outermost, and adds up the body messages
+as they are sent, recording the response once when it ends, also when the
+client leaves midway (what was sent by then).
+
 Hot path: one cached org/owner lookup and an in-memory count. A background
 task (run_flusher, started with the app) writes the counts to Redis every few
 seconds, so no response waits for Redis. Downloads are not counted here: the
@@ -15,9 +21,9 @@ import re
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
+from starlette.datastructures import Headers
 from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 if TYPE_CHECKING:
     import redis
@@ -201,43 +207,73 @@ async def _is_over_budget(org_id: str) -> bool:
     return val in (b"1", "1", 1)
 
 
-class CreditMeteringMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        raw_id = _collection_id_from_path(request.url.path)
+class CreditMeteringMiddleware:
+    """Counts the body bytes each metered response sends (module docstring).
+
+    A plain ASGI middleware: it passes the body messages on as they come and
+    only adds up their lengths, so nothing is buffered."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope["path"]
+        raw_id = _collection_id_from_path(path)
         layer_id = _normalized_layer_id(raw_id) if raw_id else None
         org_id, owner_id = (
             await _resolve_layer_org(layer_id) if layer_id else (None, None)
         )
+        service = _service_from_path(path)
 
         # Out of credits: downloads stop, viewing does not. Maps and dashboards
         # (tiles, features) keep working, so a published map never goes dark.
-        if (
-            org_id
-            and _service_from_path(request.url.path) == "downloads"
-            and await _is_over_budget(org_id)
-        ):
-            return Response(
+        if org_id and service == "downloads" and await _is_over_budget(org_id):
+            await Response(
                 status_code=402,
                 content=b"Organization is out of credits for this period.",
-            )
+            )(scope, receive, send)
+            return
 
-        response = await call_next(request)
-
-        service = _service_from_path(request.url.path)
-        if (
+        if not (
             org_id
             and layer_id
             and service != "downloads"  # the download route charges itself
-            and request.method == "GET"
-            and response.status_code in _METERED_STATUS
+            and scope["method"] == "GET"
         ):
-            try:
-                size = int(response.headers.get("content-length") or 0)
-            except (TypeError, ValueError):
-                size = 0
-            if size > 0:
-                anonymous = "authorization" not in request.headers
-                _record(org_id, owner_id, layer_id, service, size, anonymous)
-        return response
+            await self.app(scope, receive, send)
+            return
+
+        status = 0
+        declared = 0
+        size = 0
+
+        async def counting_send(message: Message) -> None:
+            nonlocal status, declared, size
+            kind = message["type"]
+            await send(message)
+            # Counted once handed to the server: a send that fails is not.
+            if kind == "http.response.start":
+                status = message["status"]
+                try:
+                    declared = int(
+                        Headers(raw=message["headers"]).get("content-length") or 0
+                    )
+                except ValueError:
+                    declared = 0
+            elif kind == "http.response.body":
+                size += len(message.get("body", b""))
+            elif kind == "http.response.pathsend":
+                size += declared  # a file the server sends itself
+
+        try:
+            await self.app(scope, receive, counting_send)
+        finally:
+            if status in _METERED_STATUS and size > 0:
+                try:
+                    anonymous = "authorization" not in Headers(scope=scope)
+                    _record(org_id, owner_id, layer_id, service, size, anonymous)
+                except Exception as exc:  # noqa: BLE001 — fail-open
+                    logger.debug("metering: record failed (%s)", exc)

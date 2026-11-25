@@ -11,17 +11,17 @@ In GOAT können Sie **eigene Layer erstellen** und **Features direkt auf der Kar
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">Klicken Sie im linken Panel auf <code>+ Layer hinzufügen</code> und wählen Sie <code>Layer erstellen</code>.</div>
+  <div class="content">Klicken Sie im linken Panel auf <code>+ Layer hinzufügen</code> und wählen Sie <code>Layer erstellen</code>. Der Dialog zeigt alles auf einer Seite: den Namen des Layers, seinen Geometrietyp und seine Felder.</div>
 </div>
 
 <div class="step">
   <div class="step-number">2</div>
-  <div class="content">Geben Sie einen <b>Layernamen</b> ein und wählen Sie den <b>Geometrietyp</b>: <code>Point</code>, <code>Line</code>, <code>Polygon</code> oder <code>Table</code>. Klicken Sie auf <code>Nächste</code>, um fortzufahren.</div>
+  <div class="content">Geben Sie einen <b>Layername</b> ein und wählen Sie den <b>Geometrietyp</b>: <code>Punkt</code>, <code>Linie</code>, <code>Polygon</code> oder <code>Tabelle</code>.</div>
 </div>
 
 <div class="step">
   <div class="step-number">3</div>
-  <div class="content">Im Schritt <b>Felder definieren</b> sehen Sie ein standardmäßiges <code>name</code>-Feld. Klicken Sie auf <code>+ Feld hinzufügen</code>, um weitere Felder hinzuzufügen. Geben Sie für jedes Feld einen <b>Feldnamen</b> ein und wählen Sie den <b>Feldtyp</b>: <code>Text</code>, <code>Zahl</code>, <code>Datum</code>, <code>Boolesch</code>, <code>Laufende Nummer</code> oder <code>UUID (eindeutige Kennung)</code>. Felder vom Typ <code>Laufende Nummer</code> und <code>UUID (eindeutige Kennung)</code> befüllt GOAT für jedes neue Feature selbst (siehe <a href="../data/data_types">Feldtypen</a>); bei einer Laufenden Nummer legen Sie unter <code>Beginnt bei</code> die erste Nummer fest. Um ein Feld zu entfernen, klicken Sie auf das <code>—</code>-Symbol daneben. Klicken Sie auf <code>Layer erstellen</code>, wenn Sie fertig sind.</div>
+  <div class="content">Unter <b>Felder</b> hat der Layer zunächst ein <code>name</code>-Feld. Klicken Sie auf <code>+ Feld hinzufügen</code>, um weitere Felder hinzuzufügen. Geben Sie den Namen jedes Felds in der Liste links ein und wählen Sie ein Feld aus, um rechts seinen <code>Feldtyp</code> festzulegen: <code>Text</code>, <code>Zahl</code>, <code>Datum</code>, <code>Boolesch</code>, <code>Laufende Nummer</code> oder <code>UUID (eindeutige Kennung)</code>. Felder vom Typ <code>Laufende Nummer</code> und <code>UUID (eindeutige Kennung)</code> befüllt GOAT für jedes neue Feature selbst (siehe <a href="../data/data_types">Feldtypen</a>); bei einer Laufenden Nummer legen Sie unter <code>Beginnt bei</code> die erste Nummer fest. Um ein Feld zu entfernen, zeigen Sie mit der Maus darauf und klicken Sie auf das <code>—</code>-Symbol daneben. Klicken Sie auf <code>Layer erstellen</code>, wenn Sie fertig sind.</div>
 </div>
 
 ## Features bearbeiten
@@ -64,11 +64,11 @@ Sobald der Layer erstellt wurde, können Sie Features direkt auf der Karte hinzu
 
 ### Formelfelder
 
-Der Wert eines <b>Formula</b>-Felds wird aus einem Ausdruck berechnet, den Sie schreiben, ähnlich wie eine Formelspalte in einer Tabellenkalkulation. Der Ausdruck kann Ihre anderen Felder referenzieren (teilen Sie zum Beispiel die Bevölkerung durch die Fläche, um die Dichte zu erhalten) oder Textfelder zusammenführen. Das Ergebnis wird auf jedes Feature im Layer angewendet.
+Der Wert eines <b>Formel</b>-Felds wird aus einem Ausdruck berechnet, den Sie schreiben, ähnlich wie eine Formelspalte in einer Tabellenkalkulation. Der Ausdruck kann Ihre anderen Felder referenzieren (teilen Sie zum Beispiel die Bevölkerung durch die Fläche, um die Dichte zu erhalten) oder Textfelder zusammenführen. Das Ergebnis wird auf jedes Feature im Layer angewendet.
 
 <div class="step">
   <div class="step-number">1</div>
-  <div class="content">Klicken Sie auf <code>Felder bearbeiten</code>, um den Dialog <b>Felder bearbeiten</b> zu öffnen, klicken Sie auf <code>+ Feld hinzufügen</code>, und setzen Sie bei ausgewähltem neuen Feld rechts seinen <code>Feldtyp</code> auf <code>Formula</code> (und benennen Sie das Feld in der Liste um).</div>
+  <div class="content">Klicken Sie auf <code>Felder bearbeiten</code>, um den Dialog <b>Felder bearbeiten</b> zu öffnen, klicken Sie auf <code>+ Feld hinzufügen</code>, und setzen Sie bei ausgewähltem neuen Feld rechts seinen <code>Feldtyp</code> auf <code>Formel</code> (und benennen Sie das Feld in der Liste um).</div>
 </div>
 
 <div class="step">

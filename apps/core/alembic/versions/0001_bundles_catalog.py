@@ -419,8 +419,8 @@ def _bundle_status_shape() -> None:
 
 
 def upgrade() -> None:
-    # Every ALTER and DROP on customer.layer below takes ACCESS EXCLUSIVE for
-    # the whole alembic transaction. The statements are metadata-only and fast,
+    # Every ALTER and DROP on customer.layer below takes ACCESS EXCLUSIVE until
+    # this revision commits. The statements are metadata-only and fast,
     # but *acquiring* the lock is not: one long-lived reader (a pinned geoapi
     # connection, a running tool) blocks it, and then every query on the table
     # queues behind the waiting migration. Fail fast instead and let the

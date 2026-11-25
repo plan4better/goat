@@ -29,6 +29,7 @@ from geoapi.dependencies import (
     OffsetDep,
     PropertiesDep,
     reject_unknown_fields,
+    unknown_requested_fields,
 )
 from geoapi.deps.auth import get_optional_user_id
 from geoapi.deps.authz import require_layer_read, require_layer_read_unless_temp
@@ -159,6 +160,11 @@ async def get_features(
     accept_gzip = "gzip" in request.headers.get("accept-encoding", "").lower()
     base_url = str(request.base_url).rstrip("/")
     loop = asyncio.get_event_loop()
+    # An empty `properties` asks for features without properties (the browser's
+    # clusters when their style reads no field); without the parameter every
+    # property is returned.
+    if properties is None and "properties" in request.query_params:
+        properties = []
 
     # Handle temp layer serving
     # URL format: /collections/{layer_uuid}/items?temp=true
@@ -226,6 +232,18 @@ async def get_features(
         geometry_column,
         has_geometry,
     )
+
+    # Requested properties the collection lacks are left out: a style can name a
+    # field its dataset no longer has, and its points must still load.
+    if properties:
+        unknown = set(
+            unknown_requested_fields(
+                column_names=column_names,
+                properties=properties,
+                geometry_column=geometry_column,
+            )
+        )
+        properties = [p for p in properties if p not in unknown]
 
     reject_unknown_fields(
         column_names=column_names,

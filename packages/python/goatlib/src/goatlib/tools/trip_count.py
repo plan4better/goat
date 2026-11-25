@@ -4,7 +4,6 @@ Calculates public transport trip counts per station within a time window.
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import Any, Self
 
@@ -25,17 +24,16 @@ from goatlib.analysis.schemas.ui import (
 )
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner
-from goatlib.tools.pt_network import ensure_pt_date, fetch_gtfs_tables
+from goatlib.tools.pt_network import gtfs_tables_for_count
 from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import get_trip_count_style
+from goatlib.tools.style import classified
 
 logger = logging.getLogger(__name__)
 
 # Default GTFS data path from environment
-GTFS_DATA_PATH = os.environ.get("GTFS_DATA_PATH", "/app/data/gtfs")
 
 # Section definitions for this tool
 SECTION_PT_NETWORK = UISection(id="pt_network", order=0, icon="route")
@@ -93,8 +91,8 @@ class TripCountToolParams(ToolInputBase):
             field_order=1,
             label_key="weekday",
             enum_labels=WEEKDAY_LABELS,
-            # The default network's schedule is an average of three kinds of
-            # day; a bundle is counted on a real date instead.
+            # For the default network: counted on the anchor date of the kind of
+            # day (analysis/pt_time.py). A bundle is counted on `pt_date` instead.
             visible_when={"_pt_network_bundle_id_is_custom": False},
         ),
     )
@@ -156,16 +154,6 @@ class TripCountToolParams(ToolInputBase):
 
     # Hidden internal fields
     reference_area_path: str | None = None  # type: ignore[assignment]
-    stops_path: str | None = Field(
-        default=None,
-        description="Path to GTFS stops parquet file.",
-        json_schema_extra=ui_field(section="configuration", hidden=True),
-    )
-    stop_times_path: str | None = Field(
-        default=None,
-        description="Path to GTFS stop_times parquet file.",
-        json_schema_extra=ui_field(section="configuration", hidden=True),
-    )
     output_path: str | None = Field(
         default=None,
         description="Output path for trip count layer.",
@@ -230,35 +218,15 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
             "geometry": "GEOMETRY",
         }
 
-    def get_layer_properties(
+    def get_layer_style(
         self: Self,
         params: TripCountToolParams,
         metadata: DatasetMetadata,
-        table_info: dict[str, Any] | None = None,
-        parquet_path: Path | str | None = None,
+        geometry: str | None,
+        relation: str,
     ) -> dict[str, Any] | None:
-        """Return trip count style with graduated color scale for total trips."""
-        color_field = "total"
-
-        # Compute quantile breaks from the DuckLake table (6 breaks for 7 colors)
-        color_scale_breaks = None
-        table_name = table_info["table_name"] if table_info else None
-        if table_name or parquet_path:
-            color_scale_breaks = self.compute_quantile_breaks(
-                table_name=table_name,
-                column_name=color_field,
-                num_breaks=6,
-                strip_zeros=True,
-                parquet_path=parquet_path,
-            )
-            if color_scale_breaks:
-                logger.info(
-                    "Computed quantile breaks for %s: %s",
-                    color_field,
-                    color_scale_breaks,
-                )
-
-        return get_trip_count_style(color_scale_breaks=color_scale_breaks)
+        """Stations classified by their total trips."""
+        return classified("total", "colorbrewer:BuPu", geometry)
 
     def process(
         self: Self, params: TripCountToolParams, temp_dir: Path
@@ -275,19 +243,17 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
             )
         )
 
-        # Use GTFS paths from params or derive from GTFS_DATA_PATH environment variable
-        stops_path = params.stops_path or f"{GTFS_DATA_PATH}/stops.parquet"
-        stop_times_path = (
-            params.stop_times_path or f"{GTFS_DATA_PATH}/stop_times_optimized.parquet"
+        # The tables to count from, and the date to count on.
+        tables, service_date = gtfs_tables_for_count(
+            self,
+            bundle_id=params.pt_network_bundle_id,
+            user_id=params.user_id,
+            pt_date=params.pt_date,
+            weekday=params.weekday,
+            reference_area_path=reference_area_path,
+            pt_network_base_path=self.settings.pt_network_base_path,
+            workdir=temp_dir,
         )
-
-        # An uploaded bundle is counted from its own tables, on the date chosen.
-        bundle_tables: dict[str, str] = {}
-        if params.pt_network_bundle_id:
-            ensure_pt_date(params.pt_network_bundle_id, params.pt_date)
-            bundle_tables = fetch_gtfs_tables(
-                self, params.pt_network_bundle_id, params.user_id
-            )
 
         # Build time window (weekday is StrEnum, use .value)
         time_window = PTTimeWindow(
@@ -301,17 +267,15 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
         # Build params for the analysis tool
         analysis_params = AnalysisTripCountParams(
             reference_area_path=reference_area_path,
-            stops_path=stops_path,
-            stop_times_path=stop_times_path,
+            stops_path=tables["stops"],
+            stop_times_path=tables["stop_times"],
+            trips_path=tables["trips"],
+            routes_path=tables["routes"],
+            calendar_path=tables.get("calendar"),
+            calendar_dates_path=tables.get("calendar_dates"),
+            service_date=service_date,
             time_window=time_window,
             output_path=str(output_path),
-            bundle_stops_path=bundle_tables.get("stops"),
-            bundle_stop_times_path=bundle_tables.get("stop_times"),
-            bundle_trips_path=bundle_tables.get("trips"),
-            bundle_routes_path=bundle_tables.get("routes"),
-            bundle_calendar_path=bundle_tables.get("calendar"),
-            bundle_calendar_dates_path=bundle_tables.get("calendar_dates"),
-            service_date=params.pt_date if bundle_tables else None,
         )
 
         tool = self.tool_class()

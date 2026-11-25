@@ -49,7 +49,7 @@ Wählen Sie ein Element aus, oder mehrere, um damit zu arbeiten. Das Menü auf e
 
 | Aktion | Was sie bewirkt |
 |--------|-----------------|
-| **Teilen** | Gibt anderen Zugriff. Sie bleiben Besitzer. |
+| **Teilen** | Gibt anderen Zugriff. Sie bleiben Eigentümer. |
 | **Verschieben** | Legt das Element in einen anderen Ordner. |
 | **Umbenennen** | Ändert den Namen. |
 | **Rechte übertragen** | Übergibt das Element dauerhaft an jemand anderen. |
@@ -57,9 +57,9 @@ Wählen Sie ein Element aus, oder mehrere, um damit zu arbeiten. Das Menü auf e
 
 ### Teilen und Übertragen sind zweierlei
 
-**Teilen** gewährt Zugriff, während Sie Besitzer bleiben. Das ist sinnvoll, wenn Kolleginnen und Kollegen etwas sehen oder bearbeiten sollen, das weiterhin in Ihrer Verantwortung liegt.
+**Teilen** gewährt Zugriff, während Sie Eigentümer bleiben. Das ist sinnvoll, wenn Kolleginnen und Kollegen etwas sehen oder bearbeiten sollen, das weiterhin in Ihrer Verantwortung liegt.
 
-**Rechte übertragen** verschiebt das Element dauerhaft in den Bereich eines Teams oder der Organisation. Das ist der richtige Weg, wenn ein Projekt tatsächlich den Besitzer wechselt, etwa bei einer Übergabe vor dem Wechsel aus einem Team.
+**Rechte übertragen** verschiebt das Element dauerhaft in den Bereich eines Teams oder der Organisation. Das ist der richtige Weg, wenn ein Projekt tatsächlich den Eigentümer wechselt, etwa bei einer Übergabe vor dem Wechsel aus einem Team.
 
 Standardmäßig bleibt im Ursprungsbereich eine **Verknüpfung** zurück, als solche gekennzeichnet und mit dem echten Namen des Elements. Sie ist ein Verweis: Ein Klick darauf führt Sie zum Element an seinem neuen Ort.
 
@@ -69,7 +69,7 @@ Ein Element zeigt seine **Sichtbarkeit**: privat, mit einzelnen Personen geteilt
 
 ### Papierkorb und Wiederherstellen
 
-Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus dem der Besitzer sie **Wiederherstellen** kann. Sie bleiben dort **30 Tage** lang und werden dann endgültig entfernt. Ein versehentliches Löschen lässt sich also rückgängig machen. Wo Sie den Papierkorb finden, steht unter [Papierkorb](../sharing/sharing.md#papierkorb).
+Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus dem der Eigentümer sie **Wiederherstellen** kann. Sie bleiben dort **30 Tage** lang und werden dann endgültig entfernt. Ein versehentliches Löschen lässt sich also rückgängig machen. Wo Sie den Papierkorb finden, steht unter [Papierkorb](../sharing/sharing.md#papierkorb).
 
 ## Inhalte hinzufügen
 
@@ -77,7 +77,7 @@ Gelöschte Inhalte verschwinden nicht sofort: Sie landen im **Papierkorb**, aus 
 
 - **Neuer Ordner**, um Inhalte so zu gruppieren, wie es Ihnen passt
 - **Leeres Projekt** oder **Projekt importieren**
-- **Datensatz hochladen**, um eine Datei von Ihrem Gerät hochzuladen (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
+- **Datensatz hochladen**, um eine Datei von Ihrem Gerät hochzuladen (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet sowie [GTFS](https://www.plan4better.de/de/glossar/gtfs)- und [Overture](https://www.plan4better.de/de/glossar/overture-maps)-Archive)
 - **Daten abrufen / verbinden**, um einen externen Layer per URL hinzuzufügen (WFS, WMS, WMTS, XYZ-Kacheln oder COG)
 - **Dokument hochladen**, für eine Datei, die zur Arbeit gehört, ohne selbst Daten zu sein
 
@@ -130,9 +130,11 @@ Sie können ein Projekt importieren, das aus GOAT als `.zip`-Datei exportiert wu
   <img src={require('/img/workspace/projects/project_import_de.webp').default} alt="Ein Projekt in GOAT importieren" style={{ maxHeight: "auto", maxWidth: "100%", objectFit: "cover"}}/>
 </div>
 
+Ein Projekt aus einem neueren GOAT, dessen Stile etwas nutzen, das dieses GOAT noch nicht kennt, wird nicht importiert: Der Job bricht ab, bevor etwas angelegt wird, und seine Meldung nennt die GOAT-Style-Version, die das Projekt braucht. Aktualisieren Sie GOAT und importieren Sie das Projekt dann erneut.
+
 ### Einen Datensatz hochladen
 
-GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **CSV**, **XLSX**, **ZIP**, **Parquet** und **COG**-Dateien sowie **GTFS**-Archive (`gtfs.zip`) für [ÖPNV-Netze](../data/dataset_types.md#öpnv-netze) und **Overture**-Archive (`overture.zip`) für [Straßennetze](../data/dataset_types.md#straßennetze).
+GOAT unterstützt mehrere Dateiformate zum Hochladen: **GeoPackage**, **GeoJSON**, **Shapefile**, **KML**, **GML**, **CSV**, **XLSX**, **ZIP**, **Parquet** und **COG**-Dateien sowie **GTFS**-Archive (`gtfs.zip`) für [ÖPNV-Netze](../data/dataset_types.md#öpnv-netze), **Overture**-Archive (`overture.zip`) für [Straßennetze](../data/dataset_types.md#straßennetze) und **XPlanGML**-Dateien (`.gml`) für [XPlan-Pläne](../data/dataset_types.md#xplan-pläne).
 
 <div class="step">
   <div class="step-number">1</div>
@@ -178,7 +180,9 @@ Ein Dienst, der die Daten bereits veröffentlicht, etwa ein **Web Feature Servic
 Nach dem Hinzufügen erscheint ein verbundener Layer auf dieser Seite wie jeder andere Datensatz, mit zwei Unterschieden, die die Herkunft der Daten kennzeichnen:
 
 - Ein **`Verbunden`**-Tag bedeutet, dass der Layer **live vom externen Dienst gezeichnet** wird und nicht in GOAT gespeichert ist. Sein Inhalt kann sich ändern oder verschwinden, wenn sich der Dienst ändert.
-- Eine **Quellenzeile** zeigt Format und Host an, zum Beispiel `WMS, verbunden mit wms.nrw.de`. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Aus WFS importiert (wfs.nrw.de)`.
+- Eine **`Quelle`** in den `Einzelheiten`, zum Beispiel `Externe Datei (COG) · maplibre.org` oder `Kartendienst (WMS) · wms.nrw.de`: woher der Layer kommt, und sein Host. Ein **WFS**-Layer wird stattdessen als Kopie in GOAT importiert und zeigt `Kopie aus WFS · wfs.nrw.de`.
+
+Geöffnet zeigt der Datensatz dieselbe `Quelle` und seine `Adresse`, mit einer Schaltfläche zum Kopieren, wie der Reiter `Metadaten` eines Layers in der Karte. Den Teil der Adresse nach einem `?`, in dem ein Schlüssel oder eine Signatur stehen kann, sieht nur, wer den Datensatz bearbeiten darf: im geöffneten Datensatz sein Eigentümer, in der Karte Eigentümer und Bearbeiter des Projekts, für ihre eigenen Datensätze und die des Projekteigentümers.
 
 ## Mit einem Datensatz arbeiten
 

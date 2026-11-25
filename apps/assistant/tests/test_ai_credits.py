@@ -267,7 +267,6 @@ async def _activate(
         ORG,
         enabled=True,
         active_connection_id=connection_id,
-        data_policy="standard",
         allow_default_fallback=fallback,
         updated_by=ADMIN,
     )

@@ -1742,6 +1742,11 @@ def test_set_data_points_tools_and_notes_to_their_operations(
             {"layerId": "l", "layerType": "vector"},
             "layerType must be one of",
         ),
+        (
+            "dataset-1",
+            {"layerId": "l", "layerType": "raster"},
+            "layerType must be one of: feature, table",
+        ),
         ("dataset-1", {"filter": "category = 1"}, "filter must be an object"),
         ("if-1", {"condition": []}, "condition must be an object"),
         ("export-1", {"label": "  "}, "label must be a non-empty string"),

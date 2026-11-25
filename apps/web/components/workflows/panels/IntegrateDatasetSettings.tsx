@@ -12,7 +12,9 @@ import type { AppDispatch } from "@/lib/store";
 import { updateNode } from "@/lib/store/workflow/slice";
 import type { ToolNodeData } from "@/lib/validations/workflow";
 import {
+  type AreaPieceChoice,
   type DatasetConnection,
+  choicePieces,
   connectionFromNode,
   nodeDataFromConnection,
 } from "@/lib/workflows/datasetConnection";
@@ -22,16 +24,20 @@ import { type TagFilter, operatorOf } from "@/hooks/addLayer/useFetchFlow";
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 import { addLayerSource } from "@/components/addLayer/sources";
 
+const pieceLine = (piece: AreaPieceChoice, t: (key: string) => string): string => {
+  if (piece.kind === "region") return piece.nutsIds.map((id) => piece.names?.[id] ?? id).join(", ");
+  if (piece.kind === "point") return t("catalog_mode_point");
+  if (piece.kind === "polygon") return t("catalog_mode_polygon");
+  return t("fetch_features_area_view");
+};
+
+// "Area: Bayern, Point + buffer", each piece of the area in the order it was chosen.
 const areaLine = (connection: DatasetConnection, t: (key: string) => string): string => {
   const choice = connection.areaChoice;
-  if (choice?.kind === "region") {
-    const names = choice.nutsIds.map((id) => choice.names?.[id] ?? id);
-    return `${t("fetch_features_area")}: ${names.join(", ")}`;
-  }
-  if (choice?.kind === "point") return `${t("fetch_features_area")}: ${t("catalog_mode_point")}`;
-  if (choice?.kind === "polygon") return `${t("fetch_features_area")}: ${t("catalog_mode_polygon")}`;
-  if (choice?.kind === "view") return `${t("fetch_features_area")}: ${t("fetch_features_area_view")}`;
-  return "";
+  if (!choice) return "";
+  return `${t("fetch_features_area")}: ${choicePieces(choice)
+    .map((piece) => pieceLine(piece, t))
+    .join(", ")}`;
 };
 
 // "amenity is school, kindergarten", "shop is not set", or SQL for a written condition.

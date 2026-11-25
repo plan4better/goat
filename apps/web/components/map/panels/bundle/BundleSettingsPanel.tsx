@@ -106,14 +106,9 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
             <Box role="tabpanel" hidden={activeTab !== FILTER_TAB} sx={{ height: "100%" }}>
               {isTabLive(FILTER_TAB) &&
                 (memberLayerId ? (
-                  <BundleFilter
-                    key={bundle.id}
-                    bundle={bundle}
-                    projectId={projectId}
-                    memberLayerId={memberLayerId}
-                  />
+                  <BundleFilter key={bundle.id} bundle={bundle} projectId={projectId} />
                 ) : (
-                  <Typography variant="body2" sx={{ p: 3, fontStyle: "italic" }}>
+                  <Typography variant="caption" component="p" color="text.secondary" sx={{ p: 3 }}>
                     {t("filter_bundle_no_geometry")}
                   </Typography>
                 ))}
@@ -123,9 +118,9 @@ const BundleSettingsPanel = ({ projectId }: { projectId: string }) => {
             {/* The aggregated fields, status and artifact state — the same
                 at-a-glance set the bundle's own page leads with. The long
                 provenance list stays on that page; a panel this narrow cannot
-                carry nine fields. Padding matches the layer metadata tab. */}
+                carry nine fields. In the panels' 12 px gutter. */}
             {isTabLive(METADATA_TAB) && (
-              <Stack spacing={4} sx={{ p: 2 }}>
+              <Stack spacing={4} sx={{ p: 3 }}>
                 <BundleSummary bundle={bundle} />
               </Stack>
             )}

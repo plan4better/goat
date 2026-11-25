@@ -449,7 +449,7 @@ async def _run(env: ToolEnv, args: RunInput) -> RunSummary:
             if not env.stopping():
                 await asyncio.shield(asyncio.ensure_future(_cancel(env, job_id)))
             raise
-    return await _wait(
+    summary = await _wait(
         env,
         project_id=project_id,
         workflow_id=workflow_id,
@@ -458,6 +458,8 @@ async def _run(env: ToolEnv, args: RunInput) -> RunSummary:
         started_here=True,
         card_id=card_id,
     )
+    summary.started_here = True
+    return summary
 
 
 async def _last_run(env: ToolEnv, args: RunInput) -> RunSummary:
@@ -503,7 +505,6 @@ RUN: ToolSpec[RunInput, RunSummary] = ToolSpec(
     output_model=RunSummary,
     run=_run,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     risk="write",
     scope="goat:write",
     repeatable=REPEATED_RUN,
@@ -521,7 +522,6 @@ LAST_RUN: ToolSpec[RunInput, RunSummary] = ToolSpec(
     output_model=RunSummary,
     run=_last_run,
     surfaces=WORKFLOW_SURFACES,
-    returns_data=False,
     report_first=_finished,
 )
 

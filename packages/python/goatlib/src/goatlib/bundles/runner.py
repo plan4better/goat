@@ -31,6 +31,7 @@ from goatlib.bundles.importers.base import (
 from goatlib.io.converter import IOConverter
 from goatlib.io.sql import sql_identifier
 from goatlib.models.bundle import (
+    BundleArtifactBuildStatus,
     BundleStatus,
     BundleTypeName,
     get_spec,
@@ -42,9 +43,30 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools.authz import authorize_bundle_ingest
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
-from goatlib.tools.style import get_bundle_style
+from goatlib.tools.style import bundle_role_style
 
 logger = logging.getLogger(__name__)
+
+#: Layers ingested between two recycles of the DuckLake connection.
+RECYCLE_EVERY_LAYERS = 25
+
+#: The job that builds a bundle's artifacts from its member layers.
+ARTIFACT_BUILD_SCRIPT = "f/goat/tools/bundle_artifact_rebuild"
+
+
+def _queue_artifact_build(*, bundle_id: str, user_id: str) -> str:
+    """Start the build of a bundle's artifacts as a job of its own; return its id.
+
+    A top-level job rather than this one's child, as the processes service
+    starts one: the jobs list shows only top-level jobs, and this build is what
+    a person waits for before routing on the bundle."""
+    import wmill
+
+    client = wmill.Windmill()
+    return client.post(
+        f"/w/{client.workspace}/jobs/run/p/{ARTIFACT_BUILD_SCRIPT}",
+        json={"user_id": user_id, "bundle_id": bundle_id},
+    ).text
 
 
 def _memory_mb() -> "tuple[float, float]":
@@ -363,13 +385,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                         feature_count=info.get("feature_count", 0),
                         size=info.get("size", 0),
                         # Stated rather than left to `create_layer`, which
-                        # picks a random colour when given none: a bundle's
-                        # members are one dataset and should not arrive in two
+                        # gives each layer its own colour: a bundle's members
+                        # are one dataset and should not arrive in two
                         # unrelated colours.
-                        properties=get_bundle_style(
+                        style=bundle_role_style(
                             bundle_type,
                             extracted.role,
                             normalize_geometry_type(geometry_type),
+                            seed=layer_id,
                         ),
                     )
                     if field_config:
@@ -392,9 +415,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                             feature_count=info.get("feature_count", 0),
                         )
                     )
-                    # Each CREATE TABLE is its own DuckLake commit; recycling the
-                    # connection between layers keeps the catalog cache bounded.
-                    self.recycle_duckdb_connection()
+                    # Each CREATE TABLE is its own DuckLake commit, and the
+                    # catalog cache grows with them; recycling every few dozen
+                    # layers bounds it. Not after each: a reopened connection
+                    # loads DuckDB's extensions again, about a second, which a
+                    # GTFS bundle's sixteen layers paid in full for a cache that
+                    # grows by little over them.
+                    if (i + 1) % RECYCLE_EVERY_LAYERS == 0:
+                        self.recycle_duckdb_connection()
             except Exception:
                 await self._cleanup_layers(db, user_id, created_layer_ids)
                 raise
@@ -439,15 +467,10 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         )
         try:
             for position, layer in enumerate(placed):
-                geom = normalize_geometry_type(layer.geometry_type)
-                properties = (
-                    get_bundle_style(bundle_type, layer.role, geom) if geom else None
-                )
                 await db.add_to_project(
                     layer_id=layer.layer_id,
                     project_id=project_id,
                     name=layer.name,
-                    properties=properties,
                     group_id=group_id,
                     # Directly below the group header, in import order. Without an
                     # explicit position every member lands on 0 and they tie.
@@ -478,11 +501,25 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
         project_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """A bundle from member layers a job wrote itself (a cut of GOAT's own
-        networks): created, ingested and built as an import is, then added to
-        ``project_id``. The layers' files must exist until this returns.
+        networks): created and ingested as an import is, added to
+        ``project_id``, and its artifacts left to a build job of their own. The
+        layers' files must exist until this returns.
 
-        A failure rolls the bundle back. Adding it to the project is
+        The bundle is ready, and in the project, once its layers are: the
+        artifacts' build (a timetable, a graph, the stops' links to the streets)
+        takes as long again, and nothing about the layers waits on it. Until it
+        is done the artifacts read as building, which is what keeps the routing
+        tools off the bundle; a failed build leaves them failed, and the bundle
+        offers a rebuild.
+
+        A failed ingest rolls the bundle back. Adding it to the project is
         best-effort: the bundle is complete without it."""
+        spec = get_spec(bundle_type)
+        if spec.artifacts and not spec.artifacts_build_from_layers:
+            raise ValueError(
+                f"A '{spec.type.value}' bundle's artifacts are built from its "
+                "source, not its layers."
+            )
         bundle_id = str(uuid4())
         await db.create_bundle(
             bundle_id=bundle_id,
@@ -506,14 +543,14 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                 bundle_id=bundle_id,
                 layers=layers,
             )
-            await self.build_and_store_artifacts(
-                db,
-                bundle_id=bundle_id,
-                bundle_type=bundle_type,
-                source_path="",
-                user_id=user_id,
-                members=_as_members(imported),
-            )
+            # Building before the bundle is ready, so it never reads as one to
+            # route on, nor as one with nothing to build.
+            for kind in spec.artifacts:
+                await db.create_artifact(
+                    bundle_id=bundle_id,
+                    kind=kind,
+                    build_status=BundleArtifactBuildStatus.building,
+                )
             await db.update_bundle_status(
                 bundle_id=bundle_id, status=BundleStatus.ready
             )
@@ -540,10 +577,24 @@ class BundleImportRunner(BundleArtifactBuildMixin, BaseToolRunner):
                     project_id,
                     e,
                 )
+        build_job_id = None
+        if spec.artifacts:
+            try:
+                build_job_id = _queue_artifact_build(
+                    bundle_id=bundle_id, user_id=user_id
+                )
+            except Exception as e:  # noqa: BLE001 - the layers are there
+                # Failed, not building: a build nobody started would otherwise
+                # be promised for good, and failed is what offers the rebuild.
+                logger.warning(
+                    "Bundle %s created but its build not started: %s", bundle_id, e
+                )
+                await db.mark_bundle_artifacts_failed(bundle_id)
         return {
             "bundle_id": bundle_id,
             "bundle_type": type_value,
             "layers": [layer.model_dump() for layer in imported],
+            "artifact_build_job_id": build_job_id,
         }
 
     async def ingest_into_bundle(

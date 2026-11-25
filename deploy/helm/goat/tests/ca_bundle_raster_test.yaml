@@ -1,0 +1,213 @@
+suite: company CA bundle in geoapi and processes (raster and S3 reads)
+templates:
+  - geoapi/deployment.yaml
+  - geoapi/configmap.yaml
+  - processes/deployment.yaml
+  - processes/configmap.yaml
+set:
+  postgresql.external.host: "pg.example.com"
+  postgresql.external.existingSecret: "pg-secret"
+tests:
+  - it: geoapi gets no CA file, init step or variable without a bundle
+    template: geoapi/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.initContainers
+          content:
+            name: ca-bundle
+          any: true
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-trust
+          any: true
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "GDAL_CURL_CA_BUNDLE")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "AWS_CA_BUNDLE")]
+
+  - it: processes gets no CA file, init step or variable without a bundle
+    template: processes/deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.initContainers
+          content:
+            name: ca-bundle
+          any: true
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-trust
+          any: true
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "GDAL_CURL_CA_BUNDLE")]
+      - notExists:
+          path: spec.template.spec.containers[0].env[?(@.name == "AWS_CA_BUNDLE")]
+
+  - it: geoapi builds one CA file of the public CAs and the company CA and points GDAL and boto3 at it
+    template: geoapi/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-bundle
+            configMap:
+              name: corp-ca
+              items:
+                - key: ca.crt
+                  path: ca.pem
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-trust
+            emptyDir: {}
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "ca-bundle")].image
+          value: ghcr.io/plan4better/goat/geoapi:v3.1.0
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "ca-bundle")].volumeMounts
+          value:
+            - name: goat-ca-bundle
+              mountPath: /etc/goat/ca
+              readOnly: true
+            - name: goat-ca-trust
+              mountPath: /etc/goat/ca-trust
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "ca-bundle")].args[0]
+          pattern: out=/etc/goat/ca-trust/ca-bundle\.pem\n.*certifi\.where\(\).*; echo; cat /etc/goat/ca/ca\.pem; \} > "\$out"
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: goat-ca-trust
+            mountPath: /etc/goat/ca-trust
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GDAL_CURL_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AWS_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+
+  - it: processes builds the same CA file from a Secret and points GDAL and boto3 at it
+    template: processes/deployment.yaml
+    set:
+      global.caBundle.existingSecret: corp-ca
+      global.caBundle.key: root.pem
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-bundle
+            secret:
+              secretName: corp-ca
+              items:
+                - key: root.pem
+                  path: ca.pem
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-trust
+            emptyDir: {}
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "ca-bundle")].image
+          value: ghcr.io/plan4better/goat/processes:v3.1.0
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: goat-ca-trust
+            mountPath: /etc/goat/ca-trust
+            readOnly: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GDAL_CURL_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AWS_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+
+  - it: the CA step runs on its own when the DuckLake init and the data volume are off
+    template: geoapi/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+      ducklakeBootstrap.enabled: false
+      data.enabled: false
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 1
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: ca-bundle
+      - lengthEqual:
+          path: spec.template.spec.volumes
+          count: 2
+      - lengthEqual:
+          path: spec.template.spec.containers[0].volumeMounts
+          count: 1
+
+  - it: the CA step runs beside the DuckLake init and the data volume
+    template: processes/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+    asserts:
+      - lengthEqual:
+          path: spec.template.spec.initContainers
+          count: 2
+      - contains:
+          path: spec.template.spec.initContainers
+          content:
+            name: ducklake-init
+          any: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: goat-ca-trust
+            emptyDir: {}
+
+  - it: the CA step keeps the service's security context
+    template: geoapi/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+      geoapi.securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "ca-bundle")].securityContext
+          value:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+
+  - it: a GDAL_CURL_CA_BUNDLE or AWS_CA_BUNDLE set by the operator wins
+    template: geoapi/deployment.yaml
+    set:
+      global.caBundle.existingConfigMap: corp-ca
+      geoapi.config.GDAL_CURL_CA_BUNDLE: /etc/ssl/custom.pem
+      geoapi.extraEnv:
+        - name: AWS_CA_BUNDLE
+          value: /etc/ssl/custom.pem
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GDAL_CURL_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AWS_CA_BUNDLE
+            value: /etc/goat/ca-trust/ca-bundle.pem
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: AWS_CA_BUNDLE
+            value: /etc/ssl/custom.pem

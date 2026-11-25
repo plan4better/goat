@@ -30,7 +30,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
 **New data**
 
-- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
+- **Upload dataset**: a dataset from your device (GeoPackage, GeoJSON, Shapefile, KML, GML, CSV, XLSX, Parquet, and [GTFS](https://www.plan4better.de/en/glossary/gtfs) or [Overture](https://www.plan4better.de/en/glossary/overture-maps) archives)
 - **Create layer**: a new empty layer you draw into
 - **Fetch / Connect data**: a layer served by WFS, WMS, WMTS, XYZ Tiles or COG, added by URL, features from OpenStreetMap or Overture Maps for an area, or GOAT's street network or public transport network for an area as a bundle
 
@@ -140,7 +140,7 @@ You can add layers from [different sources](../data/dataset_types) to your map:
 
   <TabItem value="XYZ" label="XYZ" className="tabItemBox">
     <div class="step">
-      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. The address is the layer, so there is no list to choose from &mdash; check the preview shows what you expect.</p></div>
+      <div class="content"><p>An <strong>XYZ Tiles</strong> layer is any tile URL with <code>&#123;z&#125;/&#123;x&#125;/&#123;y&#125;</code> placeholders. For a service that counts its tile rows from the south (TMS), write <code>&#123;-y&#125;</code> instead of <code>&#123;y&#125;</code>; <code>&#123;s&#125;</code> spreads the requests over the subdomains a, b and c, and <code>&#123;switch:1,2,3&#125;</code> over the ones it names (16 at most). The address is the layer, so there is no list to choose from; check that the preview shows what you expect.</p></div>
     </div>
   </TabItem>
 
@@ -164,7 +164,7 @@ GOAT keeps a copy of [OpenStreetMap](https://www.openstreetmap.org) and [Overtur
 
 <div class="step">
   <div class="step-number">5</div>
-  <div class="content">Choose the <code>Area</code>: the <code>Map view</code>, where you pan and zoom the map until the dashed box shows the area, or a <code>Region</code>, a <code>Buffer</code> or a <code>Polygon</code>, set with <code>Choose</code>. Every feature that touches the area is added, including one that crosses its border.</div>
+  <div class="content"><p>Choose the <code>Area</code>. It starts as the <code>Map view</code>: pan and zoom the map until the dashed box shows the area. Under <code>Add to area</code> you can instead pick <code>Regions</code> from a searchable list, <code>Draw polygon</code> on the map (click its corners, double-click to finish), or place a <code>Point and radius</code> (click the centre, then set the radius under it; its pen icon lets you drag the centre or the edge on the map). Regions, polygons and circles can be combined into one area; the map view replaces them, and they replace the map view. Remove a part with the cross on its row; <code>Cancel</code> or the Escape key stops drawing.</p>Every feature that touches the area is added, including one that crosses its border.</div>
 </div>
 
 <div class="step">
@@ -188,12 +188,12 @@ The licence of the data is shown at the top of the pane: OpenStreetMap is publis
   </TabItem>
   <TabItem value="StreetNetwork" label="Street Network" className="tabItemBox">
 
-<code>Street Network</code> cuts the network GOAT routes on to an area and saves it as a street network [bundle](../data/dataset_types#datasets-made-of-several-layers) with its edges and nodes. Every street touching the area is kept whole, with its slope, so routing tools pick the bundle like any other street network and route uphill and downhill as on GOAT's own network. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large.
+<code>Street Network</code> cuts the network GOAT routes on to an area and saves it as a street network [bundle](../data/dataset_types#datasets-made-of-several-layers) with its edges and nodes. Every street touching the area is kept whole, with its slope, so routing tools pick the bundle like any other street network and route uphill and downhill as on GOAT's own network. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The bundle is added as soon as its edges and nodes are in; its routing graph is built next, and routing tools use it once its status reads <code>Ready</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large.
 
   </TabItem>
   <TabItem value="PublicTransportNetwork" label="Public Transport Network" className="tabItemBox">
 
-<code>Public Transport Network</code> cuts GOAT's public transport network to an area and saves it as a [GTFS](https://www.plan4better.de/en/glossary/gtfs) public transport network [bundle](../data/dataset_types#datasets-made-of-several-layers). Every line that serves a stop in the area is kept whole, with all its trips and every stop they call at, also outside the area, so a trip still runs from its first stop to its last. A stop counts with its station: a platform just outside the area is included when its station is inside it. The bundle is linked to GOAT's default street network and is ready for public transport catchments and heatmaps like an uploaded feed. Choose the area as for OpenStreetMap, give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The area can be up to about 1,000 km²; for a larger one the pane says it is too large. As lines are kept whole, an area served by very many lines, such as several parts drawn around major stations, is also refused.
+<code>Public Transport Network</code> cuts GOAT's public transport network to an area and saves it as a [GTFS](https://www.plan4better.de/en/glossary/gtfs) public transport network [bundle](../data/dataset_types#datasets-made-of-several-layers). Every line that serves a stop in the area is kept whole, with all its trips and every stop they call at, also outside the area, so a trip still runs from its first stop to its last. A stop counts with its station: a platform just outside the area is included when its station is inside it. Choose the area as for OpenStreetMap. Under <code>Modes</code>, choose the modes whose lines are kept; <code>Exclude long-distance lines</code>, on by default, leaves out high-speed and InterCity trains, night trains, long-distance coaches and long ferries, recognised by how far their trips run and how far apart they stop. Give the bundle a name under <code>Bundle name</code> and click <code>Add layer</code>. The bundle is added as soon as its layers are in. Its timetable and its links to GOAT's default street network are built next, which takes a few minutes: its status reads <code>Updating</code> until then, and once it reads <code>Ready</code> the bundle works for public transport catchments and heatmaps like an uploaded feed. If the build fails, the status reads <code>Update failed</code> and <code>Update bundle</code> builds it again. The area can be up to about 1,000 km²; for a larger one the pane says it is too large. As lines are kept whole, an area served by very many lines, such as several parts drawn around major stations, is also refused.
 
   </TabItem>
 </Tabs>

@@ -154,7 +154,7 @@ const openFromHome = async (page: Page, templateName: string) => {
 /** Edits on the map open the layer's menu in the layer tree. */
 const layerMenu = async (page: Page, layerName: string) => {
   const row = page.locator(".tree-item").filter({ hasText: layerName });
-  await row.getByRole("button", { name: "More Options" }).click({ timeout: 30000 });
+  await row.getByRole("button", { name: "More options" }).click({ timeout: 30000 });
 };
 
 test.beforeEach(async ({ context, baseURL }) => {
@@ -240,8 +240,10 @@ test.describe("the owner", () => {
       timeout: 30000,
     });
 
-    // The project menu behind the logo in the map's header.
-    await page.locator("header").getByRole("button").first().click();
+    // The project menu behind the logo in the map's header. By its name: until the
+    // menu's code arrives the header holds only a placeholder, and the first button
+    // would be another one.
+    await page.locator("header").getByRole("button", { name: "Project menu", exact: true }).click();
     await page.getByText("Save project as template…", { exact: true }).click();
     const dialog = page.getByRole("dialog").filter({ has: page.getByLabel("Name", { exact: true }) });
     await expect(dialog).toBeVisible();
@@ -318,7 +320,7 @@ test.describe("the owner", () => {
     await page.goto(`/map/${ids.source}?mode=workflows`);
     await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible({ timeout: 30000 });
     const workflowItem = page.locator("li").filter({ hasText: names.workflow });
-    await workflowItem.getByRole("button", { name: "More Options" }).click({ timeout: 30000 });
+    await workflowItem.getByRole("button", { name: "More options" }).click({ timeout: 30000 });
     await page.locator(".MuiPopper-root").getByRole("button", { name: "Save as template…" }).click();
 
     const dialog = page.getByRole("dialog").filter({ hasText: "Save as template" });

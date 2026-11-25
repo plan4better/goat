@@ -27,6 +27,7 @@ Usage:
 import asyncio
 import logging
 import shutil
+import traceback
 from pathlib import Path
 from typing import Any, Self
 
@@ -43,6 +44,7 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import SimpleToolRunner
 from goatlib.tools.layer_replace import LayerReplaceMixin
 from goatlib.tools.schemas import ToolInputBase
+from goatlib.utils.layer_address import text_without_keys, without_key
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +200,10 @@ class LayerUpdateRunner(LayerReplaceMixin, SimpleToolRunner):
         Returns:
             Dataset metadata from WFS import
         """
-        logger.info("Importing from WFS: %s (layer=%s)", wfs_url, layer_name)
+        # A WFS address can carry an access key: logs and errors name the
+        # service without its query, fragment and credentials.
+        service = without_key(wfs_url)
+        logger.info("Importing from WFS: %s (layer=%s)", service, layer_name)
 
         # Import lazily to avoid GDAL dependency when not using WFS
         from goatlib.io.remote_source.wfs import from_wfs
@@ -212,7 +217,7 @@ class LayerUpdateRunner(LayerReplaceMixin, SimpleToolRunner):
         )
 
         if not results or results == (None, None):
-            raise ValueError(f"No data retrieved from WFS: {wfs_url}")
+            raise ValueError(f"No data retrieved from WFS: {service}")
 
         # Get first result (from_wfs can return list or tuple)
         if isinstance(results, list):
@@ -365,12 +370,19 @@ class LayerUpdateRunner(LayerReplaceMixin, SimpleToolRunner):
                 error=str(e),
             ).model_dump()
         except Exception as e:
-            logger.exception("Layer update failed: %s", e)
+            # The error may quote an address a reader's library gave it.
+            error = text_without_keys(str(e))
+            # The traceback quotes the error too: logged as cleaned text.
+            logger.error(
+                "Layer update failed: %s\n%s",
+                error,
+                text_without_keys(traceback.format_exc()),
+            )
             return LayerUpdateOutput(
                 user_id=params.user_id,
                 layer_id=params.layer_id,
                 updated=False,
-                error=str(e),
+                error=error,
             ).model_dump()
 
     def cleanup(self: Self) -> None:

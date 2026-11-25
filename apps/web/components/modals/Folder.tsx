@@ -1,4 +1,4 @@
-import { DialogContentText, TextField } from "@mui/material";
+import { DialogContentText } from "@mui/material";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Trans } from "react-i18next";
@@ -12,6 +12,7 @@ import { FOLDERS_API_BASE_URL, createFolder, deleteFolder, updateFolder } from "
 import type { DialogBaseProps } from "@/types/common/dialog";
 
 import AppDialog, { AppDialogFooter } from "@/components/common/AppDialog";
+import LabeledField from "@/components/common/LabeledField";
 
 export interface SelectedFolderForEdit {
   id: string;
@@ -116,22 +117,19 @@ const FolderModal: React.FC<FolderDialogProps> = ({
         />
       }>
       {["update", "create"].includes(type) && (
-        <TextField
+        <LabeledField
           autoFocus={true}
           autoComplete="off"
-          sx={{ my: 2, minWidth: 300 }}
           id="folder-name"
           value={folderName}
           inputProps={{ maxLength: 30 }}
           label={t("folder_name")}
-          variant="outlined"
-          error={folderName.length > 29 || existingFolderNames?.includes(folderName)}
-          helperText={
+          error={
             folderName.length > 29
               ? t("folder_rule")
               : existingFolderNames?.includes(folderName)
                 ? t("folder_exists")
-                : ""
+                : undefined
           }
           onChange={(e) => setFolderName(e.target.value)}
         />

@@ -286,6 +286,51 @@ describe("assistant messages", () => {
     expect(screen.queryByText("The assistant could not write this answer.")).toBeNull();
   });
 
+  it("leaves out the text a later answer replaced, also from what Copy copies", async () => {
+    // An answer in the other language than the message, asked for again: the
+    // server names the replaced text parts by the ids their text-start carried.
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={[
+            {
+              id: "a0",
+              role: "assistant",
+              parts: [
+                search,
+                {
+                  type: "text",
+                  text: "Die Antwort auf Deutsch.",
+                  state: "done",
+                  providerMetadata: { goat: { partId: "a0:1" } },
+                },
+                { type: "data-replaced-text", data: { part_ids: ["a0:1"] } },
+                {
+                  type: "text",
+                  text: "The answer in English.",
+                  state: "done",
+                  providerMetadata: { goat: { partId: "a0:2" } },
+                },
+              ],
+            },
+          ]}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId={null}
+          projectName={null}
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    expect(screen.queryByText("Die Antwort auf Deutsch.")).toBeNull();
+    expect(screen.getByText("The answer in English.")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("assistant_copy_answer"));
+    await Promise.resolve();
+    expect(writeText).toHaveBeenCalledWith("The answer in English.");
+  });
+
   it("shows no cards for search results the answer did not recommend", () => {
     render(
       <DockActionsContext.Provider value={actions}>
@@ -1850,6 +1895,58 @@ describe("the Undo of an answer's workflow edits", () => {
     expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
   });
 
+  it("an answer that only changed a style shows Undo", () => {
+    const style = (before: number, after: number) =>
+      ({
+        type: "dynamic-tool",
+        toolName: "style_update",
+        toolCallId: `s-${after}`,
+        state: "output-available",
+        input: {},
+        output: {
+          project_id: "p1",
+          layer_project_id: 12,
+          style_id: "s1",
+          created: false,
+          made_active: false,
+          revision_before: before,
+          revision_after: after,
+        },
+      }) as DynamicToolUIPart;
+    show(answer([style(4, 4), text]));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    show(answer([style(4, 5), text]));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+  });
+
+  it("an answer that only removed a layer shows no Undo, and says the layer does not come back", () => {
+    const removal = (applied: unknown[]) =>
+      ({
+        type: "dynamic-tool",
+        toolName: "map_update",
+        toolCallId: "m-1",
+        state: "output-available",
+        input: {},
+        output: { project_id: "p1", applied },
+      }) as DynamicToolUIPart;
+    const removed = { index: 0, op: "remove_layer", layer_project_id: 12, summary: "Removed Parks" };
+    show(answer([removal([removed]), text]));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    expect(screen.getByText("assistant_undone_layer_removed")).toBeTruthy();
+    cleanup();
+    // Beside a change Undo puts back, the Undo shows and its notes say it once undone.
+    const hidden = {
+      index: 1,
+      op: "set_layer",
+      layer_project_id: 13,
+      fields: ["visible"],
+      summary: "Hidden",
+    };
+    show(answer([removal([removed, hidden]), text]));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    expect(screen.queryByText("assistant_undone_layer_removed")).toBeNull();
+  });
+
   it("shows on an answer that edited and then failed without a word", () => {
     show(
       answer([
@@ -1875,6 +1972,187 @@ describe("the Undo of an answer's workflow edits", () => {
 
   it("reads Undone for an answer whose edits were undone", () => {
     show(answer([update(4, 5), text], { run_id: "run-2", undone: true }));
+    expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    expect(screen.getByText("assistant_undone")).toBeTruthy();
+  });
+
+  describe("an answer stopped after its edit landed", () => {
+    const stopped = { type: "data-run-status", data: { status: "cancelled", error: null, code: null } };
+    // The stopped call never finished: its part names no edit.
+    const unfinished = {
+      type: "dynamic-tool",
+      toolName: "workflow_update",
+      toolCallId: "u-stopped",
+      state: "input-available",
+      input: { workflow_id: "wf-1", operations: [] },
+    } as DynamicToolUIPart;
+    const parts = [unfinished, stopped] as AssistantMessage["parts"];
+
+    it("shows Undo when the server says its Undo can act", () => {
+      show(answer(parts, { run_id: "run-1", undoable: true }));
+      expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    });
+
+    it("shows none without the server's word, as before", () => {
+      show(answer(parts));
+      show(answer(parts, { run_id: "run-1", undoable: false }));
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    });
+
+    it("shows none in a read-only conversation, nor while the answer runs", () => {
+      show(answer(parts, { run_id: "run-1", undoable: true }), { readOnly: true });
+      show(answer(parts, { run_id: "run-1", undoable: true }), { busy: true });
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+    });
+
+    it("says nothing of a removed layer that does not come back while its Undo is offered", () => {
+      const removal = {
+        type: "dynamic-tool",
+        toolName: "map_update",
+        toolCallId: "m-1",
+        state: "output-available",
+        input: {},
+        output: {
+          project_id: "p1",
+          applied: [{ index: 0, op: "remove_layer", layer_project_id: 12, summary: "Removed Parks" }],
+        },
+      } as DynamicToolUIPart;
+      show(answer([removal, ...parts], { run_id: "run-1", undoable: true }));
+      expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+      expect(screen.queryByText("assistant_undone_layer_removed")).toBeNull();
+    });
+  });
+
+  describe("a typed undo", () => {
+    const typed = (output: Record<string, unknown>, toolCallId = "t-1") =>
+      ({
+        type: "dynamic-tool",
+        toolName: "undo_changes",
+        toolCallId,
+        state: "output-available",
+        input: {},
+        output: { workflows: [], styles: [], not_restored: [], summary: "…", ...output },
+      }) as DynamicToolUIPart;
+    const question: AssistantMessage = {
+      id: "q2",
+      role: "user",
+      parts: [{ type: "text", text: "Undo that" }],
+    };
+    const earlier = answer([update(4, 5), text], { run_id: "run-1", undoable: true });
+    const undoing = (
+      parts: AssistantMessage["parts"],
+      metadata: AssistantMessage["metadata"] = { run_id: "run-2" }
+    ) => ({ id: "a2", role: "assistant", metadata, parts }) as AssistantMessage;
+    const list = (messages: AssistantMessage[]) => (
+      <DockActionsContext.Provider value={actions}>
+        <MessageList
+          messages={messages}
+          busy={false}
+          conversationId="c1"
+          conversationProjectId="p1"
+          projectName="Walk"
+          readOnly={false}
+        />
+      </DockActionsContext.Provider>
+    );
+    const reply = { type: "text", text: "I took the change back." } as const;
+
+    it("turns the earlier answer's button into Undone at once, for undone and for nothing with its run", () => {
+      const { rerender } = render(list([earlier]));
+      expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+      rerender(list([earlier, question, undoing([typed({ status: "undone", run_id: "run-1" }), reply])]));
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+      expect(screen.getAllByText("assistant_undone")).toHaveLength(1);
+      cleanup();
+      render(list([earlier, question, undoing([typed({ status: "nothing", run_id: "run-1" }), reply])]));
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+      expect(screen.getAllByText("assistant_undone")).toHaveLength(1);
+    });
+
+    it("leaves the button at Undo while something is still to take back, or nothing named the run", () => {
+      for (const output of [
+        { status: "changed", run_id: "run-1" },
+        { status: "nothing" },
+        { status: "under_way", run_id: "run-1" },
+        { status: "failed", run_id: "run-1" },
+        { status: "undone", run_id: "run-other" },
+        // Core stored nothing of a style's restore, as after a press that stays Undo.
+        { status: "undone", run_id: "run-1", not_restored: ["style"] },
+      ]) {
+        render(list([earlier, question, undoing([typed(output), reply])]));
+        expect(screen.getAllByRole("button", { name: "assistant_undo" })).toHaveLength(1);
+        expect(screen.queryByText("assistant_undone")).toBeNull();
+        cleanup();
+      }
+    });
+
+    it("reads the same from the typed result alone as from the history's word alone after a reload", () => {
+      // The history's word for each result, by the server's rule: Undone once every change went back.
+      const cases: Array<[Record<string, unknown>, boolean]> = [
+        [{ status: "undone", run_id: "run-1" }, true],
+        [{ status: "nothing", run_id: "run-1" }, true],
+        [{ status: "changed", run_id: "run-1" }, false],
+        [{ status: "undone", run_id: "run-1", not_restored: ["style"] }, false],
+      ];
+      const state = () => ({
+        undo: screen.queryAllByRole("button", { name: "assistant_undo" }).length,
+        undone: screen.queryAllByText("assistant_undone").length,
+      });
+      for (const [output, undone] of cases) {
+        render(list([earlier, question, undoing([typed(output), reply])]));
+        const live = state();
+        cleanup();
+        render(
+          list([
+            answer([update(4, 5), text], { run_id: "run-1", undoable: !undone, undone }),
+            question,
+            undoing([reply]),
+          ])
+        );
+        expect(state()).toEqual(live);
+        expect(live).toEqual(undone ? { undo: 0, undone: 1 } : { undo: 1, undone: 0 });
+        cleanup();
+      }
+    });
+
+    it("offers no Undo on the answer that called it, whatever the result went back", () => {
+      const map = {
+        project_id: "p1",
+        layers: [32],
+        tree: false,
+        groups: false,
+        basemap: false,
+        scene: false,
+      };
+      render(
+        list([
+          question,
+          undoing([
+            typed({
+              status: "undone",
+              run_id: "run-1",
+              map,
+              workflows: [{ workflow_id: "wf-1", project_id: "p1", revision: 3 }],
+            }),
+            reply,
+          ]),
+        ])
+      );
+      expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
+      expect(screen.queryByText("assistant_undone")).toBeNull();
+      expect(screen.queryByText("assistant_undone_layer_removed")).toBeNull();
+      // Its step is its own row, never a change of the map, a style or a workflow.
+      expect(screen.getByText("assistant_tool_undo_changes")).toBeTruthy();
+      expect(screen.queryByText(/assistant_tool_(map|style|workflow)_update/)).toBeNull();
+    });
+  });
+
+  it("goes by the finished steps when the server's word is false", () => {
+    // They agree on every answer but a stopped one; an edit the steps name keeps its Undo.
+    show(answer([update(4, 5), text], { run_id: "run-1", undoable: false }));
+    expect(screen.getByRole("button", { name: "assistant_undo" })).toBeTruthy();
+    cleanup();
+    show(answer([update(4, 5), text], { run_id: "run-2", undoable: false, undone: true }));
     expect(screen.queryByRole("button", { name: "assistant_undo" })).toBeNull();
     expect(screen.getByText("assistant_undone")).toBeTruthy();
   });
