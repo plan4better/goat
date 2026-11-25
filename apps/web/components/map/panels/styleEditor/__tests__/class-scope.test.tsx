@@ -181,12 +181,24 @@ describe("class scope", () => {
     expect(field.textContent).toBe("style_editor.auto");
     act(() => store.update((doc) => setIn(doc, "symbol.outline.color", "fill")));
     expect(field.textContent).toBe("style_editor.same_as_fill");
-    // The class sets nothing of its own: the picker presses no choice.
+    // The class takes the layer's choice: its picker presses it too, with the transparency locked, as the row reads it.
     await userEvent.click(field);
     expect(
       screen.getByRole("button", { name: "style_editor.same_as_fill" }).getAttribute("aria-pressed")
-    ).toBe("false");
+    ).toBe("true");
+    expect(
+      (screen.getByRole("textbox", { name: "style_editor.transparency_percent" }) as HTMLInputElement)
+        .disabled
+    ).toBe(true);
     expect(store.get("classify.0.classes.1.outline")).toBeUndefined();
+    // None still writes the class's own value: the hue the class draws, at 0 %.
+    // (The section's other rows read None too: the choice is the pressable one.)
+    const none = screen
+      .getAllByRole("button", { name: "style_editor.none" })
+      .find((b) => b.hasAttribute("aria-pressed")) as HTMLElement;
+    await userEvent.click(none);
+    expect(store.get("classify.0.classes.1.outline.color")).toBe("#00000100");
+    expect(store.get("symbol.outline.color")).toBe("fill");
   });
 
   it("Reset keeps the emptied part that switches on, for the class, a part the layer leaves out", async () => {
@@ -515,6 +527,24 @@ describe("class scope", () => {
     expect(chip.getAttribute("aria-expanded")).toBe("true");
     await userEvent.click(within(screen.getByRole("menu")).getByText("10 style_editor.range_to 20"));
     expect(store.scope).toEqual({ classify: 0, key: 1 });
+  });
+
+  it("the scope menu shows a class's derived color as the map draws it", async () => {
+    setup(2, undefined, {
+      target: "outline.color",
+      classes: [
+        { id: "c1", to: 10, fill: { color: "#7f3c8d" }, outline: { color: "auto" } },
+        { id: "c2", from: 10, outline: { color: "#000000" } },
+      ],
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "style_editor.style_one_class: style_editor.all_features" })
+    );
+    const item = within(screen.getByRole("menu")).getByText(
+      /style_editor.range_under 10|style_editor.range_to 10/
+    );
+    const swatch = item.closest("li")?.querySelector("span > span") as HTMLElement;
+    expect(getComputedStyle(swatch).backgroundColor).toBe("rgb(89, 42, 99)");
   });
 
   it("the scope menu labels the open classes with the data's minimum and maximum, as the legend does", async () => {

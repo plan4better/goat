@@ -92,7 +92,7 @@ describe("a continuous palette's colors on the class grid", () => {
     const { writes } = draw(["#2f6b3a", "#e8dc8f", "#f2f2f2"]);
     await userEvent.click(swatches()[1]);
     expect(screen.getByText("style_editor.palette_color_title")).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: "#d7301f" }));
+    await userEvent.click(screen.getByRole("button", { name: "#D7301F" }));
     expect(writes.at(-1)).toEqual(["#2f6b3a", "#d7301f", "#f2f2f2"]);
   });
 

@@ -3,19 +3,36 @@
 import type { TFunction } from "i18next";
 
 import { alphaOf, isNone } from "@/lib/style/colors";
-import { DERIVED, derivedColor, followedKey, isDerivedWord, pathOf } from "@/lib/style/compile/derived";
+import {
+  DERIVED,
+  derivedColor,
+  derivedSwitches,
+  followedKey,
+  isDerivedWord,
+  pathOf,
+  switchedRamp,
+} from "@/lib/style/compile/derived";
+import { h3Resolution, h3Scale } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { ScopedView } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
-import { type CompoundChoice, MAIN_COLOR, classificationFor, keyOf, modeOf } from "@/lib/style/editor/forms";
+import {
+  type CompoundChoice,
+  MAIN_COLOR,
+  classificationFor,
+  fixedValue,
+  keyOf,
+  modeOf,
+} from "@/lib/style/editor/forms";
 import { RULES, type Setter, perLayerPath, summaryView } from "@/lib/style/editor/sources";
 import { type Path, type Scope, getIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import { isObject } from "@/lib/style/json";
+import { type JsonObject, isObject } from "@/lib/style/json";
 import type { Tone } from "@/lib/style/tone";
+import { percentOf } from "@/lib/utils/colorFormats";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
@@ -98,7 +115,7 @@ export function colorLabel(t: TFunction, color: string): string {
   if (alpha === 0) return t("style_editor.none");
   const hex = color.slice(0, 7).toUpperCase();
   if (alpha === 255) return hex;
-  return `${hex} · ${Math.min(99, Math.max(1, Math.round((alpha / 255) * 100)))}%`;
+  return `${hex} · ${percentOf(color)}%`;
 }
 
 /** The panel's words for a color taken from another part. */
@@ -177,67 +194,126 @@ export const HATCH = "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparen
 const gradient = (colors: string[]) =>
   colors.length > 1 ? `linear-gradient(90deg, ${colors.join(", ")})` : (colors[0] ?? HATCH);
 
-/** The CSS background a row's swatch shows for the color at `path`. `scoped`: `doc` is one class's view, which
- * draws its own color, not the classes'. `tone`: the basemap's tone the map draws a derived color for (light by
- * default), so the swatch shows the map's color. */
+/** A zoom stop's value in a path (`….zoom.<i>.1`). */
+const STOP = /\.zoom\.(\d+)\.1$/;
+/** The record a key's path lies in: the base symbol, a cluster's symbol, a class's or a rule's. */
+const RECORD = /^(symbol\.|render\.symbol\.|classify\.\d+\.(?:classes\.\d+|other|no_data)\.|rules\.\d+\.)/;
+const position = (x: number) => `${Number((x * 100).toFixed(2))}%`;
+
+/** A gradient of answers that each hold up to where the next starts (`switchedRamp`), or the one answer. */
+function stepped(ramp: Array<[number, string]>): string {
+  if (ramp.length === 1) return ramp[0][1];
+  const stops = ramp.flatMap(([x, color], i) => [
+    `${color} ${position(x)}`,
+    `${color} ${position(ramp[i + 1]?.[0] ?? 1)}`,
+  ]);
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+}
+
+/** The CSS background a row's swatch shows for the color at `path`, which may be a zoom stop's (`….zoom.<i>.1`).
+ * `scoped`: `doc` is one class's view, which draws its own color, not the classes'. `tone`: the basemap's tone the map
+ * draws a derived color for (light by default), so the swatch shows the map's color. `follow`: a key that is not set
+ * and follows another part shows the hue it draws, not the hatch. `zoom`: a color by zoom shows its color there. */
 export function swatchOf(
   doc: LayerStyle,
   path: Path,
   geometry?: Geometry,
-  opts: { scoped?: boolean; tone?: Tone } = {}
+  opts: { scoped?: boolean; tone?: Tone; follow?: boolean; zoom?: number } = {}
 ): string {
   const key = keyOf(path);
-  const own = getIn(doc, path);
+  const stop = STOP.exec(path);
+  const at = stop ? path.slice(0, stop.index) : path;
+  const zoom = stop ? getIn(doc, `${at}.zoom.${stop[1]}.0`) : opts.zoom;
+  const prefix = RECORD.exec(at)?.[1] ?? "";
+  // A class's or rule's record draws what the layer's symbol sets where it sets nothing itself.
+  const inRecord = prefix !== "" && prefix !== "symbol." && prefix !== "render.symbol.";
+  const read = (sub: string) =>
+    getIn(doc, `${prefix}${sub}`) ?? (inRecord ? getIn(doc, `symbol.${sub}`) : undefined);
+  const own = stop ? getIn(doc, path) : read(at.slice(prefix.length));
   const value = own ?? DEFAULTS[key];
-  const prefix = path.slice(0, path.length - key.length);
   // A cluster symbol's colors follow the cluster's marker; its number has a derivation of its own.
   const cluster = prefix === "render.symbol.";
   const derived = cluster && `cluster.symbol.${key}` in DERIVED ? `cluster.symbol.${key}` : key;
   // An unset icon color of a hollow marker follows the marker color (spec 3.3), and so does an Auto one. An unset
-  // pattern or arrows color keeps the hatch: its row reads "Same as fill" or "Same as line".
-  const part = prefix + key.split(".")[0];
-  const hollow = getIn(doc, `${part}.fill`) === false && getIn(doc, `${part}.shape`) !== "icon";
-  const follows = own === undefined && DERIVED[key]?.absent?.only === "hollow" && hollow;
+  // pattern or arrows color keeps the hatch (its row reads "Same as fill" or "Same as line") unless `follow` asks.
+  const part = key.split(".")[0];
+  const hollow = read(`${part}.fill`) === false && read(`${part}.shape`) !== "icon";
+  const absent = DERIVED[key]?.absent;
+  const follows =
+    own === undefined && absent !== undefined && (absent.only === "hollow" ? hollow : opts.follow === true);
   if (isDerivedWord(derived, value) || follows) {
-    const main = followedKey(derived, geometry ?? "polygon") ?? MAIN_COLOR[geometry ?? "polygon"];
-    // Clusters drawn like the points take the points' marker.
-    const ownMarker = cluster && getIn(doc, "render.look") !== "points";
-    const followed = swatchOf(doc, `${ownMarker ? prefix : "symbol."}${main}`, geometry, opts);
-    // The partner a color is chosen against (a halo's text): the record's, else the base symbol's.
-    const partner = DERIVED[derived].against;
-    const partnerPath = partner && pathOf(partner.key);
-    const against = partnerPath
-      ? (getIn(doc, `${prefix}${partnerPath}`) ?? (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)))
-      : undefined;
-    // Each color the followed swatch shows, derived (a darker shade for "auto"); the hatch where one has no one color.
-    let shown = true;
-    const swatch = followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) => {
-      const out = derivedColor(derived, follows ? undefined : value, color, {
-        hollow,
-        against,
-        inputs: { tone: opts.tone ?? "light" },
+    const rule = { hollow, against: undefined as unknown, inputs: { tone: opts.tone ?? "light" } };
+    let followed: string;
+    if (derived === "h3.outline.color") {
+      // An H3 outline follows each hexagon's color, which the render works out.
+      const render = isObject(doc.render) ? (doc.render as JsonObject) : {};
+      const scale = h3Scale(render, h3Resolution(render, typeof zoom === "number" ? zoom : 12));
+      followed = gradient(scale.kind === "color" ? [scale.color] : scale.colors);
+    } else {
+      const main = followedKey(derived, geometry ?? "polygon") ?? MAIN_COLOR[geometry ?? "polygon"];
+      // Clusters drawn like the points take the points' marker; a record without a color of its own the layer's.
+      const ownMarker = cluster && getIn(doc, "render.look") !== "points";
+      const from =
+        ownMarker || (inRecord && getIn(doc, `${prefix}${main}`) !== undefined) ? prefix : "symbol.";
+      // A class that leaves the followed color to the layer draws the layer's own, where its own classification is
+      // the one that sets that color; a rule, or a class of another classification, draws that one's classes.
+      const setter = from === "symbol." && inRecord ? classificationFor(doc, main, geometry) : undefined;
+      const own = /^classify\.(\d+)\./.exec(prefix)?.[1];
+      const classes = getIn(doc, "classify");
+      const ownSetter =
+        setter !== undefined && Array.isArray(classes) && String(classes.indexOf(setter)) === own;
+      followed = swatchOf(doc, `${from}${main}`, geometry, {
+        ...opts,
+        scoped: opts.scoped || ownSetter,
+        follow: undefined,
+        zoom: typeof zoom === "number" ? zoom : undefined,
       });
-      shown &&= typeof out === "string";
-      return String(out);
-    });
-    return followed === HATCH || !shown ? HATCH : swatch;
+      // The partner a color is chosen against (a halo's text): the record's, else the base symbol's.
+      const partner = DERIVED[derived].against;
+      const partnerPath = partner && pathOf(partner.key);
+      rule.against = partnerPath
+        ? (getIn(doc, `${prefix}${partnerPath}`) ??
+          (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)))
+        : undefined;
+    }
+    const word = follows ? undefined : value;
+    const turn = (color: string) => derivedColor(derived, word, color, rule);
+    const colors = followed.match(/#[0-9a-f]{6}([0-9a-f]{2})?/gi) ?? [];
+    if (followed === HATCH || colors.some((color) => typeof turn(color) !== "string")) return HATCH;
+    // An answer that switches (an on-color) shows where the map switches it, never a blend through grey.
+    if (followed.startsWith("linear-gradient") && derivedSwitches(derived, word, rule))
+      return stepped(switchedRamp(colors, (color) => turn(color) as string));
+    // Each color the followed swatch shows, derived (a darker shade for "auto").
+    return followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) => turn(color) as string);
   }
   // A color set by classes shows the classes' colors, in their order: the color under them draws nothing.
   const classified =
     path.startsWith("symbol.") && !opts.scoped ? classificationFor(doc, key, geometry) : undefined;
-  const classColors = (Array.isArray(classified?.classes) ? classified.classes : []).flatMap((record) => {
-    const color = getIn(record, key);
-    return typeof color === "string" && HEX.test(color) ? [color] : [];
-  });
+  const all = getIn(doc, "classify");
+  const ci = classified && Array.isArray(all) ? all.indexOf(classified) : -1;
+  // A word a class or a stop holds ("Auto") shows as the map draws it there.
+  const resolved = (color: unknown, at: Path): string[] => {
+    if (typeof color !== "string") return [];
+    if (HEX.test(color)) return [color];
+    const drawn = isDerivedWord(derived, color)
+      ? swatchOf(doc, at, geometry, { ...opts, follow: undefined })
+      : "";
+    return HEX.test(drawn) ? [drawn] : [];
+  };
+  const classColors = (Array.isArray(classified?.classes) ? classified.classes : []).flatMap((record, k) =>
+    resolved(getIn(record, key), `classify.${ci}.classes.${k}.${key}`)
+  );
   if (classColors.length) return gradient(classColors);
   if (typeof value === "string") return HEX.test(value) ? value : HATCH;
   if (!isObject(value)) return HATCH;
-  if (Array.isArray(value.zoom))
+  if (Array.isArray(value.zoom)) {
+    // At one zoom, the color drawn there.
+    const there = typeof zoom === "number" ? fixedValue(doc, path, { mapZoom: zoom }) : undefined;
+    if (typeof there === "string" && HEX.test(there)) return there;
     return gradient(
-      (value.zoom as Array<[number, unknown]>).flatMap(([, v]) =>
-        typeof v === "string" && HEX.test(v) ? [v] : []
-      )
+      (value.zoom as Array<[number, unknown]>).flatMap(([, v], i) => resolved(v, `${at}.zoom.${i}.1`))
     );
+  }
   if ("palette" in value) {
     const colors = [
       ...(Array.isArray(value.palette)

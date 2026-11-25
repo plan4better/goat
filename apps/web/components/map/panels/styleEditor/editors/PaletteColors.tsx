@@ -31,7 +31,7 @@ import { colorLabel, colorsIn, plainNumber } from "@/lib/style/editor/summaries"
 
 import { useEditor } from "@/components/map/panels/styleEditor/context";
 import { ClassGrid, ClassGridRow, FOCUS_MARK } from "@/components/map/panels/styleEditor/editors/ClassGrid";
-import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { ColorPicker, noneChoice } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
 
@@ -60,6 +60,7 @@ function PaletteColorPicker<A>({
   args,
   index,
 }: Omit<PaletteColorsProps<A>, "pickerKey"> & { index: number }) {
+  const { t } = useTranslation("common");
   const store = useEditor();
   const { colors, write } = useSource(args);
   if (index >= colors.length) return null;
@@ -68,6 +69,9 @@ function PaletteColorPicker<A>({
       value={colors[index]}
       docColors={colorsIn(store.document)}
       onChange={(hex) => write(recolor(colors, index, hex))}
+      sentinels={[
+        noneChoice(t("style_editor.none"), colors[index], (hex) => write(recolor(colors, index, hex))),
+      ]}
     />
   );
 }

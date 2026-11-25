@@ -4,11 +4,12 @@
 // between stops. A stop may hold a value by attribute (spec 4.4); it opens the attribute editor on that stop. A
 // compound (the label's Font) edits its keys' stops as one: each stop is one of its choices.
 import { IconButton, Typography, useTheme } from "@mui/material";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { seeThrough } from "@/lib/style/checker";
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import {
@@ -21,14 +22,16 @@ import {
   writeCompoundStops,
 } from "@/lib/style/editor/forms";
 import { type Path, getIn, setIn } from "@/lib/style/editor/store";
-import { choiceLabel, compoundOptions } from "@/lib/style/editor/summaries";
+import { choiceLabel, compoundOptions, swatchOf } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
 import { MARKER_SHAPES } from "@/lib/style/markerShapes";
 
+import { CheckerPattern } from "@/components/map/common/CheckerPattern";
 import {
+  useBasemapTone,
   useEditor,
   useLiveMapZoom,
   useMapZoom,
@@ -65,7 +68,7 @@ const SMOOTH_BASE = 1.6;
 /** A label font weight as a CSS font weight, for a Font stop's "Aa". */
 const CSS_WEIGHTS: Record<string, number> = { light: 300, regular: 400, medium: 500, bold: 700 };
 const TRANSITIONS = ["linear", "smooth", "steps"];
-const HEX = /^#[0-9a-f]{6}/i;
+const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
 
 /** The stop nearest the map zoom (the first on a tie). */
 const nearest = (stops: Stops, zoom: number) =>
@@ -125,20 +128,42 @@ function StopGlyph({
   value,
   color,
   path,
+  stop,
 }: {
   propertyKey: string;
   value: unknown;
   color: string;
   /** The property's path: an icon draws in its marker's shape. */
   path: Path;
+  /** The stop's value's path: a color it derives ("Auto", "Same as fill") draws as the map draws it at its zoom. */
+  stop: Path;
 }) {
   const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const tone = useBasemapTone();
+  const checker = `stop-checker${useId().replace(/:/g, "")}`;
   const shown = shownValue(value);
   const kind = CAPABILITIES[propertyKey]?.kind ?? "choice";
-  if (kind === "color")
-    return (
-      <circle r={7} fill={typeof shown === "string" ? shown : "none"} stroke={color} strokeWidth={0.5} />
+  if (kind === "color") {
+    const drawn =
+      typeof shown === "string" && !HEX.test(shown)
+        ? swatchOf(store.document, stop, geometry, { tone })
+        : shown;
+    const fill = typeof drawn === "string" && HEX.test(drawn) ? drawn : "none";
+    // A None or transparent stop lies over the checkerboard every swatch draws its color over.
+    return seeThrough(fill) ? (
+      <g>
+        <defs>
+          <CheckerPattern id={checker} />
+        </defs>
+        <circle data-checker-under r={7} fill={`url(#${checker})`} />
+        <circle r={7} fill={fill} stroke={color} strokeWidth={0.5} />
+      </g>
+    ) : (
+      <circle r={7} fill={fill} stroke={color} strokeWidth={0.5} />
     );
+  }
   if (propertyKey === "fill.pattern")
     return typeof shown === "string" && shown !== "none" ? (
       <g transform="translate(-9 -9)" style={{ color }}>
@@ -398,7 +423,15 @@ export function ZoomEditor({
         layerRange={[layerFrom ?? ZOOM_MIN, layerUntil ?? ZOOM_MAX]}
         label={t("style_editor.zoom_chart_aria")}
         hiddenLabel={t("style_editor.layer_hidden_zooms")}
-        glyph={(v) => <StopGlyph propertyKey={key} value={v} color={glyphColor} path={path} />}
+        glyph={(v, i) => (
+          <StopGlyph
+            propertyKey={key}
+            value={v}
+            color={glyphColor}
+            path={path}
+            stop={`${path}.zoom.${i}.1`}
+          />
+        )}
         onSelect={select}
         onAdd={add}
         onMove={move}

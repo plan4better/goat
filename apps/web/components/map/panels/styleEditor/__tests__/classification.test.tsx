@@ -296,10 +296,51 @@ describe("classification editor", () => {
     expect(opaque.backgroundColor).toBe("rgb(253, 204, 138)");
   });
 
+  it("a class's derived color shows as the map draws it, and its picker offers the row's choices", async () => {
+    const outlines = {
+      id: "edges",
+      field: "population",
+      method: "manual",
+      target: "outline.color",
+      classes: [
+        { id: "c1", to: 3000, outline: { color: "auto" } },
+        { id: "c2", from: 3000, outline: { color: "#000000" } },
+      ],
+    };
+    const { store } = shell(doc([outlines], { fill: { color: "#7f3c8d" }, outline: { width: 1 } }));
+    const [auto] = screen.getAllByRole("button", { name: "style_editor.class_color" });
+    expect(getComputedStyle(auto).backgroundColor).toBe("rgb(89, 42, 99)");
+    await userEvent.click(auto);
+    expect(screen.getByRole("button", { name: "style_editor.auto" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "style_editor.same_as_fill" })).toBeDefined();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.none" }));
+    // None keeps the hue the class drew.
+    expect(store.get("classify.0.classes.0.outline.color")).toBe("#592a6300");
+  });
+
+  it("a class's pattern color offers no Same as fill: unset, a class draws the layer's own color", async () => {
+    const patterns = {
+      id: "hatch",
+      field: "population",
+      method: "manual",
+      target: "fill.pattern_color",
+      classes: [
+        { id: "c1", to: 3000 },
+        { id: "c2", from: 3000, fill: { pattern_color: "#000000" } },
+      ],
+    };
+    shell(doc([patterns], { fill: { color: "#7f3c8d", pattern: "hatch_45", pattern_color: "#ff0000" } }));
+    await userEvent.click(screen.getAllByRole("button", { name: "style_editor.class_color" })[0]);
+    expect(screen.getByRole("button", { name: "style_editor.none" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "style_editor.same_as_fill" })).toBeNull();
+  });
+
   it("a hand-picked class color keeps the palette", async () => {
     const { store } = shell(doc([QUANTILE]));
     await userEvent.click(screen.getAllByRole("button", { name: "style_editor.class_color" })[0]);
-    await userEvent.click(screen.getByRole("button", { name: "#11a5c9" }));
+    await userEvent.click(screen.getByRole("button", { name: "#11A5C9" }));
     expect(store.get("classify.0.classes.0.fill.color")).toBe("#11a5c9");
     expect(store.get("classify.0.palette")).toBe("colorbrewer:OrRd");
   });
@@ -828,9 +869,9 @@ describe("categories picked by hand", () => {
   it("a class's color picker never writes to the class dragged into its place", async () => {
     const { store } = shell(doc([LAND_USE]), { ci: 0 }, withValues);
     await userEvent.click(screen.getAllByRole("button", { name: "style_editor.class_color" })[0]);
-    expect(screen.getByRole("button", { name: "#d7301f" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "#D7301F" })).toBeDefined();
     await dragSecondOntoFirst();
-    const pick = screen.queryByRole("button", { name: "#d7301f" });
+    const pick = screen.queryByRole("button", { name: "#D7301F" });
     if (pick) await userEvent.click(pick);
     // Class c2, now first, keeps its color.
     expect(store.get("classify.0.classes.0")).toEqual({

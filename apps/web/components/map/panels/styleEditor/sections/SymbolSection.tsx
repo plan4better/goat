@@ -6,6 +6,8 @@ import { Box, Button, Typography } from "@mui/material";
 import { type ReactNode, memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isNone } from "@/lib/style/colors";
+import { isDerivedWord } from "@/lib/style/compile/derived";
 import { classifyShape, partDiffers, recordPathOf, scopedView } from "@/lib/style/editor/classify";
 import { MAIN_COLOR, modeOf, targetsOf } from "@/lib/style/editor/forms";
 import { issueText } from "@/lib/style/editor/issues";
@@ -22,7 +24,14 @@ import {
   summaryView,
 } from "@/lib/style/editor/sources";
 import { getIn, isRuleScope, setIn } from "@/lib/style/editor/store";
-import { HATCH, choiceLabel, setterSummary, summarize, swatchOf } from "@/lib/style/editor/summaries";
+import {
+  HATCH,
+  choiceLabel,
+  setterSummary,
+  summarize,
+  swatchOf,
+  wordLabel,
+} from "@/lib/style/editor/summaries";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { markerShapeOf } from "@/lib/style/markerShapes";
 
@@ -135,9 +144,12 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
     on && group.swatch
       ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null, tone })
       : undefined;
-  // A color that follows another part as its darker shade reads before the width: "Auto · 1 px".
-  if (on && group.swatch && getIn(doc, `${base}.${group.swatch}`) === "auto")
-    text = `${t("style_editor.auto")} · ${text}`;
+  // A color GOAT derives reads before the width or size the row sums up ("Auto · 1 px"); a None color reads "None".
+  if (on && group.swatch && group.summary !== group.swatch) {
+    const color = getIn(doc, `${base}.${group.swatch}`);
+    if (isDerivedWord(`${group.part}.${group.swatch}`, color)) text = `${wordLabel(t, color)} · ${text}`;
+    else if (isNone(color)) text = t("style_editor.none");
+  }
   if (on && group.summary === "text") {
     // The field's display name or the template, and the size: "Name · 12 px".
     const template = getIn(doc, summaryPath);
@@ -221,6 +233,7 @@ function ScopeChip() {
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const { geometry } = useStyleData();
+  const tone = useBasemapTone();
   const scope = useScope();
   useStyleSelector((doc) => classifyShape(doc, geometry));
   const ruleLabel = useRuleLabel();
@@ -231,9 +244,12 @@ function ScopeChip() {
   const ruleScope = isRuleScope(scope) ? scope : null;
   const classScope = scope && !isRuleScope(scope) ? scope : null;
   if (!ruleScope && !classify.some((c) => Array.isArray(c.classes) && c.classes.length)) return null;
-  const swatchOfRecord = (c: JsonObject, record: unknown) => {
-    const color = isObject(record) ? getIn(record, targetsOf(c, geometry)[0]) : undefined;
-    return typeof color === "string" ? color : HATCH;
+  // A record's swatch: the color its features draw, a color it derives ("Auto") resolved; the hatch without one.
+  const swatchOfRecord = (c: JsonObject, recordPath: string) => {
+    const target = targetsOf(c, geometry)[0];
+    return getIn(store.document, `${recordPath}.${target}`) === undefined
+      ? HATCH
+      : swatchOf(store.document, `${recordPath}.${target}`, geometry ?? undefined, { scoped: true, tone });
   };
   const items: DropdownItem[] = [
     { label: t("style_editor.all_features"), selected: scope === null, onClick: () => store.setScope(null) },
@@ -243,7 +259,7 @@ function ScopeChip() {
     (Array.isArray(c.classes) ? c.classes : []).filter(isObject).forEach((record, k) =>
       items.push({
         label: classLabel(c, record, t, i18n.language),
-        swatch: swatchOfRecord(c, record),
+        swatch: swatchOfRecord(c, `classify.${ci}.classes.${k}`),
         selected: classScope?.classify === ci && classScope.key === k,
         onClick: () => store.setScope({ classify: ci, key: k }),
       })
@@ -259,7 +275,7 @@ function ScopeChip() {
           t,
           i18n.language
         ),
-        swatch: swatchOfRecord(c, own),
+        swatch: swatchOfRecord(c, `classify.${ci}.${extra}`),
         selected: classScope?.classify === ci && classScope.key === extra,
         onClick: () => store.setScope({ classify: ci, key: extra }),
       });
@@ -291,7 +307,12 @@ function ScopeChip() {
         label={chipLabel}
         start={
           current ? (
-            <SwatchBox swatch={{ background: swatchOfRecord(current, record), small: true }} />
+            <SwatchBox
+              swatch={{
+                background: swatchOfRecord(current, classScope ? recordPathOf(classScope) : ""),
+                small: true,
+              }}
+            />
           ) : undefined
         }
         onClick={() => setAnchor(anchor ? null : pill.current)}

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { checkerTiles, checkered, seeThrough } from "@/lib/style/checker";
+import { checkered, seeThrough } from "@/lib/style/checker";
 import { isNone, opaque } from "@/lib/style/colors";
 import { DASHES } from "@/lib/style/compile/constants";
 import { defaultResolveIcon } from "@/lib/style/compile/images";
@@ -31,22 +31,12 @@ import {
 } from "@/lib/style/legend";
 import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
 
+import { CheckerPattern } from "@/components/map/common/CheckerPattern";
+
 import { rampGradient } from "./rampGradient";
 
 const str = (value: unknown, fallback: string) => (typeof value === "string" ? value : fallback);
 const num = (value: unknown, fallback: number) => (typeof value === "number" ? value : fallback);
-
-/** The swatch checkerboard (lib/style/checker.ts) as an SVG pattern: a color that is not opaque is drawn over it. */
-function CheckerPattern({ id }: { id: string }) {
-  const tile = checkerTiles();
-  return (
-    <pattern id={id} data-checker patternUnits="userSpaceOnUse" width={tile.size} height={tile.size}>
-      {tile.rects.map((r, i) => (
-        <rect key={i} {...r} />
-      ))}
-    </pattern>
-  );
-}
 
 /** An icon at `side` px: a library icon in `tint` (a mask over the color), emoji and uploads as they are, loaded as
  * CORS requests like the map's icons. */

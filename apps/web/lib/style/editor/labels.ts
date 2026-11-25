@@ -3,6 +3,7 @@
 // what the label editor's summary rows show (Halo, Text style, Position) for the layer or the scoped class or rule.
 import type { TFunction } from "i18next";
 
+import { isNone } from "@/lib/style/colors";
 import { type NumberFormatSpec, parseTemplate } from "@/lib/style/compile/labels";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
@@ -151,7 +152,7 @@ export function labelTextStyleSummary(
   return text.charAt(0).toLocaleUpperCase(ctx.language) + text.slice(1);
 }
 
-/** The Halo row: the color's swatch and the width ("1.5 px", "1,5 px" in German), "None" at 0. */
+/** The Halo row: the color's swatch and the width ("1.5 px", "1,5 px" in German), "None" at 0 or for a None color. */
 export function labelHaloSummary(
   doc: LayerStyle,
   base: Path,
@@ -166,7 +167,10 @@ export function labelHaloSummary(
     tone: ctx.tone,
   });
   const { doc: shown, later } = summaryView(doc, scope, width);
-  const none = !later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0;
+  const colorShown = summaryView(doc, scope, color);
+  const none =
+    (!later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0) ||
+    (!colorShown.later && isNone(getIn(colorShown.doc, color)));
   return { text: none ? t("style_editor.halo_none") : summarize(doc, width, t, { ...ctx, scope }), swatch };
 }
 

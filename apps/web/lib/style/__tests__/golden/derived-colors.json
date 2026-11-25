@@ -953,7 +953,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #7f3c8d, #000000)"
   }
  },
  "polygon outline fill in zoom stops / alpha": {
@@ -998,7 +998,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #7f3c8dcc, #000000)"
   }
  },
  "polygon outline fill in zoom stops / none": {
@@ -1040,7 +1040,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #7f3c8d00, #000000)"
   }
  },
  "polygon outline fill in zoom stops / absent": {
@@ -1085,7 +1085,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #2bb381, #000000)"
   }
  },
  "polygon outline fill in zoom stops / zoom": {
@@ -1144,7 +1144,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #aa0055, #000000)"
   }
  },
  "polygon outline fill in zoom stops / palette": {
@@ -1464,7 +1464,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #cccccc, #000000)"
   }
  },
  "polygon fill off, outline fill / fixed": {
@@ -10609,7 +10609,7 @@
    }
   ],
   "panel": {
-   "symbol.marker.icon_color": "linear-gradient(90deg, #ffffff, #ffffff)"
+   "symbol.marker.icon_color": "#ffffff"
   }
  },
  "point icon color auto / palette": {
@@ -10696,7 +10696,7 @@
   },
   "legend": [],
   "panel": {
-   "symbol.marker.icon_color": "linear-gradient(90deg, #3a3541, #ffffff)"
+   "symbol.marker.icon_color": "linear-gradient(90deg, #3a3541 0%, #3a3541 42.74%, #ffffff 42.74%, #ffffff 100%)"
   }
  },
  "point icon color auto / raw": {
@@ -10810,7 +10810,7 @@
    }
   ],
   "panel": {
-   "symbol.marker.icon_color": "linear-gradient(90deg, #ffffff, #ffffff)"
+   "symbol.marker.icon_color": "#ffffff"
   }
  },
  "point icon color auto / rules": {
@@ -11503,7 +11503,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "linear-gradient(90deg, #592a63, #11a579)"
   }
  },
  "hex outline in a class and a rule over an auto base": {
@@ -11723,7 +11723,7 @@
    }
   ],
   "panel": {
-   "symbol.casing.color": "#ffffff"
+   "symbol.casing.color": "#a22c51"
   }
  },
  "pattern only in a class": {
@@ -13219,7 +13219,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#ffffff",
+   "symbol.label.color": "linear-gradient(90deg, #ffffff, #592a63)",
    "symbol.label.halo.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },
@@ -13515,7 +13515,7 @@
    }
   ],
   "panel": {
-   "symbol.label.color": "#ffffff",
+   "symbol.label.color": "linear-gradient(90deg, #ffffff, #ffffff)",
    "symbol.label.halo.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },

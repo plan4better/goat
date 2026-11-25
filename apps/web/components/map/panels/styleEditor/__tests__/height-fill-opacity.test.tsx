@@ -168,7 +168,7 @@ describe("fill opacity with heights", () => {
     expect(store.get("symbol.extrude")).toBe(false);
   });
 
-  it("a fixed height from None removes the classes of the fill opacity", async () => {
+  it("heights switched on remove the classes of the fill opacity", async () => {
     const store = heightRow(
       doc(
         { fill: { color: "#336699", opacity: 0.8 } },
@@ -180,14 +180,8 @@ describe("fill opacity with heights", () => {
       )
     );
     await openHeight();
-    const popover = screen
-      .getByText("Height", { selector: "[data-popover-frame] p" })
-      .closest("[data-popover-frame]") as HTMLElement;
-    await userEvent.click(
-      within(popover).getByRole("button", { name: /^Height: .*Change how the value is set\.$/ })
-    );
-    await userEvent.click(within(screen.getByRole("menu")).getByText("Fixed"));
-    expect(store.get("symbol.extrude")).toEqual({ height: 10 });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Turn height on" }));
+    expect(store.get("symbol.extrude")).toEqual({});
     expect(store.get("classify")).toBeUndefined();
     expect(store.get("symbol.fill.opacity")).toBe(0.8);
   });

@@ -24,13 +24,18 @@ import { SLIDERS } from "@/lib/style/editor/defaults";
 import { compoundOf, fixedChoice, writeCompound } from "@/lib/style/editor/forms";
 import { formatNumberText } from "@/lib/style/editor/labels";
 import { type Path, getIn } from "@/lib/style/editor/store";
-import { HATCH, choiceLabel, compoundOptions, plainNumber } from "@/lib/style/editor/summaries";
+import { HATCH, choiceLabel, compoundOptions, plainNumber, swatchOf } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type RangeFormat, classDomain, labelRange, rangeText, valuesText } from "@/lib/style/legend";
 
-import { useEditor, useStyleData, useStyleValue } from "@/components/map/panels/styleEditor/context";
+import {
+  useBasemapTone,
+  useEditor,
+  useStyleData,
+  useStyleValue,
+} from "@/components/map/panels/styleEditor/context";
 import {
   CATEGORY_GRAY,
   ClassGrid,
@@ -41,7 +46,7 @@ import { ClassValues } from "@/components/map/panels/styleEditor/editors/ClassVa
 import { PathColorPicker } from "@/components/map/panels/styleEditor/editors/ColorRow";
 import { PathIconPicker } from "@/components/map/panels/styleEditor/editors/IconRow";
 import { useShapeState } from "@/components/map/panels/styleEditor/editors/ShapeField";
-import { GROUPS, PATTERNS } from "@/components/map/panels/styleEditor/editors/partRows";
+import { GROUPS, PATTERNS, rowChoices } from "@/components/map/panels/styleEditor/editors/partRows";
 import { IconGlyph } from "@/components/map/panels/styleEditor/pickers/IconGlyph";
 import { PatternPicture, PatternTiles } from "@/components/map/panels/styleEditor/pickers/PatternTiles";
 import { MarkerPicture } from "@/components/map/panels/styleEditor/pickers/ShapeTiles";
@@ -158,6 +163,8 @@ function TargetValue({
   const { t, i18n } = useTranslation("common");
   const store = useEditor();
   const popover = usePopover();
+  const { geometry } = useStyleData();
+  const tone = useBasemapTone();
   const valuePath = `${path}.${target}`;
   const value = useStyleValue<unknown>(valuePath);
   // A compound target (the label's Font) reads every key of its part.
@@ -243,7 +250,19 @@ function TargetValue({
             title,
             anchorTop: anchorTopOf(event.currentTarget),
             anchorEl: event.currentTarget,
-            render: () => <PathColorPicker path={valuePath} write={(hex) => store.set(valuePath, hex)} />,
+            // The choices of the target's row (Auto, None, Same as fill on an outline), without the one that unsets
+            // the key: unset, a class draws the layer's own color, not the part it would follow.
+            render: () => (
+              <PathColorPicker
+                path={valuePath}
+                sentinels={
+                  geometry
+                    ? rowChoices(geometry, target).filter((c) => c.none || c.value !== undefined)
+                    : undefined
+                }
+                write={(hex) => store.set(valuePath, hex)}
+              />
+            ),
           })
         }
         sx={{
@@ -253,7 +272,11 @@ function TargetValue({
           borderRadius: 0.5,
           border: 1,
           borderColor: "divider",
-          background: typeof value === "string" ? checkered(value) : HATCH,
+          // A color the class derives ("Auto", "Same as fill") shows as the map draws it.
+          background:
+            typeof value === "string"
+              ? checkered(swatchOf(store.document, valuePath, geometry, { scoped: true, tone }))
+              : HATCH,
           ...FOCUS_MARK,
         }}
       />

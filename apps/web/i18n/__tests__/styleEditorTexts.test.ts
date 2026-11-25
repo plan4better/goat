@@ -49,7 +49,32 @@ describe.each(Object.entries(LANGUAGES))("style panel texts (%s)", (_, texts) =>
   });
 });
 
+describe.each(Object.entries(LANGUAGES))("the color picker's texts (%s)", (_, texts) => {
+  it("names its choices, its transparency and the note of a part that is off, without dashes", () => {
+    for (const key of [
+      "auto",
+      "none",
+      "same_as_fill",
+      "same_as_line",
+      "transparency",
+      "transparency_percent",
+    ]) {
+      expect(texts[key], key).toBeTruthy();
+      expect(texts[key], key).not.toMatch(/[\u2013\u2014]/);
+    }
+    expect(texts.part_off_note).toBeTruthy();
+    // Height is turned off by its switch, as the other parts: its menu has no None of its own.
+    expect(texts.height_none_sub).toBeUndefined();
+  });
+});
+
 describe("German style panel texts", () => {
+  it("the picker's transparency is the color's own, not the part's opacity", () => {
+    expect(LANGUAGES.de.transparency).toBe("Transparenz dieser Farbe");
+    expect(LANGUAGES.de.transparency).not.toBe(LANGUAGES.de.opacity);
+    expect(LANGUAGES.en.transparency).toBe("Transparency of this color");
+  });
+
   const texts = LANGUAGES.de;
 
   it("the note of a part off for the layer refers to the part, whatever its gender", () => {

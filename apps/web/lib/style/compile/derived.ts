@@ -63,8 +63,9 @@ export const RAW_RULES: Readonly<Record<RuleName, (read: Expr, turned: Expr, inp
   halo_against: (_read, _turned, inputs) => RAW_COLOR.halo_against!(inputs),
 };
 
-/** The rules that choose among a few colors (white or dark, black for a halo): where the color they look at blends (a palette over a
- * field, a color by zoom), their answer switches where it flips instead of blending through grey (`switched`). */
+/** The rules that choose among a few colors (white or dark, black for a halo): where the color they look at blends (a
+ * palette over a field, a color by zoom), their answer switches where it flips instead of blending through grey
+ * (`switched`). */
 const SWITCHED: ReadonlySet<RuleName> = new Set(["on_color", "halo_against"]);
 
 /** The samples per blended stretch at which a switching rule looks for where its answer flips. */
@@ -366,7 +367,8 @@ export const DERIVED: Readonly<Record<string, Derivation>> = {
     against: { key: "label.color", rule: "halo_against", pair: "label_text" },
   },
   // A cluster's number sits on the cluster's marker. Its halo contrasts with the number as it is drawn: the table names
-  // the rule `label_halo` (a halo), but with no `pair` its own rule is never reached, the halo against the number always is.
+  // the rule `label_halo` (a halo), but with no `pair` its own rule is never reached, the halo against the number
+  // always is.
   "cluster.symbol.label.color": {
     path: "label.color",
     follows: { point: "marker.color" },
@@ -472,6 +474,36 @@ export function derivedColor(
   // documented color, any other the stand-in as the read and the turned read alike.
   if (opts.raw) return RAW_COLOR[rule]?.(inputs) ?? RAW_RULES[rule](followed, followed, inputs);
   return RULES[rule](followed, inputs);
+}
+
+/** Whether the color a fixed value of `key` shows over a blended followed color switches where its answer flips
+ * (an on-color, a halo against a partner that is derived) instead of blending (`derivedColor`'s options). */
+export function derivedSwitches(
+  key: string,
+  value: unknown,
+  opts: { hollow?: boolean; against?: unknown } = {}
+): boolean {
+  const rule = ruleOf(key, value, opts);
+  if (!rule) return false;
+  const against = DERIVED[key].against;
+  if (against && isDerivedWord(key, value)) {
+    const partnerRule = ruleOf(against.key, opts.against ?? DEFAULTS[pathOf(against.key)]);
+    if (partnerRule === undefined) return false;
+    if (partnerRule !== against.pair) return SWITCHED.has(against.rule);
+  }
+  return SWITCHED.has(rule);
+}
+
+/** What a switching color shows over `colors` spread evenly from 0 to 1 and blended in Lab (a palette's ramp in a
+ * swatch): each answer of `turn` with where it starts, switching where the map's answer switches. */
+export function switchedRamp(colors: string[], turn: (color: string) => string): Array<[number, string]> {
+  const outs = colors.map(turn);
+  if (colors.length < 2 || !colors.every(isHexColor)) return [[0, outs[0]]];
+  const xs = colors.map((_, i) => i / (colors.length - 1));
+  const points = breakpoints(xs, outs, (i, x) =>
+    turn(blendAt(colors[i], colors[i + 1], (x - xs[i]) / (xs[i + 1] - xs[i]), "lab"))
+  );
+  return [[0, outs[0]], ...(points as Array<[number, string]>)];
 }
 
 /** `turned`, the followed value with each fixed color turned by a rule, with every color read from a field as it is

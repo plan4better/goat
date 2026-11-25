@@ -1,6 +1,7 @@
 // How a property's value is set (spec 4): fixed, by zoom, by attribute, a field's values as they are, or by the
 // classes of a classification. The panel's value mode button reads the mode, offers the modes the property takes
 // (spec 4.5, from CAPABILITIES) and switches between them.
+import { DERIVED, derivedColor, followedKey } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
 import { fromForm, valueAt } from "@/lib/style/compile/values";
 import { type Path, dropKey, getIn, setIn } from "@/lib/style/editor/paths";
@@ -50,7 +51,8 @@ export function keyOf(full: Path): string {
   if (record) return record[1];
   const rule = /^rules\.\d+\.(.+)$/.exec(path);
   if (rule) return rule[1];
-  if (path.startsWith("render.extrude.")) return `h3.${path.slice("render.".length)}`;
+  if (path.startsWith("render.extrude.") || path.startsWith("render.outline."))
+    return `h3.${path.slice("render.".length)}`;
   // The cluster symbol is a symbol: its keys are the parts' keys.
   if (path.startsWith("render.symbol.")) return path.slice("render.symbol.".length);
   if (path.startsWith("render.")) return `heatmap.${path.slice("render.".length)}`;
@@ -285,23 +287,19 @@ function leaveClasses(doc: LayerStyle, key: string, geometry?: Geometry): LayerS
 
 const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
-/** Keys that are drawn with another key's value while not set: the arrows with the line's color ("Same as line"), a
- * pattern with the fill's ("Same as fill"). */
-const DRAWN_AS: Record<string, string> = {
-  "arrows.color": "line.color",
-  "fill.pattern_color": "fill.color",
-};
-
-/** The value stops by zoom start from: the value at `path` as one fixed value, or, while it is not set, the value it
- * is drawn with; undefined where neither gives one (a marker without an icon). */
+/** The value stops by zoom start from: the value at `path` as one fixed value, or, while it is not set, the color the
+ * resolver draws in its place (the arrows in the line's hue, "Same as line"; a pattern in the fill's); undefined where
+ * neither gives one (a marker without an icon). */
 function zoomStartOf(doc: LayerStyle, path: Path, ctx: SwitchContext): unknown {
   const value = fixedValue(doc, path, ctx);
   if (value !== undefined && value !== null) return value;
   const key = keyOf(path);
-  const other = DRAWN_AS[key];
+  const derivation = DERIVED[key];
+  const follows = derivation?.absent && derivation.absent.only === undefined ? derivation.follows : undefined;
+  const other = follows && (followedKey(key, ctx.geometry ?? "polygon") ?? Object.values(follows)[0]);
   if (!other || !path.endsWith(key)) return undefined;
   const shown = fixedValue(doc, `${path.slice(0, path.length - key.length)}${other}`, ctx);
-  return shown === null ? undefined : shown;
+  return shown === null || shown === undefined ? undefined : derivedColor(key, undefined, shown);
 }
 
 /** Whether By zoom has a value to start from (the row's value at `path` in `doc`, the view a class or rule shows in
