@@ -680,8 +680,14 @@ export function StyleLegend({
           ? { mx: 2, my: 2, p: 3, borderRadius: 2, border: 1, borderColor: "divider" }
           : { py: 0.5 }
       }>
+      {/* One line, cut, the full name on hover, as the entries. Print, which passes `renderText`, keeps it wrapping:
+          paper has no hover. */}
       {title && (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        <Typography
+          variant="body2"
+          noWrap={!renderText}
+          title={renderText ? undefined : title}
+          sx={{ fontWeight: 600 }}>
           {title}
         </Typography>
       )}

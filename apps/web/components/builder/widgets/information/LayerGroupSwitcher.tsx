@@ -89,7 +89,13 @@ const ActiveLayerLegend = ({
         <>
           <Stack direction="row" alignItems="center" spacing={1}>
             {layerSwatchIcon(layer, zoom)}
-            <Typography variant="body2" color="text.secondary">
+            {/* A name the row cuts off shows in full on hover. */}
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              title={layer.name ?? undefined}
+              sx={{ minWidth: 0 }}>
               {layer.name}
             </Typography>
           </Stack>
