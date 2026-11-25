@@ -443,11 +443,14 @@ def rebuilt_classes(
     return rebuilt
 
 
-def operation_notes(base: dict[str, Any], operations: Sequence[Edit]) -> list[str]:
+def operation_notes(
+    base: dict[str, Any], edited: dict[str, Any], operations: Sequence[Edit]
+) -> list[str]:
     """What the result says about the call's own operations, keyed to setting a
     part's keys one by one: a `set` of the value the path holds already, a part
     switched off (false), a part reset to its defaults by `{}`, and a part a key
-    set under it switched on."""
+    set under it switched on (in a class or rule record, with the layer's own
+    part still false in ``edited``, the document the call made, where it is)."""
     notes: list[str] = []
     for index, operation in enumerate(operations):
         if operation.op != "set":
@@ -457,9 +460,17 @@ def operation_notes(base: dict[str, Any], operations: Sequence[Edit]) -> list[st
         for end in range(2, len(segments)):
             above = segments[:end]
             if part_at(above) and _held(base, to_pointer(above)) is False:
+                # A part the symbol switches off stays off in every class and rule
+                # record; the cluster symbol is a symbol of its own.
+                own = to_pointer(["symbol", above[-1]])
+                stays = (
+                    f"; it stays off while {own} is false"
+                    if above[0] in ("classify", "rules") and _held(edited, own) is False
+                    else ""
+                )
                 notes.append(
                     f"{to_pointer(above)} was switched off (false); operation "
-                    f"{number} switched it on by setting {path}."
+                    f"{number} switched it on by setting {path}{stays}."
                 )
                 break
         part = part_at(segments)

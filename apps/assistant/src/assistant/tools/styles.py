@@ -862,7 +862,7 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
         elif count > 3:
             notes.append(MORE_CHANGES.format(count=count))
     if args.operations:
-        notes += edits.operation_notes(base, args.operations)
+        notes += edits.operation_notes(base, document, args.operations)
     if _skill_missing(env) and SKILL_BEFORE_NEXT not in env.notes_given:
         env.notes_given.add(SKILL_BEFORE_NEXT)
         notes.append(SKILL_BEFORE_NEXT)

@@ -744,6 +744,111 @@ async def test_a_part_switched_off_says_so_and_a_key_set_under_it_switches_it_on
     assert "switched off" not in note
 
 
+async def test_a_part_switched_on_in_a_rule_stays_off_while_the_symbol_holds_false() -> (
+    None
+):
+    """A key set under a rule's part that holds false switches the rule's part
+    on, and the note says so. While the layer's own part is false the part
+    draws nowhere, and the note says that too; with the layer's part on, it
+    does not."""
+    state = MapState()
+    services = _Services(state)
+    rule = {
+        "op": "add",
+        "path": "/rules",
+        "item": {
+            "when": {"op": "isNull", "args": [{"property": "name"}]},
+            "outline": False,
+        },
+    }
+    off = {"op": "set", "path": "/symbol/outline", "value": False}
+    made = await _run(services, layer_project_id=31, operations=[off, rule])
+    assert made.added == {"1": "r1"}, made.note
+    color = {"op": "set", "path": "/rules/r1/outline/color", "value": "auto"}
+    on = await _run(services, layer_project_id=31, operations=[color])
+    assert on.note == (
+        "/rules/r1/outline was switched off (false); operation 1 switched it on by "
+        "setting /rules/r1/outline/color; it stays off while /symbol/outline is "
+        "false."
+    )
+    # The same call switching the layer's outline on as well: no such clause.
+    rule_off = {"op": "set", "path": "/rules/r1/outline", "value": False}
+    await _run(services, layer_project_id=31, operations=[rule_off])
+    base_on = {"op": "set", "path": "/symbol/outline/color", "value": "auto"}
+    both = await _run(services, layer_project_id=31, operations=[base_on, color])
+    assert both.note is not None
+    assert (
+        "/rules/r1/outline was switched off (false); operation 2 switched it on by "
+        "setting /rules/r1/outline/color."
+    ) in both.note
+    assert "stays off" not in both.note
+    # With the layer's own outline on, the rule's outline draws: no such clause.
+    await _run(services, layer_project_id=31, operations=[rule_off])
+    again = await _run(services, layer_project_id=31, operations=[color])
+    assert again.note is not None and again.note.endswith(
+        "/rules/r1/outline was switched off (false); operation 1 switched it on by "
+        "setting /rules/r1/outline/color."
+    )
+
+
+def test_a_cluster_symbol_part_switched_on_does_not_stay_off_with_the_layer_part() -> (
+    None
+):
+    """The cluster symbol is a symbol of its own: its part switched on draws
+    while the layer's own part is false, so the note has no clause about it."""
+    from goatlib.style.edit import Edit
+
+    from assistant.styles.edits import operation_notes
+
+    base = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"marker": {"color": "#3969ac"}, "outline": False},
+        "render": {"type": "cluster", "symbol": {"outline": False}},
+    }
+    edited = copy.deepcopy(base)
+    edited["render"]["symbol"]["outline"] = {"color": "auto"}
+    color = Edit(op="set", path="/render/symbol/outline/color", value="auto")
+    assert operation_notes(base, edited, [color]) == [
+        "/render/symbol/outline was switched off (false); operation 1 switched it on "
+        "by setting /render/symbol/outline/color."
+    ]
+
+
+async def test_a_part_switched_on_in_a_class_stays_off_while_the_symbol_holds_false() -> (
+    None
+):
+    """As in a rule: a class record's part switched on by a key set under it
+    stays off while the layer's own part is false, and the note says so."""
+    state = MapState()
+    services = _Services(state)
+    classes = {
+        "op": "set",
+        "path": "/classify",
+        "value": [{"field": "density", "method": "quantile", "count": 5}],
+    }
+    off = {"op": "set", "path": "/symbol/outline", "value": False}
+    class_off = {
+        "op": "set",
+        "path": "/classify/density/classes/c1/outline",
+        "value": False,
+    }
+    await _run(services, layer_project_id=31, operations=[classes, off])
+    await _run(services, layer_project_id=31, operations=[class_off])
+    color = {
+        "op": "set",
+        "path": "/classify/density/classes/c1/outline/color",
+        "value": "auto",
+    }
+    on = await _run(services, layer_project_id=31, operations=[color])
+    assert on.note is not None
+    assert (
+        "/classify/density/classes/c1/outline was switched off (false); operation 1 "
+        "switched it on by setting /classify/density/classes/c1/outline/color; it "
+        "stays off while /symbol/outline is false."
+    ) in on.note
+
+
 def test_a_repeated_style_change_says_to_change_the_call() -> None:
     from assistant.tools.styles import REPEATED_STYLE_EDIT
 
