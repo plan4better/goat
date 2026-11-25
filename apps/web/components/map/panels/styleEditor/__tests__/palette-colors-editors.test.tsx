@@ -29,6 +29,9 @@ const list = () => screen.getByRole("group", { name: "style_editor.palette" });
 const swatches = () => within(list()).getAllByRole("button", { name: "style_editor.palette_color" });
 const bins = () => within(list()).getAllByRole("button", { name: "style_editor.remove_color" });
 const addColor = () => screen.getByRole("button", { name: "style_editor.add_color" });
+/** Opens the editor of the section's Colors row. */
+const openColors = () =>
+  userEvent.click(within(screen.getByText("style_editor.colors").parentElement!).getByRole("button"));
 
 const FIELDS = [{ name: "population", type: "integer" as const, label: "population" }];
 const DATA = {
@@ -146,7 +149,7 @@ describe("a palette's colors under its Palette row", () => {
     expect(store.get("symbol.fill.color.palette")).toEqual(["#000000", "#ff0000", "#ffffff"]);
   });
 
-  it("H3 hexagons list their palette's colors under Colors; an edit writes an inline palette", async () => {
+  it("H3 hexagons list their palette's colors in the Colors editor; an edit writes an inline palette", async () => {
     const redux = configureStore({ reducer: { map: mapReducer } });
     redux.dispatch(initView({ projectId: "p1", mode: "2d", projection: "mercator" }));
     const { store } = renderPanel(
@@ -164,6 +167,7 @@ describe("a palette's colors under its Palette row", () => {
         data: { geometry: "point", fields: FIELDS, fieldTypes: { population: "integer" } },
       }
     );
+    await openColors();
     // An inline palette, reversed as it draws.
     // Drawing it reversed leaves the stored list as written.
     expect(store.get("render.palette")).toEqual(["#000000", "#ffffff"]);
@@ -175,7 +179,7 @@ describe("a palette's colors under its Palette row", () => {
     expect(store.get("render.reverse")).toBeUndefined();
   });
 
-  it("H3 hexagons in classes have no palette list", () => {
+  it("H3 hexagons in classes have no palette list", async () => {
     const redux = configureStore({ reducer: { map: mapReducer } });
     redux.dispatch(initView({ projectId: "p1", mode: "2d", projection: "mercator" }));
     renderPanel(
@@ -193,6 +197,8 @@ describe("a palette's colors under its Palette row", () => {
         data: { geometry: "point", fields: FIELDS, fieldTypes: { population: "integer" } },
       }
     );
+    await openColors();
+    expect(screen.getByText("style_editor.count")).toBeDefined();
     expect(screen.queryByRole("group", { name: "style_editor.palette" })).toBeNull();
   });
 });

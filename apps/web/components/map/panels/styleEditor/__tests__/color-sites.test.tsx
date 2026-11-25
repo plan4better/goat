@@ -134,6 +134,10 @@ describe("the H3 outline", () => {
         data: { geometry: "point" },
       }
     );
+    // The color field is in the Outline row's editor.
+    await userEvent.click(
+      within(screen.getByText("style_editor.part_outline").parentElement!).getByRole("button")
+    );
     const field = screen.getByRole("button", { name: "style_editor.pick_color" });
     expect(field.textContent).toBe("style_editor.auto");
     const swatch = getComputedStyle(field.firstElementChild as HTMLElement);

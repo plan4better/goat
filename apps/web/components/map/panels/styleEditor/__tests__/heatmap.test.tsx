@@ -1,6 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { paletteList } from "@/lib/style/editor/paletteList";
+import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import type { FieldProfile, ProfileSource } from "@/components/map/panels/styleEditor/context";
@@ -38,7 +41,70 @@ function setup(
 
 const rowOf = (label: string) => screen.getByText(label).parentElement as HTMLElement;
 
+const sectionRow = (label: string) => screen.getAllByText(label)[0].parentElement as HTMLElement;
+const openColors = () => userEvent.click(within(sectionRow("style_editor.colors")).getByRole("button"));
+const palette = () => screen.queryByRole("group", { name: "style_editor.palette" });
+
 describe("heatmap", () => {
+  it("the panel shows one Colors row; its editor holds the Palette and the ramp's colors, no Classes", async () => {
+    const { store } = setup();
+    expect(palette()).toBeNull();
+    expect(screen.queryByText("style_editor.palette")).toBeNull();
+    await openColors();
+    const row = screen.getByText("style_editor.palette");
+    expect(row.compareDocumentPosition(palette()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText("style_editor.classes")).toBeNull();
+    expect(store.get("render")).toEqual({ type: "heatmap" });
+  });
+
+  it("the ramp's colors are added and deleted in the Colors editor, writing render.palette", async () => {
+    const { store } = setup({ type: "heatmap", palette: ["#000000", "#808080", "#ffffff"] });
+    await openColors();
+    await userEvent.click(
+      within(palette()!).getAllByRole("button", { name: "style_editor.remove_color" })[1]
+    );
+    expect(store.get("render.palette")).toEqual(["#000000", "#ffffff"]);
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.add_color" }));
+    expect(store.get("render.palette")).toEqual(["#000000", "#ffffff", "#ffffff"]);
+    // Edits of the list in quick succession are one undo step, as edits of one key are.
+    act(() => store.undo());
+    expect(store.get("render.palette")).toEqual(["#000000", "#808080", "#ffffff"]);
+  });
+
+  it("opening the panel, the Colors editor and its palette picker leaves a stored style as written", async () => {
+    const { store } = setup({ type: "heatmap", palette: ["#000000", "#ff0000", "#ffffff"], reverse: true });
+    const before = structuredClone(store.document);
+    await openColors();
+    const paletteRow = () => within(sectionRow("style_editor.palette")).getByRole("button");
+    await userEvent.click(paletteRow());
+    expect(screen.getByRole("button", { name: "Blues" })).toBeDefined();
+    await userEvent.click(paletteRow());
+    expect(screen.queryByRole("button", { name: "Blues" })).toBeNull();
+    expect(store.document).toEqual(before);
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("the Colors editor closes when Draw as changes and its row goes", async () => {
+    const { store } = setup();
+    await openColors();
+    expect(screen.getByText("style_editor.palette")).toBeDefined();
+    act(() => store.set("render", { type: "h3" }));
+    expect(screen.queryByText("style_editor.section_heatmap")).toBeNull();
+    expect(screen.queryByText("style_editor.palette")).toBeNull();
+    expect(screen.queryByText("style_editor.colors")).toBeNull();
+  });
+
+  it("the Palette row opens the palette picker, which writes render.palette", async () => {
+    const { store } = setup();
+    await openColors();
+    expect(within(palette()!).getAllByRole("button", { name: "style_editor.palette_color" })).toHaveLength(
+      paletteList(DEFAULTS["heatmap.palette"] as string).length
+    );
+    await userEvent.click(within(sectionRow("style_editor.palette")).getByRole("button"));
+    await userEvent.click(screen.getByRole("button", { name: "Blues" }));
+    expect(store.get("render.palette")).toBe("colorbrewer:Blues");
+  });
+
   it("opacity writes render.opacity", () => {
     const { store } = setup();
     fireEvent.change(within(rowOf("style_editor.opacity")).getByRole("slider"), { target: { value: 0.6 } });

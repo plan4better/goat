@@ -22,9 +22,9 @@ const raster = (style: object) => ({
   },
 });
 
-/** The widths of strokes, which draw finely at half a pixel: lines, outlines (of polygons, lines and points), casings
- * and label halos. A pattern's line width stays whole: it is drawn into the pattern's image. */
-const HALF_PIXEL = ["line.width", "outline.width", "casing.width", "label.halo.width"];
+/** The widths of strokes, which draw finely at half a pixel: lines, outlines (of polygons, lines, points and
+ * hexagons), casings and label halos. A pattern's line width stays whole: it is drawn into the pattern's image. */
+const HALF_PIXEL = ["line.width", "outline.width", "h3.outline.width", "casing.width", "label.halo.width"];
 
 describe("a slider moves in whole numbers of what it shows", () => {
   it("every number row of the panel starts and steps on whole numbers, percents as percents", () => {

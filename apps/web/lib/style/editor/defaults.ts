@@ -43,6 +43,7 @@ export const SLIDERS: Readonly<Record<string, SliderRange>> = {
   "heatmap.intensity": { min: 0.2, max: 3, step: 0.05, pct: true },
   "heatmap.opacity": PCT,
   "h3.opacity": PCT,
+  "h3.outline.width": { min: 0, max: 8, step: 0.5, unit: "px" },
   // Heights of polygons (goatlib allows 5000 m; the number field takes any).
   "extrude.height": { min: 0, max: 200, step: 1, unit: "m" },
   "extrude.base": { min: 0, max: 200, step: 1, unit: "m" },
