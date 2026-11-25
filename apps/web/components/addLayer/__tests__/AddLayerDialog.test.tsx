@@ -14,13 +14,19 @@ import type { DatasetConnection } from "@/lib/workflows/datasetConnection";
 
 import AddLayerDialog from "@/components/addLayer/AddLayerDialog";
 
-/** Keys as text, but for the two that name the layer Add layer suggests. */
+/** Keys as text, but for the two that name the layer Add layer suggests and the catalog's place headers. */
 const names: Record<string, string> = {
   fetch_features_source_short_osm: "OSM",
   fetch_features_type_points: "Points",
+  catalog_in_this_area: "In this area ({{count}})",
+  catalog_elsewhere: "Elsewhere ({{count}})",
 };
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => names[key] ?? key, i18n: { language: "en" } }),
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, unknown>) =>
+      (names[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(values?.[name])),
+    i18n: { language: "en" },
+  }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
 }));
 
@@ -155,6 +161,15 @@ vi.mock("@/components/addLayer/DatasetPickerBody", () => ({
   },
 }));
 vi.mock("@/components/addLayer/CatalogBody", () => ({ default: () => <div /> }));
+// The catalog list is rendered for real in its own suite, around these.
+vi.mock("@/components/addLayer/CatalogPickerCard", () => ({
+  default: ({ collection }: { collection: { id: string } }) => <div>card {collection.id}</div>,
+}));
+vi.mock("@/components/dashboard/catalog/CatalogFilterPanel", () => ({ default: () => null }));
+vi.mock("@/components/dashboard/catalog/CatalogActiveFilters", () => ({ default: () => null }));
+vi.mock("@/hooks/catalog/useCatalogFacetSections", () => ({
+  useCatalogFacetSections: () => ({ sections: [], facetLabel: vi.fn(), optionLabel: vi.fn() }),
+}));
 vi.mock("@/components/addLayer/CreateBody", () => ({ default: () => <div /> }));
 vi.mock("@/components/addLayer/ConnectBody", () => ({ default: () => <div /> }));
 vi.mock("@/components/addLayer/UploadBody", () => ({ default: () => <div /> }));
@@ -264,6 +279,45 @@ describe("AddLayerDialog — My datasets", () => {
     render(<AddLayerDialog source="explorer" projectId="p1" onClose={vi.fn()} />);
 
     expect(shelfProps.at(-1)?.fullHeight).toBe(false);
+  });
+});
+
+describe("AddLayerDialog — Catalog", () => {
+  const renderList = async (inArea: number | undefined) => {
+    const { default: CatalogBody } = await vi.importActual<
+      typeof import("@/components/addLayer/CatalogBody")
+    >("@/components/addLayer/CatalogBody");
+    const catalog = {
+      aggregations: [],
+      facetQueryParams: {},
+      facetSelections: {},
+      favouritesOnly: false,
+      q: "",
+      spatial: null,
+      datasets: ["a", "b", "c"].map((id) => ({ id })),
+      total: 3,
+      inArea,
+      elsewhere: inArea === undefined ? undefined : 3 - inArea,
+      isLoading: false,
+      hasMore: false,
+      isLoadingMore: false,
+      loadMore: vi.fn(),
+      queryKey: "q",
+      selection: { ids: [], toggle: vi.fn(), setMany: vi.fn(), clear: vi.fn() },
+      starred: {},
+      toggleStar: vi.fn(),
+    };
+    Element.prototype.scrollTo = vi.fn();
+    render(<CatalogBody controller={{ ...controller, catalog } as never} />);
+    return screen.getAllByText(/^(In this area|Elsewhere|card)/).map((el) => el.textContent);
+  };
+
+  it("heads the datasets touching the map view, then the rest", async () => {
+    expect(await renderList(2)).toEqual(["In this area (2)", "card a", "card b", "Elsewhere (1)", "card c"]);
+  });
+
+  it.each([undefined, 0, 3])("shows no headers when %s of 3 are in the area", async (inArea) => {
+    expect(await renderList(inArea)).toEqual(["card a", "card b", "card c"]);
   });
 });
 

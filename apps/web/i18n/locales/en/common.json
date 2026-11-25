@@ -3072,6 +3072,8 @@
   "catalog_n_favourites": "{{count}} saved on this page",
   "catalog_no_favourites": "Nothing saved yet",
   "catalog_no_favourites_hint": "Use the star on a dataset to save it here.",
+  "catalog_in_this_area": "In this area ({{count}})",
+  "catalog_elsewhere": "Elsewhere ({{count}})",
   "edit_filter": "Edit filter",
   "column_has_other_filters_one": "{{column}} has 1 other filter. Manage it in the layer Filter panel.",
   "column_has_other_filters_other": "{{column}} has {{count}} other filters. Manage them in the layer Filter panel.",

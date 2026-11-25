@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CATALOG_LANGUAGE_BOOST, DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
+import { DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
 
 /**
  * Opening the catalog from a project should surface the datasets around the
@@ -8,8 +8,7 @@ import { CATALOG_LANGUAGE_BOOST, DEFAULT_SORT, buildSearchParams } from "@/lib/c
  * a ranking signal (`bbox_boost`), never a filter: the whole catalog is still
  * returned and the result count does not change.
  */
-const state = (extra: Record<string, unknown> = {}) =>
-  ({ page: 1, facetSelections: {}, ...extra }) as never;
+const state = (extra: Record<string, unknown> = {}) => ({ page: 1, facetSelections: {}, ...extra }) as never;
 
 const MUNICH: [number, number, number, number] = [11.36, 48.06, 11.72, 48.25];
 
@@ -60,14 +59,15 @@ describe("buildSearchParams — viewport", () => {
     expect(params.sortby).toBe("title,id");
   });
 
-  it("asks for the reader's language first, on every surface", () => {
-    expect(buildSearchParams(state()).language_boost).toBe(CATALOG_LANGUAGE_BOOST);
-    expect(buildSearchParams(state(), { viewport: [11.36, 48.06, 11.72, 48.25] }).language_boost).toBe(
-      CATALOG_LANGUAGE_BOOST
-    );
+  it("asks for German when GOAT is German, else leaves it to the browser", () => {
+    expect(buildSearchParams(state(), { language: "de", viewport: MUNICH }).language_boost).toBe("de");
+    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBeUndefined();
+    expect(buildSearchParams(state()).language_boost).toBeUndefined();
   });
 
   it("drops the language boost under an explicit sort, like the viewport boost", () => {
-    expect(buildSearchParams(state({ sortby: "-updated" })).language_boost).toBeUndefined();
+    expect(
+      buildSearchParams(state({ sortby: "-updated" }), { language: "de" }).language_boost
+    ).toBeUndefined();
   });
 });

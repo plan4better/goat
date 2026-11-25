@@ -46,6 +46,7 @@ from catalog.routers.params import (
     CollectionSearchQuery,
     ItemsQuery,
     SearchQuery,
+    reader_languages,
     reject_get_encodings,
 )
 from catalog.services import capabilities, stac_build
@@ -63,7 +64,7 @@ from catalog.services.search import (
     get_collection_row,
     resolve_id,
     safe_query,
-    search_collections,
+    search_collections_in_area,
     search_items,
 )
 from catalog.store import CatalogStore
@@ -402,6 +403,15 @@ def stac_collection_queryables(
 # --------------------------------------------------------------------------
 
 
+def _with_reader_languages(params: SearchParams, request: Request) -> SearchParams:
+    """The request's ``Accept-Language`` as ``language_boost`` when none is
+    given (see ``reader_languages``)."""
+    if params.language_boost is not None:
+        return params
+    codes = reader_languages(None, request.headers.get("accept-language", ""))
+    return params.model_copy(update={"language_boost": codes})
+
+
 @router.get(
     "/collections",
     summary="STAC collections (Collection Search)",
@@ -419,8 +429,10 @@ def stac_collections(
     # (`goat:geometryType` is per layer) so a filter naming it is a 400 here,
     # not a silent column reference that drops every mixed-type bundle. The
     # query-param path keeps its member semi-join promotion untouched.
-    params = query.to_search_params(store.collection_registry, limit=limit)
-    rows, matched = search_collections(store, params)
+    params = _with_reader_languages(
+        query.to_search_params(store.collection_registry, limit=limit), request
+    )
+    rows, matched, in_area = search_collections_in_area(store, params)
     ui = _ui_base(request)
     assets = _assets_base(request)
     collections = [
@@ -431,12 +443,15 @@ def stac_collections(
         )
         for row in rows
     ]
-    return {
+    body: dict[str, Any] = {
         "collections": collections,
         "numberMatched": matched,
         "numberReturned": len(collections),
         "links": _page_links(request, limit, offset, matched),
     }
+    if in_area is not None:
+        body["numberInArea"] = in_area
+    return body
 
 
 @router.get(
@@ -546,6 +561,7 @@ def stac_search_get(
         default_filter_lang="cql2-text",
         limit=clamp_limit(query.limit, MAX_SEARCH_LIMIT),
     )
+    params = _with_reader_languages(params, request)
     features, matched = _run_search(
         store, base, params, _ui_base(request), _assets_base(request)
     )
@@ -588,6 +604,7 @@ async def stac_search_post(
         default_filter_lang="cql2-json",
         limit=clamp_limit(body.limit, MAX_SEARCH_LIMIT),
     )
+    params = _with_reader_languages(params, request)
     features, matched = await run_in_threadpool(
         _run_search, store, base, params, _ui_base(request), _assets_base(request)
     )

@@ -210,6 +210,9 @@ class Row:
     carries, whether it embeds ``updated``, ...) -- it is not itself a parquet
     column. Defaults to 0 so hand-built ``Row``s (e.g. a test inserting one
     extra row directly) don't need to supply it.
+
+    ``collection_language`` is the ``language`` a Collection row's published
+    document carries, as real datasets do; the generated rows carry none.
     """
 
     id: str
@@ -230,6 +233,7 @@ class Row:
     version: str
     parquet_url: str | None
     idx: int = 0
+    collection_language: str | None = None
 
 
 def _polygon(rng: random.Random) -> tuple[str, dict[str, Any]]:
@@ -687,6 +691,8 @@ def _write_published(
             at = row.idx % len(_TOPIC_TIERS)
             out["goat:topicRelevance"] = _TOPIC_TIERS[at]
             out["goat:topicRelevanceScore"] = 7 - at * 2
+            if row.collection_language:
+                out["language"] = {"code": row.collection_language}
         else:
             out = {k: v for k, v in doc.items() if k in structural}
             bbox = doc.get("bbox")

@@ -190,6 +190,8 @@ export type CatalogCollections = {
   links: CatalogLink[];
   numberMatched?: number | null;
   numberReturned?: number | null;
+  /** How many of the matched rows touch the map view; they come first. Sent only for a `bbox_boost` ranking. */
+  numberInArea?: number | null;
 };
 
 export type CatalogAggregationBucket = {

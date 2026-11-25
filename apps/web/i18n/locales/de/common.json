@@ -3072,6 +3072,8 @@
   "catalog_n_favourites": "{{count}} gespeichert auf dieser Seite",
   "catalog_no_favourites": "Noch nichts gespeichert",
   "catalog_no_favourites_hint": "Mit dem Stern auf einem Datensatz hier speichern.",
+  "catalog_in_this_area": "In diesem Gebiet ({{count}})",
+  "catalog_elsewhere": "Außerhalb ({{count}})",
   "edit_filter": "Filter bearbeiten",
   "column_has_other_filters_one": "{{column}} hat 1 weiteren Filter. Verwalten Sie ihn im Filter-Panel des Layers.",
   "column_has_other_filters_other": "{{column}} hat {{count}} weitere Filter. Verwalten Sie sie im Filter-Panel des Layers.",
