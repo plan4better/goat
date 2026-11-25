@@ -461,7 +461,8 @@ describe("class scope", () => {
     const toggle = screen.getByRole("checkbox", { name: "style_editor.turn_part_on" }) as HTMLInputElement;
     expect(toggle.disabled).toBe(false);
     await userEvent.click(toggle);
-    expect(store.get("classify.0.classes.1.outline")).toEqual({});
+    // No record holds an outline, so the class's starts with Auto (spec 18.10).
+    expect(store.get("classify.0.classes.1.outline")).toEqual({ color: "auto", width: 1 });
     expect(store.get("symbol.outline")).toBeUndefined();
     act(() => store.undo());
     act(() => store.undo());

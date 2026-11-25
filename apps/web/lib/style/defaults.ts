@@ -8,12 +8,16 @@ import { STYLE_VERSION } from "@/lib/style/version";
 
 const COLOR = DEFAULTS["fill.color"] as string;
 
+/** A new polygon layer's outline, a darker shade of its fill at 1 px; also what the panel's Outline switch starts
+ * with. */
+export const DEFAULT_OUTLINE: Readonly<{ color: string; width: number }> = { color: "auto", width: 1 };
+
 export function defaultStyle(geometry: Geometry | undefined): LayerStyle {
   const symbol =
     geometry === "point"
       ? { marker: { shape: "circle", color: COLOR, size: 10 } }
       : geometry === "line"
         ? { line: { color: COLOR, width: 2 } }
-        : { fill: { color: COLOR, opacity: 0.8 }, outline: { color: "auto", width: 1 } };
+        : { fill: { color: COLOR, opacity: 0.8 }, outline: { ...DEFAULT_OUTLINE } };
   return { version: STYLE_VERSION, kind: "vector", symbol } as LayerStyle;
 }

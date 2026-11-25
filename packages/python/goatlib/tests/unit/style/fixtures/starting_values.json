@@ -106,5 +106,41 @@
         }
       }
     }
+  },
+  {
+    "name": "an outline switched on around a polygon",
+    "geometry": "polygon",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "fill": { "color": "#2bb381", "opacity": 0.8 },
+        "outline": { "color": "auto", "width": 1 }
+      }
+    }
+  },
+  {
+    "name": "an outline switched on around a point",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": { "shape": "circle", "color": "#3969ac", "size": 10 },
+        "outline": { "color": "auto", "width": 1 }
+      }
+    }
+  },
+  {
+    "name": "a casing switched on along a line",
+    "geometry": "line",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "line": { "color": "#e73f74", "width": 3 },
+        "casing": { "color": "auto" }
+      }
+    }
   }
 ]

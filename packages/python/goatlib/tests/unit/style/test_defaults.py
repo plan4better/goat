@@ -107,7 +107,7 @@ STARTING_VALUES = json.loads((FIXTURES / "starting_values.json").read_text())
 )
 def test_what_the_panel_writes_when_a_part_is_switched_on_is_valid(row: dict) -> None:
     # fixtures/starting_values.json holds the documents the web panel writes when
-    # a label, an icon or clustering is switched on (the web's test:
+    # a label, an icon, clustering, an outline or a casing is switched on (the web's test:
     # styleEditor/__tests__/starting-values.test.tsx), and both candidates for a
     # point label's halo.
     ctx = DataContext(kind="vector", geometry=row["geometry"], fields={})

@@ -20,6 +20,7 @@ import {
   markerFilled,
   markerOn,
   partOn,
+  partStart,
   restoreIcon,
 } from "@/lib/style/editor/parts";
 import {
@@ -287,13 +288,16 @@ export function PartSwitch({ part }: { part: string }) {
       on={on}
       disabled={offForLayer}
       onToggle={() =>
-        // A label with nothing to bring back starts as `labelStart` says: its text and halo on Auto (spec 18.10).
+        // A part with nothing to bring back starts as `labelStart` or `partStart` says: a label's text and halo, an
+        // outline's or a casing's color on Auto (spec 18.10).
         togglePart(
           store,
           writePath,
           !on,
           undefined,
-          group.part === "label" ? labelStart(store.document, geometry) : undefined
+          group.part === "label"
+            ? labelStart(store.document, geometry, scope)
+            : partStart(store.document, group.part, scope)
         )
       }
     />

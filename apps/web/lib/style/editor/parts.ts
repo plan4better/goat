@@ -3,9 +3,10 @@
 import { isSet, setValues } from "@/lib/style/compile/cascade";
 import { DEFAULT_CLUSTER_SYMBOL } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
+import { DEFAULT_OUTLINE } from "@/lib/style/defaults";
 import { switchMode, targetsOf } from "@/lib/style/editor/forms";
 import { perLayerPath, recordPaths } from "@/lib/style/editor/sources";
-import { type Path, getIn, setIn } from "@/lib/style/editor/store";
+import { type Path, type Scope, getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
@@ -38,6 +39,35 @@ export function clusterRender(doc: LayerStyle): JsonObject {
   return markerOn(doc)
     ? { type: "cluster", look: "points", count: "badge", symbol }
     : { type: "cluster", symbol };
+}
+
+/** The paths of the colors a start sets (`color`, `halo.color`). */
+function colorPaths(value: JsonObject, prefix = ""): string[] {
+  return Object.entries(value).flatMap(([key, v]) =>
+    isObject(v) ? colorPaths(v, `${prefix}${key}.`) : key === "color" ? [`${prefix}${key}`] : []
+  );
+}
+
+/** What a part switched on writes with nothing to bring back, given the `start` its colors take (spec 18.10). In a
+ * class or rule (`scope`): `{}` while the layer's own part is an object, which the record then inherits; else the
+ * start. For the layer: the start, unless a class or rule holds the part without one of the start's colors, whose
+ * default color the start would change; then `{}`. */
+export function startFor(doc: LayerStyle, part: string, scope: Scope | null, start: JsonObject): JsonObject {
+  if (scope) return isObject(getIn(doc, `symbol.${part}`)) ? {} : start;
+  const paths = colorPaths(start);
+  const inherits = recordPaths(doc).some(
+    ({ record }) => isObject(record[part]) && paths.some((path) => getIn(record[part], path) === undefined)
+  );
+  return inherits ? {} : start;
+}
+
+/** What an outline or a casing switched on starts with when there is nothing to bring back, as `startFor` decides: an
+ * outline as a new polygon layer's (Auto, 1 px), a casing its color on Auto at its default width. Any other part
+ * starts empty. */
+export function partStart(doc: LayerStyle, part: string, scope: Scope | null): JsonObject {
+  if (part === "outline") return startFor(doc, part, scope, { ...DEFAULT_OUTLINE });
+  if (part === "casing") return startFor(doc, part, scope, { color: "auto" });
+  return {};
 }
 
 /** What switching the layer's icon off takes from its markers: the base marker's icon, shape and what only an icon
