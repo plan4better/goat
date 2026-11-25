@@ -1,8 +1,9 @@
 // The short text a row shows for a value: "#C7E9B4 · 72%", "3 px", "2 → 6 px", "Dotted → Dashed → Solid",
 // "By Visitors per year".
+import { Color, interpolates } from "@maplibre/maplibre-gl-style-spec";
 import type { TFunction } from "i18next";
 
-import { alphaOf, isNone } from "@/lib/style/colors";
+import { LIGHT, alphaOf, contrastRatio, isNone } from "@/lib/style/colors";
 import {
   DERIVED,
   derivedColor,
@@ -15,7 +16,7 @@ import {
 } from "@/lib/style/compile/derived";
 import { h3Resolution, h3Scale, onCluster } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
-import type { ScopedView } from "@/lib/style/editor/classify";
+import { type ScopedView, recordPathOf } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
 import {
   type CompoundChoice,
@@ -25,6 +26,7 @@ import {
   keyOf,
   modeOf,
 } from "@/lib/style/editor/forms";
+import { setIn } from "@/lib/style/editor/paths";
 import { RULES, type Setter, perLayerPath, summaryView } from "@/lib/style/editor/sources";
 import { type Path, type Scope, getIn } from "@/lib/style/editor/store";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
@@ -201,6 +203,58 @@ const STOP = /\.zoom\.(\d+)\.1$/;
 const RECORD = /^(symbol\.|render\.symbol\.|classify\.\d+\.(?:classes\.\d+|other|no_data)\.|rules\.\d+\.)/;
 const position = (x: number) => `${Number((x * 100).toFixed(2))}%`;
 
+/** The color MapLibre draws at `t` (0 to 1) between two hex colors blended in Lab, as `#rrggbb`. */
+function blendLab(a: string, b: string, t: number): string {
+  const [r, g, bl] = interpolates.color(Color.parse(a)!, Color.parse(b)!, t, "lab").rgb;
+  return `#${[r, g, bl]
+    .map((c) =>
+      Math.round(c * 255)
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("")}`;
+}
+
+/** A text read on one halo color over `colors` spread evenly from 0 to 1 (a palette's ramp in a swatch), as the map
+ * draws it: blending from one color's text to the next where both lie on the same side of the halo (lighter or darker
+ * than it), stepping where they lie on either side, so it never blends through the halo's own color. */
+function sidedGradient(colors: string[], turn: (color: string) => string, halo: string): string {
+  const outs = colors.map(turn);
+  const lighter = (color: string) => contrastRatio(color, LIGHT) < contrastRatio(halo, LIGHT);
+  const sides = colors.every((c) => HEX.test(c)) ? switchedRamp(colors, (c) => String(lighter(turn(c)))) : [];
+  if (sides.length < 2) return gradient(outs);
+  const last = colors.length - 1;
+  const at = (x: number) => {
+    const i = Math.min(Math.floor(x * last), last - 1);
+    return turn(blendLab(colors[i], colors[i + 1], x * last - i));
+  };
+  const stops: Array<[number, string]> = [
+    ...outs.map((color, i): [number, string] => [i / last, color]),
+    ...sides.slice(1).flatMap(
+      ([x]): Array<[number, string]> => [
+        [x, at(Math.max(x - 1e-4, 0))],
+        [x, at(Math.min(x + 1e-4, 1))],
+      ]
+    ),
+  ].sort((a, b) => a[0] - b[0]);
+  return `linear-gradient(90deg, ${stops.map(([x, color]) => `${color} ${position(x)}`).join(", ")})`;
+}
+
+/** Whether a halo's width by zoom draws no halo at `zoom`, as the compiler reads it: where the stretch the zoom lies
+ * in starts and ends at 0 (below the first stop and from the last on, where that stop is 0). A width that blends from
+ * 0 to a width above draws a halo over the whole stretch. */
+function widthOffAt(width: unknown, zoom: number): boolean {
+  if (!isObject(width) || !Array.isArray(width.zoom)) return false;
+  const stops = width.zoom as Array<[number, unknown]>;
+  const i = stops.reduce((at, [z], k) => (z <= zoom ? k : at), -1);
+  if (i < 0) return stops[0]?.[1] === 0;
+  if (i === stops.length - 1) return stops[i][1] === 0;
+  return stops[i][1] === 0 && stops[i + 1][1] === 0;
+}
+
+/** How many zooms between a partner's first and last stop by zoom a swatch reads its answer at. */
+const ZOOM_SAMPLES = 96;
+
 /** A gradient of answers that each hold up to where the next starts (`switchedRamp`), or the one answer. */
 function stepped(ramp: Array<[number, string]>): string {
   if (ramp.length === 1) return ramp[0][1];
@@ -214,7 +268,9 @@ function stepped(ramp: Array<[number, string]>): string {
 /** The CSS background a row's swatch shows for the color at `path`, which may be a zoom stop's (`….zoom.<i>.1`).
  * `scoped`: `doc` is one class's view, which draws its own color, not the classes'. `tone`: the basemap's tone the map
  * draws a derived color for (light by default), so the swatch shows the map's color. `follow`: a key that is not set
- * and follows another part shows the hue it draws, not the hatch. `zoom`: a color by zoom shows its color there. */
+ * and follows another part shows the hue it draws, not the hatch. `zoom`: a color by zoom shows its color there. A
+ * derived color beside a partner by zoom (a text's color, a halo's color or width) shows the colors the map steps
+ * through over the partner's stops, or, at `zoom`, the one it draws there. */
 export function swatchOf(
   doc: LayerStyle,
   path: Path,
@@ -230,7 +286,10 @@ export function swatchOf(
   const inRecord = prefix !== "" && prefix !== "symbol." && prefix !== "render.symbol.";
   const read = (sub: string) =>
     getIn(doc, `${prefix}${sub}`) ?? (inRecord ? getIn(doc, `symbol.${sub}`) : undefined);
-  const own = stop ? getIn(doc, path) : read(at.slice(prefix.length));
+  // A record's stop that the record does not hold itself is the base symbol's (the record reads the layer's stops).
+  const own = stop
+    ? (getIn(doc, path) ?? (inRecord ? getIn(doc, `symbol.${path.slice(prefix.length)}`) : undefined))
+    : read(at.slice(prefix.length));
   const value = own ?? DEFAULTS[key];
   // A cluster symbol's colors follow the cluster's marker; its number has a derivation of its own.
   const cluster = prefix === "render.symbol.";
@@ -245,6 +304,11 @@ export function swatchOf(
   if (isDerivedWord(derived, value) || follows) {
     const rule = { hollow, against: undefined as unknown, inputs: { tone: opts.tone ?? "light" } };
     let followed: string;
+    // A partner that changes by zoom (its color, or a width that draws no halo over part of the zoom range): what it
+    // draws at a zoom, and the zooms its stops span.
+    let partnerAt: ((zoom: number) => unknown) | undefined;
+    let followedOne: ((zoom: number) => string | undefined) | undefined;
+    let span: [number, number] | undefined;
     if (derived === "h3.outline.color") {
       // An H3 outline follows each hexagon's color, which the render works out.
       const render = isObject(doc.render) ? (doc.render as JsonObject) : {};
@@ -263,12 +327,18 @@ export function swatchOf(
       const classes = getIn(doc, "classify");
       const ownSetter =
         setter !== undefined && Array.isArray(classes) && String(classes.indexOf(setter)) === own;
-      followed = swatchOf(doc, `${from}${main}`, geometry, {
+      const followedPath = `${from}${main}`;
+      // A record reads the classes or the layer's own color by that check alone, whoever asks.
+      const followedOpts = {
         ...opts,
-        scoped: opts.scoped || ownSetter,
+        scoped: inRecord ? ownSetter : opts.scoped,
         follow: undefined,
+      };
+      followed = swatchOf(doc, followedPath, geometry, {
+        ...followedOpts,
         zoom: typeof zoom === "number" ? zoom : undefined,
       });
+      const followedAt = (z: number) => swatchOf(doc, followedPath, geometry, { ...followedOpts, zoom: z });
       // The partner a color is chosen against (a halo's text) or read on (a text's halo): the record's, else the base
       // symbol's, else (unset) its reference color. No halo is drawn, as on the map, where the record's width is 0
       // (else the base symbol's), on a cluster label without a halo of its own and on a badge.
@@ -288,14 +358,94 @@ export function swatchOf(
           ? null
           : (getIn(doc, `${prefix}${partnerPath}`) ??
             (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)));
+      const where = (sub: string | undefined): Path | undefined =>
+        sub === undefined
+          ? undefined
+          : getIn(doc, `${prefix}${sub}`) !== undefined
+            ? `${prefix}${sub}`
+            : !cluster && getIn(doc, `symbol.${sub}`) !== undefined
+              ? `symbol.${sub}`
+              : undefined;
+      const colorAt = where(partnerPath);
+      const widthAt = beside ? where(width) : undefined;
+      const stops = [colorAt, widthAt].flatMap((at) => {
+        const form = at === undefined ? undefined : getIn(doc, at);
+        return isObject(form) && Array.isArray(form.zoom) ? (form.zoom as Array<[number, unknown]>) : [];
+      });
+      if (rule.against !== null && stops.length && stops.every(([z]) => typeof z === "number")) {
+        const zooms = stops.map(([z]) => z);
+        span = [Math.min(...zooms), Math.max(...zooms)];
+        const widthForm = widthAt === undefined ? undefined : getIn(doc, widthAt);
+        const colorForm = colorAt === undefined ? undefined : getIn(doc, colorAt);
+        const colorStops =
+          isObject(colorForm) && Array.isArray(colorForm.zoom)
+            ? (colorForm.zoom as Array<[number, unknown]>)
+            : [];
+        // The partner's colors by zoom with each word a stop holds as drawn there, so a zoom between two stops reads
+        // their blend; at a word's own stop, and beyond an end stop with one, the partner holds the word.
+        const shown = colorStops.reduce(
+          (d, [, v], i) =>
+            isDerivedWord(partner!.key, v) && colorAt
+              ? setIn(
+                  d,
+                  `${colorAt}.zoom.${i}.1`,
+                  swatchOf(doc, `${colorAt}.zoom.${i}.1`, geometry, followedOpts)
+                )
+              : d,
+          doc
+        );
+        partnerAt = (z) => {
+          if (widthOffAt(widthForm, z)) return null;
+          if (colorAt === undefined || !colorStops.length) return rule.against;
+          const i = colorStops.reduce((at, [stop], k) => (stop <= z ? k : at), -1);
+          const held = colorStops[Math.max(i, 0)];
+          if (i < 0 || i === colorStops.length - 1 || held[0] === z)
+            if (isDerivedWord(partner!.key, held[1])) return held[1];
+          return fixedValue(shown, colorAt, { mapZoom: z });
+        };
+        // The followed color at a zoom, where it is one color there.
+        followedOne = (z) => {
+          const color = followedAt(z);
+          return HEX.test(color) ? color : undefined;
+        };
+      }
     }
     const word = follows ? undefined : value;
-    const turn = (color: string) => derivedColor(derived, word, color, rule);
+    const turn = (color: string, against: unknown = rule.against) =>
+      derivedColor(derived, word, color, { ...rule, against });
+    if (partnerAt && followedOne && span) {
+      // Beside a partner by zoom: what the map draws at the zoom, else each answer over the partner's stops, stepping
+      // where it changes.
+      // A color chosen against a partner that holds a color there (a halo against its text) looks at the partner
+      // alone: the same for every feature, whatever the followed color.
+      const looksAtPartner = (against: unknown) =>
+        DERIVED[derived].against !== undefined && typeof against === "string" && HEX.test(against);
+      const answer = (z: number) => {
+        const against = partnerAt!(z);
+        const color = followedOne!(z) ?? (looksAtPartner(against) ? "#000000" : undefined);
+        const out = color === undefined ? undefined : turn(color, against);
+        return typeof out === "string" ? out : undefined;
+      };
+      if (typeof zoom === "number") return answer(zoom) ?? HATCH;
+      const [z0, z1] = span;
+      const ramp: Array<[number, string]> = [];
+      for (let k = 0; k <= ZOOM_SAMPLES; k++) {
+        const color = answer(z0 + ((z1 - z0) * k) / ZOOM_SAMPLES);
+        if (color === undefined) return HATCH;
+        if (!ramp.length) ramp.push([0, color]);
+        else if (ramp[ramp.length - 1][1] !== color) ramp.push([(k - 0.5) / ZOOM_SAMPLES, color]);
+      }
+      return stepped(ramp);
+    }
     const colors = followed.match(/#[0-9a-f]{6}([0-9a-f]{2})?/gi) ?? [];
     if (followed === HATCH || colors.some((color) => typeof turn(color) !== "string")) return HATCH;
     // An answer that switches (an on-color) shows where the map switches it, never a blend through grey.
     if (followed.startsWith("linear-gradient") && derivedSwitches(derived, word, rule))
       return stepped(switchedRamp(colors, (color) => turn(color) as string));
+    // A text read on one halo color steps where its answers cross the halo, as the map draws it.
+    const halo = DERIVED[derived].beside && isDerivedWord(derived, word) ? rule.against : undefined;
+    if (followed.startsWith("linear-gradient") && typeof halo === "string" && HEX.test(halo) && !isNone(halo))
+      return sidedGradient(colors, (color) => turn(color) as string, halo.slice(0, 7));
     // Each color the followed swatch shows, derived (a darker shade for "auto").
     return followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) => turn(color) as string);
   }
@@ -323,9 +473,17 @@ export function swatchOf(
     // At one zoom, the color drawn there.
     const there = typeof zoom === "number" ? fixedValue(doc, path, { mapZoom: zoom }) : undefined;
     if (typeof there === "string" && HEX.test(there)) return there;
-    return gradient(
-      (value.zoom as Array<[number, unknown]>).flatMap(([, v], i) => resolved(v, `${at}.zoom.${i}.1`))
+    const stops = (value.zoom as Array<[number, unknown]>).map(([, v], i) =>
+      resolved(v, `${at}.zoom.${i}.1`)
     );
+    // A stop whose word draws more than one color there (over classes) leaves no one gradient to show.
+    if (
+      (value.zoom as Array<[number, unknown]>).some(
+        ([, v], i) => isDerivedWord(derived, v) && !stops[i].length
+      )
+    )
+      return HATCH;
+    return gradient(stops.flat());
   }
   if ("palette" in value) {
     const colors = [
@@ -337,6 +495,24 @@ export function swatchOf(
     return gradient(colors);
   }
   return HATCH;
+}
+
+/** The swatch a row shows for the symbol path `path`: in a class's or rule's scope, the color the scope's features draw,
+ * read at the record's path of the document (a derived color then follows the classes or the layer by the record's
+ * own check); else, and for a path outside the symbol, `swatchOf` of `view` (the scope's view) or the document. */
+export function scopedSwatchOf(
+  doc: LayerStyle,
+  path: Path,
+  geometry: Geometry | undefined,
+  opts: { scope: Scope | null; view?: LayerStyle; tone?: Tone }
+): string {
+  const { scope, view, tone } = opts;
+  if (scope && path.startsWith("symbol."))
+    return swatchOf(doc, `${recordPathOf(scope)}.${path.slice("symbol.".length)}`, geometry, {
+      scoped: true,
+      tone,
+    });
+  return swatchOf(view ?? doc, path, geometry, { scoped: scope !== null, tone });
 }
 
 /** The colors a style uses, each once (lower case), in document order: the picker's "In this style" swatches. */

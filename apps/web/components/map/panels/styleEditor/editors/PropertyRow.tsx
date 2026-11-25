@@ -40,8 +40,8 @@ import {
   choiceLabel,
   compoundLabel,
   compoundOptions,
+  scopedSwatchOf,
   summarize,
-  swatchOf,
 } from "@/lib/style/editor/summaries";
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -334,7 +334,10 @@ export const PropertyRow = memo(function PropertyRow({ row, base }: { row: PartR
             });
     const swatch =
       CAPABILITIES[key]?.kind === "color"
-        ? { background: swatchOf(shownDoc, path, data.geometry, { scoped: !!scope, tone }), wide: true }
+        ? {
+            background: scopedSwatchOf(store.document, path, data.geometry, { scope, view: shownDoc, tone }),
+            wide: true,
+          }
         : undefined;
     return (
       <GroupRow

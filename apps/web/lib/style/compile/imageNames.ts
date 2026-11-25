@@ -24,13 +24,18 @@ export function wholeZooms(value: Value): Value {
 
 const INTERPOLATIONS = new Set(["interpolate", "interpolate-lab", "interpolate-hcl"]);
 
-const hasInterpolate = (expr: Expr): boolean =>
+/** Whether a color value holds a color MapLibre types as a color: an interpolation, or a color read from a field
+ * among the choices of a match, case or step (alone, a read is written into the name as MapLibre writes colors). */
+const hasColorValue = (expr: Expr, nested = false): boolean =>
   Array.isArray(expr) &&
   expr[0] !== "literal" &&
-  (INTERPOLATIONS.has(expr[0] as string) || expr.some(hasInterpolate));
+  (INTERPOLATIONS.has(expr[0] as string) ||
+    (nested && expr[0] === "to-color") ||
+    expr.slice(1).some((e) => hasColorValue(e, true)));
 
-/** Color strings among the outputs of an interpolation, and of the choices around one, parsed as colors: outside a
- * paint property nothing says they are colors, and a choice between a text and an interpolated color does not type. */
+/** Color strings among the outputs of an interpolation, and of the choices around one or around a color read from a
+ * field, parsed as colors: outside a paint property nothing says they are colors, and a choice between a text and a
+ * typed color does not type. */
 function colorOutputs(expr: Expr): Expr {
   if (!Array.isArray(expr) || expr[0] === "literal") return expr;
   const color = (e: Expr): Expr => (typeof e === "string" && e ? ["to-color", e] : colorOutputs(e));
@@ -44,9 +49,10 @@ function colorOutputs(expr: Expr): Expr {
   return expr.map(colorOutputs);
 }
 
-/** A color as text in an image name: a fixed color as it is, an interpolated one as MapLibre writes colors. */
+/** A color as text in an image name: a fixed color as it is, an interpolated one or one read from a field as MapLibre
+ * writes colors. */
 export const colorText = (expr: Expr): Expr =>
-  hasInterpolate(expr) ? ["to-string", ["to-color", colorOutputs(expr)]] : expr;
+  hasColorValue(expr) ? ["to-string", ["to-color", colorOutputs(expr)]] : expr;
 
 export const numberText = (expr: Expr): Expr =>
   typeof expr === "number" ? String(Math.round(expr * 100) / 100) : ["to-string", expr];

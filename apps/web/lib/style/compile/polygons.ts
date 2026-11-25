@@ -3,7 +3,7 @@
 // one fill-extrusion layer of the same id and the pattern is not drawn.
 import type { LayerSpecification } from "maplibre-gl";
 
-import { alphaOf } from "@/lib/style/colors";
+import { alphaOf, isNone } from "@/lib/style/colors";
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import { DASHES } from "@/lib/style/compile/constants";
@@ -112,8 +112,44 @@ function extrusionLayer(ctx: PartContext, fillColor: Value): LayerSpecification 
   const baseProperty = toProperty(base);
   if (baseProperty !== 0) paint["fill-extrusion-base"] = baseProperty;
   paint["fill-extrusion-opacity"] = toProperty(withLayerOpacity(ctx, opacity));
-  return makeLayer(ctx, "fill", "fill-extrusion", "fill", {}, paint, "default", { ordered: false });
+  // A record whose fill is a fixed None (spec 4.6) leaves the volumes: MapLibre would draw its color without the alpha.
+  const none = cascade(style, "fill.color", { fields: ctx.fields, map: (v) => isNone(v) });
+  // By zoom (a base color by zoom beside None classes): where the records' None does not change with the zoom.
+  const stops = isZoomed(none) ? none.stops.map(([, e]) => JSON.stringify(noneOutputs(e))) : [];
+  const filter = !isZoomed(none)
+    ? noneFilter(noneOutputs(none.expr))
+    : new Set(stops).size === 1
+      ? noneFilter(JSON.parse(stops[0]) as Expr)
+      : undefined;
+  return makeLayer(ctx, "fill", "fill-extrusion", "fill", {}, paint, "default", {
+    ordered: false,
+    ...(filter ? { filter } : {}),
+  });
 }
+
+/** Whether the `i`th item of a match, case or step is one of its outputs. */
+function isOutput(expr: Expr[], i: number): boolean {
+  const last = expr.length - 1;
+  if (expr[0] === "case") return i >= 2 && (i % 2 === 0 || i === last);
+  if (expr[0] === "match") return i >= 3 && (i % 2 === 1 || i === last);
+  if (expr[0] === "step") return i >= 2 && i % 2 === 0;
+  return false;
+}
+
+/** `expr` (a fill color's cascade with each fixed color turned into whether it is None) with every output that is no
+ * fixed color (a color read from a field, a palette over one) turned into `false`. */
+function noneOutputs(expr: Expr): Expr {
+  if (typeof expr === "boolean") return expr;
+  if (!Array.isArray(expr) || !["case", "match", "step"].includes(expr[0] as string)) return false;
+  return expr.map((e, i) => (isOutput(expr, i) ? noneOutputs(e) : e));
+}
+
+/** Whether some output of `none` says None. */
+const anyNone = (none: Expr): boolean =>
+  none === true || (Array.isArray(none) && none.some((e, i) => isOutput(none, i) && anyNone(e)));
+
+/** The filter that keeps the features `none` (whether a feature's fill is None) says are drawn; none where all are. */
+const noneFilter = (none: Expr): Expr | undefined => (anyNone(none) ? ["!", none] : undefined);
 
 /** How far before a position's zoom stop the offset of a blending width jumps to the new side. */
 const SIDE_CHANGE = 0.001;

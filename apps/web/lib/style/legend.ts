@@ -1,7 +1,7 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { classTexts } from "@/lib/style/categoryTexts";
-import { perLayer } from "@/lib/style/compile/cascade";
+import { cascade, perLayer } from "@/lib/style/compile/cascade";
 import { derivedColor, followedKey, isDerivedWord, ruleOf } from "@/lib/style/compile/derived";
 import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes } from "@/lib/style/compile/polygons";
@@ -391,6 +391,28 @@ function arrowsSwatch(
   };
 }
 
+const volumeAlpha = new WeakMap<JsonObject, boolean>();
+
+/** Whether a raised layer's volumes draw their fill colors without their transparency: MapLibre drops an extrusion
+ * color's alpha, so where the fill color varies (by class, rule, field or zoom) it is lost (spec 4.6). */
+function dropsVolumeAlpha(style: JsonObject): boolean {
+  if (!volumeAlpha.has(style)) {
+    const color = extrudes(style) ? cascade(style, "fill.color", {}) : undefined;
+    volumeAlpha.set(style, color !== undefined && (isZoomed(color) || typeof color.expr !== "string"));
+  }
+  return volumeAlpha.get(style)!;
+}
+
+/** A fill color as a raised layer's volumes draw it: without a transparency where the layer drops it; a None color
+ * stays None, its record leaves the volumes. */
+const volumeColor = (style: JsonObject, color: unknown): unknown =>
+  typeof color === "string" &&
+  /^#[0-9a-f]{8}$/i.test(color) &&
+  !color.endsWith("00") &&
+  dropsVolumeAlpha(style)
+    ? color.slice(0, 7)
+    : color;
+
 /** The base merged with a record's overrides (spec 6.1): `false` switches a part off, an object switches on a part the
  * base leaves out; a part the base switches off stays off. An outline in the fill color takes the color the main part
  * would have, drawn or not. `neutral`: the main part's color the record does not set itself is neutral grey (a
@@ -437,6 +459,7 @@ function swatch(
     const resolved: Part = {};
     for (const key of KEYS[part])
       resolved[key] = resolve(merged[key], `${part}.${key}`, at(`${part}.${key}`));
+    if (part === "fill") resolved.color = volumeColor(style, resolved.color);
     if (part === "marker" && merged.icon !== undefined)
       resolved.icon = resolve(merged.icon, "marker.icon", zoom);
     // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own; an
@@ -574,7 +597,8 @@ function valueFormSections(
           id,
           title,
           field: form.field as string,
-          colors: colorsOf(form),
+          colors:
+            id === "fill.color" ? colorsOf(form).map((c) => volumeColor(style, c) as string) : colorsOf(form),
           domain,
           // Three significant digits: a guide to where the middle sits, not a value to read exactly.
           ...(curved ? { middle: Number(scaleValue(form, domain, 0.5).toPrecision(3)) } : {}),

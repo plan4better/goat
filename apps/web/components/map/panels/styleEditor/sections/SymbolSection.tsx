@@ -27,6 +27,7 @@ import { getIn, isRuleScope, setIn } from "@/lib/style/editor/store";
 import {
   HATCH,
   choiceLabel,
+  scopedSwatchOf,
   setterSummary,
   summarize,
   swatchOf,
@@ -142,7 +143,7 @@ const PartGroupRow = memo(function PartGroupRow({ group }: { group: PartGroup })
       : t(offForAll && scope ? "style_editor.part_off_for_all" : "style_editor.none");
   const swatch =
     on && group.swatch
-      ? swatchOf(doc, `${base}.${group.swatch}`, geometry, { scoped: scope !== null, tone })
+      ? scopedSwatchOf(store.document, `${base}.${group.swatch}`, geometry, { scope, view: doc, tone })
       : undefined;
   // A color GOAT derives reads before the width or size the row sums up ("Auto · 1 px"); a None color reads "None".
   if (on && group.swatch && group.summary !== group.swatch) {

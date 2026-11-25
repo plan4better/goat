@@ -1229,7 +1229,7 @@
   },
   "legend": [],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },
  "polygon outline fill in zoom stops / raw": {
@@ -1288,7 +1288,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },
  "polygon outline fill in zoom stops / classes": {
@@ -1378,7 +1378,7 @@
    }
   ],
   "panel": {
-   "symbol.outline.color": "#000000"
+   "symbol.outline.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },
  "polygon outline fill in zoom stops / rules": {
@@ -14038,7 +14038,7 @@
   ],
   "panel": {
    "symbol.label.color": "linear-gradient(90deg, #ffffff, #592a63)",
-   "symbol.label.halo.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+   "symbol.label.halo.color": "linear-gradient(90deg, #3a3541 0%, #3a3541 48.44%, #000000 48.44%, #000000 69.27%, #ffffff 69.27%, #ffffff 100%)"
   }
  },
  "label halo auto beside a text read from a field, light": {
@@ -14334,7 +14334,7 @@
   ],
   "panel": {
    "symbol.label.color": "linear-gradient(90deg, #ffffff, #ffffff)",
-   "symbol.label.halo.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+   "symbol.label.halo.color": "linear-gradient(90deg, #3a3541 0%, #3a3541 99.48%, #592a63 99.48%, #592a63 100%)"
   }
  },
  "label halo auto beside a text read from a field, dark": {

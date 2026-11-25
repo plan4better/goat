@@ -871,6 +871,46 @@ describe("a text Auto beside the halo the map draws", () => {
     expect(lowNumber.contrast, `at ${lowNumber.at}`).toBeGreaterThanOrEqual(4.5);
   });
 
+  it("beside a halo by zoom over a fill read from a field, the fallback's text switches exactly where it changes", () => {
+    for (const tone of TONES) {
+      const out = compileLayer({
+        id: "1",
+        style: style(
+          labelled(
+            {
+              color: "auto",
+              halo: {
+                color: {
+                  zoom: [
+                    [8, "#ffffff"],
+                    [16, "#3a3541"],
+                  ],
+                },
+              },
+            },
+            {
+              fill: { color: { field: "hex" } },
+            }
+          )
+        ),
+        geometry: "polygon",
+        source: tiles,
+        tone,
+        fields: { hex: "string" },
+      });
+      expect(maplibreErrors(out.layers, out.sources, out.state)).toEqual([]);
+      const p = (out.layers.find((l) => l.id === "1-label") as { paint: Record<string, unknown> }).paint;
+      for (const feature of [{ hex: "#e6ab02" }, { hex: "not a color" }, {}]) {
+        const low = lowest(
+          samples(6, 18, 0.01),
+          (z) => hexOf(colorAt(p["text-color"], feature, z)),
+          (z) => hexOf(colorAt(p["text-halo-color"], feature, z))
+        );
+        expect(low.contrast, `${tone} ${JSON.stringify(feature)} at ${low.at}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   it("switches exactly where the answer changes beside a halo by zoom over a feature color by zoom", () => {
     for (const tone of TONES) {
       const p = paint(

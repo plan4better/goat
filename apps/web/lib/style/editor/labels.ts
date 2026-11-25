@@ -11,7 +11,13 @@ import { LABEL_FONT_CHOICE, keyOf, modeOf } from "@/lib/style/editor/forms";
 import { type Path, getIn } from "@/lib/style/editor/paths";
 import { isPerLayer, perLayerPath, recordPaths, summaryView } from "@/lib/style/editor/sources";
 import type { Scope } from "@/lib/style/editor/store";
-import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "@/lib/style/editor/summaries";
+import {
+  choiceLabel,
+  compoundLabel,
+  scopedSwatchOf,
+  summarize,
+  summaryNumber,
+} from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -162,8 +168,9 @@ export function labelHaloSummary(
 ): { text: string; swatch: string } {
   const width = `${base}.halo.width`;
   const color = `${base}.halo.color`;
-  const swatch = swatchOf(summaryView(doc, scope, color).doc, color, ctx.geometry, {
-    scoped: scope !== null,
+  const swatch = scopedSwatchOf(doc, color, ctx.geometry, {
+    scope,
+    view: summaryView(doc, scope, color).doc,
     tone: ctx.tone,
   });
   const { doc: shown, later } = summaryView(doc, scope, width);

@@ -865,20 +865,27 @@ function besideRead(
   const OWN = besidePlaceholder("");
   const followed = follow();
   const fixed = !isZoomed(followed) && isHexColor(followed.expr) ? followed.expr : undefined;
-  const answerOf = (color: string, halo: unknown) => {
+  // A followed color read from a field as it is, for every feature: its answer is the documented one for the read, the
+  // same for every feature, so it is worked out as for one color.
+  const raw = !isZoomed(followed) && Array.isArray(followed.expr) && followed.expr[0] === "to-color";
+  const answerOf = (color: string | undefined, halo: unknown) => {
     const on = setColor(halo);
+    if (color === undefined)
+      return on === undefined ? RAW_COLOR[own]?.(inputs) : RAW_COLOR[rule]?.({ ...inputs, halo: on });
     return on === undefined ? RULES[own](color, inputs) : RULES[rule](color, { ...inputs, halo: on });
   };
   // Where no record sets the partner, the map draws its reference color.
   const plain = cascade(style, path, { ...c, map: (v) => (isHexColor(v) ? v : OWN) });
-  // A partner by zoom alone that draws a color somewhere, beside a followed color that is one color or by zoom alone.
+  // A partner by zoom alone that draws a color somewhere, beside a followed color that is one color, by zoom alone or
+  // read from a field as it is.
   const byZoomAlone =
     isZoomed(plain) &&
     plain.stops.every(([, e]) => isHexColor(e) || e === OWN) &&
     plain.stops.some(([, e]) => isHexColor(e));
   const followsByZoom = isZoomed(followed) && followed.stops.every(([, e]) => isHexColor(e));
-  if (byZoomAlone && (fixed !== undefined || followsByZoom)) {
+  if (byZoomAlone && (fixed !== undefined || followsByZoom || raw)) {
     const at = (z: number) => {
+      if (raw) return answerOf(undefined, valueAt(plain, z));
       const color = fixed ?? valueAt(followed, z);
       return isHexColor(color) ? answerOf(color, valueAt(plain, z)) : undefined;
     };
