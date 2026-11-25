@@ -292,12 +292,14 @@ function H3HeightSwitch() {
   );
 }
 
-/** The columns' editor: the tallest column and how values scale to it. */
+/** The columns' editor: the tallest column and how values scale to it. It closes once the layer is another render. */
 function H3HeightEditor() {
   const { t } = useTranslation("common");
   const store = useEditor();
+  const type = useStyleValue<unknown>("render.type");
   const on = isObject(useStyleValue<unknown>("render.extrude"));
   const scale = useStyleValue<unknown>("render.extrude.scale");
+  useCloseWhenGone(type !== "h3");
   if (!on)
     return (
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>

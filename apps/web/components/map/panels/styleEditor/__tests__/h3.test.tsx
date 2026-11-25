@@ -397,6 +397,17 @@ describe("H3 hexagons", () => {
   /** The section's Height row (the popover's title says Height too, after it in the page). */
   const heightRow = () => screen.getAllByText("style_editor.height")[0].parentElement as HTMLElement;
 
+  it("the Height editor closes when Draw as changes and its row goes", async () => {
+    const { store } = setup({ type: "h3", extrude: { tallest: 1500 } });
+    await userEvent.click(within(heightRow()).getAllByRole("button")[0]);
+    expect(screen.getByText("style_editor.h3_scale")).toBeDefined();
+    act(() => store.set("render", { type: "heatmap" }));
+    expect(screen.queryByText("style_editor.section_h3")).toBeNull();
+    expect(screen.queryByText("style_editor.h3_scale")).toBeNull();
+    expect(screen.queryByText("style_editor.height")).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "style_editor.turn_part_off" })).toBeNull();
+  });
+
   it("height switched off and on again brings back Tallest and the scale; opening writes nothing", async () => {
     const { store } = setup({ type: "h3", extrude: { tallest: 1500 } });
     // The row's own button (on a 2D map a link to show 3D follows it).
