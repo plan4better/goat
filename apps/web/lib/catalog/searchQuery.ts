@@ -37,10 +37,7 @@ export type CatalogSearchSnapshot = {
 };
 
 /** `2020-01-01` + `2024-12-31` -> `2020-01-01T00:00:00Z/2024-12-31T23:59:59Z`. */
-const toDatetimeInterval = (
-  from?: string | null,
-  to?: string | null
-): string | undefined => {
+const toDatetimeInterval = (from?: string | null, to?: string | null): string | undefined => {
   if (!from && !to) return undefined;
   const start = from ? `${from}T00:00:00Z` : "..";
   const end = to ? `${to}T23:59:59Z` : "..";
@@ -51,27 +48,49 @@ const toDatetimeInterval = (
  * omitting `sortby` asks for. In the menu so the pill matches what happens. */
 export const DEFAULT_SORT = "relevance";
 
-/** The metadata language ranked first, sent as `language_boost`. One value
- * for everyone for now — the catalog's readers are German-speaking planners
- * and most of its rows are German — to be read from the organization or the
- * browser language once either is a reliable source. */
-export const CATALOG_LANGUAGE_BOOST = "de";
+/** Always ranked last among the reader's languages: most of the catalog is
+ * German, and a reader's own languages should not push it behind foreign rows. */
+export const CATALOG_HOME_LANGUAGE = "de";
+
+/** The catalog service reads only this many languages; German must stay among them. */
+const MAX_CATALOG_LANGUAGES = 5;
+
+/**
+ * The metadata languages ranked first, in order, sent as `language_boost`: the
+ * browser's own list (`fr-FR, en` -> `fr, en`), or GOAT's language when the
+ * browser gives none, then German.
+ */
+export const catalogLanguages = (goatLanguage?: string): string[] => {
+  const browser = typeof navigator === "undefined" ? [] : (navigator.languages ?? []);
+  const source = browser.length > 0 ? browser : [goatLanguage];
+  const codes = [...source, CATALOG_HOME_LANGUAGE]
+    .map((code) => code?.split("-")[0].toLowerCase())
+    .filter((code): code is string => !!code);
+  const unique = [...new Set(codes)];
+  return unique.indexOf(CATALOG_HOME_LANGUAGE) < MAX_CATALOG_LANGUAGES
+    ? unique.slice(0, MAX_CATALOG_LANGUAGES)
+    : [...unique.slice(0, MAX_CATALOG_LANGUAGES - 1), CATALOG_HOME_LANGUAGE];
+};
 
 export const buildSearchParams = (
   state: CatalogQueryState,
   {
     pageSize = CATALOG_PAGE_SIZE,
     viewport,
+    language,
   }: {
     pageSize?: number;
+    /** GOAT's own language, used only when the browser lists none. */
+    language?: string;
     /**
      * The project's current map view, as `[west, south, east, north]`.
      *
-     * Sent as `bbox_boost`, which RANKS rather than filters: a dataset drawn
-     * around the visible area comes first, one covering it scores lower, one
-     * elsewhere scores zero — and the whole catalog is still returned, so the
-     * count is unchanged and everything else is a scroll away. Absent outside a
-     * project, where there is no map to read.
+     * Sent as `bbox_boost`, which RANKS rather than filters: datasets whose
+     * footprint touches the view come first as "In this area" (the response
+     * counts them in `numberInArea`), the rest follow as "Elsewhere". Nothing is
+     * excluded, so the count is unchanged and everything is a scroll away. The
+     * service ignores it under a spatial filter, which is then the place. Absent
+     * outside a project, where there is no map to read.
      */
     viewport?: [number, number, number, number];
   } = {}
@@ -102,9 +121,10 @@ export const buildSearchParams = (
     // and text relevance it gates behind `sortby` — but someone who asked for
     // "Title A-Z" did not ask for it to be reshuffled by where the map is.
     bbox_boost: viewport && !explicitSort ? viewport.join(",") : undefined,
-    // Ranks rows in the reader's language first, behind the viewport; the
+    // Ranks rows in the reader's languages first, behind the viewport. The
+    // service ignores it under a typed word, which already picks the language; the
     // same explicit-sort rule switches it off.
-    language_boost: explicitSort ? undefined : CATALOG_LANGUAGE_BOOST,
+    language_boost: explicitSort ? undefined : catalogLanguages(language).join(","),
     q: state.q ?? undefined,
     nuts: state.spatial?.kind === "region" ? state.spatial.nutsIds : undefined,
     intersects: geometry ? JSON.stringify(geometry) : undefined,

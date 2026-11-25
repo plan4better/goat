@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CATALOG_LANGUAGE_BOOST, DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
+import { DEFAULT_SORT, buildSearchParams } from "@/lib/catalog/searchQuery";
 
 /**
  * Opening the catalog from a project should surface the datasets around the
@@ -8,8 +8,7 @@ import { CATALOG_LANGUAGE_BOOST, DEFAULT_SORT, buildSearchParams } from "@/lib/c
  * a ranking signal (`bbox_boost`), never a filter: the whole catalog is still
  * returned and the result count does not change.
  */
-const state = (extra: Record<string, unknown> = {}) =>
-  ({ page: 1, facetSelections: {}, ...extra }) as never;
+const state = (extra: Record<string, unknown> = {}) => ({ page: 1, facetSelections: {}, ...extra }) as never;
 
 const MUNICH: [number, number, number, number] = [11.36, 48.06, 11.72, 48.25];
 
@@ -60,11 +59,21 @@ describe("buildSearchParams — viewport", () => {
     expect(params.sortby).toBe("title,id");
   });
 
-  it("asks for the reader's language first, on every surface", () => {
-    expect(buildSearchParams(state()).language_boost).toBe(CATALOG_LANGUAGE_BOOST);
-    expect(buildSearchParams(state(), { viewport: [11.36, 48.06, 11.72, 48.25] }).language_boost).toBe(
-      CATALOG_LANGUAGE_BOOST
-    );
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("asks for the browser's languages first, then German, on every surface", () => {
+    vi.stubGlobal("navigator", { languages: ["fr-FR", "fr", "en"] });
+    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBe("fr,en,de");
+    expect(buildSearchParams(state(), { viewport: MUNICH }).language_boost).toBe("fr,en,de");
+    // The service reads five; German stays among them.
+    vi.stubGlobal("navigator", { languages: ["en-US", "en", "fr", "it", "es", "nl"] });
+    expect(buildSearchParams(state()).language_boost).toBe("en,fr,it,es,de");
+  });
+
+  it("falls back to GOAT's language when the browser lists none", () => {
+    vi.stubGlobal("navigator", { languages: [] });
+    expect(buildSearchParams(state(), { language: "en" }).language_boost).toBe("en,de");
+    expect(buildSearchParams(state()).language_boost).toBe("de");
   });
 
   it("drops the language boost under an explicit sort, like the viewport boost", () => {

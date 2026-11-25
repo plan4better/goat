@@ -253,6 +253,19 @@ def test_collections_bbox_boost_valid_ranks_without_excluding(
     r1 = client.get("/stac/collections", params={"bbox_boost": "5,47,16,56"})
     assert r1.status_code == 200
     assert r1.json()["numberMatched"] == n0
+    assert "numberInArea" not in r0.json()
+
+    body = client.get(
+        "/stac/collections", params={"bbox_boost": "11.36,48.06,11.72,48.25"}
+    ).json()
+    assert 0 < body["numberInArea"] < body["numberMatched"]
+    # Off under an explicit sort, and under a filter, which is the place then.
+    for extra in ({"sortby": "title"}, {"bbox": "5,47,16,56"}):
+        other = client.get(
+            "/stac/collections",
+            params={"bbox_boost": "11.36,48.06,11.72,48.25", **extra},
+        ).json()
+        assert "numberInArea" not in other
 
 
 # --------------------------------------------------------------------------
@@ -1153,15 +1166,25 @@ def test_search_language_boost_ranks_first_without_excluding(
     ids = [f["id"] for f in body["features"]]
     assert set(ids[: len(english)]) == english, "every English row precedes every other"
 
-
-def test_language_boost_is_off_under_an_explicit_sort(client: TestClient) -> None:
-    """Like every ranking key, an explicit ``sortby`` switches it off."""
-    plain = client.get("/stac/search", params={"limit": 50, "sortby": "-updated,id"})
-    boosted = client.get(
-        "/stac/search",
-        params={"limit": 50, "sortby": "-updated,id", "language_boost": "en"},
+    # A list ranks in its order: English still first behind a language no row has.
+    r_list = client.get(
+        "/stac/search", params={"limit": 200, "language_boost": "xx,en,de"}
     )
-    assert boosted.status_code == 200
-    assert [f["id"] for f in boosted.json()["features"]] == [
-        f["id"] for f in plain.json()["features"]
-    ]
+    assert r_list.status_code == 200
+    listed = [f["id"] for f in r_list.json()["features"]]
+    assert set(listed[: len(english)]) == english
+
+
+def test_language_boost_is_off_under_a_sort_or_a_word(client: TestClient) -> None:
+    """Like every ranking key, an explicit ``sortby`` switches it off; so does
+    a typed word, which already picks the language ("berlin" matches rows in
+    both of the fixture's languages)."""
+    for params in ({"sortby": "-updated,id"}, {"q": "berlin"}):
+        plain = client.get("/stac/search", params={"limit": 50, **params})
+        boosted = client.get(
+            "/stac/search", params={"limit": 50, "language_boost": "en", **params}
+        )
+        assert boosted.status_code == 200
+        assert [f["id"] for f in boosted.json()["features"]] == [
+            f["id"] for f in plain.json()["features"]
+        ]

@@ -364,10 +364,10 @@ class SearchQuery(_FilterMixin):
     )
     sortby: SortBy = Field(default=None, description="e.g. -properties.updated")
     bbox_boost: BboxCsv = Field(default=None, description=BboxBoostDescription)
-    language_boost: str | None = Field(
+    language_boost: CsvList = Field(
         default=None,
-        description="Rank rows whose metadata language is this code first, "
-        "without excluding the rest (e.g. `de`); off under an explicit sortby",
+        description="Rank rows in these metadata languages first, in this order, "
+        "without excluding the rest (e.g. `fr,en,de`); off under an explicit sortby",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)
@@ -418,10 +418,10 @@ class CollectionSearchQuery(_FilterMixin):
     )
     sortby: SortBy = Field(default=None, description="e.g. -properties.updated")
     bbox_boost: BboxCsv = Field(default=None, description=BboxBoostDescription)
-    language_boost: str | None = Field(
+    language_boost: CsvList = Field(
         default=None,
-        description="Rank rows whose metadata language is this code first, "
-        "without excluding the rest (e.g. `de`); off under an explicit sortby",
+        description="Rank rows in these metadata languages first, in this order, "
+        "without excluding the rest (e.g. `fr,en,de`); off under an explicit sortby",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)

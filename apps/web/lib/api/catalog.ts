@@ -128,18 +128,28 @@ export const useCatalogDatasetPages = (
   );
 
   const pages = data ?? [];
+  const numberInArea = pages[0]?.numberInArea ?? undefined;
   // By id, because two requests are two moments: a mirror re-synced mid-scroll can
-  // shift a dataset across the boundary and hand it back twice.
-  const datasets = useMemo(() => {
+  // shift a dataset across the boundary and hand it back twice. A duplicate dropped
+  // among the first `numberInArea` rows moves the "Elsewhere" boundary up by one.
+  const { datasets, inArea } = useMemo(() => {
     const seen = new Set<string>();
-    return (data ?? [])
+    let droppedInArea = 0;
+    const kept = (data ?? [])
       .flatMap((page) => page.collections)
-      .filter((collection) => {
-        if (seen.has(collection.id)) return false;
+      .filter((collection, index) => {
+        if (seen.has(collection.id)) {
+          if (numberInArea !== undefined && index < numberInArea) droppedInArea += 1;
+          return false;
+        }
         seen.add(collection.id);
         return true;
       });
-  }, [data]);
+    return {
+      datasets: kept,
+      inArea: numberInArea !== undefined ? numberInArea - droppedInArea : undefined,
+    };
+  }, [data, numberInArea]);
   const total = pages[0]?.numberMatched ?? undefined;
   // Counted BEFORE dedup: `total` is the server's count, so comparing it to the
   // deduped list would never reach it after one duplicate, and the skeleton
@@ -148,6 +158,10 @@ export const useCatalogDatasetPages = (
   return {
     datasets,
     total,
+    /** How many of `datasets` lead as "In this area", when the server ranked by the map view. */
+    inArea,
+    /** How many matched datasets lie elsewhere, from the server's counts like `total`. */
+    elsewhere: numberInArea !== undefined && total !== undefined ? total - numberInArea : undefined,
     /** Waiting for the first page, with nothing to show yet. */
     isLoading: isLoading && datasets.length === 0,
     /** Waiting for a further page, under results already on screen. */
@@ -210,9 +224,7 @@ export const useCatalogAggregations = () => {
  */
 export const useCatalogResolve = (entryId?: string) => {
   const { data, isLoading, error } = useSWR<CatalogResolved>(
-    entryId && CATALOG_API_BASE_URL
-      ? catalogUrl(`/resolve/${encodeURIComponent(entryId)}`)
-      : null,
+    entryId && CATALOG_API_BASE_URL ? catalogUrl(`/resolve/${encodeURIComponent(entryId)}`) : null,
     fetcher
   );
   const isCollection = data?.kind === "collection";
@@ -241,10 +253,7 @@ export const useCatalogItem = (itemId?: string) => {
 };
 
 /** The members of a bundle. */
-export const useCatalogCollectionItems = (
-  collectionId?: string,
-  params: CatalogSearchParams = {}
-) => {
+export const useCatalogCollectionItems = (collectionId?: string, params: CatalogSearchParams = {}) => {
   const { data, isLoading, error } = useSWR<CatalogItemCollection>(
     collectionId && CATALOG_API_BASE_URL
       ? catalogUrl(`/collections/${encodeURIComponent(collectionId)}/items`, params)
@@ -305,11 +314,11 @@ export const useCatalogItemVersions = (itemIds: string[]) => {
  * revalidates and a failure is simply "no style".
  */
 export const useCatalogStyle = (href?: string, enabled = true) => {
-  const { data, isLoading, error } = useSWR<CatalogStyle>(
-    enabled && href ? href : null,
-    fetcher,
-    { revalidateOnFocus: false, revalidateIfStale: false, shouldRetryOnError: false }
-  );
+  const { data, isLoading, error } = useSWR<CatalogStyle>(enabled && href ? href : null, fetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+    shouldRetryOnError: false,
+  });
   return { style: data, isLoading, isError: error };
 };
 

@@ -63,7 +63,7 @@ from catalog.services.search import (
     get_collection_row,
     resolve_id,
     safe_query,
-    search_collections,
+    search_collections_in_area,
     search_items,
 )
 from catalog.store import CatalogStore
@@ -420,7 +420,7 @@ def stac_collections(
     # not a silent column reference that drops every mixed-type bundle. The
     # query-param path keeps its member semi-join promotion untouched.
     params = query.to_search_params(store.collection_registry, limit=limit)
-    rows, matched = search_collections(store, params)
+    rows, matched, in_area = search_collections_in_area(store, params)
     ui = _ui_base(request)
     assets = _assets_base(request)
     collections = [
@@ -431,12 +431,15 @@ def stac_collections(
         )
         for row in rows
     ]
-    return {
+    body: dict[str, Any] = {
         "collections": collections,
         "numberMatched": matched,
         "numberReturned": len(collections),
         "links": _page_links(request, limit, offset, matched),
     }
+    if in_area is not None:
+        body["numberInArea"] = in_area
+    return body
 
 
 @router.get(

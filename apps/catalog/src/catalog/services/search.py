@@ -57,7 +57,7 @@ class SearchParams(BaseModel):
     bbox_mode: str = "strict"
     nuts: list[str] | None = None  # NUTS region ids; intersect their geometry
     bbox_boost: list[float] | None = None  # rank intersecting rows first (4 or 6 nums)
-    language_boost: str | None = None  # rank rows in this metadata language first
+    language_boost: list[str] | None = None  # metadata languages ranked first, in order
     limit: int = 10
     offset: int = 0
 
@@ -612,36 +612,8 @@ def _validated_bbox_boost(p: SearchParams) -> tuple[float, float, float, float] 
     return _validate_bbox(p.bbox_boost)
 
 
-def _envelope_match_sql(west: float, south: float, east: float, north: float) -> str:
-    """How closely each row's stored extent matches a rectangle, 0..1.
-
-    Intersection over union: dividing by the row's own area alone asks "is all
-    of you inside", which a village answers as well as a nationwide layer, so
-    `?nuts=DE` led with one city's points of interest. Times the share lying
-    inside, or a box merely the size of the rectangle outranks one within it.
-
-    Arithmetic on the bbox columns, no spatial call per row: 144 ms against
-    1,323 ms for the `ST_Intersection` form at a million rows.
-
-    The bounds are inlined rather than bound: the expression repeats each one,
-    and matching that order in a parameter list is a trap this file has fallen
-    into before. A zero-extent row has no ratio to take and counts as matched;
-    rounding ties near-zero scores.
-    """
-    area = (east - west) * (north - south)
-    overlap = (
-        f"GREATEST(0, LEAST(bbox_xmax, {east}) - GREATEST(bbox_xmin, {west})) "
-        f"* GREATEST(0, LEAST(bbox_ymax, {north}) - GREATEST(bbox_ymin, {south}))"
-    )
-    own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
-    return (
-        f"CASE WHEN (bbox_xmax >= {west} AND bbox_xmin <= {east} "
-        f"AND bbox_ymax >= {south} AND bbox_ymin <= {north}) "
-        f"THEN ROUND(CASE WHEN {own} = 0 THEN 1.0 "
-        f"ELSE ({overlap}) * ({overlap}) "
-        f"/ NULLIF(({own} + {area} - ({overlap})) * {own}, 0) END, 3) "
-        f"ELSE 0 END DESC"
-    )
+#: A browser lists a handful of languages; more only lengthens the ORDER BY.
+_MAX_BOOST_LANGUAGES = 5
 
 
 def _geojson_envelope(
@@ -670,79 +642,123 @@ def _geojson_envelope(
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def _viewport_rank_sql(boost: tuple[float, float, float, float], add: Any) -> str:
-    """What "show me what is around here first" means.
+Box = tuple[float, float, float, float]
 
-    A dataset drawn around this city scores 1.0, a nationwide one a fraction,
-    one elsewhere 0 -- and nothing is excluded, so the rest of the catalog is a
-    scroll away. Runs over every row in the catalog, which is why it is the
-    arithmetic form (38 ms at a million datasets).
+
+#: Below this many square degrees (about 100 m square) a place counts as this
+#: big, so a point or a sliver has an area to divide by.
+_MIN_PLACE_AREA = 1e-6
+
+
+def _place(
+    p: SearchParams,
+    boost: Box | None,
+    store: CatalogStore,
+    con: duckdb.DuckDBPyConnection,
+) -> tuple[Box, bool] | None:
+    """The one place this request is about, and whether it groups the list.
+
+    A spatial filter is the place when set, the map view (``bbox_boost``) only
+    without one: viewing Munich while filtering Augsburg means Augsburg. Only
+    the map view groups, because a filter already removed everything that does
+    not touch it. Ranking against the filter's envelope, not its exact shape:
+    the filter itself stays exact, this only orders what it returned.
     """
-    del add  # bounds are inlined; see `_envelope_match_sql`
-    w, s, e, n = boost
-    return _envelope_match_sql(w, s, e, n)
-
-
-def _containment_rank_sql(p: SearchParams, add: Any, geom: str) -> str | None:
-    """How closely each row's extent matches the spatial filter.
-
-    Everything a spatial filter returns intersects the area; that says nothing
-    about whether the dataset is *of* the place. The catalog's stored extents
-    make this acute -- a Baden-Württemberg dataset carrying a 41° x 40° bbox, an
-    unprojected one 1,087,569° wide -- so a city-sized filter matches datasets
-    from other countries, all honest intersections against dishonest rectangles.
-
-    :func:`_envelope_match_sql` is what separates them. Nothing is excluded and
-    no threshold is invented -- a nationwide dataset covering the place is a real
-    answer, just a worse one, and it keeps its place lower down.
-
-    Ranked against the filter's ENVELOPE, not its exact shape: the filter itself
-    stays exact, this only orders what it returned, and the geometric form costs
-    1,323 ms against 144 ms at a million datasets. A region (`nuts`) keeps the
-    geometric form because its bounds live in another table, and a region filter
-    is the rare path.
-    """
+    if p.sortby:
+        return None
     if p.bbox is not None:
-        w, s, e, n = _validate_bbox(p.bbox)
-        return _envelope_match_sql(w, s, e, n)
-
+        return _validate_bbox(p.bbox), False
     if p.intersects is not None:
         envelope = _geojson_envelope(p.intersects)
-        if envelope is None:
-            return None
-        return _envelope_match_sql(*envelope)
-
-    if p.nuts:
-        codes = [code.strip() for code in p.nuts if code.strip()]
-        if not codes:
-            return None
-
-        def union() -> str:
-            """The region geometry. Called once per occurrence, never reused:
-            every `?` needs its own binding, in the order it appears."""
-            placeholders = ", ".join(add(code) for code in codes)
-            return (
-                f"(SELECT ST_Union_Agg(n.geometry) FROM {CatalogStore.NUTS} n "
-                f"WHERE n.nuts_id IN ({placeholders}))"
-            )
-
-        # Built left to right, in the order the placeholders appear.
-        overlap = f"ST_Area(ST_Intersection({geom}, {union()}))"
-        overlap_2 = f"ST_Area(ST_Intersection({geom}, {union()}))"
-        region = f"ST_Area({union()})"
-        overlap_3 = f"ST_Area(ST_Intersection({geom}, {union()}))"
-        return (
-            f"ROUND(COALESCE({overlap} * {overlap_2} / NULLIF("
-            f"(ST_Area({geom}) + {region} - {overlap_3}) * ST_Area({geom}), 0), "
-            f"0), 3) DESC"
+        return (envelope, False) if envelope else None
+    codes = [code.strip() for code in p.nuts or [] if code.strip()]
+    if codes:
+        placeholders = ", ".join("?" for _ in codes)
+        rows = safe_query(
+            store,
+            f"SELECT min(ST_XMin(geometry)), min(ST_YMin(geometry)), "
+            f"max(ST_XMax(geometry)), max(ST_YMax(geometry)) "
+            f"FROM {CatalogStore.NUTS} WHERE nuts_id IN ({placeholders})",
+            codes,
+            con=con,
         )
-
+        if not rows or rows[0][0] is None:
+            return None
+        w, s, e, n = rows[0]
+        return (w, s, e, n), False
+    if boost is not None:
+        return boost, True
     return None
+
+
+def _halves(box: Box) -> list[Box]:
+    """A box crossing the antimeridian as its two halves, else itself."""
+    w, s, e, n = box
+    if w > e:
+        return [(w, s, 180.0, n), (-180.0, s, e, n)]
+    return [box]
+
+
+def _touches_sql(box: Box, geom: str) -> str:
+    """Whether the row's footprint touches the place; FALSE, never NULL, for a
+    row without one.
+
+    The footprint, not the ``bbox_*`` rectangle: a Hamburg dataset with a
+    59° x 49° rectangle touches Munich, its footprint does not. The rectangle
+    test in front only skips the spatial call for rows that cannot touch; a
+    CASE, because DuckDB evaluates every side of an AND in an ORDER BY key.
+
+    The bounds are inlined rather than bound: the order key repeats them, and
+    matching that order in a parameter list is a trap this file has fallen
+    into before.
+    """
+    halves = _halves(box)
+    near = " OR ".join(
+        f"(bbox_xmax >= {w} AND bbox_xmin <= {e} AND bbox_ymax >= {s} "
+        f"AND bbox_ymin <= {n})"
+        for w, s, e, n in halves
+    )
+    hits = " OR ".join(
+        f"ST_Intersects({geom}, ST_MakeEnvelope({w}, {s}, {e}, {n}))"
+        for w, s, e, n in halves
+    )
+    return f"CASE WHEN {near} THEN COALESCE({hits}, FALSE) ELSE FALSE END"
+
+
+def _fit_sql(box: Box) -> str:
+    """How well a row fits the place, higher first: the overlap of its extent
+    rectangle with the place over their union, times the share of the rectangle
+    inside the place.
+
+    So data the size of the place leads, a small piece inside it comes before
+    data many times bigger, and data that mostly lies elsewhere comes late.
+    Kept to its first digit so similar fits tie and the score decides; a fixed
+    number of decimals put most big data at 0. The rectangle, not the
+    footprint: a nationwide layer's footprint can be a few scattered cells, and
+    it then passed for regional data. A zero-extent row has no ratio to take
+    and counts as fitting; a rectangle that misses the place is 0.
+
+    No footprint test here: under a filter every row already touches the place.
+    """
+    halves = _halves(box)
+    area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
+    overlap = " + ".join(
+        f"GREATEST(0, LEAST(bbox_xmax, {e}) - GREATEST(bbox_xmin, {w})) "
+        f"* GREATEST(0, LEAST(bbox_ymax, {n}) - GREATEST(bbox_ymin, {s}))"
+        for w, s, e, n in halves
+    )
+    own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
+    fit = f"GREATEST(o * o / (({own} + {area} - o) * {own}), 1e-12)"
+    return (
+        f"CASE WHEN COALESCE({own}, 0) = 0 THEN 1 "
+        f"ELSE list_transform([{overlap}], lambda o: CASE WHEN o > 0 "
+        f"THEN ROUND({fit}, CAST(-FLOOR(LOG10({fit})) AS INT)) ELSE 0 END)[1] END"
+    )
 
 
 def _build_order_by(
     p: SearchParams,
-    boost: tuple[float, float, float, float] | None,
+    place: tuple[Box, bool] | None,
     *,
     registry: QueryableRegistry,
     geom: str = "geometry",
@@ -765,35 +781,46 @@ def _build_order_by(
     prefix = ""
 
     # Every ranking key below is skipped when the caller sorted explicitly: a
-    # sortby makes `q` filter-only (api spec §2.1.6), never a ranking signal.
+    # sortby makes `q` filter-only (api spec §2.1.6), never a ranking signal,
+    # and `_place` returns None under one.
     #
-    # What the reader typed ranks ahead of both spatial keys: either one takes a
-    # distinct value for nearly every row, so above the text match it settles
-    # every comparison and leaves the match unable to move anything.
+    # Rows touching the map view first, whatever was typed: a title match in
+    # Hamburg must not beat the data around here. The typed word next, then
+    # the fit to the place.
+    if place is not None and place[1]:
+        prefix += f"CASE WHEN {_touches_sql(place[0], geom)} THEN 0 ELSE 1 END, "
+
     q_terms = _parse_q_terms(p.q)
     if q_terms and not p.sortby:
         prefix += _q_rank_sql(q_terms, add) + ", "
 
-    if not p.sortby:
-        containment = _containment_rank_sql(p, add, geom)
-        if containment:
-            prefix += containment + ", "
+    # Under a map view a row elsewhere fits 0 whatever its rectangle claims, so
+    # the word and the score order "Elsewhere", not over-claiming rectangles.
+    if place is not None:
+        fit = _fit_sql(place[0])
+        if place[1]:
+            fit = f"CASE WHEN {_touches_sql(place[0], geom)} THEN {fit} ELSE 0 END"
+        prefix += fit + " DESC, "
 
-    # Below the spatial filter, so it only breaks that filter's ties: viewing
-    # Munich while filtering Berlin must not promote the rows sprawling across
-    # both, which the filter ranked last.
-    if boost is not None:
-        prefix += _viewport_rank_sql(boost, add) + ", "
-
-    # Rows in the reader's language next: behind the viewport, so what is
-    # around here still comes first. Gated on the column, which a file without
-    # the Language extension does not carry.
+    # Rows in the reader's languages next, in the order given: behind the
+    # place, so what is around here still comes first. Not with a typed word,
+    # which already picks the language. Gated on the column, which a file
+    # without the Language extension does not carry.
+    languages = list(
+        dict.fromkeys(
+            code.strip().lower() for code in p.language_boost or [] if code.strip()
+        )
+    )[:_MAX_BOOST_LANGUAGES]
     if (
-        p.language_boost
+        languages
+        and not q_terms
         and not p.sortby
         and registry.resolve("language_code") is not None
     ):
-        prefix += f"(language_code = {add(p.language_boost.lower())}) DESC, "
+        ranks = " ".join(
+            f"WHEN {add(code)} THEN {i}" for i, code in enumerate(languages)
+        )
+        prefix += f"CASE language_code {ranks} ELSE {len(languages)} END, "
 
     # How much a planner needs it, then the wider footprint among rows that tie.
     # Gated on the score column, which only collections carry.
@@ -875,7 +902,8 @@ def search_items(
     # reload landing mid-request swapped in.
     snap = store.snapshot()
     where_sql, params = build_filters(p, registry=snap.registry)
-    order_sql, order_params = _build_order_by(p, boost, registry=snap.registry)
+    place = _place(p, boost, store, snap.con)
+    order_sql, order_params = _build_order_by(p, place, registry=snap.registry)
     limit = max(p.limit, 0)
     offset = max(p.offset, 0)
 
@@ -913,23 +941,43 @@ def search_collections(
     ``bbox_boost`` ranks intersecting collections first, validated exactly like
     Item Search's (400 on a malformed box).
     """
+    rows, matched, _ = search_collections_in_area(store, p)
+    return rows, matched
+
+
+def search_collections_in_area(
+    store: CatalogStore, p: SearchParams
+) -> tuple[list[dict[str, Any]], int, int | None]:
+    """``search_collections`` plus how many matched rows touch the map view,
+    the first group of its order; None when the order is not grouped. One
+    snapshot and one count query for both numbers, so they cannot come from two
+    mirror generations."""
     snap = store.snapshot()
     registry = snap.collection_registry
     boost = _validated_bbox_boost(p)
     where_sql, params = build_filters(
         p, registry=registry, relation="collections", item_registry=snap.registry
     )
-    order_sql, order_params = _build_order_by(p, boost, registry=registry)
+    place = _place(p, boost, store, snap.con)
+    order_sql, order_params = _build_order_by(p, place, registry=registry)
+    grouped = place is not None and place[1]
     limit = max(p.limit, 0)
     offset = max(p.offset, 0)
 
+    in_area_sql = (
+        f", count(*) FILTER (WHERE {_touches_sql(place[0], 'geometry')})"
+        if grouped
+        else ""
+    )
     count_rows = safe_query(
         store,
-        f"SELECT count(*) FROM {CatalogStore.COLLECTIONS} WHERE {where_sql}",
+        f"SELECT count(*){in_area_sql} FROM {CatalogStore.COLLECTIONS} "
+        f"WHERE {where_sql}",
         params,
         con=snap.con,
     )
     number_matched = int(count_rows[0][0]) if count_rows else 0
+    in_area = (int(count_rows[0][1]) if count_rows else 0) if grouped else None
 
     select_sql = (
         f"SELECT * REPLACE (ST_AsGeoJSON(geometry) AS geometry) "
@@ -939,7 +987,7 @@ def search_collections(
     rows = _rows_as_dicts(
         store, select_sql, [*params, *order_params, limit, offset], con=snap.con
     )
-    return rows, number_matched
+    return rows, number_matched, in_area
 
 
 def collection_ids(store: CatalogStore, limit: int = 100) -> list[str]:
