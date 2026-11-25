@@ -535,6 +535,32 @@ describe("StyleLegend", () => {
     expect(container.textContent).toBe("ClustersSingle points");
   });
 
+  it("a badge color with its own transparency lies over the swatch checkerboard", () => {
+    const { container } = render(
+      <SwatchIcon
+        swatch={{
+          geometry: "point",
+          marker: { shape: "circle", color: "#5a1846" },
+          badge: { color: "#2838b280", text: "#ffff00", ring: "#ffffff" },
+        }}
+      />
+    );
+    expect((container.querySelector("[data-cluster-badge]") as HTMLElement).style.background).toContain(
+      "linear-gradient"
+    );
+  });
+
+  it("a library icon tinted with a color that is not opaque lies over the swatch checkerboard", () => {
+    const { container } = render(
+      <SwatchIcon
+        swatch={{ geometry: "point", marker: { shape: "icon", icon: "goat:shop", color: "#5a184680" } }}
+      />
+    );
+    expect((container.querySelector("[data-marker-icon]") as HTMLElement).style.background).toContain(
+      "linear-gradient"
+    );
+  });
+
   it("a cluster swatch with a badge draws a dot in the badge color at the marker's upper right", () => {
     const { container } = render(
       <SwatchIcon

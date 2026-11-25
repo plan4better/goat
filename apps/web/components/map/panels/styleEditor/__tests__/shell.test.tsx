@@ -77,6 +77,13 @@ describe("style editor shell", () => {
     expect(dot.style.backgroundColor).toBe("rgb(255, 0, 0)");
   });
 
+  it("the header dot of a color with its own transparency lies over the swatch checkerboard", () => {
+    const { ui, store } = setup();
+    renderWithProviders(ui);
+    act(() => store.set("symbol.fill.color", "#ff000080"));
+    expect(screen.getByTestId("layer-dot").style.background).toContain("linear-gradient");
+  });
+
   it.each([
     ["saved", "style_editor.status_saved"],
     ["saving", "style_editor.status_saving"],

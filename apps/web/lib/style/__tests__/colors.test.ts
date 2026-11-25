@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { contrastRatio, onColor, readableShade, shade } from "@/lib/style/colors";
+import { alphaOf, contrastRatio, isNone, onColor, opaque, readableShade, shade } from "@/lib/style/colors";
 
 // The color rules derived colors are made of, as goatlib's `shade`, `contrast_ratio`, `readable_shade` and `on_color`
 // give them (its test: goatlib tests/unit/style/test_colors.py): the map, the legend and the panel draw what goatlib
@@ -14,6 +14,9 @@ interface Rules {
   contrast_ratio: Array<{ a: string | null; b: string | null; expected: number | null }>;
   readable_shade: Array<{ color: string | null; against: string | null; expected: string | null }>;
   on_color: Array<{ color: string | null; expected: string }>;
+  alpha: Array<{ color: string | null; expected: number | null }>;
+  is_none: Array<{ color: string | null; expected: boolean }>;
+  opaque: Array<{ color: string | null; expected: string | null }>;
 }
 
 const RULES = JSON.parse(
@@ -46,5 +49,17 @@ describe("color rules (with goatlib's)", () => {
 
   it.each(RULES.on_color.map((r) => [r.color, r.expected]))("on-color %s", (color, expected) => {
     expect(onColor(color as string)).toBe(expected);
+  });
+
+  it.each(RULES.alpha.map((r) => [r.color, r.expected]))("alpha %s", (color, expected) => {
+    expect(alphaOf(color)).toBe(expected ?? undefined);
+  });
+
+  it.each(RULES.is_none.map((r) => [r.color, r.expected]))("is none %s", (color, expected) => {
+    expect(isNone(color)).toBe(expected);
+  });
+
+  it.each(RULES.opaque.map((r) => [r.color, r.expected]))("opaque %s", (color, expected) => {
+    expect(opaque(color as string)).toBe(expected);
   });
 });

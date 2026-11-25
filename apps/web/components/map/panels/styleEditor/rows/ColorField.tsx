@@ -4,7 +4,7 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { HATCH } from "@/lib/style/editor/summaries";
+import { HATCH, colorLabel } from "@/lib/style/editor/summaries";
 
 import { useIsOpener } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ValueButton } from "@/components/map/panels/styleEditor/rows/GroupRow";
@@ -25,7 +25,7 @@ export const ColorField = memo(function ColorField({ value, onOpenPicker, sentin
   const showsSentinel = sentinel?.shown ?? false;
   return (
     <ValueButton
-      value={showsSentinel ? sentinel?.label : (value?.toUpperCase() ?? "")}
+      value={showsSentinel ? sentinel?.label : value ? colorLabel(t, value) : ""}
       swatch={{ background: showsSentinel || !value ? HATCH : value }}
       ariaLabel={t("style_editor.pick_color")}
       onOpen={onOpenPicker}

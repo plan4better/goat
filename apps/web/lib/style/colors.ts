@@ -13,6 +13,20 @@ const HEX_COLOR = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
 /** Whether `value` is a `#rrggbb` or `#rrggbbaa` color. */
 const isHex = (value: unknown): value is string => typeof value === "string" && HEX_COLOR.test(value);
 
+/** The color's alpha, 0 to 255: its last two digits, 255 without them; undefined for anything but a six- or
+ * eight-digit hex color. */
+export function alphaOf(color: unknown): number | undefined {
+  if (!isHex(color)) return undefined;
+  return color.length === 9 ? parseInt(color.slice(7), 16) : 255;
+}
+
+/** Whether the color is "None" (spec 4.6): a hex color at alpha 0, which draws nothing and keeps its hue. */
+export const isNone = (color: unknown): boolean => alphaOf(color) === 0;
+
+/** The color without its alpha, `#rrggbb` as written: the hue a color that is not set takes from the color it follows
+ * (spec 3.1 to 3.3). Anything but a six- or eight-digit hex color is returned as it is. */
+export const opaque = (color: string): string => (isHex(color) ? color.slice(0, 7) : color);
+
 const channels = (color: string) => [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
 
 /** The darker shade `"auto"` draws: red, green and blue each times 0.7, rounded half up in whole numbers, opaque

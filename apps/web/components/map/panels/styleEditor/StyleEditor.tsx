@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { checkered } from "@/lib/style/checker";
 import type { Geometry } from "@/lib/style/compile/types";
 import { MAIN_COLOR } from "@/lib/style/editor/forms";
 import type { EditorStore } from "@/lib/style/editor/store";
@@ -79,7 +80,7 @@ function LayerDot({ geometry, store }: { geometry: Geometry; store: EditorStore 
   return (
     <Box
       data-testid="layer-dot"
-      style={{ backgroundColor: color }}
+      style={{ background: checkered(color) }}
       sx={{ width: 12, height: 12, borderRadius: "50%", flex: "none" }}
     />
   );

@@ -97,6 +97,13 @@ describe("pickers", () => {
     expect(() => unmount()).not.toThrow();
   });
 
+  it("a style color with its own transparency lies over the swatch checkerboard", () => {
+    renderPanel(<ColorPicker value="#145c42" onChange={vi.fn()} docColors={["#145c4280", "#e6f6ef"]} />);
+    const clear = getComputedStyle(screen.getByRole("button", { name: "#145c4280" }));
+    expect(clear.backgroundImage.match(/linear-gradient/g)).toHaveLength(3);
+    expect(getComputedStyle(screen.getByRole("button", { name: "#e6f6ef" })).backgroundImage).toBe("none");
+  });
+
   it("a color listed twice among the style's colors shows as one swatch", () => {
     renderPanel(
       <ColorPicker value="#145c42" onChange={vi.fn()} docColors={["#145c42", "#145C42", "#e6f6ef"]} />

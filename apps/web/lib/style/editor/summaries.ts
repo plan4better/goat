@@ -2,6 +2,7 @@
 // "By Visitors per year".
 import type { TFunction } from "i18next";
 
+import { alphaOf, isNone } from "@/lib/style/colors";
 import { DERIVED, derivedColor, followedKey, isDerivedWord } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { ScopedView } from "@/lib/style/editor/classify";
@@ -87,6 +88,18 @@ export const thenText = (t: TFunction, value: string, later: Setter, fields: Fie
         ...PLAIN,
       });
 
+/** A color as the panel shows it, never with eight digits (spec 4.6): "None" at alpha 0, six digits and the color's
+ * own percent where it is transparent ("#E87AB2 · 58%", 1 to 99, spelled as the Opacity rows spell theirs), six digits
+ * where it is opaque; anything else upper case as it is. */
+export function colorLabel(t: TFunction, color: string): string {
+  const alpha = alphaOf(color);
+  if (alpha === undefined) return color.toUpperCase();
+  if (alpha === 0) return t("style_editor.none");
+  const hex = color.slice(0, 7).toUpperCase();
+  if (alpha === 255) return hex;
+  return `${hex} · ${Math.min(99, Math.max(1, Math.round((alpha / 255) * 100)))}%`;
+}
+
 /** The panel's words for a color taken from another part. */
 const WORD_LABELS: Record<string, string> = { fill: "style_editor.same_as_fill", auto: "style_editor.auto" };
 
@@ -134,7 +147,8 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
       const fixed = value ?? DEFAULTS[key];
       if (kind === "color") {
         if (isDerivedWord(key, fixed)) return t(WORD_LABELS[fixed] ?? fixed);
-        const hex = typeof fixed === "string" ? fixed.toUpperCase() : "";
+        if (isNone(fixed)) return t("style_editor.none");
+        const hex = typeof fixed === "string" ? colorLabel(t, fixed) : "";
         const opacityPath = path.replace(/color$/, "opacity");
         const opacityKey = key.replace(/color$/, "opacity");
         // An opacity by classes or by attribute varies: no one percent to show.
@@ -142,7 +156,10 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
           opacityPath !== path && modeOf(doc, opacityPath, ctx.geometry) === "fixed"
             ? (getIn(doc, opacityPath) ?? DEFAULTS[opacityKey])
             : undefined;
-        return typeof opacity === "number" ? `${hex} · ${Math.round(opacity * 100)}%` : hex;
+        if (typeof opacity !== "number") return hex;
+        // Beside a color's own percent, the part's opacity is named, so the two read apart.
+        const named = (alphaOf(fixed) ?? 255) < 255 ? `${t("style_editor.opacity")} ` : "";
+        return `${hex} · ${named}${Math.round(opacity * 100)}%`;
       }
       if (typeof fixed === "number") return summaryNumber(fixed, key, ctx.language);
       return fixed === undefined ? "" : choiceLabel(t, key, fixed);

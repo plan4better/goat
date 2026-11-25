@@ -143,6 +143,27 @@ def on_color(hex_color: Any) -> str:
     return LIGHT if _luminance(hex_color) < ON_COLOR_LUMINANCE else DARK
 
 
+def alpha(hex_color: Any) -> int | None:
+    """The color's alpha, 0 to 255: its last two digits, 255 without them; None
+    for anything but a six- or eight-digit hex color."""
+    if not _is_hex(hex_color):
+        return None
+    return int(hex_color[7:9], 16) if len(hex_color) == 9 else 255
+
+
+def is_none(hex_color: Any) -> bool:
+    """Whether the color is "None" (spec 4.6): a hex color at alpha 0, which draws
+    nothing and keeps its hue."""
+    return alpha(hex_color) == 0
+
+
+def opaque(hex_color: Any) -> Any:
+    """The color without its alpha, `#rrggbb` as written: the hue a color that is
+    not set takes from the color it follows (spec 3.1 to 3.3). Anything but a
+    six- or eight-digit hex color is returned as it is."""
+    return hex_color[:7] if _is_hex(hex_color) else hex_color
+
+
 #: The rules a color key's `"auto"` follows (spec 18.10).
 AUTO_RULES = ("shade", "label_text", "label_halo", "on_color")
 
@@ -197,7 +218,8 @@ def sample_colors(
 
     A palette with a scheme for exactly `n` classes (ColorBrewer) uses it.
     Qualitative palettes repeat their colors in order. Any other palette spreads
-    its colors evenly over t = 0 to 1 and blends in Lab between the two nearest;
+    its colors evenly over t = 0 to 1 and blends in Lab between the two nearest,
+    their alphas linearly (a blend with an alpha below 255 has eight digits);
     one class takes the middle.
     """
     if n <= 0:
@@ -231,8 +253,20 @@ def sample_colors(
             continue
         frac = rem / den
         start, end = _lab(stops[j]), _lab(stops[j + 1])
-        out.append(_from_lab(tuple(s + (e - s) * frac for s, e in zip(start, end))))
+        blend = _from_lab(tuple(s + (e - s) * frac for s, e in zip(start, end)))
+        out.append(blend + _blend_alpha(stops[j], stops[j + 1], rem, den))
     return out
+
+
+def _blend_alpha(start: str, end: str, rem: int, den: int) -> str:
+    """The alpha `rem / den` of the way from `start`'s to `end`'s, rounded half
+    up in whole numbers, as the two digits a hex color ends with; nothing where
+    it is opaque."""
+    a, b = alpha(start), alpha(end)
+    a, b = 255 if a is None else a, 255 if b is None else b
+    # (a + (b - a) x rem / den) rounded half up, in integers.
+    value = (2 * (a * den + (b - a) * rem) + den) // (2 * den)
+    return "" if value == 255 else f"{value:02x}"
 
 
 def range_values(r0: float, r1: float, n: int, *, opacity: bool = False) -> list[float]:

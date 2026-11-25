@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { checkered } from "@/lib/style/checker";
+
 import CustomColorPicker from "@/components/map/panels/style/color/CustomColorPicker";
 import { HATCH } from "@/components/map/panels/styleEditor/rows/ColorField";
 
@@ -93,7 +95,7 @@ const Swatches = memo(function Swatches({
             aria-label={color}
             aria-pressed={color.toLowerCase() === selected}
             onClick={() => onPick(color)}
-            style={{ background: color }}
+            style={{ background: checkered(color) }}
           />
         ))}
       </Box>

@@ -16,6 +16,7 @@ import {
   type PartContext,
   always,
   byFill,
+  drawsNothing,
   highlightColor,
   highlightWidth,
   makeLayer,
@@ -191,7 +192,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     always(fill, true)
       ? opacity
       : withLayerOpacity(ctx, byFill(fill, ownOpacity, { expr: hollow }, "number"));
-  const outline = point && partUsed(style, "outline", "point");
+  const outlineUsed = point && partUsed(style, "outline", "point");
   const offsetSet = setValues(style, "marker.offset").some(moves);
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const baseMarker = isObject(symbol.marker) ? symbol.marker : {};
@@ -210,21 +211,39 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     fields: ctx.fields,
     follow: colorOf,
   });
+  // A color that is None for all draws nothing (spec 4.6): an outline so draws as one switched off. A marker whose
+  // color is None gets no layer, nor a highlight ring, where nothing else of it shows; a marker hollow by
+  // `fill: false` keeps its layer whatever shows.
+  const outline = outlineUsed && !drawsNothing(outlineColor);
+  const markerNone = drawsNothing(markerColor);
 
   const iconRefs = ctx.icon
     ? [...ctx.icon.refs]
     : setValues(style, "marker.icon").filter((r): r is string => typeof r === "string");
-  if (markersAsImages(style, ctx.geometry, iconRefs))
+  if (markersAsImages(style, ctx.geometry, iconRefs)) {
+    // An icon color nothing sets: the reference color on a filled marker, the marker's hue on a hollow one (spec 3.3).
+    const iconColor = derivedValue(style, "marker.icon_color", {
+      geometry: ctx.geometry,
+      fields: ctx.fields,
+      follow: colorOf,
+      fill,
+    });
+    // Uploads and emoji keep their own colors; library icons take the icon color.
+    const iconShows =
+      iconRefs.some(keepsColors) || (iconRefs.some((r) => !keepsColors(r)) && !drawsNothing(iconColor));
+    if (markerNone && !outline && !iconShows) return [];
     return markerImageLayers(ctx, place, markerShapeOf(shape), iconRefs, {
       size,
       opacity: hollowOpacity(1),
       fill,
       color: markerColor,
-      follow: colorOf,
+      iconColor,
       outline: outline ? { color: outlineColor } : undefined,
     });
+  }
 
   if (shape !== "icon") {
+    if (markerNone && !outline) return [];
     const paint: Record<string, unknown> = {};
     put(paint, "circle-color", markerColor, ctx, "marker.color");
     paint["circle-radius"] = toProperty(combine([size], ([s]) => ["/", s, 2], { kind: "number" }));
@@ -302,6 +321,8 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
 
   const own = refs.some(keepsColors);
   const library = refs.some((r) => !keepsColors(r));
+  // Library icons take the marker color: None for all and without an outline, they draw nothing.
+  const tinted = !(markerNone && !outline);
   if (own && library) {
     const kind = iconValue(ctx, {
       ...c,
@@ -309,11 +330,12 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
       map: (r) => (keepsColors(r) ? "asset" : "library"),
     });
     const kindExpr: Expr = isZoomed(kind) ? "library" : kind.expr;
-    layers.push(placed(ctx, place, "icon", layout, libraryPaint, { filter: ["==", kindExpr, "library"] }));
+    if (tinted)
+      layers.push(placed(ctx, place, "icon", layout, libraryPaint, { filter: ["==", kindExpr, "library"] }));
     layers.push(placed(ctx, place, "icon-asset", layout, ownPaint, { filter: ["==", kindExpr, "asset"] }));
   } else if (own) {
     layers.push(placed(ctx, place, "icon-asset", layout, ownPaint));
-  } else {
+  } else if (tinted) {
     layers.push(placed(ctx, place, "icon", layout, libraryPaint));
   }
   return layers;
@@ -358,8 +380,7 @@ function markerImageLayers(
     opacity: Value;
     fill: Value;
     color: Value;
-    /** The marker color with each fixed color `map`ped. */
-    follow: (map?: (color: unknown) => Expr) => Value;
+    iconColor: Value;
     outline?: { color: Value };
   }
 ): LayerSpecification[] {
@@ -371,13 +392,7 @@ function markerImageLayers(
     ? haloWidth(cascade(style, "outline.width", c), cascade(style, "outline.opacity", c))
     : { expr: 0 };
   const shapes = setValues(style, "marker.shape");
-  // An icon color nothing sets: the reference color on a filled marker, the marker color on a hollow one (spec 3.3).
-  const iconColor = derivedValue(style, "marker.icon_color", {
-    geometry: ctx.geometry,
-    fields: ctx.fields,
-    follow: marker.follow,
-    fill: marker.fill,
-  });
+  const iconColor = marker.iconColor;
   const parts = [
     cascade(style, "marker.shape", { ...c, fallback: "circle" }),
     iconValue(ctx, { ...c, fallback: "" }),

@@ -83,5 +83,37 @@
     {"color": "#fff", "expected": "#ffffff"},
     {"color": "#12345g", "expected": "#ffffff"},
     {"color": null, "expected": "#ffffff"}
+  ],
+  "alpha": [
+    {"color": "#2bb381", "expected": 255},
+    {"color": "#2BB381FF", "expected": 255},
+    {"color": "#e87ab294", "expected": 148},
+    {"color": "#E87AB201", "expected": 1},
+    {"color": "#cc615c00", "expected": 0},
+    {"color": "fill", "expected": null},
+    {"color": "#fff", "expected": null},
+    {"color": "#12345g", "expected": null},
+    {"color": null, "expected": null}
+  ],
+  "is_none": [
+    {"color": "#cc615c00", "expected": true},
+    {"color": "#CC615C00", "expected": true},
+    {"color": "#00000000", "expected": true},
+    {"color": "#cc615c01", "expected": false},
+    {"color": "#cc615c", "expected": false},
+    {"color": "#cc615cff", "expected": false},
+    {"color": "auto", "expected": false},
+    {"color": "#0000", "expected": false},
+    {"color": null, "expected": false}
+  ],
+  "opaque": [
+    {"color": "#cc615c00", "expected": "#cc615c"},
+    {"color": "#E87AB294", "expected": "#E87AB2"},
+    {"color": "#2bb381", "expected": "#2bb381"},
+    {"color": "#2BB381", "expected": "#2BB381"},
+    {"color": "#2bb381ff", "expected": "#2bb381"},
+    {"color": "fill", "expected": "fill"},
+    {"color": "#fff", "expected": "#fff"},
+    {"color": null, "expected": null}
   ]
 }

@@ -11,7 +11,13 @@ import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type RasterColorSpec, rasterColorSpec, rgbOf, tableColorSpec } from "@/lib/style/raster/color";
+import {
+  type RasterColorSpec,
+  alphaShare,
+  rasterColorSpec,
+  rgbOf,
+  tableColorSpec,
+} from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
 import {
   type BandFacts,
@@ -49,7 +55,7 @@ export const illumination = (direction: number, altitude: number): Record<string
 });
 
 /** The hillshade paint (spec 9.6): one light that follows the scene's, or GDAL's four for `multidirectional`; the
- * layer opacity goes into the colors' alpha, since a hillshade has no opacity of its own. */
+ * layer opacity multiplies the colors' own alpha, since a hillshade has no opacity of its own. */
 function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, unknown> {
   const pick = <T>(key: string): T => (render[key] ?? DEFAULTS[`hillshade.${key}`]) as T;
   const method = pick<string>("method");
@@ -62,7 +68,9 @@ function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, u
         [opacity],
         ([a]) => {
           const [r, g, b] = rgbOf(hex);
-          return `rgba(${r}, ${g}, ${b}, ${typeof a === "number" ? Number(a.toFixed(4)) : 1})`;
+          // The color's own alpha times the layer opacity (spec 4.6).
+          const alpha = alphaShare(hex) * (typeof a === "number" ? a : 1);
+          return `rgba(${r}, ${g}, ${b}, ${Number(alpha.toFixed(4))})`;
         },
         { kind: "color" }
       )

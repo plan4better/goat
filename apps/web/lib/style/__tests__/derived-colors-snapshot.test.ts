@@ -1,7 +1,8 @@
 // Every color the style derives from another one (spec 3.1 to 3.3, 8.2: an outline in the fill color or its darker
 // shade, a casing's darker shade, a pattern and arrows in the color they follow, the icon on a hollow marker, a cluster
-// badge's ring), with the followed color fixed, by zoom, by classes, by rules, by a palette and read from a field: what
-// the map, the legend and the panel's swatches show, pinned in one file. `vitest -u` rewrites it.
+// badge's ring), with the followed color fixed, with its own transparency or None, by zoom, by classes, by rules, by a
+// palette and read from a field: what the map, the legend and the panel's swatches show, pinned in one file. `vitest -u`
+// rewrites it.
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +24,7 @@ const points = { type: "points" as const, id: "s", data: "https://geoapi/collect
 const FORMS: Record<string, (part: string, key: string) => JsonObject> = {
   fixed: (part, key) => ({ symbol: { [part]: { [key]: "#7f3c8d" } } }),
   alpha: (part, key) => ({ symbol: { [part]: { [key]: "#7f3c8dcc" } } }),
+  none: (part, key) => ({ symbol: { [part]: { [key]: "#7f3c8d00" } } }),
   absent: () => ({ symbol: {} }),
   zoom: (part, key) => ({
     symbol: {
@@ -308,6 +310,55 @@ const EXTRAS: Record<
       },
     },
     rows: ["symbol.arrows.color"],
+  },
+  "a class with a None fill under an auto outline": {
+    geometry: "polygon",
+    style: {
+      symbol: { fill: { color: "#7f3c8d" }, outline: { color: "auto", width: 2 } },
+      classify: cat("t", [
+        { values: ["a"], fill: { color: "#11a57900" } },
+        { values: ["b"], fill: { color: "#e73f7480" } },
+      ]),
+    },
+    rows: ["symbol.fill.color", "symbol.outline.color"],
+  },
+  "a fill None at a zoom stop under an auto outline": {
+    geometry: "polygon",
+    style: {
+      symbol: {
+        fill: {
+          color: {
+            zoom: [
+              [8, "#7f3c8d00"],
+              [14, "#7f3c8d"],
+            ],
+          },
+        },
+        outline: { color: "auto", width: 2 },
+      },
+    },
+    rows: ["symbol.fill.color", "symbol.outline.color"],
+  },
+  "a fill by a palette from None under an auto outline": {
+    geometry: "polygon",
+    style: {
+      symbol: {
+        fill: { color: { field: "v", palette: ["#fee8c800", "#e34a33"], domain: [0, 10] } },
+        outline: { color: "auto", width: 2 },
+      },
+    },
+    rows: ["symbol.fill.color", "symbol.outline.color"],
+  },
+  "a None line with an auto casing and arrows": {
+    geometry: "line",
+    style: {
+      symbol: {
+        line: { color: "#3969ac00" },
+        casing: { color: "auto", width: 1 },
+        arrows: { icon: "goat:triangle" },
+      },
+    },
+    rows: ["symbol.line.color", "symbol.casing.color", "symbol.arrows.color"],
   },
   "arrows read from a field": {
     geometry: "line",

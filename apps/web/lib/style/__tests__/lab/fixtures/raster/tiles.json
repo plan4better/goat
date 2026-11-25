@@ -182,6 +182,28 @@
       "range": [10.0, 30.0],
       "integer": true,
       "codes": [32779, 32789, 32799, 0]
+    },
+    "classes-alpha": {
+      "encoding": {
+        "redFactor": 1.0,
+        "greenFactor": 0.00390625,
+        "blueFactor": 1.52587890625e-5,
+        "baseShift": -2.6999847412109377
+      },
+      "range": [5.0, 28.0],
+      "integer": false,
+      "codes": [150734, 806094, 1264846, 1658062, 0]
+    },
+    "categories-alpha": {
+      "encoding": {
+        "redFactor": 65536.0,
+        "greenFactor": 256.0,
+        "blueFactor": 1.0,
+        "baseShift": 32769.0
+      },
+      "range": [1.0, 7.0],
+      "integer": true,
+      "codes": [32770, 32772, 32776, 0]
     }
   },
   "large": {

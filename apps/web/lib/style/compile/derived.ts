@@ -1,10 +1,10 @@
 // Colors one part takes from another (spec 3.1 to 3.3, 8.2, 8.3): an outline in the fill color (`"fill"`) or a darker
 // shade of it (`"auto"`), a casing in a darker shade of the line, a hexagon outline in a darker shade of each hexagon, a
-// pattern and arrows in the color they follow while unset, the icon of a hollow marker in the marker color. `DERIVED`
+// pattern and arrows in the hue they follow while unset, opaque, the icon of a hollow marker in the marker's hue. `DERIVED`
 // says what each key follows and by which rule (goatlib's `data/color_keys.json` lists where `"auto"` is taken); the
 // compiler asks it for every feature (`derivedValue`), the legend and the panel for one fixed color (`derivedColor`),
 // so the three draw the same.
-import { shade } from "@/lib/style/colors";
+import { opaque, shade } from "@/lib/style/colors";
 import { cascade } from "@/lib/style/compile/cascade";
 import { always, byFill } from "@/lib/style/compile/parts";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
@@ -18,20 +18,24 @@ export type RuleInputs = Readonly<Record<string, unknown>>;
 /** A rule: the derived color of one fixed followed color. */
 export type Rule = (color: string, inputs: RuleInputs) => string;
 
-/** The rules: `same`, the followed color as it is, its alpha included; `shade`, its darker shade, opaque. */
-export type RuleName = "same" | "shade";
+/** The rules: `same`, the followed color as it is, its alpha included ("Same as fill"); `hue`, the followed color
+ * without its alpha (a color that is not set draws opaque in the hue it follows, spec 4.6); `shade`, its darker shade,
+ * opaque. */
+export type RuleName = "same" | "hue" | "shade";
 
 export const RULES: Readonly<Record<RuleName, Rule>> = {
   same: (color) => color,
+  hue: (color) => opaque(color),
   shade: (color) => shade(color),
 };
 
 /** What a rule gives where the followed color is read from a field as it is (spec 4.5): `read` is the read as it is
  * (`["to-color", get, fallback]`), `turned` the same read with its fallback turned by the rule. The data's color is
- * known only when drawn, so the shade cannot darken it and it stands; the fallback, a color known when compiling, is
- * darkened like any fixed color. */
+ * known only when drawn, so the shade cannot darken it and its alpha stays: it stands; the fallback, a color known
+ * when compiling, is turned like any fixed color. */
 export const RAW_RULES: Readonly<Record<RuleName, (read: Expr, turned: Expr, inputs: RuleInputs) => Expr>> = {
   same: (read) => read,
+  hue: (_read, turned) => turned,
   shade: (_read, turned) => turned,
 };
 
@@ -54,11 +58,11 @@ export const DERIVED: Readonly<Record<string, Derivation>> = {
   "casing.color": { follows: { line: "line.color" }, words: { auto: "shade" } },
   // An H3 render's outline (fixed for the layer) follows each hexagon's color, which the render works out (`h3Scale`).
   "h3.outline.color": { follows: {}, words: { auto: "shade" } },
-  "fill.pattern_color": { follows: { polygon: "fill.color" }, absent: { rule: "same" } },
-  "arrows.color": { follows: { line: "line.color" }, absent: { rule: "same" } },
+  "fill.pattern_color": { follows: { polygon: "fill.color" }, absent: { rule: "hue" } },
+  "arrows.color": { follows: { line: "line.color" }, absent: { rule: "hue" } },
   "marker.icon_color": {
     follows: { point: "marker.color", line: "marker.color", polygon: "marker.color" },
-    absent: { rule: "same", only: "hollow" },
+    absent: { rule: "hue", only: "hollow" },
   },
 };
 

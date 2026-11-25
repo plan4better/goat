@@ -391,7 +391,9 @@ stack, so validation runs in core too.
   NaN, the style's values) is transparent. `outside` works for classes as for a
   ramp: with `clamp` the first and last class are open, with `hide` they end at
   their own `from` and `to`, else at the token's `domain`, else at the band's
-  range (the last holding its end), and the cells beyond are transparent.
+  range (the last holding its end), and the cells beyond are transparent. A
+  color's own alpha (`#rrggbbaa`) is painted, blended premultiplied as MapLibre
+  blends the browser's colors; the layer opacity stays the browser's.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
   statistics for the band it is asked for alone (none without one), or for a

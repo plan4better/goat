@@ -3,6 +3,7 @@
 // from geoapi's hexagon tiles.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { isNone } from "@/lib/style/colors";
 import { cascade, categoryLabels, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS, TILE_MAXZOOM } from "@/lib/style/compile/constants";
 import { RULES, derivedValue, ruleOf } from "@/lib/style/compile/derived";
@@ -724,8 +725,9 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
   ] as LayerSpecification[];
   const outline = isObject(render.outline) ? render.outline : {};
   const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
-  if (width > 0) {
-    const rule = ruleOf("h3.outline.color", outline.color);
+  const rule = ruleOf("h3.outline.color", outline.color);
+  // An outline that is None draws as one of width 0 (spec 4.6).
+  if (width > 0 && (rule || !isNone(outline.color))) {
     const linePaint: Record<string, unknown> = {
       "line-color": rule
         ? h3Color(render, (color) => RULES[rule](color, {}))

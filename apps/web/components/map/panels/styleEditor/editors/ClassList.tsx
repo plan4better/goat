@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { checkered } from "@/lib/style/checker";
 import type { Geometry } from "@/lib/style/compile/types";
 import {
   addCategoryClass,
@@ -252,7 +253,7 @@ function TargetValue({
           borderRadius: 0.5,
           border: 1,
           borderColor: "divider",
-          background: typeof value === "string" ? value : HATCH,
+          background: typeof value === "string" ? checkered(value) : HATCH,
           ...FOCUS_MARK,
         }}
       />

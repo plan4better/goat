@@ -6,10 +6,13 @@ import pytest
 from goatlib.style.catalog import palette_colors
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
+    alpha,
     contrast_ratio,
     default_range,
     hex_to_rgb,
+    is_none,
     on_color,
+    opaque,
     parse_color,
     range_values,
     readable_shade,
@@ -168,3 +171,18 @@ def test_a_readable_shade_meets_the_floor_where_it_can() -> None:
 @pytest.mark.parametrize("row", COLOR_RULES["on_color"], ids=lambda r: str(r["color"]))
 def test_shared_on_colors(row: dict[str, Any]) -> None:
     assert on_color(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["alpha"], ids=lambda r: str(r["color"]))
+def test_shared_alphas(row: dict[str, Any]) -> None:
+    assert alpha(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["is_none"], ids=lambda r: str(r["color"]))
+def test_shared_none_colors(row: dict[str, Any]) -> None:
+    assert is_none(row["color"]) is row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["opaque"], ids=lambda r: str(r["color"]))
+def test_shared_opaque_colors(row: dict[str, Any]) -> None:
+    assert opaque(row["color"]) == row["expected"]

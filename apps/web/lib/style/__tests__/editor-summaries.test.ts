@@ -5,7 +5,14 @@ import en from "@/i18n/locales/en/common.json";
 
 import { scopedView } from "@/lib/style/editor/classify";
 import { LABEL_FONT_CHOICE } from "@/lib/style/editor/forms";
-import { colorsIn, compoundLabel, compoundOptions, summarize, swatchOf } from "@/lib/style/editor/summaries";
+import {
+  colorLabel,
+  colorsIn,
+  compoundLabel,
+  compoundOptions,
+  summarize,
+  swatchOf,
+} from "@/lib/style/editor/summaries";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 const i18n = i18next.createInstance();
@@ -25,6 +32,32 @@ describe("row summaries", () => {
     expect(summarize(doc({ line: { width: 3 } }), "symbol.line.width", t, ctx)).toBe("3 px");
     expect(summarize(doc({ line: {} }), "symbol.line.width", t, ctx)).toBe("2 px");
     expect(summarize(doc({ line: { dash: "dash_dot" } }), "symbol.line.dash", t, ctx)).toBe("Dash dot");
+  });
+
+  it("a color with its own transparency: six digits and its percent, None at 0%, never eight digits", () => {
+    expect(colorLabel(t, "#e87ab294")).toBe("#E87AB2 · 58%");
+    expect(colorLabel(t, "#e87ab2")).toBe("#E87AB2");
+    expect(colorLabel(t, "#e87ab2ff")).toBe("#E87AB2");
+    expect(colorLabel(t, "#cc615c00")).toBe("None");
+    // Nearly opaque or nearly clear: the percent never reads 100 or 0 for a color that is neither.
+    expect(colorLabel(t, "#e87ab2fe")).toBe("#E87AB2 · 99%");
+    expect(colorLabel(t, "#e87ab201")).toBe("#E87AB2 · 1%");
+    expect(summarize(doc({ label: { color: "#e87ab294" } }), "symbol.label.color", t, ctx)).toBe(
+      "#E87AB2 · 58%"
+    );
+    expect(summarize(doc({ fill: { color: "#cc615c00", opacity: 0.72 } }), "symbol.fill.color", t, ctx)).toBe(
+      "None"
+    );
+  });
+
+  it("a color with its own transparency on a part with an opacity names the opacity apart", () => {
+    expect(summarize(doc({ fill: { color: "#e87ab294", opacity: 0.8 } }), "symbol.fill.color", t, ctx)).toBe(
+      "#E87AB2 · 58% · Opacity 80%"
+    );
+    // An opaque color keeps the short form.
+    expect(summarize(doc({ fill: { color: "#e87ab2ff", opacity: 0.8 } }), "symbol.fill.color", t, ctx)).toBe(
+      "#E87AB2 · 80%"
+    );
   });
 
   it("values by zoom", () => {

@@ -92,9 +92,11 @@ def _pixels(data: bytes) -> np.ndarray:
     return pixels
 
 
-def _rgb(hex_color: str) -> tuple[int, int, int]:
+def _rgba(hex_color: str) -> tuple[int, int, int, int]:
+    """A sample's color and its own alpha (255 for six digits)."""
     h = hex_color.lstrip("#")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    alpha = int(h[6:8], 16) if len(h) == 8 else 255
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha
 
 
 @pytest.fixture
@@ -143,10 +145,11 @@ def test_a_tile_paints_each_sample_in_its_color(
                     f"{cell}: painted #{red:02x}{green:02x}{blue:02x}, not transparent"
                 )
             continue
-        expected = _rgb(sample["color"])
-        # Opacity is the browser's paint property: the service paints opaque.
-        if alpha != 255 or any(
-            abs(a - b) > TOLERANCE for a, b in zip((red, green, blue), expected)
+        expected = _rgba(sample["color"])
+        # The color's own alpha is painted; the layer opacity is the browser's paint
+        # property.
+        if any(
+            abs(a - b) > TOLERANCE for a, b in zip((red, green, blue, alpha), expected)
         ):
             wrong.append(
                 f"{cell}: painted #{red:02x}{green:02x}{blue:02x} alpha {alpha}, "

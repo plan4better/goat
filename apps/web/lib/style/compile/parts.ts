@@ -2,6 +2,7 @@
 // layer opacity.
 import type { LayerSpecification } from "maplibre-gl";
 
+import { isNone } from "@/lib/style/colors";
 import { featureFilter, isSet } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
 import type { ImageCollector } from "@/lib/style/compile/images";
@@ -94,6 +95,10 @@ export const highlightWidth = (ctx: PartContext, value: Value): Value =>
 
 /** Whether a value is `expr` for every feature at every zoom. */
 export const always = (value: Value, expr: Expr) => !isZoomed(value) && value.expr === expr;
+
+/** Whether a color is one color at alpha 0 ("None", spec 4.6) for every feature at every zoom: its part gets no layer,
+ * so it takes no clicks. A color that varies draws nothing through its alpha where it is None. */
+export const drawsNothing = (color: Value): boolean => !isZoomed(color) && isNone(color.expr);
 
 /** `filled` where a feature's marker has its fill (`marker.fill`), `hollow` where it has none. */
 export function byFill(fill: Value, filled: Value, hollow: Value, kind: "number" | "color"): Value {

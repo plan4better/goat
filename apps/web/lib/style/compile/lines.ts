@@ -9,6 +9,7 @@ import { keepsColors } from "@/lib/style/compile/images";
 import {
   type Decoration,
   type PartContext,
+  drawsNothing,
   highlightColor,
   highlightWidth,
   layerOpacity,
@@ -33,14 +34,17 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
   put(layout, "line-cap", cascade(style, "line.cap", c), ctx, "line.cap");
   put(layout, "line-join", cascade(style, "line.join", c), ctx, "line.join");
 
-  if (partUsed(style, "casing", "line")) {
+  // A part whose color is None for all draws no layer (spec 4.6).
+  const casingColor = partUsed(style, "casing", "line")
+    ? derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields })
+    : null;
+  if (casingColor && !drawsNothing(casingColor)) {
     const casingWidth = combine(
       [width, cascade(style, "casing.width", c)],
       ([l, w]) => ["+", l, ["*", 2, w]],
       { kind: "number" }
     );
     const paint: Record<string, unknown> = {};
-    const casingColor = derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields });
     put(paint, "line-color", casingColor, ctx, "casing.color");
     paint["line-width"] = toProperty(casingWidth);
     put(paint, "line-offset", offset, ctx, "line.offset");
@@ -49,16 +53,18 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
     layers.push(makeLayer(ctx, "casing", "line", "line", layout, paint));
   }
 
-  const paint: Record<string, unknown> = {};
-  put(paint, "line-color", highlightColor(ctx, lineColor), ctx, "line.color");
-  put(paint, "line-width", highlightWidth(ctx, width), ctx, "line.width");
-  put(paint, "line-offset", offset, ctx, "line.offset");
-  put(paint, "line-opacity", cascade(style, "line.opacity", c), ctx, "line.opacity");
-  put(paint, "line-blur", cascade(style, "line.blur", c), ctx, "line.blur");
-  if (isSet(style, "line.dash"))
-    paint["line-dasharray"] = toProperty(cascade(style, "line.dash", { ...c, map: dashArray }));
-  if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
-  layers.push(makeLayer(ctx, "line", "line", "line", layout, paint));
+  if (!drawsNothing(lineColor)) {
+    const paint: Record<string, unknown> = {};
+    put(paint, "line-color", highlightColor(ctx, lineColor), ctx, "line.color");
+    put(paint, "line-width", highlightWidth(ctx, width), ctx, "line.width");
+    put(paint, "line-offset", offset, ctx, "line.offset");
+    put(paint, "line-opacity", cascade(style, "line.opacity", c), ctx, "line.opacity");
+    put(paint, "line-blur", cascade(style, "line.blur", c), ctx, "line.blur");
+    if (isSet(style, "line.dash"))
+      paint["line-dasharray"] = toProperty(cascade(style, "line.dash", { ...c, map: dashArray }));
+    if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
+    layers.push(makeLayer(ctx, "line", "line", "line", layout, paint));
+  }
 
   if (partUsed(style, "arrows", "line")) layers.push(...arrowLayers(ctx, lineColor));
   return layers;
@@ -69,7 +75,6 @@ function arrowLayers(ctx: PartContext, lineColor: Value): LayerSpecification[] {
   const c = { fields: ctx.fields };
   // One icon for the layer (spec 3.2), drawn as GOAT's arrow is: pointing north before it is turned along the line.
   const icon = String(perLayer(style, "arrows.icon"));
-  ctx.images.add(icon);
   const placement = perLayer(style, "arrows.placement");
   const direction = perLayer(style, "arrows.direction");
   // The icon turns with the line (its top the way the arrow points) or stays upright on the screen, where the
@@ -84,6 +89,9 @@ function arrowLayers(ctx: PartContext, lineColor: Value): LayerSpecification[] {
     fields: ctx.fields,
     follow: (map) => (map ? cascade(style, "line.color", { ...c, map }) : lineColor),
   });
+  // Library icons take the arrows' color: None for all, they draw nothing (spec 4.6).
+  if (drawsNothing(color) && !keepsColors(icon)) return [];
+  ctx.images.add(icon);
   const layout = {
     "icon-image": icon,
     "icon-size": toProperty(size),

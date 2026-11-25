@@ -259,7 +259,7 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
 
 - `pattern`: `none` (no pattern; a class uses it to switch off the base's pattern), `hatch_45` (diagonal lines),
   `hatch_135` (the other diagonal), `vertical`, `horizontal` (lines), `cross` (cross hatch), `grid`, `dots`. The
-  pattern is drawn on top of the fill, in `pattern_color` (default: the fill color), at full opacity. For a hatch
+  pattern is drawn on top of the fill, in `pattern_color` (default: the fill's hue), at full opacity. For a hatch
   without a tint, set the fill `opacity` to 0.
 - `pattern_spacing`: the distance between lines (or dots) in px, default 10; `pattern_width`: a line's width (or a
   dot's diameter) in px, default 2. Each look is an image of its own, so both switch at zoom stops and per class, but
@@ -293,7 +293,7 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
   - `center`, `start`, `end` and `both_ends` place one arrow per feature, at points the tile service computes from
     the whole line (section 16), not per tile piece.
 
-  `direction`: `forward`, `backward`, `both`. Without `color` the arrows take the line color.
+  `direction`: `forward`, `backward`, `both`. Without `color` the arrows take the line's hue.
 - `arrows.icon` is the icon drawn as the arrow: GOAT's arrow (`goat:arrow`) by default, or any icon a marker takes
   (a library icon, an emoji or an upload, section 1). It is one icon for the whole layer. Its top points the way the
   arrow points, along the line in its drawing direction (`forward`), against it (`backward`) or both ways, so an icon
@@ -462,7 +462,7 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
   The outlines live in the web client (`lib/style/markerShapes.ts`), each in a 24 by 24 box the marker's size fills.
 - `fill: false` draws the marker hollow: a circle, shape or pin draws its outline only, and its icon if it has one.
   The outline is what shows, so a hollow marker usually has one, often in the marker color (`"color": "fill"`);
-  without an outline only the icon and the label show. The icon on a hollow marker takes the marker color unless
+  without an outline only the icon and the label show. The icon on a hollow marker takes the marker's hue unless
   `icon_color` is set. `fill` is a switch, not a value by zoom or attribute; classes and rules may set it, and the icon
   alone ignores it. Default `true`.
 - `size` is the circle diameter or the icon height in px.
@@ -1103,17 +1103,17 @@ and may be set in one place only (6.1).
 
 ### 4.6 Opacity
 
-The opacity a viewer sees is layer `opacity` x part `opacity` x the alpha of the color. A class or rule `opacity`
-replaces the part's opacity (it does not multiply). In MapLibre:
+The opacity a viewer sees is layer `opacity` x part `opacity` x the color's own alpha, honored everywhere; a class or
+rule `opacity` replaces the part's. A color at alpha 0 is "None": it draws nothing and keeps its hue (`#cc615c00`). A
+color that is not set and follows another (a pattern, arrows, a hollow marker's icon) and an `"auto"` edge (3.1) take
+that hue opaque; `"fill"` copies the alpha. One fixed None color gives its part no MapLibre layer and no clicks (16); a
+class, rule or zoom stop at None keeps its features on the layer (clicks, highlight). In MapLibre:
 
-- For fills and lines the layer opacity becomes `fill-layer-opacity` and `line-layer-opacity` (MapLibre 6), so
-  overlapping lines of one layer do not get darker. These composite one MapLibre layer: a polygon's fill and outline
-  still blend with each other.
-- Circles, icons and labels have no layer opacity: the layer opacity is multiplied into each part, so overlaps get
-  darker and an icon on a circle fades twice.
-- An icon's outline is MapLibre's icon halo, which has no opacity: an outline that is off (opacity 0) draws no halo,
-  any other opacity draws it fully.
-- Hillshade has no opacity: the layer opacity goes into the alpha of the shadow, highlight and accent colors.
+- Fills and lines take the layer opacity as `fill-layer-opacity` and `line-layer-opacity` (MapLibre 6): overlaps of one
+  layer do not darken, a polygon's fill and outline still blend; circles, icons and labels multiply it in.
+- An icon's outline is MapLibre's icon halo, without opacity: an outline at opacity 0 draws no halo, any other fully.
+- Hillshade: the layer opacity multiplies its colors' alpha. Extrusion: MapLibre drops the color's alpha, so a fixed
+  fill color's goes into the volumes' opacity and a varying one is lost.
 
 ## 5. Classifications
 
@@ -1524,7 +1524,7 @@ formula of their own.
 | `sqrt` | (sqrt(v) - sqrt(d0)) / (sqrt(d1) - sqrt(d0)), clamped; v < 0 is no data | same |
 | `log` | (ln v - ln d0) / (ln d1 - ln d0), clamped; v <= 0 is no data; d0 must be > 0 (`domain_invalid`) | same |
 
-- A palette spreads its colors evenly over t = 0 to 1 and blends in Lab between them.
+- A palette spreads its colors evenly over t = 0 to 1 and blends in Lab between them, their alphas linearly.
 - A domain with d0 = d1 gives every feature the start value. A reversed domain (d0 > d1) is the same scale the other
   way round. A `sqrt` domain starting below 0 starts at 0; a `log` domain that does not start above 0 draws the start
   value until it is fixed.
@@ -2546,7 +2546,7 @@ with a color table, as an image drawn with it (9.1), without the adjustments.
 - `method`: `standard` (one light, `accent_color` for steep slopes), `multidirectional`, `combined`, `igor`, `basic`.
 - `direction` (degrees the light comes from, 0 to 359), `altitude` (degrees above the horizon), `exaggeration` (0 to 1).
 - With `palette` the shading lies over a color range (`domain`, `classify`, `outside` as in 9.2 and 9.4).
-- The layer `opacity` goes into the alpha of the shadow, highlight and accent colors (MapLibre's has none).
+- The layer `opacity` is multiplied into the alpha of the shadow, highlight and accent colors (MapLibre's has none).
 - A low relief is raised before it is shaded (16, raster row), at any `exaggeration`, which acts on top of it.
 
 The other methods:
@@ -3269,7 +3269,7 @@ are part of the format: an output that breaks one of them draws something else t
 
 | Construct | MapLibre output |
 |---|---|
-| polygon `fill` | `fill` layer; with `pattern`, a second `fill` layer with `fill-pattern` above the color fill: one image per look, named `goat-pattern:<kind>|<spacing>|<width>|<color>` per feature, at each zoom stop and at each whole zoom between two stops of its color (4.2), and drawn when the map first needs it |
+| polygon `fill` | `fill` layer; with `pattern`, a second `fill` layer with `fill-pattern` above the color fill: one image per look, named `goat-pattern:<kind>|<spacing>|<width>|<color>` per feature, at each zoom stop and at each whole zoom between two stops of its color (4.2), and drawn when the map first needs it. A part whose color is one fixed color at alpha 0 (4.6) gets no layer, here and for every part below: without a fill layer the active feature shows on the outline, or on GOAT's highlight edge, as with the fill off, and the pattern still draws (a pattern color that is not set is the fill's hue, opaque; only a pattern color of its own at alpha 0 drops it); a marker whose color is None loses its layer, and its highlight ring, only where nothing else of it shows: no outline, and no icon or a library icon whose color is None (a marker hollow by `fill: false` keeps its layer). A class, rule or zoom stop at alpha 0 draws nothing through the alpha and keeps its features on the layer, so they still take clicks and the highlight |
 | polygon `outline` | `line` layer (`fill-outline-color` is always 1 px); `color` `"fill"` is the fill's `fill-color` expression, `"auto"` the same expression with each color in it darkened (3.1), so no color arithmetic runs in MapLibre (a color read from a field stays as it is, its fallback darkened, 18.10); `position` `inside` is `line-offset` of half the width, `outside` of minus half the width, at every zoom stop and per class: MapLibre insets a polygon's rings by a positive offset, as vector tiles wind outer rings clockwise and holes counterclockwise in tile coordinates and MapLibre's GeoJSON tiler rewinds rings that way |
 | `line` | `line` layer; dashes as `line-dasharray` in line widths: `solid` [1, 0], `dashed` [2, 2], `dotted` [0.5, 2], `dash_dot` [3, 2, 0.5, 2] |
 | `casing` | `line` layer below the line, with the **same filter, zoom range and layout**, so MapLibre tessellates the geometry once. Width = line width + 2 x casing width at every zoom stop. `color` `"auto"` is the line's `line-color` expression with each color in it darkened (a color read from a field stays as it is, its fallback darkened, 18.10). A class with `casing: false` gets casing opacity 0 instead of a different filter |
@@ -3303,9 +3303,9 @@ are part of the format: an output that breaks one of them draws something else t
 | heatmap | `heatmap` layer; `heatmap-color` over `heatmap-density`, transparent at 0; `points_from_zoom` = the heatmap's `maxzoom` and the point layers' `minzoom` |
 | cluster | GeoJSON source with `cluster`, `clusterRadius`, `clusterMinPoints`, `clusterMaxZoom` = `cluster_until_zoom` - 1 (MapLibre's is inclusive); cluster layers filter on `["has", "point_count"]`; `count` = `point_count`; `look: points` compiles the base marker for the clusters, with `clusterProperties` counting the points of each category and a `let`/`max`/`case` choosing the icon and color; `count: badge` is one symbol layer: a circle marker image per number of digits and the count, moved to the marker box's upper right corner by `icon-offset` (px) and `text-offset` (ems of its fixed size), per feature and zoom; a `value` from a field adds `clusterProperties` accumulating the field (`+` for the sum and the mean, a `min` or `max` reduce over `accumulated`) and counting the points with a value, the mean dividing the two |
 | H3 | vector source of geoapi's H3 tiles; `fill` + `line` layers over the cell value (an `outline.color` of `"auto"` is the `fill-color` expression with each color in it darkened, 18.10); with `extrude`, one `fill-extrusion` layer instead (no outline), height `base` + scaled value x `tallest`, one expression per computed resolution chosen with `match` on the tile's resolution |
-| polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity; no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
+| polygon `extrude` | the fill becomes one `fill-extrusion` layer with the fill layer's id: color from the fill cascade, `fill-extrusion-height` from the `extrude.height` cascade (raw storeys x 3, `false` and missing values 0), `fill-extrusion-base` = `["min", base, height]`, `fill-extrusion-opacity` = fill opacity x layer opacity x the alpha of a fixed fill color (MapLibre ignores `fill-extrusion-color`'s alpha, so a fill color that varies draws its volumes without it); no pattern layer, no sort key; point-placed labels get `symbol-height-offset` = the height |
 | map document `scene` and `view` | not layers: root `projection` (`globe` as a zoom expression from `vertical-perspective` at 8 to `mercator` at 9), `terrain` (a `raster-dem` source of the deployment's Terrarium tiles), `sky` and `light` (a set light's position from `global-state`; a missing one is a `viewport` light), a terrain hillshade layer and the building layer `goat-buildings` (`buildings.opacity` is its `fill-extrusion-opacity` and that of the basemap's own 3D building layers); every hillshade's illumination reads the light from `global-state`. `maxPitch` 85 in 3D, 0 in 2D |
-| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity in the alpha of its colors. A hillshade's source raises a low relief: its four factors times k, the largest power of two that keeps the band's range (the description's `range`, its minimum to maximum) within 1000, at most 16, and 1 for an unknown range; the colors' stop values on that source times k too. MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so without it the slopes of flat terrain are lost; a power of two keeps every decoded value exact, the tile addresses and the values read for popups keep the file's encoding. An image drawn with its file's color table (9.1): the value tiles of the table's band read `nearest` under a `color-relief` layer whose stops are the table's colors with the adjustments applied, `resampling: nearest`, the layer opacity as `color-relief-opacity`; it waits for the colored tiles' description, whose band facts give the table, then for the values'. Other images, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
+| raster | `continuous`, `categorical` with classes and `hillshade`: a `raster-dem` source of the raster service's value tiles, `encoding: "custom"` with the factors of their description; the colors a `color-relief` layer (`color-relief-color` is an `interpolate` over `["elevation"]` with the coloring's stops, transparent at no data; `color-relief-opacity`; `resampling`); a hillshade a `hillshade` layer on the same source, above the colors, the layer opacity multiplied into the alpha of its colors. A hillshade's source raises a low relief: its four factors times k, the largest power of two that keeps the band's range (the description's `range`, its minimum to maximum) within 1000, at most 16, and 1 for an unknown range; the colors' stop values on that source times k too. MapLibre keeps the slopes in 8 bits before `hillshade-exaggeration` acts, so without it the slopes of flat terrain are lost; a power of two keeps every decoded value exact, the tile addresses and the values read for popups keep the file's encoding. An image drawn with its file's color table (9.1): the value tiles of the table's band read `nearest` under a `color-relief` layer whose stops are the table's colors with the adjustments applied, `resampling: nearest`, the layer opacity as `color-relief-opacity`; it waits for the colored tiles' description, whose band facts give the table, then for the values'. Other images, colors over float cells of an unknown range (the codes cannot place them), and colors needing more than 4096 stops whose token fits in a URL (longer ones are reported as not supported): a `raster` source of the service's colored tiles with the coloring as a token in the URL, and a `raster` layer (adjustments as in 9.1) |
 | map service | `raster` source with the service's tile URL (WMS `GetMap` with `{bbox-epsg-3857}` and `STYLES` = `service_style`; WMTS with `Style`; XYZ as given) and a `raster` layer with `raster-opacity`, the adjustments as in 9.1 and `raster-resampling` |
 
 > "Cycle routes with a white edge, width by zoom, shifted 2 px, an arrow in the middle; planned routes dashed, faded,
@@ -3558,8 +3558,8 @@ sign, as today.
 
 The tables below are the contract. The goatlib Pydantic models (`style/models/`) are its source of truth: the JSON
 Schema and the web's types and defaults are generated from them, and these tables follow them. The defaults are published in the JSON Schema as `x-defaults` (goatlib
-`style/defaults.py`), except those that depend on the document: the pattern color is the fill color, arrows take the
-line color, the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker color on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
+`style/defaults.py`), except those that depend on the document: the pattern color is the fill's hue, arrows take the
+line's hue (both opaque, 4.6), the marker icon is `goat:marker` when the shape is `icon`, the icon color is the marker's hue on a hollow marker (`fill: false`), the label placement follows the geometry. "Forms" lists the value forms allowed (F fixed,
 Z by zoom, A by attribute, C by classes; section 4.5).
 
 These defaults say what an absent key means. A new layer without a style of its own starts from a document instead
@@ -3593,7 +3593,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `fill.color` | color | F Z A C | `#2bb381` |
 | `fill.opacity` | 0 to 1 | F Z A C | 1 |
 | `fill.pattern` | `none`, `hatch_45`, `hatch_135`, `vertical`, `horizontal`, `cross`, `grid`, `dots` | F Z(step) C | `none` |
-| `fill.pattern_color` | color | F Z A C | the fill color |
+| `fill.pattern_color` | color | F Z A C | the fill's hue |
 | `fill.pattern_spacing` | px | F Z(step) C | 10 |
 | `fill.pattern_width` | px | F Z(step) C | 2 |
 | `outline.color` | color, `"fill"` or `"auto"` (3.1) | F Z A C | `#ffffff` |
@@ -3616,7 +3616,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `arrows.direction` | `forward`, `backward`, `both` | F (per layer) | `forward` |
 | `arrows.spacing` | px | F Z (per layer) | 100 |
 | `arrows.size` | px | F Z A C | 10 |
-| `arrows.color` | color | F Z A C | the line color |
+| `arrows.color` | color | F Z A C | the line's hue |
 | `arrows.icon` | icon reference, or `goat:arrow` | F (per layer) | `goat:arrow` |
 | `arrows.turn_with_line` | boolean | F (per layer) | `true` |
 | `marker.shape` | `circle`, `square`, `diamond`, `hexagon`, `shield`, `pin`, `round_pin`, `needle`, `square_pin`, `tag_pin`, `flag`, `icon` | F C (`icon` per layer) | `circle` |
@@ -3625,7 +3625,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `marker.size` | px (circle diameter or icon height) | F Z A C | 8 |
 | `marker.opacity` | 0 to 1 | F Z A C | 1 |
 | `marker.icon` | icon reference | F Z(step) C | none (`goat:marker` with `shape: icon`) |
-| `marker.icon_color` | color | F Z A C | `#ffffff` (the marker color with `fill: false`) |
+| `marker.icon_color` | color | F Z A C | `#ffffff` (the marker's hue with `fill: false`) |
 | `marker.rotation` | degrees clockwise from north | F Z A C | 0 |
 | `marker.anchor` | `center`, `top`, `bottom`, `left`, `right`, `top_left`, `top_right`, `bottom_left`, `bottom_right` | F Z(step) C | `center` |
 | `marker.offset` | `[x, y]` px | F Z C | `[0, 0]` |

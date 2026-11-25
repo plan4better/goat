@@ -65,6 +65,32 @@
    "symbol.outline.color": "#7f3c8dcc"
   }
  },
+ "polygon outline fill / none": {
+  "valid": true,
+  "map": {},
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8d00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8d00"
+  }
+ },
  "polygon outline fill / absent": {
   "valid": true,
   "map": {
@@ -477,6 +503,36 @@
      "geometry": "polygon",
      "fill": {
       "color": "#7f3c8dcc",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "polygon outline auto / none": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
       "opacity": 1,
       "pattern": "none"
      },
@@ -934,6 +990,48 @@
      },
      "outline": {
       "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#000000"
+  }
+ },
+ "polygon outline fill in zoom stops / none": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     10,
+     "#7f3c8d00",
+     14,
+     "#000000"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#7f3c8d00",
       "width": 2,
       "opacity": 1,
       "dash": "solid"
@@ -1419,6 +1517,31 @@
    "symbol.outline.color": "#2bb381"
   }
  },
+ "polygon fill off, outline fill / none": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#2bb381"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#2bb381",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#2bb381"
+  }
+ },
  "polygon fill off, outline fill / absent": {
   "valid": true,
   "map": {
@@ -1645,6 +1768,31 @@
   }
  },
  "polygon fill off, outline auto / alpha": {
+  "valid": true,
+  "map": {
+   "1-outline": {
+    "line-color": "#1e7d5a"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "outline": {
+      "color": "#1e7d5a",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#1e7d5a"
+  }
+ },
+ "polygon fill off, outline auto / none": {
   "valid": true,
   "map": {
    "1-outline": {
@@ -1906,7 +2054,7 @@
     "fill-color": "#7f3c8dcc"
    },
    "1-pattern": {
-    "fill-pattern": "goat-pattern:hatch_45|10|2|#7f3c8dcc"
+    "fill-pattern": "goat-pattern:hatch_45|10|2|#7f3c8d"
    }
   },
   "legend": [
@@ -1918,7 +2066,34 @@
       "color": "#7f3c8dcc",
       "opacity": 1,
       "pattern": "hatch_45",
-      "pattern_color": "#7f3c8dcc",
+      "pattern_color": "#7f3c8d",
+      "pattern_spacing": 10,
+      "pattern_width": 2
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.pattern_color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "polygon pattern color absent / none": {
+  "valid": true,
+  "map": {
+   "1-pattern": {
+    "fill-pattern": "goat-pattern:hatch_45|10|2|#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d00",
+      "opacity": 1,
+      "pattern": "hatch_45",
+      "pattern_color": "#7f3c8d",
       "pattern_spacing": 10,
       "pattern_width": 2
      }
@@ -2373,6 +2548,36 @@
    "symbol.casing.color": "#592a63"
   }
  },
+ "line casing auto / none": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#592a63",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#7f3c8d00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.casing.color": "#592a63"
+  }
+ },
  "line casing auto / absent": {
   "valid": true,
   "map": {
@@ -2779,7 +2984,7 @@
    },
    "1-arrows": {
     "icon-image": "goat:triangle",
-    "icon-color": "#7f3c8dcc"
+    "icon-color": "#7f3c8d"
    }
   },
   "legend": [
@@ -2795,7 +3000,40 @@
      },
      "arrows": {
       "icon": "goat:triangle",
-      "color": "#7f3c8dcc",
+      "color": "#7f3c8d",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
+  }
+ },
+ "line arrows color absent / none": {
+  "valid": true,
+  "map": {
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": "#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8d00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#7f3c8d",
       "direction": "forward",
       "placement": "repeat",
       "turn_with_line": true
@@ -3256,7 +3494,7 @@
      ],
      "x",
      "#00ff00",
-     "#7f3c8dcc"
+     "#7f3c8d"
     ]
    }
   },
@@ -3267,6 +3505,51 @@
      "geometry": "line",
      "line": {
       "color": "#7f3c8dcc",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#00ff00",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.arrows.color": "#00ff00"
+  }
+ },
+ "line arrows colored only in a class / none": {
+  "valid": true,
+  "map": {
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "k"
+      ]
+     ],
+     "x",
+     "#00ff00",
+     "#7f3c8d"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "line",
+     "line": {
+      "color": "#7f3c8d00",
       "width": 2,
       "opacity": 1,
       "dash": "solid"
@@ -3856,6 +4139,34 @@
    "symbol.outline.color": "#7f3c8dcc"
   }
  },
+ "point circle outline fill / none": {
+  "valid": true,
+  "map": {},
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d00",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#7f3c8d00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#7f3c8d00"
+  }
+ },
  "point circle outline fill / absent": {
   "valid": true,
   "map": {
@@ -4286,6 +4597,39 @@
    "symbol.outline.color": "#592a63"
   }
  },
+ "point circle outline auto / none": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "circle-color": "#7f3c8d00",
+    "circle-stroke-color": "#592a63"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d00",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
  "point circle outline auto / absent": {
   "valid": true,
   "map": {
@@ -4698,6 +5042,39 @@
      "marker": {
       "shape": "square",
       "color": "#7f3c8dcc",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#ffffff",
+      "icon": "goat:park"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.outline.color": "#592a63"
+  }
+ },
+ "point image outline auto / none": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:square|8|goat:park|#7f3c8d00|#592a63|2|#ffffff"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "square",
+      "color": "#7f3c8d00",
       "size": 8,
       "opacity": 1,
       "icon_color": "#ffffff",
@@ -5172,7 +5549,7 @@
   "valid": true,
   "map": {
    "1-marker": {
-    "icon-image": "goat-marker:circle|8|goat:park||#7f3c8dcc|2|#7f3c8dcc"
+    "icon-image": "goat-marker:circle|8|goat:park||#7f3c8dcc|2|#7f3c8d"
    }
   },
   "legend": [
@@ -5185,7 +5562,7 @@
       "color": "#7f3c8dcc",
       "size": 8,
       "opacity": 1,
-      "icon_color": "#7f3c8dcc",
+      "icon_color": "#7f3c8d",
       "icon": "goat:park",
       "fill": false
      },
@@ -5199,8 +5576,43 @@
    }
   ],
   "panel": {
-   "symbol.marker.icon_color": "#7f3c8dcc",
+   "symbol.marker.icon_color": "#7f3c8d",
    "symbol.outline.color": "#7f3c8dcc"
+  }
+ },
+ "point hollow marker icon / none": {
+  "valid": true,
+  "map": {
+   "1-marker": {
+    "icon-image": "goat-marker:circle|8|goat:park|||0|#7f3c8d"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "point",
+     "marker": {
+      "shape": "circle",
+      "color": "#7f3c8d00",
+      "size": 8,
+      "opacity": 1,
+      "icon_color": "#7f3c8d",
+      "icon": "goat:park",
+      "fill": false
+     },
+     "outline": {
+      "color": "#7f3c8d00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.marker.icon_color": "#7f3c8d",
+   "symbol.outline.color": "#7f3c8d00"
   }
  },
  "point hollow marker icon / absent": {
@@ -6930,6 +7342,260 @@
   ],
   "panel": {
    "symbol.arrows.color": "linear-gradient(90deg, #000000, #ffffff)"
+  }
+ },
+ "a class with a None fill under an auto outline": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#11a57900",
+     "b",
+     "#e73f7480",
+     "#7f3c8d"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "match",
+     [
+      "to-string",
+      [
+       "get",
+       "t"
+      ]
+     ],
+     "a",
+     "#0c7455",
+     "b",
+     "#a22c51",
+     "#592a63"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "0",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#11a57900",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#0c7455",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   },
+   {
+    "id": "1",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#e73f7480",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#a22c51",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.color": "linear-gradient(90deg, #11a57900, #e73f7480)",
+   "symbol.outline.color": "linear-gradient(90deg, #0c7455, #a22c51)"
+  }
+ },
+ "a fill None at a zoom stop under an auto outline": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#7f3c8d00",
+     14,
+     "#7f3c8d"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     8,
+     "#592a63",
+     14,
+     "#592a63"
+    ]
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "polygon",
+     "fill": {
+      "color": "#7f3c8d6a",
+      "opacity": 1,
+      "pattern": "none"
+     },
+     "outline": {
+      "color": "#592a63",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.fill.color": "linear-gradient(90deg, #7f3c8d00, #7f3c8d)",
+   "symbol.outline.color": "linear-gradient(90deg, #592a63, #592a63)"
+  }
+ },
+ "a fill by a palette from None under an auto outline": {
+  "valid": true,
+  "map": {
+   "1-fill": {
+    "fill-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#fee8c800",
+      10,
+      "#e34a33"
+     ],
+     "#2bb381"
+    ]
+   },
+   "1-outline": {
+    "line-color": [
+     "case",
+     [
+      "!=",
+      [
+       "get",
+       "v"
+      ],
+      null
+     ],
+     [
+      "interpolate-lab",
+      [
+       "linear"
+      ],
+      [
+       "to-number",
+       [
+        "get",
+        "v"
+       ],
+       0
+      ],
+      0,
+      "#b2a28c",
+      10,
+      "#9f3424"
+     ],
+     "#1e7d5a"
+    ]
+   }
+  },
+  "legend": [],
+  "panel": {
+   "symbol.fill.color": "linear-gradient(90deg, #fee8c800, #e34a33)",
+   "symbol.outline.color": "linear-gradient(90deg, #b2a28c, #9f3424)"
+  }
+ },
+ "a None line with an auto casing and arrows": {
+  "valid": true,
+  "map": {
+   "1-casing": {
+    "line-color": "#284a78"
+   },
+   "1-arrows": {
+    "icon-image": "goat:triangle",
+    "icon-color": "#3969ac"
+   }
+  },
+  "legend": [
+   {
+    "id": "base",
+    "swatch": {
+     "geometry": "line",
+     "casing": {
+      "color": "#284a78",
+      "width": 1,
+      "opacity": 1
+     },
+     "line": {
+      "color": "#3969ac00",
+      "width": 2,
+      "opacity": 1,
+      "dash": "solid"
+     },
+     "arrows": {
+      "icon": "goat:triangle",
+      "color": "#3969ac",
+      "direction": "forward",
+      "placement": "repeat",
+      "turn_with_line": true
+     }
+    }
+   }
+  ],
+  "panel": {
+   "symbol.line.color": "#3969ac00",
+   "symbol.casing.color": "#284a78",
+   "symbol.arrows.color": "repeating-linear-gradient(45deg, #c9ced6 0 2px, transparent 2px 5px)"
   }
  },
  "arrows read from a field": {
