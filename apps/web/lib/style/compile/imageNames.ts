@@ -16,6 +16,12 @@ export function everyZoom(value: Value): Value {
   };
 }
 
+/** A value by zoom as images draw it: its color at each whole zoom, held up to the next (a step). */
+export function wholeZooms(value: Value): Value {
+  const sampled = everyZoom(value);
+  return isZoomed(sampled) ? { ...sampled, interpolate: "step" } : sampled;
+}
+
 const INTERPOLATIONS = new Set(["interpolate", "interpolate-lab", "interpolate-hcl"]);
 
 const hasInterpolate = (expr: Expr): boolean =>

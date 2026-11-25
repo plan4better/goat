@@ -417,6 +417,9 @@ function mapNumbers(value: Value, fn: (n: number) => Expr): Value | null {
   return stops.some(([, e]) => e === null) ? null : { ...value, stops };
 }
 
+/** A value by zoom held at each stop up to the next (a step), as a badge image draws it. */
+const held = (value: Value): Value => (isZoomed(value) ? { ...value, interpolate: "step" } : value);
+
 /**
  * The count on a badge at the cluster marker's upper right (spec 8.2 `count: badge`): a filled circle in the cluster
  * symbol's marker color with its outline, the number in its label color. The badge and the number are moved by the same
@@ -506,7 +509,13 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
   };
   const paint: Record<string, unknown> = {
     "text-color": toProperty(
-      cascade(symbol, "label.color", { fallback: DEFAULT_CLUSTER_SYMBOL.label.color })
+      derivedValue(symbol, "cluster.symbol.label.color", {
+        geometry: "point",
+        // The badge's color as its image draws it: a color by zoom holds each stop up to the next.
+        follow: (map) => held(map ? cascade(symbol, "marker.color", { map }) : fill),
+        fallback: DEFAULT_CLUSTER_SYMBOL.label.color,
+        inputs: ruleInputs(clusters),
+      })
     ),
   };
   return makeLayer(clusters, "badge", "symbol", "marker", layout, paint, "default", { ordered: false });
@@ -538,6 +547,7 @@ export function clusterLayers(ctx: PartContext, render: JsonObject): LayerSpecif
     sortKey: undefined,
     icon: categories ? dominantIcon(categories, base.icon) : undefined,
     color: categories ? dominantColor(categories, style) : undefined,
+    cluster: true,
   };
   const layers = [...pointLayers(clusters), ...labelLayers(clusters)];
   if (badge) layers.push(badgeLayer(clusters, own));

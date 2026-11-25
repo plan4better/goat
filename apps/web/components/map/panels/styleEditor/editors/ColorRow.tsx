@@ -5,9 +5,10 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isDerivedWord } from "@/lib/style/compile/derived";
 import { keyOf } from "@/lib/style/editor/forms";
 import type { Path } from "@/lib/style/editor/store";
-import { colorsIn, swatchOf } from "@/lib/style/editor/summaries";
+import { colorsIn, swatchOf, wordLabel } from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 
 import {
@@ -82,6 +83,8 @@ export function ColorRow(props: ColorRowProps) {
   const popover = usePopover();
   const { label, path, sentinels, note, mode } = props;
   const value = useStyleValue<unknown>(path);
+  const { geometry } = useStyleData();
+  const tone = useBasemapTone();
   const write = props.write ?? ((next?: string) => store.set(path, next));
   const fallback = props.fallback ?? (DEFAULTS[keyOf(path)] as string | undefined);
   // The choice the row shows: the path's own, else the one its fallback holds (a class taking the base's "auto").
@@ -89,11 +92,25 @@ export function ColorRow(props: ColorRowProps) {
     sentinels?.find((s) => value === s.value) ??
     (value === undefined ? sentinels?.find((s) => s.value !== undefined && s.value === fallback) : undefined);
   const shown = sentinel ? sentinel.value : (value ?? fallback);
+  // A word the row offers no choice for ("auto" on a label's colors, an icon, a cluster's number): "Auto" over the
+  // color the map draws for it.
+  const word = !sentinel && isDerivedWord(keyOf(path), shown) ? shown : undefined;
+
   return (
     <Row label={label} actions={mode} note={note}>
       <ColorField
         value={typeof shown === "string" ? shown : undefined}
-        sentinel={sentinel ? { label: t(sentinel.label), shown: true } : undefined}
+        sentinel={
+          sentinel
+            ? { label: t(sentinel.label), shown: true }
+            : word
+              ? {
+                  label: wordLabel(t, word),
+                  shown: true,
+                  swatch: swatchOf(store.document, path, geometry, { tone }),
+                }
+              : undefined
+        }
         onOpenPicker={(anchor) =>
           popover.open("picker", {
             key: `color:${path}`,

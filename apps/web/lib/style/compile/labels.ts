@@ -4,7 +4,15 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { fontStack } from "@/lib/style/compile/constants";
-import { type PartContext, makeLayer, onDecorations, put, withLayerOpacity } from "@/lib/style/compile/parts";
+import { derivedValue } from "@/lib/style/compile/derived";
+import {
+  type PartContext,
+  makeLayer,
+  onDecorations,
+  put,
+  ruleInputs,
+  withLayerOpacity,
+} from "@/lib/style/compile/parts";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { FieldType } from "@/lib/style/compile/types";
 import {
@@ -421,8 +429,29 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
   if (perLayer(style, "label.allow_overlap") === true) layout["text-allow-overlap"] = true;
 
   const paint: Record<string, unknown> = {};
-  put(paint, "text-color", cascade(style, "label.color", c), ctx, "label.color");
-  put(paint, "text-halo-color", cascade(style, "label.halo.color", c), ctx, "label.halo.color");
+  // The text and halo colors, "auto" chosen from the feature's color (spec 18.10); a cluster's number and its halo
+  // from the cluster's marker.
+  const derive = {
+    geometry,
+    fields: ctx.fields,
+    inputs: ruleInputs(ctx),
+    ...(ctx.color !== undefined
+      ? {
+          follow: (map?: (color: unknown) => Expr) => ({
+            expr: ctx.color!(map ?? ((color) => color as Expr)),
+          }),
+        }
+      : {}),
+  };
+  const keys = ctx.cluster ? "cluster.symbol." : "";
+  put(paint, "text-color", derivedValue(style, `${keys}label.color`, derive), ctx, "label.color");
+  put(
+    paint,
+    "text-halo-color",
+    derivedValue(style, `${keys}label.halo.color`, derive),
+    ctx,
+    "label.halo.color"
+  );
   put(paint, "text-halo-width", cascade(style, "label.halo.width", c), ctx, "label.halo.width");
   put(
     paint,

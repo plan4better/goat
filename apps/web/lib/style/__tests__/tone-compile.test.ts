@@ -115,7 +115,7 @@ describe("the basemap's tone in the compiler", () => {
     for (const [, inputs] of spy.mock.calls) expect(inputs).toMatchObject({ tone: "light" });
   });
 
-  it("changes nothing drawn today: no rule reads it", () => {
+  it("changes nothing these styles draw: none of their rules reads it", () => {
     for (const { input } of CASES)
       expect(compileLayer({ id: "1", ...input, tone: "dark" })).toEqual(
         compileLayer({ id: "1", ...input, tone: "light" })
@@ -134,7 +134,6 @@ describe("usesTone", () => {
     "the other class": { classify: [{ field: "k", method: "categories", classes: [], other: auto }] },
     "the no-data class": { classify: [{ field: "k", method: "categories", classes: [], no_data: auto }] },
     "a rule": { rules: [{ when: { op: "=", field: "k", value: 1 }, ...auto }] },
-    "a cluster's own symbol": { render: { type: "cluster", symbol: auto } },
     "a zoom stop": {
       symbol: {
         outline: {
@@ -149,10 +148,17 @@ describe("usesTone", () => {
     },
   };
 
-  it("answers no for every style today: no key's rule reads the tone", () => {
-    expect(TONE_KEYS).toEqual([]);
+  it("answers no for every style without a label's color on Auto: only the label pair reads the tone", () => {
+    expect(TONE_KEYS).toEqual(["label.color", "label.halo.color"]);
     for (const doc of Object.values(places)) expect(usesTone(outlined(doc))).toBe(false);
     for (const { input } of CASES) expect(usesTone(input.style as unknown as JsonObject)).toBe(false);
+  });
+
+  it("looks for a cluster symbol's key in a cluster's own symbol only, and for a part key everywhere else", () => {
+    const cluster = json({ render: { type: "cluster", symbol: auto } });
+    expect(usesTone(cluster, ["cluster.symbol.outline.color"])).toBe(true);
+    expect(usesTone(cluster, KEY)).toBe(false);
+    expect(usesTone(json({ symbol: auto }), ["cluster.symbol.outline.color"])).toBe(false);
   });
 
   for (const [name, doc] of Object.entries(places)) {

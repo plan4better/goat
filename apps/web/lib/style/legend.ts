@@ -418,12 +418,20 @@ function swatch(
       mainRead = readsField(merged.color);
     }
     if (!used || over === false || base === false) continue;
+    // Whether the part's own color is read from a field as it is (an Auto icon follows the marker's).
+    const ownRead = readsField(merged.color);
     // A main color by attribute has no one color to show (its ramp stands beside the entries): neutral grey.
     if (part === MAIN[geometry] && followsField(merged.color)) merged.color = LEGEND_NEUTRAL;
     if (neutral && part === MAIN[geometry]) {
       const own = isObject(over) ? over : {};
       if (own.color === undefined) merged.color = LEGEND_NEUTRAL;
-      if (part === "marker" && own.icon_color === undefined && merged.icon_color !== undefined)
+      // An icon color derived from the marker's (Auto) follows the neutral marker instead.
+      if (
+        part === "marker" &&
+        own.icon_color === undefined &&
+        merged.icon_color !== undefined &&
+        !isDerivedWord("marker.icon_color", merged.icon_color)
+      )
         merged.icon_color = LEGEND_NEUTRAL;
     }
     const resolved: Part = {};
@@ -431,12 +439,20 @@ function swatch(
       resolved[key] = resolve(merged[key], `${part}.${key}`, at(`${part}.${key}`));
     if (part === "marker" && merged.icon !== undefined)
       resolved.icon = resolve(merged.icon, "marker.icon", zoom);
-    // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own.
-    if (part === "marker" && merged.fill === false && resolved.shape !== "icon") {
-      resolved.fill = false;
-      if (merged.icon_color === undefined)
-        resolved.icon_color = derivedColor("marker.icon_color", undefined, resolved.color, { hollow: true });
-    }
+    // A hollow marker (spec 3.3): its outline and icon only, the icon in the marker color unless it has its own; an
+    // Auto icon white or dark on the marker color, in the marker's hue on a hollow one.
+    const hollow = part === "marker" && merged.fill === false && resolved.shape !== "icon";
+    if (hollow) resolved.fill = false;
+    if (
+      part === "marker" &&
+      (isDerivedWord("marker.icon_color", resolved.icon_color) || (hollow && merged.icon_color === undefined))
+    )
+      resolved.icon_color = derivedColor(
+        "marker.icon_color",
+        merged.icon_color === undefined ? undefined : resolved.icon_color,
+        resolved.color,
+        { hollow, raw: ownRead }
+      );
     if (part === "fill" && resolved.pattern !== "none") {
       // In the fill color unless it has its own, drawn in an image.
       resolved.pattern_color = followsField(merged.pattern_color)
@@ -1108,7 +1124,14 @@ function clusterSections(style: JsonObject, render: JsonObject, zoom: number): L
     const label = isObject(symbol.label) ? symbol.label : {};
     sample.badge = {
       color: typeof own.marker?.color === "string" ? own.marker.color : (DEFAULTS["marker.color"] as string),
-      text: typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
+      // An Auto number white or dark on the badge's color, as on the map.
+      text: String(
+        derivedColor(
+          "cluster.symbol.label.color",
+          typeof label.color === "string" ? label.color : DEFAULT_CLUSTER_SYMBOL.label.color,
+          typeof own.marker?.color === "string" ? own.marker.color : DEFAULTS["marker.color"]
+        )
+      ),
       // The cluster symbol's outline as its swatch draws it, "Same as fill" and "auto" resolved.
       ring: isObject(symbol.outline)
         ? typeof own.outline?.color === "string"

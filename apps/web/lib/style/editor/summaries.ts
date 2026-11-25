@@ -3,7 +3,7 @@
 import type { TFunction } from "i18next";
 
 import { alphaOf, isNone } from "@/lib/style/colors";
-import { DERIVED, derivedColor, followedKey, isDerivedWord } from "@/lib/style/compile/derived";
+import { DERIVED, derivedColor, followedKey, isDerivedWord, pathOf } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
 import type { ScopedView } from "@/lib/style/editor/classify";
 import { SLIDERS } from "@/lib/style/editor/defaults";
@@ -104,6 +104,9 @@ export function colorLabel(t: TFunction, color: string): string {
 /** The panel's words for a color taken from another part. */
 const WORD_LABELS: Record<string, string> = { fill: "style_editor.same_as_fill", auto: "style_editor.auto" };
 
+/** The panel's word for a color taken from another part ("Auto", "Same as fill"). */
+export const wordLabel = (t: TFunction, word: string): string => t(WORD_LABELS[word] ?? word);
+
 export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: SummaryContext): string {
   if (ctx.scope) {
     const { doc: shown, later } = summaryView(doc, ctx.scope, path, ctx.view, ctx.geometry);
@@ -147,7 +150,7 @@ export function summarize(doc: LayerStyle, path: Path, t: TFunction, ctx: Summar
     default: {
       const fixed = value ?? DEFAULTS[key];
       if (kind === "color") {
-        if (isDerivedWord(key, fixed)) return t(WORD_LABELS[fixed] ?? fixed);
+        if (isDerivedWord(key, fixed)) return wordLabel(t, fixed);
         if (isNone(fixed)) return t("style_editor.none");
         const hex = typeof fixed === "string" ? colorLabel(t, fixed) : "";
         const opacityPath = path.replace(/color$/, "opacity");
@@ -186,28 +189,38 @@ export function swatchOf(
   const key = keyOf(path);
   const own = getIn(doc, path);
   const value = own ?? DEFAULTS[key];
-  // An unset icon color of a hollow marker follows the marker color (spec 3.3). An unset pattern or arrows color keeps
-  // the hatch: its row reads "Same as fill" or "Same as line".
-  const part = path.slice(0, path.length - key.length) + key.split(".")[0];
-  const hollow =
-    own === undefined &&
-    DERIVED[key]?.absent?.only === "hollow" &&
-    getIn(doc, `${part}.fill`) === false &&
-    getIn(doc, `${part}.shape`) !== "icon";
-  if (isDerivedWord(key, value) || hollow) {
-    const main = followedKey(key, geometry ?? "polygon") ?? MAIN_COLOR[geometry ?? "polygon"];
-    const followed = swatchOf(doc, `symbol.${main}`, geometry, opts);
-    // Each color the followed swatch shows, derived (a darker shade for "auto").
-    return followed === HATCH
-      ? followed
-      : followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) =>
-          String(
-            derivedColor(key, hollow ? undefined : value, color, {
-              hollow,
-              inputs: { tone: opts.tone ?? "light" },
-            })
-          )
-        );
+  const prefix = path.slice(0, path.length - key.length);
+  // A cluster symbol's colors follow the cluster's marker; its number has a derivation of its own.
+  const cluster = prefix === "render.symbol.";
+  const derived = cluster && `cluster.symbol.${key}` in DERIVED ? `cluster.symbol.${key}` : key;
+  // An unset icon color of a hollow marker follows the marker color (spec 3.3), and so does an Auto one. An unset
+  // pattern or arrows color keeps the hatch: its row reads "Same as fill" or "Same as line".
+  const part = prefix + key.split(".")[0];
+  const hollow = getIn(doc, `${part}.fill`) === false && getIn(doc, `${part}.shape`) !== "icon";
+  const follows = own === undefined && DERIVED[key]?.absent?.only === "hollow" && hollow;
+  if (isDerivedWord(derived, value) || follows) {
+    const main = followedKey(derived, geometry ?? "polygon") ?? MAIN_COLOR[geometry ?? "polygon"];
+    // Clusters drawn like the points take the points' marker.
+    const ownMarker = cluster && getIn(doc, "render.look") !== "points";
+    const followed = swatchOf(doc, `${ownMarker ? prefix : "symbol."}${main}`, geometry, opts);
+    // The partner a color is chosen against (a halo's text): the record's, else the base symbol's.
+    const partner = DERIVED[derived].against;
+    const partnerPath = partner && pathOf(partner.key);
+    const against = partnerPath
+      ? (getIn(doc, `${prefix}${partnerPath}`) ?? (cluster ? undefined : getIn(doc, `symbol.${partnerPath}`)))
+      : undefined;
+    // Each color the followed swatch shows, derived (a darker shade for "auto"); the hatch where one has no one color.
+    let shown = true;
+    const swatch = followed.replace(/#[0-9a-f]{6}([0-9a-f]{2})?/gi, (color) => {
+      const out = derivedColor(derived, follows ? undefined : value, color, {
+        hollow,
+        against,
+        inputs: { tone: opts.tone ?? "light" },
+      });
+      shown &&= typeof out === "string";
+      return String(out);
+    });
+    return followed === HATCH || !shown ? HATCH : swatch;
   }
   // A color set by classes shows the classes' colors, in their order: the color under them draws nothing.
   const classified =

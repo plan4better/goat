@@ -1,6 +1,6 @@
 // A color as one field that opens the color picker: its swatch and its hex, as the other fields that open an editor.
 // The color is typed in the picker. A color taken from elsewhere ("Same as fill" on outlines, "Same as line" on
-// arrows) shows as text over a hatch.
+// arrows) shows as text over a hatch, or over the color it draws where the row knows it ("Auto" on a label's colors).
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,8 +14,9 @@ export { HATCH };
 export interface ColorFieldProps {
   value: string | undefined;
   onOpenPicker: (anchor: HTMLElement) => void;
-  /** The value is taken from another part: `label` says which, `shown` whether it is now. */
-  sentinel?: { label: string; shown: boolean };
+  /** The value is taken from another part: `label` says which, `shown` whether it is now, `swatch` the color it draws
+   * (none: a hatch). */
+  sentinel?: { label: string; shown: boolean; swatch?: string };
 }
 
 export const ColorField = memo(function ColorField({ value, onOpenPicker, sentinel }: ColorFieldProps) {
@@ -26,7 +27,7 @@ export const ColorField = memo(function ColorField({ value, onOpenPicker, sentin
   return (
     <ValueButton
       value={showsSentinel ? sentinel?.label : value ? colorLabel(t, value) : ""}
-      swatch={{ background: showsSentinel || !value ? HATCH : value }}
+      swatch={{ background: showsSentinel ? (sentinel?.swatch ?? HATCH) : value || HATCH }}
       ariaLabel={t("style_editor.pick_color")}
       onOpen={onOpenPicker}
       buttonRef={setButton}

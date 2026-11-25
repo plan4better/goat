@@ -32,6 +32,8 @@ export interface PartContext {
   /** The marker color when it is not the cascade's (a cluster drawn like its points takes the color of the category it
    * mostly holds), with each color `map`ped. */
   color?: (map: (color: unknown) => Expr) => Expr;
+  /** The context draws the clusters (spec 8.2): its label is the cluster's number, its colors are a cluster symbol's. */
+  cluster?: boolean;
 }
 
 /** MapLibre's own defaults: a property equal to one of these that no record sets is left out. */

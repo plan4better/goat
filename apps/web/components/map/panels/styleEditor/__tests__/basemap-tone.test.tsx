@@ -1,8 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DERIVED, type Derivation, RULES } from "@/lib/style/compile/derived";
+import { RULES } from "@/lib/style/compile/derived";
 import type { LayerStyle } from "@/lib/style/generated/types";
 
 import { useBasemapTone } from "@/components/map/panels/styleEditor/context";
@@ -45,18 +45,6 @@ describe("the basemap's tone in the style panel", () => {
   });
 
   describe("in the label's rows", () => {
-    // No label color takes a word yet: a stand-in derivation gives the halo and the text one, so the swatches ask a
-    // rule for their color.
-    const derived = DERIVED as Record<string, Derivation>;
-    const standIn: Derivation = { follows: { polygon: "fill.color" }, words: { auto: "shade" } };
-    beforeEach(() => {
-      derived["label.halo.color"] = standIn;
-      derived["label.color"] = standIn;
-    });
-    afterEach(() => {
-      delete derived["label.halo.color"];
-      delete derived["label.color"];
-    });
     const labelled = (label: object) =>
       ({
         version: "1.0.0",
@@ -72,18 +60,18 @@ describe("the basemap's tone in the style panel", () => {
       );
 
     it("reaches the rule of the Halo row's swatch", () => {
-      const shade = vi.spyOn(RULES, "shade");
-      render({ halo: { color: "auto", width: 1 } });
-      expect(shade).toHaveBeenCalled();
-      for (const [, inputs] of shade.mock.calls) expect(inputs).toMatchObject({ tone: "dark" });
+      const halo = vi.spyOn(RULES, "label_halo");
+      render({ color: "auto", halo: { color: "auto", width: 1 } });
+      expect(halo).toHaveBeenCalled();
+      for (const [, inputs] of halo.mock.calls) expect(inputs).toMatchObject({ tone: "dark" });
     });
 
     it("reaches the rule of the color the text color's picker starts at", async () => {
-      const shade = vi.spyOn(RULES, "shade");
+      const text = vi.spyOn(RULES, "label_text");
       render({ color: "auto" });
       await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
-      expect(shade).toHaveBeenCalled();
-      for (const [, inputs] of shade.mock.calls) expect(inputs).toMatchObject({ tone: "dark" });
+      expect(text).toHaveBeenCalled();
+      for (const [, inputs] of text.mock.calls) expect(inputs).toMatchObject({ tone: "dark" });
     });
   });
 });

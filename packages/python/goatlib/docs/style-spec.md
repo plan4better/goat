@@ -3625,7 +3625,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `marker.size` | px (circle diameter or icon height) | F Z A C | 8 |
 | `marker.opacity` | 0 to 1 | F Z A C | 1 |
 | `marker.icon` | icon reference | F Z(step) C | none (`goat:marker` with `shape: icon`) |
-| `marker.icon_color` | color | F Z A C | `#ffffff` (the marker's hue with `fill: false`) |
+| `marker.icon_color` | color or `"auto"` (on-color, 18.10) | F Z A C | `#ffffff` (the marker's hue with `fill: false`) |
 | `marker.rotation` | degrees clockwise from north | F Z A C | 0 |
 | `marker.anchor` | `center`, `top`, `bottom`, `left`, `right`, `top_left`, `top_right`, `bottom_left`, `bottom_right` | F Z(step) C | `center` |
 | `marker.offset` | `[x, y]` px | F Z C | `[0, 0]` |
@@ -3634,8 +3634,8 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `label.format` | format object (18.3) | F (per layer) | the field settings |
 | `label.formats` | `{ field: format }` | F (per layer) | none |
 | `label.size` | px | F Z A C | 12 |
-| `label.color` | color | F Z A C | `#3a3541` |
-| `label.halo.color`, `label.halo.width` | color, px | F Z A C | `#ffffff`, 1.5 |
+| `label.color` | color or `"auto"` (label text, 18.10) | F Z A C | `#3a3541` |
+| `label.halo.color`, `label.halo.width` | color or `"auto"` (label halo, 18.10), px | F Z A C | `#ffffff`, 1.5 |
 | `label.font.weight` | `light`, `regular`, `medium`, `bold` | F Z(step) C | `regular` |
 | `label.font.style` | `normal`, `italic` | F Z(step) C | `normal` |
 | `label.placement` | points `auto`, `center`, `above`, `below`, `left`, `right`, `above_left`, `above_right`, `below_left`, `below_right`; lines `line`, `auto`, `center` and the eight sides; polygons `auto`, `inside` and the eight sides | F (per layer) | points `auto`, lines `line`, polygons `auto` |
@@ -3766,9 +3766,25 @@ The rules:
 - **shade**: a darker shade of the color it follows, feature by feature (3.1). Where that color is read from a field
   as it is (`{ "field": ... }` without a palette), the compiler cannot darken the data's color, so it draws that color
   itself; where the data holds no valid color, it draws the shade of the read's fallback, as for any fixed color.
-- **label text** and **label halo**: the label's two colors chosen together for the basemap, one in a darker shade of
-  the main part's color; on a cluster, the halo contrasts with the number.
-- **on-color**: white or GOAT's dark text color `#3a3541`, whichever reads on the color underneath.
+- **label text** and **label halo**: the label's two colors chosen together for the basemap's tone, from the color of
+  the feature the label belongs to (the polygon's fill, the line's color, the marker's color, without its alpha, class
+  by class, rule by rule, zoom stop by zoom stop and palette stop by palette stop). On a light basemap the text is the
+  feature's color darkened as the shade darkens it until it contrasts with white by at least 4.5 to 1 (WCAG), in a
+  `#ffffff` halo; on a dark basemap the text is `#ffffff` in a halo of that darkened color. Text Auto beside a set
+  halo follows the same table; a halo Auto beside a set or absent text is the one of `#ffffff` and `#3a3541` with the
+  higher contrast against it, `#000000` where neither reaches 4.5 to 1, so the floor holds for every text. A set color
+  is never changed. The built-in dark and satellite basemaps are dark, a solid or custom vector basemap by its
+  background color (dark below a relative luminance of 0.35), every other basemap is light (a custom image too).
+  Where the feature's color is read from a field as it is, every feature of that read gets `#3a3541` text in a
+  `#ffffff` halo on a light basemap and `#ffffff` text in a `#3a3541` halo on a dark one. Lines of a label
+  (`label.lines`) without their own color take the text's.
+- **on-color**: `#ffffff` where the relative luminance of the color underneath is below 0.5, else GOAT's dark text
+  color `#3a3541`: an icon on its marker (on a hollow marker the icon takes the marker's hue, as when `icon_color` is
+  absent) and a cluster's number on the cluster's marker; `#ffffff` for every feature where that color is read from a
+  field as it is. On a cluster, the halo contrasts with the number as it is drawn.
+- A color chosen among a few (on-color, a halo against its text) switches where its answer flips as the color it
+  looks at blends over a palette or over the zoom, never blending through grey; a marker image looks at the
+  marker's color of its whole zoom, a badge at the color of its zoom stop.
 
 "Not yet" marks a rule this version refuses: `"auto"` there, like on a key without a rule, is `invalid_value` (a
 palette named `"auto"` is `unknown_palette`). `"fill"` stays a word of `outline.color` alone (3.1).
@@ -3782,15 +3798,15 @@ palette named `"auto"` is `unknown_palette`). `"fill"` stays a word of `outline.
 | `casing.color` | shade | yes | the line |
 | `arrows.color` | not offered | | |
 | `marker.color` | not offered | | |
-| `marker.icon_color` | on-color | not yet | the marker |
-| `label.color` | label text | not yet | the main part and the basemap |
-| `label.halo.color` | label halo | not yet | the main part and the basemap |
+| `marker.icon_color` | on-color | yes | the marker |
+| `label.color` | label text | yes | the main part and the basemap |
+| `label.halo.color` | label halo | yes | the main part and the basemap |
 | `label.lines.color` | not offered | | |
 | `cluster.symbol.marker.color` | not offered | | |
-| `cluster.symbol.marker.icon_color` | on-color | not yet | the cluster marker |
+| `cluster.symbol.marker.icon_color` | on-color | yes | the cluster marker |
 | `cluster.symbol.outline.color` | shade | yes | the cluster marker |
-| `cluster.symbol.label.color` | on-color | not yet | the cluster marker |
-| `cluster.symbol.label.halo.color` | label halo | not yet | the cluster's number |
+| `cluster.symbol.label.color` | on-color | yes | the cluster marker |
+| `cluster.symbol.label.halo.color` | label halo | yes | the cluster's number |
 | `cluster.symbol.label.lines.color` | not offered | | |
 | `by_attribute.palette` | not offered | | |
 | `by_attribute.no_data` | not offered | | |
@@ -3822,10 +3838,10 @@ palette named `"auto"` is `unknown_palette`). `"fill"` stays a word of `outline.
 | `scene.glow.color` | not offered | | |
 | `scene.light.color` | not offered | | |
 
-A layer's own colors (fill, line, marker) have no Auto; the scene's colors are automatic when absent (18.9). Two
-places of the schema hold colors without being color keys: `computed.generated.values`, the values the server wrote
-into a classification's classes (12), and a raw field's `no_data` (`{ "field": ... }`), which the compiler does not
-draw.
+A layer's own colors (fill, line, marker) have no Auto; the scene's colors are automatic when absent (18.9). One
+place of the schema holds colors without being a color key: `computed.generated.values`, the values the server wrote
+into a classification's classes (12). The `no_data` of a color read from a field (`{ "field": ... }`) is not drawn
+and takes any value except the words `"auto"` and `"fill"`.
 
 ## 19. Scope
 

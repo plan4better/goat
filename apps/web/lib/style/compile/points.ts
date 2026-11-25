@@ -8,7 +8,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT, ICON_HEIGHT } from "@/lib/style/compile/constants";
 import { derivedValue } from "@/lib/style/compile/derived";
-import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
+import { colorText, concat, everyZoom, numberText, wholeZooms } from "@/lib/style/compile/imageNames";
 import { keepsColors } from "@/lib/style/compile/images";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import {
@@ -227,7 +227,14 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     const iconColor = derivedValue(style, "marker.icon_color", {
       geometry: ctx.geometry,
       fields: ctx.fields,
-      follow: colorOf,
+      // The marker's color as its images draw it, at each whole zoom, each fixed color then turned by the rule.
+      follow: (map) => {
+        const drawn = wholeZooms(colorOf());
+        if (!map) return drawn;
+        return isZoomed(drawn) && drawn.stops.every(([, e]) => typeof e === "string")
+          ? { ...drawn, stops: drawn.stops.map(([z, e]) => [z, map(e)] as [number, Expr]) }
+          : wholeZooms(colorOf(map));
+      },
       fill,
       inputs: ruleInputs(ctx),
     });

@@ -2,7 +2,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { alphaOf, contrastRatio, isNone, onColor, opaque, readableShade, shade } from "@/lib/style/colors";
+import {
+  alphaOf,
+  contrastRatio,
+  haloAgainst,
+  isNone,
+  labelPair,
+  onColor,
+  opaque,
+  readableShade,
+  shade,
+} from "@/lib/style/colors";
+import { PALETTES } from "@/lib/style/generated/catalog";
 
 // The color rules derived colors are made of, as goatlib's `shade`, `contrast_ratio`, `readable_shade` and `on_color`
 // give them (its test: goatlib tests/unit/style/test_colors.py): the map, the legend and the panel draw what goatlib
@@ -17,6 +28,8 @@ interface Rules {
   alpha: Array<{ color: string | null; expected: number | null }>;
   is_none: Array<{ color: string | null; expected: boolean }>;
   opaque: Array<{ color: string | null; expected: string | null }>;
+  halo_against: Array<{ text: string | null; expected: string }>;
+  label_pair: Array<{ color: string | null; tone: "light" | "dark" | null; text: string; halo: string }>;
 }
 
 const RULES = JSON.parse(
@@ -61,5 +74,43 @@ describe("color rules (with goatlib's)", () => {
 
   it.each(RULES.opaque.map((r) => [r.color, r.expected]))("opaque %s", (color, expected) => {
     expect(opaque(color as string)).toBe(expected);
+  });
+
+  it.each(RULES.label_pair.map((r) => [r.color, r.tone, r.text, r.halo]))(
+    "label pair %s on %s",
+    (color, tone, text, halo) => {
+      expect(labelPair(color as string, tone ?? undefined)).toEqual({ text, halo });
+    }
+  );
+
+  it("gives a label pair that meets the floor for every color on both tones", () => {
+    const colors = [
+      ...PALETTES["carto:Bold"].colors,
+      "#f2b701",
+      "#ffffff",
+      "#000000",
+      "#2bb381",
+      "#808080",
+      "#ffff00",
+    ];
+    for (const color of colors)
+      for (const tone of ["light", "dark"] as const) {
+        const { text, halo } = labelPair(color, tone);
+        expect(contrastRatio(text, halo), `${color} ${tone}`).toBeGreaterThanOrEqual(4.5);
+      }
+  });
+
+  it.each(RULES.halo_against.map((r) => [r.text, r.expected]))(
+    "halo against the text %s",
+    (text, expected) => {
+      expect(haloAgainst(text as string)).toBe(expected);
+    }
+  );
+
+  it("gives a halo against a text that meets the floor for every grey", () => {
+    for (let v = 0; v < 256; v++) {
+      const text = `#${v.toString(16).padStart(2, "0").repeat(3)}`;
+      expect(contrastRatio(text, haloAgainst(text)), text).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });

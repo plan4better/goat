@@ -9,8 +9,10 @@ from goatlib.style.colors import (
     alpha,
     contrast_ratio,
     default_range,
+    halo_against,
     hex_to_rgb,
     is_none,
+    label_pair,
     on_color,
     opaque,
     parse_color,
@@ -186,3 +188,35 @@ def test_shared_none_colors(row: dict[str, Any]) -> None:
 @pytest.mark.parametrize("row", COLOR_RULES["opaque"], ids=lambda r: str(r["color"]))
 def test_shared_opaque_colors(row: dict[str, Any]) -> None:
     assert opaque(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["label_pair"], ids=lambda r: f"{r['color']}-{r['tone']}"
+)
+def test_shared_label_pairs(row: dict[str, Any]) -> None:
+    assert label_pair(row["color"], row["tone"]) == {
+        "text": row["text"],
+        "halo": row["halo"],
+    }
+
+
+def test_a_label_pair_meets_the_floor_for_every_color_on_both_tones() -> None:
+    colors = [*palette_colors("carto:Bold"), "#f2b701", "#ffffff", "#000000"]
+    colors += ["#2bb381", "#808080", "#ffff00"]
+    for color in colors:
+        for tone in ("light", "dark"):
+            pair = label_pair(color, tone)
+            assert contrast_ratio(pair["text"], pair["halo"]) >= 4.5, (color, tone)
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["halo_against"], ids=lambda r: str(r["text"])
+)
+def test_shared_halos_against_a_text(row: dict[str, Any]) -> None:
+    assert halo_against(row["text"]) == row["expected"]
+
+
+def test_a_halo_against_a_text_meets_the_floor_for_every_grey() -> None:
+    for v in range(256):
+        text = f"#{v:02x}{v:02x}{v:02x}"
+        assert contrast_ratio(text, halo_against(text)) >= 4.5, text

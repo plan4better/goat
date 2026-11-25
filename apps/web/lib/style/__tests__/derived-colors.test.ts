@@ -316,8 +316,8 @@ describe("the table of color keys (goatlib data/color_keys.json, spec 18.10)", (
       "utf8"
     )
   ) as Record<string, { auto: string | null; accepted?: boolean }>;
-  // The cluster symbol draws its parts with the parts' own derivations.
-  const derivedKey = (key: string) => key.replace(/^cluster\.symbol\./, "");
+  // The cluster symbol draws its parts with the parts' own derivations, except where it has its own (its number).
+  const derivedKey = (key: string) => (key in DERIVED ? key : key.replace(/^cluster\.symbol\./, ""));
 
   it("offers Auto exactly where the resolver derives it", () => {
     const accepted = Object.entries(table)

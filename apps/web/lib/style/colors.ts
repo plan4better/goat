@@ -74,6 +74,34 @@ export function readableShade(color: string, against: string, floor = CONTRAST_F
   return out;
 }
 
+/** A label's text and halo where no color can be read for them (spec 18.10): GOAT's dark text in a light halo on a
+ * light basemap, white text in a dark halo on a dark one. */
+export const LABEL_FALLBACK = {
+  light: { text: DARK, halo: LIGHT },
+  dark: { text: LIGHT, halo: DARK },
+} as const;
+
+/** A label's text and halo chosen together for the basemap's tone (spec 18.10), from the color of the feature the
+ * label belongs to, its alpha ignored. On a light basemap the text is the color's readable shade against white in a
+ * white halo; on a dark one (any tone but "dark" counts as light) the text is white in a halo of that shade. For
+ * anything but a hex color, `LABEL_FALLBACK`. */
+export function labelPair(color: string, tone?: string): { text: string; halo: string } {
+  const dark = tone === "dark";
+  if (!isHex(color)) return { ...LABEL_FALLBACK[dark ? "dark" : "light"] };
+  const tinted = readableShade(color, LIGHT);
+  return dark ? { text: LIGHT, halo: tinted } : { text: tinted, halo: LIGHT };
+}
+
+/** The halo of a set text color (spec 18.10): the one of white and GOAT's dark text color that contrasts more with
+ * it, black where neither reaches the contrast floor (a mid-tone text), so the floor always holds; white for anything
+ * but a hex color. */
+export function haloAgainst(text: string): string {
+  if (!isHex(text)) return LIGHT;
+  const [light, dark] = [contrastRatio(text, LIGHT), contrastRatio(text, DARK)];
+  if (Math.max(light, dark) < CONTRAST_FLOOR) return "#000000";
+  return light >= dark ? LIGHT : DARK;
+}
+
 /** White where the color underneath has a relative luminance below 0.5, else GOAT's dark text color; white for
  * anything but a hex color. */
 export function onColor(color: string): string {

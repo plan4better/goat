@@ -33,7 +33,7 @@ _STRING = {"type": "string"}
 _STRINGS = {"items": {"type": "string"}, "type": "array"}
 #: The value forms of a property: their colors are the property's (zoom stops), or
 #: the generic keys of every color by attribute (`by_attribute.*`).
-_ATTRIBUTE_FORMS = ("ByAttributeColor", "RawField")
+_ATTRIBUTE_FORMS = ("ByAttributeColor", "RawColorField", "RawField")
 #: Records that set parts: their part keys are named by part and key alone.
 _RECORDS = (
     "symbol.",
@@ -79,8 +79,8 @@ TEXT_NAMES = frozenset(
 #: Plain or untyped strings (`<definition>.<property>`) whose name could be a color
 #: and which hold none. `Generated.values` are the values the server wrote into a
 #: classification's classes (colors among them), bookkeeping read back by the server;
-#: `RawField.no_data` is the value of a field read as it is, which the compiler does
-#: not draw.
+#: `RawField.no_data` and `RawColorField.no_data` are the values of a field read as
+#: it is, which the compiler does not draw (a color's refuses "auto" and "fill").
 NOT_COLORS = frozenset(
     {
         "BadgeBlock.labels",
@@ -90,6 +90,7 @@ NOT_COLORS = frozenset(
         "LayerTime.value",
         "MapLayer.position",
         "MapLayer.style",
+        "RawColorField.no_data",
         "RawField.no_data",
     }
 )
@@ -517,3 +518,29 @@ def test_a_palette_named_auto_is_an_unknown_palette() -> None:
     assert ("unknown_palette", pointer) in [
         (i.code, i.path) for i in validate(doc, ctx)
     ]
+
+
+def test_a_color_read_from_a_field_refuses_a_derived_word_as_its_no_data() -> None:
+    """A raw color's `no_data` takes what it took before (it is not drawn), except the
+    derived words `"auto"` and `"fill"`; a raw number's (a rotation) stays as it was."""
+    ctx = DataContext(kind="vector", geometry="polygon")
+
+    def errors(color: Any) -> list[str]:
+        doc = {
+            "version": "1.0.0",
+            "kind": "vector",
+            "symbol": {"fill": {"color": color}},
+        }
+        return [i.code for i in validate(doc, ctx) if i.level == "error"]
+
+    for kept in ("#ffffff", "red", 5, "", None):
+        assert errors({"field": "c", "no_data": kept}) == [], kept
+    assert errors({"field": "c"}) == []
+    for word in ("auto", "fill"):
+        assert errors({"field": "c", "no_data": word}) == ["invalid_value"], word
+        stops = {"zoom": [[5, {"field": "c", "no_data": word}], [9, "#000000"]]}
+        assert errors(stops) == ["invalid_value"], word
+    points = DataContext(kind="vector", geometry="point")
+    rotation = {"version": "1.0.0", "kind": "vector"}
+    rotation["symbol"] = {"marker": {"rotation": {"field": "r", "no_data": 90}}}
+    assert [i.code for i in validate(rotation, points) if i.level == "error"] == []

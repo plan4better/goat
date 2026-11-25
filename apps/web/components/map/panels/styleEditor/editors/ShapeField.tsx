@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { derivedColor } from "@/lib/style/compile/derived";
 import type { Geometry } from "@/lib/style/compile/types";
 import { modeOf } from "@/lib/style/editor/forms";
 import { type MarkerShape, markerShape, setMarkerShape } from "@/lib/style/editor/parts";
@@ -63,7 +64,11 @@ function shapeState(doc: LayerStyle, record: Path, geometry?: Geometry): ShapeSt
     preview: {
       fill,
       icon: pick("icon"),
-      iconColor: hollow && !tinted ? fill : pick("icon_color"),
+      // An Auto icon color as the map draws it: white or dark on the marker, its hue on a hollow one.
+      iconColor:
+        hollow && !tinted
+          ? fill
+          : (derivedColor("marker.icon_color", pick("icon_color"), fill, { hollow }) as string | undefined),
       ...(hollow ? { hollow } : {}),
     },
   };

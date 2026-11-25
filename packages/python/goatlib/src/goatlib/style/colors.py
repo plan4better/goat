@@ -143,6 +143,40 @@ def on_color(hex_color: Any) -> str:
     return LIGHT if _luminance(hex_color) < ON_COLOR_LUMINANCE else DARK
 
 
+#: A label's text and halo where no color can be read for them (spec 18.10): GOAT's
+#: dark text in a light halo on a light basemap, white text in a dark halo on a dark one.
+LABEL_FALLBACK: dict[str, dict[str, str]] = {
+    "light": {"text": DARK, "halo": LIGHT},
+    "dark": {"text": LIGHT, "halo": DARK},
+}
+
+
+def label_pair(hex_color: Any, tone: Any = "light") -> dict[str, str]:
+    """A label's text and halo chosen together for the basemap's tone (spec 18.10),
+    from the color of the feature the label belongs to, its alpha ignored. On a light
+    basemap the text is the color's readable shade against white in a white halo; on
+    a dark one (any tone but "dark" counts as light) the text is white in a halo of
+    that shade. For anything but a hex color, `LABEL_FALLBACK`."""
+    dark = tone == "dark"
+    if not _is_hex(hex_color):
+        return dict(LABEL_FALLBACK["dark" if dark else "light"])
+    tinted = readable_shade(hex_color, LIGHT)
+    return {"text": LIGHT, "halo": tinted} if dark else {"text": tinted, "halo": LIGHT}
+
+
+def halo_against(text: Any) -> str:
+    """The halo of a set text color (spec 18.10): the one of white and GOAT's dark
+    text color that contrasts more with it, black where neither reaches the contrast
+    floor (a mid-tone text), so the floor always holds; white for anything but a hex
+    color."""
+    if not _is_hex(text):
+        return LIGHT
+    light, dark = contrast_ratio(text, LIGHT), contrast_ratio(text, DARK)
+    if max(light, dark) < CONTRAST_FLOOR:
+        return "#000000"
+    return LIGHT if light >= dark else DARK
+
+
 def alpha(hex_color: Any) -> int | None:
     """The color's alpha, 0 to 255: its last two digits, 255 without them; None
     for anything but a six- or eight-digit hex color."""

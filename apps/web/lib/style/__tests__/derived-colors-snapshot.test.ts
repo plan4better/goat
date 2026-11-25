@@ -1,8 +1,9 @@
-// Every color the style derives from another one (spec 3.1 to 3.3, 8.2: an outline in the fill color or its darker
-// shade, a casing's darker shade, a pattern and arrows in the color they follow, the icon on a hollow marker, a cluster
-// badge's ring), with the followed color fixed, with its own transparency or None, by zoom, by classes, by rules, by a
-// palette and read from a field: what the map, the legend and the panel's swatches show, pinned in one file. `vitest -u`
-// rewrites it.
+// Every color the style derives from another one (spec 3.1 to 3.3, 8.2, 18.10: an outline in the fill color or its
+// darker shade, a casing's darker shade, a pattern and arrows in the color they follow, the icon on a hollow marker, a
+// cluster badge's ring, a label's text and halo on Auto, an Auto icon and cluster number), with the followed color fixed,
+// with its own transparency or None, by zoom, by classes, by rules, by a palette and read from a field, on a light basemap
+// and, for the label pair, a dark one: what the map, the legend and the panel's swatches show, pinned in one file.
+// `vitest -u` rewrites it.
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -12,6 +13,7 @@ import { swatchOf } from "@/lib/style/editor/summaries";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { buildLegend } from "@/lib/style/legend";
+import type { Tone } from "@/lib/style/tone";
 
 import { maplibreErrors } from "./maplibre";
 
@@ -84,7 +86,25 @@ interface Case {
   /** The panel rows whose swatches show the derived color. */
   rows: string[];
   source?: CompileInput["source"];
+  /** The basemap's tone the map draws for; light where none is given. */
+  tone?: Tone;
 }
+
+const LABEL_ROWS = ["symbol.label.color", "symbol.label.halo.color"];
+const label = (props: object) => ({ symbol: { label: { text: "{name}", ...props } } });
+/** The label pair cases on both tones. */
+const labelCases = (
+  name: string,
+  geometry: Geometry,
+  follows: [string, string],
+  props: object
+): Record<string, Case> =>
+  Object.fromEntries(
+    (["light", "dark"] as const).map((tone) => [
+      `${name}, ${tone}`,
+      { geometry, follows, derived: label(props), rows: LABEL_ROWS, tone },
+    ])
+  );
 
 const CASES: Record<string, Case> = {
   "polygon outline fill": {
@@ -184,6 +204,43 @@ const CASES: Record<string, Case> = {
     derived: { symbol: { marker: { fill: false, icon: "goat:park" }, outline: { color: "fill", width: 2 } } },
     rows: ["symbol.marker.icon_color", "symbol.outline.color"],
   },
+  ...labelCases("polygon label text and halo auto", "polygon", ["fill", "color"], {
+    color: "auto",
+    halo: { color: "auto" },
+  }),
+  ...labelCases("polygon label text auto, halo set", "polygon", ["fill", "color"], {
+    color: "auto",
+    halo: { color: "#222222" },
+  }),
+  ...labelCases("polygon label halo auto, text set light", "polygon", ["fill", "color"], {
+    color: "#f0f0f0",
+    halo: { color: "auto" },
+  }),
+  ...labelCases("line label text and halo auto", "line", ["line", "color"], {
+    color: "auto",
+    halo: { color: "auto" },
+  }),
+  ...labelCases("point label text and halo auto", "point", ["marker", "color"], {
+    color: "auto",
+    halo: { color: "auto" },
+  }),
+  "point icon color auto": {
+    geometry: "point",
+    follows: ["marker", "color"],
+    derived: { symbol: { marker: { shape: "square", icon: "goat:park", icon_color: "auto" } } },
+    rows: ["symbol.marker.icon_color"],
+  },
+  "point hollow marker icon auto": {
+    geometry: "point",
+    follows: ["marker", "color"],
+    derived: {
+      symbol: {
+        marker: { fill: false, icon: "goat:park", icon_color: "auto" },
+        outline: { color: "fill", width: 2 },
+      },
+    },
+    rows: ["symbol.marker.icon_color"],
+  },
 };
 
 const cat = (field: string, classes: JsonObject[]) => [{ field, method: "categories", classes }];
@@ -192,7 +249,7 @@ const when = (value: string) => ({ op: "=", args: [{ property: "t" }, value] });
 /** Whole styles: words in class and rule records, parts switched in classes, clusters drawn like their points. */
 const EXTRAS: Record<
   string,
-  { geometry: Geometry; style: JsonObject; rows: string[]; source?: CompileInput["source"] }
+  { geometry: Geometry; style: JsonObject; rows: string[]; source?: CompileInput["source"]; tone?: Tone }
 > = {
   "outline words in classes over a hex base": {
     geometry: "polygon",
@@ -367,6 +424,132 @@ const EXTRAS: Record<
     },
     rows: ["symbol.arrows.color"],
   },
+  ...Object.fromEntries(
+    (["light", "dark"] as const).flatMap((tone) => [
+      [
+        `label halo auto over a text auto in one class and set in another, ${tone}`,
+        {
+          geometry: "polygon" as const,
+          tone,
+          style: {
+            symbol: {
+              fill: { color: "#7f3c8d" },
+              label: { text: "{name}", color: "auto", halo: { color: "auto" } },
+            },
+            classify: cat("t", [
+              { values: ["a"], label: { color: "#f0f0f0" } },
+              { values: ["b"], fill: { color: "#11a579" } },
+            ]),
+          },
+          rows: LABEL_ROWS,
+        },
+      ],
+      [
+        `label text auto only in a rule, ${tone}`,
+        {
+          geometry: "polygon" as const,
+          tone,
+          style: {
+            symbol: { fill: { color: "#7f3c8d" }, label: { text: "{name}", halo: { color: "auto" } } },
+            rules: [{ name: "A", when: when("a"), label: { color: "auto" } }],
+          },
+          rows: LABEL_ROWS,
+        },
+      ],
+      [
+        `label halo auto beside a text by zoom, ${tone}`,
+        {
+          geometry: "polygon" as const,
+          tone,
+          style: {
+            symbol: {
+              fill: { color: "#7f3c8d" },
+              label: {
+                text: "{name}",
+                color: {
+                  zoom: [
+                    [8, "#ffffff"],
+                    [14, "auto"],
+                  ],
+                },
+                halo: { color: "auto" },
+              },
+            },
+          },
+          rows: LABEL_ROWS,
+        },
+      ],
+      [
+        `label halo auto beside a text read from a field, ${tone}`,
+        {
+          geometry: "polygon" as const,
+          tone,
+          style: {
+            symbol: {
+              fill: { color: "#7f3c8d" },
+              label: { text: "{name}", color: { field: "c" }, halo: { color: "auto" } },
+            },
+          },
+          rows: LABEL_ROWS,
+        },
+      ],
+      [
+        `cluster number and halo auto, ${tone}`,
+        {
+          geometry: "point" as const,
+          tone,
+          source: points,
+          style: {
+            render: {
+              type: "cluster",
+              symbol: {
+                marker: { color: "#f2b701", size: 20 },
+                label: { text: "{count}", color: "auto", halo: { color: "auto", width: 1 } },
+              },
+            },
+          },
+          rows: ["render.symbol.label.color", "render.symbol.label.halo.color"],
+        },
+      ],
+    ])
+  ),
+  "an auto icon on a marker hollow in one class": {
+    geometry: "point",
+    style: {
+      symbol: { marker: { shape: "square", color: "#f2b701", icon: "goat:park", icon_color: "auto" } },
+      classify: cat("t", [{ values: ["h"], marker: { fill: false } }]),
+    },
+    rows: ["symbol.marker.icon_color"],
+  },
+  "cluster icon auto": {
+    geometry: "point",
+    source: points,
+    style: {
+      render: {
+        type: "cluster",
+        symbol: { marker: { shape: "square", color: "#f2b701", icon: "goat:park", icon_color: "auto" } },
+      },
+    },
+    rows: ["render.symbol.marker.icon_color"],
+  },
+  "cluster icon auto, drawn like the points": {
+    geometry: "point",
+    source: points,
+    style: {
+      symbol: { marker: { shape: "square", color: "#000000", icon: "goat:park", icon_color: "auto" } },
+      render: { type: "cluster", look: "points" },
+    },
+    rows: ["symbol.marker.icon_color"],
+  },
+  "cluster number auto, drawn like the points": {
+    geometry: "point",
+    source: points,
+    style: {
+      symbol: { marker: { color: "#f2b701" } },
+      render: { type: "cluster", look: "points", symbol: { label: { text: "{count}", color: "auto" } } },
+    },
+    rows: ["render.symbol.label.color"],
+  },
 };
 
 /** Cluster badges: a ring in the marker color, its darker shade, or none set. */
@@ -413,6 +596,11 @@ const BADGES: Record<string, JsonObject> = {
     marker: { color: { field: "count", palette: ["#000000", "#ffffff"] } },
     outline: { color: "fill", width: 2 },
   },
+  "badge number auto": { marker: { color: "#f2b701" }, label: { text: "{count}", color: "auto" } },
+  "badge number auto over a marker by a count palette": {
+    marker: { color: { field: "count", palette: ["#000000", "#ffffff"] } },
+    label: { text: "{count}", color: "auto" },
+  },
 };
 
 const COLOR_KEY = /color|image|pattern/;
@@ -435,14 +623,14 @@ function legendSwatches(style: JsonObject, geometry: Geometry): unknown {
   );
 }
 
-function record(c: Pick<Case, "geometry" | "rows" | "source">, doc: JsonObject) {
+function record(c: Pick<Case, "geometry" | "rows" | "source" | "tone">, doc: JsonObject) {
   const style = merge({ version: "1.0.0", kind: "vector" }, doc) as unknown as LayerStyle;
-  const out = compileLayer({ id: "1", style, geometry: c.geometry, source: c.source ?? tiles });
+  const out = compileLayer({ id: "1", style, geometry: c.geometry, source: c.source ?? tiles, tone: c.tone });
   return {
     valid: maplibreErrors(out.layers, out.sources, out.state).length === 0,
     map: drawn(out.layers as unknown as Array<Record<string, unknown>>),
     legend: legendSwatches(style as unknown as JsonObject, c.geometry),
-    panel: Object.fromEntries(c.rows.map((row) => [row, swatchOf(style, row, c.geometry)])),
+    panel: Object.fromEntries(c.rows.map((row) => [row, swatchOf(style, row, c.geometry, { tone: c.tone })])),
   };
 }
 

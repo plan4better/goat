@@ -566,6 +566,47 @@ describe("syncMapLayers", () => {
       expect(compiledKeys()).toEqual([]);
     });
 
+    it("a switch compiles again exactly the layers with a label Auto, and only their label colors change", () => {
+      const labelled = {
+        version: "1.0.0",
+        kind: "vector",
+        symbol: {
+          fill: { color: "#7f3c8d" },
+          label: { text: "{name}", color: "auto", halo: { color: "auto" } },
+        },
+      } as LayerStyle;
+      const outlined = toned;
+      const all = () => [
+        polygon("1", { version: "a:1" }),
+        polygon("2", { style: labelled, version: "b:1" }),
+        polygon("3", { style: outlined, version: "c:1" }),
+      ];
+      const map = orderedMap();
+      const state = syncMapLayers(map, null, all(), { locale: "en", tone: "light" });
+      compileLayer().mockClear();
+      const touched: string[] = [];
+      for (const name of [
+        "addLayer",
+        "removeLayer",
+        "setPaintProperty",
+        "setLayoutProperty",
+        "setFilter",
+      ] as const)
+        vi.spyOn(map, name).mockImplementation(((id: unknown, key?: unknown) =>
+          touched.push(
+            `${name} ${typeof id === "string" ? id : (id as { id: string }).id}${typeof key === "string" ? ` ${key}` : ""}`
+          )) as never);
+      const next = syncMapLayers(map, state, all(), { locale: "en", tone: "dark" });
+      expect(compiledKeys()).toEqual(["2"]);
+      expect(touched.sort()).toEqual([
+        "setPaintProperty 2-label text-color",
+        "setPaintProperty 2-label text-halo-color",
+      ]);
+      compileLayer().mockClear();
+      syncMapLayers(map, next, all(), { locale: "en", tone: "dark" });
+      expect(compiledKeys()).toEqual([]);
+    });
+
     it("with no style using it, a switch compiles nothing that would not compile anyway", () => {
       const map = orderedMap();
       const state = syncMapLayers(map, null, layers(), { locale: "en", tone: "light" });
