@@ -645,11 +645,11 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
 - `format` applies to every number field in the template; `formats` overrides it per field. Text fields are never
   formatted. When neither is set, the field's own number format from the dataset applies.
 - `placement` depends on the geometry:
-  - points: `auto` (MapLibre tries positions around the marker and takes one that is free), `center` (on the
-    point), or a fixed side of the marker, named by where the label sits: `above`, `below`, `left`, `right`,
-    `above_left`, `above_right`, `below_left`, `below_right`. A label at a fixed side keeps clear of the marker as
-    `auto` does (half the marker size plus 2 px); it is never moved to another side, and on a collision it is
-    dropped unless `allow_overlap` is on;
+  - points: `auto` (MapLibre tries positions around the marker and takes one that is free), `center` (on the point),
+    or a fixed side of the marker, named by where the label sits: `above`, `below`, `left`, `right`, `above_left`,
+    `above_right`, `below_left`, `below_right`. A label at a fixed side keeps clear of the marker as `auto` does
+    (half the marker size plus 2 px, and the collision paddings beside a marker that collides, 16); it is never
+    moved to another side, and on a collision it is dropped unless `allow_overlap` is on;
   - lines: `line` (along the line, repeated), or one label per line at its middle, a point from the tile service,
     placed there as a point's label: `auto`, `center` (on the middle) or a fixed side;
   - polygons: one label per polygon at a point inside it from the tile service, placed there as a point's label:
@@ -657,7 +657,7 @@ valid color, the outline is the shade of the fallback, as for any fixed color. N
 
   The middle of an area is `inside`, of a point or a line `center`: each geometry has one word for it, and the other
   is `placement_not_for_geometry`, as is any placement of another geometry (`line` on points or polygons, `inside`
-  on points or lines). The panel shows both as In the middle.
+  on points or lines). The panel shows both as In the middle. `center` on a marker that collides hides the marker.
 
   Around the marker of an area or a line's middle (3.3) the positions work as on points: a fixed side keeps half
   the marker size plus 2 px from the point, the middle puts the label on the marker. Without a marker a fixed side
@@ -3283,7 +3283,7 @@ are part of the format: an output that breaks one of them draws something else t
 | icon on a circle | `circle` layer + `symbol` layer above; the icon size follows the circle size expression |
 | `marker` on polygons and lines | the marker image `symbol` layer (a plain circle too, or the icon alone) on geoapi's label anchors (`default_anchor`, the tiles asked with `label=true`) or the lines' center decoration points (`default_decoration`); on a GeoJSON source on the polygon itself (MapLibre places one symbol inside it) or on the line with `symbol-placement: line-center`; no stroke and no highlight ring (the polygon or the line highlights); on raised polygons `symbol-height-offset` = the height |
 | decoration points of several kinds | the tile URL asks for every kind the layers use (`decoration=start,end,center`); a layer drawn on some of them filters on `_decoration` |
-| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset` with `text-justify: auto`; a fixed side = `text-anchor` on the opposite side (`above` = `bottom`, `below` = `top`, `left` = `right`, `right` = `left`, `above_left` = `bottom-right`, `above_right` = `bottom-left`, `below_left` = `top-right`, `below_right` = `top-left`) with `text-offset` half the marker size plus 2 px toward that side (on both axes at a corner), and `text-justify: auto` at a side with a left or right; `offset` px / size = `text-offset` in ems, added to the clearance, per zoom stop when the size varies |
+| `label` on points | `symbol` layer; `auto` = `text-variable-anchor-offset` with `text-justify: auto`; a fixed side = `text-anchor` on the opposite side (`above` = `bottom`, `below` = `top`, `left` = `right`, `right` = `left`, `above_left` = `bottom-right`, `above_right` = `bottom-left`, `below_left` = `top-right`, `below_right` = `top-left`) with `text-offset` half the marker size plus 2 px toward that side (on both axes at a corner; beside a marker that collides, an icon alone without `allow_overlap: true` or a marker image with `allow_overlap: false`, the clearance also covers the icon's padding, 2 px, and `label.padding`, as MapLibre places the label first and drops the marker where their boxes meet, and takes a marker size that changes by zoom one zoom up, where MapLibre lays out the icon's collision box; the same for `auto`), and `text-justify: auto` at a side with a left or right; `offset` px / size = `text-offset` in ems, added to the clearance, per zoom stop when the size varies |
 | `label` on polygons | `symbol` layer on geoapi's label anchors (`default_anchor`), placed as on points: `auto` with a marker `text-variable-anchor-offset` around it, without one on the anchor; a side `text-anchor` and `text-offset`; `inside` on the anchor |
 | `label` on lines | `line`: `symbol-placement: line`, `spacing` = `symbol-spacing`; `auto`, `center` and the sides: the decoration center points, placed as on points (`text-variable-anchor-offset` for `auto` with a marker, `text-anchor` and `text-offset` for a side); on a GeoJSON source `symbol-placement: line-center`, a side with `text-rotation-alignment: viewport` |
 | label text | `concat` of literal text and one formatted value per placeholder; `lines` become `format` sections; `max_width` px / size = `text-max-width` in ems; `transform` = `text-transform`, `letter_spacing` = `text-letter-spacing`, `line_height` = `text-line-height` (both in ems already), `padding` = `text-padding` |

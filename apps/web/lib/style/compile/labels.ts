@@ -13,6 +13,7 @@ import {
   ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
+import { markersAsImages } from "@/lib/style/compile/points";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { FieldType } from "@/lib/style/compile/types";
 import {
@@ -273,6 +274,20 @@ const baseMarkerSize = (style: JsonObject): unknown => {
   return isObject(symbol.marker) ? symbol.marker.size : undefined;
 };
 
+/** MapLibre's icon padding, which the compiler leaves at its default (px). */
+const ICON_PADDING = 2;
+
+/** Whether the layer's marker takes part in MapLibre's collisions, so that its own label could hide it: an icon alone
+ * unless overlap is turned on, a marker image when overlap is turned off (a circle layer never collides). */
+function markerCollides(style: JsonObject, geometry: PartContext["geometry"]): boolean {
+  const symbol = isObject(style.symbol) ? style.symbol : {};
+  const shape = (isObject(symbol.marker) ? symbol.marker.shape : undefined) ?? DEFAULTS["marker.shape"];
+  const overlap = perLayer(style, "marker.allow_overlap");
+  if (shape === "icon") return overlap !== true;
+  // Marker images draw overlapping unless the style turns overlap off (points.ts, `markerImageLayers`).
+  return isSet(style, "marker.allow_overlap") && overlap === false && markersAsImages(style, geometry);
+}
+
 const baseNumber = (style: JsonObject, part: string, key: string): number => {
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const node = isObject(symbol[part]) ? symbol[part] : {};
@@ -364,16 +379,31 @@ export function labelLayers(ctx: PartContext): LayerSpecification[] {
   const around =
     side !== undefined || (placement === "auto" && (geometry === "point" || (withMarker && !lineMiddle)));
   if (around) {
-    // Around the marker: half its size plus 2 px, per zoom stop when the base size varies by zoom (spec 16).
-    const marker = withMarker
+    // Around the marker: half its size plus 2 px, per zoom stop when the base size varies by zoom (spec 16). Beside a
+    // marker that collides, also the icon's and the label's collision padding: MapLibre places the label first and
+    // would drop the marker where the two boxes meet.
+    const collides = withMarker && markerCollides(style, geometry);
+    const drawn = withMarker
       ? fromForm(baseMarkerSize(style), "number", DEFAULTS["marker.size"])
       : { expr: 0 };
+    // MapLibre lays out an icon's collision box at the size it has one zoom above the tile's, the label's offset at
+    // the tile's zoom: beside a marker that collides and grows with the zoom, each zoom's clearance takes the size of
+    // the next.
+    const marker =
+      collides && isZoomed(drawn)
+        ? { ...drawn, stops: drawn.stops.map(([z, e]): [number, Expr] => [z - 1, e]) }
+        : drawn;
     const fallbackSize = withMarker ? baseNumber(style, "marker", "size") : 0;
+    const labelPadding = DEFAULTS["label.padding"] as number;
+    const padding = collides
+      ? fromForm(perLayer(style, "label.padding"), "number", labelPadding)
+      : { expr: null };
     const offsets = combine(
-      [marker, offset],
-      ([size, o]) =>
+      [marker, offset, padding],
+      ([size, o, pad]) =>
         eachOffset(o, ([x, y]) => {
-          const d = em((typeof size === "number" ? size : fallbackSize) / 2 + 2);
+          const clear = pad === null ? 0 : ICON_PADDING + (typeof pad === "number" ? pad : labelPadding);
+          const d = em((typeof size === "number" ? size : fallbackSize) / 2 + 2 + clear);
           const shift = (ax: number, ay: number) => [fold(["+", ax, em(x)]), fold(["+", ay, em(y)])];
           return [
             "literal",

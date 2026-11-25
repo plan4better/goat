@@ -1,6 +1,7 @@
 // Labels on the map: how the lines of a multi-line point label line up beside their marker. With placement "auto"
 // MapLibre picks one of the compiled anchors per label; each test keeps a single anchor of the compiled list, so the
-// label sits on the side that anchor gives it, and reads where each drawn line of text starts and ends.
+// label sits on the side that anchor gives it, and reads where each drawn line of text starts and ends. And a label
+// beside a marker that collides leaves the marker drawn.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { JsonObject } from "@/lib/style/json";
@@ -245,3 +246,59 @@ async function inkOf(s: Scene): Promise<number> {
     .flat()
     .filter(Boolean).length;
 }
+
+// A marker that takes part in collisions (an icon alone, a marker image with overlap turned off) beside its own label:
+// MapLibre places the label first, so the label keeps clear of the marker's collision box, its padding included, and
+// both are drawn.
+describe("a label beside a marker that collides", () => {
+  const ICON = { shape: "icon", icon: "goat:park" };
+  const cases: Array<[string, JsonObject, string]> = [
+    ...[24, 48].flatMap((size) =>
+      ["auto", "below", "right"].map((placement): [string, JsonObject, string] => [
+        `an icon of ${size} px, ${placement}`,
+        { ...ICON, size },
+        placement,
+      ])
+    ),
+    [
+      "an icon growing with the zoom, auto",
+      {
+        ...ICON,
+        size: {
+          zoom: [
+            [8, 4],
+            [16, 20],
+          ],
+        },
+      },
+      "auto",
+    ],
+    [
+      "a circle with an icon and overlap off, auto",
+      { shape: "circle", icon: "goat:park", size: 24, allow_overlap: false },
+      "auto",
+    ],
+  ];
+  it.each(cases)("%s: the marker and the label are both drawn", async (_, marker, placement) => {
+    const s = await renderScene(
+      {
+        id: "collide",
+        style: {
+          version: "1.0.0",
+          kind: "vector",
+          symbol: { marker, label: { text: "{name}", placement } },
+        },
+        geometry: "point",
+        zoom: 10,
+        fields: { name: "string" },
+      },
+      { groups: [{ at: [320, 240], points: [{ name: "Town Hall" }] }] }
+    );
+    scenes.push(s);
+    expect(s.errors).toEqual([]);
+    const count = (part: string) => s.map.queryRenderedFeatures({ layers: [`collide-${part}`] }).length;
+    const markerPart = marker.shape === "icon" ? "icon" : "marker";
+    expect(s.compiled!.layers.map((l) => l.id)).toContain(`collide-${markerPart}`);
+    expect({ marker: count(markerPart), label: count("label") }).toEqual({ marker: 1, label: 1 });
+  });
+});
