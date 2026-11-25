@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace duckdb
@@ -25,6 +26,9 @@ std::string sql_escape(std::string const &s);
 // come out as 'inf'::DOUBLE, '-inf'::DOUBLE and 'nan'::DOUBLE: written bare,
 // DuckDB would read them as column names.
 std::string sql_double(double value);
+
+// The number of rows in `table`; throws std::runtime_error on failure.
+int64_t count_rows(duckdb::Connection &con, std::string const &table);
 
 // Write the result of a COPY body to a Parquet file using the project-standard
 // options (FORMAT PARQUET, COMPRESSION ZSTD). Creates the parent directory and

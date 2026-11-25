@@ -59,32 +59,29 @@ void edge_anchors(ReachabilityField const &field, size_t i,
 // The network's snap splits, by the edge they split.
 std::unordered_multimap<int32_t, EdgeSplit> index_splits(SubNetwork const &net);
 
+// The cost of the walk from the street to a point `ground_m` metres away: the
+// metres themselves for distance, else the time at the speed the catchment
+// leaves the street at. For PT that is the egress leg's speed, the leg that
+// reaches the area around a stop; a run without a speed walks at 5 km/h.
+double off_street_cost(double ground_m, RequestConfig const &cfg);
+
 struct CostSample
 {
-    double x_3857;
-    double y_3857;
+    double x;  // EPSG:3857
+    double y;
     double cost;
 };
 
-// Project a per-node reachability cost field onto a flat list of (x, y,
-// cost) samples via:
-//   - one sample per network node with finite cost <= budget;
-//   - samples along each edge at `spacing_m` between source and target
-//     node coords, costed by edge_point_cost. Skips edges shorter than
-//     spacing.
-//
-// The samples lie on the straight line between node endpoints (no edge
-// geometry polylines). Suitable for downstream H3 cell aggregation where
-// the cell takes the min cost of all samples that land in it — small
-// approximation error inside a cell is dominated by the cheapest sample.
-//
-// Used by:
-//   - hexagon_builder for hexagonal-catchment output.
-//   - heatmap_v2 per-opportunity for per-cell access-cost accumulation.
+// A reachability field as cost samples, the one sampling every grid-like
+// catchment output (polygon, hexagon, point grid) builds on:
+//   - one sample per network node within the budget;
+//   - samples every `spacing` EPSG:3857 units along each reached edge, and at
+//     its inner vertices, costed by edge_point_cost. They follow the edge's
+//     geometry where it is loaded, else the straight line between its nodes.
 std::vector<CostSample> sample_reachability_field(
     ReachabilityField const &field,
     double budget,
     bool use_distance,
-    double spacing_m = 20.0);
+    double spacing);
 
 } // namespace routing::geometry

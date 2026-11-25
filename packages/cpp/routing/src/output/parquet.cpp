@@ -210,7 +210,7 @@ void write_point_grid_parquet(ReachabilityField const &field,
     std::ostringstream body;
     body << "  SELECT "
          << "    CAST(id AS INTEGER) AS id, "
-         << "    CAST(ROUND(cost) AS DOUBLE) AS cost, "
+         << "    cost, "
          << "    cost_step, "
          << "    geometry "
          << "  FROM " << point_grid_features_table_name() << " "

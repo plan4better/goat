@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../types.h"
+#include "steps.h"
 
 #include <cstdint>
 #include <string>
@@ -26,8 +27,6 @@ struct TaggedFeature
     double step_cost;
     std::string multipolygon_wkt;
 };
-
-std::vector<double> compute_step_cutoffs(RequestConfig const &cfg);
 
 // Build cost grid + jsolines for one reachability field, append the
 // resulting bands (tagged with origin_idx) to `out`. The intermediate

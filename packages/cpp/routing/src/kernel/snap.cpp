@@ -168,7 +168,7 @@ namespace routing::kernel
         net.cost.push_back(snap_cost);
         net.reverse_cost.push_back(snap_cost);
         net.length_3857.push_back(cand.proj.dist);
-        net.edges.push_back({-1, {}});
+        net.edges.push_back({kConnectorEdgeId, {}});
 
         double fwd_cost = net.cost[edge_idx];
         double rev_cost = net.reverse_cost[edge_idx];
@@ -190,7 +190,7 @@ namespace routing::kernel
         net.cost.push_back(fwd_cost * (1.0 - frac));
         net.reverse_cost.push_back(rev_cost * (1.0 - frac));
         net.length_3857.push_back(dist_to_tgt);
-        net.edges.push_back({-2, {}});
+        net.edges.push_back({kSplitToTargetEdgeId, {}});
 
         // Split edge: projected point → source
         net.source.push_back(proj_node);
@@ -198,7 +198,7 @@ namespace routing::kernel
         net.cost.push_back(rev_cost * frac);
         net.reverse_cost.push_back(fwd_cost * frac);
         net.length_3857.push_back(dist_to_src);
-        net.edges.push_back({-3, {}});
+        net.edges.push_back({kSplitToSourceEdgeId, {}});
 
         net.splits.push_back({static_cast<int32_t>(edge_idx), proj_node, frac});
 

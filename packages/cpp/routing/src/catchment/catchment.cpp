@@ -105,8 +105,9 @@ namespace routing::catchment
             return "";
         }
 
-        // Reads geometry only for edges with a reached end; the rest keep their
-        // source-target line.
+        // Reads geometry only for edges reached at an end or at a snap split
+        // (an origin on a long edge whose ends are both out of budget); the
+        // rest keep their source-target line.
         void attach_reached_geometry(SubNetwork &net,
                                      std::vector<double> const &costs,
                                      RequestConfig const &cfg,
@@ -119,6 +120,12 @@ namespace routing::catchment
                        std::isfinite(costs[static_cast<size_t>(n)]) &&
                        costs[static_cast<size_t>(n)] <= budget;
             };
+            std::vector<bool> split_reached(net.edges.size(), false);
+            for (auto const &sp : net.splits)
+                if (sp.edge >= 0 &&
+                    static_cast<size_t>(sp.edge) < split_reached.size() &&
+                    reached(sp.node))
+                    split_reached[static_cast<size_t>(sp.edge)] = true;
             std::vector<int64_t> ids;
             std::vector<size_t> at;
             for (size_t i = 0; i < net.edges.size(); ++i)
@@ -126,7 +133,8 @@ namespace routing::catchment
                 // Snapping connectors and split halves (no loaded geometry).
                 if (net.edges[i].id < 0)
                     continue;
-                if (reached(net.source[i]) || reached(net.target[i]))
+                if (reached(net.source[i]) || reached(net.target[i]) ||
+                    split_reached[i])
                 {
                     ids.push_back(net.edges[i].id);
                     at.push_back(i);
