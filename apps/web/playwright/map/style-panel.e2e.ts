@@ -132,6 +132,8 @@ test.describe("colors of the points layer", () => {
   test("dragging a color's transparency bar saves an eight-digit color, and None sets it to 0 %", async ({
     page,
   }) => {
+    // Every move writes the style and draws the panel again, which takes its time on a small machine.
+    test.slow();
     // The test fails on an error of the page's code and on React's update loop; any other console error (a stack
     // that logs failed tiles) is attached to the result, not a failure.
     const failures: string[] = [];
@@ -168,13 +170,32 @@ test.describe("colors of the points layer", () => {
     const saved = page.waitForResponse(PUT_STYLE);
     await page.mouse.move(from, y);
     await page.mouse.down();
-    const steps = 60;
-    for (let i = 1; i <= steps; i++) {
-      await page.mouse.move(from + ((to - from) * i) / steps, y);
-      // A hand moves over time: the page renders between two moves.
-      // eslint-disable-next-line playwright/no-wait-for-timeout
-      await page.waitForTimeout(5);
-    }
+    // First as a hand does, each move handled before the next.
+    const mid = from + (to - from) * 0.4;
+    const steps = 12;
+    for (let i = 1; i <= steps; i++) await page.mouse.move(from + ((mid - from) * i) / steps, y);
+    // Then a burst from inside the page, two moves at a time between timers and microtasks: moves reach the bar
+    // while the answer to an earlier one is still being drawn, which is where a render loop would start.
+    await page.evaluate(
+      async ({ x0, x1, y, count }) => {
+        const move = (x: number) =>
+          document.dispatchEvent(
+            new MouseEvent("mousemove", { clientX: x, clientY: y, buttons: 1, bubbles: true })
+          );
+        await new Promise<void>((done) => {
+          let i = 0;
+          const tick = () => {
+            for (let k = 0; k < 2 && i < count; k++, i++) move(x0 + ((x1 - x0) * (i + 1)) / count);
+            if (i >= count) done();
+            else if (i % 3 === 0) setTimeout(tick, 0);
+            else queueMicrotask(tick);
+          };
+          tick();
+        });
+      },
+      { x0: mid, x1: to, y, count: 60 }
+    );
+    await page.mouse.move(to, y);
     await page.mouse.up();
     await saved;
     await expect(page.getByRole("status", { name: "Saved" })).toBeVisible();
