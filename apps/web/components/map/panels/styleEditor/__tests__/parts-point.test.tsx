@@ -12,7 +12,7 @@ import { GeneralSection } from "@/components/map/panels/styleEditor/sections/Gen
 import { HeatmapSection } from "@/components/map/panels/styleEditor/sections/HeatmapSection";
 import { SymbolSection } from "@/components/map/panels/styleEditor/sections/SymbolSection";
 
-import { choose, openGroup, pickColor, renderPanel } from "./renderPanel";
+import { choose, i18n, openGroup, pickColor, renderPanel } from "./renderPanel";
 
 const render = (doc: object, data: Partial<StyleData> = {}) =>
   renderPanel(
@@ -469,59 +469,273 @@ describe("draw as", () => {
   /** The Clusters section's rows. */
   const clusterSection = () =>
     screen.getByText("style_editor.section_clusters").closest("section") as HTMLElement;
-  const sizeThumbs = () => within(clusterSection()).getAllByRole("slider").slice(0, 2);
+  /** The section's Size row (the Size editor's title says it too, outside the section). */
+  const sizeRow = () => within(clusterSection()).getByText("style_editor.size").parentElement as HTMLElement;
+  /** Opens the Size row's editor (a size by zoom's row has its mode button after it). */
+  const openSize = () => userEvent.click(within(sizeRow()).getAllByRole("button")[0]);
+  /** The Size editor's Smallest and Largest: each a slider and its number box. */
+  const sizeEnd = (end: "smallest" | "largest") => ({
+    slider: screen.getByRole("slider", { name: `style_editor.range_${end}` }),
+    box: screen.getByRole("textbox", { name: `style_editor.range_${end}` }) as HTMLInputElement,
+  });
+  /** Whether the Size editor is open: its title, a "Size" outside the panel's sections. */
+  const sizeEditorOpen = () =>
+    screen.queryAllByText("style_editor.size").some((el) => el.closest("section") === null);
 
-  it("the cluster size sets the smallest and the largest circle and keeps the default cluster symbol", () => {
+  it("the panel shows the cluster size as one row with its range and no slider of its own", () => {
     const { store } = render({ render: { type: "cluster" } });
-    const section = clusterSection();
-    expect(within(section).getByText("style_editor.size")).toBeDefined();
-    const [smallest, largest] = sizeThumbs();
-    expect(smallest.getAttribute("aria-label")).toBe("style_editor.range_smallest");
-    expect(largest.getAttribute("aria-label")).toBe("style_editor.range_largest");
-    // The default cluster symbol's sizes, within the panel's marker size limits.
-    expect(smallest.getAttribute("aria-valuenow")).toBe("16");
-    expect(largest.getAttribute("aria-valuenow")).toBe("40");
-    expect(largest.getAttribute("aria-valuemax")).toBe("60");
+    expect(within(sizeRow()).getByRole("button").textContent).toBe("16 style_editor.to 40 px");
+    // The Merge distance is the section's only slider.
+    expect(within(clusterSection()).getAllByRole("slider")).toHaveLength(1);
+    expect(screen.queryByRole("slider", { name: "style_editor.range_smallest" })).toBeNull();
+    expect(store.get("render")).toEqual({ type: "cluster" });
+  });
+
+  it("the Size editor sets the smallest and the largest circle and keeps the default cluster symbol", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    expect(sizeEditorOpen()).toBe(true);
+    // The default cluster symbol's sizes, within the panel's marker size limits; opening writes nothing.
+    expect(sizeEnd("smallest").slider.getAttribute("aria-valuenow")).toBe("16");
+    expect(sizeEnd("largest").slider.getAttribute("aria-valuenow")).toBe("40");
+    expect(sizeEnd("largest").slider.getAttribute("aria-valuemax")).toBe("60");
+    expect(store.get("render")).toEqual({ type: "cluster" });
     // jsdom has no keyboard behavior for range inputs: move the thumbs by changing their values.
-    fireEvent.change(largest, { target: { value: 50 } });
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 50 } });
     expect(store.get("render.symbol.marker.size")).toEqual({
       field: "count",
       range: [16, 50],
       scale: "sqrt",
     });
     expect(store.get("render.symbol.label.text")).toBe("{count}");
-    fireEvent.change(sizeThumbs()[0], { target: { value: 10 } });
+    fireEvent.change(sizeEnd("smallest").slider, { target: { value: 10 } });
     expect(store.get("render.symbol.marker.size.range")).toEqual([10, 50]);
+    expect(within(sizeRow()).getByRole("button").textContent).toBe("10 style_editor.to 50 px");
   });
 
-  it("a fixed cluster size shows as both ends and an edit sizes the clusters by count again", () => {
+  it("a fixed cluster size shows as both ends and an edit sizes the clusters by count again", async () => {
     const { store } = render({
       render: { type: "cluster", symbol: { marker: { color: "#283593", size: 20 } } },
     });
-    const [smallest, largest] = sizeThumbs();
-    expect(smallest.getAttribute("aria-valuenow")).toBe("20");
-    expect(largest.getAttribute("aria-valuenow")).toBe("20");
-    fireEvent.change(largest, { target: { value: 36 } });
+    expect(within(sizeRow()).getByRole("button").textContent).toBe("20 style_editor.to 20 px");
+    await openSize();
+    expect(sizeEnd("smallest").slider.getAttribute("aria-valuenow")).toBe("20");
+    expect(sizeEnd("largest").slider.getAttribute("aria-valuenow")).toBe("20");
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 36 } });
     expect(store.get("render.symbol.marker")).toEqual({
       color: "#283593",
       size: { field: "count", range: [20, 36], scale: "sqrt" },
     });
   });
 
-  it("the cluster size keeps the scale and domain the style gives", () => {
+  it("the cluster size keeps the scale and domain the style gives", async () => {
     const { store } = render({
       render: {
         type: "cluster",
         symbol: { marker: { size: { field: "count", range: [12, 30], scale: "log", domain: [2, 500] } } },
       },
     });
-    fireEvent.change(sizeThumbs()[1], { target: { value: 44 } });
+    await openSize();
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 44 } });
     expect(store.get("render.symbol.marker.size")).toEqual({
       field: "count",
       range: [12, 44],
       scale: "log",
       domain: [2, 500],
     });
+  });
+
+  it("Smallest stops at Largest and Largest at Smallest", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 10 } });
+    expect(store.get("render.symbol.marker.size.range")).toEqual([16, 16]);
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 50 } });
+    fireEvent.change(sizeEnd("smallest").slider, { target: { value: 55 } });
+    expect(store.get("render.symbol.marker.size.range")).toEqual([50, 50]);
+    const box = sizeEnd("smallest").box;
+    fireEvent.change(box, { target: { value: "70" } });
+    fireEvent.blur(box);
+    expect(store.get("render.symbol.marker.size.range")).toEqual([50, 50]);
+  });
+
+  it("the ends' number boxes take a size past the slider's bounds, the thumb at the bound", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    const box = sizeEnd("largest").box;
+    fireEvent.change(box, { target: { value: "80" } });
+    fireEvent.blur(box);
+    expect(store.get("render.symbol.marker.size.range")).toEqual([16, 80]);
+    expect(sizeEnd("largest").slider.getAttribute("aria-valuenow")).toBe("60");
+    expect(sizeEnd("largest").box.value).toBe("80");
+    expect(within(sizeRow()).getByRole("button").textContent).toBe("16 style_editor.to 80 px");
+  });
+
+  /** Types `text` into an end's box key by key, as a person does, and leaves the box. */
+  const typeEnd = async (end: "smallest" | "largest", text: string) => {
+    const box = sizeEnd(end).box;
+    await userEvent.clear(box);
+    await userEvent.type(box, text);
+    await userEvent.tab();
+  };
+
+  it("a size typed key by key into an end is taken as the whole number", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    await typeEnd("largest", "30");
+    expect(store.get("render.symbol.marker.size.range")).toEqual([16, 30]);
+    await typeEnd("smallest", "12");
+    expect(store.get("render.symbol.marker.size.range")).toEqual([12, 30]);
+    expect(sizeEnd("smallest").box.value).toBe("12");
+  });
+
+  it("a typed size below the slider's smallest takes the slider's smallest", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    await typeEnd("smallest", "-5");
+    expect(store.get("render.symbol.marker.size.range")).toEqual([2, 40]);
+    await typeEnd("largest", "30");
+    await typeEnd("smallest", "0");
+    expect(store.get("render.symbol.marker.size.range")).toEqual([2, 30]);
+  });
+
+  it("the Size row writes its ends in the panel's language", async () => {
+    await act(() => i18n.changeLanguage("de"));
+    try {
+      render({
+        render: { type: "cluster", symbol: { marker: { size: { field: "count", range: [12.5, 40] } } } },
+      });
+      expect(within(sizeRow()).getByRole("button").textContent).toBe("12,5 style_editor.to 40 px");
+    } finally {
+      await act(() => i18n.changeLanguage("en"));
+    }
+  });
+
+  it("a stored range from high to low opens as written and an edit keeps both ends", async () => {
+    const { store } = render({
+      render: { type: "cluster", symbol: { marker: { size: { field: "count", range: [40, 16] } } } },
+    });
+    await openSize();
+    expect(store.get("render.symbol.marker.size.range")).toEqual([40, 16]);
+    expect(store.canUndo).toBe(false);
+    fireEvent.change(sizeEnd("smallest").slider, { target: { value: 20 } });
+    expect(store.get("render.symbol.marker.size.range")).toEqual([20, 40]);
+  });
+
+  it("an edit that leaves the range as it is writes nothing and adds no undo step", async () => {
+    for (const size of [{ field: "count", range: [20, 20] }, 20]) {
+      const { store, unmount } = render({ render: { type: "cluster", symbol: { marker: { size } } } });
+      const before = structuredClone(store.document);
+      await openSize();
+      fireEvent.change(sizeEnd("smallest").slider, { target: { value: 30 } });
+      fireEvent.change(sizeEnd("largest").slider, { target: { value: 10 } });
+      expect(store.document).toEqual(before);
+      expect(store.canUndo).toBe(false);
+      unmount();
+    }
+  });
+
+  it("a drag of one end is one undo step", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    for (const value of [42, 44, 46]) fireEvent.change(sizeEnd("largest").slider, { target: { value } });
+    expect(store.get("render.symbol.marker.size.range")).toEqual([16, 46]);
+    act(() => store.undo());
+    expect(store.get("render")).toEqual({ type: "cluster" });
+  });
+
+  it("the Size editor closes when the clusters draw like the points or Draw as changes", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    expect(sizeEditorOpen()).toBe(true);
+    act(() => store.set("render.look", "points"));
+    expect(within(clusterSection()).queryByText("style_editor.size")).toBeNull();
+    expect(sizeEditorOpen()).toBe(false);
+    expect(screen.queryByRole("slider", { name: "style_editor.range_smallest" })).toBeNull();
+    act(() => store.set("render.look", "circle"));
+    await openSize();
+    expect(sizeEditorOpen()).toBe(true);
+    act(() => store.set("render", { type: "heatmap" }));
+    expect(screen.queryByText("style_editor.section_clusters")).toBeNull();
+    expect(sizeEditorOpen()).toBe(false);
+    expect(screen.queryByRole("slider", { name: "style_editor.range_smallest" })).toBeNull();
+  });
+
+  it("the Size editor closes when the size turns into one by zoom", async () => {
+    const { store } = render({ render: { type: "cluster" } });
+    await openSize();
+    fireEvent.change(sizeEnd("largest").slider, { target: { value: 50 } });
+    act(() =>
+      store.set("render.symbol.marker.size", {
+        zoom: [
+          [4, 20],
+          [12, 40],
+        ],
+      })
+    );
+    expect(sizeEditorOpen()).toBe(false);
+    expect(screen.queryByRole("slider", { name: "style_editor.range_smallest" })).toBeNull();
+    expect(within(sizeRow()).getByText("20 → 40 px")).toBeDefined();
+  });
+
+  it("a drag of one end keeps the other end of a stored range past the bounds", async () => {
+    const { store } = render({
+      render: { type: "cluster", symbol: { marker: { size: { field: "count", range: [1, 80] } } } },
+    });
+    await openSize();
+    fireEvent.change(sizeEnd("smallest").slider, { target: { value: 10 } });
+    expect(store.get("render.symbol.marker.size.range")).toEqual([10, 80]);
+  });
+
+  it("a cluster size by zoom keeps its row, which opens the zoom editor", async () => {
+    render({
+      render: {
+        type: "cluster",
+        symbol: {
+          marker: {
+            size: {
+              zoom: [
+                [4, 20],
+                [12, 40],
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect(within(sizeRow()).getByText("20 → 40 px")).toBeDefined();
+    await openSize();
+    expect(screen.getByText("style_editor.by_zoom_title")).toBeDefined();
+    expect(screen.queryByRole("slider", { name: "style_editor.range_smallest" })).toBeNull();
+  });
+
+  it("By count from an open zoom editor closes it, and the Size row then opens the Size editor", async () => {
+    const { store } = render({
+      render: {
+        type: "cluster",
+        symbol: {
+          marker: {
+            size: {
+              zoom: [
+                [4, 20],
+                [12, 40],
+              ],
+            },
+          },
+        },
+      },
+    });
+    await openSize();
+    expect(screen.getByText("style_editor.by_zoom_title")).toBeDefined();
+    await userEvent.click(within(sizeRow()).getByRole("button", { name: "style_editor.value_mode_aria" }));
+    await userEvent.click(within(screen.getByRole("menu")).getByText("style_editor.cluster_size_by_count"));
+    expect(store.get("render.symbol.marker.size")).toMatchObject({ field: "count", range: [20, 40] });
+    expect(screen.queryByText("style_editor.by_zoom_title")).toBeNull();
+    expect(within(sizeRow()).getByRole("button").textContent).toBe("20 style_editor.to 40 px");
+    await openSize();
+    expect(sizeEditorOpen()).toBe(true);
+    expect(sizeEnd("smallest").box.value).toBe("20");
+    expect(sizeEnd("largest").box.value).toBe("40");
   });
 
   it("the clusters' merge distance is not called a radius", () => {
@@ -698,7 +912,7 @@ describe("draw as", () => {
       expect(store.get("render.symbol.marker.size.domain")).toEqual([5, 2000]);
     });
 
-    it("the range row sets the value's domain for the circles' size", () => {
+    it("the Range of the value sits in the Size editor and sets the domain of the circles' size", async () => {
       const { store } = clusters({
         value: { op: "mean", field: "turnover" },
         symbol: {
@@ -706,22 +920,28 @@ describe("draw as", () => {
           label: { text: "{value}" },
         },
       });
+      // Not in the panel itself.
+      expect(within(clusterSection()).queryByText("style_editor.range")).toBeNull();
+      expect(screen.queryByRole("textbox", { name: "style_editor.range_highest" })).toBeNull();
+      await openSize();
       const highest = screen.getByRole("textbox", { name: "style_editor.range_highest" });
       fireEvent.change(highest, { target: { value: "500" } });
       fireEvent.blur(highest);
       expect(store.get("render.symbol.marker.size.domain")).toEqual([5, 500]);
-      // The count has no range of its own to set.
+      // The count has no range of its own to set; the editor keeps the ends.
       act(() => store.set("render.value", undefined));
       expect(screen.queryByRole("textbox", { name: "style_editor.range_highest" })).toBeNull();
+      expect(sizeEnd("largest").slider).toBeDefined();
     });
 
     it("the cluster size by the value keeps the value and its typed range while dragged", async () => {
       const { store } = clusters();
       await choose("style_editor.h3_value", "style_editor.h3_value_count", "style_editor.h3_value_sum");
+      await openSize();
       const highest = screen.getByRole("textbox", { name: "style_editor.range_highest" });
       fireEvent.change(highest, { target: { value: "500" } });
       fireEvent.blur(highest);
-      fireEvent.change(sizeThumbs()[1], { target: { value: 50 } });
+      fireEvent.change(sizeEnd("largest").slider, { target: { value: 50 } });
       expect(store.get("render.symbol.marker.size")).toEqual({
         field: "value",
         range: [16, 50],
@@ -729,6 +949,27 @@ describe("draw as", () => {
         domain: [5, 500],
       });
       expect(screen.getByRole("textbox", { name: "style_editor.range_highest" })).toBeDefined();
+    });
+
+    it("opening the panel and the Size editor leaves a range past the bounds and its domain as stored", async () => {
+      const { store } = clusters({
+        value: { op: "sum", field: "turnover" },
+        symbol: {
+          marker: { size: { field: "value", range: [1, 80], scale: "log", domain: [3, 9000] } },
+          label: { text: "{value}" },
+        },
+      });
+      const before = structuredClone(store.document);
+      expect(within(sizeRow()).getByRole("button").textContent).toBe("1 style_editor.to 80 px");
+      await openSize();
+      expect(sizeEnd("smallest").box.value).toBe("1");
+      expect(sizeEnd("largest").box.value).toBe("80");
+      expect(sizeEnd("smallest").slider.getAttribute("aria-valuenow")).toBe("2");
+      expect(sizeEnd("largest").slider.getAttribute("aria-valuenow")).toBe("60");
+      const lowest = screen.getByRole("textbox", { name: "style_editor.range_lowest" }) as HTMLInputElement;
+      expect(lowest.value).toBe("3");
+      expect(store.document).toEqual(before);
+      expect(store.canUndo).toBe(false);
     });
 
     /** Profiles that arrive only when the test says so, with the listeners still waiting for them. */

@@ -185,6 +185,9 @@ export function AttributeEditor({ path }: { path: Path }) {
   // at 0 at the latest: the smallest value may draw nothing, which keeps proportional symbols proportional.
   const fixedBounds = slider ?? { min: 0, max: 100, step: 1 };
   const bounds = { ...fixedBounds, min: Math.min(0, fixedBounds.min) };
+  // A typed end of a value that cannot go below 0 (a size, a width) stops at 0; one that can (an offset) is taken as
+  // typed, as past the slider's top.
+  const floor = fixedBounds.min >= 0 ? 0 : -Infinity;
   const fixed = Array.isArray(form.domain);
   const palette = (form.palette ?? "goat:green") as string | string[];
   // A copy: an inline palette is the stored list itself.
@@ -234,8 +237,10 @@ export function AttributeEditor({ path }: { path: Path }) {
             unit={bounds.unit}
             pct={bounds.pct}
             value={range[0]}
-            // goatlib takes a range from low to high: Smallest stops at Largest.
-            onChange={(v) => write({ range: [Math.min(v, range[1]), range[1]] })}
+            // A typed number counts as a whole, from the floor on; goatlib takes a range from low to high: Smallest
+            // stops at Largest.
+            commitOnLeave
+            onChange={(v) => write({ range: [Math.min(Math.max(v, floor), range[1]), range[1]] })}
           />
           <SliderRow
             label={t("style_editor.range_largest")}
@@ -245,7 +250,8 @@ export function AttributeEditor({ path }: { path: Path }) {
             unit={bounds.unit}
             pct={bounds.pct}
             value={range[1]}
-            onChange={(v) => write({ range: [range[0], Math.max(v, range[0])] })}
+            commitOnLeave
+            onChange={(v) => write({ range: [range[0], Math.max(v, floor, range[0])] })}
           />
         </>
       )}

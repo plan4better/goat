@@ -1,6 +1,7 @@
 // Ranges the panel lets the user set only the way goatlib takes them: Smallest at most Largest, a fixed range and a
 // weight's range from low to high (taken when its box is left), zooms From below Until.
 import { fireEvent, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import type { LayerStyle } from "@/lib/style/generated/types";
@@ -15,13 +16,13 @@ import { renderPanel } from "./renderPanel";
 const FIELDS = [{ name: "traffic", type: "number" as const, label: "traffic" }];
 const rowOf = (label: string) => screen.getByText(label).parentElement as HTMLElement;
 
-function attribute(width: object) {
+function attribute(width: object, key: "width" | "offset" = "width") {
   return renderPanel(
     <PopoverProvider>
-      <AttributeEditor path="symbol.line.width" />
+      <AttributeEditor path={`symbol.line.${key}`} />
     </PopoverProvider>,
     {
-      document: { version: "1.0.0", kind: "vector", symbol: { line: { width } } } as LayerStyle,
+      document: { version: "1.0.0", kind: "vector", symbol: { line: { [key]: width } } } as LayerStyle,
       data: { geometry: "line", fields: FIELDS, fieldTypes: { traffic: "number" } },
     }
   );
@@ -45,6 +46,32 @@ describe("ranges goatlib takes", () => {
       target: { value: 1 },
     });
     expect(store.get("symbol.line.width.range")).toEqual([3, 3]);
+  });
+
+  /** Types `text` into a range end's box key by key, as a person does, and leaves the box. */
+  const typeEnd = async (label: string, text: string) => {
+    const box = within(rowOf(label)).getByRole("textbox");
+    await userEvent.clear(box);
+    await userEvent.type(box, text);
+    await userEvent.tab();
+  };
+
+  it("a range end typed key by key is taken as the whole number", async () => {
+    const { store } = attribute({ field: "traffic", range: [2, 8], domain: [0, 500] });
+    await typeEnd("style_editor.range_largest", "12");
+    expect(store.get("symbol.line.width.range")).toEqual([2, 12]);
+  });
+
+  it("a range end typed below the slider's smallest takes the slider's smallest", async () => {
+    const { store } = attribute({ field: "traffic", range: [2, 8], domain: [0, 500] });
+    await typeEnd("style_editor.range_smallest", "-5");
+    expect(store.get("symbol.line.width.range")).toEqual([0, 8]);
+  });
+
+  it("a range end of a property whose slider goes below 0 is taken as typed", async () => {
+    const { store } = attribute({ field: "traffic", range: [-2, 4], domain: [0, 500] }, "offset");
+    await typeEnd("style_editor.range_smallest", "-15");
+    expect(store.get("symbol.line.offset.range")).toEqual([-15, 4]);
   });
 
   it("a fixed range is taken when its box is left, and only from low to high", () => {
