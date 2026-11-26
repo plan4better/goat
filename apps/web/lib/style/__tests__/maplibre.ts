@@ -1,4 +1,4 @@
-// Runs compiled output through MapLibre's own style validator (style spec 26.4.4).
+// Runs compiled output through MapLibre's own style validator (style spec 26.8.0).
 import { createExpression, validateStyleMin } from "@maplibre/maplibre-gl-style-spec";
 
 const SOURCE = { type: "vector", tiles: ["https://tiles.example/{z}/{x}/{y}"] };
