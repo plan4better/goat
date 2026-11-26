@@ -431,18 +431,104 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert c["computed"]["no_data"] is True
 
 
-def test_the_origin_destination_sizes_stay_linear() -> None:
+def test_the_origin_destination_widths_and_sizes_grow_by_square_root() -> None:
     lines = CASES["origin_destination lines"][0]()
     points = CASES["origin_destination points"][0]()
     middle = sample_colors("colorbrewer:OrRd", 1)[0]
     assert lines["symbol"]["line"] == {
         "color": middle,
         "opacity": 0.8,
-        "width": {"field": "weight", "range": [1, 10]},
+        "width": {"field": "weight", "range": [1, 10], "scale": "sqrt"},
     }
     assert points["symbol"]["marker"]["color"] == middle
     assert points["symbol"]["marker"]["opacity"] == 0.8
-    assert points["symbol"]["marker"]["size"] == {"field": "weight", "range": [10, 50]}
+    assert points["symbol"]["marker"]["size"] == {
+        "field": "weight",
+        "range": [10, 50],
+        "scale": "sqrt",
+    }
+
+
+#: Per OD layer: its geometry, the part and property that grow with the weight.
+OD_GROWTH = {
+    "origin_destination lines": ("line", "line", "width"),
+    "origin_destination points": ("point", "marker", "size"),
+}
+
+
+@pytest.mark.parametrize("case", list(OD_GROWTH))
+@pytest.mark.parametrize(
+    ("values", "domain"),
+    [
+        ("(i + 1) * 10", [10.0, 100.0]),
+        ("i * 10", [0.0, 90.0]),
+        # A square root maps values from 0: a negative weight has no width.
+        ("(i - 3) * 10", [0.0, 60.0]),
+    ],
+)
+def test_the_origin_destination_square_root_reads_its_domain_from_the_weights(
+    con: duckdb.DuckDBPyConnection,
+    case: str,
+    values: str,
+    domain: list[float],
+) -> None:
+    """The server computes the domain of the square root scale from the
+    weights it can map; the range stays the tool's, and neither the intent
+    nor the computed style gets a note."""
+    geometry, part, key = OD_GROWTH[case]
+    relation = table(con, "weight", geometry, values, 10)
+    intent = CASES[case][0]()
+    doc = _computed(con, intent, relation, geometry)
+    grows = doc["symbol"][part][key]
+    assert (grows["scale"], grows["range"]) == (
+        "sqrt",
+        intent["symbol"][part][key]["range"],
+    )
+    assert grows["computed"]["domain"] == domain
+    assert issues(con, relation, intent, geometry) == []
+    assert issues(con, relation, doc, geometry) == []
+
+
+def test_an_origin_destination_style_handed_in_keeps_its_scale(
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    runner_event_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """A style given to the layer record, here today's linear widths, is
+    stored with its own scale: the tool's default is not asked for."""
+    relation = table(con, "weight", "line", "(i + 1) * 10", 10)
+    runner = runner_for(OriginDestinationToolRunner, con)
+
+    def own(*args: Any) -> Any:
+        raise AssertionError("the OD tool's own default was asked for")
+
+    monkeypatch.setattr(runner, "get_layer_style", own)
+    monkeypatch.setattr(runner, "points_style", own)
+    monkeypatch.setattr(runner, "_get_ducklake_snapshot_id", lambda *a: 3)
+    monkeypatch.setattr("goatlib.tools.base.table_path_parts", lambda r: ("a", "b"))
+    runner.db_service = MagicMock(create_layer=AsyncMock())
+    given = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {
+            "line": {"color": "#fc8d59", "width": {"field": "weight", "range": [1, 10]}}
+        },
+    }
+    runner_event_loop.run_until_complete(
+        runner._create_db_records(
+            output_layer_id="L",
+            params=ToolInputBase(**IDS),
+            output_name="Flows",
+            metadata=DatasetMetadata(path="x", source_type="vector"),
+            table_info={"table_name": relation, "geometry_type": "LINESTRING"},
+            style=given,
+        )
+    )
+    width = runner.db_service.create_layer.call_args.kwargs["style"]["symbol"]["line"][
+        "width"
+    ]
+    assert "scale" not in width
+    assert width["computed"]["domain"] == [10.0, 100.0]
 
 
 def test_a_plain_origin_destination_point_keeps_the_palette_middle(
@@ -465,6 +551,7 @@ def test_a_plain_origin_destination_point_keeps_the_palette_middle(
     marker = doc["symbol"]["marker"]
     assert marker["color"] == sample_colors("colorbrewer:OrRd", 1)[0]
     assert (marker["size"]["field"], marker["size"]["range"]) == ("weight", [10, 50])
+    assert marker["size"]["scale"] == "sqrt"
     assert issues(con, relation, doc, "point") == []
 
 

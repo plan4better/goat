@@ -299,7 +299,8 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """The OD lines: colored by weight classes, wider with more weight."""
+        """The OD lines: colored by weight classes, wider with more weight, by
+        its square root, so one large flow leaves the others room to differ."""
         return numeric_default(
             "weight",
             "colorbrewer:OrRd",
@@ -309,13 +310,14 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             symbol={
                 "line": {
                     "opacity": 0.8,
-                    "width": {"field": "weight", "range": [1, 10]},
+                    "width": {"field": "weight", "range": [1, 10], "scale": "sqrt"},
                 }
             },
         )
 
     def points_style(self: Self, params: OriginDestinationToolParams) -> dict[str, Any]:
-        """The OD points: colored by weight classes, larger with more weight."""
+        """The OD points: colored by weight classes, larger with more weight, by
+        its square root as the lines."""
         return numeric_default(
             "weight",
             "colorbrewer:OrRd",
@@ -325,7 +327,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             symbol={
                 "marker": {
                     "opacity": 0.8,
-                    "size": {"field": "weight", "range": [10, 50]},
+                    "size": {"field": "weight", "range": [10, 50], "scale": "sqrt"},
                 }
             },
         )
