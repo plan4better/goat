@@ -82,6 +82,7 @@ from goatlib.style.fingerprint import fingerprint
 from goatlib.style.version import stamp
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
+from goatlib.tools.style import fit_classes, without_single_classes
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target, postgres_uri
 from goatlib.utils.layer import (
@@ -1108,6 +1109,10 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
     # Subclasses must define this - used for OUTPUT_GEOMETRY_TYPE and DEFAULT_OUTPUT_NAME
     tool_class: type = None  # type: ignore[assignment]
 
+    #: Whether the styles the tool gives its results are its own, fitted to the
+    #: result (`computed_style`); False for a tool that hands on a style someone made.
+    fits_result_style: bool = True
+
     def __init__(self: Self) -> None:
         """Initialize tool runner."""
         super().__init__()
@@ -1265,15 +1270,23 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         geometry: str | None,
         fingerprint: str,
         seed: str,
+        fit: bool = False,
     ) -> dict[str, Any]:
         """`document`, or the default style for the geometry (its color picked by
         `seed`), with the values the server computes filled from `relation`; as
         it is when they cannot be computed. Either way with the lowest GOAT Style
-        version its keys need (`stamp`)."""
+        version its keys need (`stamp`). With `fit` (the style the tool asks for
+        in this run), the class counts are fitted to the result first
+        (`fit_classes`) and a classification left with one class is dropped."""
         if document is None:
             document = default_style(
                 DataContext(kind="vector", geometry=geometry), seed=seed
             )
+        if fit:
+            try:
+                document = fit_classes(self.duckdb_con, relation, document)
+            except Exception:  # the classes as asked for, unfitted
+                logger.warning("Fitting the result's classes failed", exc_info=True)
         try:
             computed, _ = compute_into(
                 self.duckdb_con,
@@ -1285,7 +1298,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         except Exception:  # never fail a run on its style: the map load computes it
             logger.warning("Computing the result's style failed", exc_info=True)
             return stamp(document)
-        return stamp(computed)
+        return stamp(without_single_classes(computed) if fit else computed)
 
     def _export_temp_layer_to_parquet(
         self: Self,
@@ -1957,6 +1970,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 geometry=geometry,
                 fingerprint=TEMP_FINGERPRINT,
                 seed=output_layer_id,
+                fit=self.fits_result_style,
             )
 
         # Write to temp storage
@@ -2372,6 +2386,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                     data_snapshot=data_snapshot, catalog_version=None
                 ),
                 seed=output_layer_id,
+                fit=self.fits_result_style,
             )
 
         await self.db_service.create_layer(

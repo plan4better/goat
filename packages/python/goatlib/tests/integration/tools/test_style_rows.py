@@ -204,8 +204,10 @@ async def test_a_tool_result_gets_its_computed_style_stamped_with_its_snapshot(
         source_layer_id=source_id,
         area_type="h3_grid",
         h3_resolution=8,
-        column_statistics={"operation": "count"},
-        result_layer_name="Counts",
+        # A sum over the points' capacities: one value per cell, all different
+        # (a count of one point per cell would draw in one color, unclassified).
+        column_statistics={"operation": "sum", "field": "capacity"},
+        result_layer_name="Capacities",
     )
     result = await asyncio.to_thread(runner.run, params)
     layer_id = result["layer_id"]
@@ -224,7 +226,7 @@ async def test_a_tool_result_gets_its_computed_style_stamped_with_its_snapshot(
         assert snapshot == await postgres_pool.fetchval(
             f"SELECT data_snapshot FROM {S}.layer WHERE id = $1", uuid.UUID(layer_id)
         )
-        assert c["field"] == "count" and c["classes"]
+        assert c["field"] == "capacity_sum" and c["classes"]
         active = await active_of(postgres_pool, result["layer_project_id"])
         assert json.loads(active["document"]) == doc
     finally:

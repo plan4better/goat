@@ -35,9 +35,16 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import SUNSET, categories
+from goatlib.tools.style import categories
 
 logger = logging.getLogger(__name__)
+
+#: Cluster ids are names, not amounts: a categorical palette, its colors
+#: repeated in order when there are more clusters than colors. The default for
+#: categories has fewer colors than the tool's default number of clusters, so
+#: one of the catalogue's two longest categorical palettes (12 colors): the one
+#: whose neighbouring colors differ in hue, not only in lightness.
+CLUSTER_PALETTE = "colorbrewer:Set3"
 
 
 class ClusteringZonesToolParams(ToolInputBase, ClusteringParams):
@@ -461,7 +468,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
         return categories(
             "cluster_id",
             list(range(params.nb_cluster)),
-            SUNSET,
+            CLUSTER_PALETTE,
             "point",
             symbol={"marker": {"size": 16, "opacity": 0.6}},
         )
@@ -473,11 +480,11 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """One class per cluster, in sunset colors."""
+        """One class per cluster, in distinct colors."""
         return categories(
             "cluster_id",
             list(range(params.nb_cluster)),
-            SUNSET,
+            CLUSTER_PALETTE,
             geometry,
             symbol={"marker": {"size": 8, "opacity": 0.8}}
             if geometry == "point"

@@ -510,7 +510,16 @@ documents goatlib built or upgraded:
 - **Tool looks** are documents from `tools/style.py` (`classified`,
   `categories`, the bundle role symbols, ...). A tool returns its look from
   `BaseToolRunner.get_layer_style`; the runner fills the classes from the result
-  (`computed_style`) and stamps them with the new table's snapshot. A workflow
+  (`computed_style`) and stamps them with the new table's snapshot. A tool asks
+  for a fixed number of classes whatever its result holds, so the runner first
+  fits the count of the style it asks for in that run to the result
+  (`tools/style.py`, `fit_classes`): with fewer distinct values than classes
+  asked for, it keeps whichever of the two counts gives more classes holding a
+  feature (then fewer empty classes), so no result shows fewer colors than the
+  plain count would; one class or one value gives one color. Where ties make breaks fall together,
+  fewer classes are drawn than the stored count, the same on every recompute. A
+  style handed on from elsewhere (a template's, a filtered copy's) is not
+  fitted. A workflow
   preview has no layer: its result and the preview's metadata file carry the
   document as `style`, stamped `temp`, and saving the result computes it again.
 - **Catalog items** promote with their published style asset upgraded for the

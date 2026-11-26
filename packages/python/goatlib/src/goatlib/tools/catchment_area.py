@@ -465,7 +465,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """One class per travel cost step, yellow to green: lines for a network
-        output, polygons otherwise.
+        output, points for a point grid, polygons otherwise.
 
         The steps are read from the output; without them, from the params.
         """
@@ -523,7 +523,12 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 "line",
                 symbol={"line": {"width": 3}},
             )
-        return categories(color_field, unique_values, "colorbrewer:YlGn", "polygon")
+        return categories(
+            color_field,
+            unique_values,
+            "colorbrewer:YlGn",
+            "point" if geometry == "point" else "polygon",
+        )
 
     @staticmethod
     def _validated_reference_column(

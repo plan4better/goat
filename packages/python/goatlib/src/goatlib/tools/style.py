@@ -4,17 +4,25 @@ Builders for the looks tools give their results, on top of `goatlib.style`: a
 classification the server computes (`classified`), fixed categories
 (`categories`), and the few looks tools and bundles always use. Classes of a
 `classified` style are filled from the result data by the tool runner
-(`BaseToolRunner.computed_style`), like any style the server computes.
+(`BaseToolRunner.computed_style`), like any style the server computes, once
+`fit_classes` has fitted the count it asks for to the result.
 """
 
 import copy
 from typing import Any
 
+import duckdb
+
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
+from goatlib.style.compute import Breaks
 from goatlib.style.context import DataContext
+from goatlib.style.data import compute_stats
 from goatlib.style.defaults import default_style
 from goatlib.style.ids import assign_ids
+from goatlib.style.models.classify import NUMERIC_METHODS
+from goatlib.utils.column_types import column_types, type_class
 
 #: CARTO's sequential palettes, which goatlib's palette catalogue does not carry.
 EMRLD = ["#d3f2a3", "#97e196", "#6cc08b", "#4c9b82", "#217a79", "#105965", "#074050"]
@@ -68,6 +76,132 @@ def classified(
         {"field": field, "method": method, "count": count, "palette": palette}
     ]
     return assign_ids(doc)
+
+
+def _asks_for_classes(c: Any) -> bool:
+    """A numeric classification with a count: what `classified` asks for. Only
+    the style a tool builds in its run is fitted (`BaseToolRunner.computed_style`
+    with `fit`), so this does not tell a tool's style from anyone else's."""
+    return (
+        isinstance(c, dict)
+        and c.get("method") in NUMERIC_METHODS
+        and isinstance(c.get("field"), str)
+        and isinstance(c.get("count"), int)
+        and not isinstance(c.get("count"), bool)
+    )
+
+
+def _classes_drawn(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    c: dict[str, Any],
+    counts: tuple[int, ...],
+) -> dict[int, tuple[int, int]]:
+    """Per count, the classes the shared break code makes that hold a feature
+    (from inclusive, to exclusive) and those left empty, counted for all counts
+    in one pass over the data."""
+    breaks: dict[int, tuple[float, ...]] = {}
+    for count in counts:
+        key = ("breaks", c["field"], c["method"], str(count))
+        found = compute_stats(con, relation, [key]).get(key)
+        if isinstance(found, Breaks) and found.min is not None:
+            breaks[count] = found.breaks
+    if not breaks:
+        return {count: (0, 0) for count in counts}
+    column = quote_identifier(c["field"])
+    held = ", ".join(
+        "count(DISTINCT "
+        + (" + ".join(f"({column} >= ?)::INTEGER" for _ in b) or "0")
+        + ")"
+        for b in breaks.values()
+    )
+    row = con.execute(
+        f"SELECT {held} FROM {relation} WHERE {column} IS NOT NULL",
+        [v for b in breaks.values() for v in b],
+    ).fetchone()
+    out = {count: (0, 0) for count in counts}
+    for (count, b), holding in zip(breaks.items(), row):
+        out[count] = (holding, len(b) + 1 - holding)
+    return out
+
+
+def _fitted_count(
+    con: duckdb.DuckDBPyConnection, relation: str, c: dict[str, Any]
+) -> int | None:
+    """The count the classification stores: the count asked for while the field
+    has at least as many distinct values. With fewer, of the count asked for and
+    the number of values the one whose classes hold more features
+    (`_classes_drawn`), then the one with fewer empty classes, then the smaller;
+    1 when that holds a single class or the field has one value or none. Tied values may still draw fewer classes
+    than the count, the same on every recompute. None where there is nothing to
+    fit: a field that is not a number in the data (the checks report it), or no
+    rows, whose classes are computed when data arrives."""
+    field, wish = c["field"], c["count"]
+    if type_class(column_types(con, relation).get(field, "")) not in (
+        "integer",
+        "number",
+    ):
+        return None
+    column = quote_identifier(field)
+    # The distinct values are counted only up to one more than the wish.
+    rows, values = con.execute(
+        f"""SELECT EXISTS (SELECT 1 FROM {relation}),
+                   (SELECT count(*) FROM (
+                       SELECT DISTINCT {column} FROM {relation}
+                       WHERE {column} IS NOT NULL LIMIT {wish + 1}))"""
+    ).fetchone()
+    if not rows:
+        return None
+    if values >= wish:
+        return wish
+    if values <= 1:
+        return 1
+    drawn = _classes_drawn(con, relation, c, (wish, values))
+    # More classes holding a feature, then fewer empty ones, then the smaller count.
+    best = max(drawn, key=lambda k: (drawn[k][0], -drawn[k][1], -k))
+    return best if drawn[best][0] > 1 else 1
+
+
+def fit_classes(
+    con: duckdb.DuckDBPyConnection, relation: str, document: dict[str, Any]
+) -> dict[str, Any]:
+    """The style a tool asks for in its run with the counts of its numeric
+    classifications fitted to the result (`_fitted_count`); a classification
+    left with one class is left out, so the layer draws in the style's own
+    color."""
+    classify = document.get("classify")
+    if not isinstance(classify, list) or not any(map(_asks_for_classes, classify)):
+        return document
+    kept = []
+    for c in classify:
+        count = _fitted_count(con, relation, c) if _asks_for_classes(c) else None
+        if count is None:
+            kept.append(c)
+        elif count > 1:
+            kept.append({**c, "count": count})
+    return _with_classify(document, kept)
+
+
+def without_single_classes(document: dict[str, Any]) -> dict[str, Any]:
+    """A fitted style, once computed, without the numeric classifications whose
+    breaks all fell together into one class: the style's own color instead of a
+    class list of one."""
+    classify = document.get("classify")
+    if not isinstance(classify, list):
+        return document
+    kept = [
+        c
+        for c in classify
+        if not (_asks_for_classes(c) and len(c.get("classes") or []) == 1)
+    ]
+    return document if len(kept) == len(classify) else _with_classify(document, kept)
+
+
+def _with_classify(document: dict[str, Any], classify: list[Any]) -> dict[str, Any]:
+    out = {**document, "classify": classify}
+    if not classify:
+        del out["classify"]
+    return out
 
 
 def categories(
