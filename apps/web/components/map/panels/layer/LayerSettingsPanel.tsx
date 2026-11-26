@@ -10,6 +10,7 @@ import { useUserProfile } from "@/lib/api/users";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
 import type { Geometry } from "@/lib/style/compile/types";
+import { useStyleStores } from "@/lib/style/editor/StyleStores";
 import { sourceOf } from "@/lib/style/layerSource";
 import { canEditDataset, canSetDefaultStyle } from "@/lib/utils/layerPermissions";
 
@@ -19,6 +20,7 @@ import { useLazyTabs } from "@/hooks/map/useLazyTabs";
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 import { useLayerStyle } from "@/hooks/style/useLayerStyle";
+import { useLegendZoom } from "@/hooks/style/useLegendPresence";
 
 import Container from "@/components/map/panels/Container";
 import FilterImpl from "@/components/map/panels/filter/LayerFilterPanel";
@@ -89,10 +91,23 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
 
   const layerType = activeLayer?.type;
   const store = useLayerStyle(projectId, layerType === "table" ? undefined : (activeLayer ?? undefined));
+  // The store of the layer and style shown, as the style panel tells it: another layer or named style arrives a
+  // render before its store does, and until then the header draws the stored style.
+  const registry = useStyleStores();
+  const styleId = activeLayer?.style?.id;
+  const headerStore =
+    store &&
+    activeLayer &&
+    styleId &&
+    registry?.get({ projectId, layerProjectId: activeLayer.id, styleId }) === store
+      ? store
+      : null;
   const { setLayerState, mutate } = useProjectMap(projectId);
   // The header counts a layer's features; a raster file, a map service and a table show no count and ask for none.
   const counted = layerType !== "raster" && layerType !== "table";
   const { featureCount } = useFeatureCount(counted ? (activeLayer?.layer_id ?? undefined) : undefined);
+  // The header's swatch is drawn for the zoom the layer list's swatches are.
+  const legendZoom = useLegendZoom();
   // Who may make a style the dataset's default: a project editor who may write the dataset.
   const { userProfile } = useUserProfile();
   const { project } = useProject(projectId);
@@ -279,7 +294,10 @@ const LayerSettingsPanel = ({ projectId, projectLayers = [] }: LayerSettingsPane
         header={
           <StyleHeader
             layer={editorLayer}
-            store={store}
+            store={headerStore}
+            storedDocument={activeLayer?.style?.document}
+            zoom={legendZoom}
+            table={layerType === "table"}
             featureCount={counted ? featureCount : undefined}
             noHint={!activeLayer || layerType === "table"}
           />

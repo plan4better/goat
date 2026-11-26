@@ -103,6 +103,24 @@ describe("the print legend", () => {
     expect(container.querySelectorAll("svg")).toHaveLength(2);
   });
 
+  it("a layer of its base look only shows that swatch beside its name; a raster layer shows none there", () => {
+    const raster = {
+      ...layer(8, "Elevation", { version: "1.0.0", kind: "raster" } as unknown as LayerStyle),
+      type: "raster",
+      feature_layer_geometry_type: null,
+    } as unknown as MapLayer;
+    render(
+      <LegendElementRenderer element={legendElement()} projectLayers={[layer(6, "Parks", PLAIN), raster]} />
+    );
+    const parks = screen.getByText("Parks").closest(".MuiStack-root") as HTMLElement;
+    const area = parks.querySelector("svg rect:not([data-checker-under])");
+    expect(area?.getAttribute("fill")).toBe("#00ff00");
+    expect(area?.getAttribute("stroke")).toBe("none");
+    const elevation = screen.getByText("Elevation").closest(".MuiStack-root") as HTMLElement;
+    expect(elevation.querySelector("svg")).toBeNull();
+    expect(screen.queryByTestId("raster-layer-icon")).toBeNull();
+  });
+
   it("a connected locked map's legend shows its frozen documents", () => {
     const map: ReportElement = {
       id: "map-1",
