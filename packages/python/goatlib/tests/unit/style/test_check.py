@@ -584,3 +584,85 @@ def test_classes_do_not_switch_on_a_part_the_layer_has_off() -> None:
         ],
     }
     assert "nothing_drawn" in [i.code for i in check(doc, "polygon")]
+
+
+RASTER = {"version": "1.0.0", "kind": "raster"}
+H3_COLUMNS = {"type": "h3", "extrude": {"tallest": 500}}
+CONTINUOUS = {"type": "continuous", "palette": "goat:elevation", "domain": [0, 500]}
+CATEGORICAL = {
+    "type": "categorical",
+    "classes": [{"value": 1, "color": "#1b9e77"}],
+}
+
+
+@pytest.mark.parametrize(
+    ("doc", "geometry", "reason"),
+    [
+        ({**POINT}, "point", "points"),
+        ({**POINT, "render": {"type": "features"}}, "point", "points"),
+        ({**POINT, "render": {"type": "heatmap"}}, "point", "heatmap"),
+        ({**POINT, "render": {"type": "heatmap"}}, None, "heatmap"),
+        ({**POINT, "render": {"type": "cluster"}}, "point", "cluster"),
+        ({**POINT, "render": H3_COLUMNS}, "point", "columns"),
+        ({**POINT, "render": H3_COLUMNS}, None, "columns"),
+        ({**RASTER, "render": {"type": "hillshade"}}, None, "hillshade"),
+        (
+            {**RASTER, "render": {"type": "hillshade", "palette": "goat:elevation"}},
+            None,
+            "hillshade",
+        ),
+        ({**RASTER, "render": CONTINUOUS}, None, "color_scale"),
+        ({**RASTER, "render": CATEGORICAL}, None, "color_scale"),
+    ],
+)
+@pytest.mark.parametrize("blend", ["multiply", "luminosity", "plus-lighter"])
+def test_a_blend_on_a_layer_that_draws_nothing_that_mixes(
+    doc: dict, geometry: str | None, reason: str, blend: str
+) -> None:
+    [issue] = check({**doc, "blend": blend}, geometry)
+    assert (issue.code, issue.level, issue.path, issue.params) == (
+        "blend_not_drawn",
+        "info",
+        "/blend",
+        {"reason": reason},
+    )
+    assert (issue.fix.op, issue.fix.path) == ("remove", "/blend")
+
+
+@pytest.mark.parametrize(
+    ("doc", "geometry"),
+    [
+        ({**POINT, "symbol": {"fill": {"color": "#fcbba1"}}}, "polygon"),
+        (
+            {**POINT, "symbol": {"extrude": {"height": 10}, "outline": {"width": 1}}},
+            "polygon",
+        ),
+        ({**POINT, "symbol": {"line": {"color": "#2166ac"}}}, "line"),
+        ({**POINT, "render": {"type": "h3"}}, "point"),
+        ({**POINT, "render": {"type": "h3"}}, None),
+        # Points drawn as features where the geometry is not known: nothing to say.
+        ({**POINT}, None),
+        ({**RASTER}, None),
+        ({**RASTER, "render": {"type": "image"}}, None),
+        ({**RASTER, "render": {"type": "image", "bands": [1, 2, 3]}}, None),
+    ],
+)
+@pytest.mark.parametrize("blend", ["multiply", "luminosity", "plus-lighter"])
+def test_a_blend_on_a_layer_that_mixes_is_not_reported(
+    doc: dict, geometry: str | None, blend: str
+) -> None:
+    assert check({**doc, "blend": blend}, geometry) == []
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {**POINT, "render": {"type": "heatmap"}},
+        {**POINT, "render": H3_COLUMNS},
+        {**RASTER, "render": {"type": "hillshade"}},
+        {**RASTER, "render": CONTINUOUS},
+    ],
+)
+def test_normal_or_no_blend_is_never_reported(doc: dict) -> None:
+    assert check({**doc, "blend": "normal"}, "point") == []
+    assert check(doc, "point") == []

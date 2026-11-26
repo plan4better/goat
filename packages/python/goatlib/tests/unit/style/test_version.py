@@ -312,6 +312,38 @@ def test_every_schema_key_has_a_version() -> None:
         assert parsed is not None and isinstance(v, str) and parsed <= spec, v
 
 
+def test_blend_belongs_to_1_0_0() -> None:
+    base = set(
+        json.loads(
+            resources.files("goatlib.style")
+            .joinpath("data", "keys-1.0.0.json")
+            .read_text()
+        )
+    )
+    keys = {"VectorStyle.blend", "RasterStyle.blend"}
+    keys |= {
+        f"{model}.blend={value}"
+        for model in ("VectorStyle", "RasterStyle")
+        for value in (
+            "normal",
+            "multiply",
+            "screen",
+            "overlay",
+            "color",
+            "luminosity",
+            "plus-lighter",
+        )
+    }
+    assert keys <= base
+    assert not keys & set(version.SINCE)
+    assert (
+        version.stamp({"version": "1.0.0", "kind": "vector", "blend": "multiply"})[
+            "version"
+        ]
+        == "1.0.0"
+    )
+
+
 def test_map_document_carries_the_same_version() -> None:
     model, issues = parse_map_document({"version": "1.0.0", "locale": "de-DE"})
     assert issues == [] and model.version == "1.0.0"

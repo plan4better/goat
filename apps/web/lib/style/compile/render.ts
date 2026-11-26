@@ -12,6 +12,7 @@ import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compi
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import {
   type PartContext,
+  layerBlend,
   layerOpacity,
   makeLayer,
   put,
@@ -720,8 +721,8 @@ function h3ColumnPaint(ctx: PartContext, render: JsonObject, extrude: JsonObject
 }
 
 /** The hexagons over geoapi's H3 tiles: a fill and, where `render.outline` is present and its width is not 0, an
- * outline; up to `points_from_zoom`. With `extrude` the fill is a fill-extrusion of columns and the outline is not
- * drawn (3D spec 7.6). */
+ * outline; up to `points_from_zoom`, both with the layer's blend (spec 4.7). With `extrude` the fill is a
+ * fill-extrusion of columns, which MapLibre draws without a blend, and the outline is not drawn (3D spec 7.6). */
 export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecification[] {
   const source = h3SourceId(ctx.sourceId);
   const zooms: { minzoom?: number; maxzoom?: number } = {};
@@ -744,6 +745,8 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
     withLayerOpacity(ctx, fromForm(render.opacity, "number", DEFAULTS["h3.opacity"])),
     ctx
   );
+  const blend = layerBlend(ctx.style);
+  if (blend) fillPaint["fill-layer-blend"] = blend;
   const layers = [
     { id: `${ctx.id}-h3-fill`, type: "fill", source, "source-layer": "h3", ...zooms, paint: fillPaint },
   ] as LayerSpecification[];
@@ -764,6 +767,7 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
     };
     const layer = layerOpacity(ctx);
     if (layer) put(linePaint, "line-opacity", layer, ctx);
+    if (blend) linePaint["line-layer-blend"] = blend;
     layers.push({
       id: `${ctx.id}-h3-outline`,
       type: "line",

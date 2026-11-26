@@ -182,6 +182,7 @@ const PROBES: CompileInput[] = [
       version: "1.0.0",
       kind: "vector",
       opacity: 0.5,
+      blend: "multiply",
       symbol: {
         fill: { color: "#ff0000" },
         outline: { width: 1 },
@@ -226,7 +227,7 @@ const PROBES: CompileInput[] = [
   {
     id: "image",
     source: { type: "service", id: "s", service: "xyz", tiles: "https://tiles.example/{z}/{x}/{y}.png" },
-    style: { version: "1.0.0", kind: "raster", brightness: -0.2, hue: 30 },
+    style: { version: "1.0.0", kind: "raster", blend: "multiply", brightness: -0.2, hue: 30 },
   },
 ];
 

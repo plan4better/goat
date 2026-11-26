@@ -56,6 +56,7 @@ SPEC_CODES = {  # GOAT Style spec, section 11, code table (code: default level)
     "mixed_icon_kinds": "info",
     "unclassified_values": "info",
     "low_opacity": "info",
+    "blend_not_drawn": "info",
     "unknown_layer": "error",
     "unknown_style": "error",
     "duplicate_layer": "error",

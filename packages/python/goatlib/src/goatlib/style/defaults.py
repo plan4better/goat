@@ -15,6 +15,7 @@ from goatlib.style.context import DataContext
 #: for images and hillshade alone) are the compiler's.
 REFERENCE_DEFAULTS: dict[str, Any] = {
     "opacity": 1,
+    "blend": "normal",
     "min_zoom": 0,
     "max_zoom": 24,
     "fill.color": "#2bb381",
@@ -99,6 +100,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "h3.extrude.base": 0,
     "h3.extrude.scale": "sqrt",
     "raster.opacity": 1,
+    "raster.blend": "normal",
     "raster.resampling": "linear",
     "raster.brightness": 0,
     "raster.contrast": 0,

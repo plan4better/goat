@@ -136,3 +136,41 @@ def test_a_field_or_band_without_values_says_which() -> None:
         raster, {("range", "b1"): (None, None)}, geometry=None, fingerprint="f", at="t"
     )
     assert [(n.code, n.params) for n in notes] == [("no_values", {"case": "band"})]
+
+
+def test_a_blend_that_draws_nothing_names_why(contexts: dict) -> None:
+    doc = {**V, "blend": "multiply", "render": {"type": "heatmap"}}
+    assert params(doc, contexts["schools"], "blend_not_drawn") == [
+        {"reason": "heatmap"}
+    ]
+    raster = {
+        "version": "1.0.0",
+        "kind": "raster",
+        "blend": "screen",
+        "render": {"type": "hillshade"},
+    }
+    assert params(raster, contexts["elevation"], "blend_not_drawn") == [
+        {"reason": "hillshade"}
+    ]
+
+
+def test_a_blend_on_an_image_or_a_map_service_is_valid_and_not_reported(
+    contexts: dict,
+) -> None:
+    for target in ("wms", "tiles", "satellite"):
+        for render in ({}, {"render": {"type": "image"}}):
+            doc = {"version": "1.0.0", "kind": "raster", "blend": "multiply", **render}
+            issues = validate(doc, contexts[target])
+            assert [(i.code, i.level) for i in issues] == [], (target, issues)
+
+
+def test_a_blend_on_an_image_of_a_file_with_a_color_table_is_not_reported(
+    contexts: dict,
+) -> None:
+    # The image may draw the file's color table and then not mix (spec 4.7); the
+    # check does not report it, also where the context knows the file has a table.
+    assert contexts["landcover"].color_table is True
+    for render in ({}, {"render": {"type": "image"}}):
+        doc = {"version": "1.0.0", "kind": "raster", "blend": "multiply", **render}
+        issues = validate(doc, contexts["landcover"])
+        assert [(i.code, i.level) for i in issues] == [], issues
