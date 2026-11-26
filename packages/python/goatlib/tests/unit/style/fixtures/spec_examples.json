@@ -1110,6 +1110,22 @@
   }
  },
  {
+  "line": 1124,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "blend": "multiply",
+   "symbol": {
+    "fill": {
+     "color": "#fcbba1"
+    },
+    "outline": false
+   }
+  }
+ },
+ {
   "line": 844,
   "target": "facilities",
   "expect": [],

@@ -3499,6 +3499,7 @@
     "issue_unclassified_values": "Values without a class: {{values}}.",
     "issue_classes_invalid": "Classes run from low to high without gaps: each starts where the one before ends, and below its own end.",
     "issue_low_opacity": "The layer is under 15% opacity.",
+    "issue_blend_not_drawn": "Nothing of this layer mixes with the map below.",
     "issue_nothing_drawn": "Every part of this layer is switched off.",
     "issue_mixed_icon_kinds": "Library icons and icons with their own colors (uploads, emoji) are drawn as two groups, so icons of the two kinds do not sort together.",
     "issue_extrude_drops_pattern": "Heights draw without a fill pattern.",

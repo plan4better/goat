@@ -124,6 +124,7 @@ export const WORDED_ISSUES: Record<string, { needs: readonly string[]; count?: s
   unclassified_values: { needs: ["values"] },
   classes_invalid: { needs: [] },
   low_opacity: { needs: [] },
+  blend_not_drawn: { needs: [] },
   nothing_drawn: { needs: [] },
   mixed_icon_kinds: { needs: [] },
   extrude_drops_pattern: { needs: [] },

@@ -154,6 +154,8 @@ class Computed(StyleModel):
 
 
 Scale = Literal["linear", "sqrt", "log"]
+#: How a layer's colors mix with what is drawn under it (spec 4.7): one fixed value per layer.
+Blend = Literal["normal", "multiply", "screen", "overlay", "color"]
 
 
 def _log_domain_above_zero(form: Any) -> Any:

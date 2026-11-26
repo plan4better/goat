@@ -3499,6 +3499,7 @@
     "issue_unclassified_values": "Werte ohne Klasse: {{values}}.",
     "issue_classes_invalid": "Klassen reichen ohne Lücken von niedrig nach hoch: Jede beginnt, wo die vorige endet, und unter ihrem eigenen Ende.",
     "issue_low_opacity": "Der Layer hat weniger als 15 % Deckkraft.",
+    "issue_blend_not_drawn": "Nichts von diesem Layer wird mit der Karte darunter gemischt.",
     "issue_nothing_drawn": "Alle Teile dieses Layers sind ausgeschaltet.",
     "issue_mixed_icon_kinds": "Bibliothekssymbole und Symbole mit eigenen Farben (Uploads, Emoji) werden als zwei Gruppen gezeichnet, daher werden Symbole der beiden Arten nicht gemeinsam sortiert.",
     "issue_extrude_drops_pattern": "Höhen werden ohne Füllmuster gezeichnet.",

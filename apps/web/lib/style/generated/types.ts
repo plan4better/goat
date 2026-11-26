@@ -20,6 +20,7 @@ export interface VectorStyle {
   kind: "vector";
   geometry?: ("point" | "line" | "polygon") | null;
   opacity?: (number | ZoomLayerOpacity) | null;
+  blend?: ("normal" | "multiply" | "screen" | "overlay" | "color") | null;
   min_zoom?: number | null;
   max_zoom?: number | null;
   symbol?: Symbol | null;
@@ -1173,6 +1174,7 @@ export interface RasterStyle {
   version: string;
   kind: "raster";
   opacity?: (number | ZoomLayerOpacity) | null;
+  blend?: ("normal" | "multiply" | "screen" | "overlay" | "color") | null;
   min_zoom?: number | null;
   max_zoom?: number | null;
   resampling?: ("linear" | "nearest") | null;

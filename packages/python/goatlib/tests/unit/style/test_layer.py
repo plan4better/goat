@@ -297,3 +297,61 @@ def test_a_cluster_value_defaults_to_the_count() -> None:
     from goatlib.style.defaults import REFERENCE_DEFAULTS
 
     assert REFERENCE_DEFAULTS["cluster.value"] == {"op": "count"}
+
+
+BLENDS = ["normal", "multiply", "screen", "overlay", "color"]
+LAYERS = {
+    "vector": {"version": "1.0.0", "kind": "vector"},
+    "raster": {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}},
+}
+
+
+@pytest.mark.parametrize("kind", ["vector", "raster"])
+@pytest.mark.parametrize("blend", BLENDS)
+def test_a_layer_takes_each_blend(kind: str, blend: str) -> None:
+    assert codes_of(parse_for_write({**LAYERS[kind], "blend": blend})) == []
+
+
+@pytest.mark.parametrize("kind", ["vector", "raster"])
+@pytest.mark.parametrize(
+    "blend",
+    [
+        "luminosity",
+        "plus-lighter",
+        "Multiply",
+        {"zoom": [[5, "normal"], [10, "multiply"]]},
+        1,
+    ],
+)
+def test_a_blend_is_one_of_five_fixed_values(kind: str, blend: object) -> None:
+    [issue] = parse_for_write({**LAYERS[kind], "blend": blend})[1]
+    assert (issue.code, issue.path) == ("invalid_value", "/blend")
+    assert all(f"'{b}'" in issue.message for b in BLENDS), issue.message
+
+
+def test_a_blend_is_the_layers_not_a_parts_or_a_rules() -> None:
+    doc = {**LAYERS["vector"], "symbol": {"fill": {"blend": "multiply"}}}
+    assert codes_of(parse_for_write(doc)) == ["unknown_key"]
+    rule = {"when": {"op": "isNull", "args": [{"property": "a"}]}, "blend": "multiply"}
+    assert codes_of(parse_for_write({**LAYERS["vector"], "rules": [rule]})) == [
+        "unknown_key"
+    ]
+
+
+@pytest.mark.parametrize("kind", ["vector", "raster"])
+def test_a_layer_without_a_blend_stays_without_one(kind: str) -> None:
+    from goatlib.style.version import stamp
+
+    doc = {**LAYERS[kind], "opacity": 0.5}
+    before = json.dumps(doc)
+    model, issues = parse_for_write(doc)
+    assert issues == [] and model.blend is None
+    assert json.dumps(doc) == before
+    assert json.dumps(stamp(doc)) == before
+
+
+def test_blend_defaults_to_normal() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    assert REFERENCE_DEFAULTS["blend"] == "normal"
+    assert REFERENCE_DEFAULTS["raster.blend"] == "normal"

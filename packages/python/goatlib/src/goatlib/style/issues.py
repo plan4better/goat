@@ -69,6 +69,7 @@ CODES: dict[str, Level] = {
     "mixed_icon_kinds": "info",
     "unclassified_values": "info",
     "low_opacity": "info",
+    "blend_not_drawn": "info",
     "unknown_layer": "error",
     "unknown_style": "error",
     "duplicate_layer": "error",
