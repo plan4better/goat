@@ -82,7 +82,7 @@ from goatlib.style.fingerprint import fingerprint
 from goatlib.style.version import stamp
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
-from goatlib.tools.style import fit_classes, without_single_classes
+from goatlib.tools.style import fit_classes, with_decimals, without_single_classes
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target, postgres_uri
 from goatlib.utils.layer import (
@@ -1277,7 +1277,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         it is when they cannot be computed. Either way with the lowest GOAT Style
         version its keys need (`stamp`). With `fit` (the style the tool asks for
         in this run), the class counts are fitted to the result first
-        (`fit_classes`) and a classification left with one class is dropped."""
+        (`fit_classes`), a classification left with one class is dropped, and
+        the classes get the decimals they need (`with_decimals`)."""
         if document is None:
             document = default_style(
                 DataContext(kind="vector", geometry=geometry), seed=seed
@@ -1298,7 +1299,13 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         except Exception:  # never fail a run on its style: the map load computes it
             logger.warning("Computing the result's style failed", exc_info=True)
             return stamp(document)
-        return stamp(without_single_classes(computed) if fit else computed)
+        if fit:
+            computed = without_single_classes(computed)
+            try:
+                computed = with_decimals(computed)
+            except Exception:  # the classes without a number format
+                logger.warning("The result's number format failed", exc_info=True)
+        return stamp(computed)
 
     def _export_temp_layer_to_parquet(
         self: Self,

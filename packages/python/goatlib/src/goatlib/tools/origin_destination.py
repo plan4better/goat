@@ -28,7 +28,7 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import classified
+from goatlib.tools.style import numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +300,11 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """The OD lines: colored by weight classes, wider with more weight."""
-        return classified(
+        return numeric_default(
             "weight",
             "colorbrewer:OrRd",
             "line",
+            style_title("sum", field=params.weight_column),
             count=5,
             symbol={
                 "line": {
@@ -313,12 +314,13 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             },
         )
 
-    def points_style(self: Self) -> dict[str, Any]:
+    def points_style(self: Self, params: OriginDestinationToolParams) -> dict[str, Any]:
         """The OD points: colored by weight classes, larger with more weight."""
-        return classified(
+        return numeric_default(
             "weight",
             "colorbrewer:OrRd",
             "point",
+            style_title("sum", field=params.weight_column),
             count=5,
             symbol={
                 "marker": {
@@ -433,7 +435,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                     output_name=output_name_points,
                     metadata=metadata_points,
                     table_info=table_info_points,
-                    style=self.points_style(),
+                    style=self.points_style(params),
                 )
             )
 

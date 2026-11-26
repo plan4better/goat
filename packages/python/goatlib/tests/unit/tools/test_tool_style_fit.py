@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 import duckdb
 import pytest
 from goatlib.analysis.schemas.aggregate import AggregationAreaType
+from goatlib.analysis.schemas.catchment_area_v2 import CostType
+from goatlib.analysis.schemas.heatmap_v2 import HeatmapType
 from goatlib.models.io import DatasetMetadata
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.compute import same_ignoring_stamps
@@ -133,10 +135,18 @@ def _own(runner_class: type, params: Callable[[], Any] | None = None) -> Any:
     return runner_class, style
 
 
+def _od() -> Any:
+    return MagicMock(weight_column="trips")
+
+
 def _od_points(
     runner: OriginDestinationToolRunner, geometry: str, relation: str
 ) -> Any:
-    return runner.points_style()
+    return runner.points_style(_od())
+
+
+def _v2(kind: HeatmapType) -> Callable[[], Any]:
+    return lambda: MagicMock(heatmap_type=kind, cost_type=CostType.time)
 
 
 #: Every tool that asks for a classification: its runner, how it builds its
@@ -157,7 +167,7 @@ TOOLS: dict[str, tuple[type, Callable[..., Any], str, str, int]] = {
         7,
     ),
     "origin_destination_lines": (
-        *_own(OriginDestinationToolRunner),
+        *_own(OriginDestinationToolRunner, _od),
         "weight",
         "line",
         5,
@@ -194,25 +204,25 @@ TOOLS: dict[str, tuple[type, Callable[..., Any], str, str, int]] = {
         7,
     ),
     "heatmap_gravity": (
-        *_own(HeatmapGravityV2ToolRunner),
+        *_own(HeatmapGravityV2ToolRunner, _v2(HeatmapType.gravity)),
         "total_accessibility",
         "polygon",
         7,
     ),
     "heatmap_closest_average": (
-        *_own(HeatmapClosestAverageV2ToolRunner),
+        *_own(HeatmapClosestAverageV2ToolRunner, _v2(HeatmapType.closest_average)),
         "total_accessibility",
         "polygon",
         7,
     ),
     "heatmap_connectivity": (
-        *_own(HeatmapConnectivityV2ToolRunner),
+        *_own(HeatmapConnectivityV2ToolRunner, _v2(HeatmapType.connectivity)),
         "total_accessibility",
         "polygon",
         7,
     ),
     "heatmap_2sfca": (
-        *_own(Heatmap2SFCAV2ToolRunner),
+        *_own(Heatmap2SFCAV2ToolRunner, _v2(HeatmapType.two_sfca)),
         "total_accessibility",
         "polygon",
         7,
@@ -308,6 +318,23 @@ def tool_default(
     )
 
 
+def decimals_for(c: dict[str, Any]) -> int:
+    """The decimals the computed classes need: their domain's minimum, breaks
+    and maximum apart."""
+    breaks = [k["from"] for k in c["classes"] if "from" in k]
+    return tool_style.decimals_for([*c["computed"]["domain"], *breaks])
+
+
+def without_format(doc: dict[str, Any]) -> dict[str, Any]:
+    """The style without the number format the tool's own run writes."""
+    return {
+        **doc,
+        "classify": [
+            {k: v for k, v in c.items() if k != "format"} for c in doc["classify"]
+        ],
+    }
+
+
 def classes_of(doc: dict[str, Any]) -> int:
     """The number of classes the layer is drawn in: 1 without a classification."""
     if "classify" not in doc:
@@ -381,6 +408,10 @@ def check_fit(
         now = holding(con, relation, field, doc)
         then = holding(con, relation, field, before)
         assert (now, now - n) >= (then, then - drawn(before))
+        # The decimals its classes need, and the rest of the default as asked.
+        assert c["format"] == {"decimals": decimals_for(c)}
+        asked = {k: v for k, v in intent["classify"][0].items() if k != "count"}
+        assert {k: c.get(k) for k in asked} == asked
     # The style check computes it again when the data's stamp changes: on the
     # same data it gives the same document.
     again, _ = compute_into(con, relation, doc, geometry=geometry, fingerprint="f:2")
@@ -498,8 +529,11 @@ def test_with_many_values_the_default_is_the_one_of_today(
     relation = result_table(con, field, geometry, "many_values")
     intent = build(runner, geometry, relation)
     doc = tool_default(runner, intent, relation, geometry)
-    assert same_ignoring_stamps(doc, today(con, relation, intent, geometry))
+    assert same_ignoring_stamps(
+        without_format(doc), today(con, relation, intent, geometry)
+    )
     assert classes_of(doc) == wish
+    assert doc["classify"][0]["format"] == {"decimals": 0}
 
 
 @pytest.mark.parametrize("distribution", ["constant", "all_null"])
@@ -510,7 +544,7 @@ def test_a_size_by_field_on_one_value_still_validates(
     or none, the plain color stays valid."""
     runner = runner_for(OriginDestinationToolRunner, con)
     relation = result_table(con, "weight", "line", distribution)
-    intent = runner.get_layer_style(MagicMock(), MagicMock(), "line", relation)
+    intent = runner.get_layer_style(_od(), MagicMock(), "line", relation)
     doc = tool_default(runner, intent, relation, "line")
     assert "classify" not in doc
     assert doc["symbol"]["line"]["width"]["field"] == "weight"
@@ -537,7 +571,7 @@ def test_an_empty_result_keeps_the_classes_asked_for(
         "CREATE TABLE empty AS SELECT 1::DOUBLE AS weight, "
         "ST_MakeLine(ST_Point(0, 0), ST_Point(0, 1)) AS geometry LIMIT 0"
     )
-    intent = runner.get_layer_style(MagicMock(), MagicMock(), "line", "empty")
+    intent = runner.get_layer_style(_od(), MagicMock(), "line", "empty")
     doc = tool_default(runner, intent, "empty", "line")
     assert [c["count"] for c in doc["classify"]] == [5]
     assert same_ignoring_stamps(doc, today(con, "empty", intent, "line"))
@@ -554,7 +588,9 @@ def test_a_fit_that_fails_leaves_the_classes_of_today(
     relation = result_table(con, "total", "point", "three_values")
     intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", relation)
     doc = tool_default(runner, intent, relation, "point")
-    assert same_ignoring_stamps(doc, today(con, relation, intent, "point"))
+    assert same_ignoring_stamps(
+        without_format(doc), today(con, relation, intent, "point")
+    )
 
 
 def oranges(geometry: str | None) -> dict[str, Any]:

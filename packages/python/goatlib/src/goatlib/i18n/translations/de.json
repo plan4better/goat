@@ -1256,5 +1256,21 @@
   "cluster_type": {
     "kmean": "K-Means",
     "equal_size": "Ausgewogene Zonen"
+  },
+  "style_titles": {
+    "count": "Anzahl",
+    "sum": "Summe von {field}",
+    "mean": "Mittelwert von {field}",
+    "min": "Minimum von {field}",
+    "max": "Maximum von {field}",
+    "standard_deviation": "Standardabweichung von {field}",
+    "area_weighted": "{title} (flächengewichtet)",
+    "gravity": "Erreichbarkeit (Gravitation)",
+    "closest_average_time": "Mittlere Reisezeit zu den nächsten Zielen",
+    "closest_average_distance": "Mittlere Entfernung zu den nächsten Zielen",
+    "connectivity": "Erreichbare Fläche",
+    "two_sfca": "Angebot je Nachfrage",
+    "market_share": "Marktanteil",
+    "trip_count": "Fahrten im Zeitfenster"
   }
 }

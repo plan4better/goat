@@ -1,19 +1,26 @@
 """GOAT Style documents for the layers tools create (spec 17).
 
 Builders for the looks tools give their results, on top of `goatlib.style`: a
-classification the server computes (`classified`), fixed categories
+classification the server computes (`classified`), the default of a result
+whose value is a number per feature (`numeric_default`), fixed categories
 (`categories`), and the few looks tools and bundles always use. Classes of a
 `classified` style are filled from the result data by the tool runner
 (`BaseToolRunner.computed_style`), like any style the server computes, once
-`fit_classes` has fitted the count it asks for to the result.
+`fit_classes` has fitted the count it asks for to the result; `with_decimals`
+then gives the tool's own classes the decimals they need.
 """
 
 import copy
-from typing import Any
+import logging
+import math
+from decimal import ROUND_HALF_UP, Context, Decimal
+from typing import Any, Iterable
 
 import duckdb
 
+from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
 from goatlib.analysis.statistics.columns import quote_identifier
+from goatlib.i18n import DEFAULT_LANGUAGE, get_translator
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
 from goatlib.style.compute import Breaks
@@ -24,6 +31,8 @@ from goatlib.style.ids import assign_ids
 from goatlib.style.models.classify import NUMERIC_METHODS
 from goatlib.utils.column_types import column_types, type_class
 
+logger = logging.getLogger(__name__)
+
 #: CARTO's sequential palettes, which goatlib's palette catalogue does not carry.
 EMRLD = ["#d3f2a3", "#97e196", "#6cc08b", "#4c9b82", "#217a79", "#105965", "#074050"]
 TEAL = ["#d1eeea", "#a8dbd9", "#85c4c9", "#68abb8", "#4f90a6", "#3b738f", "#2a5674"]
@@ -31,6 +40,13 @@ SUNSET = ["#f3e79b", "#fac484", "#f8a07e", "#eb7f86", "#ce6693", "#a059a0", "#5c
 
 #: Classes a heatmap-like result is split into.
 CLASS_COUNT = 7
+
+#: Features without a value: the grey the style panel gives a new color
+#: classification.
+NO_DATA_GREY = "#cccccc"
+
+#: The most decimals a number format takes.
+MAX_DECIMALS = 10
 
 
 def _part(geometry: str | None) -> str:
@@ -69,13 +85,156 @@ def classified(
     symbol: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A style whose main color is classified by `field`; the classes are computed
-    from the data. The color without a class is the palette's middle."""
-    middle = sample_colors(palette, 1)[0]
-    doc = styled(geometry, {_part(geometry): {"color": middle}, **(symbol or {})})
+    from the data. The color without a class is the palette's middle, also where
+    `symbol` gives the main part other properties."""
+    part = _part(geometry)
+    parts = {**(symbol or {})}
+    parts[part] = {"color": sample_colors(palette, 1)[0], **parts.get(part, {})}
+    doc = styled(geometry, parts)
     doc["classify"] = [
         {"field": field, "method": method, "count": count, "palette": palette}
     ]
     return assign_ids(doc)
+
+
+def style_title(key: str, **values: str) -> str:
+    """The legend title `key` of goatlib's translations (`style_titles`), in
+    English, with each `{name}` replaced by its value."""
+    text = get_translator(DEFAULT_LANGUAGE).resolve_key(f"style_titles.{key}") or key
+    for name, value in values.items():
+        text = text.replace("{" + name + "}", value)
+    return text
+
+
+def numeric_default(
+    field: str,
+    palette: str | list[str],
+    geometry: str | None,
+    title: str,
+    *,
+    reverse: bool = False,
+    unit: str | None = None,
+    count: int = CLASS_COUNT,
+    symbol: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The default of a result whose value is a number per feature: quantile
+    classes of `field` (`classified`), the ramp turned around with `reverse`,
+    the legend's title and unit, and grey for features without a value. The
+    number format follows from the computed classes (`with_decimals`)."""
+    doc = classified(field, palette, geometry, count=count, symbol=symbol)
+    c = doc["classify"][0]
+    if reverse:
+        c["reverse"] = True
+    c["title"] = title
+    if unit:
+        c["unit"] = unit
+    c["no_data"] = {_part(geometry): {"color": NO_DATA_GREY}}
+    return doc
+
+
+def statistic_title(stat: FieldStatistic, *, area_weighted: bool = False) -> str:
+    """The legend title of a statistic: its custom result name as given, else
+    the operation and the source field in words."""
+    if stat.result_name:
+        return stat.result_name
+    title = style_title(stat.operation.value, field=stat.field or "")
+    return style_title("area_weighted", title=title) if area_weighted else title
+
+
+def only_negative(runner: Any, relation: str, field: str) -> bool:
+    """Whether `field` holds a value below 0 and none above, read with the
+    runner's connection; False where the result cannot be read."""
+    column = quote_identifier(field)
+    try:
+        low, high = runner.duckdb_con.execute(
+            f"SELECT min({column}), max({column}) FROM {relation}"
+        ).fetchone()
+        return low is not None and low < 0 and high <= 0
+    except Exception:  # the ramp as it is
+        logger.warning("Reading the result's value range failed", exc_info=True)
+        return False
+
+
+def statistic_default(
+    runner: Any,
+    stat: FieldStatistic,
+    field: str,
+    palette: str | list[str],
+    geometry: str | None,
+    relation: str,
+    *,
+    area_weighted: bool = False,
+) -> dict[str, Any]:
+    """The default of a statistics tool: its first statistic's column `field`
+    (`numeric_default`) in the tool's sequential palette, turned around where
+    the column holds only negative values, so the value farthest from 0 is the
+    darkest."""
+    reverse = stat.operation != StatisticOperation.count and only_negative(
+        runner, relation, field
+    )
+    return numeric_default(
+        field,
+        palette,
+        geometry,
+        statistic_title(stat, area_weighted=area_weighted),
+        reverse=reverse,
+    )
+
+
+#: Enough digits to round any float to `MAX_DECIMALS` decimals.
+_ROUNDING = Context(prec=400)
+
+
+def _rounded(value: float, decimals: int) -> Decimal:
+    """`value` rounded half away from 0, as the legend prints it."""
+    return Decimal(value).quantize(
+        Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP, context=_ROUNDING
+    )
+
+
+def decimals_for(bounds: Iterable[Any]) -> int:
+    """The fewest decimals, at most `MAX_DECIMALS`, at which the distinct finite
+    `bounds` still read in increasing order and none other than 0 reads 0."""
+    values = sorted(
+        {
+            float(b)
+            for b in bounds
+            if isinstance(b, (int, float)) and not isinstance(b, bool)
+            if math.isfinite(b)
+        }
+    )
+    for decimals in range(MAX_DECIMALS + 1):
+        shown = [_rounded(v, decimals) for v in values]
+        if all(a < b for a, b in zip(shown, shown[1:])) and all(
+            s != 0 for v, s in zip(values, shown) if v != 0
+        ):
+            return decimals
+    return MAX_DECIMALS
+
+
+def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
+    """A computed style with a number format on each numeric classification
+    that has classes and no format of its own: the decimals its domain's
+    minimum, class breaks and domain's maximum need (`decimals_for`)."""
+    classify = document.get("classify")
+    if not isinstance(classify, list):
+        return document
+    out, changed = [], False
+    for c in classify:
+        domain = (
+            (c.get("computed") or {}).get("domain") if isinstance(c, dict) else None
+        )
+        if (
+            domain
+            and c.get("method") in NUMERIC_METHODS
+            and c.get("classes")
+            and "format" not in c
+        ):
+            breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
+            c = {**c, "format": {"decimals": decimals_for([*domain, *breaks])}}
+            changed = True
+        out.append(c)
+    return _with_classify(document, out) if changed else document
 
 
 def _asks_for_classes(c: Any) -> bool:

@@ -70,7 +70,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import TEAL, classified
+from goatlib.tools.style import TEAL, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -619,8 +619,11 @@ class HuffModelV2ToolRunner(BaseToolRunner[HuffModelV2ToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """Choice probabilities (0 to 1) in teal: the market share per facility."""
-        return classified("probability", TEAL, geometry)
+        """Choice probabilities (percent, 0 to 100) in teal: the market share
+        per facility."""
+        return numeric_default(
+            "probability", TEAL, geometry, style_title("market_share"), unit="%"
+        )
 
     def process(
         self: Self, params: HuffModelV2ToolParams, temp_dir: Path

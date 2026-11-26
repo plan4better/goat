@@ -31,7 +31,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import TEAL, classified
+from goatlib.tools.style import TEAL, statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +218,10 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
         default style without statistics."""
         if not (params.calculate_statistics and params.field_statistics):
             return None
-        field = params.field_statistics[0].get_operation_first_column_name()
-        return classified(field, TEAL, geometry)
+        stat = params.field_statistics[0]
+        return statistic_default(
+            self, stat, stat.get_operation_first_column_name(), TEAL, geometry, relation
+        )
 
     def process(
         self: Self, params: DissolveToolParams, temp_dir: Path

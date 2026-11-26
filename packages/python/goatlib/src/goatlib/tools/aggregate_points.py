@@ -33,7 +33,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import classified
+from goatlib.tools.style import statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -286,8 +286,15 @@ class AggregatePointsToolRunner(BaseToolRunner[AggregatePointsToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """Aggregates classified by their first statistic, in oranges."""
-        field = params.column_statistics[0].get_result_column_name()
-        return classified(field, "colorbrewer:Oranges", geometry)
+        stat = params.column_statistics[0]
+        return statistic_default(
+            self,
+            stat,
+            stat.get_result_column_name(),
+            "colorbrewer:Oranges",
+            geometry,
+            relation,
+        )
 
     def process(
         self: Self, params: AggregatePointsToolParams, temp_dir: Path

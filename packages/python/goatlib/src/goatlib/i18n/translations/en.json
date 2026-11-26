@@ -1244,5 +1244,21 @@
   "size_method": {
     "count": "Count",
     "field": "Field Value"
+  },
+  "style_titles": {
+    "count": "Count",
+    "sum": "Sum of {field}",
+    "mean": "Mean of {field}",
+    "min": "Minimum of {field}",
+    "max": "Maximum of {field}",
+    "standard_deviation": "Standard deviation of {field}",
+    "area_weighted": "{title} (area weighted)",
+    "gravity": "Accessibility (gravity)",
+    "closest_average_time": "Average travel time to the closest destinations",
+    "closest_average_distance": "Average distance to the closest destinations",
+    "connectivity": "Area reached",
+    "two_sfca": "Supply per demand",
+    "market_share": "Market share",
+    "trip_count": "Trips in the time window"
   }
 }

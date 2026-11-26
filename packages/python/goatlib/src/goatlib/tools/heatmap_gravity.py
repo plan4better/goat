@@ -29,7 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import EMRLD, classified
+from goatlib.tools.style import EMRLD, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,9 @@ class HeatmapGravityToolRunner(BaseToolRunner[HeatmapGravityToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """Gravity accessibility in green: access to opportunities."""
-        return classified("total_accessibility", EMRLD, geometry)
+        return numeric_default(
+            "total_accessibility", EMRLD, geometry, style_title("gravity")
+        )
 
     def process(
         self: Self, params: HeatmapGravityToolParams, temp_dir: Path

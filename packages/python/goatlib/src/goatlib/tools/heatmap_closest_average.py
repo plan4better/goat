@@ -29,7 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import EMRLD, classified
+from goatlib.tools.style import EMRLD, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +130,16 @@ class HeatmapClosestAverageToolRunner(BaseToolRunner[HeatmapClosestAverageToolPa
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """Closest average accessibility in green: access to opportunities."""
-        return classified("total_accessibility", EMRLD, geometry)
+        """The average travel time in minutes to the closest destinations in
+        green, the shortest the darkest: near is good access."""
+        return numeric_default(
+            "total_accessibility",
+            EMRLD,
+            geometry,
+            style_title("closest_average_time"),
+            reverse=True,
+            unit="min",
+        )
 
     def process(
         self: Self, params: HeatmapClosestAverageToolParams, temp_dir: Path

@@ -519,7 +519,12 @@ documents goatlib built or upgraded:
   plain count would; one class or one value gives one color. Where ties make breaks fall together,
   fewer classes are drawn than the stored count, the same on every recompute. A
   style handed on from elsewhere (a template's, a filtered copy's) is not
-  fitted. A workflow
+  fitted. A tool whose result is a number per feature asks for it through
+  `numeric_default`: a ramp and direction by the kind of value, a legend title
+  and unit, and grey for features without a value. Its number of decimals
+  depends on the classes, so the runner writes it after computing them
+  (`with_decimals`), on the same style the fit acts on and only there: the
+  format has no mark that tells a tool's default from a hand-made style. A workflow
   preview has no layer: its result and the preview's metadata file carry the
   document as `style`, stamped `temp`, and saving the result computes it again.
 - **Catalog items** promote with their published style asset upgraded for the
