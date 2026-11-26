@@ -405,7 +405,12 @@
     { "id": "Name_GewaesserL_Stationierung_gross", "type": "symbol", "source-layer": "Gewaesserlinie" },
     { "id": "Nummer_Autobahn_getrennt", "type": "symbol", "source-layer": "Verkehrslinie" },
     { "id": "Symbol_HistorischF_Denkmal", "type": "symbol", "source-layer": "Historische_Flaeche" },
-    { "id": "Symbol_ReliefF_Felsen", "type": "fill", "source-layer": "Reliefflaeche" },
+    {
+      "id": "Symbol_ReliefF_Felsen",
+      "type": "fill",
+      "source-layer": "Reliefflaeche",
+      "paint": { "fill-pattern": "Felsen_Muster" }
+    },
     { "id": "Symbol_ReliefL_Felsen", "type": "symbol", "source-layer": "Relieflinie" },
     { "id": "Name_Stadtgemeinde_groesser_1Mio", "type": "symbol", "source-layer": "Name_Punkt" }
   ]

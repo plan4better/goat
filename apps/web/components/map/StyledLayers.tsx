@@ -47,7 +47,8 @@ interface StyledLayersProps {
   tone: Tone;
   /** The lowest layer that stays above the project layers. */
   overlay?: string;
-  /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below it. */
+  /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below the building layer
+   * the renderer derives from it (`syncMapLayers`), or where they go without buildings. */
   ground?: string;
   /** Every MapLibre layer id the renderer drew, after each change (interactive layers, snapping). */
   onLayersChange?: (ids: string[]) => void;
