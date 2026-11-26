@@ -50,7 +50,7 @@ from goatlib.style.scene import extrudes
 from goatlib.style.upgrade import upgrade
 from goatlib.style.validate import validate, validate_map
 from goatlib.style.version import SPEC_VERSION, stamp
-from goatlib.tools.style import categories
+from goatlib.tools.style import bands, style_title
 from pydantic import ValidationError
 
 from assistant.tools.testing import Recorder
@@ -436,13 +436,22 @@ class MapState:
         """A finished run's result joins the project, on top of the layer
         list: catchment areas with the look the catchment tool gives its
         result (``CatchmentAreaToolRunner.get_layer_style``), one class per
-        travel time step, computed as the tool runner computes it. A second
-        run saves into the layer that is there."""
+        travel time step in minutes, the nearest the darkest green, computed
+        as the tool runner computes it. A second run saves into the layer
+        that is there."""
         link = layer.layer_project_id
         if link in self.layers:
             return
         steps = sorted({feature["cost_step"] for feature in layer.features})
-        document = categories("cost_step", steps, "colorbrewer:YlGn", layer.geometry)
+        document = bands(
+            "cost_step",
+            steps,
+            "colorbrewer:YlGn",
+            layer.geometry,
+            style_title("travel_time"),
+            "min",
+            reverse=True,
+        )
         document, _ = _check(self.connection, layer, document)
         top = [
             row["order"]
