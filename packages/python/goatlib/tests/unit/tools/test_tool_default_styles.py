@@ -839,6 +839,22 @@ def _plus(doc: dict[str, Any], order: bool = False, **keys: Any) -> dict[str, An
     return out
 
 
+def _nearest_darkest(doc: dict[str, Any], part: str) -> dict[str, Any]:
+    """`doc`'s bands colored the other way along the palette: the colors of
+    its classes in the opposite order, a base color that was their middle the
+    middle of them again, and `reverse` on the classification."""
+    out = copy.deepcopy(doc)
+    c = out["classify"][0]
+    before = [k[part]["color"] for k in c["classes"]]
+    colors = before[::-1]
+    for k, color in zip(c["classes"], colors):
+        k[part]["color"] = color
+    if out["symbol"][part].get("color") == before[len(before) // 2]:
+        out["symbol"][part]["color"] = colors[len(colors) // 2]
+    c["reverse"] = True
+    return out
+
+
 def _catchment_params(kind: str, cost: str) -> CatchmentAreaV2WindmillParams:
     grid = {"point_grid_layer_id": U} if kind == "point_grid" else {}
     return CatchmentAreaV2WindmillParams(
@@ -865,6 +881,7 @@ def _first_catchment_params(cost: str) -> CatchmentAreaWindmillParams:
 
 CATCHMENT_GEOMETRY = {"polygon": "polygon", "network": "line", "point_grid": "point"}
 CATCHMENT_TITLE = {"time": ("Travel time", "min"), "distance": ("Distance", "m")}
+CATCHMENT_PART = {"polygon": "fill", "network": "line", "point_grid": "marker"}
 
 CategoryBuild = Callable[[duckdb.DuckDBPyConnection, str], dict[str, Any]]
 
@@ -950,12 +967,15 @@ def _category_cases() -> (
                 f"(i % 3 + 1) * {step}",
                 "INTEGER",
                 _plus(
-                    tool_style.categories(
-                        "cost_step",
-                        [step, 2 * step, 3 * step],
-                        "colorbrewer:YlGn",
-                        geometry,
-                        symbol=symbol,
+                    _nearest_darkest(
+                        tool_style.categories(
+                            "cost_step",
+                            [step, 2 * step, 3 * step],
+                            "colorbrewer:YlGn",
+                            geometry,
+                            symbol=symbol,
+                        ),
+                        CATCHMENT_PART[kind],
                     ),
                     order=True,
                     title=title,
@@ -978,11 +998,14 @@ def _category_cases() -> (
             f"(i % 3 + 1) * {step}",
             "INTEGER",
             _plus(
-                tool_style.categories(
-                    "cost_step",
-                    [step, 2 * step, 3 * step],
-                    "colorbrewer:YlGn",
-                    "polygon",
+                _nearest_darkest(
+                    tool_style.categories(
+                        "cost_step",
+                        [step, 2 * step, 3 * step],
+                        "colorbrewer:YlGn",
+                        "polygon",
+                    ),
+                    "fill",
                 ),
                 order=True,
                 title=title,
@@ -1138,6 +1161,108 @@ def test_catchment_bands_read_from_the_params_without_a_result(kind: str) -> Non
     assert (c["title"], c["unit"], c["format"]) == ("Distance", "m", {"decimals": 0})
     assert doc["order"] == FIRST_CLASS_ON_TOP
     assert [k["values"] for k in c["classes"]] == [[300], [600], [900], [1200], [1500]]
+    assert c["reverse"] is True
+    assert c["classes"][0][CATCHMENT_PART[kind]]["color"] == _ylgn_darkest(5)
+
+
+def _ylgn_darkest(n: int) -> str:
+    """The darkest of `n` YlGn colors, the end of the palette."""
+    return sample_colors("colorbrewer:YlGn", n)[-1]
+
+
+@pytest.mark.parametrize("kind", list(CATCHMENT_GEOMETRY))
+@pytest.mark.parametrize("steps", [1, 2, 4, 9, 12, 20])
+def test_the_nearest_catchment_band_is_the_darkest(
+    con: duckdb.DuckDBPyConnection, kind: str, steps: int
+) -> None:
+    """The bands take the colors the server and the style panel give `steps`
+    classes of YlGn with `reverse`, so a palette picked later keeps the
+    direction; the first band, the nearest, takes the palette's end."""
+    from goatlib.style.compute import _target_values
+
+    geometry, part = CATCHMENT_GEOMETRY[kind], CATCHMENT_PART[kind]
+    relation = table(
+        con,
+        "cost_step",
+        geometry,
+        f"(i % {steps} + 1) * 5",
+        2 * steps,
+        field_type="INTEGER",
+    )
+    intent = runner_for(CatchmentAreaV2ToolRunner, con).get_layer_style(
+        _catchment_params(kind, "time"), MagicMock(), geometry, relation
+    )
+    [c] = intent["classify"]
+    colors = [k[part]["color"] for k in c["classes"]]
+    assert [k["values"] for k in c["classes"]] == [[5 * (i + 1)] for i in range(steps)]
+    assert (c["palette"], c["reverse"]) == ("colorbrewer:YlGn", True)
+    assert colors == sample_colors("colorbrewer:YlGn", steps)[::-1]
+    assert colors == sample_colors("colorbrewer:YlGn", steps, reverse=True)
+    assert colors == _target_values(c, geometry, steps)[1]
+    assert colors[0] == _ylgn_darkest(steps)
+    if kind != "network":  # the network's own line entry keeps the base color
+        assert intent["symbol"][part]["color"] == colors[steps // 2]
+    # Fixed classes: computing the style keeps every color and adds no note.
+    doc = _computed(con, intent, relation, geometry)
+    assert [k[part]["color"] for k in doc["classify"][0]["classes"]] == colors
+    assert doc["classify"][0]["reverse"] is True
+    # More than 12 bands is a warning of its own, in either direction.
+    many = [("warning", "too_many_categories")] if steps > 12 else []
+    notes = [*many, ("info", "palette_kind_mismatch")]
+    assert _issue_codes(con, relation, intent, geometry) == notes
+    assert _issue_codes(con, relation, doc, geometry) == notes
+
+
+def test_buffer_distances_keep_the_light_to_dark_direction() -> None:
+    doc = BufferToolRunner().get_layer_style(
+        BufferToolParams(**IDS, input_layer_id=U, distances=[100, 200, 300, 400]),
+        MagicMock(),
+        "polygon",
+        "r",
+    )
+    [c] = doc["classify"]
+    assert "reverse" not in c
+    assert [k["fill"]["color"] for k in c["classes"]] == sample_colors(
+        "colorbrewer:OrRd", 4
+    )
+
+
+def test_a_catchment_style_handed_in_is_stored_as_given(
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    runner_event_loop: asyncio.AbstractEventLoop,
+) -> None:
+    """A style given to the layer record keeps its own direction: the
+    catchment's default is not asked for and nothing turns its colors."""
+    relation = _tiny(con)
+    runner = runner_for(CatchmentAreaV2ToolRunner, con)
+
+    def own(*args: Any) -> Any:
+        raise AssertionError("the catchment's own default was asked for")
+
+    monkeypatch.setattr(runner, "get_layer_style", own)
+    monkeypatch.setattr(runner, "_get_ducklake_snapshot_id", lambda *a: 3)
+    monkeypatch.setattr("goatlib.tools.base.table_path_parts", lambda r: ("a", "b"))
+    runner.db_service = MagicMock(create_layer=AsyncMock())
+    runner_event_loop.run_until_complete(
+        runner._create_db_records(
+            output_layer_id="L",
+            params=_catchment_params("polygon", "time"),
+            output_name="Catchment",
+            metadata=DatasetMetadata(path="x", source_type="vector"),
+            table_info={"table_name": relation, "geometry_type": "POLYGON"},
+            style=USER_STYLE,
+        )
+    )
+    stored = runner.db_service.create_layer.call_args.kwargs["style"]
+    expected, _ = compute_into(
+        con, relation, USER_STYLE, geometry="polygon", fingerprint="f:1"
+    )
+    [c], [e] = stored["classify"], expected["classify"]
+    assert "reverse" not in c
+    assert [k["fill"]["color"] for k in c["classes"]] == [
+        k["fill"]["color"] for k in e["classes"]
+    ]
 
 
 def test_the_catchment_starting_points_keep_their_pin() -> None:

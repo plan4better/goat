@@ -373,12 +373,14 @@ def categories(
     *,
     symbol: dict[str, Any] | None = None,
     title: str | None = None,
+    reverse: bool = False,
 ) -> dict[str, Any]:
     """A style with one class per value of `field`, in the order given, colored
-    along the palette, and the legend's `title` where given. The classes are
-    fixed: nothing is recomputed."""
+    along the palette (from its end with `reverse`, as the server and the style
+    panel color classes of a reversed palette), and the legend's `title` where
+    given. The classes are fixed: nothing is recomputed."""
     part = _part(geometry)
-    colors = sample_colors(palette, len(values))
+    colors = sample_colors(palette, len(values), reverse=reverse)
     middle = colors[len(colors) // 2] if colors else None
     doc = styled(geometry, {part: {"color": middle}, **(symbol or {})})
     classification: dict[str, Any] = {
@@ -392,6 +394,8 @@ def categories(
     # The palette new classes take in the editor; an inline one holds 2 to 12 colors.
     if isinstance(palette, str) or 2 <= len(palette) <= 12:
         classification["palette"] = palette
+        if reverse:
+            classification["reverse"] = True
     if title:
         classification["title"] = title
     doc["classify"] = [classification]
@@ -407,11 +411,15 @@ def bands(
     unit: str,
     *,
     symbol: dict[str, Any] | None = None,
+    reverse: bool = False,
 ) -> dict[str, Any]:
     """Bands of a distance or travel cost in whole `unit`s: one class per step
-    (`categories`), the legend's title and unit, no decimals, and the first
-    step, the smallest, drawn on top."""
-    doc = categories(field, steps, palette, geometry, symbol=symbol, title=title)
+    (`categories`, the palette turned around with `reverse`), the legend's
+    title and unit, no decimals, and the first step, the smallest, drawn on
+    top."""
+    doc = categories(
+        field, steps, palette, geometry, symbol=symbol, title=title, reverse=reverse
+    )
     c = doc["classify"][0]
     c["unit"] = unit
     c["format"] = {"decimals": 0}

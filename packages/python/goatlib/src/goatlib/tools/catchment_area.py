@@ -464,9 +464,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """One band per travel cost step, yellow to green, the first step on
-        top: lines for a network output, points for a point grid, polygons
-        otherwise. The steps are meters for a distance, minutes otherwise.
+        """One band per travel cost step, the nearest dark green and the
+        farthest light yellow, the first step on top: lines for a network
+        output, points for a point grid, polygons otherwise. The steps are
+        meters for a distance, minutes otherwise.
 
         The steps are read from the output; without them, from the params.
         """
@@ -535,6 +536,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                 title,
                 unit,
                 symbol={"line": {"width": 3}},
+                reverse=True,
             )
         return bands(
             color_field,
@@ -543,6 +545,7 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             "point" if geometry == "point" else "polygon",
             title,
             unit,
+            reverse=True,
         )
 
     @staticmethod

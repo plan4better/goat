@@ -865,6 +865,7 @@ class TestFixedListsAsToday:
             "polygon",
             "Travel time",
             "min",
+            reverse=True,
         )
         computed = tool_default(runner, doc, "bands", "polygon")
         assert same_ignoring_stamps(computed, today(con, "bands", doc, "polygon"))
@@ -881,7 +882,7 @@ def test_a_point_grid_catchment_draws_its_points_in_the_band_colors(
     params = MagicMock(catchment_area_type="point_grid")
     points = runner.get_layer_style(params, MagicMock(), "point", "grid")
     polygons = tool_style.categories(
-        "cost_step", [5, 10, 15], "colorbrewer:YlGn", "polygon"
+        "cost_step", [5, 10, 15], "colorbrewer:YlGn", "polygon", reverse=True
     )
     assert errors(con, "grid", points, "point") == []
     assert "fill" not in points["symbol"]
