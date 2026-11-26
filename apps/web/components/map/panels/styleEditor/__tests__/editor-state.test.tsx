@@ -92,7 +92,8 @@ describe("finding 2: parts switched on by classes or rules", () => {
     expect(screen.getByText("style_editor.part_some_note")).toBeDefined();
     expect(screen.queryByText("style_editor.part_off_note")).toBeNull();
     await turnOn();
-    expect(store.get("symbol.outline")).toEqual({});
+    // The class's outline has its own color, so the layer's starts with Auto (spec 18.10).
+    expect(store.get("symbol.outline")).toEqual({ color: "auto", width: 1 });
     await turnOff();
     expect(store.document).toEqual(OUTLINE);
   });

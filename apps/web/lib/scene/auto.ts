@@ -4,33 +4,11 @@ import type { AtmosphereColors } from "@/lib/scene/atmosphere";
 import { type Value, fromForm, valueAt } from "@/lib/style/compile/values";
 import { SCENE_AUTO, type SceneTone } from "@/lib/style/generated/scene";
 import type { Scene } from "@/lib/style/generated/types";
+import { type BasemapLook, DARK_BELOW, basemapLuminance } from "@/lib/style/tone";
 
 export type Tone = SceneTone;
 
-/** What the tone and imagery rules read of a basemap. */
-export interface BasemapLook {
-  value?: string;
-  source: string;
-  type: string;
-  /** A solid basemap's colour. */
-  color?: string;
-  /** A custom vector basemap's `background` layer colour. */
-  backgroundColor?: string;
-}
-
-/** WCAG relative luminance of a hex colour, 0 (black) to 1 (white); null for anything else. */
-function luminance(color: string | undefined): number | null {
-  const m = /^#([0-9a-f]{6})/i.exec(color ?? "");
-  if (!m) return null;
-  const [r, g, b] = [0, 2, 4].map((i) => {
-    const c = parseInt(m[1].slice(i, i + 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-/** Below this relative luminance a basemap counts as dark. */
-const DARK_BELOW = 0.35;
+export type { BasemapLook } from "@/lib/style/tone";
 
 /** Whether the basemap is a picture of the ground (Satellite, raster, WMS, WMTS, XYZ): it carries its own shading. */
 export function isImageryBasemap(basemap: BasemapLook): boolean {
@@ -38,12 +16,13 @@ export function isImageryBasemap(basemap: BasemapLook): boolean {
   return basemap.type !== "vector" && basemap.type !== "solid";
 }
 
-/** The basemap's tone (3D spec 5.2): dark for the dark basemap and dark solid or custom vector backgrounds; imagery
- * follows the app theme; everything else is light. */
+/** The basemap's tone for the scene (3D spec 5.2): dark for the dark basemap and dark solid or custom vector
+ * backgrounds; imagery follows the app theme; everything else is light. A layer's automatic colours take
+ * `basemapTone` (`lib/style/tone.ts`) instead, in which imagery has a fixed tone. */
 export function toneOf(basemap: BasemapLook, appTheme: Tone): Tone {
   if (basemap.source === "builtin" && basemap.value === "dark") return "dark";
   if (isImageryBasemap(basemap)) return appTheme;
-  const lum = luminance(basemap.type === "solid" ? basemap.color : basemap.backgroundColor);
+  const lum = basemapLuminance(basemap.type === "solid" ? basemap.color : basemap.backgroundColor);
   return lum !== null && lum < DARK_BELOW ? "dark" : "light";
 }
 

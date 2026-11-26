@@ -22,19 +22,22 @@ import { mutate } from "swr";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { useCatalogItemVersions } from "@/lib/api/catalog";
-import { projectLayersKey } from "@/lib/api/projects";
+import { useCatalogDatasetVersions, useCatalogItemVersions } from "@/lib/api/catalog";
+import { projectMapUrl } from "@/lib/api/map";
+import { projectLayerGroupsKey, projectLayersKey, updateCatalogEntry } from "@/lib/api/projects";
 // ----------------------------------------------------------------------
 // 3. MAIN COMPONENT
 // ----------------------------------------------------------------------
 // Redux
 import { useUserProfile } from "@/lib/api/users";
+import { getWorkflow, refreshWorkflowList } from "@/lib/api/workflows";
 import { MAX_EDITABLE_LAYER_SIZE } from "@/lib/constants";
 import { activeParts } from "@/lib/filter/read";
 import { clearRestoreGroup, closeExplorer, openExplorer } from "@/lib/store/explorer/slice";
 import { emitInteractionEvent } from "@/lib/store/interaction/slice";
 import { setSelectedBundle, setSelectedLayers } from "@/lib/store/layer/slice";
 import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/lib/store/map/slice";
+import { requestWorkflowReload } from "@/lib/store/workflow/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { baseSwatch, buildLegend, informative, legendDependsOnZoom, titleOnly } from "@/lib/style/legend";
@@ -100,10 +103,14 @@ import { LockedLayerRow } from "./LockedLayerRow";
 import {
   type ProjectTreeItem,
   TABLES_PREFIX,
+  catalogBundleGroups,
   foldBundleTables,
+  followCatalogUpdateInWorkflow,
   formatApiDataForDnd,
   formatDndDataForApi,
+  outdatedBundleGroups,
   treeChanges,
+  updatableCatalogEntry,
 } from "./layerTreeItems";
 
 /** For a visibility change made for the user rather than by a click. */
@@ -359,6 +366,7 @@ const filterMenuForViewMode = (
     MapLayerActions.RENAME,
     MapLayerActions.DUPLICATE,
     MapLayerActions.EDIT_FEATURES,
+    MapLayerActions.UPDATE_CATALOG,
   ];
   // Only remove the Style action when the widget has not explicitly allowed it.
   // allowedActions.style === true means the dashboard builder configured this
@@ -580,36 +588,93 @@ export const ProjectLayerTree = ({
    * distinct id set. A layer promoted at version N whose item now carries a
    * newer version gets the "update available" caption below.
    */
+  /** A catalog bundle's group carries one "update available" for all its layers. */
+  const bundleGroups = useMemo(() => catalogBundleGroups(treeData), [treeData]);
   const catalogItemIds = useMemo(
     () =>
       Array.from(
         new Set(
           (projectLayers ?? [])
+            // A bundle's layers are checked together, by their group.
+            .filter(
+              (layer) => !(layer.layer_project_group_id && bundleGroups.has(layer.layer_project_group_id))
+            )
             .map((layer) => catalogItemSnapshot(layer).id)
             .filter((id): id is string => !!id)
         )
       ),
-    [projectLayers]
+    [projectLayers, bundleGroups]
   );
   const { versions: liveCatalogVersions } = useCatalogItemVersions(catalogItemIds);
+
+  const bundleDatasets = useMemo(
+    () => Array.from(new Set(Array.from(bundleGroups.values()).map((bundle) => bundle.dataset))),
+    [bundleGroups]
+  );
+  const { versions: liveBundleVersions } = useCatalogDatasetVersions(bundleDatasets);
+  const outdatedBundles = useMemo(
+    () => outdatedBundleGroups(bundleGroups, liveBundleVersions),
+    [bundleGroups, liveBundleVersions]
+  );
 
   /**
    * The one caption a layer row can carry: a catalog layer whose data is
    * still materializing (or failed to), or whose catalog item has moved on to
    * a newer version. Everything else stays caption-less.
    */
+  /** The catalog has a newer version of this entry: a bundle group, or a layer outside one. */
+  const isOutdatedCatalogEntry = useCallback(
+    (node: ProjectLayerTreeNode): boolean => {
+      if (node.type === "group") return outdatedBundles.has(node.id);
+      if (node.parent_id && bundleGroups.has(node.parent_id)) return false;
+      const snapshot = catalogItemSnapshot(node);
+      const live = snapshot.id ? liveCatalogVersions[snapshot.id] : undefined;
+      return !!snapshot.version && !!live && live !== snapshot.version;
+    },
+    [liveCatalogVersions, outdatedBundles, bundleGroups]
+  );
+
   const catalogStatusLabel = useCallback(
     (node: ProjectLayerTreeNode): string | undefined => {
-      if (isCatalogLayerPending(node)) return t("catalog_layer_pending");
-      if (isCatalogLayerFailed(node)) return t("catalog_layer_failed");
-      const snapshot = catalogItemSnapshot(node);
-      if (snapshot.id && snapshot.version) {
-        const live = liveCatalogVersions[snapshot.id];
-        if (live && live !== snapshot.version) return t("catalog_layer_update_available");
-      }
-      return undefined;
+      if (node.type === "layer" && isCatalogLayerPending(node)) return t("catalog_layer_pending");
+      if (node.type === "layer" && isCatalogLayerFailed(node)) return t("catalog_layer_failed");
+      return isOutdatedCatalogEntry(node) ? t("catalog_layer_update_available") : undefined;
     },
-    [t, liveCatalogVersions]
+    [t, isOutdatedCatalogEntry]
+  );
+
+  const openWorkflowId = useAppSelector((state) => state.workflow.selectedWorkflowId);
+  /** Moves an outdated catalog entry to the new version, in place (the user decides). */
+  /** Entries whose update is running: a second click waits for the first. */
+  const updating = useRef(new Set<string>());
+  const updateCatalog = useCallback(
+    async (node: ProjectLayerTreeNode) => {
+      const target = updatableCatalogEntry(node, isOutdatedCatalogEntry(node));
+      const key = `${node.type}-${node.id}`;
+      if (!target || !projectId || updating.current.has(key)) return;
+      updating.current.add(key);
+      try {
+        await updateCatalogEntry(projectId, target);
+        void followCatalogUpdateInWorkflow(projectId, {
+          openWorkflowId: () => openWorkflowId,
+          read: getWorkflow,
+          requestReload: (id, revision) => dispatch(requestWorkflowReload({ id, revision })),
+          refreshList: refreshWorkflowList,
+        });
+      } catch (error) {
+        // The server says why (already on the newest version, another kind now, ...).
+        toast.error(error instanceof Error ? error.message : t("error_updating_layer_tree"));
+      } finally {
+        updating.current.delete(key);
+      }
+      // The map's styles too: an untouched style may now be the new version's.
+      await Promise.all([
+        mutate(projectLayersKey(projectId)),
+        mutate(projectLayerGroupsKey(projectId)),
+        mutate(projectMapUrl(projectId)),
+      ]);
+    },
+    [isOutdatedCatalogEntry, projectId, t, openWorkflowId, dispatch]
   );
 
   /**
@@ -944,6 +1009,18 @@ export const ProjectLayerTree = ({
         );
       }
 
+      // An outdated catalog entry offers its update, to project editors only.
+      if (isEditMode && updatableCatalogEntry(node, isOutdatedCatalogEntry(node))) {
+        menuOptions = [
+          {
+            id: MapLayerActions.UPDATE_CATALOG,
+            label: t("catalog_update_to_new_version"),
+            icon: ICON_NAME.REFRESH,
+          },
+          ...menuOptions,
+        ];
+      }
+
       // Bundle member layers can't be removed individually (remove the bundle).
       if (node.type === "layer" && item.dragDisabled) {
         menuOptions = menuOptions.filter((opt) => opt.id !== ContentActions.DELETE);
@@ -1073,6 +1150,8 @@ export const ProjectLayerTree = ({
                               const handleAction = async () => {
                                 if (opt.id === MapLayerActions.ZOOM_TO) {
                                   await zoomTo(node);
+                                } else if (opt.id === MapLayerActions.UPDATE_CATALOG) {
+                                  await updateCatalog(node);
                                 } else if (node.type === "layer") {
                                   const target = castNodeToProjectLayer(node);
                                   if (opt.id === MapLayerActions.PROPERTIES) handleProperties(target);
@@ -1111,6 +1190,10 @@ export const ProjectLayerTree = ({
                 onSelect={async (menuItem: PopperMenuItem) => {
                   if (menuItem.id === MapLayerActions.ZOOM_TO) {
                     await zoomTo(node);
+                    return;
+                  }
+                  if (menuItem.id === MapLayerActions.UPDATE_CATALOG) {
+                    await updateCatalog(node);
                     return;
                   }
                   if (node.type === "layer") {
@@ -1224,6 +1307,8 @@ export const ProjectLayerTree = ({
       isEditMode,
       groupInfo,
       mapMode,
+      isOutdatedCatalogEntry,
+      updateCatalog,
       userProfile,
       projectOwnerId,
       dispatch,

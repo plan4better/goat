@@ -2,6 +2,7 @@
 
 import { parseAsArrayOf, parseAsInteger, parseAsString, parseAsStringEnum, useQueryStates } from "nuqs";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { CatalogSearchParams } from "@/lib/api/catalog";
 import {
@@ -52,6 +53,7 @@ export type UseCatalogSearchStateOptions = {
 };
 
 export const useCatalogSearchState = ({ aggregations }: UseCatalogSearchStateOptions) => {
+  const { i18n } = useTranslation();
   /**
    * Every facet's parameter, in the order the server offers them. `total_count`
    * is not a facet and carries no parameter.
@@ -177,16 +179,19 @@ export const useCatalogSearchState = ({ aggregations }: UseCatalogSearchStateOpt
   /** The request, for Collection Search — one row per dataset. */
   const searchParams = useMemo<CatalogSearchParams>(
     () =>
-      buildSearchParams({
-        q: state.q,
-        sortby: state.sortby,
-        page: state.page,
-        from: state.from,
-        to: state.to,
-        spatial,
-        facetSelections,
-      }),
-    [state.page, state.sortby, state.q, spatial, state.from, state.to, facetSelections]
+      buildSearchParams(
+        {
+          q: state.q,
+          sortby: state.sortby,
+          page: state.page,
+          from: state.from,
+          to: state.to,
+          spatial,
+          facetSelections,
+        },
+        { language: i18n.language }
+      ),
+    [state.page, state.sortby, state.q, spatial, state.from, state.to, facetSelections, i18n.language]
   );
 
   const facetQueryParams = useMemo<CatalogSearchParams>(() => buildFacetParams(searchParams), [searchParams]);

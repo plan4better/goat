@@ -1,5 +1,6 @@
 import type { BasemapInfo } from "@/lib/assistant/types";
-import { type Tone, isImageryBasemap, toneOf } from "@/lib/scene/auto";
+import { isImageryBasemap } from "@/lib/scene/auto";
+import { basemapTone } from "@/lib/style/tone";
 
 import type { Basemap } from "@/types/map/common";
 
@@ -13,16 +14,16 @@ const length = (text: string) => Array.from(text).length;
 const cut = (text: string, max: number) => Array.from(text).slice(0, max).join("");
 
 /**
- * A basemap for the page context: its id, its name cut to 80 characters, whether it is imagery, and its tone.
- * Imagery counts as dark in either app theme: the ground is busy.
+ * A basemap for the page context: its id, its name cut to 80 characters, whether it is imagery, and its tone, the one
+ * the layers' automatic colors take (`basemapTone`).
  */
-export function basemapInfo(basemap: Basemap, appTheme: Tone): BasemapInfo {
+export function basemapInfo(basemap: Basemap): BasemapInfo {
   const imagery = isImageryBasemap(basemap);
   const name = basemap.source === "builtin" ? basemap.title : basemap.name;
   return {
     id: basemap.value,
     name: cut(name.trim(), MAX_NAME),
-    tone: imagery ? "dark" : toneOf(basemap, appTheme),
+    tone: basemapTone(basemap),
     imagery,
   };
 }
@@ -32,9 +33,9 @@ export const acceptedBasemap = (info: BasemapInfo): boolean =>
   info.id.length > 0 && length(info.id) <= MAX_ID && info.name.length > 0 && length(info.name) <= MAX_NAME;
 
 /** The basemaps the project offers, built-in first, then its own; entries the server would refuse are left out. */
-export function offeredBasemaps(builtIn: Basemap[], custom: Basemap[], appTheme: Tone): BasemapInfo[] {
+export function offeredBasemaps(builtIn: Basemap[], custom: Basemap[]): BasemapInfo[] {
   return [...builtIn, ...custom]
-    .map((basemap) => basemapInfo(basemap, appTheme))
+    .map((basemap) => basemapInfo(basemap))
     .filter(acceptedBasemap)
     .slice(0, MAX_BASEMAPS);
 }

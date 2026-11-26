@@ -7,31 +7,27 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer, setValues } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT, ICON_HEIGHT } from "@/lib/style/compile/constants";
-import { colorText, concat, everyZoom, numberText } from "@/lib/style/compile/imageNames";
+import { derivedValue } from "@/lib/style/compile/derived";
+import { colorText, concat, everyZoom, numberText, wholeZooms } from "@/lib/style/compile/imageNames";
 import { keepsColors } from "@/lib/style/compile/images";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
 import {
   ACTIVE,
   type PartContext,
+  always,
+  byFill,
+  drawsNothing,
   highlightColor,
   highlightWidth,
   makeLayer,
   onDecorations,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { extrudes, heightValue } from "@/lib/style/compile/polygons";
 import type { Geometry } from "@/lib/style/compile/types";
-import {
-  type Expr,
-  FILL_COLOR,
-  type Value,
-  combine,
-  fromForm,
-  isZoomed,
-  substitute,
-  toProperty,
-} from "@/lib/style/compile/values";
+import { type Expr, type Value, combine, fromForm, isZoomed, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
@@ -45,21 +41,6 @@ import {
 const anchor = (name: unknown) => (typeof name === "string" ? name.replace("_", "-") : name);
 
 const moves = (offset: unknown) => Array.isArray(offset) && (offset[0] !== 0 || offset[1] !== 0);
-
-/** Stands for the icon color nothing sets until the fill decides it: the reference color on a filled marker, the
- * marker color on a hollow one (spec 3.3). */
-const ICON_TINT = "\u0000tint";
-
-const always = (value: Value, expr: Expr) => !isZoomed(value) && value.expr === expr;
-
-/** `filled` where a feature's marker has its fill, `hollow` where it has none. */
-function byFill(fill: Value, filled: Value, hollow: Value, kind: "number" | "color"): Value {
-  return combine(
-    [fill, filled, hollow],
-    ([f, a, b]) => (f === true ? a : f === false ? b : ["case", ["==", f, false], b, a]),
-    { kind }
-  );
-}
 
 /** A halo width that is 0 where the outline is off: icon halos have no opacity of their own. */
 function haloWidth(width: Value, opacity: Value): Value {
@@ -212,7 +193,7 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
     always(fill, true)
       ? opacity
       : withLayerOpacity(ctx, byFill(fill, ownOpacity, { expr: hollow }, "number"));
-  const outline = point && partUsed(style, "outline", "point");
+  const outlineUsed = point && partUsed(style, "outline", "point");
   const offsetSet = setValues(style, "marker.offset").some(moves);
   const symbol = isObject(style.symbol) ? style.symbol : {};
   const baseMarker = isObject(symbol.marker) ? symbol.marker : {};
@@ -220,27 +201,59 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
   const shape = baseMarker.shape ?? DEFAULTS["marker.shape"];
   const baseSize =
     typeof baseMarker.size === "number" ? baseMarker.size : (DEFAULTS["marker.size"] as number);
-  const markerColor = ctx.color !== undefined ? { expr: ctx.color } : cascade(style, "marker.color", c);
-  // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint).
-  const outlineColor = substitute(
-    cascade(style, "outline.color", { ...c, map: (v) => (v === "fill" ? FILL_COLOR : v) }),
-    FILL_COLOR,
-    markerColor
-  );
+  const colorOf = (map?: (color: unknown) => Expr): Value =>
+    ctx.color !== undefined
+      ? { expr: ctx.color(map ?? ((color) => color)) }
+      : cascade(style, "marker.color", map ? { ...c, map } : c);
+  const markerColor = colorOf();
+  // An outline in the "fill" color takes the marker's color (the circle, or the icon's tint), "auto" its darker shade.
+  const outlineColor = derivedValue(style, "outline.color", {
+    geometry: "point",
+    fields: ctx.fields,
+    follow: colorOf,
+    inputs: ruleInputs(ctx),
+  });
+  // A color that is None for all draws nothing (spec 4.6): an outline so draws as one switched off. A marker whose
+  // color is None gets no layer, nor a highlight ring, where nothing else of it shows; a marker hollow by
+  // `fill: false` keeps its layer whatever shows.
+  const outline = outlineUsed && !drawsNothing(outlineColor);
+  const markerNone = drawsNothing(markerColor);
 
   const iconRefs = ctx.icon
     ? [...ctx.icon.refs]
     : setValues(style, "marker.icon").filter((r): r is string => typeof r === "string");
-  if (markersAsImages(style, ctx.geometry, iconRefs))
+  if (markersAsImages(style, ctx.geometry, iconRefs)) {
+    // An icon color nothing sets: the reference color on a filled marker, the marker's hue on a hollow one (spec 3.3).
+    const iconColor = derivedValue(style, "marker.icon_color", {
+      geometry: ctx.geometry,
+      fields: ctx.fields,
+      // The marker's color as its images draw it, at each whole zoom, each fixed color then turned by the rule.
+      follow: (map) => {
+        const drawn = wholeZooms(colorOf());
+        if (!map) return drawn;
+        return isZoomed(drawn) && drawn.stops.every(([, e]) => typeof e === "string")
+          ? { ...drawn, stops: drawn.stops.map(([z, e]) => [z, map(e)] as [number, Expr]) }
+          : wholeZooms(colorOf(map));
+      },
+      fill,
+      inputs: ruleInputs(ctx),
+    });
+    // Uploads and emoji keep their own colors; library icons take the icon color.
+    const iconShows =
+      iconRefs.some(keepsColors) || (iconRefs.some((r) => !keepsColors(r)) && !drawsNothing(iconColor));
+    if (markerNone && !outline && !iconShows) return [];
     return markerImageLayers(ctx, place, markerShapeOf(shape), iconRefs, {
       size,
       opacity: hollowOpacity(1),
       fill,
       color: markerColor,
+      iconColor,
       outline: outline ? { color: outlineColor } : undefined,
     });
+  }
 
   if (shape !== "icon") {
+    if (markerNone && !outline) return [];
     const paint: Record<string, unknown> = {};
     put(paint, "circle-color", markerColor, ctx, "marker.color");
     paint["circle-radius"] = toProperty(combine([size], ([s]) => ["/", s, 2], { kind: "number" }));
@@ -318,6 +331,8 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
 
   const own = refs.some(keepsColors);
   const library = refs.some((r) => !keepsColors(r));
+  // Library icons take the marker color: None for all and without an outline, they draw nothing.
+  const tinted = !(markerNone && !outline);
   if (own && library) {
     const kind = iconValue(ctx, {
       ...c,
@@ -325,11 +340,12 @@ export function pointLayers(ctx: PartContext): LayerSpecification[] {
       map: (r) => (keepsColors(r) ? "asset" : "library"),
     });
     const kindExpr: Expr = isZoomed(kind) ? "library" : kind.expr;
-    layers.push(placed(ctx, place, "icon", layout, libraryPaint, { filter: ["==", kindExpr, "library"] }));
+    if (tinted)
+      layers.push(placed(ctx, place, "icon", layout, libraryPaint, { filter: ["==", kindExpr, "library"] }));
     layers.push(placed(ctx, place, "icon-asset", layout, ownPaint, { filter: ["==", kindExpr, "asset"] }));
   } else if (own) {
     layers.push(placed(ctx, place, "icon-asset", layout, ownPaint));
-  } else {
+  } else if (tinted) {
     layers.push(placed(ctx, place, "icon", layout, libraryPaint));
   }
   return layers;
@@ -369,23 +385,25 @@ function markerImageLayers(
   place: Place,
   shape: MarkerShapeId,
   refs: string[],
-  marker: { size: Value; opacity: Value; fill: Value; color: Value; outline?: { color: Value } }
+  marker: {
+    size: Value;
+    opacity: Value;
+    fill: Value;
+    color: Value;
+    iconColor: Value;
+    outline?: { color: Value };
+  }
 ): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
   refs.forEach((ref) => ctx.images.add(ref));
-  const largest = largestSize(style) ?? (DEFAULTS["marker.size"] as number);
+  // The layer's own markers only: a cluster symbol under `render` sizes the clusters, which compile apart.
+  const largest = largestSize({ ...style, render: undefined }) ?? (DEFAULTS["marker.size"] as number);
   const width = marker.outline
     ? haloWidth(cascade(style, "outline.width", c), cascade(style, "outline.opacity", c))
     : { expr: 0 };
   const shapes = setValues(style, "marker.shape");
-  const iconColor = always(marker.fill, true)
-    ? cascade(style, "marker.icon_color", c)
-    : substitute(
-        cascade(style, "marker.icon_color", { ...c, fallback: ICON_TINT }),
-        ICON_TINT,
-        byFill(marker.fill, { expr: DEFAULTS["marker.icon_color"] as Expr }, marker.color, "color")
-      );
+  const iconColor = marker.iconColor;
   const parts = [
     cascade(style, "marker.shape", { ...c, fallback: "circle" }),
     iconValue(ctx, { ...c, fallback: "" }),

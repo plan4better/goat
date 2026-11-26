@@ -61,11 +61,12 @@ function scaleOf(scale: unknown, field: string, number: Expr) {
   return { input: number, has: hasValue(field), at: (x: number) => x };
 }
 
-/** A value form by attribute: a palette ramp (colors) or a range (numbers) over a scale, guarded for missing data. */
-function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
+/** A value form by attribute: a palette ramp (colors) or a range (numbers) over a scale, guarded for missing data;
+ * `map` turns its colors and its `no_data` as it turns fixed values. */
+function byAttribute(form: Record<string, unknown>, fallback: Expr, map: (v: unknown) => Expr): Expr {
   const field = form.field as string;
   const domain = domainOf(form);
-  const noData = "no_data" in form && form.no_data !== undefined ? form.no_data : fallback;
+  const noData = "no_data" in form && form.no_data !== undefined ? map(form.no_data) : fallback;
   if (!domain) return fallback;
   let [d0, d1] = domain;
   const number: Expr = ["to-number", ["get", field], 0];
@@ -78,7 +79,7 @@ function byAttribute(form: Record<string, unknown>, fallback: Expr): Expr {
     return d0 >= d1 || (scale === "log" && d0 <= 0);
   };
   if ("palette" in form) {
-    const colors = paletteColors(form.palette);
+    const colors = paletteColors(form.palette)?.map((c) => map(c));
     if (!colors || !colors.length) return fallback;
     if (form.reverse === true) colors.reverse();
     // A reversed domain is the same ramp the other way round; MapLibre needs ascending stops.
@@ -127,7 +128,7 @@ export function fromForm(
     return { interpolate, stops, kind };
   }
   if (isObject(form) && typeof form.field === "string") {
-    if ("palette" in form || "range" in form) return { expr: byAttribute(form, fallback) };
+    if ("palette" in form || "range" in form) return { expr: byAttribute(form, fallback, map) };
     const get = ["get", form.field];
     if (kind === "number") return { expr: raw(["to-number", get, fallback]) };
     if (kind === "color") return { expr: ["to-color", get, fallback] };
@@ -250,9 +251,6 @@ export function toProperty(value: Value): Expr {
   return ["interpolate", interpolate, ["zoom"], ...stops.flat()];
 }
 
-/** Stands for a color another part supplies (an outline in the fill color, a pattern's default) until `substitute`. */
-export const FILL_COLOR = "\u0000fill";
-
 const uses = (expr: Expr, name: string): boolean =>
   expr === name || (Array.isArray(expr) && expr.some((e) => uses(e, name)));
 
@@ -263,8 +261,12 @@ const replaced = (expr: Expr, name: string, by: Expr): Expr =>
       ? expr.map((e) => replaced(e, name, by))
       : expr;
 
-/** `value` with the placeholder `name` replaced by the color `by`, stop by stop when either varies by zoom. */
-export function substitute(value: Value, name: string, by: Value): Value {
+/** `value` with the placeholder `name` replaced by the color `by` (worked out only where `value` holds `name`), stop by
+ * stop when either varies by zoom. */
+export function substitute(value: Value, name: string, by: Value | (() => Value)): Value {
   const found = isZoomed(value) ? value.stops.some(([, e]) => uses(e, name)) : uses(value.expr, name);
-  return found ? combine([value, by], ([v, b]) => replaced(v, name, b), { kind: "color" }) : value;
+  if (!found) return value;
+  return combine([value, typeof by === "function" ? by() : by], ([v, b]) => replaced(v, name, b), {
+    kind: "color",
+  });
 }

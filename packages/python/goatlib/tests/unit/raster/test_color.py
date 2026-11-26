@@ -166,7 +166,10 @@ def test_categories_by_rounded_value_hidden_ones_transparent_the_rest_in_the_oth
 
 def test_256_categories_each_draw_their_color() -> None:
     """A full 8-bit band as categories: every code its own color, through the URL token."""
-    classes = [{"value": v, "color": f"#{v:02x}{255 - v:02x}{(v * 7) % 256:02x}"} for v in range(256)]
+    classes = [
+        {"value": v, "color": f"#{v:02x}{255 - v:02x}{(v * 7) % 256:02x}"}
+        for v in range(256)
+    ]
     c = coloring(kind="categories", band=1, classes=classes, other=None)
     values = np.arange(256, dtype="uint8").reshape(16, 16)
     out = colorize(c, {1: values}, file_no_data=None)
@@ -190,8 +193,48 @@ def test_masked_cells_are_transparent() -> None:
     assert out[0, 0, 3] == 0 and out[0, 1, 3] == 255
 
 
-def test_a_palette_color_with_alpha_draws_without_its_alpha() -> None:
-    assert paint(ramp(colors=["#ff000080", "#0000ffff"]), 0) == [255, 0, 0, 255]
+def test_a_ramp_keeps_its_colors_alpha_blended_premultiplied_as_the_browser() -> None:
+    c = ramp(colors=["#ff000080", "#0000ffff"])
+    assert paint(c, 0) == [255, 0, 0, 128]
+    assert paint(c, 100) == [0, 0, 255, 255]
+    # Index 128 of 0..255: red at alpha 128 to blue at 255, blended premultiplied.
+    assert paint(c, 50) == [85, 0, 170, 192]
+    assert paint(ramp(colors=["#000000", "#ffffff"]), 50)[3] == 255
+
+
+def test_stops_keep_their_colors_alpha() -> None:
+    stops = [{"value": 0, "color": "#ff000000"}, {"value": 10, "color": "#ff0000"}]
+    linear = coloring(
+        kind="stops", band=1, stops=stops, interpolate="linear", outside="clamp"
+    )
+    assert paint(linear, 5) == [255, 0, 0, 128]
+    assert paint(linear, 0) == [0, 0, 0, 0]
+    nearest = coloring(
+        kind="stops", band=1, stops=stops, interpolate="nearest", outside="clamp"
+    )
+    assert paint(nearest, 6) == [255, 0, 0, 255]
+    assert paint(nearest, 4) == [0, 0, 0, 0]
+
+
+def test_classes_and_categories_keep_their_colors_alpha() -> None:
+    classes = coloring(
+        kind="classes",
+        band=1,
+        classes=[{"to": 10, "color": "#00aa0033"}, {"from": 10, "color": "#cc615c00"}],
+        domain=None,
+        outside="clamp",
+    )
+    assert paint(classes, 5) == [0, 170, 0, 51]
+    # A color at alpha 0 ("None") paints nothing.
+    assert paint(classes, 15) == [0, 0, 0, 0]
+    categories = coloring(
+        kind="categories",
+        band=1,
+        classes=[{"value": 1, "color": "#4a90c280"}],
+        other="#cccccc40",
+    )
+    assert paint(categories, 1) == [74, 144, 194, 128]
+    assert paint(categories, 7) == [204, 204, 204, 64]
 
 
 def test_an_image_hides_a_pixel_whose_three_bands_all_hold_the_styles_no_data() -> None:

@@ -47,7 +47,7 @@ import {
   useStyleSelector,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
-import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { ColorPicker, noneChoice } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
 import { ResetToDataset } from "@/components/map/panels/styleEditor/popovers/ResetToDataset";
 import {
@@ -193,14 +193,18 @@ function BlockColorPicker<B extends PopupBlock>({
   read: (block: B) => string | undefined;
   write: (block: B, hex: string) => B;
 }) {
+  const { t } = useTranslation("common");
   const store = useEditor();
   const { config, update } = usePopupConfig();
   const block = config?.blocks.find((b) => b.id === id) as B | undefined;
   if (!config || !block) return null;
+  const onChange = (hex: string) =>
+    update({ blocks: config.blocks.map((b) => (b.id === id ? write(b as B, hex) : b)) });
   return (
     <ColorPicker
       value={read(block)}
-      onChange={(hex) => update({ blocks: config.blocks.map((b) => (b.id === id ? write(b as B, hex) : b)) })}
+      onChange={onChange}
+      sentinels={[noneChoice(t("style_editor.none"), read(block), onChange)]}
       docColors={colorsIn(store.document)}
     />
   );

@@ -17,6 +17,7 @@ import { buildLegend, informative } from "@/lib/style/legend";
 import { fromPopupConfig } from "@/lib/style/popup";
 import { valueQuery, valuesUrl } from "@/lib/style/raster/values";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
+import { basemapTone } from "@/lib/style/tone";
 import { detailPopupConfig } from "@/lib/utils/map/detailPopup";
 import { storedBounds } from "@/lib/utils/map/extentBounds";
 import { resolveLayerBounds } from "@/lib/utils/map/layerExtent";
@@ -24,7 +25,7 @@ import { fitBounds } from "@/lib/utils/map/navigate";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
 import type { Layer } from "@/lib/validations/layer";
 
-import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
+import { useCatalogBasemap } from "@/hooks/catalog/useCatalogBasemapStyle";
 import useLayerFields from "@/hooks/map/CommonHooks";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
@@ -51,7 +52,8 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
   const mapRef = useRef<MapRef | null>(null);
   // `MapViewer` needs a style from the first render; the light basemap stands
   // in where the theme lookup finds none.
-  const basemapStyle = useCatalogBasemapStyle() ?? getBasemapUrl(null);
+  const catalogBasemap = useCatalogBasemap();
+  const basemapStyle = catalogBasemap?.url ?? getBasemapUrl(null);
   const geojson = wktToGeoJSON(dataset.extent || globalExtent);
   const boundingBox = bbox(geojson);
   // A dataset stored without an extent (a COG, a map service) opens on the world; the area the file or the service
@@ -150,6 +152,7 @@ const DatasetMapPreview: React.FC<DatasetMapPreviewProps> = ({ dataset }) => {
               fitBoundsOptions: { padding: 40 },
             }}
             mapStyle={basemapStyle}
+            layerTone={basemapTone(catalogBasemap)}
             touchZoomRotate={false}
             // The highlight alone marks the hovered feature, as on the catalog map.
             activeFeatureMarker={false}

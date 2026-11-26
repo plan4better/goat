@@ -107,7 +107,7 @@
     "js-cookie": "^3.0.8",
     "liquidjs": "^10.27.2",
     "lodash.uniq": "^4.5.0",
-    "maplibre-gl": "^6.16.0",
+    "maplibre-gl": "^6.19.0",
     "next": "16.4.5",
     "next-auth": "^4.24.15",
     "nuqs": "^2.8.0",
@@ -143,7 +143,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@maplibre/maplibre-gl-style-spec": "26.4.4",
+    "@maplibre/maplibre-gl-style-spec": "26.8.0",
     "@next/bundle-analyzer": "^16.4.5",
     "@p4b/prettier-config": "workspace:*",
     "@p4b/tsconfig": "workspace:*",

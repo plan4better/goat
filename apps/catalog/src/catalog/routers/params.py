@@ -201,6 +201,28 @@ DatetimeDescription = "RFC 3339 instant or interval"
 FilterLang = Literal["cql2-text", "cql2-json"]
 
 
+def reader_languages(given: Any, accept_language: str) -> list[str] | None:
+    """``language_boost`` in any encoding a :data:`CsvList` takes, else the
+    request's ``Accept-Language``, highest weight first, so any client ranks by
+    its reader's language. The ranking and the ETag both resolve it here."""
+    codes = _parse_csv(given)
+    if codes is not None:
+        return codes
+    weighted = []
+    for position, part in enumerate(accept_language.split(",")):
+        tag, _, rest = part.partition(";")
+        code = tag.strip().lower().split("-")[0]
+        if not code or code == "*":
+            continue
+        try:
+            weight = float(rest.strip().removeprefix("q=")) if rest.strip() else 1.0
+        except ValueError:
+            weight = 0.0
+        if weight > 0:
+            weighted.append((-weight, position, code))
+    return list(dict.fromkeys(code for _, _, code in sorted(weighted))) or None
+
+
 # --------------------------------------------------------------------------
 # Scalar facet filters
 # --------------------------------------------------------------------------
@@ -364,10 +386,12 @@ class SearchQuery(_FilterMixin):
     )
     sortby: SortBy = Field(default=None, description="e.g. -properties.updated")
     bbox_boost: BboxCsv = Field(default=None, description=BboxBoostDescription)
-    language_boost: str | None = Field(
+    language_boost: CsvList = Field(
         default=None,
-        description="Rank rows whose metadata language is this code first, "
-        "without excluding the rest (e.g. `de`); off under an explicit sortby",
+        description="Rank rows in these metadata languages first among equally "
+        "relevant ones, in this order, without excluding the rest (e.g. `fr,en`); "
+        "defaults to the request's Accept-Language; off under an explicit "
+        "sortby and under q",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)
@@ -418,10 +442,12 @@ class CollectionSearchQuery(_FilterMixin):
     )
     sortby: SortBy = Field(default=None, description="e.g. -properties.updated")
     bbox_boost: BboxCsv = Field(default=None, description=BboxBoostDescription)
-    language_boost: str | None = Field(
+    language_boost: CsvList = Field(
         default=None,
-        description="Rank rows whose metadata language is this code first, "
-        "without excluding the rest (e.g. `de`); off under an explicit sortby",
+        description="Rank rows in these metadata languages first among equally "
+        "relevant ones, in this order, without excluding the rest (e.g. `fr,en`); "
+        "defaults to the request's Accept-Language; off under an explicit "
+        "sortby and under q",
     )
     limit: int = Field(default=DEFAULT_LIMIT, description=LIMIT_DESCRIPTION)
     offset: int = Field(default=0, ge=0)

@@ -142,8 +142,8 @@ function property(form: unknown, kind: "number" | "color"): Expr {
 
 /**
  * The global state for the light: MapLibre's light position is `[r, azimuth the light comes from, polar angle from
- * straight above]`, azimuth clockwise from north like GOAT's (pinned with buildings in MapLibre 6.16: azimuth 180 lights
- * the south walls), and the hillshades' illumination direction is the same compass direction. An automatic light
+ * straight above]`, azimuth clockwise from north like GOAT's (MapLibre 6.19: azimuth 180 lights the south walls of
+ * buildings), and the hillshades' illumination direction is the same compass direction. An automatic light
  * leaves the hillshades their own illumination.
  */
 export function stateOf(light: EffectiveLight): SceneState {

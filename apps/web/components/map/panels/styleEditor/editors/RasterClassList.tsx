@@ -10,6 +10,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useLoadedRasterValues } from "@/lib/api/rasters";
+import { checkered } from "@/lib/style/checker";
 import { OTHER_COLOR, moveItem } from "@/lib/style/editor/raster";
 import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
@@ -242,7 +243,7 @@ function Swatch({
         borderRadius: 0.5,
         border: 1,
         borderColor: "divider",
-        background: color,
+        background: checkered(color),
         ...FOCUS_MARK,
       }}
     />

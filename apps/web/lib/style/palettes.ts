@@ -1,5 +1,6 @@
 // Palette ids and lists as colors (spec 1): the catalogue's colors, its variant for a class count, or sampled as goatlib
 // samples them.
+import { alphaOf } from "@/lib/style/colors";
 import { type CataloguePalette, PALETTES } from "@/lib/style/generated/catalog";
 
 /** The colors of a palette id or list, in `steps` classes when the palette has that variant. */
@@ -54,8 +55,9 @@ function fromLab([lightness, a, b]: number[]): string {
 /**
  * Exactly `count` colors of a palette, as goatlib's `sample_colors` picks them (it writes the class colors the server
  * computes): the palette's variant for that count; a qualitative palette's colors repeated in order; else the
- * colors spread evenly from 0 to 1, a class between two of them blended in Lab, one class at the middle. `reverse`
- * turns the palette round before it is sampled; `kind` stands for a list's kind (an id has its own).
+ * colors spread evenly from 0 to 1, a class between two of them blended in Lab and their alphas linearly (eight digits
+ * where the blend's alpha is below 255), one class at the middle. `reverse` turns the palette round before it is
+ * sampled; `kind` stands for a list's kind (an id has its own).
  */
 export function paletteSteps(
   value: string | string[],
@@ -79,6 +81,16 @@ export function paletteSteps(
     const [j, rem] = [Math.floor(at / den), at % den];
     if (rem === 0) return stops[j];
     const [start, end] = [toLab(stops[j]), toLab(stops[j + 1])];
-    return fromLab(start.map((s, k) => s + (end[k] - s) * (rem / den)));
+    const blend = fromLab(start.map((s, k) => s + (end[k] - s) * (rem / den)));
+    return blend + blendAlpha(stops[j], stops[j + 1], rem, den);
   });
+}
+
+/** The alpha `rem / den` of the way from `start`'s to `end`'s, rounded half up in whole numbers, as the two digits a
+ * hex color ends with; nothing where it is opaque. */
+function blendAlpha(start: string, end: string, rem: number, den: number): string {
+  const [a, b] = [alphaOf(start) ?? 255, alphaOf(end) ?? 255];
+  // (a + (b - a) x rem / den) rounded half up, in integers.
+  const value = Math.floor((2 * (a * den + (b - a) * rem) + den) / (2 * den));
+  return value === 255 ? "" : value.toString(16).padStart(2, "0");
 }

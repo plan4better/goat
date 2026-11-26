@@ -43,6 +43,8 @@ export function renderPanel(
     transport?: StyleTransport;
     mapZoom?: number;
     map?: unknown;
+    /** The basemap's tone the map draws for. */
+    tone?: "light" | "dark";
   } = {}
 ): RenderResult & { store: EditorStore } {
   const document = opts.document ?? ({ version: "1.0.0", kind: "vector" } as LayerStyle);
@@ -56,7 +58,8 @@ export function renderPanel(
           store={store}
           data={data}
           mapZoom={opts.mapZoom ?? 12}
-          map={(opts.map ?? null) as never}>
+          map={(opts.map ?? null) as never}
+          tone={opts.tone}>
           {ui}
         </StyleEditorProvider>
       </ThemeProvider>

@@ -228,7 +228,7 @@ describe("label part", () => {
     const { store } = render({ text: "{population}", format: { decimals: 1 } });
     await openGroup("style_editor.part_label");
     await userEvent.click(within(rowOf("style_editor.numbers")).getByRole("button"));
-    await choose("style_editor.decimals", "1", "style_editor.auto");
+    await choose("style_editor.decimals", "1", "style_editor.decimals_auto");
     expect(store.get("symbol.label.format")).toBeUndefined();
     await userEvent.click(screen.getByRole("checkbox", { name: "style_editor.abbreviate" }));
     expect(store.get("symbol.label.format")).toEqual({ abbreviate: true });
@@ -331,7 +331,7 @@ describe("label part", () => {
         "button"
       )[0]
     );
-    await choose("style_editor.decimals", "style_editor.auto", "2");
+    await choose("style_editor.decimals", "style_editor.decimals_auto", "2");
     expect(store.get("symbol.label.formats")).toEqual({ "Einwohner 2020": { decimals: 2 } });
   });
 

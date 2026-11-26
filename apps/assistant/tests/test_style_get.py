@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
+from goatlib.style.summary import summarize
 from pydantic_ai.exceptions import ToolFailed
 
 from assistant.context import parse_context
@@ -186,6 +187,21 @@ async def test_the_default_is_the_active_style_and_the_document_has_no_computed_
         {"name": "density", "type": "number"},
         {"name": "name", "type": "string"},
     ]
+
+
+async def test_an_outline_in_auto_is_read_and_described_without_an_issue() -> None:
+    # New polygon layers get an outline in a darker shade of their fill.
+    state = MapState()
+    document = _active(state, 31)
+    document["symbol"] = {
+        "fill": {"color": "#7f3c8d", "opacity": 0.8},
+        "outline": {"color": "auto", "width": 1},
+    }
+    _save(state, 31, document)
+    result = await _get(_Services(state), layer_project_id=31)
+    assert result["document"]["symbol"]["outline"] == {"color": "auto", "width": 1}
+    assert not [i for i in result.get("issues", []) if i["level"] == "error"]
+    assert summarize(result["document"]).startswith("fill #7f3c8d")
 
 
 async def test_another_named_style_reads_as_not_active() -> None:

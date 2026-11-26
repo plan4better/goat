@@ -231,7 +231,7 @@ const BLOCKS_PER_ROW = 8;
 
 describe("value tiles colored in the browser", () => {
   it("covers every value case of the contract", () => {
-    expect(VALUE_CASES.length).toBe(15);
+    expect(VALUE_CASES.length).toBe(17);
   });
 
   it.each(VALUE_CASES)("$id: each sample block is drawn in its color", async (c) => {

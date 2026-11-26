@@ -592,6 +592,21 @@ describe("raster classes and categories on the shared grid", () => {
     ]);
   });
 
+  it("a class color with its own transparency lies over the swatch checkerboard", async () => {
+    setup({
+      type: "continuous",
+      palette: ["#08306b80", "#f7fbff"],
+      domain: [0, 100],
+      classify: { method: "manual", classes: [{ to: 50 }, { from: 50 }] },
+    });
+    await openColors();
+    const [clear, opaque] = screen
+      .getAllByRole("button", { name: "style_editor.class_color" })
+      .map((s) => getComputedStyle(s).backgroundImage);
+    expect(clear.match(/linear-gradient/g)).toHaveLength(3);
+    expect(opaque).toBe("none");
+  });
+
   it("a histogram shows the band with the breaks", async () => {
     setup(QUANTILES, {}, CLASSED);
     await openColors();

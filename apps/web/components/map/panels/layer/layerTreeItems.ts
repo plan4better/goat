@@ -18,6 +18,81 @@ export const TABLES_PREFIX = "tables-";
 
 const shown = (node: ProjectLayerTreeNode) => node.visible !== false;
 
+/** A catalog bundle in the project: its group, the bundle's dataset and its layers' `{item id: version}`. */
+export interface CatalogBundleGroup {
+  dataset: string;
+  members: Record<string, string>;
+}
+
+/** The bundle groups whose layers came from one catalog dataset (a shared catalog bundle), by group id. */
+export function catalogBundleGroups(nodes: ProjectLayerTreeNode[]): Map<number, CatalogBundleGroup> {
+  const bundleGroups = new Set(nodes.filter((n) => n.type === "group" && n.bundle_id).map((n) => n.id));
+  const bundles = new Map<number, CatalogBundleGroup>();
+  for (const node of nodes) {
+    const item = node.other_properties?.["catalog_item"];
+    if (node.type !== "layer" || !node.parent_id || !bundleGroups.has(node.parent_id) || !item?.collection)
+      continue;
+    const bundle = bundles.get(node.parent_id) ?? { dataset: String(item.collection), members: {} };
+    bundle.members[String(item.id)] = String(item.version ?? "");
+    bundles.set(node.parent_id, bundle);
+  }
+  return bundles;
+}
+
+/** The bundle groups the catalog has moved on from: a layer of a newer version, or one added or removed. */
+export function outdatedBundleGroups(
+  bundles: Map<number, CatalogBundleGroup>,
+  live: Record<string, Record<string, string>>
+): Set<number> {
+  const outdated = new Set<number>();
+  bundles.forEach((bundle, groupId) => {
+    const current = live[bundle.dataset];
+    if (!current) return;
+    const ids = Object.keys(current);
+    const changed =
+      ids.length !== Object.keys(bundle.members).length ||
+      ids.some((id) => bundle.members[id] !== current[id]);
+    if (changed) outdated.add(groupId);
+  });
+  return outdated;
+}
+
+/** What an outdated catalog entry is updated by: its bundle group, or its own layer row. */
+export function updatableCatalogEntry(
+  node: ProjectLayerTreeNode,
+  outdated: boolean
+): { group_id: number } | { layer_project_id: number } | undefined {
+  if (!outdated) return undefined;
+  if (node.type === "group") return node.bundle_id ? { group_id: node.id } : undefined;
+  return { layer_project_id: node.id };
+}
+
+/**
+ * After a catalog update, which rewrote the project's workflows on the server: the open workflow loads the stored one,
+ * as it does after an assistant edit (`requestWorkflowReload`), and the workflow list is read again (`refreshList`),
+ * so a closed workflow opened next has the stored config and revision. Nothing loads when the open copy already has
+ * that revision, or when it cannot be read here; its next save then meets the "changed elsewhere" notice.
+ */
+export async function followCatalogUpdateInWorkflow(
+  projectId: string,
+  deps: {
+    openWorkflowId: () => string | null;
+    read: (projectId: string, workflowId: string) => Promise<{ revision?: number }>;
+    requestReload: (workflowId: string, revision: number) => void;
+    refreshList: (projectId: string) => Promise<unknown>;
+  }
+): Promise<void> {
+  void deps.refreshList(projectId).catch(() => undefined);
+  const workflowId = deps.openWorkflowId();
+  if (!workflowId) return;
+  try {
+    const stored = await deps.read(projectId, workflowId);
+    if (typeof stored.revision === "number") deps.requestReload(workflowId, stored.revision);
+  } catch {
+    // Another project's workflow, or not readable now.
+  }
+}
+
 /** The tree's rows: a hidden group is listed closed and without its children (the map keeps them, drawn hidden). */
 export function formatApiDataForDnd(
   nodes: ProjectLayerTreeNode[],
@@ -49,7 +124,7 @@ export function formatApiDataForDnd(
         label: node.name,
         collapsed: isGroup ? node.expanded === false : node.legend_expanded === false,
         isGroup,
-        labelInfo: isGroup ? undefined : statusLabel?.(node),
+        labelInfo: statusLabel?.(node),
         data: node,
         // A hidden group cannot be opened.
         canExpand: isGroup ? shown(node) : undefined,

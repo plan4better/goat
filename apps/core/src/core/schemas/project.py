@@ -12,6 +12,7 @@ from pydantic import (
     ConfigDict,
     ValidationInfo,
     field_validator,
+    model_validator,
 )
 from sqlmodel import ARRAY, Column, Field, ForeignKey, SQLModel, Text
 from sqlmodel import UUID as UUID_PG
@@ -50,6 +51,19 @@ class IProjectCopy(BaseModel):
     folder_id: UUID4 | None = Field(
         None, description="Target folder. If None, same folder as original."
     )
+
+
+class ICatalogUpdate(BaseModel):
+    """What moves to the catalog's newer version: a layer entry or a bundle group."""
+
+    layer_project_id: int | None = None
+    group_id: int | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "ICatalogUpdate":
+        if (self.layer_project_id is None) == (self.group_id is None):
+            raise ValueError("Give exactly one of layer_project_id and group_id")
+        return self
 
 
 class InitialViewState(BaseModel):

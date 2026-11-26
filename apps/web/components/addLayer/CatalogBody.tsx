@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Skeleton, Stack, TextField, Typography, useTheme } from "@mui/material";
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -67,6 +67,19 @@ const CatalogBody = ({ controller }: { controller: CatalogFlow }) => {
   // Favourites are filtered by the API (`ids` on the search), so what arrives
   // is already the right list.
   const shown = catalog.datasets;
+  // The server lists the datasets touching the map view first; one group needs no header.
+  const inArea = catalog.inArea ?? 0;
+  const grouped = inArea > 0 && inArea < catalog.total;
+  // The section label the Connect tab sets over its cards.
+  const groupHeading = (label: string) => (
+    <Typography
+      variant="caption"
+      fontWeight={700}
+      color="text.secondary"
+      sx={{ gridColumn: "1 / -1", letterSpacing: 0.6, textTransform: "uppercase" }}>
+      {label}
+    </Typography>
+  );
 
   return (
     <Stack
@@ -107,9 +120,7 @@ const CatalogBody = ({ controller }: { controller: CatalogFlow }) => {
           dateFrom={catalog.dateFrom}
           dateTo={catalog.dateTo}
           onChangeDates={({ from, to }) => catalog.setDates({ from: from ?? null, to: to ?? null })}
-          spatialFilter={
-            <CatalogSpatialSection filter={catalog.spatial} onChange={catalog.setSpatial} />
-          }
+          spatialFilter={<CatalogSpatialSection filter={catalog.spatial} onChange={catalog.setSpatial} />}
         />
       </Box>
 
@@ -212,20 +223,23 @@ const CatalogBody = ({ controller }: { controller: CatalogFlow }) => {
           }}>
           {catalog.isLoading && !catalog.datasets.length
             ? [0, 1, 2, 3].map((key) => <Skeleton key={key} variant="rectangular" height={320} />)
-            : shown.map((dataset) => (
-                <CatalogPickerCard
-                  key={dataset.id}
-                  collection={dataset}
-                  selection={catalog.selection}
-                  starred={!!catalog.starred[dataset.id]}
-                  onToggleStar={catalog.toggleStar}
-                />
+            : shown.map((dataset, index) => (
+                <Fragment key={dataset.id}>
+                  {grouped && index === 0 && groupHeading(t("catalog_in_this_area", { count: inArea }))}
+                  {grouped &&
+                    index === inArea &&
+                    groupHeading(t("catalog_elsewhere", { count: catalog.elsewhere ?? 0 }))}
+                  <CatalogPickerCard
+                    collection={dataset}
+                    selection={catalog.selection}
+                    starred={!!catalog.starred[dataset.id]}
+                    onToggleStar={catalog.toggleStar}
+                  />
+                </Fragment>
               ))}
           {/* Rows on their way, in place, so the list grows rather than flickering. */}
           {catalog.isLoadingMore &&
-            [0, 1, 2].map((key) => (
-              <Skeleton key={`more-${key}`} variant="rectangular" height={320} />
-            ))}
+            [0, 1, 2].map((key) => <Skeleton key={`more-${key}`} variant="rectangular" height={320} />)}
           {/* What the observer watches: it sits after the results, inside the same
               scroller, and spans the grid so it cannot be missed between columns. */}
           <Box ref={sentinelRef} sx={{ gridColumn: "1 / -1", height: 1 }} />

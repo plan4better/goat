@@ -89,10 +89,13 @@ def _dependency_names(dependant: Dependant) -> set[str]:
 
 
 def _matches_a_resource(method: str, pattern: str) -> bool:
-    """`check_resource`'s lookup: the exact pattern, then any `<seeded>/…`."""
+    """`check_resource`'s lookup: the exact pattern, then any `<seeded>/…`. Not the
+    bare `POST project` row: a project sub-route that falls back to it asks for
+    create-project, which no project role holds, so it 401s for everyone."""
     seeded = [r["url_pattern"] for r in RESOURCES_PERMISSIONS if method in r["method"]]
+    fallback = [p for p in seeded if not (method == "POST" and p == "project")]
     bare = pattern.rstrip("/")
-    return bare in seeded or any(pattern.startswith(f"{p}/") for p in seeded)
+    return bare in seeded or any(pattern.startswith(f"{p}/") for p in fallback)
 
 
 ROUTES = sorted(

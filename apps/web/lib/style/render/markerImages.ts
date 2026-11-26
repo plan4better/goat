@@ -2,6 +2,8 @@
 // shape in its fill (a hollow marker leaves it clear), the stroke outside it like a circle's, and the icon in the
 // shape's head, library icons tinted with the icon color, emoji and uploads in their own colors. One image per name
 // and map.
+import { Color } from "@maplibre/maplibre-gl-style-spec";
+
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { type MarkerImage, SQUARE_RADIUS, parseMarkerImage } from "@/lib/style/compile/markerImage";
 import type { ImageRequest } from "@/lib/style/compile/types";
@@ -63,6 +65,9 @@ function iconImage(url: string): Promise<HTMLImageElement | null> {
   }
   return found;
 }
+
+/** Whether a color in a marker image's name (a hex color, or MapLibre's `rgba(...)` text of a blended one) is opaque. */
+const opaque = (color: string): boolean => (Color.parse(color)?.a ?? 1) >= 1;
 
 /** Strokes (`width` > 0, twice the stroke so its outer half shows) or fills the shape in the box at `x`, `y`; `clear`
  * erases the shape's inside instead of filling it. */
@@ -164,12 +169,13 @@ export async function drawMarker(
   if (spec.shape !== "circle" && spec.shape !== "square" && typeof Path2D === "undefined") return null;
   context.scale(PIXEL_RATIO, PIXEL_RATIO);
   const box = { x: layout.offset, y: layout.offset, side: layout.shape };
-  // The stroke centered on the shape's edge at twice the width; the fill covers its inner half, and a hollow marker
-  // erases it, so its stroke lies outside the shape as a filled marker's does.
+  // The stroke centered on the shape's edge at twice the width; an opaque fill covers its inner half, a hollow marker
+  // and a fill that is not opaque erase it first, so the stroke lies outside the shape as a filled marker's does.
   const stroked = !!spec.stroke && spec.strokeWidth > 0;
   if (stroked) paintShape(context, spec, box, { width: spec.strokeWidth * 2, color: spec.stroke });
+  if (stroked && (!spec.fill || !opaque(spec.fill)))
+    paintShape(context, spec, box, { width: 0, color: "", clear: true });
   if (spec.fill) paintShape(context, spec, box, { width: 0, color: spec.fill });
-  else if (stroked) paintShape(context, spec, box, { width: 0, color: "", clear: true });
   if (img && request)
     drawIcon(context, img, request.sdf ? spec.iconColor : null, {
       x: layout.iconX,

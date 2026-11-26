@@ -61,7 +61,7 @@ hexagons.
 
 <!-- layer: point -->
 ```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/render", "value": {"type": "cluster", "cluster_until_zoom": 14, "symbol": {"marker": {"shape": "circle", "color": "#283593", "size": {"field": "count", "range": [16, 40], "scale": "sqrt"}}, "outline": {"color": "#ffffff", "width": 2}, "label": {"text": "{count}", "color": "#ffffff", "size": 12}}}}]}
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/render", "value": {"type": "cluster", "cluster_until_zoom": 14, "symbol": {"marker": {"shape": "circle", "color": "#283593", "size": {"field": "count", "range": [16, 40], "scale": "sqrt"}}, "label": {"text": "{count}", "color": "auto", "size": 12}}}}]}
 ```
 
 ## Hexagons
@@ -71,8 +71,10 @@ to 10), `value` (`{"op": "count"}`, or `sum` or `mean` of a number `field`), a
 sequential `palette`, and `classify` with `method` and `count` but without
 `field` (the cell value is the input; without it the colors are a smooth
 ramp). `opacity` is 0.85 when left out, and `points_from_zoom` shows the
-points again. An installation that cannot draw hexagons answers
-`not_supported_yet`: use a heatmap then.
+points again. The hexagons have no outline unless `render.outline` is there:
+setting its `color` or `width` switches it on (white and 1 px for what is not
+set), and removing `render.outline` switches it off. An installation that
+cannot draw hexagons answers `not_supported_yet`: use a heatmap then.
 
 <!-- layer: point -->
 ```json

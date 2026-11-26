@@ -13,6 +13,7 @@ import pytest
 from goatlib.catalog.promote import (
     CatalogItemNotFoundError,
     _jsonable,
+    bundle_version,
     catalog_default_style,
     is_wms,
     layer_type,
@@ -21,6 +22,7 @@ from goatlib.catalog.promote import (
     read_items,
     resolve_item_ids,
     style_key_for,
+    typed_datasets,
     wms_layer,
     wmts_layer,
 )
@@ -235,6 +237,27 @@ def test_resolve_item_ids_expands_a_single_layer_dataset(mirror: Path) -> None:
 
 def test_resolve_item_ids_expands_every_member_of_a_dataset(mirror: Path) -> None:
     assert resolve_item_ids(mirror, ["dataset-2"]) == ["item-2", "item-3"]
+
+
+def test_a_typed_bundle_is_known_by_its_dataset_and_its_members(mirror: Path) -> None:
+    """An XPlan plan is added whole: its dataset is known by its bundle type,
+    whatever case the publisher wrote it in; `generic` is only a grouping."""
+    con = duckdb.connect()
+    con.execute(
+        f"""COPY (SELECT * FROM (VALUES ('dataset-1', 'Generic', 'Roads', NULL),
+                ('dataset-2', 'XPlan', 'Plan 2', '3'))
+            AS t(id, "goat:bundleType", title, version))
+            TO '{mirror.parent / "mirror_collections.parquet"}' (FORMAT PARQUET)"""
+    )
+    con.close()
+    # The plan's own version, where goat-data publishes one (STAC Version extension).
+    plan = {"dataset-2": ("xplan", "Plan 2", "3")}
+    assert typed_datasets(mirror, {"dataset-1", "dataset-2"}) == plan
+    assert typed_datasets(mirror, {"dataset-1"}) == {}
+    # A plan's version follows its members: any changed member, a new version.
+    one = bundle_version([("item-2", "1"), ("item-3", "1")])
+    assert one == bundle_version([("item-3", "1"), ("item-2", "1")])
+    assert one != bundle_version([("item-2", "1"), ("item-3", "2")])
 
 
 def test_resolve_item_ids_keeps_request_order(mirror: Path) -> None:

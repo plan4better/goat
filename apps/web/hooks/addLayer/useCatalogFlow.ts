@@ -1,18 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 import { mutate } from "swr";
-import { useTranslation } from "react-i18next";
 
 import { useCatalogAggregations, useCatalogDatasetPages } from "@/lib/api/catalog";
 import { useFavoriteStars } from "@/lib/api/favorites";
+import { addCatalogLayersToProject, projectLayersKey } from "@/lib/api/projects";
 import {
   CATALOG_PAGE_SIZE,
   buildFacetParams,
   buildSearchParams,
   countActiveFilters,
 } from "@/lib/catalog/searchQuery";
-
-import { addCatalogLayersToProject, projectLayersKey } from "@/lib/api/projects";
 import { DEFAULT_SORT } from "@/lib/catalog/searchQuery";
 import type { CatalogSpatialFilter } from "@/lib/catalog/spatial";
 import type { CatalogAggregation, CatalogCollection } from "@/lib/validations/catalog";
@@ -70,6 +69,10 @@ export type CatalogFlowState = {
   facetQueryParams: ReturnType<typeof buildFacetParams>;
   datasets: CatalogCollection[];
   total: number;
+  /** The first `inArea` datasets touch the map view; absent when the server did not group by it. */
+  inArea?: number;
+  /** How many matched datasets follow under "Elsewhere". */
+  elsewhere?: number;
   isLoading: boolean;
   /** More results exist beyond the ones loaded. */
   hasMore: boolean;
@@ -99,7 +102,7 @@ export const useCatalogFlow = ({
   /** The project's map view, ranked first without filtering anything out. */
   viewport?: [number, number, number, number];
 }): CatalogFlow => {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const notice = useShareNotice(projectId);
 
   const [favouritesOnly, setFavouritesOnly] = useState(false);
@@ -136,8 +139,8 @@ export const useCatalogFlow = ({
     [q, spatial, dates, facetSelections]
   );
   const searchParams = useMemo(
-    () => buildSearchParams(queryState, { viewport }),
-    [queryState, viewport]
+    () => buildSearchParams(queryState, { viewport, language: i18n.language }),
+    [queryState, viewport, i18n.language]
   );
   const facetQueryParams = useMemo(() => buildFacetParams(searchParams), [searchParams]);
   // Favourites filter server-side, like the catalog page: the saved ids join
@@ -148,7 +151,7 @@ export const useCatalogFlow = ({
     () => (favouritesOnly ? { ...searchParams, ids: starredIds } : searchParams),
     [favouritesOnly, searchParams, starredIds]
   );
-  const { datasets, total, isLoading, isLoadingMore, hasMore, loadMore, resetPages } =
+  const { datasets, total, inArea, elsewhere, isLoading, isLoadingMore, hasMore, loadMore, resetPages } =
     useCatalogDatasetPages(effectiveParams, {
       pageSize: CATALOG_PAGE_SIZE,
       enabled: !(favouritesOnly && starredIds.length === 0),
@@ -182,17 +185,18 @@ export const useCatalogFlow = ({
     // The filter changes the query, so accumulated pages belong to the old one.
     resetPages();
   }, [resetPages]);
-  const toggleFacet = useCallback((param: string, value: string) => {
-    setFacetSelections((current) => {
-      const values = current[param] ?? [];
-      const next = values.includes(value)
-        ? values.filter((v) => v !== value)
-        : [...values, value];
-      const { [param]: _dropped, ...rest } = current;
-      return next.length ? { ...rest, [param]: next } : rest;
-    });
-    resetPages();
-  }, [resetPages]);
+  const toggleFacet = useCallback(
+    (param: string, value: string) => {
+      setFacetSelections((current) => {
+        const values = current[param] ?? [];
+        const next = values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
+        const { [param]: _dropped, ...rest } = current;
+        return next.length ? { ...rest, [param]: next } : rest;
+      });
+      resetPages();
+    },
+    [resetPages]
+  );
   const clearFilters = useCallback(() => {
     setFavouritesOnly(false);
     setFacetSelections({});
@@ -249,9 +253,7 @@ export const useCatalogFlow = ({
     void addCatalogLayersToProject(projectId, selected)
       .then(async (added) => {
         await mutate(projectLayersKey(projectId));
-        toast.success(
-          t("catalog_layers_added", { count: added?.length ?? selected.length })
-        );
+        toast.success(t("catalog_layers_added", { count: added?.length ?? selected.length }));
       })
       .catch((error) => {
         // The dialog is gone, so this is the only place a failure can surface —
@@ -264,8 +266,7 @@ export const useCatalogFlow = ({
 
   const action = useMemo(
     () => ({
-      label:
-        ids.length > 1 ? t("catalog_add_n_layers", { count: ids.length }) : t("add_layer"),
+      label: ids.length > 1 ? t("catalog_add_n_layers", { count: ids.length }) : t("add_layer"),
       disabled: !projectId || ids.length === 0,
       reason: !projectId
         ? t("catalog_add_needs_project")
@@ -302,6 +303,8 @@ export const useCatalogFlow = ({
       facetQueryParams,
       datasets: favouritesOnly && starredIds.length === 0 ? [] : datasets,
       total: favouritesOnly && starredIds.length === 0 ? 0 : (total ?? 0),
+      inArea: favouritesOnly && starredIds.length === 0 ? undefined : inArea,
+      elsewhere: favouritesOnly && starredIds.length === 0 ? undefined : elsewhere,
       isLoading,
       // Server-side favourites filtering: paging works normally under it.
       hasMore,

@@ -110,6 +110,9 @@ const rgb = (hex: string): number[] => {
 
 const near = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) <= TOLERANCE);
 
+/** A color's own alpha, 0 to 255 (spec 4.6): a six-digit color is opaque. */
+const alphaOf = (hex: string): number => (hex.length === 9 ? parseInt(hex.slice(7), 16) : 255);
+
 const hex = (c: number[]) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
 
 const covers = (entry: LegendEntry, value: number) =>
@@ -149,7 +152,8 @@ function legendProblem(sections: LegendSection[], sample: Sample, named: Set<unk
         return found.length ? `entries ${found.map((e) => e.id)} list ${value}, which the map hides` : null;
       if (found.length !== 1) return `${found.length} entries list ${value}, the map paints it ${color}`;
       const swatch = found[0].swatch.fill?.color;
-      return typeof swatch === "string" && near(rgb(swatch), rgb(color))
+      return typeof swatch === "string" &&
+        near([...rgb(swatch), alphaOf(swatch)], [...rgb(color), alphaOf(color)])
         ? null
         : `the entry for ${value} is ${String(swatch)}, the map ${color}`;
     }

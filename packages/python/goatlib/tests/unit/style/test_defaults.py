@@ -1,7 +1,12 @@
+import hashlib
+import json
+
 import pytest
 from goatlib.style.context import DataContext
 from goatlib.style.defaults import default_style
 from goatlib.style.validate import validate
+
+from .conftest import FIXTURES
 
 
 @pytest.mark.parametrize(
@@ -23,33 +28,104 @@ def test_defaults_validate_and_are_stable(name: str, contexts: dict) -> None:
     assert default_style(contexts[name], seed="layer-1") == doc
 
 
-def test_the_seed_picks_the_color() -> None:
-    ctx = DataContext(kind="vector", geometry="polygon")
-    colors = {
-        default_style(ctx, seed=f"layer-{n}")["symbol"]["fill"]["color"]
-        for n in range(40)
-    }
-    assert len(colors) > 3
+#: carto:Bold, the palette new layers take their color from, in its order.
+BOLD = [
+    "#7f3c8d",
+    "#11a579",
+    "#3969ac",
+    "#f2b701",
+    "#e73f74",
+    "#80ba5a",
+    "#e68310",
+    "#008695",
+    "#cf1c90",
+    "#f97b72",
+]
 
 
-def test_new_layers_never_get_the_pale_spectral_colors() -> None:
-    # The light yellows and greens of Spectral are hard to see on a light basemap.
-    pale = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
+def test_the_seed_picks_one_of_the_ten_bold_colors_and_all_ten_are_reachable() -> None:
     ctx = DataContext(kind="vector", geometry="polygon")
     colors = {
-        default_style(ctx, seed=f"layer-{i}")["symbol"]["fill"]["color"].lower()
+        default_style(ctx, seed=f"layer-{i}")["symbol"]["fill"]["color"]
         for i in range(400)
     }
-    assert colors == {
-        "#9e0142",
-        "#d53e4f",
-        "#f46d43",
-        "#fdae61",
-        "#66c2a5",
-        "#3288bd",
-        "#5e4fa2",
+    assert colors == set(BOLD)
+    assert default_style(ctx)["symbol"]["fill"]["color"] == BOLD[0]
+
+
+def test_the_same_seed_gives_the_same_color_on_every_geometry() -> None:
+    def color(geometry: str, seed: str) -> str:
+        symbol = default_style(
+            DataContext(kind="vector", geometry=geometry), seed=seed
+        )["symbol"]
+        part = symbol.get("fill") or symbol.get("line") or symbol["marker"]
+        return part["color"]
+
+    for seed in ("a", "layer-7", "0f9c2d6e-0000-4000-8000-000000000001"):
+        # The first byte of the seed's SHA-256 picks the color, on every call.
+        picked = BOLD[hashlib.sha256(seed.encode()).digest()[0] % len(BOLD)]
+        assert color("polygon", seed) == picked
+        assert color("polygon", seed) == color("line", seed) == color("point", seed)
+
+
+def test_a_new_polygon_has_a_thin_outline_in_a_darker_shade_of_its_fill() -> None:
+    doc = default_style(DataContext(kind="vector", geometry="polygon"), seed="layer-1")
+    assert doc["symbol"] == {
+        "fill": {"color": doc["symbol"]["fill"]["color"], "opacity": 0.8},
+        "outline": {"color": "auto", "width": 1},
     }
-    assert not colors & pale
+
+
+def test_new_points_and_lines_keep_their_shape() -> None:
+    point = default_style(DataContext(kind="vector", geometry="point"), seed="s")
+    line = default_style(DataContext(kind="vector", geometry="line"), seed="s")
+    color = point["symbol"]["marker"]["color"]
+    assert point["symbol"] == {
+        "marker": {"shape": "circle", "color": color, "size": 10}
+    }
+    assert line["symbol"] == {"line": {"color": color, "width": 2}}
+
+
+def test_the_web_mirror_reads_the_same_documents() -> None:
+    # fixtures/default_styles.json holds goatlib's default documents; the web's
+    # `defaultStyle` must equal them but for the color (lib/style/__tests__/defaults.test.ts).
+    rows = json.loads((FIXTURES / "default_styles.json").read_text())
+    assert rows == [
+        {
+            "geometry": geometry,
+            "seed": "layer-1",
+            "style": default_style(
+                DataContext(kind="vector", geometry=geometry), seed="layer-1"
+            ),
+        }
+        for geometry in ("point", "line", "polygon")
+    ]
+
+
+STARTING_VALUES = json.loads((FIXTURES / "starting_values.json").read_text())
+
+
+@pytest.mark.parametrize(
+    "row", STARTING_VALUES, ids=[r["name"] for r in STARTING_VALUES]
+)
+def test_what_the_panel_writes_when_a_part_is_switched_on_is_valid(row: dict) -> None:
+    # fixtures/starting_values.json holds the documents the web panel writes when
+    # a label, an icon, clustering, an outline or a casing is switched on (the web's test:
+    # styleEditor/__tests__/starting-values.test.tsx), and a point label with text
+    # on Auto beside a white halo set by hand.
+    ctx = DataContext(kind="vector", geometry=row["geometry"], fields={})
+    assert [i for i in validate(row["style"], ctx) if i.level == "error"] == []
+
+
+def test_an_absent_key_keeps_its_color() -> None:
+    from goatlib.style.defaults import REFERENCE_DEFAULTS
+
+    # The starting values are written into a document; a document without them
+    # draws these reference colors.
+    assert REFERENCE_DEFAULTS["label.color"] == "#3a3541"
+    assert REFERENCE_DEFAULTS["label.halo.color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["marker.icon_color"] == "#ffffff"
+    assert REFERENCE_DEFAULTS["outline.color"] == "#ffffff"
 
 
 @pytest.mark.parametrize("source", ["xyz", "cog"])

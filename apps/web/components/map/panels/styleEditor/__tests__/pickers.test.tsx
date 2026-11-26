@@ -24,10 +24,10 @@ describe("pickers", () => {
     fireEvent.keyDown(saturation, { key: "ArrowLeft", keyCode: 37 });
     expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange.mock.calls.every(([hex]) => /^#[0-9a-f]{6}$/.test(hex))).toBe(true);
-    await userEvent.click(screen.getByRole("button", { name: "#2bb381" }));
+    await userEvent.click(screen.getByRole("button", { name: "#2BB381" }));
     expect(onChange).toHaveBeenLastCalledWith("#2bb381");
-    expect(screen.getByRole("button", { name: "#ff0000" })).toBeDefined();
-    expect(screen.getAllByRole("button", { name: /^#[0-9a-f]{6}$/ }).length).toBeGreaterThanOrEqual(21);
+    expect(screen.getByRole("button", { name: "#FF0000" })).toBeDefined();
+    expect(screen.getAllByRole("button", { name: /^#[0-9A-F]{6}$/ }).length).toBeGreaterThanOrEqual(21);
   });
 
   it("ColorPicker shows and reads the color as Hex, RGB or HSL, and has no opacity", async () => {
@@ -57,7 +57,7 @@ describe("pickers", () => {
         value="#2bb381"
         onChange={vi.fn()}
         docColors={["#ff0000"]}
-        sentinel={{ ...sentinel, selected: false }}
+        sentinels={[{ ...sentinel, selected: false }]}
       />
     );
     const option = screen.getByRole("button", { name: "style_editor.same_as_fill" });
@@ -65,7 +65,7 @@ describe("pickers", () => {
     const firstTitle = screen.getByText("style_editor.colors_in_this_style");
     expect(option.compareDocumentPosition(firstTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(option.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getAllByRole("button", { name: "#2bb381" })[0].getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getAllByRole("button", { name: "#2BB381" })[0].getAttribute("aria-pressed")).toBe("true");
     await userEvent.click(option);
     expect(onPick).toHaveBeenCalledTimes(1);
     unmount();
@@ -76,7 +76,7 @@ describe("pickers", () => {
         value="#2bb381"
         onChange={vi.fn()}
         docColors={["#ff0000"]}
-        sentinel={{ ...sentinel, selected: true }}
+        sentinels={[{ ...sentinel, selected: true }]}
       />
     );
     expect(
@@ -97,11 +97,18 @@ describe("pickers", () => {
     expect(() => unmount()).not.toThrow();
   });
 
+  it("a style color with its own transparency lies over the swatch checkerboard", () => {
+    renderPanel(<ColorPicker value="#145c42" onChange={vi.fn()} docColors={["#145c4280", "#e6f6ef"]} />);
+    const clear = getComputedStyle(screen.getByRole("button", { name: "#145C42 · 50%" }));
+    expect(clear.backgroundImage.match(/linear-gradient/g)).toHaveLength(3);
+    expect(getComputedStyle(screen.getByRole("button", { name: "#E6F6EF" })).backgroundImage).toBe("none");
+  });
+
   it("a color listed twice among the style's colors shows as one swatch", () => {
     renderPanel(
       <ColorPicker value="#145c42" onChange={vi.fn()} docColors={["#145c42", "#145C42", "#e6f6ef"]} />
     );
-    expect(screen.getAllByRole("button", { name: "#145c42" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "#145C42" })).toHaveLength(1);
   });
 
   it("PalettePicker filters by kind and reverses; strips carry their names for hover and screen readers", async () => {

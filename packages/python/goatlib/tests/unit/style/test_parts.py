@@ -1,6 +1,8 @@
+from goatlib.style.models.layer import VectorStyle
 from goatlib.style.models.parts import (
     PER_LAYER_KEYS,
     Arrows,
+    Casing,
     Fill,
     Label,
     Line,
@@ -203,6 +205,47 @@ def test_outline_position_is_center_inside_or_outside() -> None:
 def test_outline_color_may_follow_the_fill() -> None:
     assert codes(Outline, {"color": "fill"}) == []
     assert codes(Outline, {"color": "blue"}) == ["invalid_value"]
+
+
+def test_outline_and_casing_color_take_auto_where_they_take_a_color() -> None:
+    assert codes(Outline, {"color": "auto"}) == []
+    assert codes(Outline, {"color": {"zoom": [[10, "auto"], [14, "#333333"]]}}) == []
+    assert codes(Outline, {"color": "Auto"}) == ["invalid_value"]
+    assert codes(Outline, {"color": "darker"}) == ["invalid_value"]
+    assert codes(Outline, {"color": "#2bb381zz"}) == ["invalid_value"]
+    assert codes(Casing, {"color": "#2bb381zz"}) == ["invalid_value"]
+    assert codes(Casing, {"color": "auto"}) == []
+    assert codes(Casing, {"color": {"zoom": [[10, "#ffffff"], [14, "auto"]]}}) == []
+    # A casing has no fill to follow.
+    assert codes(Casing, {"color": "fill"}) == ["invalid_value"]
+    assert codes(Casing, {"color": {"field": "kind"}}) == []
+    # The fill's own color and every other color key take colors only.
+    assert codes(Fill, {"color": "auto"}) == ["invalid_value"]
+    assert codes(Line, {"color": "auto"}) == ["invalid_value"]
+    assert codes(Marker, {"color": "auto"}) == ["invalid_value"]
+
+
+def test_auto_counts_as_a_color_in_class_records_and_rules() -> None:
+    doc = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"fill": {"color": "#cccccc"}, "outline": {"color": "auto"}},
+        "classify": [
+            {
+                "field": "kind",
+                "method": "categories",
+                "classes": [{"values": ["a"], "outline": {"color": "auto"}}],
+                "other": {"outline": {"color": "#333333"}},
+            }
+        ],
+        "rules": [
+            {
+                "when": {"op": "isNull", "args": [{"property": "kind"}]},
+                "outline": {"color": "auto"},
+            }
+        ],
+    }
+    assert codes(VectorStyle, doc) == []
 
 
 def test_parts_switch_off_with_false_without_extra_issues() -> None:

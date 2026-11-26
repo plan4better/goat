@@ -1,14 +1,24 @@
 // What holds for the legend of every case (spec 7.2): which entries it lists and in which order, that its texts
-// and colors are real, and where each kind of section sits.
+// and colors are real, and where each kind of section sits. Then what holds for the compiled layers of every case of
+// automatic colors, None and transparency (spec 18.10, 4.6), on a light and on a dark basemap.
 import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
+import { LABEL_FALLBACK, contrastRatio, isNone, shade } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
+import { HIGHLIGHT } from "@/lib/style/compile/constants";
+import { parseMarkerImage } from "@/lib/style/compile/markerImage";
+import type { CompiledLayer } from "@/lib/style/compile/types";
+import { PALETTES } from "@/lib/style/generated/catalog";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type LegendSection, type Swatch, buildLegend, rangeText, valuesText } from "@/lib/style/legend";
+import type { Tone } from "@/lib/style/tone";
 
-import { type LegendCase, legendCases, pointsDrawn } from "./cases";
-import { known } from "./known";
+import { maplibreErrors } from "../maplibre";
+import { type LegendCase, colorCases, compileInput, legendCases, pointsDrawn } from "./cases";
+import { CONTRAST_LIMITS, contrastLimit, known } from "./known";
+import { colorOf, layerReader, layerValue, mapLook } from "./mapSwatch";
+import { sampleFor } from "./samples";
 import { ZOOM_STOPS, attributePaths, inZoomStops } from "./zoomStops";
 
 const cases = legendCases();
@@ -726,5 +736,644 @@ describe("legend invariants", () => {
     const h3 = entriesOf(sections).find((s) => s.id === "h3")!;
     expect(h3.entries).toHaveLength(1);
     expect(h3.entries[0].swatch).toMatchObject({ geometry: "polygon", fill: { color: expect.any(String) } });
+  });
+
+  /** The outline on each H3 class swatch, for a classified render with `render` over it. */
+  const h3Swatches = (render: JsonObject) => {
+    const legend = buildLegend(
+      {
+        version: "1.0.0",
+        kind: "vector",
+        render: {
+          type: "h3",
+          resolution: 8,
+          palette: ["#000001", "#000003"],
+          classify: { method: "quantile", count: 2 },
+          computed: {
+            at: "t",
+            data: "d",
+            scope: "dataset",
+            resolutions: { "8": { min: 0, max: 10, breaks: [5] } },
+          },
+          ...render,
+        },
+      },
+      { geometry: "point", zoom: 12 }
+    )!;
+    return entriesOf(legend.sections)
+      .find((s) => s.id === "h3")!
+      .entries.map((e) => e.swatch.outline);
+  };
+
+  it("H3 swatches carry an outline only where the style has an Auto one", () => {
+    expect(h3Swatches({})).toEqual([undefined, undefined]);
+    expect(h3Swatches({ outline: { color: "auto", width: 2 } })).toEqual([
+      { color: shade("#000001"), width: 2 },
+      { color: shade("#000003"), width: 2 },
+    ]);
+    // Columns draw no outline.
+    expect(h3Swatches({ outline: { color: "auto" }, extrude: {} })).toEqual([undefined, undefined]);
+  });
+
+  it("a white H3 outline that is switched on leaves the swatches without an outline", () => {
+    expect(h3Swatches({ outline: {} })).toEqual([undefined, undefined]);
+    expect(h3Swatches({ outline: { color: "#ffffff", width: 1 } })).toEqual([undefined, undefined]);
+  });
+});
+
+// --- automatic colors, None and transparency ------------------------------------------------------------------------
+
+const colors = colorCases();
+const TONES: Tone[] = ["light", "dark"];
+/** The zooms the colors are read at: the stops of the cases' colors by zoom (8, 16), between them, and around. */
+const ZOOMS = [6, 8, 9, 10, 11.5, 12, 12.5, 14, 16, 18];
+const CLUSTER_COUNTS = [2, 10, 100, 1000];
+/** The zooms a label's text and halo are read at: every twentieth of a zoom from 4 to 20, so a dip between the
+ * points where the text is worked out shows. */
+const LABEL_ZOOMS = Array.from({ length: 321 }, (_, i) => 4 + i / 20);
+const H3_VALUES = [0, 1, 5, 20, 100, 1000, 10000, 100000];
+const WHITE = "#ffffff";
+const ON_COLORS = ["#ffffff", "#3a3541"];
+/** The least contrast an on-color reaches with the color underneath: white over the lightest color it is drawn on
+ * (relative luminance just below 0.5), GOAT's dark text over the darkest (at least 6.2 to 1). */
+const ON_COLOR_CONTRAST = 1.9;
+
+const toned = (c: LegendCase, tone: Tone, extra: object = {}): CompiledLayer =>
+  compileLayer({ ...compileInput(c), tone, ...extra });
+const layerOf = (out: CompiledLayer, id: string) => out.layers.find((l) => l.id === `1-${id}`);
+const auto = (c: LegendCase, key: string) => c.values?.[`auto:${key}`] === "yes";
+const symbolOf = (c: LegendCase): JsonObject => (isObject(c.style.symbol) ? c.style.symbol : {});
+const MAIN_PART = { point: "marker", line: "line", polygon: "fill" } as const;
+
+/** The values a field takes at each color of every palette by attribute on the symbol, where the map draws that
+ * color itself; with `between`, that many more evenly between the palette's ends. */
+function paletteStops(c: LegendCase, between = 0): Array<Record<string, unknown>> {
+  return Object.values(symbolOf(c)).flatMap((part) =>
+    isObject(part)
+      ? Object.values(part).flatMap((form) => {
+          if (!isObject(form) || typeof form.field !== "string" || form.palette === undefined) return [];
+          const computed = isObject(form.computed) ? form.computed : {};
+          const domain = (form.domain ?? computed.domain) as [number, number] | undefined;
+          const n = Array.isArray(form.palette)
+            ? form.palette.length
+            : (PALETTES[form.palette as string]?.colors.length ?? 2);
+          if (!domain) return [];
+          const at = (share: number) => ({
+            [form.field as string]: domain[0] + (domain[1] - domain[0]) * share,
+          });
+          return [
+            ...Array.from({ length: n }, (_, i) => at(i / (n - 1))),
+            ...Array.from({ length: between }, (_, i) => at((i + 0.5) / between)),
+          ];
+        })
+      : []
+  );
+}
+
+/** The features a check reads: the base look, a feature a rule takes, one per legend entry of a classification, one at
+ * each palette color (and `between` more along each palette), and features whose hex text field holds a color, no
+ * color, or nothing. */
+function featuresOf(c: LegendCase, between = 0): Array<Record<string, unknown>> {
+  const classify = list(c.style.classify);
+  const legend = buildLegend(c.style, { geometry: c.geometry, zoom: c.zoom });
+  const entries = entriesOf(legend?.sections ?? []).flatMap((section) => {
+    const own = classify.find((k) => (typeof k.id === "string" ? k.id : String(k.field)) === section.id);
+    if (!own) return [];
+    return section.entries.flatMap((entry) => {
+      const properties = sampleFor(own, entry, c.fields[own.field as string]);
+      return properties ? [properties] : [];
+    });
+  });
+  return [
+    {},
+    { flag: true },
+    { color_hex: "#e6ab02" },
+    { color_hex: "#1f78b4" },
+    { color_hex: "not a color" },
+    ...entries,
+    ...paletteStops(c, between),
+  ];
+}
+
+/** Whether `a` is darker than `b` (each of red, green and blue no lighter, and further from white), or both black. */
+function darker(a: string, b: string): boolean {
+  const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ca, cb] = [channels(a), channels(b)];
+  if (!ca.every((x, i) => x <= cb[i])) return false;
+  return b === "#000000" ? a === b : contrastRatio(a, WHITE) > contrastRatio(b, WHITE);
+}
+
+/** The factor a darker shade of the same hue scales red, green and blue by, at least: one darkening, not several and
+ * not to black. */
+const ONE_SHADE = 0.5;
+
+/** How far a channel may lie from the common factor: the rounding to whole numbers, and a blend between two palette
+ * stops drawn in Lab, where the blend of two shades is not exactly the shade of the blend. */
+const HUE_SLACK = 2.5;
+
+/** What is wrong with `a` as a darker shade of `b`: it must be darker (`darker`) and keep `b`'s hue, its red, green and
+ * blue each `b`'s times one common factor below 1 (within `HUE_SLACK`) and above `ONE_SHADE`; black stays black.
+ * Undefined where nothing is. */
+function notAShadeOf(a: string, b: string): string | undefined {
+  if (!darker(a, b)) return `${a} is not darker than ${b}`;
+  if (b === "#000000") return undefined;
+  const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [ca, cb] = [channels(a), channels(b)];
+  const most = cb.indexOf(Math.max(...cb));
+  const k = ca[most] / cb[most];
+  if (!cb.every((x, i) => Math.abs(ca[i] - k * x) <= HUE_SLACK)) return `${a} does not keep the hue of ${b}`;
+  if (k >= 1 || k < ONE_SHADE) return `${a} is ${b} times ${k.toFixed(2)}, not one shade of it`;
+  return undefined;
+}
+
+/** The case's style with every color's transparency left out: what an Auto color follows (its hue, spec 3.1). */
+function opaqueCase(c: LegendCase): LegendCase {
+  const strip = (value: unknown): unknown =>
+    typeof value === "string" && /^#[0-9a-f]{8}$/i.test(value)
+      ? value.slice(0, 7)
+      : Array.isArray(value)
+        ? value.map(strip)
+        : isObject(value)
+          ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, strip(v)]))
+          : value;
+  return { ...c, style: strip(c.style) as JsonObject };
+}
+
+/** Each feature's color read from the hex text field as it is: drawn as the data gives it (spec 18.10 shade). */
+const readFromData = (c: LegendCase, properties: Record<string, unknown>) =>
+  c.values?.base === "data" &&
+  typeof properties.color_hex === "string" &&
+  /^#[0-9a-f]{6}$/i.test(properties.color_hex) &&
+  Object.keys(properties).length === 1;
+
+describe("automatic colors, None and transparency", () => {
+  it("are generated in enough cases for each setting", () => {
+    expect(colors.length).toBeGreaterThan(50);
+    const count = (key: string, value: string) => colors.filter((c) => c.values?.[key] === value).length;
+    for (const key of Object.keys(colors[0].values!).filter((k) => k.startsWith("auto:")))
+      expect(count(key, "yes"), key).toBeGreaterThanOrEqual(3);
+    for (const none of ["fill", "outline", "marker", "line", "class"])
+      expect(count("none", none), none).toBeGreaterThanOrEqual(3);
+    for (const alpha of ["fixed", "class", "palette"])
+      expect(count("alpha", alpha), alpha).toBeGreaterThanOrEqual(3);
+  });
+
+  // 1. An Auto edge is a darker shade of what it follows, class by class, opaque.
+  const edges = colors.filter((c) =>
+    ["outline.color", "casing.color", "cluster.symbol.outline.color", "h3.outline.color"].some((k) =>
+      auto(c, k)
+    )
+  );
+  it.each(edges.map((c) => [c.id, c] as const))(
+    "%s: an Auto outline or casing is a darker shade of the color it follows, class by class, and opaque",
+    (_id, c) => {
+      const wrong: string[] = [];
+      let checked = 0;
+      const check = (label: string, edge: unknown, followed: unknown, equal = false) => {
+        checked++;
+        const [e, f] = [colorOf(edge), colorOf(followed)];
+        if (!e || !f) return wrong.push(`${label}: edge ${String(edge)}, follows ${String(followed)}`);
+        if (e.alpha !== 1) wrong.push(`${label}: edge ${e.hex} at alpha ${e.alpha}`);
+        const off = equal
+          ? e.hex === f.hex
+            ? undefined
+            : `${e.hex} is not ${f.hex}`
+          : notAShadeOf(e.hex, f.hex);
+        if (off) wrong.push(`${label}: edge ${off}`);
+      };
+      const geometry = c.geometry!;
+      const out = toned(c, c.tone!);
+      const hue = toned(opaqueCase(c), c.tone!);
+      const edge = geometry === "line" ? "casing" : "outline";
+      // Features in the classes of a classification of the edge's color draw their class's color, not the Auto one.
+      const classified = list(c.style.classify).filter((k) => k.target === `${edge}.color`);
+      const autoDrawn = (properties: Record<string, unknown>) =>
+        !classified.some((k) => (k.field as string) in properties);
+      if (auto(c, `${edge}.color`))
+        for (const properties of featuresOf(c).filter(autoDrawn))
+          for (const zoom of ZOOMS) {
+            const look = mapLook(out, properties, zoom, geometry);
+            const followed = mapLook(hue, properties, zoom, geometry)[`${MAIN_PART[geometry]}.color`];
+            if (!(`${edge}.color` in look) || followed === undefined) continue;
+            check(
+              `${JSON.stringify(properties)} at ${zoom}`,
+              look[`${edge}.color`],
+              followed,
+              readFromData(c, properties)
+            );
+          }
+      if (auto(c, "cluster.symbol.outline.color")) {
+        const circles = layerOf(out, "cluster-marker")?.type === "circle";
+        for (const n of CLUSTER_COUNTS) {
+          const at = (compiled: CompiledLayer, key: string) =>
+            layerValue(
+              compiled,
+              "1-cluster-marker",
+              circles ? "paint" : "layout",
+              key,
+              { point_count: n },
+              c.zoom
+            );
+          if (circles) check(`cluster of ${n}`, at(out, "circle-stroke-color"), at(hue, "circle-color"));
+          else {
+            const image = parseMarkerImage(at(out, "icon-image") as string)!;
+            const plain = parseMarkerImage(at(hue, "icon-image") as string)!;
+            check(`cluster of ${n}`, image.stroke, plain.fill);
+          }
+        }
+      }
+      if (auto(c, "h3.outline.color"))
+        for (const value of H3_VALUES)
+          check(
+            `hexagon of ${value}`,
+            layerValue(out, "1-h3-outline", "paint", "line-color", { value }, c.zoom),
+            layerValue(hue, "1-h3-fill", "paint", "fill-color", { value }, c.zoom)
+          );
+      expect(checked).toBeGreaterThan(0);
+      expect(wrong).toEqual([]);
+    }
+  );
+
+  /** Where a label draws a halo: its width is above 0 and its color has some alpha. Each pair of text and halo the
+   * map draws there, at every feature and zoom, with their contrast. */
+  function labelPairs(
+    out: CompiledLayer,
+    layer: string,
+    features: Array<Record<string, unknown>>,
+    zooms: number[] = LABEL_ZOOMS
+  ) {
+    const pairs: Array<{ at: string; text: string; halo: string; contrast: number }> = [];
+    const readers = Object.fromEntries(
+      ["text-halo-width", "text-color", "text-halo-color"].map((key) => [
+        key,
+        layerReader(out, `1-${layer}`, "paint", key),
+      ])
+    );
+    for (const properties of features)
+      for (const zoom of zooms) {
+        const read = (key: string) => readers[key](properties, zoom);
+        const width = read("text-halo-width") as number;
+        const [text, halo] = [colorOf(read("text-color")), colorOf(read("text-halo-color"))];
+        if (!(width > 0) || !halo || halo.alpha === 0 || !text) continue;
+        pairs.push({
+          at: `${JSON.stringify(properties)} at ${zoom}`,
+          text: text.hex,
+          halo: halo.hex,
+          contrast: contrastRatio(text.hex, halo.hex),
+        });
+      }
+    return pairs;
+  }
+
+  // 2. An Auto text reads on the halo the map draws, an Auto halo behind its text, by at least 4.5 to 1.
+  const labels = colors.filter((c) =>
+    ["label.color", "label.halo.color", "cluster.symbol.label.color", "cluster.symbol.label.halo.color"].some(
+      (k) => auto(c, k)
+    )
+  );
+  it.each(labels.map((c) => [c.id, c] as const))(
+    "%s: an Auto text and the halo the map draws, and an Auto halo and its text, contrast by at least 4.5 to 1",
+    (_id, c) => {
+      // A documented limit is about a label's text on its halo: a cluster's number keeps the floor.
+      const limit = contrastLimit(c);
+      let lowest = Infinity;
+      for (const tone of TONES) {
+        const out = toned(c, tone);
+        // Every feature over the zooms, and features close together along each palette at the case's zoom.
+        const labelPairsOf =
+          auto(c, "label.color") || auto(c, "label.halo.color")
+            ? [
+                ...labelPairs(out, "label", featuresOf(c)),
+                ...labelPairs(out, "label", paletteStops(c, 512), [c.zoom]),
+              ]
+            : [];
+        const numberPairs =
+          auto(c, "cluster.symbol.label.color") || auto(c, "cluster.symbol.label.halo.color")
+            ? labelPairs(
+                out,
+                "cluster-label",
+                CLUSTER_COUNTS.map((n) => ({ point_count: n }))
+              )
+            : [];
+        for (const pair of labelPairsOf) lowest = Math.min(lowest, pair.contrast);
+        // A label with a halo of its own draws one: there is a pair to read (a None halo or a number without a halo
+        // of its own draws none).
+        if (c.values!.label_colors !== "none" && (auto(c, "label.halo.color") || auto(c, "label.color")))
+          expect(labelPairsOf.length, tone).toBeGreaterThan(0);
+        const below = (pairs: typeof labelPairsOf, floor: number) =>
+          pairs.filter((p) => p.contrast < floor - 1e-9);
+        expect(
+          [...below(labelPairsOf, limit?.floor ?? 4.5), ...below(numberPairs, 4.5)],
+          `${tone}${limit ? `: ${limit.reason}` : ""}`
+        ).toEqual([]);
+      }
+      // A documented limit holds only where the contrast does dip below the floor.
+      if (limit) expect(lowest, limit.reason).toBeLessThan(4.5);
+    }
+  );
+
+  it("documents each limit of the contrast floor by the cases it holds for", () => {
+    for (const limit of CONTRAST_LIMITS) {
+      const held = labels.filter((c) => limit.when(c));
+      expect(held.length, limit.reason).toBeGreaterThan(0);
+      expect(held.length, limit.reason).toBeLessThanOrEqual(4);
+    }
+  });
+
+  // 3. An Auto icon color and number: white or GOAT's dark text on the color underneath, reading on it, white over the
+  // darker colors underneath and dark over the lighter ones (one switch at most), white for a color read from the data.
+  const onColors = colors.filter((c) =>
+    ["marker.icon_color", "cluster.symbol.marker.icon_color", "cluster.symbol.label.color"].some((k) =>
+      auto(c, k)
+    )
+  );
+  it.each(onColors.map((c) => [c.id, c] as const))(
+    "%s: an Auto icon color and a cluster's number are white or dark, read on the color underneath",
+    (_id, c) => {
+      const wrong: string[] = [];
+      const out = toned(c, c.tone!);
+      const symbol = symbolOf(c);
+      const main = isObject(symbol.marker) ? symbol.marker.color : undefined;
+      // The zooms where the marker's color is that of a stop (a color by zoom), else the case's.
+      const zooms =
+        isObject(main) && Array.isArray(main.zoom)
+          ? (main.zoom as Array<[number]>).map(([z]) => z)
+          : [c.zoom];
+      // Each answer with the color underneath, by what it stands on (a marker's icon, a cluster's icon or number).
+      const answers: Record<string, Array<{ label: string; drawn: string; under: string }>> = {};
+      let checked = 0;
+      let onHalo = 0;
+      const check = (group: string, label: string, drawn: unknown, under: unknown, data = false) => {
+        checked++;
+        const [d, u] = [colorOf(drawn), colorOf(under)];
+        if (!d) return wrong.push(`${label}: no color (${String(drawn)})`);
+        if (!ON_COLORS.includes(d.hex)) return wrong.push(`${label}: ${d.hex} is not white or dark`);
+        if (data) {
+          if (d.hex !== WHITE) wrong.push(`${label}: ${d.hex} over a color read from the data, not white`);
+          return;
+        }
+        if (!u) return;
+        if (contrastRatio(d.hex, u.hex) < ON_COLOR_CONTRAST)
+          wrong.push(
+            `${label}: ${d.hex} on ${u.hex} reads at ${contrastRatio(d.hex, u.hex).toFixed(2)} to 1`
+          );
+        (answers[group] ??= []).push({ label, drawn: d.hex, under: u.hex });
+      };
+      if (auto(c, "marker.icon_color") && layerOf(out, "marker")?.type === "symbol")
+        for (const properties of featuresOf(c))
+          for (const zoom of zooms) {
+            const name = layerValue(out, "1-marker", "layout", "icon-image", properties, zoom) as string;
+            const image = parseMarkerImage(name);
+            if (!image) continue;
+            check(
+              "icon",
+              `${JSON.stringify(properties)} at ${zoom}`,
+              image.iconColor,
+              image.fill,
+              readFromData(c, properties)
+            );
+          }
+      const clusterImage = layerOf(out, "cluster-marker")?.type === "symbol";
+      // Clusters at the case's zoom and below it, where a halo by zoom may not be drawn.
+      const clusters = CLUSTER_COUNTS.flatMap((n) => [6, 8, c.zoom].map((zoom) => [n, zoom] as const));
+      for (const [n, zoom] of layerOf(out, "cluster-marker") ? clusters : []) {
+        const at = (group: "paint" | "layout", layer: string, key: string) =>
+          layerValue(out, `1-${layer}`, group, key, { point_count: n }, zoom);
+        const image = clusterImage
+          ? parseMarkerImage(at("layout", "cluster-marker", "icon-image") as string)
+          : null;
+        const under = image ? image.fill : at("paint", "cluster-marker", "circle-color");
+        if (auto(c, "cluster.symbol.marker.icon_color") && image)
+          check("cluster icon", `cluster icon of ${n} at ${zoom}`, image.iconColor, under);
+        // A number on a halo of its own is read on the halo (checked with the labels).
+        if (auto(c, "cluster.symbol.label.color") && layerOf(out, "cluster-label")) {
+          const width = at("paint", "cluster-label", "text-halo-width") as number;
+          const halo = colorOf(at("paint", "cluster-label", "text-halo-color"));
+          if (width > 0 && halo && halo.alpha > 0) {
+            onHalo++;
+            continue;
+          }
+          check("number", `number of ${n} at ${zoom}`, at("paint", "cluster-label", "text-color"), under);
+        }
+      }
+      // Ordered from the darkest color underneath to the lightest: white first, then dark, switching once at most.
+      for (const [group, list] of Object.entries(answers)) {
+        const ordered = [...list].sort(
+          (a, b) => contrastRatio(a.under, "#000000") - contrastRatio(b.under, "#000000")
+        );
+        const switches = ordered.slice(1).filter((a, i) => a.drawn !== ordered[i].drawn);
+        if (switches.length > 1 || (switches.length === 1 && ordered[0].drawn !== WHITE))
+          wrong.push(
+            `${group}: ${ordered.map((a) => `${a.drawn} on ${a.under}`).join(", ")} does not switch once from white to dark`
+          );
+      }
+      expect(checked + onHalo).toBeGreaterThan(0);
+      expect(wrong).toEqual([]);
+    }
+  );
+
+  // 4. No missing or invalid color, and MapLibre's validator accepts the layers on both tones.
+  const COLOR_WORDS = /"(auto|fill)"/;
+  it.each(colors.map((c) => [c.id, c] as const))(
+    "%s: every color of the compiled layers is a valid color on both tones, and MapLibre accepts the layers",
+    (_id, c) => {
+      for (const tone of TONES) {
+        const out = toned(c, tone);
+        expect(maplibreErrors(out.layers, out.sources, out.state), tone).toEqual([]);
+        const wrong: string[] = [];
+        for (const layer of out.layers as Array<{ id: string; type: string } & Record<string, unknown>>)
+          for (const group of ["paint", "layout"] as const) {
+            const values = (layer[group] ?? {}) as Record<string, unknown>;
+            for (const key of Object.keys(values)) {
+              const isColor = key.endsWith("-color");
+              if (!isColor && key !== "icon-image") continue;
+              if (isColor && COLOR_WORDS.test(JSON.stringify(values[key])))
+                wrong.push(`${layer.id} ${key} holds a word for a color`);
+              const points = layer.id.includes("cluster")
+                ? CLUSTER_COUNTS.map((n) => ({ point_count: n }))
+                : layer.id.includes("h3")
+                  ? H3_VALUES.map((value) => ({ value }))
+                  : featuresOf(c);
+              for (const properties of points)
+                for (const zoom of [6, c.zoom, 12.5, 16]) {
+                  const value = layerValue(out, layer.id, group, key, properties, zoom);
+                  if (isColor) {
+                    if (!(value instanceof Color))
+                      wrong.push(`${layer.id} ${key} at ${zoom}: ${String(value)}`);
+                    continue;
+                  }
+                  const image = String(value).startsWith("goat-marker:")
+                    ? parseMarkerImage(String(value))
+                    : null;
+                  for (const color of image ? [image.fill, image.stroke, image.iconColor] : [])
+                    if (color !== "" && !Color.parse(color))
+                      wrong.push(`${layer.id} image ${String(value)} at ${zoom}: ${color}`);
+                }
+            }
+          }
+        expect(wrong, tone).toEqual([]);
+      }
+    }
+  );
+
+  // 5. A part whose fixed color is None draws nothing of its own; the document keeps the hue.
+  const nones = colors.filter((c) => c.values?.none && c.values.none !== "no" && c.values.none !== "class");
+  it.each(nones.map((c) => [c.id, c] as const))(
+    "%s: a part whose color is None draws nothing of its own",
+    (_id, c) => {
+      const part = c.values!.none;
+      const geometry = c.geometry!;
+      const color = (symbolOf(c)[part] as JsonObject).color;
+      // (The stored style holds the None color with its hue: what the Auto edge follows, checked above.)
+      expect(color).toMatch(/^#[0-9a-f]{6}00$/i);
+      const out = toned(c, c.tone!);
+      // The base look draws no such part.
+      const look = mapLook(out, {}, c.zoom, geometry);
+      const drawn = look[`${part}.color`];
+      const width = look[`${part}.width`];
+      expect(
+        drawn === undefined || width === 0 || !colorOf(drawn) || colorOf(drawn)!.alpha === 0,
+        `${part}: ${String(drawn)} at ${String(width)}`
+      ).toBe(true);
+      // Where no class or rule sets that color, the part has no layer of its own.
+      const setElsewhere = JSON.stringify([c.style.classify, c.style.rules]).includes(`"${part}":{"color"`);
+      if (setElsewhere) return;
+      if (part === "fill") expect(layerOf(out, "fill")).toBeUndefined();
+      if (part === "line") expect(layerOf(out, "line")).toBeUndefined();
+      if (part === "outline" && geometry === "polygon") {
+        expect(layerOf(out, "outline")).toBeUndefined();
+        // With the highlight on, only the highlight's edge, at opacity 0 for features that are not active.
+        const lit = toned(c, c.tone!, { highlight: true });
+        expect(layerValue(lit, "1-outline", "paint", "line-color", {}, c.zoom)).toEqual(
+          Color.parse(HIGHLIGHT.color)
+        );
+        expect(layerValue(lit, "1-outline", "paint", "line-opacity", {}, c.zoom)).toBe(0);
+      }
+      if (part === "outline" && geometry === "point") {
+        const marker = layerOf(out, "marker");
+        if (marker?.type === "circle")
+          expect(layerValue(out, "1-marker", "paint", "circle-stroke-width", {}, c.zoom)).toBe(0);
+        if (marker?.type === "symbol") {
+          const name = layerValue(out, "1-marker", "layout", "icon-image", {}, c.zoom) as string;
+          expect(parseMarkerImage(name)!.strokeWidth).toBe(0);
+        }
+      }
+      if (part === "marker") {
+        // The marker's layer stays only for what else of it shows: an outline or an icon.
+        const shows =
+          isObject(symbolOf(c).outline) || typeof (symbolOf(c).marker as JsonObject).icon === "string";
+        if (!shows) expect(layerOf(out, "marker") ?? layerOf(out, "icon")).toBeUndefined();
+      }
+    }
+  );
+
+  // 5, for one class: a class that sets its own main color None draws none of it; the other classes draw theirs.
+  const classNones = colors.filter((c) => c.values?.none === "class");
+  it.each(classNones.map((c) => [c.id, c] as const))(
+    "%s: a class whose own color is None draws no such part, the other classes draw theirs",
+    (_id, c) => {
+      const geometry = c.geometry!;
+      const part = MAIN_PART[geometry];
+      const [own] = list(c.style.classify);
+      const classes = list(own.classes);
+      const out = toned(c, c.tone!);
+      const block = entriesOf(legendOf(c)!.sections).find((s) => s.id === "first");
+      let nones = 0;
+      const wrong: string[] = [];
+      for (const entry of block?.entries ?? []) {
+        if (entry.extra) continue;
+        const record = classes.find((k, i) => (typeof k.id === "string" ? k.id : String(i)) === entry.id);
+        const properties = sampleFor(own, entry, c.fields[own.field as string]);
+        if (!record || !properties) continue;
+        const none = isNone((record[part] as JsonObject | undefined)?.color);
+        nones += none ? 1 : 0;
+        const color = colorOf(mapLook(out, properties, c.zoom, geometry)[`${part}.color`]);
+        if ((color === undefined || color.alpha === 0) !== none)
+          wrong.push(`${entry.id} ${part}: ${color?.hex} at ${color?.alpha}, None: ${none}`);
+      }
+      expect(nones).toBe(1);
+      if (known("map", c)) expect(wrong, known("map", c)!.reason).not.toEqual([]);
+      else expect(wrong).toEqual([]);
+    }
+  );
+
+  // 6. Without the new values nothing depends on the basemap's tone.
+  const plain = legendCases().filter(
+    (c) =>
+      c.values &&
+      (c.tone === undefined ||
+        (Object.entries(c.values).every(([k, v]) => !k.startsWith("auto:") || v === "no") &&
+          c.values.none === "no" &&
+          c.values.alpha === "no" &&
+          c.values.label_colors !== "none"))
+  );
+  it("compiles the cases without the new values alike on a light and a dark basemap", () => {
+    expect(plain.filter((c) => c.tone !== undefined).length).toBeGreaterThan(0);
+    for (const c of plain) expect(toned(c, "dark"), c.id).toEqual(toned(c, "light"));
+  });
+
+  // The review's cases.
+  const named = (id: string) => colors.find((c) => c.id === id)!;
+
+  it("a class that sets its own fill to None: its Auto outline keeps the class's hue, its legend swatch is an outline, the other classes are untouched", () => {
+    const c = named("focus-class-none");
+    const classes = list(list(c.style.classify)[0].classes);
+    const none = classes.findIndex((k) => isNone((k.fill as JsonObject).color));
+    expect(none).toBeGreaterThanOrEqual(0);
+    // The same style with that class's fill at its hue, opaque.
+    const shown = opaqueCase(c);
+    const sample = (k: JsonObject) => ({ category: (k.values as string[])[0] });
+    for (const tone of TONES) {
+      const [out, plain] = [toned(c, tone), toned(shown, tone)];
+      classes.forEach((k, i) => {
+        const [look, base] = [
+          mapLook(out, sample(k), c.zoom, "polygon"),
+          mapLook(plain, sample(k), c.zoom, "polygon"),
+        ];
+        if (i === none) {
+          // No fill drawn, the outline of the class's hue as it is with the fill shown.
+          expect(colorOf(look["fill.color"])?.alpha ?? 0, tone).toBe(0);
+          expect(look["outline.color"], tone).toEqual(base["outline.color"]);
+          expect(
+            darker(colorOf(look["outline.color"])!.hex, (k.fill as JsonObject).color!.toString().slice(0, 7))
+          ).toBe(true);
+        } else expect(look, `${tone} class ${i}`).toEqual(base);
+      });
+    }
+    const block = entriesOf(legendOf(c)!.sections).find((x) => x.id === "first")!;
+    block.entries.forEach((entry, i) => {
+      const fill = entry.swatch.fill;
+      if (i === none) {
+        expect(fill === undefined || isNone(fill.color)).toBe(true);
+        expect(entry.swatch.outline?.color).toMatch(/^#[0-9a-f]{6}$/i);
+      } else expect(isNone(fill?.color)).toBe(false);
+    });
+  });
+
+  it("a fill read from a field as hex text with an Auto outline and an Auto label draws the documented fallbacks, never an empty color", () => {
+    const c = named("focus-data-color");
+    const features = [{ color_hex: "#e6ab02" }, { color_hex: "not a color" }, { color_hex: null }, {}];
+    for (const tone of TONES) {
+      const out = toned(c, tone);
+      const fill = layerReader(out, "1-fill", "paint", "fill-color");
+      const outline = layerReader(out, "1-outline", "paint", "line-color");
+      const text = layerReader(out, "1-label", "paint", "text-color");
+      const halo = layerReader(out, "1-label", "paint", "text-halo-color");
+      for (const properties of features) {
+        const at = `${tone} ${JSON.stringify(properties)}`;
+        const [f, o] = [colorOf(fill(properties, c.zoom)), colorOf(outline(properties, c.zoom))];
+        expect(f && o, at).toBeTruthy();
+        // The data's color stands; where the data holds none, the shade of the read's fallback.
+        if (properties.color_hex === "#e6ab02") expect(o!.hex, at).toBe("#e6ab02");
+        else expect(darker(o!.hex, f!.hex), at).toBe(true);
+        // Every feature's label: the neutral pair of the basemap's tone.
+        expect([colorOf(text(properties, c.zoom))?.hex, colorOf(halo(properties, c.zoom))?.hex], at).toEqual([
+          LABEL_FALLBACK[tone].text,
+          LABEL_FALLBACK[tone].halo,
+        ]);
+      }
+      // Features without a valid color share one outline.
+      expect(outline({ color_hex: "not a color" }, c.zoom)).toEqual(outline({}, c.zoom));
+    }
   });
 });

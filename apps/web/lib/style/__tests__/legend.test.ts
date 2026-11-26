@@ -1622,3 +1622,50 @@ describe("height legends", () => {
     });
   });
 });
+
+describe('legend swatches of "auto"', () => {
+  const vector = (rest: object) => ({ version: "1.0.0", kind: "vector", ...rest });
+
+  it("an outline in auto shows the fill color darkened, class by class", () => {
+    const symbol = { fill: { color: "#7f3c8d" }, outline: { color: "auto", width: 1 } };
+    const style = vector({
+      symbol,
+      classify: [
+        {
+          id: "k",
+          field: "use",
+          method: "categories",
+          classes: [{ id: "a", values: ["a"], fill: { color: "#11a579" } }],
+          other: { fill: { color: "#e68310" } },
+        },
+      ],
+    });
+    expect(baseSwatch(vector({ symbol }), { geometry: "polygon", zoom: 12 }).outline?.color).toBe("#592a63");
+    const section = buildLegend(style, { geometry: "polygon", zoom: 12 })!.sections[0] as {
+      entries: Array<{ id: string; swatch: Swatch }>;
+    };
+    expect(section.entries.map((e) => [e.id, e.swatch.outline?.color])).toEqual([
+      ["a", "#0c7455"],
+      ["other", "#a15c0b"],
+    ]);
+  });
+
+  it("an outline in auto on points shows the marker color darkened", () => {
+    const swatch = baseSwatch(
+      vector({ symbol: { marker: { color: "#3969ac" }, outline: { color: "auto" } } }),
+      {
+        geometry: "point",
+        zoom: 12,
+      }
+    );
+    expect(swatch.outline?.color).toBe("#284a78");
+  });
+
+  it("a casing in auto shows the line color darkened", () => {
+    const swatch = baseSwatch(
+      vector({ symbol: { line: { color: "#f97b72" }, casing: { color: "auto", width: 1 } } }),
+      { geometry: "line", zoom: 12 }
+    );
+    expect(swatch.casing?.color).toBe("#ae5650");
+  });
+});

@@ -40,6 +40,43 @@ def test_collection_item_links_carry_the_prefix(prefixed_client: TestClient) -> 
     )
 
 
+@pytest.mark.parametrize("path", ["/stac/search", "/stac/collections"])
+def test_a_stripped_prefix_revalidates_per_language(
+    prefixed_client: TestClient, path: str
+) -> None:
+    """The tag a ranked route stamps is the one its 304 check compares, also
+    when the gateway stripped the prefix."""
+    tag = prefixed_client.get(path, headers={"Accept-Language": "de"}).headers["etag"]
+
+    hit = prefixed_client.get(
+        path, headers={"Accept-Language": "de", "If-None-Match": tag}
+    )
+    assert hit.status_code == 304
+    assert "Accept-Language" in hit.headers["vary"]
+
+    other = prefixed_client.get(
+        path, headers={"Accept-Language": "en", "If-None-Match": tag}
+    )
+    assert other.status_code == 200
+
+
+def test_a_kept_prefix_names_the_language_in_vary(
+    prefixed_client: TestClient,
+) -> None:
+    """A proxy that keeps the prefix still learns the ranked answer depends on
+    ``Accept-Language``, beside what compression sets."""
+    headers = {"Accept-Language": "de", "Accept-Encoding": "gzip"}
+    for path in ("/catalog/stac/search", "/catalog/stac/collections"):
+        r = prefixed_client.get(path, params={"limit": 50}, headers=headers)
+        assert r.status_code == 200
+        vary = {value.strip() for value in r.headers["vary"].split(",")}
+        assert {"Accept-Encoding", "Accept-Language"} <= vary
+
+    nuts = prefixed_client.get("/catalog/stac/nuts", headers=headers)
+    assert nuts.status_code == 200
+    assert "Accept-Language" not in nuts.headers.get("vary", "")
+
+
 def test_stac_links_unprefixed_by_default(client: TestClient) -> None:
     links = {link["rel"]: link["href"] for link in client.get("/stac").json()["links"]}
     assert links["self"].startswith("http://testserver/stac")

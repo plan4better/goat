@@ -15,6 +15,7 @@ import itertools
 from typing import Any, Callable
 
 import duckdb
+from goatlib.style.colors import COLOR_KEYS, opaque
 from goatlib.style.compute import apply_computed, needed_stats
 from goatlib.style.data import compute_stats, describe
 from goatlib.style.data_check import referenced_fields
@@ -47,6 +48,7 @@ def synthetic(con: duckdb.DuckDBPyConnection) -> None:
     """The made-up table: 140 points on a grid, each field one kind of data."""
     con.execute("INSTALL spatial; LOAD spatial;")
     long_sql = ", ".join(f"'{text}'" for text in LONG)
+    hex_sql = ", ".join(f"'{color}'" for color in COLORS)
     con.execute(f"""
         CREATE OR REPLACE TABLE {RELATION} AS
         SELECT
@@ -62,6 +64,11 @@ def synthetic(con: duckdb.DuckDBPyConnection) -> None:
             ([{long_sql}])[1 + (i % 4)::INTEGER] AS long_text,
             CASE WHEN i % 5 = 0 THEN NULL ELSE ((i * 37) % 140) * 65.0 END AS partial,
             CASE WHEN i % 5 = 0 THEN NULL ELSE chr(65 + (i % 14)::INTEGER) END AS partial_text,
+            CASE i % 7
+                WHEN 0 THEN NULL
+                WHEN 1 THEN 'not a color'
+                ELSE ([{hex_sql}])[1 + (i % 14)::INTEGER]
+            END AS color_hex,
             ST_Point(11.0 + (i % 14) * 0.01, 48.0 + (i // 14) * 0.01) AS geom
         FROM range(140) r(i)
     """)
@@ -142,10 +149,10 @@ CATEGORICAL = {"categories", "categories_many", "categories_top"}
 #: Targets whose values are picked from a list: a palette or a range cannot make them.
 CHOICES = {"icon", "pattern", "dash"}
 
-Pair = Callable[[str, str], bool]
+Pair = Callable[..., bool]
 
 #: Value pairs that never go together, by the two dimensions (in `DIMENSIONS` order).
-RULES: dict[tuple[str, str], Pair] = {
+RULES: dict[tuple[str, ...], Pair] = {
     # Heatmaps, clusters and H3 hexagons are ways to draw points.
     ("geometry", "render"): lambda g, r: r == "features" or g in POINTS,
     ("geometry", "target"): lambda g, t: not (
@@ -191,21 +198,24 @@ RULES: dict[tuple[str, str], Pair] = {
 }
 
 
-def compatible(values: Values) -> bool:
-    """Whether no two of the assigned values exclude each other."""
+def compatible(values: Values, rules: dict[tuple[str, ...], Pair] = RULES) -> bool:
+    """Whether no two (or more, where a rule names more) of the assigned values exclude each other."""
     return all(
-        rule(values[a], values[b])
-        for (a, b), rule in RULES.items()
-        if a in values and b in values
+        rule(*(values[d] for d in dims))
+        for dims, rule in rules.items()
+        if all(d in values for d in dims)
     )
 
 
 def _fill(
-    values: Values, open_pairs: set[tuple[tuple[str, str], tuple[str, str]]]
+    values: Values,
+    open_pairs: set[tuple[tuple[str, str], tuple[str, str]]],
+    dimensions: dict[str, list[str]],
+    rules: dict[tuple[str, ...], Pair],
 ) -> Values | None:
     """`values` completed to a full compatible case, each open dimension taking the
     value that covers the most open pairs first; None when there is no such case."""
-    name = next((d for d in DIMENSIONS if d not in values), None)
+    name = next((d for d in dimensions if d not in values), None)
     if name is None:
         return values
 
@@ -216,12 +226,12 @@ def _fill(
             if _pair((name, value), (other, chosen)) in open_pairs
         )
 
-    options = sorted(DIMENSIONS[name], key=lambda v: -gain(v))
+    options = sorted(dimensions[name], key=lambda v: -gain(v))
     for value in options:
         candidate = {**values, name: value}
-        if not compatible(candidate):
+        if not compatible(candidate, rules):
             continue
-        done = _fill(candidate, open_pairs)
+        done = _fill(candidate, open_pairs, dimensions, rules)
         if done is not None:
             return done
     return None
@@ -233,15 +243,18 @@ def _pair(
     return (a, b) if a < b else (b, a)
 
 
-def all_pairs() -> tuple[list[Values], list[tuple[tuple[str, str], tuple[str, str]]]]:
+def all_pairs(
+    dimensions: dict[str, list[str]] = DIMENSIONS,
+    rules: dict[tuple[str, ...], Pair] = RULES,
+) -> tuple[list[Values], list[tuple[tuple[str, str], tuple[str, str]]]]:
     """Cases that hold every pair of values some case can hold, and the pairs no
     case can hold (their values exclude each other, alone or through a third)."""
-    names = list(DIMENSIONS)
+    names = list(dimensions)
     open_pairs = {
         _pair((a, x), (b, y))
         for a, b in itertools.combinations(names, 2)
-        for x in DIMENSIONS[a]
-        for y in DIMENSIONS[b]
+        for x in dimensions[a]
+        for y in dimensions[b]
     }
     cases: list[Values] = []
     impossible = []
@@ -249,7 +262,11 @@ def all_pairs() -> tuple[list[Values], list[tuple[tuple[str, str], tuple[str, st
         if pair not in open_pairs:
             continue
         seed = dict(pair)
-        case = _fill(seed, open_pairs) if compatible(seed) else None
+        case = (
+            _fill(seed, open_pairs, dimensions, rules)
+            if compatible(seed, rules)
+            else None
+        )
         if case is None:
             impossible.append(pair)
             open_pairs.discard(pair)
@@ -634,8 +651,381 @@ def issues(
     return sorted(f"{i.code} {i.path}" for i in found if i.level == "error")
 
 
+# --- the second block: automatic colors, None and transparency -------------------------------------
+
+#: The keys that take `"auto"` (spec 18.10), from the table of color keys: a key added there joins the cases.
+AUTO_KEYS = [
+    key for key, row in COLOR_KEYS.items() if row["auto"] and row.get("accepted")
+]
+
+#: The legend's settings the colors are paired with (a subset of their values), then the new ones: each Auto key
+#: on or off, how a label's colors that are not Auto are set, a part drawn None, a color with a transparency, and
+#: the basemap's tone. A base color `data` is read from a field holding hex text (`color_hex`).
+COLOR_DIMENSIONS: dict[str, list[str]] = {
+    "geometry": DIMENSIONS["geometry"],
+    "render": ["features", "cluster", "h3", "h3_classes"],
+    "method": ["none", "categories", "quantile", "manual"],
+    "target": ["none", "color", "outline_color"],
+    "base": ["fixed", "by_zoom", "palette", "data"],
+    "rules": ["none", "named"],
+    **{f"auto:{key}": ["no", "yes"] for key in AUTO_KEYS},
+    "label_colors": ["plain", "light", "dark", "mid", "none", "zoom", "width"],
+    "none": ["no", "fill", "outline", "marker", "line", "class"],
+    "alpha": ["no", "fixed", "class", "palette"],
+    "tone": ["light", "dark"],
+}
+
+#: The legend's settings the colors leave at one value.
+COLOR_FIXED: Values = {
+    "data": "normal",
+    "other": "no",
+    "no_data": "no",
+    "hidden_class": "no",
+    "class_off_legend": "no",
+    "names": "no",
+    "unit": "no",
+    "format": "no",
+    "zoom": "12",
+    "title": "no",
+    "caption": "no",
+    "second": "none",
+}
+
+#: The made-up fields of the colors: the legend's and a field of hex text, some of it empty or no color.
+COLOR_FIELDS = {**FIELDS, "color_hex": "string"}
+
+H3_RENDERS = {"h3", "h3_classes"}
+#: The parts a None color is set on that are a layer's own color.
+MAIN_NONE = {"fill", "marker", "line"}
+#: A transparency: the share of a color's alpha a color with one keeps (60 %).
+ALPHA = "99"
+
+
+def place(key: str) -> tuple[str, list[str]]:
+    """Where a color key is written: in the symbol, in a cluster's own symbol or in the H3 render, and its path
+    there. A key of another place cannot be generated: ValueError."""
+    parts = key.split(".")
+    if parts[:2] == ["cluster", "symbol"]:
+        return "cluster", parts[2:]
+    if parts[0] == "h3":
+        return "render", parts[1:]
+    if parts[0] in {"fill", "outline", "line", "casing", "arrows", "marker", "label"}:
+        return "symbol", parts
+    raise ValueError(f"the cases cannot write {key}: give it a place in place()")
+
+
+def _auto_fits(key: str, geometry: str, render: str) -> bool:
+    """Whether a key set Auto is drawn by a case of `geometry` and `render`."""
+    where, path = place(key)
+    if where == "cluster":
+        return render == "cluster"
+    if where == "render":
+        return render in H3_RENDERS
+    # The points of an H3 layer are not drawn at the cases' zoom.
+    if render in H3_RENDERS:
+        return False
+    if path[0] == "label":
+        return True
+    template = _symbol(geometry)
+    if path[0] not in template:
+        return False
+    # An icon alone is its own color: it has no icon color.
+    return not (path[-1] == "icon_color" and template["marker"].get("shape") == "icon")
+
+
+def _none_fits(none: str, geometry: str) -> bool:
+    template = _symbol(geometry)
+    if none == "fill":
+        return geometry == "polygon"
+    if none == "outline":
+        return "outline" in template
+    if none == "marker":
+        return geometry in POINTS
+    if none == "line":
+        return geometry == "line"
+    return True
+
+
+#: The label colors that set the one of text and halo that is not Auto: with both Auto they set nothing.
+PARTNER_COLORS = {"light", "dark", "mid", "none", "zoom"}
+
+#: Value pairs of the colors that never go together, as `RULES`; a rule over three settings where a label's colors
+#: need its text and halo apart.
+COLOR_RULES: dict[tuple[str, ...], Pair] = {
+    **{
+        dims: rule
+        for dims, rule in RULES.items()
+        if all(d in COLOR_DIMENSIONS for d in dims)
+    },
+    **{
+        ("geometry", f"auto:{key}"): (
+            lambda g, a, key=key: a == "no"
+            or any(_auto_fits(key, g, r) for r in COLOR_DIMENSIONS["render"])
+        )
+        for key in AUTO_KEYS
+    },
+    **{
+        ("render", f"auto:{key}"): (
+            lambda r, a, key=key: a == "no"
+            or any(_auto_fits(key, g, r) for g in COLOR_DIMENSIONS["geometry"])
+        )
+        for key in AUTO_KEYS
+    },
+    # A None outline and an Auto outline are the same key (an Auto icon color on a None marker is not).
+    **{
+        (f"auto:{key}", "none"): (
+            lambda a, n, part=key.removesuffix(".color"): not (a == "yes" and n == part)
+        )
+        for key in AUTO_KEYS
+    },
+    ("geometry", "none"): lambda g, n: _none_fits(n, g),
+    ("render", "none"): lambda r, n: n == "no" or r not in H3_RENDERS,
+    ("method", "none"): lambda m, n: n != "class" or m != "none",
+    ("target", "none"): lambda t, n: n != "class" or t == "color",
+    # A None color is a fixed one.
+    ("base", "none"): lambda b, n: n not in MAIN_NONE or b == "fixed",
+    ("render", "alpha"): lambda r, a: a == "no" or r not in H3_RENDERS,
+    ("method", "alpha"): lambda m, a: a != "class" or m != "none",
+    ("target", "alpha"): lambda t, a: a != "class" or t in ("color", "outline_color"),
+    ("base", "alpha"): lambda b, a: not (
+        (a == "fixed" and b != "fixed") or (a == "palette" and b != "palette")
+    ),
+    ("none", "alpha"): lambda n, a: not (n in MAIN_NONE and a == "fixed"),
+    **{
+        (
+            f"auto:{prefix}label.color",
+            f"auto:{prefix}label.halo.color",
+            "label_colors",
+        ): (lambda t, h, lc: not (t == "yes" and h == "yes" and lc in PARTNER_COLORS))
+        for prefix in ("", "cluster.symbol.")
+    },
+}
+
+#: The cases the review asked for by name, as complete settings: a class that sets its own fill to None in a
+#: classified layer beside an Auto outline; a fill read from a field as hex text with an Auto outline and label, and
+#: with an Auto text beside a halo by zoom.
+FOCUS: dict[str, Values] = {
+    "focus-class-none": {
+        "geometry": "polygon",
+        "render": "features",
+        "method": "categories",
+        "target": "color",
+        "base": "fixed",
+        "rules": "none",
+        **{
+            f"auto:{key}": "yes" if key == "outline.color" else "no"
+            for key in AUTO_KEYS
+        },
+        "label_colors": "plain",
+        "none": "class",
+        "alpha": "no",
+        "tone": "light",
+    },
+    "focus-data-color": {
+        "geometry": "polygon",
+        "render": "features",
+        "method": "none",
+        "target": "none",
+        "base": "data",
+        "rules": "none",
+        **{
+            f"auto:{key}": "yes"
+            if key in ("outline.color", "label.color", "label.halo.color")
+            else "no"
+            for key in AUTO_KEYS
+        },
+        "label_colors": "plain",
+        "none": "no",
+        "alpha": "no",
+        "tone": "dark",
+    },
+    "focus-data-halo-by-zoom": {
+        "geometry": "polygon",
+        "render": "features",
+        "method": "none",
+        "target": "none",
+        "base": "data",
+        "rules": "none",
+        **{f"auto:{key}": "yes" if key == "label.color" else "no" for key in AUTO_KEYS},
+        "label_colors": "zoom",
+        "none": "no",
+        "alpha": "no",
+        "tone": "light",
+    },
+}
+
+#: A case of a documented limit of the contrast floor (spec 18.10) that the pairs do not reach: a text Auto beside one
+#: halo color over a palette, where the blend between two stops' texts comes out slightly below 4.5 to 1.
+LIMITS: dict[str, Values] = {
+    "limit-palette-blend": {
+        **FOCUS["focus-data-color"],
+        "base": "palette",
+        **{f"auto:{key}": "yes" if key == "label.color" else "no" for key in AUTO_KEYS},
+        "label_colors": "mid",
+        "tone": "light",
+    },
+}
+
+#: How a label's color that is not Auto is set, text and halo; `width` draws no halo below zoom 10.
+LABEL_COLORS: dict[str, dict[str, Any]] = {
+    "plain": {},
+    "light": {"text": "#ffffff", "halo": "#ffffff"},
+    "dark": {"text": "#3a3541", "halo": "#3a3541"},
+    "mid": {"text": "#808080", "halo": "#808080"},
+    "none": {"halo": "#ffffff00"},
+    "zoom": {
+        "text": {"zoom": [[8, "#3a3541"], [16, "#ffffff"]]},
+        "halo": {"zoom": [[8, "#ffffff"], [16, "#3a3541"]]},
+    },
+    "width": {"width": {"zoom": [[8, 0], [10, 0], [14, 2]]}},
+}
+
+#: A cluster's own symbol where the cases set one of its colors: circles sized by count in a light color, the count
+#: on them.
+CLUSTER_SYMBOL: dict[str, Any] = {
+    "marker": {
+        "shape": "circle",
+        "color": "#fdae61",
+        "size": {"field": "count", "range": [16, 40], "scale": "sqrt"},
+    },
+    "label": {"text": "{count}"},
+}
+
+
+def _set(node: dict[str, Any], path: list[str], value: Any) -> None:
+    for name in path[:-1]:
+        node = node.setdefault(name, {})
+    node[path[-1]] = value
+
+
+def _label_colors(label: dict[str, Any], values: Values, prefix: str) -> None:
+    """The label's text and halo: Auto where the case sets it, else as `label_colors` says."""
+    look = LABEL_COLORS[values["label_colors"]]
+    text_auto = values.get(f"auto:{prefix}label.color") == "yes"
+    halo_auto = values.get(f"auto:{prefix}label.halo.color") == "yes"
+    if text_auto:
+        label["color"] = "auto"
+    elif "text" in look:
+        label["color"] = look["text"]
+    halo = label.setdefault("halo", {})
+    if halo_auto:
+        halo["color"] = "auto"
+    elif "halo" in look:
+        halo["color"] = look["halo"]
+    if "width" in look:
+        halo["width"] = look["width"]
+    if not halo:
+        del label["halo"]
+
+
+def _with_alpha(color: Any, alpha: str) -> Any:
+    return opaque(color) + alpha if isinstance(color, str) else color
+
+
+def color_style(values: Values) -> dict[str, Any]:
+    """A case of the colors' style document, before the server's values: the legend's style of its settings with
+    the colors' settings written in."""
+    doc = to_style(values)
+    geometry = GEOMETRY[values["geometry"]]
+    symbol = doc["symbol"]
+    main = symbol[MAIN[geometry]]
+    if values["base"] == "data":
+        main["color"] = {"field": "color_hex"}
+    elif values["alpha"] == "palette":
+        main["color"] = {
+            "field": "amount",
+            "palette": [f"#440154{ALPHA}", "#21918c", f"#fde725{ALPHA}"],
+            "title": "Amount",
+        }
+    if values["alpha"] == "fixed":
+        main["color"] = _with_alpha(main["color"], ALPHA)
+    if values["none"] in ("fill", "marker", "line", "outline"):
+        part = symbol[values["none"]]
+        part["color"] = _with_alpha(part["color"], "00")
+    for key in AUTO_KEYS:
+        if values[f"auto:{key}"] != "yes":
+            continue
+        where, path = place(key)
+        if where == "symbol":
+            _set(symbol, path, "auto")
+        elif where == "cluster":
+            render = doc["render"]
+            render.setdefault("symbol", copy.deepcopy(CLUSTER_SYMBOL))
+            _set(render["symbol"], path, "auto")
+        else:
+            _set(doc["render"], path, "auto")
+        # An icon color needs an icon to color.
+        if path[-1] == "icon_color":
+            owner = symbol if where == "symbol" else doc["render"]["symbol"]
+            owner["marker"].setdefault("icon", "goat:park")
+    if any(
+        values[f"auto:{k}"] == "yes" for k in AUTO_KEYS if k.startswith("label.")
+    ) or (values["label_colors"] != "plain" and values["render"] not in H3_RENDERS):
+        label = symbol.setdefault("label", {})
+        label.setdefault("text", "{category}")
+        _label_colors(label, values, "")
+    cluster = doc.get("render", {}).get("symbol")
+    if values["render"] == "cluster" and cluster is not None:
+        _label_colors(cluster["label"], values, "cluster.symbol.")
+    return doc
+
+
+def _edit_colors(doc: dict[str, Any], values: Values, geometry: str) -> None:
+    """What the colors change on the classes once they exist: a transparency on each class's color, one class's own
+    main color None."""
+    classify = doc.get("classify", [])[:1]
+    for c in classify:
+        path = _target(values["target"], geometry).split(".")
+        classes = c.get("classes") or []
+        for i, k in enumerate(classes):
+            color = k.get(path[0], {}).get(path[1])
+            if not isinstance(color, str):
+                continue
+            if values["alpha"] == "class":
+                k[path[0]][path[1]] = _with_alpha(color, ALPHA)
+            if values["none"] == "class" and i == 1:
+                k[path[0]][path[1]] = _with_alpha(color, "00")
+
+
+def build_colors(con: duckdb.DuckDBPyConnection, values: Values) -> dict[str, Any]:
+    """A case of the colors as it is stored: the server's values written in."""
+    doc = color_style(values)
+    geometry = GEOMETRY[values["geometry"]]
+    keys = needed_stats(doc)
+    doc, _notes = apply_computed(
+        doc,
+        compute_stats(con, RELATION, keys) if keys else {},
+        geometry=geometry,
+        fingerprint=FINGERPRINT,
+        at=AT,
+    )
+    _edit_colors(doc, values, geometry)
+    return doc
+
+
+def color_cases(con: duckdb.DuckDBPyConnection) -> list[dict[str, Any]]:
+    """The colors' cases: every pair of their settings, then the named ones (the review's, a documented limit)."""
+    cases, _ = all_pairs(COLOR_DIMENSIONS, COLOR_RULES)
+    named = [(f"c{n:03d}", values) for n, values in enumerate(cases, start=1)]
+    out = []
+    for case_id, colors in [*named, *FOCUS.items(), *LIMITS.items()]:
+        values = {**{name: COLOR_FIXED.get(name) for name in DIMENSIONS}, **colors}
+        out.append(
+            {
+                "id": case_id,
+                "values": values,
+                "geometry": GEOMETRY[values["geometry"]],
+                "zoom": int(values["zoom"]),
+                "tone": values["tone"],
+                "style": build_colors(con, values),
+            }
+        )
+    return out
+
+
 def legend_cases(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
-    """The fixture the web reads: the made-up fields and every case."""
+    """The fixture the web reads: the made-up fields and every case. The colors' block is written before the
+    legend's cases, so the file's part that holds those stays as it was, line by line."""
     cases, _ = all_pairs()
     out = []
     for n, values in enumerate(cases, start=1):
@@ -648,4 +1038,5 @@ def legend_cases(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
                 "style": build(con, values),
             }
         )
-    return {"fields": FIELDS, "cases": out}
+    colors = {"fields": COLOR_FIELDS, "cases": color_cases(con)}
+    return {"fields": FIELDS, "colors": colors, "cases": out}

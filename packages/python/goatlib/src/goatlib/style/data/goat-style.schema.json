@@ -132,7 +132,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -640,17 +640,17 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
          "type": "string"
         },
         {
-         "$ref": "#/$defs/ZoomColor"
+         "$ref": "#/$defs/ZoomCasingColor"
         },
         {
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -2483,7 +2483,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -2565,7 +2565,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -2854,11 +2854,12 @@
   },
   "H3Outline": {
    "additionalProperties": false,
+   "description": "The cell borders of flat hexagons, drawn while this is present (also\nempty: white, 1 px); absent, no borders are drawn.",
    "properties": {
     "color": {
      "anyOf": [
       {
-       "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+       "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
        "type": "string"
       },
       {
@@ -3061,17 +3062,17 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
          "type": "string"
         },
         {
-         "$ref": "#/$defs/ZoomColor"
+         "$ref": "#/$defs/ZoomAutoColor"
         },
         {
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -3857,17 +3858,17 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
          "type": "string"
         },
         {
-         "$ref": "#/$defs/ZoomColor"
+         "$ref": "#/$defs/ZoomAutoColor"
         },
         {
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -4363,7 +4364,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -4931,7 +4932,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -5032,17 +5033,17 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
          "type": "string"
         },
         {
-         "$ref": "#/$defs/ZoomColor"
+         "$ref": "#/$defs/ZoomAutoColor"
         },
         {
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -5353,7 +5354,7 @@
       {
        "oneOf": [
         {
-         "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|^fill$",
+         "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|fill|auto)$",
          "type": "string"
         },
         {
@@ -5363,7 +5364,7 @@
          "$ref": "#/$defs/ByAttributeColor"
         },
         {
-         "$ref": "#/$defs/RawField"
+         "$ref": "#/$defs/RawColorField"
         }
        ]
       },
@@ -6211,6 +6212,26 @@
     "kind"
    ],
    "title": "RasterStyle",
+   "type": "object"
+  },
+  "RawColorField": {
+   "additionalProperties": false,
+   "description": "Hex colors read from a text field as they are. `no_data` is not drawn; it takes\nany value but the derived words `\"auto\"` and `\"fill\"`.",
+   "properties": {
+    "field": {
+     "minLength": 1,
+     "title": "Field",
+     "type": "string"
+    },
+    "no_data": {
+     "default": null,
+     "title": "No Data"
+    }
+   },
+   "required": [
+    "field"
+   ],
+   "title": "RawColorField",
    "type": "object"
   },
   "RawField": {
@@ -7527,6 +7548,118 @@
    "title": "View",
    "type": "object"
   },
+  "ZoomAutoColor": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "oneOf": [
+         {
+          "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
+          "type": "string"
+         },
+         {
+          "$ref": "#/$defs/ByAttributeColor"
+         },
+         {
+          "$ref": "#/$defs/RawColorField"
+         }
+        ]
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomAutoColor",
+   "type": "object"
+  },
+  "ZoomCasingColor": {
+   "additionalProperties": false,
+   "properties": {
+    "zoom": {
+     "items": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+       {
+        "maximum": 24,
+        "minimum": 0,
+        "type": "number"
+       },
+       {
+        "oneOf": [
+         {
+          "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|auto)$",
+          "type": "string"
+         },
+         {
+          "$ref": "#/$defs/ByAttributeColor"
+         },
+         {
+          "$ref": "#/$defs/RawColorField"
+         }
+        ]
+       }
+      ],
+      "type": "array"
+     },
+     "title": "Zoom",
+     "type": "array"
+    },
+    "interpolate": {
+     "default": "linear",
+     "enum": [
+      "linear",
+      "exponential",
+      "step"
+     ],
+     "title": "Interpolate",
+     "type": "string"
+    },
+    "base": {
+     "default": 1.6,
+     "exclusiveMinimum": 0,
+     "title": "Base",
+     "type": "number"
+    }
+   },
+   "required": [
+    "zoom"
+   ],
+   "title": "ZoomCasingColor",
+   "type": "object"
+  },
   "ZoomColor": {
    "additionalProperties": false,
    "properties": {
@@ -7550,7 +7683,7 @@
           "$ref": "#/$defs/ByAttributeColor"
          },
          {
-          "$ref": "#/$defs/RawField"
+          "$ref": "#/$defs/RawColorField"
          }
         ]
        }
@@ -8238,14 +8371,14 @@
        {
         "oneOf": [
          {
-          "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|^fill$",
+          "pattern": "^(#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})|fill|auto)$",
           "type": "string"
          },
          {
           "$ref": "#/$defs/ByAttributeColor"
          },
          {
-          "$ref": "#/$defs/RawField"
+          "$ref": "#/$defs/RawColorField"
          }
         ]
        }

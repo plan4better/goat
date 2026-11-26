@@ -365,6 +365,12 @@ RESOURCES_PERMISSIONS = [
         "method": ["POST"],
         "permissions": ["read-layer", "update-project"],
     },
+    {
+        # Its own row for the same reason: the fallback would be `POST project`.
+        "url_pattern": "project/{project_id}/catalog-update",
+        "method": ["POST"],
+        "permissions": ["read-layer", "update-project"],
+    },
     # GOAT Style routes: exact rows, because check_resource's `LIKE pattern || '/%'`
     # fallback picks any matching row (`project` POST would ask for create-project).
     {

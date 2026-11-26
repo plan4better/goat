@@ -296,7 +296,10 @@ class SearchInput(BaseModel):
     )
     bbox_boost: str | None = Field(
         default=None,
-        description="'west,south,east,north' for ranking only (nothing excluded).",
+        description=(
+            "'west,south,east,north' for ranking only (nothing excluded): datasets "
+            "touching it come first. Ignored when bbox or nuts is set."
+        ),
     )
     themes: str | None = Field(
         default=None,

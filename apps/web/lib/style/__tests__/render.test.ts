@@ -1,6 +1,7 @@
 import { createExpression } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
+import { shade } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
 import type { CompileInput } from "@/lib/style/compile/types";
 import { PALETTES } from "@/lib/style/generated/catalog";
@@ -614,7 +615,28 @@ describe("H3", () => {
     expect((out.sources["s9-h3"] as { tiles: string[] }).tiles).toEqual([
       "https://t/{z}/{x}/{y}?h3=8&h3_value=count",
     ]);
-    expect(out.layers.map((l) => l.id)).toEqual(["9-h3-fill", "9-h3-outline"]);
+    expect(out.layers.map((l) => l.id)).toEqual(["9-h3-fill"]);
+  });
+
+  it("draws an outline only while render.outline is present: white 1 px for the keys it leaves out", () => {
+    const pal = ["#000001", "#000002", "#000003"];
+    const outline = (render: object) => byId(h3({ palette: pal, ...render }), "h3-outline")?.paint;
+    expect(outline({})).toBeUndefined();
+    expect(outline({ outline: {} })).toEqual({ "line-color": "#ffffff", "line-width": 1 });
+    expect(outline({ outline: { color: "#336699", width: 2.5 } })).toEqual({
+      "line-color": "#336699",
+      "line-width": 2.5,
+    });
+    // Auto: the shade of the color each hexagon draws.
+    expect(outline({ outline: { color: "auto" } })).toEqual({
+      "line-color": shade("#000002"),
+      "line-width": 1,
+    });
+    // None, or width 0, draws nothing; columns draw no outline.
+    expect(outline({ outline: { color: "#33669900" } })).toBeUndefined();
+    expect(outline({ outline: { width: 0 } })).toBeUndefined();
+    expect(outline({ outline: { color: "#336699" }, extrude: {} })).toBeUndefined();
+    expect(valid(h3({ outline: {} }))).toEqual([]);
   });
 
   it("colors classes per resolution from the computed breaks", () => {

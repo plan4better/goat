@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useUniqueValues } from "@/lib/api/processes";
+import { checkered } from "@/lib/style/checker";
 import { categoryText } from "@/lib/style/editor/categoryText";
 import { MAX_CLASS_COUNT, categoryValue, moveCategoryValue } from "@/lib/style/editor/classify";
 import { targetsOf } from "@/lib/style/editor/forms";
@@ -129,7 +130,7 @@ export function ClassValues({
             <Box
               component="span"
               aria-label={where}
-              sx={{ width: 10, height: 10, flex: "none", borderRadius: "50%", bgcolor: dot }}
+              sx={{ width: 10, height: 10, flex: "none", borderRadius: "50%", background: checkered(dot) }}
             />
           ) : (
             <Typography variant="caption" color="text.secondary">

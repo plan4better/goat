@@ -22,14 +22,17 @@ const raster = (style: object) => ({
   },
 });
 
-/** The widths of strokes, which draw finely at half a pixel: lines, outlines (of polygons, lines and points), casings
- * and label halos. A pattern's line width stays whole: it is drawn into the pattern's image. */
-const HALF_PIXEL = ["line.width", "outline.width", "casing.width", "label.halo.width"];
+/** The widths of strokes, which draw finely at half a pixel: lines, outlines (of polygons, lines, points and
+ * hexagons), casings and label halos. A pattern's line width stays whole: it is drawn into the pattern's image. */
+const HALF_PIXEL = ["line.width", "outline.width", "h3.outline.width", "casing.width", "label.halo.width"];
+
+/** Multipliers, shown as the number they are ("1.6"), which step in twentieths. */
+const FACTORS = ["heatmap.intensity"];
 
 describe("a slider moves in whole numbers of what it shows", () => {
   it("every number row of the panel starts and steps on whole numbers, percents as percents", () => {
     const off = Object.entries(SLIDERS).filter(([key, s]) => {
-      if (HALF_PIXEL.includes(key)) return false;
+      if (HALF_PIXEL.includes(key) || FACTORS.includes(key)) return false;
       const scale = s.pct ? 100 : 1;
       return !whole(s.min * scale) || !whole(s.step * scale);
     });
@@ -42,6 +45,15 @@ describe("a slider moves in whole numbers of what it shows", () => {
       expect(SLIDERS[key].step, key).toBe(0.5);
       expect(SLIDERS[key].unit, key).toBe("px");
       expect(whole(SLIDERS[key].min), key).toBe(true);
+    }
+  });
+
+  it("multipliers show their number, no percent, and step by 0.05", () => {
+    for (const key of FACTORS) {
+      expect(SLIDERS[key], key).toBeDefined();
+      expect(SLIDERS[key].pct, key).toBeUndefined();
+      expect(SLIDERS[key].unit, key).toBeUndefined();
+      expect(SLIDERS[key].step, key).toBe(0.05);
     }
   });
 

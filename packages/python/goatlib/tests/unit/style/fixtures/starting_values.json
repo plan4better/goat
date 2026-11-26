@@ -1,0 +1,146 @@
+[
+  {
+    "name": "a label switched on over a polygon",
+    "geometry": "polygon",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "fill": { "color": "#7f3c8d", "opacity": 0.8 },
+        "outline": { "color": "auto", "width": 1 },
+        "label": { "color": "auto", "halo": { "color": "auto" } }
+      }
+    }
+  },
+  {
+    "name": "a label switched on along a line",
+    "geometry": "line",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "line": { "color": "#f2b701", "width": 2 },
+        "label": { "color": "auto", "halo": { "color": "auto" } }
+      }
+    }
+  },
+  {
+    "name": "a label switched on beside a point",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": { "shape": "circle", "color": "#3969ac", "size": 10 },
+        "label": { "color": "auto", "halo": { "color": "auto" } }
+      }
+    }
+  },
+  {
+    "name": "a point label with text on Auto beside a white halo set by hand",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": { "shape": "circle", "color": "#3969ac", "size": 10 },
+        "label": { "color": "auto", "halo": { "color": "#ffffff" } }
+      }
+    }
+  },
+  {
+    "name": "a marker that gets an icon",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": {
+          "shape": "circle",
+          "color": "#f2b701",
+          "size": 10,
+          "icon": "goat:marker",
+          "icon_color": "auto"
+        }
+      }
+    }
+  },
+  {
+    "name": "clusters switched on for circles",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "render": {
+        "type": "cluster",
+        "symbol": {
+          "marker": { "shape": "circle", "size": { "field": "count", "range": [16, 40], "scale": "sqrt" } },
+          "label": { "text": "{count}", "color": "auto" }
+        }
+      },
+      "symbol": { "marker": { "shape": "circle", "color": "#f2b701", "size": 10 } }
+    }
+  },
+  {
+    "name": "clusters switched on for icons",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "render": {
+        "type": "cluster",
+        "look": "points",
+        "count": "badge",
+        "symbol": {
+          "marker": { "shape": "circle", "size": { "field": "count", "range": [16, 40], "scale": "sqrt" } },
+          "label": { "text": "{count}", "color": "auto" }
+        }
+      },
+      "symbol": {
+        "marker": {
+          "shape": "circle",
+          "color": "#f2b701",
+          "size": 10,
+          "icon": "goat:marker",
+          "icon_color": "auto"
+        }
+      }
+    }
+  },
+  {
+    "name": "an outline switched on around a polygon",
+    "geometry": "polygon",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "fill": { "color": "#2bb381", "opacity": 0.8 },
+        "outline": { "color": "auto", "width": 1 }
+      }
+    }
+  },
+  {
+    "name": "an outline switched on around a point",
+    "geometry": "point",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": { "shape": "circle", "color": "#3969ac", "size": 10 },
+        "outline": { "color": "auto", "width": 1 }
+      }
+    }
+  },
+  {
+    "name": "a casing switched on along a line",
+    "geometry": "line",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "line": { "color": "#e73f74", "width": 3 },
+        "casing": { "color": "auto" }
+      }
+    }
+  }
+]

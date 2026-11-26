@@ -5,12 +5,49 @@ Task 3) so both ``catalog.app`` and ``catalog.routers.stac`` can depend on it
 without an import cycle.
 """
 
+import hashlib
+
 from fastapi import Depends, Request
 
 from catalog.errors import ApiError, NotModifiedError
+from catalog.routers.params import reader_languages
 from catalog.services.assets import AssetReader
 from catalog.services.preview import PreviewReader
+from catalog.services.search import boost_languages
 from catalog.store import CatalogStore
+
+#: The routes whose order follows the reader's languages, which they read
+#: from ``Accept-Language`` when no ``language_boost`` is given.
+RANKED_PATHS = frozenset({"/stac/search", "/stac/collections"})
+
+
+def is_ranked(request: Request) -> bool:
+    """Whether the request asks a route of ``RANKED_PATHS``. Read below the
+    root path, so the outermost middleware (before ``RootPathMiddleware``
+    restores a stripped prefix) and a dependency (after) agree."""
+    path = request.url.path
+    root = request.scope.get("root_path", "")
+    if root and path.startswith(root + "/"):
+        path = path[len(root) :]
+    return path in RANKED_PATHS
+
+
+def etag_for(request: Request, seed: str) -> str:
+    """The ETag of this request's answer: the catalog's ``seed``, and on a
+    ranked route the languages its order uses, resolved as the handler does
+    (so ``language_boost=de`` and a header resolving to ``de`` share a tag,
+    and one language's tag never revalidates another language's order)."""
+    if is_ranked(request):
+        languages = boost_languages(
+            reader_languages(
+                request.query_params.getlist("language_boost"),
+                request.headers.get("accept-language", ""),
+            )
+        )
+        if languages:
+            key = f"{seed}:{','.join(languages)}"
+            seed = hashlib.sha256(key.encode()).hexdigest()[:32]
+    return f'W/"{seed}"'
 
 
 def get_store(request: Request) -> CatalogStore:
@@ -45,7 +82,8 @@ async def check_not_modified(
     """Conditional-GET short-circuit for ``/stac`` GETs.
 
     Raises ``NotModifiedError`` (-> a bare 304, see ``catalog.app``) when
-    ``If-None-Match`` matches the store's current content digest. This MUST be
+    ``If-None-Match`` matches the store's current content digest (with the
+    ranking's languages on a ranked route, see ``etag_for``). This MUST be
     listed after ``catalog.auth.optional_auth`` in the router's
     ``dependencies=`` list: FastAPI resolves a dependency list in order, so
     that ordering guarantees a request presenting a *bad* token gets its 401
@@ -56,7 +94,7 @@ async def check_not_modified(
     """
     if request.method != "GET":
         return
-    etag = f'W/"{store.etag_seed}"'
+    etag = etag_for(request, store.etag_seed)
     if request.headers.get("if-none-match") == etag:
         raise NotModifiedError(etag)
 

@@ -1,4 +1,4 @@
-// The depth range of a map while it draws the globe (MapLibre 6.16). MapLibre's globe puts the near plane 0.5 px in
+// The depth range of a map while it draws the globe (MapLibre 6.19). MapLibre's globe puts the near plane 0.5 px in
 // front of the camera, where mercator puts it at a fiftieth of the map height. The depth buffer's precision follows
 // the near plane, so with the globe's the ground is resolved far more coarsely than in mercator and fill extrusions
 // (3D buildings, extruded polygons and hexagons) fight over depth and flicker while the camera moves. While the globe
@@ -32,6 +32,24 @@ export interface GlobeCamera {
 export const globeRadiusPixels = (worldSize: number, latitude: number): number =>
   worldSize / (2 * Math.PI) / Math.cos((Math.min(Math.abs(latitude), MAX_VALID_LATITUDE) * Math.PI) / 180);
 
+/** What a camera's range is computed from, as MapLibre's camera view state holds it. */
+export interface CameraView {
+  /** The map's height in CSS pixels. */
+  height: number;
+  zoom: number;
+  tileSize: number;
+  /** The vertical field of view. */
+  fovInRadians: number;
+  center: { lat: number };
+}
+
+/** A camera view's distance to the center and globe radius, derived the way MapLibre derives them. */
+export const globeCamera = (view: CameraView): GlobeCamera => ({
+  height: view.height,
+  cameraToCenterDistance: (0.5 / Math.tan(view.fovInRadians / 2)) * view.height,
+  globeRadiusPixels: globeRadiusPixels(view.tileSize * 2 ** view.zoom, view.center.lat),
+});
+
 /** The depth range for a globe camera: mercator's near plane and the globe's far plane; null for a map without size. */
 export function globeDepthOverride(camera: GlobeCamera): NearFarZ | null {
   if (!(camera.height > 0)) return null;
@@ -48,36 +66,65 @@ export const keepsGlobeDepth = (look: {
   terrain: boolean;
 }): boolean => !look.terrain && rendersGlobe(look);
 
-type Transform = MaplibreMap["_camera"]["transform"];
-
-const overrideFor = (tr: Transform): NearFarZ | null =>
-  globeDepthOverride({
-    height: tr.height,
-    cameraToCenterDistance: tr.cameraToCenterDistance,
-    globeRadiusPixels: globeRadiusPixels(tr.worldSize, tr.center.lat),
-  });
+type Camera = MaplibreMap["_camera"];
 
 const attached = new WeakMap<MaplibreMap, () => void>();
+
+/** Whether a map's camera has the state the range is kept in and the way to change it. */
+function hasCameraState(map: MaplibreMap): boolean {
+  try {
+    const camera: Partial<Camera> | undefined = map._camera;
+    return (
+      typeof camera?.applyStateChange === "function" && "nearFarZOverride" in (camera.renderedState ?? {})
+    );
+  } catch {
+    return false;
+  }
+}
+
+const warnUnkept = (error?: unknown) =>
+  console.warn(
+    "The globe's depth range cannot be kept with this MapLibre version; 3D shapes on the globe may flicker.",
+    ...(error === undefined ? [] : [error])
+  );
 
 /**
  * Keeps the globe's depth range on a map (see `keepsGlobeDepth`): set before each frame the globe draws in without
  * terrain, cleared when the map draws in mercator or gets terrain, and cleared again by the returned function.
  * Attaching twice to the same map returns the first disposer.
  *
- * MapLibre works out whether the globe draws only while it renders a frame, after the camera events, so the decision
- * here follows the zoom like the globe's handover to mercator does (see `rendersGlobe`). A camera gesture over terrain
- * moves a copy of the transform and writes it back, override included, so the copy is kept in step too. After each
- * frame the range is checked again, and a frame is requested when it had to change.
+ * The range is a field of MapLibre's camera state, which is replaced on every change and set through
+ * `applyStateChange`, the way MapLibre sets the camera's bounds and limits. A movement goes on from the state it
+ * changes, so the range set on one frame carries over to the next until it is brought in line again. MapLibre works
+ * out whether the globe draws only while it renders a frame, after the camera events, so the decision here follows
+ * the zoom like the globe's handover to mercator does (see `rendersGlobe`). After each frame the range is checked
+ * again, and a frame is requested when it had to change.
+ *
+ * The camera state and `applyStateChange` are MapLibre internals. A map whose camera lacks them, or a failure while
+ * the range is brought in line, leaves the map without the range: a warning is logged once, the listeners are
+ * removed, and the map goes on drawing with MapLibre's own range.
  */
 export function keepGlobeDepth(map: MaplibreMap): () => void {
   const existing = attached.get(map);
   if (existing) return existing;
+  if (!hasCameraState(map)) {
+    warnUnkept();
+    const none = () => {
+      attached.delete(map);
+    };
+    attached.set(map, none);
+    return none;
+  }
 
   let applied = false;
 
-  const transforms = (): Transform[] => {
-    const requested = map._camera._requestedCameraState;
-    return requested ? [map._camera.transform, requested] : [map._camera.transform];
+  /** Sets the range on the camera, or clears it with null; true when it changed. */
+  const setRange = (next: NearFarZ | null): boolean => {
+    const camera = map._camera;
+    const current = camera.renderedState.nearFarZOverride;
+    if (next ? current?.nearZ === next.nearZ && current?.farZ === next.farZ : !current) return false;
+    camera.applyStateChange((view) => ({ ...view, nearFarZOverride: next }));
+    return true;
   };
 
   /** Brings the depth range in line with the camera; true when it changed. */
@@ -89,44 +136,58 @@ export function keepGlobeDepth(map: MaplibreMap): () => void {
     });
     // Elsewhere a range is only cleared that this function set.
     if (!keep && !applied) return false;
-    let changed = false;
-    for (const tr of transforms()) {
-      const next = keep ? overrideFor(tr) : null;
-      const current = tr.nearFarZOverride;
-      if (next && (current?.nearZ !== next.nearZ || current?.farZ !== next.farZ)) {
-        tr.overrideNearFarZ(next.nearZ, next.farZ);
-        changed = true;
-      } else if (!next && current) {
-        tr.clearNearFarZOverride();
-        changed = true;
-      }
-    }
+    const changed = setRange(keep ? globeDepthOverride(globeCamera(map._camera.renderedState)) : null);
     applied = keep;
     return changed;
   };
 
-  const onCamera = () => {
-    sync();
+  const detach = () => {
+    map.off("move", onCamera);
+    map.off("resize", onCamera);
+    map.off("projectiontransition", onCamera);
+    map.off("terrain", onCamera);
+    map.off("render", onRender);
   };
-  const onRender = () => {
-    if (sync()) map.triggerRepaint();
+
+  /** Runs a sync; on a failure the map is let go of for good and keeps working without the range. */
+  const guarded = (): boolean => {
+    try {
+      return sync();
+    } catch (error) {
+      detach();
+      try {
+        if (applied) setRange(null);
+      } catch {
+        // The camera cannot be changed at all; it keeps whatever range it has.
+      }
+      applied = false;
+      warnUnkept(error);
+      return false;
+    }
   };
+
+  function onCamera() {
+    guarded();
+  }
+  function onRender() {
+    if (guarded()) map.triggerRepaint();
+  }
 
   map.on("move", onCamera);
   map.on("resize", onCamera);
   map.on("projectiontransition", onCamera);
   map.on("terrain", onCamera);
   map.on("render", onRender);
-  sync();
+  guarded();
 
   const dispose = () => {
-    map.off("move", onCamera);
-    map.off("resize", onCamera);
-    map.off("projectiontransition", onCamera);
-    map.off("terrain", onCamera);
-    map.off("render", onRender);
+    detach();
     if (applied) {
-      for (const tr of transforms()) if (tr.nearFarZOverride) tr.clearNearFarZOverride();
+      try {
+        setRange(null);
+      } catch {
+        // As above: nothing more can be done for this camera.
+      }
       applied = false;
     }
     attached.delete(map);
