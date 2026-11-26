@@ -115,7 +115,7 @@ Once the calculation finishes, a **table layer** is added to the map panel. Each
 
 O-D pairs that exceed the maximum travel cost are excluded from the output.
 
-A **Destinations** point layer is also added, containing all original destination attributes enriched with a computed **travel_cost** value for each point, the **minimum cost from any origin** to that destination. This makes the layer easy to map and style, showing how reachable each destination is from the nearest origin.
+A **Destinations** point layer is also added, containing all original destination attributes enriched with a computed **travel_cost** value for each point, the **average cost from the origins that reach** that destination. This makes the layer easy to map and style, showing how reachable each destination is from the origins on average.
 
 :::tip Tip
 Want to use this matrix for further analysis? Connect the result table as input to other tools in a [Workflow](../../map/layers.md) or export it as CSV for use in external tools.

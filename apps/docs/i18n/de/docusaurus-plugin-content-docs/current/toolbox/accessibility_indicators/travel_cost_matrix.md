@@ -115,7 +115,7 @@ Nach Abschluss der Berechnung wird ein **Tabellen-Layer** zum Kartenpanel hinzug
 
 OD-Paare, die den maximalen Reisekostenwert überschreiten, werden aus der Ausgabe ausgeschlossen.
 
-Ein **Ziel**-Punktlayer wird ebenfalls hinzugefügt, der alle ursprünglichen Zielattribute um einen berechneten **travel_cost**-Wert für jeden Punkt ergänzt, die **minimalen Kosten von einem beliebigen Ursprung** zu diesem Ziel. Dadurch lässt sich der Layer leicht darstellen und gestalten und zeigt, wie gut jedes Ziel vom nächstgelegenen Ursprung aus erreichbar ist.
+Ein **Ziel**-Punktlayer wird ebenfalls hinzugefügt, der alle ursprünglichen Zielattribute um einen berechneten **travel_cost**-Wert für jeden Punkt ergänzt, die **durchschnittlichen Kosten von den Ursprüngen, die dieses Ziel erreichen**. Dadurch lässt sich der Layer leicht darstellen und gestalten und zeigt, wie gut jedes Ziel von den Ursprüngen aus im Durchschnitt erreichbar ist.
 
 :::tip Tipp
 Möchten Sie diese Matrix für weitere Analysen verwenden? Verwenden Sie die Ergebnistabelle als Eingabe für andere Tools in einem [Workflow](../../map/layers.md) oder exportieren Sie sie als CSV für externe Tools.

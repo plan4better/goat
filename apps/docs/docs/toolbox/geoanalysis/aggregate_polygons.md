@@ -57,7 +57,7 @@ In the example below, the polygons of the *layer to aggregate* are summarized on
 <Tabs>
   <TabItem value="Polygon" label="Polygon" default className="tabItemBox">
 
-Select the <code>Area Layer</code> which contains the polygons on which you like to aggregate your polygon data. Each polygon of the input layer is included in every area it intersects.
+Select the <code>Area Layer</code> which contains the polygons on which you like to aggregate your polygon data. Each polygon of the input layer is included in every area it overlaps; a polygon that only touches an area at its edge or at a corner is not included in it.
 
 
   </TabItem>
@@ -104,7 +104,7 @@ The following **operations** are available:
 
 <div class="step">
   <div class="step-number">8</div>
-  <div class="content">If you want, enable <code>Weight by Intersection Area</code>. Therewith, <b>values are weighted by the share of each input polygon that lies inside the summary area</b>. The weighting applies to <b>Sum</b> and <b>Mean</b> with the area type <b>Polygon</b>; Count, Min, Max, Standard Deviation and the area type H3 Grid are not weighted.</div>
+  <div class="content">If you want, enable <code>Weight by Intersection Area</code>. Therewith, <b>values are weighted by the share of each input polygon that lies inside the summary area</b>. The weighting applies to <b>Sum</b> and <b>Mean</b> with the area type <b>Polygon</b>; Count, Min, Max, Standard Deviation and the area type H3 Grid are not weighted. A polygon without a value in the selected field takes no part in the weighted <b>Mean</b>.</div>
 </div>
 
 <div class="step">
@@ -126,7 +126,7 @@ The following **operations** are available:
 
 As soon as the calculation process is finished, the resulting polygon layer is added to the map. It contains <b>one additional column per statistic</b> and is colored by the first statistic. You can see the values by clicking on a polygon on the map.
 
-- With the area type **Polygon**, the result contains all polygons of the area layer with their attributes. Areas without intersecting polygons get the value 0.
+- With the area type **Polygon**, the result contains all polygons of the area layer with their attributes. Areas without overlapping polygons get 0 for **Count** and **Sum** and no value for **Mean**, **Minimum**, **Maximum** and **Standard deviation**. An area with a single overlapping polygon has no value for **Standard deviation**, and an area whose polygons all lack a value in the selected field has no value for **Mean**, **Minimum**, **Maximum** and **Standard deviation**.
 - With the area type **H3 Grid**, the result contains the hexagons that contain the centroid of at least one polygon. The column <code>h3_&lt;resolution&gt;</code> (e.g. <code>h3_8</code>) holds the ID of the hexagon.
 - If you selected <code>Group Fields</code>, an additional column <code>&lt;result column&gt;_grouped</code> holds the value of each group.
 

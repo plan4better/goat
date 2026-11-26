@@ -1,7 +1,10 @@
 """Fixtures for the workflow chain tests: the eval project's layers in the
 test schema and in DuckLake (`world.py`), and `run_workflow`, which runs a
 workflow config the way processes submits it, with Windmill stood in
-(`windmill_stand_in.py`) and the temp results under `tmp_path`.
+(`windmill_stand_in.py`) and the temp results under `tmp_path`. Every tool
+step's preview style keeps the hard rules of the style contract on the step's
+result (the rest are notes), and no run gives a tool's result the default
+style in place of its own.
 
 The tests write tables, layers and DuckLake snapshots into the database they
 run on and DuckLake files into its data directory, so they refuse the app's
@@ -14,6 +17,7 @@ goat_chains_test`, then `CREATE EXTENSION postgis` in it):
 
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
@@ -26,6 +30,8 @@ import pytest
 import pytest_asyncio
 from goatlib.tools import cleanup_temp, finalize_layer, temp_writer, workflow_runner
 from goatlib.tools.base import ToolSettings
+from goatlib.tools.db import normalize_geometry_type
+from goatlib.tools.style_contract import assert_style_contract
 from goatlib.tools.workflow_dataset_nodes import project_layer_ids
 from goatlib.utils.layer import layer_schema_name
 
@@ -43,6 +49,9 @@ from .world import WORLD
 RUNNER = "f/goat/tools/workflow_runner"
 FINALIZE = "f/goat/tools/finalize_layer"
 SCHEMA = TEST_CUSTOMER_SCHEMA
+#: What the style contract's safety net logs when it replaces a tool's style
+#: (`BaseToolRunner.computed_style`).
+SAFETY_NET = "does not fit its result"
 #: The repository's .env file: the settings the app's services run with.
 ROOT_ENV = Path(__file__).resolve().parents[7] / ".env"
 
@@ -173,6 +182,44 @@ class ChainRun:
         )
 
 
+class _SafetyNet(logging.Handler):
+    """Records each time the safety net replaces a tool's style."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.replaced: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if SAFETY_NET in record.getMessage():
+            self.replaced.append(record.getMessage())
+
+
+def _check_tool_styles(run: ChainRun, config: dict[str, Any]) -> None:
+    """Every tool step's preview style keeps the hard rules of the style
+    contract on the step's temp result; the rules that depend on the data are
+    warned about as notes (`goatlib.tools.style_contract`)."""
+    tools = {
+        node["id"]: node.get("data", {}).get("processId")
+        for node in config["nodes"]
+        if node.get("type") == "tool"
+    }
+    for node_id, step in (run.result.get("node_results") or {}).items():
+        geometry = normalize_geometry_type(step.get("geometry_type"))
+        style = step.get("style")
+        if node_id not in tools or geometry is None or not isinstance(style, dict):
+            continue
+        with duckdb.connect() as con:
+            con.execute("INSTALL spatial; LOAD spatial;")
+            assert_style_contract(
+                style,
+                con,
+                f"read_parquet('{step['parquet_path']}')",
+                geometry,
+                tool=f"{tools[node_id]} (step {node_id})",
+                strict=False,
+            )
+
+
 async def _save_workflow(
     settings: ToolSettings, workflow_id: str, config: dict[str, Any]
 ) -> None:
@@ -234,6 +281,11 @@ def run_workflow(
         return current
 
     monkeypatch.setattr(workflow_runner, "current_layer_ids", resolving)
+    # On the module's own logger: a tool's `init_from_env` replaces the root
+    # logger's handlers.
+    safety_net = _SafetyNet()
+    base_logger = logging.getLogger("goatlib.tools.base")
+    base_logger.addHandler(safety_net)
 
     def run(config: dict[str, Any], workflow_id: str | None = None) -> ChainRun:
         workflow_id = workflow_id or str(uuid.uuid4())
@@ -250,7 +302,9 @@ def run_workflow(
         }
         if config.get("variables"):
             args["variables"] = config["variables"]
+        safety_net.replaced.clear()
         job_id = windmill.run_script_async(RUNNER, args=args)
+        assert not safety_net.replaced, safety_net.replaced
         unresolved = sorted(set(project_layer_ids(config["nodes"])) - set(resolved))
         if unresolved:
             pytest.fail(
@@ -261,10 +315,13 @@ def run_workflow(
                 pytrace=False,
             )
         jobs = {key: job for key, job in windmill.jobs.items() if key not in earlier}
-        return ChainRun(windmill.get_result(job_id), jobs, temp_root)
+        chain = ChainRun(windmill.get_result(job_id), jobs, temp_root)
+        _check_tool_styles(chain, config)
+        return chain
 
     yield run
 
+    base_logger.removeHandler(safety_net)
     for job in windmill.jobs.values():
         saved = job.result.get("layer_id") if isinstance(job.result, dict) else None
         if job.path == FINALIZE and saved:

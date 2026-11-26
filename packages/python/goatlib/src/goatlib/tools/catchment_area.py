@@ -47,7 +47,7 @@ from goatlib.models.io import DatasetMetadata
 from goatlib.tools._routing_limits import speed_default_by_field
 from goatlib.tools.base import BaseToolRunner, drops_unrecorded_tables
 from goatlib.tools.schemas import ToolInputBase, get_default_layer_name
-from goatlib.tools.style import categories, starting_points_style
+from goatlib.tools.style import bands, starting_points_style, style_title
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
@@ -464,8 +464,10 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """One class per travel cost step, yellow to green: lines for a network
-        output, polygons otherwise.
+        """One band per travel cost step, the nearest dark green and the
+        farthest light yellow, the first step on top: lines for a network
+        output, points for a point grid, polygons otherwise. The steps are
+        meters for a distance, minutes otherwise.
 
         The steps are read from the output; without them, from the params.
         """
@@ -514,16 +516,37 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
                     int(round(step_size * (i + 1))) for i in range(params.steps)
                 ]
         unique_values = sorted(set(unique_values))
+        # The cost type: `cost_type` on the v2 params, `measure_type` on the
+        # first runner's.
+        measures = (
+            getattr(params, "cost_type", None),
+            getattr(params, "measure_type", None),
+        )
+        if "distance" in measures:
+            title, unit = style_title("distance"), "m"
+        else:
+            title, unit = style_title("travel_time"), "min"
 
         if params.catchment_area_type == CatchmentAreaType.network:
-            return categories(
+            return bands(
                 color_field,
                 unique_values,
                 "colorbrewer:YlGn",
                 "line",
+                title,
+                unit,
                 symbol={"line": {"width": 3}},
+                reverse=True,
             )
-        return categories(color_field, unique_values, "colorbrewer:YlGn", "polygon")
+        return bands(
+            color_field,
+            unique_values,
+            "colorbrewer:YlGn",
+            "point" if geometry == "point" else "polygon",
+            title,
+            unit,
+            reverse=True,
+        )
 
     @staticmethod
     def _validated_reference_column(

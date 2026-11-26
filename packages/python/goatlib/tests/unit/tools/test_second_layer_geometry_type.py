@@ -37,6 +37,7 @@ from goatlib.tools.spatial_clustering import (
     ClusteringZonesToolParams,
     ZonesClusteringToolRunner,
 )
+from goatlib.tools.style_contract import assert_tool_style
 from goatlib.tools.travel_cost_matrix import (
     TravelCostMatrixToolRunner,
     TravelCostMatrixWindmillParams,
@@ -96,15 +97,44 @@ def _ingested(**kwargs: Any) -> dict[str, Any]:
     }
 
 
+def _check_style(
+    runner: BaseToolRunner,
+    params: Any,
+    path: Path,
+    geometry: str,
+    document: dict[str, Any] | None,
+) -> None:
+    """The style the run passes for its second layer keeps the style contract
+    on the layer's file (`goatlib.tools.style_contract`)."""
+    assert document is not None, "the run passed no style of its own"
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        assert_tool_style(
+            runner,
+            params,
+            f"read_parquet('{path}')",
+            geometry,
+            con=con,
+            document=document,
+        )
+    finally:
+        con.close()
+
+
 def _record_layers(
     runner: BaseToolRunner, monkeypatch: pytest.MonkeyPatch
 ) -> dict[str, dict[str, Any]]:
     """Stands the database in for `runner`; returns the table info each
-    layer record is made from, by layer name, filled as the run goes."""
+    layer record is made from, by layer name, filled as the run goes, with
+    the style the run passes for it under `style`."""
     saved: dict[str, dict[str, Any]] = {}
 
     async def create_db_records(**kwargs: Any) -> dict[str, Any]:
-        saved[kwargs["output_name"]] = dict(kwargs["table_info"])
+        saved[kwargs["output_name"]] = {
+            **kwargs["table_info"],
+            "style": kwargs.get("style"),
+        }
         return {"folder_id": U, "layer_project_id": None}
 
     def no_tiles(**_: Any) -> None:
@@ -281,6 +311,13 @@ def test_starting_points_without_rows_are_saved_as_points(
     assert saved["Catchment"]["geometry_type"] == "LINESTRING"
     assert saved["Starting points"]["geometry_type"] == "POINT"
     assert result["starting_points_layer"]["geometry_type"] == "POINT"
+    _check_style(
+        CatchmentAreaV2ToolRunner(),
+        params,
+        starting_points,
+        "point",
+        saved["Starting points"]["style"],
+    )
 
 
 def test_a_clustering_summary_without_rows_is_saved_as_points(
@@ -296,7 +333,6 @@ def test_a_clustering_summary_without_rows_is_saved_as_points(
     runner = ZonesClusteringToolRunner()
     saved = _record_layers(runner, monkeypatch)
     monkeypatch.setattr(runner, "get_layer_style", lambda *a, **k: None)
-    monkeypatch.setattr(runner, "_get_summary_style", lambda *a, **k: None)
 
     def process(params: Any, temp_dir: Path) -> tuple[Path, DatasetMetadata]:
         runner._summary_result = (
@@ -321,6 +357,13 @@ def test_a_clustering_summary_without_rows_is_saved_as_points(
 
     assert saved["Summary"]["geometry_type"] == "POINT"
     assert result["secondary_layers"][0]["geometry_type"] == "POINT"
+    _check_style(
+        ZonesClusteringToolRunner(),
+        params,
+        summary,
+        "point",
+        saved["Summary"]["style"],
+    )
 
 
 def test_a_second_layer_whose_metadata_names_no_type_stays_a_table() -> None:

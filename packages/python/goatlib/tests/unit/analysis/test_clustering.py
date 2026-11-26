@@ -5,14 +5,35 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis.spatial_clustering import (
     ClusteringZones,
 )
 from goatlib.analysis.schemas.clustering import ClusteringParams, ClusterType
+from goatlib.tools.spatial_clustering import (
+    ClusteringZonesToolParams,
+    ZonesClusteringToolRunner,
+)
+from goatlib.tools.style_contract import Expectation
 
 # Test data and result directories
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "analysis"
 RESULT_DIR = Path(__file__).parent.parent.parent / "result"
+
+
+def check_styles(params: ClusteringParams, points: Path, summary: Path) -> None:
+    """The tool's default styles keep the contract on both of its results:
+    the points by their cluster, the summary point per cluster."""
+    tool = tool_params(ClusteringZonesToolParams, params, input_layer_id=U)
+    by_cluster = Expectation(field="cluster_id", method="categories")
+    check_tool_style(ZonesClusteringToolRunner, tool, points, expect=by_cluster)
+    check_tool_style(
+        ZonesClusteringToolRunner,
+        tool,
+        summary,
+        document=ZonesClusteringToolRunner()._get_summary_style(tool),
+        expect=by_cluster,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -123,6 +144,7 @@ def test_clustering_basic_workflow():
 
     # All points should be assigned to a cluster
     assert points_df["cluster_id"].isna().sum() == 0
+    check_styles(params, output_path, summary_path)
 
     # Cluster IDs should be 0, 1, 2
     unique_clusters = sorted(points_df["cluster_id"].unique())
@@ -130,6 +152,46 @@ def test_clustering_basic_workflow():
 
     print(f"✓ K-means clustering: {len(points_df)} points → {len(summary_df)} clusters")
     print(f"  Cluster sizes: {sorted(summary_df['cluster_size'].values)}")
+
+
+def test_the_default_number_of_clusters_keeps_the_tool_s_styles() -> None:
+    """K-means on synthetic points with the tool's default number of zones:
+    both results keep the hard rules of their styles' contract."""
+    tool = ClusteringZones()
+    tool.con.execute("""
+        CREATE TEMP TABLE test_points AS
+        SELECT row_number() OVER () AS id, ST_Point(x * 0.01, y * 0.01) AS geometry
+        FROM (SELECT unnest(range(1, 7)) AS x) CROSS JOIN (
+            SELECT unnest(range(1, 6)) AS y)
+    """)
+    temp_dir = RESULT_DIR / "test_clustering_default_count"
+    temp_dir.mkdir(exist_ok=True)
+    params = ClusteringParams(
+        input_path="test_points",
+        output_path=str(temp_dir / "kmeans_result.parquet"),
+        output_summary_path=str(temp_dir / "kmeans_summary.parquet"),
+        cluster_type=ClusterType.kmean,
+    )
+    assert (
+        params.nb_cluster
+        == ClusteringZonesToolParams(
+            user_id=U, folder_id=U, input_layer_id=U
+        ).nb_cluster
+    )
+
+    def mock_import(path, view_name):
+        tool.con.execute(f"CREATE OR REPLACE VIEW {view_name} AS SELECT * FROM {path}")
+        metadata = type(
+            "obj", (object,), {"geometry_column": "geometry", "crs": None}
+        )()
+        return metadata, view_name
+
+    tool.import_input = mock_import
+    (output_path, _), (summary_path, _) = tool._run_implementation(params)
+    assert tool.con.execute(
+        f"SELECT count(DISTINCT cluster_id) FROM '{output_path}'"
+    ).fetchone() == (params.nb_cluster,)
+    check_styles(params, output_path, summary_path)
 
 
 class TestZonesClustering:
@@ -185,6 +247,7 @@ class TestZonesClustering:
         size_mean = np.mean(zone_sizes)
         cv = size_std / size_mean
         assert cv < 0.5, f"Zones are not well balanced: CV = {cv:.3f}"
+        check_styles(params, output_path, summary_path)
 
     def test_kmeans_kita_data(self) -> None:
         """Test K-means clustering with kita (kindergarten) data."""

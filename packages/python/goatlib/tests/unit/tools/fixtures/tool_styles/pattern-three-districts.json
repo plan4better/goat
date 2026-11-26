@@ -1,0 +1,99 @@
+{
+ "id": "pattern-three-districts",
+ "tool": "aggregate_polygon",
+ "layer": "result",
+ "title": "Three districts, each with its own sum",
+ "shape": "a quantile class per value, labelled as a range",
+ "source": "pattern",
+ "inputs": [],
+ "picture": true,
+ "geometry": "polygon",
+ "fields": {
+  "sum_value": "integer"
+ },
+ "zoom": 16.0,
+ "rows": {
+  "total": 3,
+  "kept": 3
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#fd8d3c",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  },
+  "classify": [
+   {
+    "field": "sum_value",
+    "method": "quantile",
+    "count": 3,
+    "palette": "colorbrewer:Oranges",
+    "id": "sum_value",
+    "title": "Sum of value",
+    "no_data": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 340.0,
+      "fill": {
+       "color": "#fee6ce"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 340.0,
+      "to": 626.666666667,
+      "fill": {
+       "color": "#fdae6b"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 626.666666667,
+      "fill": {
+       "color": "#e6550d"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      120.0,
+      980.0
+     ],
+     "generated": {
+      "target": "fill.color",
+      "values": {
+       "c1": "#fee6ce",
+       "c2": "#fdae6b",
+       "c3": "#e6550d"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"sum_value":120},"geometry":{"type":"Polygon","coordinates":[[[-0.00195,-0.00195],[-0.00195,-5e-05],[-5e-05,-5e-05],[-5e-05,-0.00195],[-0.00195,-0.00195]]]}},
+{"type":"Feature","id":2,"properties":{"sum_value":980},"geometry":{"type":"Polygon","coordinates":[[[-0.00195,5e-05],[-0.00195,0.00195],[-5e-05,0.00195],[-5e-05,5e-05],[-0.00195,5e-05]]]}},
+{"type":"Feature","id":3,"properties":{"sum_value":450},"geometry":{"type":"Polygon","coordinates":[[[5e-05,-0.00195],[5e-05,-5e-05],[0.00195,-5e-05],[0.00195,-0.00195],[5e-05,-0.00195]]]}}
+]}
+}

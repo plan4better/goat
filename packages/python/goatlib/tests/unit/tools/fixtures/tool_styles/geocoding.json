@@ -1,0 +1,43 @@
+{
+ "id": "geocoding",
+ "tool": "geocoding",
+ "layer": "result",
+ "title": "Addresses geocoded by a mocked geocoding service",
+ "shape": "fixed blue markers",
+ "source": "analysis",
+ "inputs": [],
+ "picture": true,
+ "geometry": "point",
+ "fields": {},
+ "zoom": 13.5,
+ "rows": {
+  "total": 8,
+  "kept": 8
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#3b82f6",
+    "size": 12
+   },
+   "outline": {
+    "color": "#ffffff",
+    "width": 2
+   }
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{},"geometry":{"type":"Point","coordinates":[-0.015,-0.0]}},
+{"type":"Feature","id":2,"properties":{},"geometry":{"type":"Point","coordinates":[-0.015,0.01]}},
+{"type":"Feature","id":3,"properties":{},"geometry":{"type":"Point","coordinates":[-0.005,-0.01]}},
+{"type":"Feature","id":4,"properties":{},"geometry":{"type":"Point","coordinates":[-0.005,-0.0]}},
+{"type":"Feature","id":5,"properties":{},"geometry":{"type":"Point","coordinates":[0.005,-0.01]}},
+{"type":"Feature","id":6,"properties":{},"geometry":{"type":"Point","coordinates":[0.005,-0.0]}},
+{"type":"Feature","id":7,"properties":{},"geometry":{"type":"Point","coordinates":[0.015,-0.01]}},
+{"type":"Feature","id":8,"properties":{},"geometry":{"type":"Point","coordinates":[0.015,-0.0]}}
+]}
+}

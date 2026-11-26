@@ -1,8 +1,14 @@
 from pathlib import Path
 
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis import OriginDestinationTool
 from goatlib.analysis.schemas.geoprocessing import OriginDestinationParams
+from goatlib.tools.origin_destination import (
+    OriginDestinationToolParams,
+    OriginDestinationToolRunner,
+)
+from goatlib.tools.style_contract import Expectation
 
 # Define paths to test data
 # Root is 7 levels up from this file location in packages/python/goatlib/tests/unit/analysis/
@@ -85,3 +91,23 @@ def test_origin_destination():
     columns = [col[0] for col in points_schema]
     assert "geometry" in columns
     assert "weight" in columns
+
+    tool_params_od = tool_params(
+        OriginDestinationToolParams,
+        params,
+        geometry_layer_id=U,
+        matrix_layer_id=U,
+    )
+    check_tool_style(
+        OriginDestinationToolRunner,
+        tool_params_od,
+        output_lines,
+        expect=Expectation(field="weight"),
+    )
+    check_tool_style(
+        OriginDestinationToolRunner,
+        tool_params_od,
+        output_points,
+        document=OriginDestinationToolRunner().points_style(tool_params_od),
+        expect=Expectation(field="weight"),
+    )

@@ -29,7 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import classified
+from goatlib.tools.style import numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,9 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """Stations classified by their total trips."""
-        return classified("total", "colorbrewer:BuPu", geometry)
+        return numeric_default(
+            "total", "colorbrewer:BuPu", geometry, style_title("trip_count")
+        )
 
     def process(
         self: Self, params: TripCountToolParams, temp_dir: Path

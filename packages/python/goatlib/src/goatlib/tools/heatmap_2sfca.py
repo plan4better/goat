@@ -34,7 +34,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import SUNSET, classified
+from goatlib.tools.style import SUNSET, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,9 @@ class Heatmap2SFCAToolRunner(BaseToolRunner[Heatmap2SFCAToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """The 2SFCA index in sunset colors: the supply-demand ratio."""
-        return classified("total_accessibility", SUNSET, geometry)
+        return numeric_default(
+            "total_accessibility", SUNSET, geometry, style_title("two_sfca")
+        )
 
     def process(
         self: Self, params: Heatmap2SFCAToolParams, temp_dir: Path

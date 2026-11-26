@@ -167,6 +167,13 @@ class AggregatePolygonTool(AnalysisTool):
         # Geometry columns are named by the data: quoted identifiers.
         area_g = quote_identifier(area_geom)
         source_g = quote_identifier(source_geom)
+        # A source polygon belongs to an area only when the two share area:
+        # one that touches it on its edge or at a corner does not. The
+        # spatial index serves ST_Intersects; ST_Touches filters its pairs.
+        shares_area = (
+            f"ST_Intersects(a.{area_g}, s.{source_g}) "
+            f"AND NOT ST_Touches(a.{area_g}, s.{source_g})"
+        )
         agg_specs = self._build_agg_specs(params, source_geom, area_geom)
         # Result names are user-given: each one, and each name derived
         # from one, goes into SQL as one quoted identifier.
@@ -175,8 +182,11 @@ class AggregatePolygonTool(AnalysisTool):
             for col, sql in agg_specs
         ]
         total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
-        coalesced_total_select = ", ".join(
-            f"COALESCE(t.{col}, 0) AS {col}" for col, _, _ in stat_cols
+        area_total_select = ", ".join(
+            self.area_statistic_sql(col, stat.operation.value)
+            for stat, (col, _, _) in zip(
+                params.column_statistics, stat_cols, strict=True
+            )
         )
 
         # DESCRIBE reads only this view; unqualified information_schema
@@ -216,12 +226,12 @@ class AggregatePolygonTool(AnalysisTool):
                     {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_g}, s.{source_g})
+                ON {shares_area}
                 GROUP BY a.area_id, {group_cols}
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                f"{self.json_group_object_sql('group_name', col)} AS {grouped}"
                 for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
@@ -236,7 +246,7 @@ class AggregatePolygonTool(AnalysisTool):
                 SELECT a.area_id, {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_g}, s.{source_g})
+                ON {shares_area}
                 GROUP BY a.area_id
             """)
 
@@ -246,7 +256,7 @@ class AggregatePolygonTool(AnalysisTool):
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             select_parts.append(grouped_proj)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
@@ -262,14 +272,14 @@ class AggregatePolygonTool(AnalysisTool):
                 SELECT a.area_id, {total_select}
                 FROM area_with_id a
                 JOIN {source_view} s
-                ON ST_Intersects(a.{area_g}, s.{source_g})
+                ON {shares_area}
                 GROUP BY a.area_id
             """)
 
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
                 SELECT
@@ -299,7 +309,8 @@ class AggregatePolygonTool(AnalysisTool):
 
         Args:
             field: Field name to compute statistics on
-            operation: Statistical operation (sum, mean, min, max, count)
+            operation: Statistical operation of a field (sum, mean, min, max,
+                standard_deviation); a count takes no field and is never weighted
             source_geom: Source geometry column name
             area_geom: Area geometry column name
 
@@ -308,15 +319,6 @@ class AggregatePolygonTool(AnalysisTool):
         """
         area_g = quote_identifier(area_geom)
         source_g = quote_identifier(source_geom)
-        # For count, we can weight by area ratio
-        if operation == "count":
-            return f"""
-                SUM(
-                    ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
-                    NULLIF(ST_Area(s.{source_g}), 0)
-                )
-            """
-
         # For sum, multiply by area ratio
         if operation == "sum":
             return f"""
@@ -327,7 +329,9 @@ class AggregatePolygonTool(AnalysisTool):
                 )
             """
 
-        # For mean, use weighted average
+        # For mean, use weighted average over the polygons with a value: one
+        # without a value adds nothing to the weighted sum, nor its share to
+        # the weights.
         if operation in ("mean", "avg"):
             return f"""
                 SUM(
@@ -338,7 +342,7 @@ class AggregatePolygonTool(AnalysisTool):
                 NULLIF(SUM(
                     ST_Area(ST_Intersection(a.{area_g}, s.{source_g})) /
                     NULLIF(ST_Area(s.{source_g}), 0)
-                ), 0)
+                ) FILTER (WHERE {field} IS NOT NULL), 0)
             """
 
         # For min/max, weighting doesn't make sense - use simple statistics
@@ -402,7 +406,7 @@ class AggregatePolygonTool(AnalysisTool):
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                f"{self.json_group_object_sql('group_name', col)} AS {grouped}"
                 for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""

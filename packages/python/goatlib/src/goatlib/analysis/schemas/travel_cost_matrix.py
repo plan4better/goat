@@ -64,7 +64,8 @@ class TravelCostMatrixParams(BaseModel):
 
     Computes travel cost from every origin to every destination.
     Results: a matrix table (origin_id, destination_id, cost) and
-    destination points annotated with their minimum cost from any origin.
+    destination points annotated with their average cost over the origins
+    that reach them.
     """
 
     # Origin/destination coordinates in WGS84

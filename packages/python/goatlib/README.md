@@ -510,7 +510,51 @@ documents goatlib built or upgraded:
 - **Tool looks** are documents from `tools/style.py` (`classified`,
   `categories`, the bundle role symbols, ...). A tool returns its look from
   `BaseToolRunner.get_layer_style`; the runner fills the classes from the result
-  (`computed_style`) and stamps them with the new table's snapshot. A workflow
+  (`computed_style`) and stamps them with the new table's snapshot. A tool asks
+  for a fixed number of classes whatever its result holds, so the runner first
+  fits the count of the style it asks for in that run to the result
+  (`tools/style.py`, `fit_classes`): with fewer distinct values than classes
+  asked for, it keeps, of every count from the number of values up to the one
+  asked for, the count that gives more classes holding a feature (then fewer
+  empty classes, then the smaller), so no result shows fewer colors than the
+  plain count would; one class or one value gives one color, unless features
+  without a value sit beside it: then the classification stays, with one class
+  or none, so map and legend show them as no data. Where ties make breaks fall together,
+  fewer classes are drawn than the stored count, the same on every recompute. A
+  style handed on from elsewhere (a template's, a filtered copy's) is not
+  fitted. A tool whose result is a number per feature asks for it through
+  `numeric_default`: a ramp and direction by the kind of value, a legend title
+  and unit, and grey for features without a value. Its number of decimals
+  depends on the classes, so the runner writes it after computing them
+  (`with_decimals`), on the same style the fit acts on and only there: the
+  format has no mark that tells a tool's default from a hand-made style. The
+  domain's ends and the breaks read apart, but an end at or above 0 may read 0,
+  so a minimum next to 0 does not push every label to many decimals. A single
+  class over one value has no break and shows the value itself, with up to two
+  decimals and more where fewer would read it as 0.
+  Classified and categorized point looks draw each marker with a thin outline
+  in a darker shade of its own color (`result_styled`), so a pale class stays
+  readable on a light basemap; the cluster summary's overlapping translucent
+  circles and the black stations draw none. Area looks get the same outline
+  where the areas are the user's polygons or lie side by side (aggregation
+  onto polygons, join, dissolve, Huff, the ÖV-Güteklassen), but not on H3
+  cells (`on_h3_cells`: a grid the tool makes, told by its parameters, or a
+  heatmap result run onto, told by its `h3_index` column), nor on the bands
+  of a buffer or a catchment area: their palest band lies inside or beside a
+  darker one, never alone on the ground, and overlapping bands would cross
+  each other's outlines. Bands
+  of a distance or travel cost (`bands`) are fixed categories in whole units, so
+  they carry their unit, no decimals and the first band on top from the start.
+  What a tool's style must hold for its result is the style contract
+  (`tools/style_contract.py`): the fields it reads exist, its parts fit the
+  geometry and the document validates (hard rules), plus a title, a no-data
+  color and classes that hold features (design rules). The tool tests assert the
+  hard rules and a class list of one on the results their analyses write
+  (`assert_tool_style`) and report the design rules, which depend on the data,
+  as notes. A run checks the hard rules on the same style the fit acts on: a
+  tool style that breaks one gives the layer the default style of its geometry
+  and a warning. When the check itself fails, the tool's style is kept and the
+  failure logged. A workflow
   preview has no layer: its result and the preview's metadata file carry the
   document as `style`, stamped `temp`, and saving the result computes it again.
 - **Catalog items** promote with their published style asset upgraded for the

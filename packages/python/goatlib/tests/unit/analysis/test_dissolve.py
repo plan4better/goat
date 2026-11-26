@@ -1,12 +1,15 @@
-"""Unit tests for DissolveTool statistics columns."""
+"""Unit tests for DissolveTool statistics columns and the tool's default style
+on its results."""
 
 from pathlib import Path
 
 import duckdb
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.dissolve import DissolveTool
 from goatlib.analysis.schemas.base import FieldStatistic
 from goatlib.analysis.schemas.geoprocessing import DissolveParams
-from goatlib.tools.dissolve import DissolveToolRunner
+from goatlib.tools.dissolve import DissolveToolParams, DissolveToolRunner
+from goatlib.tools.style_contract import Expectation
 
 GROUP = "Art der Fläche"
 FIELD = 'Einwohner über 65 "alt"'
@@ -72,3 +75,49 @@ def test_statistic_columns_are_the_predicted_columns(tmp_path: Path) -> None:
     assert [r[f"sum_{FIELD}"] for r in rows] == [30, 40]
     assert [r["Mittel der Älteren"] for r in rows] == [15, 40]
     assert [r['Anzahl "Flächen"'] for r in rows] == [2, 1]
+
+    check_tool_style(
+        DissolveToolRunner,
+        tool_params(
+            DissolveToolParams,
+            input_layer_id=U,
+            dissolve_fields=[GROUP],
+            calculate_statistics=True,
+            field_statistics=statistics,
+        ),
+        output_path,
+        expect=Expectation(field=f"sum_{FIELD}"),
+    )
+
+
+def test_groups_without_statistics_get_the_tool_s_style(tmp_path: Path) -> None:
+    """Dissolved by a field alone: each group its own color."""
+    source = str(tmp_path / "source.parquet")
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(f"""
+        COPY (
+            SELECT category AS {_q(GROUP)}, ST_GeomFromText(wkt) AS geom
+            FROM (VALUES
+                ('a', 'POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'),
+                ('a', 'POLYGON((1 0, 2 0, 2 1, 1 1, 1 0))'),
+                ('b', 'POLYGON((5 5, 6 5, 6 6, 5 6, 5 5))')
+            ) t(category, wkt)
+        ) TO '{source}' (FORMAT PARQUET)
+    """)
+    con.close()
+    output_path = str(tmp_path / "out.parquet")
+
+    DissolveTool().run(
+        DissolveParams(
+            input_path=source, dissolve_fields=[GROUP], output_path=output_path
+        )
+    )
+
+    style = check_tool_style(
+        DissolveToolRunner,
+        tool_params(DissolveToolParams, input_layer_id=U, dissolve_fields=[GROUP]),
+        output_path,
+        expect=Expectation(field=GROUP, method="categories"),
+    )
+    assert [k["values"] for k in style["classify"][0]["classes"]] == [["a"], ["b"]]

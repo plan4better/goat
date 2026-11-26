@@ -3,7 +3,8 @@
 Computes many-to-many travel costs between origin and destination point layers
 via the local C++ routing backend. Produces two outputs:
 1. Matrix table (non-geom): origin_id, destination_id, cost
-2. Destination points (geom): destination geometry with min_cost from any origin
+2. Destination points (geom): the destination layer with travel_cost, the average
+   cost over the origins that reach each destination
 """
 
 import asyncio
@@ -72,6 +73,7 @@ from goatlib.tools.catchment_area_v2 import (
 from goatlib.tools.limits import TRAVEL_COST_MATRIX_MAX_PAIRS
 from goatlib.tools.pt_network import ensure_pt_date, pt_date_field
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase, get_default_layer_name
+from goatlib.tools.style import EMRLD, numeric_default, style_title
 from goatlib.utils.container_memory import JOB_WORK_MEMORY_SHARE, set_memory_share
 
 logger = logging.getLogger(__name__)
@@ -751,7 +753,8 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
 
     Creates two output layers:
     1. Matrix table (non-geom): origin_id, destination_id, cost
-    2. Destination points (geom): destination geometry annotated with min_cost
+    2. Destination points (geom): the destination layer annotated with
+       travel_cost, the average cost over the origins that reach each one
     """
 
     tool_class = TravelCostMatrixTool
@@ -772,6 +775,30 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
             "destination": "VARCHAR",
             "travel_cost": "INTEGER",
         }
+
+    def get_layer_style(
+        self: Self,
+        params: TravelCostMatrixWindmillParams,
+        metadata: DatasetMetadata,
+        geometry: str | None,
+        relation: str,
+    ) -> dict[str, Any] | None:
+        """The destination points classified by their average travel cost, the
+        ramp turned around so the nearest are the darkest: meters for a
+        distance or a flight distance, minutes otherwise. The matrix table has
+        no style."""
+        if geometry is None:
+            return None
+        if (
+            params.routing_mode == RoutingMode.flight_distance
+            or params.cost_type == CostType.distance
+        ):
+            title, unit = style_title("matrix_average_distance"), "m"
+        else:
+            title, unit = style_title("matrix_average_time"), "min"
+        return numeric_default(
+            "travel_cost", EMRLD, geometry, title, reverse=True, unit=unit
+        )
 
     @staticmethod
     def _extract_coordinates_from_parquet(
@@ -882,7 +909,8 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
         dest_layer_parquet: Path,
         output_path: Path,
     ) -> None:
-        """Join min travel cost onto the original destination layer."""
+        """Join the average travel cost over the origins that reach each
+        destination onto the original destination layer."""
         con = duckdb.connect()
         set_memory_share(con, JOB_WORK_MEMORY_SHARE)
         try:
@@ -1059,7 +1087,7 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
             finally:
                 tool.cleanup()
 
-        # Build destination points with min cost joined from original layer
+        # Build destination points with the average cost joined from original layer
         self._build_destination_points_parquet(
             matrix_output_path, dest_parquet, destinations_output_path
         )

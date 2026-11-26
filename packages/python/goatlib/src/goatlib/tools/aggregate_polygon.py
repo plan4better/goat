@@ -19,6 +19,7 @@ from goatlib.analysis.schemas.aggregate import (
     AggregationAreaType,
     validate_area_type_config,
 )
+from goatlib.analysis.schemas.base import StatisticOperation
 from goatlib.analysis.schemas.ui import (
     SECTION_AREA,
     SECTION_INPUT_AGGREGATE,
@@ -37,7 +38,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import classified
+from goatlib.tools.style import on_h3_cells, statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,8 @@ class AggregatePolygonToolParams(ToolInputBase, AggregatePolygonParams):
             "inside the area (the share of each source polygon's area that lies in "
             "it). A plain count stays unweighted; min and max, the standard "
             "deviation, and an H3 grid (each polygon goes to the cell of its "
-            "centroid), are not weighted either."
+            "centroid), are not weighted either. A polygon without a value in the "
+            "field takes no part in the weighted mean."
         ),
         json_schema_extra=ui_field(
             section="statistics",
@@ -234,10 +236,23 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """Aggregates classified by their first statistic, in oranges."""
-        field = params.column_statistics[0].get_operation_first_column_name()
-
-        return classified(field, "colorbrewer:Oranges", geometry)
+        """Aggregates classified by their first statistic, in oranges; titled
+        as area weighted where the analysis weights it: a sum or a mean onto
+        polygon areas. The user's polygons outlined, H3 cells not
+        (`on_h3_cells`)."""
+        stat = params.column_statistics[0]
+        return statistic_default(
+            self,
+            stat,
+            stat.get_operation_first_column_name(),
+            "colorbrewer:Oranges",
+            geometry,
+            relation,
+            area_weighted=params.weighted_by_intersecting_area
+            and params.area_type == AggregationAreaType.polygon
+            and stat.operation in (StatisticOperation.sum, StatisticOperation.mean),
+            outline_areas=not on_h3_cells(params),
+        )
 
     def process(
         self: Self, params: AggregatePolygonToolParams, temp_dir: Path

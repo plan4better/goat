@@ -642,7 +642,7 @@
     },
     "weighted_by_intersecting_area": {
       "label": "Nach Schnittfläche gewichten",
-      "description": "Wenn aktiviert, wird der Wert jedes Quellpolygons mit seinem Anteil innerhalb der Fläche gewichtet (dem Anteil seiner Fläche, der darin liegt). Eine reine Anzahl bleibt ungewichtet; Minimum und Maximum, die Standardabweichung sowie ein H3-Gitter (jedes Polygon kommt in die Zelle seines Zentroids) werden ebenfalls nicht gewichtet."
+      "description": "Wenn aktiviert, wird der Wert jedes Quellpolygons mit seinem Anteil innerhalb der Fläche gewichtet (dem Anteil seiner Fläche, der darin liegt). Eine reine Anzahl bleibt ungewichtet; Minimum und Maximum, die Standardabweichung sowie ein H3-Gitter (jedes Polygon kommt in die Zelle seines Zentroids) werden ebenfalls nicht gewichtet. Ein Polygon ohne Wert im Feld zählt beim gewichteten Mittelwert nicht mit."
     },
     "select_statistics_configuration": {
       "label": "Statistik-Konfiguration",
@@ -1058,7 +1058,7 @@
     },
     "aggregate_points": {
       "title": "Punkte aggregieren",
-      "description": "Fasst Punktobjekte innerhalb festgelegter Bereiche zusammen. Berechnet die Gesamtanzahl der Punkte und ermittelt Statistiken wie Summe, Mittelwert, Min oder Max für jeden Bereich."
+      "description": "Fasst Punktobjekte innerhalb festgelegter Bereiche zusammen. Berechnet die Gesamtanzahl der Punkte und ermittelt Statistiken wie Summe, Mittelwert, Min oder Max für jeden Bereich. Ein Punkt auf der gemeinsamen Grenze von zwei oder mehr Bereichen wird in einem von ihnen gezählt."
     },
     "union": {
       "title": "Vereinigen",
@@ -1256,5 +1256,29 @@
   "cluster_type": {
     "kmean": "K-Means",
     "equal_size": "Ausgewogene Zonen"
+  },
+  "style_titles": {
+    "count": "Anzahl",
+    "sum": "Summe von {field}",
+    "mean": "Mittelwert von {field}",
+    "min": "Minimum von {field}",
+    "max": "Maximum von {field}",
+    "standard_deviation": "Standardabweichung von {field}",
+    "area_weighted": "{title} (flächengewichtet)",
+    "gravity": "Erreichbarkeit (Gravitation)",
+    "closest_average_time": "Mittlere Reisezeit zu den nächsten Zielen",
+    "closest_average_distance": "Mittlere Entfernung zu den nächsten Zielen",
+    "connectivity": "Erreichbare Fläche",
+    "two_sfca": "Angebot je Nachfrage",
+    "market_share": "Marktanteil",
+    "trip_count": "Fahrten im Zeitfenster",
+    "buffer_distance": "Pufferabstand",
+    "travel_time": "Reisezeit",
+    "distance": "Entfernung",
+    "zone": "Zone",
+    "pt_class": "ÖV-Güteklasse",
+    "station_category": "Haltestellenkategorie",
+    "matrix_average_time": "Mittlere Reisezeit von den Startpunkten",
+    "matrix_average_distance": "Mittlere Entfernung von den Startpunkten"
   }
 }

@@ -90,7 +90,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import EMRLD, classified
+from goatlib.tools.style import EMRLD, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -1395,8 +1395,34 @@ class HeatmapV2ToolRunner(BaseToolRunner[HeatmapV2WindmillParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """Accessibility in green: access to opportunities."""
-        return classified("total_accessibility", EMRLD, geometry)
+        """Accessibility in green: access to opportunities. A closest average
+        is a travel time in minutes or a distance in meters, the shortest the
+        darkest: near is good access; connectivity is the area reached in
+        square meters."""
+        if params.heatmap_type == HeatmapType.closest_average:
+            distance = params.cost_type == CostType.distance
+            return numeric_default(
+                "total_accessibility",
+                EMRLD,
+                geometry,
+                style_title(
+                    "closest_average_distance" if distance else "closest_average_time"
+                ),
+                reverse=True,
+                unit="m" if distance else "min",
+            )
+        if params.heatmap_type == HeatmapType.connectivity:
+            return numeric_default(
+                "total_accessibility",
+                EMRLD,
+                geometry,
+                style_title("connectivity"),
+                unit="m²",
+            )
+        title = "two_sfca" if params.heatmap_type == HeatmapType.two_sfca else "gravity"
+        return numeric_default(
+            "total_accessibility", EMRLD, geometry, style_title(title)
+        )
 
     # --------------------------------------------------------- helpers
 

@@ -4,8 +4,11 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.buffer import BufferTool
 from goatlib.analysis.schemas.geoprocessing import BufferParams, DistanceType
+from goatlib.tools.buffer import BufferToolParams, BufferToolRunner
+from goatlib.tools.style_contract import Expectation
 from pydantic import ValidationError
 
 # Test data and result directories
@@ -66,6 +69,13 @@ class TestBufferTool:
         con.close()
         tool.cleanup()
 
+        check_tool_style(
+            BufferToolRunner,
+            tool_params(BufferToolParams, params, input_layer_id=U),
+            result_path,
+            expect=Expectation(field="buffer_distance", unit="m"),
+        )
+
     def test_buffer_points_multiple_distances(self) -> None:
         """Test buffering with multiple distances creates multiple rings."""
         input_path = str(TEST_DATA_DIR / "overlay_points.parquet")
@@ -112,6 +122,13 @@ class TestBufferTool:
 
         con.close()
         tool.cleanup()
+
+        check_tool_style(
+            BufferToolRunner,
+            tool_params(BufferToolParams, params, input_layer_id=U),
+            result_path,
+            expect=Expectation(field="buffer_distance", unit="m"),
+        )
 
     def test_buffer_polygons(self) -> None:
         """Test buffering polygon geometries."""

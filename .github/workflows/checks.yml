@@ -103,6 +103,7 @@ jobs:
                 - 'packages/python/goatlib/tests/unit/style/fixtures/**'
                 - 'packages/python/goatlib/tests/unit/filter/fixtures/**'
                 - 'packages/python/goatlib/tests/unit/raster/fixtures/**'
+                - 'packages/python/goatlib/tests/unit/tools/fixtures/tool_styles/**'
                 - '.prettier*'
                 - 'pnpm-lock.yaml'
 

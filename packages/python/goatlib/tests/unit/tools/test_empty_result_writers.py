@@ -25,8 +25,12 @@ from goatlib.tools.catchment_area_v2 import (
     CatchmentAreaV2ToolRunner,
     CatchmentAreaV2WindmillParams,
 )
-from goatlib.tools.travel_cost_matrix import TravelCostMatrixToolRunner
-from goatlib.tools.trip_count import TripCountToolRunner
+from goatlib.tools.style_contract import Expectation, assert_tool_style
+from goatlib.tools.travel_cost_matrix import (
+    TravelCostMatrixToolRunner,
+    TravelCostMatrixWindmillParams,
+)
+from goatlib.tools.trip_count import TripCountToolParams, TripCountToolRunner
 
 POINT = "ST_Point(11.5, 48.1)::GEOMETRY('OGC:CRS84')"
 U = "00000000-0000-0000-0000-000000000001"
@@ -44,6 +48,25 @@ def _types(path: Path) -> dict[str, str]:
         con.close()
     assert count == (0,)
     return {str(r[0]): str(r[1]) for r in rows}
+
+
+def _check_style(
+    runner: Any,
+    params: Any,
+    path: Path,
+    geometry: str,
+    expect: Expectation | None = None,
+) -> None:
+    """The default style the tool gives the result it wrote keeps the style
+    contract (`goatlib.tools.style_contract`)."""
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        assert_tool_style(
+            runner, params, f"read_parquet('{path}')", geometry, con=con, expect=expect
+        )
+    finally:
+        con.close()
 
 
 def _write(path: Path, query: str) -> Path:
@@ -77,6 +100,13 @@ def test_trip_count_with_no_station_in_service(tmp_path: Path) -> None:
     # geometry column `geometry`, as every prediction does.
     predicted = TripCountToolRunner.predict_output_schema({}, {})
     assert set(predicted) - {"geometry"} == set(types) - {"geom"}
+    # One station, one value: drawn in one color.
+    _check_style(
+        TripCountToolRunner(),
+        TripCountToolParams(user_id=U, folder_id=U, reference_area_layer_id=U),
+        out,
+        "point",
+    )
 
 
 def test_travel_cost_matrix_destinations_without_rows(tmp_path: Path) -> None:
@@ -93,6 +123,21 @@ def test_travel_cost_matrix_destinations_without_rows(tmp_path: Path) -> None:
         matrix, destinations, out
     )
     assert _types(out)["geometry"].startswith("GEOMETRY")
+    _check_style(
+        TravelCostMatrixToolRunner(),
+        TravelCostMatrixWindmillParams(
+            user_id=U,
+            folder_id=U,
+            origin_layer_id=U,
+            destination_layer_id=U,
+            origin_id_column="id",
+            destination_id_column="id",
+            routing_mode="walking",
+        ),
+        out,
+        "point",
+        Expectation(field="travel_cost", unit="min"),
+    )
 
 
 @pytest.mark.parametrize("shape_style", [ShapeStyle.combined, ShapeStyle.separated])
@@ -206,6 +251,24 @@ def test_catchment_without_start_points(
         },
     )
     assert set(predicted) == columns
+    # The bands the tool gives the empty result of its kind.
+    params = CatchmentAreaV2WindmillParams(
+        user_id=U,
+        folder_id=U,
+        routing_mode=mode,
+        starting_points={"latitude": [48.137], "longitude": [11.576]},
+        catchment_area_type=kind,
+        shape_style=shape,
+        point_grid_layer_id=U if kind == CatchmentType.point_grid else None,
+    )
+    geometry = {CatchmentType.network: "line", CatchmentType.point_grid: "point"}
+    _check_style(
+        CatchmentAreaV2ToolRunner(),
+        params,
+        out,
+        geometry.get(kind, "polygon"),
+        Expectation(field="cost_step", method="categories", unit="min"),
+    )
 
 
 def _read_points_layer(
