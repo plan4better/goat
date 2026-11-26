@@ -15,10 +15,11 @@ import copy
 import logging
 import math
 from decimal import ROUND_HALF_UP, Context, Decimal
-from typing import Any, Iterable
+from typing import Any, Collection, Iterable
 
 import duckdb
 
+from goatlib.analysis.schemas.aggregate import AggregationAreaType
 from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
 from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.i18n import DEFAULT_LANGUAGE, get_translator
@@ -76,18 +77,50 @@ def styled(
     return doc
 
 
-#: The outline of a classified or categorized point result's markers: a
-#: darker shade of each marker's own color (`"auto"`), so a pale class stays
-#: readable on a light basemap.
-MARKER_OUTLINE = {"color": "auto", "width": 1}
+#: The outline of a classified or categorized result's markers and outlined
+#: areas: a darker shade of each feature's own color (`"auto"`), so a pale
+#: class stays readable on a light basemap.
+CLASS_OUTLINE = {"color": "auto", "width": 1}
 
 
-def result_styled(geometry: str | None, symbol: dict[str, Any]) -> dict[str, Any]:
+#: The column the heatmaps write each H3 cell's id to.
+H3_CELL_COLUMN = "h3_index"
+
+
+def on_h3_cells(params: Any = None, columns: Collection[str] = ()) -> bool:
+    """Whether a tool's result areas are H3 cells rather than polygons of the
+    user's. A grid the tool makes itself is told by its parameters: an
+    aggregation whose `area_type` is `AggregationAreaType.h3_grid` (the
+    heatmaps' results are always H3 cells, so they never ask). Cells that
+    arrive as an ordinary layer, a heatmap result an aggregation or a join
+    runs onto, are told by the result's `columns`: they hold the heatmaps'
+    cell column `H3_CELL_COLUMN`, which an aggregation onto polygons and a
+    join copy from that layer. No other column name tells, since the user's
+    polygons may carry any."""
+    return (
+        getattr(params, "area_type", None) == AggregationAreaType.h3_grid
+        or H3_CELL_COLUMN in columns
+    )
+
+
+def result_styled(
+    geometry: str | None, symbol: dict[str, Any], *, outline_areas: bool = False
+) -> dict[str, Any]:
     """The document of a tool's classified or categorized default, before its
-    classification (`styled` with `symbol`'s parts): on points, markers with
-    `MARKER_OUTLINE` unless `symbol` gives an outline (`False` draws none)."""
-    if geometry == "point" and "outline" not in symbol:
-        symbol = {**symbol, "outline": dict(MARKER_OUTLINE)}
+    classification (`styled` with `symbol`'s parts), with `CLASS_OUTLINE`
+    unless `symbol` gives an outline (`False` draws none): on points always;
+    on polygons with `outline_areas`, which a tool passes where its areas are
+    the user's own polygons or areas side by side (aggregation onto polygons,
+    join, dissolve, Huff, the ÖV-Güteklassen). Not on H3 cells (`on_h3_cells`,
+    the heatmaps), whose many small cells an outline clutters, nor on bands of
+    a distance or travel cost (`bands`): their palest band lies inside or
+    beside a darker one, never alone on the ground, and the outlines draw
+    above every fill, so the rings of overlapping bands (a buffer's discs
+    around neighbouring points, nested catchment steps) would cross the bands
+    drawn on top. Lines take no outline."""
+    outlined = geometry == "point" or (geometry == "polygon" and outline_areas)
+    if outlined and "outline" not in symbol:
+        symbol = {**symbol, "outline": dict(CLASS_OUTLINE)}
     return styled(geometry, symbol)
 
 
@@ -99,14 +132,16 @@ def classified(
     method: str = "quantile",
     count: int = CLASS_COUNT,
     symbol: dict[str, Any] | None = None,
+    outline_areas: bool = False,
 ) -> dict[str, Any]:
     """A style whose main color is classified by `field`; the classes are computed
     from the data. The color without a class is the palette's middle, also where
-    `symbol` gives the main part other properties."""
+    `symbol` gives the main part other properties. The outline follows
+    `result_styled`."""
     part = _part(geometry)
     parts = {**(symbol or {})}
     parts[part] = {"color": sample_colors(palette, 1)[0], **parts.get(part, {})}
-    doc = result_styled(geometry, parts)
+    doc = result_styled(geometry, parts, outline_areas=outline_areas)
     doc["classify"] = [
         {"field": field, "method": method, "count": count, "palette": palette}
     ]
@@ -132,12 +167,20 @@ def numeric_default(
     unit: str | None = None,
     count: int = CLASS_COUNT,
     symbol: dict[str, Any] | None = None,
+    outline_areas: bool = False,
 ) -> dict[str, Any]:
     """The default of a result whose value is a number per feature: quantile
     classes of `field` (`classified`), the ramp turned around with `reverse`,
     the legend's title and unit, and grey for features without a value. The
     number format follows from the computed classes (`with_decimals`)."""
-    doc = classified(field, palette, geometry, count=count, symbol=symbol)
+    doc = classified(
+        field,
+        palette,
+        geometry,
+        count=count,
+        symbol=symbol,
+        outline_areas=outline_areas,
+    )
     c = doc["classify"][0]
     if reverse:
         c["reverse"] = True
@@ -157,14 +200,28 @@ def statistic_title(stat: FieldStatistic, *, area_weighted: bool = False) -> str
     return style_title("area_weighted", title=title) if area_weighted else title
 
 
-def only_negative(runner: Any, relation: str, field: str) -> bool:
+def result_columns(runner: Any, relation: str) -> dict[str, str] | None:
+    """The result's columns with their types, read with the runner's
+    connection; None where the result cannot be read."""
+    try:
+        return column_types(runner.duckdb_con, relation)
+    except Exception:  # the caller's default as without the columns
+        logger.warning("Reading the result's columns failed", exc_info=True)
+        return None
+
+
+def only_negative(
+    runner: Any, relation: str, field: str, columns: Collection[str] | None = None
+) -> bool:
     """Whether `field` holds a value below 0 and none above, read with the
-    runner's connection; False where the result cannot be read, and without
-    a warning where it has no such column (the run's style check reports
-    that)."""
+    runner's connection (and the result's `columns`, read too when not
+    given); False where the result cannot be read, and without a warning
+    where it has no such column (the run's style check reports that)."""
     column = quote_identifier(field)
     try:
-        if field not in column_types(runner.duckdb_con, relation):
+        if columns is None:
+            columns = column_types(runner.duckdb_con, relation)
+        if field not in columns:
             return False
         low, high = runner.duckdb_con.execute(
             f"SELECT min({column}), max({column}) FROM {relation}"
@@ -185,20 +242,33 @@ def statistic_default(
     *,
     area_weighted: bool = False,
     negative: bool | None = None,
+    outline_areas: bool = False,
+    columns: Collection[str] | None = None,
 ) -> dict[str, Any]:
     """The default of a statistics tool: its first statistic's column `field`
     (`numeric_default`) in the tool's sequential palette, turned around where
     the column holds only negative values (`negative`, read from `relation`
-    when not given), so the value farthest from 0 is the darkest."""
+    when not given), so the value farthest from 0 is the darkest. Polygons
+    with `outline_areas` take no outline where the result's `columns` show H3
+    cells (`on_h3_cells`). The columns are read from `relation` once, where
+    either needs them and they are not given."""
+    signed = stat.operation != StatisticOperation.count and negative is None
+    if columns is None and (signed or (outline_areas and geometry == "polygon")):
+        columns = result_columns(runner, relation)
     reverse = stat.operation != StatisticOperation.count and (
-        only_negative(runner, relation, field) if negative is None else negative
+        only_negative(runner, relation, field, columns)
+        if negative is None
+        else negative
     )
+    if columns is not None and on_h3_cells(columns=columns):
+        outline_areas = False
     return numeric_default(
         field,
         palette,
         geometry,
         statistic_title(stat, area_weighted=area_weighted),
         reverse=reverse,
+        outline_areas=outline_areas,
     )
 
 
@@ -402,13 +472,14 @@ def categories(
     symbol: dict[str, Any] | None = None,
     title: str | None = None,
     reverse: bool = False,
+    outline_areas: bool = False,
 ) -> dict[str, Any]:
     """A style with one class per value of `field`, in the order given, colored
     along the palette (from its end with `reverse`, as the server and the style
     panel color classes of a reversed palette), and the legend's `title` where
     given. The color without a class is the middle class's, also where
     `symbol` gives the main part other properties. The classes are fixed:
-    nothing is recomputed."""
+    nothing is recomputed. The outline follows `result_styled`."""
     part = _part(geometry)
     colors = sample_colors(palette, len(values), reverse=reverse)
     parts = {**(symbol or {})}
@@ -416,7 +487,7 @@ def categories(
         "color": colors[len(colors) // 2] if colors else None,
         **parts.get(part, {}),
     }
-    doc = result_styled(geometry, parts)
+    doc = result_styled(geometry, parts, outline_areas=outline_areas)
     classification: dict[str, Any] = {
         "field": field,
         "method": "categories",
@@ -450,7 +521,7 @@ def bands(
     """Bands of a distance or travel cost in whole `unit`s: one class per step
     (`categories`, the palette turned around with `reverse`), the legend's
     title and unit, no decimals, and the first step, the smallest, drawn on
-    top."""
+    top. Polygon bands take no outline (`result_styled`)."""
     doc = categories(
         field, steps, palette, geometry, symbol=symbol, title=title, reverse=reverse
     )
@@ -568,6 +639,7 @@ def oev_gueteklassen_style(
         [colors[label] for label in labels],
         "polygon",
         title=style_title("pt_class"),
+        outline_areas=True,
     )
 
 

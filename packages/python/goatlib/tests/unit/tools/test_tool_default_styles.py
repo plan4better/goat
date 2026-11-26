@@ -76,7 +76,11 @@ from goatlib.tools.oev_gueteklassen import OevGueteklassenToolRunner
 from goatlib.tools.origin_destination import OriginDestinationToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.tools.spatial_clustering import ZonesClusteringToolRunner
-from goatlib.tools.style_contract import Expectation, assert_tool_style
+from goatlib.tools.style_contract import (
+    Expectation,
+    assert_tool_style,
+    style_contract,
+)
 from goatlib.tools.travel_cost_matrix import TravelCostMatrixToolRunner
 from goatlib.tools.trip_count import TripCountToolRunner
 from goatlib.tools.union import UnionToolRunner
@@ -86,6 +90,10 @@ pytestmark = pytest.mark.unit
 U = "00000000-0000-0000-0000-000000000001"
 IDS = {"user_id": U, "folder_id": U}
 GREY = {"color": "#cccccc"}
+#: The outline a tool's classified or categorized point default draws, and its
+#: area default where the areas are outlined: a darker shade of each feature's
+#: own color, so a pale class stays readable.
+CLASS_OUTLINE = {"color": "auto", "width": 1}
 ORANGES = "colorbrewer:Oranges"
 TRANSLATIONS = Path(tool_style.__file__).parents[1] / "i18n" / "translations"
 
@@ -1236,6 +1244,7 @@ def _category_cases() -> (
                 labels,
                 [tool_style.OEV_GUETEKLASSEN_COLORS[k] for k in labels],
                 "polygon",
+                symbol={"outline": CLASS_OUTLINE},
             ),
             title="Public transport quality class",
         ),
@@ -2067,7 +2076,9 @@ def test_a_dissolve_by_fields_colors_its_groups(
     }
     assert doc["symbol"][part]["color"] == SET3_FIRST
     if geometry == "polygon":
-        assert doc["symbol"]["outline"] is False
+        assert doc["symbol"]["outline"] == CLASS_OUTLINE
+    if geometry == "line":
+        assert "outline" not in doc["symbol"]
 
 
 def test_a_dissolve_onto_a_table_has_no_style() -> None:
@@ -2333,30 +2344,38 @@ def test_geocoding_keeps_its_fixed_look() -> None:
 # --- A thin outline around the markers of classified and categorized points --
 
 
-#: The outline a tool's classified or categorized point default draws: a
-#: darker shade of each marker's own color, so a pale marker stays readable.
-MARKER_OUTLINE = {"color": "auto", "width": 1}
-
-
 @pytest.mark.parametrize(
-    "build",
+    ("build", "polygon_outline"),
     [
-        lambda g: tool_style.classified("v", ORANGES, g),
-        lambda g: tool_style.numeric_default("v", ORANGES, g, "Value"),
-        lambda g: tool_style.categories("v", [1, 2, 3], "colorbrewer:Set3", g),
-        lambda g: tool_style.bands("v", [5, 10], "colorbrewer:YlGn", g, "T", "min"),
-        lambda g: groups_style("v", g),
+        (lambda g: tool_style.classified("v", ORANGES, g), False),
+        (lambda g: tool_style.numeric_default("v", ORANGES, g, "Value"), False),
+        (
+            lambda g: tool_style.categories("v", [1, 2, 3], "colorbrewer:Set3", g),
+            False,
+        ),
+        (
+            lambda g: tool_style.bands("v", [5, 10], "colorbrewer:YlGn", g, "T", "min"),
+            False,
+        ),
+        # Dissolved groups are the user's own features: their areas are outlined.
+        (lambda g: groups_style("v", g), CLASS_OUTLINE),
     ],
 )
 def test_classified_and_categorized_points_get_a_thin_outline_of_their_own_shade(
-    con: duckdb.DuckDBPyConnection, build: Callable[[str], dict[str, Any]]
+    con: duckdb.DuckDBPyConnection,
+    build: Callable[[str], dict[str, Any]],
+    polygon_outline: Any,
 ) -> None:
-    assert build("point")["symbol"]["outline"] == MARKER_OUTLINE
-    assert build("polygon")["symbol"]["outline"] is False
+    assert build("point")["symbol"]["outline"] == CLASS_OUTLINE
+    outline = build("polygon")["symbol"]["outline"]
+    if polygon_outline is False:
+        assert outline is False
+    else:
+        assert outline == polygon_outline
     assert "outline" not in build("line")["symbol"]
     relation = table(con, "v", "point", "i % 3 + 1", 9)
     doc = _computed(con, build("point"), relation, "point")
-    assert doc["symbol"]["outline"] == MARKER_OUTLINE
+    assert doc["symbol"]["outline"] == CLASS_OUTLINE
     # Bands on an ordered palette carry their usual note (`palette_kind_mismatch`).
     assert [i for i in issues(con, relation, doc, "point") if i.level != "info"] == []
 
@@ -2385,3 +2404,286 @@ def test_the_cluster_summary_and_the_stations_draw_no_outline() -> None:
     stations = tool_style.oev_gueteklassen_stations_style()
     assert summary["symbol"]["outline"] is False
     assert stations["symbol"]["outline"] is False
+
+
+# --- A thin outline around the classes of area results -----------------------
+
+
+def _aggregate_points_onto_areas(**stat: Any) -> AggregatePointsToolParams:
+    return AggregatePointsToolParams(
+        **IDS,
+        source_layer_id=U,
+        area_type=AggregationAreaType.polygon,
+        area_layer_id=U,
+        column_statistics=[stat],
+    )
+
+
+def _join_onto_areas(con: duckdb.DuckDBPyConnection, geometry: str) -> Any:
+    relation = join_result(con, ["count"], "i % 4", 12, geometry, "BIGINT")
+    return _join_style(con, _join(_stat("count")), relation, geometry)
+
+
+def _groups_onto_areas(con: duckdb.DuckDBPyConnection, geometry: str) -> Any:
+    relation = table(con, "kind", geometry, "i % 3", 9, field_type="VARCHAR")
+    return _groups_style(geometry, "kind", con=con, relation=relation)
+
+
+AreaBuild = Callable[[duckdb.DuckDBPyConnection, str], Any]
+
+
+def _from_params(runner_class: type, params: Any) -> AreaBuild:
+    """A default built from the parameters alone, for any geometry."""
+    return lambda con, geometry: runner_class().get_layer_style(
+        params, MagicMock(), geometry, "r"
+    )
+
+
+#: Classified and categorized areas that are the user's own polygons or shapes
+#: a tool draws around the user's features, per tool: how the default is
+#: built from a connection and its geometry.
+OUTLINED_AREAS: dict[str, AreaBuild] = {
+    "aggregate_points onto polygons": _from_params(
+        AggregatePointsToolRunner, _aggregate_points_onto_areas(**_stat("count"))
+    ),
+    "aggregate_polygon onto polygons": _from_params(
+        AggregatePolygonToolRunner, _aggregate_polygon(areas=True, **_stat("count"))
+    ),
+    "aggregate_polygon onto polygons weighted": _from_params(
+        AggregatePolygonToolRunner,
+        _aggregate_polygon(weighted=True, areas=True, **_stat("count")),
+    ),
+    "join": _join_onto_areas,
+    "dissolve statistics": _from_params(
+        DissolveToolRunner, _dissolve(**_stat("count"))
+    ),
+    "dissolve groups": _groups_onto_areas,
+    "oev_gueteklassen classes": _from_params(
+        OevGueteklassenToolRunner, MagicMock(station_config=None)
+    ),
+    # Polygon opportunities keep their own geometry: they are never hexagons.
+    "huff_model_legacy polygons": _from_params(HuffModelToolRunner, MagicMock()),
+    "huff_model polygons": _from_params(HuffModelV2ToolRunner, MagicMock()),
+}
+
+
+@pytest.mark.parametrize("case", list(OUTLINED_AREAS))
+def test_classified_areas_of_the_user_s_polygons_get_a_thin_outline_of_their_own_shade(
+    con: duckdb.DuckDBPyConnection, case: str
+) -> None:
+    doc = OUTLINED_AREAS[case](con, "polygon")
+    assert doc is not None and doc["classify"]
+    assert doc["symbol"]["outline"] == CLASS_OUTLINE
+
+
+@pytest.mark.parametrize("case", ["join", "dissolve statistics", "dissolve groups"])
+def test_lines_of_an_outlined_tool_get_no_outline(
+    con: duckdb.DuckDBPyConnection, case: str
+) -> None:
+    doc = OUTLINED_AREAS[case](con, "line")
+    assert doc is not None
+    assert "outline" not in doc["symbol"]
+
+
+def test_points_of_an_outlined_tool_keep_the_marker_outline(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    doc = OUTLINED_AREAS["join"](con, "point")
+    assert doc is not None
+    assert doc["symbol"]["outline"] == CLASS_OUTLINE
+
+
+#: Area results that stay without an outline: H3 cells (aggregations onto a
+#: grid and every heatmap) and the bands of a distance or travel cost, which
+#: may lie inside each other (buffer distances, catchment areas).
+UNOUTLINED_AREAS: dict[str, Build] = {
+    "aggregate_points onto H3": _own(
+        AggregatePointsToolRunner, _aggregate_points(**_stat("count"))
+    ),
+    "aggregate_polygon onto H3": _own(
+        AggregatePolygonToolRunner, _aggregate_polygon(**_stat("sum"))
+    ),
+    "aggregate_polygon onto H3 weighted": _own(
+        AggregatePolygonToolRunner, _aggregate_polygon(weighted=True, **_stat("sum"))
+    ),
+    "heatmap_gravity_legacy": _own(HeatmapGravityToolRunner, MagicMock()),
+    "heatmap_closest_average_legacy": _own(
+        HeatmapClosestAverageToolRunner, MagicMock()
+    ),
+    "heatmap_connectivity_legacy": _own(HeatmapConnectivityToolRunner, MagicMock()),
+    "heatmap_2sfca_legacy": _own(Heatmap2SFCAToolRunner, MagicMock()),
+    "heatmap_gravity": _v2(HeatmapGravityV2ToolRunner, HeatmapType.gravity),
+    "heatmap_closest_average": _v2(
+        HeatmapClosestAverageV2ToolRunner, HeatmapType.closest_average
+    ),
+    "heatmap_connectivity": _v2(
+        HeatmapConnectivityV2ToolRunner, HeatmapType.connectivity
+    ),
+    "heatmap_2sfca": _v2(Heatmap2SFCAV2ToolRunner, HeatmapType.two_sfca),
+    "buffer": _own(
+        BufferToolRunner,
+        BufferToolParams(**IDS, input_layer_id=U, distances=[100, 200]),
+    ),
+    "catchment polygons": _own(
+        CatchmentAreaV2ToolRunner, _catchment_params("polygon", "time")
+    ),
+    "catchment polygons, first runner": _own(
+        CatchmentAreaToolRunner, _first_catchment_params("time")
+    ),
+}
+
+
+@pytest.mark.parametrize("case", list(UNOUTLINED_AREAS))
+def test_h3_cells_and_distance_bands_get_no_outline(case: str) -> None:
+    doc = UNOUTLINED_AREAS[case]()
+    assert doc["classify"]
+    assert doc["symbol"]["outline"] is False
+
+
+def test_the_catchment_point_grid_keeps_its_marker_outline_and_the_network_none() -> (
+    None
+):
+    grid = CatchmentAreaV2ToolRunner().get_layer_style(
+        _catchment_params("point_grid", "time"), MagicMock(), "point", "r"
+    )
+    network = CatchmentAreaV2ToolRunner().get_layer_style(
+        _catchment_params("network", "time"), MagicMock(), "line", "r"
+    )
+    assert grid["symbol"]["outline"] == CLASS_OUTLINE
+    assert "outline" not in network["symbol"]
+
+
+def test_a_plain_area_result_keeps_no_outline() -> None:
+    colored = tool_style.styled("polygon", {"fill": {"color": "#123456"}})
+    assert tool_style.styled("polygon")["symbol"]["outline"] is False
+    assert colored["symbol"]["outline"] is False
+
+
+def test_a_tool_tells_h3_cells_by_its_area_type() -> None:
+    """A grid the tool makes is told by its parameters."""
+    assert tool_style.on_h3_cells(_aggregate_points(**_stat("count"))) is True
+    assert tool_style.on_h3_cells(_aggregate_polygon(**_stat("sum"))) is True
+    assert (
+        tool_style.on_h3_cells(_aggregate_points_onto_areas(**_stat("count"))) is False
+    )
+    assert (
+        tool_style.on_h3_cells(_aggregate_polygon(areas=True, **_stat("sum"))) is False
+    )
+    # A tool without an area type draws on the areas it makes itself.
+    assert tool_style.on_h3_cells(_dissolve(**_stat("count"))) is False
+
+
+@pytest.mark.parametrize("case", list(OUTLINED_AREAS))
+def test_an_outlined_area_default_and_its_computed_style_pass_the_contract(
+    con: duckdb.DuckDBPyConnection, case: str
+) -> None:
+    """`auto` on a polygon outline is accepted (a darker shade of each class's
+    fill), on the intent and on the computed style, with no note."""
+    doc = OUTLINED_AREAS[case](con, "polygon")
+    [c] = doc["classify"]
+    field = c["field"]
+    if case == "oev_gueteklassen classes":
+        relation = table(
+            con,
+            field,
+            "polygon",
+            "chr(65 + (i % 6)::INTEGER)",
+            12,
+            field_type="VARCHAR",
+        )
+    elif case == "dissolve groups":
+        relation = table(con, field, "polygon", "i % 3", 9, field_type="VARCHAR")
+    else:
+        relation = table(con, field, "polygon", "i + 1", 21, field_type="BIGINT")
+    computed = _computed(con, doc, relation, "polygon")
+    assert computed["symbol"]["outline"] == CLASS_OUTLINE
+    assert _issue_codes(con, relation, doc, "polygon") == []
+    assert _issue_codes(con, relation, computed, "polygon") == []
+    assert style_contract(computed, con, relation, "polygon") == []
+
+
+@pytest.mark.parametrize("name", ["huff_model_legacy", "huff_model"])
+def test_huff_points_keep_their_marker_outline(name: str) -> None:
+    runner_class = {
+        "huff_model_legacy": HuffModelToolRunner,
+        "huff_model": HuffModelV2ToolRunner,
+    }[name]
+    doc = runner_class().get_layer_style(MagicMock(), MagicMock(), "point", "r")
+    assert doc["symbol"]["outline"] == CLASS_OUTLINE
+
+
+def test_cells_that_arrive_as_a_layer_are_told_by_the_heatmaps_cell_column() -> None:
+    """A heatmap result that an aggregation or a join runs onto carries its
+    cells' `h3_index` into the result; no other column name tells."""
+    assert tool_style.on_h3_cells(columns=["count", "h3_index"]) is True
+    assert tool_style.on_h3_cells(columns=["count", "h3_8", "h3"]) is False
+    assert tool_style.on_h3_cells(columns=[]) is False
+
+
+def _areas_with(
+    con: duckdb.DuckDBPyConnection, field: str, cells: bool, field_type: str
+) -> str:
+    """A result on polygons whose `field` holds 1 to 9, with the heatmaps'
+    cell column `h3_index` where `cells`."""
+    h3 = "'8a1f' || i AS h3_index, " if cells else ""
+    con.execute(
+        f"""CREATE OR REPLACE TABLE result AS
+        SELECT {h3}(i % 9 + 1)::{field_type} AS "{field}",
+               {GEOMETRY_SQL["polygon"]} AS geometry
+        FROM range(18) t(i)"""
+    )
+    return "result"
+
+
+@pytest.mark.parametrize("op", ["count", "sum"])
+@pytest.mark.parametrize(
+    ("runner_class", "params", "field"),
+    [
+        (
+            AggregatePointsToolRunner,
+            _aggregate_points_onto_areas,
+            {"count": "count", "sum": "value_sum"},
+        ),
+        (
+            AggregatePolygonToolRunner,
+            lambda **stat: _aggregate_polygon(areas=True, **stat),
+            {"count": "count", "sum": "sum_value"},
+        ),
+    ],
+)
+def test_an_aggregation_onto_heatmap_cells_gets_no_outline(
+    con: duckdb.DuckDBPyConnection,
+    runner_class: type,
+    params: Callable[..., Any],
+    field: dict[str, str],
+    op: str,
+) -> None:
+    for cells, outline in [(True, False), (False, CLASS_OUTLINE)]:
+        relation = _areas_with(con, field[op], cells, "DOUBLE")
+        doc = runner_for(runner_class, con).get_layer_style(
+            params(**_stat(op)), MagicMock(), "polygon", relation
+        )
+        if outline is False:
+            assert doc["symbol"]["outline"] is False
+        else:
+            assert doc["symbol"]["outline"] == outline
+
+
+def test_a_join_onto_heatmap_cells_gets_no_outline(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """The target's columns come first, then the count the join appends."""
+    for cells in (True, False):
+        h3 = "'8a1f' || i AS h3_index, " if cells else ""
+        con.execute(
+            f"""CREATE OR REPLACE TABLE result AS
+            SELECT {h3}{GEOMETRY_SQL["polygon"]} AS geometry,
+                   (i % 4)::BIGINT AS "count"
+            FROM range(12) t(i)"""
+        )
+        doc = _join_style(con, _join(_stat("count")), "result")
+        assert doc is not None
+        if cells:
+            assert doc["symbol"]["outline"] is False
+        else:
+            assert doc["symbol"]["outline"] == CLASS_OUTLINE

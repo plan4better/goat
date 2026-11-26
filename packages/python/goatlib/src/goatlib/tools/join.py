@@ -466,22 +466,14 @@ def _statistic(params: JoinToolParams) -> FieldStatistic | None:
     return params.field_statistics[0]
 
 
-def _written_column(
-    con: duckdb.DuckDBPyConnection, relation: str, params: JoinToolParams
-) -> str | None:
+def _written_column(names: list[str], params: JoinToolParams) -> str | None:
     """The name the run wrote its first statistic under. The analysis appends
     `match_count` (without a count) and the statistic columns after the target
     layer's, and the database renames one whose name is taken, as
     `predict_output_schema` predicts (`unique_column_name`). So the result's
     columns before the appended ones are the target's, and the prediction from
-    them must give the result's columns; None where it does not."""
-    names = [
-        name
-        for name, data_type, *_ in con.execute(
-            f"DESCRIBE SELECT * FROM {relation}"
-        ).fetchall()
-        if not is_bbox_struct(data_type)
-    ]
+    them must give the result's columns (`names`, without the bounding box);
+    None where it does not."""
     stats = params.field_statistics or []
     match_count = not any(s.operation == StatisticOperation.count for s in stats)
     target = names[: len(names) - len(stats) - match_count]
@@ -497,13 +489,21 @@ def _written_column(
 
 def _statistic_range(
     runner: BaseToolRunner, relation: str, params: JoinToolParams
-) -> tuple[str, Any, Any] | None:
+) -> tuple[str, Any, Any, list[str]] | None:
     """The column of the first statistic (`_written_column`) with its minimum
-    and maximum, read in one pass with the runner's connection; None where the
-    column cannot be told or the result cannot be read."""
+    and maximum, read in one pass with the runner's connection, and the
+    result's column names; None where the column cannot be told or the result
+    cannot be read."""
     try:
         con = runner.duckdb_con
-        column = _written_column(con, relation, params)
+        names = [
+            name
+            for name, data_type, *_ in con.execute(
+                f"DESCRIBE SELECT * FROM {relation}"
+            ).fetchall()
+            if not is_bbox_struct(data_type)
+        ]
+        column = _written_column(names, params)
         if column is None:
             logger.warning("The join's result does not hold the columns it writes")
             return None
@@ -511,7 +511,7 @@ def _statistic_range(
         low, high = con.execute(
             f"SELECT min({quoted}), max({quoted}) FROM {relation}"
         ).fetchone()
-        return column, low, high
+        return column, low, high, names
     except Exception:  # the default style
         logger.warning("Reading the join's statistic failed", exc_info=True)
         return None
@@ -601,14 +601,16 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
     ) -> dict[str, Any] | None:
         """The first statistic's column classified in orange, as the aggregates
         (`statistic_default`), where the user asked for statistics and that
-        column holds at least two values; the default style otherwise."""
+        column holds at least two values; the default style otherwise. The
+        target's polygons outlined, H3 cells of a heatmap result not
+        (`on_h3_cells` on the columns read here)."""
         stat = _statistic(params)
         if stat is None or geometry is None:
             return None
         read = _statistic_range(self, relation, params)
         if read is None:
             return None
-        column, low, high = read
+        column, low, high, names = read
         if low is None or not low < high:
             return None
         return statistic_default(
@@ -619,6 +621,8 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             geometry,
             relation,
             negative=low < 0 and high <= 0,
+            outline_areas=True,
+            columns=names,
         )
 
     def process(

@@ -71,7 +71,11 @@ def groups_style(field: str, geometry: str) -> dict[str, Any]:
     data; the other groups and features without a value are grey."""
     part = MAIN_COLOR[geometry].split(".")[0]
     grey = {part: {"color": NO_DATA_GREY}}
-    doc = result_styled(geometry, {part: {"color": sample_colors(GROUP_PALETTE, 1)[0]}})
+    doc = result_styled(
+        geometry,
+        {part: {"color": sample_colors(GROUP_PALETTE, 1)[0]}},
+        outline_areas=True,
+    )
     doc["classify"] = [
         {
             "field": field,
@@ -279,7 +283,13 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
             return groups_style(field, geometry)
         stat = params.field_statistics[0]
         return statistic_default(
-            self, stat, stat.get_operation_first_column_name(), TEAL, geometry, relation
+            self,
+            stat,
+            stat.get_operation_first_column_name(),
+            TEAL,
+            geometry,
+            relation,
+            outline_areas=True,
         )
 
     def process(

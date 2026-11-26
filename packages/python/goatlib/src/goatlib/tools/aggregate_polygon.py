@@ -38,7 +38,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import statistic_default
+from goatlib.tools.style import on_h3_cells, statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,8 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
     ) -> dict[str, Any] | None:
         """Aggregates classified by their first statistic, in oranges; titled
         as area weighted where the analysis weights it: a sum or a mean onto
-        polygon areas."""
+        polygon areas. The user's polygons outlined, H3 cells not
+        (`on_h3_cells`)."""
         stat = params.column_statistics[0]
         return statistic_default(
             self,
@@ -249,6 +250,7 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
             area_weighted=params.weighted_by_intersecting_area
             and params.area_type == AggregationAreaType.polygon
             and stat.operation in (StatisticOperation.sum, StatisticOperation.mean),
+            outline_areas=not on_h3_cells(params),
         )
 
     def process(

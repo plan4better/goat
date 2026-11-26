@@ -531,7 +531,14 @@ documents goatlib built or upgraded:
   Classified and categorized point looks draw each marker with a thin outline
   in a darker shade of its own color (`result_styled`), so a pale class stays
   readable on a light basemap; the cluster summary's overlapping translucent
-  circles and the black stations draw none. Bands
+  circles and the black stations draw none. Area looks get the same outline
+  where the areas are the user's polygons or lie side by side (aggregation
+  onto polygons, join, dissolve, Huff, the ÖV-Güteklassen), but not on H3
+  cells (`on_h3_cells`: a grid the tool makes, told by its parameters, or a
+  heatmap result run onto, told by its `h3_index` column), nor on the bands
+  of a buffer or a catchment area: their palest band lies inside or beside a
+  darker one, never alone on the ground, and overlapping bands would cross
+  each other's outlines. Bands
   of a distance or travel cost (`bands`) are fixed categories in whole units, so
   they carry their unit, no decimals and the first band on top from the start.
   What a tool's style must hold for its result is the style contract

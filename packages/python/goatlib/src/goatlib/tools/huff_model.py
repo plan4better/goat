@@ -206,9 +206,15 @@ class HuffModelToolRunner(BaseToolRunner[HuffModelToolParams]):
         relation: str,
     ) -> dict[str, Any] | None:
         """Choice probabilities (percent, 0 to 100) in teal: the market share
-        per facility."""
+        per facility, polygon facilities outlined (they keep their own
+        geometry, never H3 cells)."""
         return numeric_default(
-            "probability", TEAL, geometry, style_title("market_share"), unit="%"
+            "probability",
+            TEAL,
+            geometry,
+            style_title("market_share"),
+            unit="%",
+            outline_areas=True,
         )
 
     def process(

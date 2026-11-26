@@ -25,7 +25,10 @@
     "color": "#ffdf9a",
     "opacity": 0.8
    },
-   "outline": false
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
   },
   "classify": [
    {
