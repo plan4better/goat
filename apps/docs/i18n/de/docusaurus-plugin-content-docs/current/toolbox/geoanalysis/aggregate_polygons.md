@@ -58,7 +58,7 @@ Im folgenden Beispiel werden die Polygone des *zu aggregierenden Layers* auf Hex
 <Tabs>
   <TabItem value="Polygon" label="Polygon" default className="tabItemBox">
 
-Wählen Sie den <code>Flächen-Layer</code>, der die Polygone enthält, auf denen Sie Ihre Polygondaten aggregieren möchten. Jedes Polygon des Eingabe-Layers wird in jeder Fläche berücksichtigt, die es schneidet.
+Wählen Sie den <code>Flächen-Layer</code>, der die Polygone enthält, auf denen Sie Ihre Polygondaten aggregieren möchten. Jedes Polygon des Eingabe-Layers wird in jeder Fläche berücksichtigt, die es überlappt; ein Polygon, das eine Fläche nur an ihrem Rand oder an einer Ecke berührt, wird in ihr nicht berücksichtigt.
 
 
   </TabItem>
@@ -105,7 +105,7 @@ Die folgenden **Operationen** stehen zur Verfügung:
 
 <div class="step">
   <div class="step-number">8</div>
-  <div class="content">Falls gewünscht, aktivieren Sie <code>Nach Schnittfläche gewichten</code>. Dadurch werden die <b>Werte nach dem Anteil jedes Eingabe-Polygons gewichtet, der innerhalb der Aggregierungsfläche liegt</b>. Die Gewichtung gilt für <b>Sum</b> und <b>Mean</b> beim Flächentyp <b>Polygon</b>; Count, Min, Max, Standard Deviation sowie der Flächentyp H3 Grid werden nicht gewichtet.</div>
+  <div class="content">Falls gewünscht, aktivieren Sie <code>Nach Schnittfläche gewichten</code>. Dadurch werden die <b>Werte nach dem Anteil jedes Eingabe-Polygons gewichtet, der innerhalb der Aggregierungsfläche liegt</b>. Die Gewichtung gilt für <b>Sum</b> und <b>Mean</b> beim Flächentyp <b>Polygon</b>; Count, Min, Max, Standard Deviation sowie der Flächentyp H3 Grid werden nicht gewichtet. Ein Polygon ohne Wert im ausgewählten Feld zählt beim gewichteten <b>Mean</b> nicht mit.</div>
 </div>
 
 <div class="step">
@@ -127,7 +127,7 @@ Die folgenden **Operationen** stehen zur Verfügung:
 
 Sobald der Berechnungsprozess abgeschlossen ist, wird der resultierende Polygon-Layer zur Karte hinzugefügt. Er enthält <b>je Statistik eine zusätzliche Spalte</b> und wird nach der ersten Statistik eingefärbt. Sie können die Werte sehen, indem Sie auf ein Polygon auf der Karte klicken.
 
-- Beim Flächentyp **Polygon** enthält das Ergebnis alle Polygone des Flächen-Layers mit ihren Attributen. Flächen ohne schneidende Polygone erhalten für **Anzahl** und **Summe** den Wert 0 und für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung** keinen Wert. Eine Fläche mit nur einem schneidenden Polygon erhält für **Standardabweichung** keinen Wert, eine Fläche, deren Polygone im ausgewählten Feld alle keinen Wert haben, für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung**.
+- Beim Flächentyp **Polygon** enthält das Ergebnis alle Polygone des Flächen-Layers mit ihren Attributen. Flächen ohne überlappende Polygone erhalten für **Anzahl** und **Summe** den Wert 0 und für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung** keinen Wert. Eine Fläche mit nur einem überlappenden Polygon erhält für **Standardabweichung** keinen Wert, eine Fläche, deren Polygone im ausgewählten Feld alle keinen Wert haben, für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung**.
 - Beim Flächentyp **H3 Grid** enthält das Ergebnis die Hexagone, in denen der Schwerpunkt mindestens eines Polygons liegt. Die Spalte <code>h3_&lt;Auflösung&gt;</code> (z.B. <code>h3_8</code>) enthält die ID des Hexagons.
 - Wenn Sie <code>Gruppenfelder</code> gewählt haben, enthält eine zusätzliche Spalte <code>&lt;Ergebnisspalte&gt;_grouped</code> den Wert jeder Gruppe.
 

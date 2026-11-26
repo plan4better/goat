@@ -59,7 +59,7 @@ Das Werkzeug "Punkte aggregieren" kann verwendet werden, um **die Eigenschaften 
 <Tabs>
   <TabItem value="Polygon" label="Polygon" default className="tabItemBox">
 
-Wählen Sie den <code>Flächen-Layer</code>, der die Polygone enthält, auf denen Sie Ihre Punktdaten aggregieren möchten.
+Wählen Sie den <code>Flächen-Layer</code>, der die Polygone enthält, auf denen Sie Ihre Punktdaten aggregieren möchten. Ein Punkt auf der gemeinsamen Grenze von zwei oder mehr Flächen wird in einer von ihnen gezählt.
 
   </TabItem>
   <TabItem value="H3 Grid" label="H3 Grid" className="tabItemBox">

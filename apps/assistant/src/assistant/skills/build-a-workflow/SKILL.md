@@ -444,7 +444,7 @@ workflow for it.
   layer), aggregate points: census points, stops, or the centroids of areas.
   The pieces of an intersection or a union never go into a layer of cells
   unweighted: aggregate_polygon with polygons as its areas counts a piece in
-  every cell it touches, so one piece counts in several cells. With
+  every cell it overlaps, so one piece counts in several cells. With
   `area_type` `h3_grid` it puts each polygon whole into the cell of its
   centroid. Residents held only as polygons, when no points exist, take
   `weighted_by_intersecting_area` (catchments.md), labelled as an estimate.

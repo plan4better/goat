@@ -1602,12 +1602,12 @@ PASS_8_RULES = {
         "lies in both",
         "union keeps the parts outside the other area too, and a dissolve by the "
         "district's name then rebuilds the whole districts",
-        # 6.5 (Q28): pieces counted in every cell they touch
+        # 6.5 (Q28): pieces counted in every cell they overlap
         "To count or sum into cells (an H3 grid, the heatmap's hexagons, a grid "
         "layer), aggregate points",
         "The pieces of an intersection or a union never go into a layer of "
         "cells unweighted: aggregate_polygon with polygons as its areas counts a "
-        "piece in every cell it touches",
+        "piece in every cell it overlaps",
         "With area_type h3_grid it puts each polygon whole into the cell of its "
         "centroid",
         "Residents held only as polygons, when no points exist, take "

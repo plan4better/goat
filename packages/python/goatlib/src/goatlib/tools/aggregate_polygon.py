@@ -153,7 +153,8 @@ class AggregatePolygonToolParams(ToolInputBase, AggregatePolygonParams):
             "inside the area (the share of each source polygon's area that lies in "
             "it). A plain count stays unweighted; min and max, the standard "
             "deviation, and an H3 grid (each polygon goes to the cell of its "
-            "centroid), are not weighted either."
+            "centroid), are not weighted either. A polygon without a value in the "
+            "field takes no part in the weighted mean."
         ),
         json_schema_extra=ui_field(
             section="statistics",

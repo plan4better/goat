@@ -642,7 +642,7 @@
     },
     "weighted_by_intersecting_area": {
       "label": "Nach Schnittfläche gewichten",
-      "description": "Wenn aktiviert, wird der Wert jedes Quellpolygons mit seinem Anteil innerhalb der Fläche gewichtet (dem Anteil seiner Fläche, der darin liegt). Eine reine Anzahl bleibt ungewichtet; Minimum und Maximum, die Standardabweichung sowie ein H3-Gitter (jedes Polygon kommt in die Zelle seines Zentroids) werden ebenfalls nicht gewichtet."
+      "description": "Wenn aktiviert, wird der Wert jedes Quellpolygons mit seinem Anteil innerhalb der Fläche gewichtet (dem Anteil seiner Fläche, der darin liegt). Eine reine Anzahl bleibt ungewichtet; Minimum und Maximum, die Standardabweichung sowie ein H3-Gitter (jedes Polygon kommt in die Zelle seines Zentroids) werden ebenfalls nicht gewichtet. Ein Polygon ohne Wert im Feld zählt beim gewichteten Mittelwert nicht mit."
     },
     "select_statistics_configuration": {
       "label": "Statistik-Konfiguration",
@@ -1058,7 +1058,7 @@
     },
     "aggregate_points": {
       "title": "Punkte aggregieren",
-      "description": "Fasst Punktobjekte innerhalb festgelegter Bereiche zusammen. Berechnet die Gesamtanzahl der Punkte und ermittelt Statistiken wie Summe, Mittelwert, Min oder Max für jeden Bereich."
+      "description": "Fasst Punktobjekte innerhalb festgelegter Bereiche zusammen. Berechnet die Gesamtanzahl der Punkte und ermittelt Statistiken wie Summe, Mittelwert, Min oder Max für jeden Bereich. Ein Punkt auf der gemeinsamen Grenze von zwei oder mehr Bereichen wird in einem von ihnen gezählt."
     },
     "union": {
       "title": "Vereinigen",

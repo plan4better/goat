@@ -59,7 +59,7 @@ The Aggregate Points tool can be used to **analyze the characteristics of points
 <Tabs>
   <TabItem value="Polygon" label="Polygon" default className="tabItemBox">
 
-Select the <code>Area Layer</code> which contains the polygons on which you like to aggregate your point data.
+Select the <code>Area Layer</code> which contains the polygons on which you like to aggregate your point data. A point on the shared boundary of two or more areas is counted in one of them.
 
 
   </TabItem>

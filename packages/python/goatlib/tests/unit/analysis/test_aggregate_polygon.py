@@ -334,7 +334,7 @@ WRITTEN_TYPES = {
     "standard_deviation_value": "DOUBLE",
 }
 
-#: The statistics of an area no polygon intersects.
+#: The statistics of an area no polygon overlaps.
 EMPTY_AREA = {
     "count": 0,
     "sum_value": 0,
@@ -360,7 +360,7 @@ def _statistics_by_area(output_path: str) -> dict[int, dict[str, object]]:
 
 
 class TestAggregatePolygonEmptyAreas:
-    """An area no polygon intersects holds 0 polygons and a sum of 0; its
+    """An area no polygon overlaps holds 0 polygons and a sum of 0; its
     mean, minimum, maximum and standard deviation have no value, weighted
     or not."""
 
@@ -460,16 +460,13 @@ class TestAggregatePolygonEmptyAreas:
         assert rows[3]["mean_value"] == pytest.approx(5)
         assert rows[4] == {**EMPTY_AREA, "count": 2}
 
-    def test_a_weighted_mean_of_a_polygon_that_only_touches_the_area_has_no_value(
-        self, tmp_path: Path
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_an_area_a_polygon_only_touches_on_its_edge_is_empty(
+        self, tmp_path: Path, weighted: bool
     ) -> None:
-        """A square touching area 5 on its edge counts for it but shares no
-        area with it: its weighted sum is 0, its weighted mean has none."""
-        touched = self._run(tmp_path, weighted=True)[5]
-        assert touched["count"] == 1
-        assert touched["sum_value"] == 0
-        assert touched["mean_value"] is None
-        assert touched["min_value"] == 7
+        """The square touching area 5 on its edge shares no area with it, so
+        area 5 holds no polygon."""
+        assert self._run(tmp_path, weighted=weighted)[5] == EMPTY_AREA
 
     @pytest.mark.parametrize("weighted", [False, True])
     def test_the_columns_and_their_types_stay_as_predicted(
@@ -544,6 +541,242 @@ class TestAggregatePolygonEmptyAreas:
         )
         AggregatePolygonTool().run(params)
         check_style(params, "mean_value")
+
+
+def _rectangle(x0: float, y0: float, x1: float, y1: float) -> str:
+    return f"POLYGON(({x0} {y0}, {x1} {y0}, {x1} {y1}, {x0} {y1}, {x0} {y0}))"
+
+
+def _grouped_by_area(output_path: str, column: str) -> dict[int, object]:
+    """The grouped JSON of `column` for each area, None where it has none."""
+    con = duckdb.connect()
+    con.execute("LOAD spatial;")
+    rows = con.execute(
+        f"SELECT id, \"{column}\" FROM '{output_path}' ORDER BY id"
+    ).fetchall()
+    con.close()
+    return {id_: None if value is None else _as_dict(value) for id_, value in rows}
+
+
+class TestAggregatePolygonSharedArea:
+    """A source polygon belongs to an area only when the two share area; a
+    shared edge or corner is not enough. A polygon without a value in the
+    field takes no part in the weighted mean."""
+
+    @staticmethod
+    def _write_inputs(tmp_path: Path) -> tuple[str, str]:
+        """Area 7 holds a square (10) that shares an edge with area 6. Area 8
+        holds a square (10) and a square without a value. A rectangle (50)
+        overlaps area 9 by a thin strip and lies mostly outside it. A square
+        (3) outside every area touches area 10 at its corner. Area 11 holds
+        half of a square (20), a square (40) and a square without a value
+        (the only one in category b)."""
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        areas = str(tmp_path / "areas.parquet")
+        sources = str(tmp_path / "sources.parquet")
+        con.execute(f"""
+            COPY (
+                SELECT id, ST_GeomFromText(wkt) AS geom FROM (VALUES
+                    (6, '{_rectangle(0, 0, 1, 1)}'),
+                    (7, '{_rectangle(1, 0, 2, 1)}'),
+                    (8, '{_rectangle(10, 0, 11, 1)}'),
+                    (9, '{_rectangle(20, 0, 21, 1)}'),
+                    (10, '{_rectangle(30, 0, 31, 1)}'),
+                    (11, '{_rectangle(40, 0, 41, 1)}')
+                ) t(id, wkt)
+            ) TO '{areas}' (FORMAT PARQUET)
+        """)
+        con.execute(f"""
+            COPY (
+                SELECT value, category, ST_GeomFromText(wkt) AS geom
+                FROM (VALUES
+                    (10, 'a', '{_rectangle(1, 0.25, 1.5, 0.75)}'),
+                    (10, 'a', '{_rectangle(10.25, 0.25, 10.5, 0.5)}'),
+                    (NULL::INTEGER, 'a', '{_rectangle(10.5, 0.5, 10.75, 0.75)}'),
+                    (50, 'a', '{_rectangle(20.99609375, 0.25, 21.5, 0.75)}'),
+                    (3, 'a', '{_rectangle(31, 1, 31.5, 1.5)}'),
+                    (20, 'a', '{_rectangle(39.75, 0.25, 40.25, 0.75)}'),
+                    (40, 'a', '{_rectangle(40.5, 0.25, 40.75, 0.5)}'),
+                    (NULL::INTEGER, 'b', '{_rectangle(40.5, 0.5, 40.75, 0.75)}')
+                ) t(value, category, wkt)
+            ) TO '{sources}' (FORMAT PARQUET)
+        """)
+        con.close()
+        return areas, sources
+
+    def _run(
+        self,
+        tmp_path: Path,
+        *,
+        weighted: bool = False,
+        group_by: list[str] | None = None,
+    ) -> str:
+        areas, sources = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePolygonTool().run(
+            AggregatePolygonParams(
+                source_path=sources,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                weighted_by_intersecting_area=weighted,
+                group_by_field=group_by,
+                output_path=output_path,
+            )
+        )
+        return output_path
+
+    @pytest.mark.parametrize(
+        ("weighted", "group_by"),
+        [(False, None), (True, None), (False, ["category"]), (True, ["category"])],
+    )
+    def test_a_polygon_sharing_only_an_edge_or_a_corner_is_not_counted(
+        self, tmp_path: Path, weighted: bool, group_by: list[str] | None
+    ) -> None:
+        """Areas 6 and 10 are only touched by their neighbours: they are
+        empty areas."""
+        rows = _statistics_by_area(
+            self._run(tmp_path, weighted=weighted, group_by=group_by)
+        )
+        assert rows[6] == EMPTY_AREA
+        assert rows[10] == EMPTY_AREA
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_the_grouped_statistics_of_a_touched_area_are_empty(
+        self, tmp_path: Path, weighted: bool
+    ) -> None:
+        output_path = self._run(tmp_path, weighted=weighted, group_by=["category"])
+        for column in ("count_grouped", "sum_value_grouped", "min_value_grouped"):
+            grouped = _grouped_by_area(output_path, column)
+            assert grouped[6] is None
+            assert grouped[10] is None
+        assert _grouped_by_area(output_path, "count_grouped")[7] == {"a": 1}
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_the_area_holding_the_polygon_keeps_it(
+        self, tmp_path: Path, weighted: bool
+    ) -> None:
+        assert _statistics_by_area(self._run(tmp_path, weighted=weighted))[7] == {
+            "count": 1,
+            "sum_value": pytest.approx(10),
+            "mean_value": pytest.approx(10),
+            "min_value": 10,
+            "max_value": 10,
+            "standard_deviation_value": None,
+        }
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_a_polygon_overlapping_an_area_by_a_thin_strip_is_counted(
+        self, tmp_path: Path, weighted: bool
+    ) -> None:
+        """The strip is 1/129 of the rectangle: weighted, the area gets that
+        share of its value."""
+        strip = _statistics_by_area(self._run(tmp_path, weighted=weighted))[9]
+        assert strip == {
+            "count": 1,
+            "sum_value": pytest.approx(50 / 129 if weighted else 50),
+            "mean_value": pytest.approx(50),
+            "min_value": 50,
+            "max_value": 50,
+            "standard_deviation_value": None,
+        }
+
+    @pytest.mark.parametrize(
+        ("weighted", "group_by"),
+        [(False, None), (True, None), (False, ["category"]), (True, ["category"])],
+    )
+    def test_a_polygon_without_a_value_takes_no_part_in_the_mean(
+        self, tmp_path: Path, weighted: bool, group_by: list[str] | None
+    ) -> None:
+        """Area 8: a square of value 10 beside one without a value has a mean
+        of 10, weighted or not; it is still counted."""
+        output_path = self._run(tmp_path, weighted=weighted, group_by=group_by)
+        assert _statistics_by_area(output_path)[8] == {
+            "count": 2,
+            "sum_value": pytest.approx(10),
+            "mean_value": pytest.approx(10),
+            "min_value": 10,
+            "max_value": 10,
+            "standard_deviation_value": None,
+        }
+        if group_by:
+            assert _grouped_by_area(output_path, "mean_value_grouped")[8] == {
+                "a": pytest.approx(10)
+            }
+
+    @pytest.mark.parametrize("weighted", [False, True])
+    def test_the_weighted_mean_keeps_its_weights_beside_a_polygon_without_a_value(
+        self, tmp_path: Path, weighted: bool
+    ) -> None:
+        """Area 11: half of the square of 20 and all of the square of 40 give
+        a weighted mean of (10 + 40) / 1.5; unweighted, the mean is 30. The
+        square without a value changes neither."""
+        held = _statistics_by_area(self._run(tmp_path, weighted=weighted))[11]
+        assert held == {
+            "count": 3,
+            "sum_value": pytest.approx(50 if weighted else 60),
+            "mean_value": pytest.approx(100 / 3 if weighted else 30),
+            "min_value": 20,
+            "max_value": 40,
+            "standard_deviation_value": pytest.approx(14.1421356),
+        }
+
+
+@pytest.mark.parametrize("area_type", ["polygon", "h3_grid"])
+def test_the_grouped_column_is_the_same_text_on_every_run(
+    tmp_path: Path, area_type: str
+) -> None:
+    """Thirty groups in one area: the members of the grouped column are
+    ordered by group name, so two runs write the same text."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    areas = str(tmp_path / "areas.parquet")
+    sources = str(tmp_path / "sources.parquet")
+    con.execute(f"""
+        COPY (SELECT 1 AS id, ST_GeomFromText('{_rectangle(0, 0, 1, 1)}') AS geom)
+        TO '{areas}' (FORMAT PARQUET)
+    """)
+    con.execute(f"""
+        COPY (
+            SELECT i AS value, printf('g%02d', (i * 7) % 30) AS category,
+                ST_GeomFromText(printf(
+                    'POLYGON((%f 0.5, %f 0.5, %f 0.5001, %f 0.5001, %f 0.5))',
+                    0.5 + i * 0.0001, 0.50005 + i * 0.0001,
+                    0.50005 + i * 0.0001, 0.5 + i * 0.0001, 0.5 + i * 0.0001
+                )) AS geom
+            FROM range(30) t(i)
+        ) TO '{sources}' (FORMAT PARQUET)
+    """)
+    con.close()
+    texts = []
+    for run in range(2):
+        output_path = str(tmp_path / f"out{run}.parquet")
+        AggregatePolygonTool().run(
+            AggregatePolygonParams(
+                source_path=sources,
+                area_type=AggregationAreaType(area_type),
+                area_layer_path=areas if area_type == "polygon" else None,
+                h3_resolution=None if area_type == "polygon" else 8,
+                column_statistics=[FieldStatistic(operation="count")],
+                group_by_field=["category"],
+                output_path=output_path,
+            )
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        texts.append(
+            sorted(
+                row[0]
+                for row in con.execute(
+                    f"SELECT CAST(count_grouped AS VARCHAR) FROM '{output_path}'"
+                ).fetchall()
+            )
+        )
+        con.close()
+    assert texts[0] == texts[1]
+    for text in texts[0]:
+        assert list(json.loads(text)) == sorted(json.loads(text))
 
 
 #: Result names as users type them: spaces, an umlaut, an embedded quote.
