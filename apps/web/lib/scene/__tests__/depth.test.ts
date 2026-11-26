@@ -1,7 +1,13 @@
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { describe, expect, it, vi } from "vitest";
 
-import { globeDepthOverride, globeRadiusPixels, keepGlobeDepth, keepsGlobeDepth } from "@/lib/scene/depth";
+import {
+  globeCamera,
+  globeDepthOverride,
+  globeRadiusPixels,
+  keepGlobeDepth,
+  keepsGlobeDepth,
+} from "@/lib/scene/depth";
 import { GLOBE_HANDOVER } from "@/lib/scene/visibility";
 
 const { from, until } = GLOBE_HANDOVER;
@@ -30,6 +36,24 @@ describe("globe depth range", () => {
   });
 });
 
+/** MapLibre's default vertical field of view, whose tangent at half the angle is a third. */
+const DEFAULT_FOV = 2 * Math.atan(1 / 3);
+
+describe("globeCamera", () => {
+  it("derives the distance to the center and the globe's radius from the camera's view as MapLibre does", () => {
+    const camera = globeCamera({
+      height: 700,
+      zoom: 5,
+      tileSize: 512,
+      fovInRadians: DEFAULT_FOV,
+      center: { lat: 60 },
+    });
+    expect(camera.height).toBe(700);
+    expect(camera.cameraToCenterDistance).toBeCloseTo(1050, 9);
+    expect(camera.globeRadiusPixels).toBeCloseTo(globeRadiusPixels(512 * 2 ** 5, 60), 9);
+  });
+});
+
 describe("keepsGlobeDepth", () => {
   it("keeps the globe's range while the globe draws without terrain", () => {
     expect(keepsGlobeDepth({ projection: "globe", zoom: 5, terrain: false })).toBe(true);
@@ -43,26 +67,44 @@ describe("keepsGlobeDepth", () => {
   });
 });
 
-class FakeTransform {
-  height = 700;
-  cameraToCenterDistance = 1050;
-  worldSize = 512 * 2 ** 5;
-  center = { lat: 0, lng: 0 };
-  nearFarZOverride: { nearZ: number; farZ: number } | null = null;
-  overrideNearFarZ = vi.fn((nearZ: number, farZ: number) => {
-    this.nearFarZOverride = { nearZ, farZ };
-  });
-  clearNearFarZOverride = vi.fn(() => {
-    this.nearFarZOverride = null;
-  });
+/** The camera's view state, as MapLibre's camera hands it out. */
+interface FakeView {
+  height: number;
+  zoom: number;
+  tileSize: number;
+  fovInRadians: number;
+  center: { lat: number; lng: number };
+  nearFarZOverride: { nearZ: number; farZ: number } | null;
 }
 
-function fakeMap({ projection = "globe", zoom = 5, terrain = false } = {}) {
+/** MapLibre's camera: a state that is replaced, never written into, and changed only through `applyStateChange`. */
+class FakeCamera {
+  state: FakeView = {
+    height: 700,
+    zoom: 5,
+    tileSize: 512,
+    fovInRadians: DEFAULT_FOV,
+    center: { lat: 0, lng: 0 },
+    nearFarZOverride: null,
+  };
+  get renderedState() {
+    return this.state;
+  }
+  applyStateChange = vi.fn((change: (view: FakeView) => FakeView) => {
+    this.state = change(this.state);
+  });
+  /** Replaces the state with some of its values changed, as a camera change does. */
+  move(changes: Partial<FakeView>) {
+    this.state = { ...this.state, ...changes };
+  }
+}
+
+function fakeMap(
+  { projection = "globe", zoom = 5, terrain = false } = {},
+  camera: object = new FakeCamera()
+) {
   const listeners = new Map<string, Set<() => void>>();
   const state = { projection, zoom, terrain };
-  const camera: { transform: FakeTransform; _requestedCameraState?: FakeTransform } = {
-    transform: new FakeTransform(),
-  };
   const map = {
     _camera: camera,
     getProjection: () => ({ type: state.projection }),
@@ -77,68 +119,70 @@ function fakeMap({ projection = "globe", zoom = 5, terrain = false } = {}) {
   };
   const fire = (type: string) => listeners.get(type)?.forEach((fn) => fn());
   const count = () => [...listeners.values()].reduce((n, s) => n + s.size, 0);
-  return { map, maplibre: map as unknown as MaplibreMap, state, camera, fire, count };
+  return { map, maplibre: map as unknown as MaplibreMap, state, camera: camera as FakeCamera, fire, count };
 }
 
-const expected = (tr: FakeTransform) =>
-  globeDepthOverride({
-    height: tr.height,
-    cameraToCenterDistance: tr.cameraToCenterDistance,
-    globeRadiusPixels: globeRadiusPixels(tr.worldSize, tr.center.lat),
-  });
+const expected = (view: FakeView) => globeDepthOverride(globeCamera(view));
 
 describe("keepGlobeDepth", () => {
   it("sets the range at once while the globe draws and follows each camera change", () => {
     const { maplibre, camera, fire } = fakeMap();
     const dispose = keepGlobeDepth(maplibre);
-    expect(camera.transform.nearFarZOverride).toEqual(expected(camera.transform));
+    expect(camera.state.nearFarZOverride).toEqual(expected(camera.state));
 
-    camera.transform.worldSize *= 2;
-    camera.transform.center.lat = 50;
+    camera.move({ zoom: 6, center: { lat: 50, lng: 0 } });
     fire("move");
-    expect(camera.transform.nearFarZOverride).toEqual(expected(camera.transform));
+    expect(camera.state.nearFarZOverride).toEqual(expected(camera.state));
 
-    camera.transform.height = 400;
+    camera.move({ height: 400 });
     fire("resize");
-    expect(camera.transform.nearFarZOverride?.nearZ).toBe(8);
+    expect(camera.state.nearFarZOverride?.nearZ).toBe(8);
+    dispose();
+  });
+
+  it("changes only the depth range of the camera", () => {
+    const { maplibre, camera } = fakeMap();
+    const before = camera.state;
+    const dispose = keepGlobeDepth(maplibre);
+    expect(camera.state).toEqual({ ...before, nearFarZOverride: expected(before) });
     dispose();
   });
 
   it("leaves mercator alone and clears the range once the globe has handed over and on a switch to mercator", () => {
     const { maplibre, state, camera, fire } = fakeMap({ projection: "mercator" });
     const dispose = keepGlobeDepth(maplibre);
-    expect(camera.transform.overrideNearFarZ).not.toHaveBeenCalled();
+    expect(camera.applyStateChange).not.toHaveBeenCalled();
 
     state.projection = "globe";
     fire("projectiontransition");
-    expect(camera.transform.nearFarZOverride).not.toBeNull();
+    expect(camera.state.nearFarZOverride).not.toBeNull();
 
     state.zoom = until;
     fire("move");
-    expect(camera.transform.nearFarZOverride).toBeNull();
+    expect(camera.state.nearFarZOverride).toBeNull();
 
     state.zoom = until - 0.1;
     fire("move");
-    expect(camera.transform.nearFarZOverride).not.toBeNull();
+    expect(camera.state.nearFarZOverride).not.toBeNull();
 
     state.projection = "mercator";
     fire("projectiontransition");
-    expect(camera.transform.nearFarZOverride).toBeNull();
+    expect(camera.state.nearFarZOverride).toBeNull();
     dispose();
   });
 
   it("leaves the globe's own range while terrain is on, which its points and labels are depth-tested against", () => {
     const { maplibre, state, camera, fire } = fakeMap({ terrain: true });
     const dispose = keepGlobeDepth(maplibre);
-    expect(camera.transform.overrideNearFarZ).not.toHaveBeenCalled();
+    expect(camera.applyStateChange).not.toHaveBeenCalled();
 
     state.terrain = false;
     fire("terrain");
-    expect(camera.transform.nearFarZOverride).toEqual(expected(camera.transform));
+    expect(camera.state.nearFarZOverride).toEqual(expected(camera.state));
 
     state.terrain = true;
     fire("terrain");
-    expect(camera.transform.nearFarZOverride).toBeNull();
+    expect(camera.state.nearFarZOverride).toBeNull();
     dispose();
   });
 
@@ -147,33 +191,19 @@ describe("keepGlobeDepth", () => {
     const dispose = keepGlobeDepth(maplibre);
     fire("move");
     fire("move");
-    expect(camera.transform.overrideNearFarZ).toHaveBeenCalledTimes(1);
+    expect(camera.applyStateChange).toHaveBeenCalledTimes(1);
     dispose();
   });
 
-  it("keeps a gesture's camera copy in step, and repaints after a frame whose range was stale", () => {
+  it("repaints after a frame whose range was stale", () => {
     const { map, maplibre, camera, fire } = fakeMap();
     const dispose = keepGlobeDepth(maplibre);
-    camera._requestedCameraState = new FakeTransform();
-    fire("move");
-    expect(camera._requestedCameraState.nearFarZOverride).toEqual(expected(camera._requestedCameraState));
-
-    // Writing the copy back carries its range over; a frame drawn before the next camera event then repairs it.
-    camera.transform.nearFarZOverride = null;
+    camera.move({ zoom: 6 });
     fire("render");
-    expect(camera.transform.nearFarZOverride).toEqual(expected(camera.transform));
+    expect(camera.state.nearFarZOverride).toEqual(expected(camera.state));
     expect(map.triggerRepaint).toHaveBeenCalledTimes(1);
     fire("render");
     expect(map.triggerRepaint).toHaveBeenCalledTimes(1);
-    dispose();
-  });
-
-  it("reads the transform afresh after a projection change replaces it", () => {
-    const { maplibre, camera, fire } = fakeMap();
-    const dispose = keepGlobeDepth(maplibre);
-    camera.transform = new FakeTransform();
-    fire("projectiontransition");
-    expect(camera.transform.nearFarZOverride).toEqual(expected(camera.transform));
     dispose();
   });
 
@@ -184,6 +214,62 @@ describe("keepGlobeDepth", () => {
     expect(count()).toBe(5);
     dispose();
     expect(count()).toBe(0);
-    expect(camera.transform.nearFarZOverride).toBeNull();
+    expect(camera.state.nearFarZOverride).toBeNull();
+  });
+});
+
+describe("keepGlobeDepth on a MapLibre without the camera state it needs", () => {
+  const warnings = () => vi.spyOn(console, "warn").mockImplementation(() => {});
+
+  it("does nothing but warn once when the camera has no state to set the range in", () => {
+    const warn = warnings();
+    for (const camera of [
+      {},
+      { renderedState: { nearFarZOverride: null } },
+      { applyStateChange: () => {} },
+    ]) {
+      warn.mockClear();
+      const { maplibre, count } = fakeMap({}, camera);
+      let dispose: (() => void) | undefined;
+      expect(() => (dispose = keepGlobeDepth(maplibre))).not.toThrow();
+      expect(typeof dispose).toBe("function");
+      expect(count()).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(() => dispose!()).not.toThrow();
+    }
+    warn.mockRestore();
+  });
+
+  it("lets go of the map after the first failure while attaching", () => {
+    const warn = warnings();
+    const camera = new FakeCamera();
+    camera.applyStateChange.mockImplementation(() => {
+      throw new Error("changed camera");
+    });
+    const { maplibre, count, fire } = fakeMap({}, camera);
+    expect(() => keepGlobeDepth(maplibre)).not.toThrow();
+    expect(count()).toBe(0);
+    fire("move");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("removes its listeners after the first failure in a camera event, and warns once", () => {
+    const warn = warnings();
+    const { maplibre, camera, count, fire, map } = fakeMap();
+    const dispose = keepGlobeDepth(maplibre);
+    expect(count()).toBe(5);
+    camera.applyStateChange.mockImplementation(() => {
+      throw new Error("changed camera");
+    });
+    camera.move({ zoom: 6 });
+    expect(() => fire("move")).not.toThrow();
+    expect(count()).toBe(0);
+    expect(() => fire("render")).not.toThrow();
+    expect(map.triggerRepaint).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(() => dispose()).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
