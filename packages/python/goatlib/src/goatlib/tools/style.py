@@ -76,6 +76,21 @@ def styled(
     return doc
 
 
+#: The outline of a classified or categorized point result's markers: a
+#: darker shade of each marker's own color (`"auto"`), so a pale class stays
+#: readable on a light basemap.
+MARKER_OUTLINE = {"color": "auto", "width": 1}
+
+
+def result_styled(geometry: str | None, symbol: dict[str, Any]) -> dict[str, Any]:
+    """The document of a tool's classified or categorized default, before its
+    classification (`styled` with `symbol`'s parts): on points, markers with
+    `MARKER_OUTLINE` unless `symbol` gives an outline (`False` draws none)."""
+    if geometry == "point" and "outline" not in symbol:
+        symbol = {**symbol, "outline": dict(MARKER_OUTLINE)}
+    return styled(geometry, symbol)
+
+
 def classified(
     field: str,
     palette: str | list[str],
@@ -91,7 +106,7 @@ def classified(
     part = _part(geometry)
     parts = {**(symbol or {})}
     parts[part] = {"color": sample_colors(palette, 1)[0], **parts.get(part, {})}
-    doc = styled(geometry, parts)
+    doc = result_styled(geometry, parts)
     doc["classify"] = [
         {"field": field, "method": method, "count": count, "palette": palette}
     ]
@@ -198,21 +213,27 @@ def _rounded(value: float, decimals: int) -> Decimal:
     )
 
 
-def decimals_for(bounds: Iterable[Any]) -> int:
+def _finite(values: Iterable[Any]) -> set[float]:
+    return {
+        float(v)
+        for v in values
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+        if math.isfinite(v)
+    }
+
+
+def decimals_for(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
     """The fewest decimals, at most `MAX_DECIMALS`, at which the distinct finite
-    `bounds` still read in increasing order and none other than 0 reads 0."""
-    values = sorted(
-        {
-            float(b)
-            for b in bounds
-            if isinstance(b, (int, float)) and not isinstance(b, bool)
-            if math.isfinite(b)
-        }
-    )
+    class `breaks` and the `domain`'s ends together still read in increasing
+    order and no break other than 0 reads 0. An end of the domain at or above 0
+    may read 0, so a minimum next to 0 does not ask for decimals of its own; a
+    negative end never reads 0 (it would print as "-0")."""
+    cuts = _finite(breaks)
+    values = sorted(cuts | _finite(domain))
     for decimals in range(MAX_DECIMALS + 1):
         shown = [_rounded(v, decimals) for v in values]
         if all(a < b for a, b in zip(shown, shown[1:])) and all(
-            s != 0 for v, s in zip(values, shown) if v != 0
+            s != 0 for v, s in zip(values, shown) if v < 0 or (v > 0 and v in cuts)
         ):
             return decimals
     return MAX_DECIMALS
@@ -220,8 +241,8 @@ def decimals_for(bounds: Iterable[Any]) -> int:
 
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
-    that has classes and no format of its own: the decimals its domain's
-    minimum, class breaks and domain's maximum need (`decimals_for`)."""
+    that has classes and no format of its own: the decimals its class breaks
+    and its domain's ends need (`decimals_for`)."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -237,7 +258,7 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
         ):
             breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
-            c = {**c, "format": {"decimals": decimals_for([*domain, *breaks])}}
+            c = {**c, "format": {"decimals": decimals_for(breaks, domain)}}
             changed = True
         out.append(c)
     return _with_classify(document, out) if changed else document
@@ -263,12 +284,14 @@ def _classes_drawn(
     counts: tuple[int, ...],
 ) -> dict[int, tuple[int, int]]:
     """Per count, the classes the shared break code makes that hold a feature
-    (from inclusive, to exclusive) and those left empty, counted for all counts
-    in one pass over the data."""
+    (from inclusive, to exclusive) and those left empty: the breaks of all
+    counts asked for in one `compute_stats` call, the classes counted for all
+    of them in one pass over the data."""
+    keys = {count: ("breaks", c["field"], c["method"], str(count)) for count in counts}
+    stats = compute_stats(con, relation, list(keys.values()))
     breaks: dict[int, tuple[float, ...]] = {}
-    for count in counts:
-        key = ("breaks", c["field"], c["method"], str(count))
-        found = compute_stats(con, relation, [key]).get(key)
+    for count, key in keys.items():
+        found = stats.get(key)
         if isinstance(found, Breaks) and found.min is not None:
             breaks[count] = found.breaks
     if not breaks:
@@ -294,13 +317,14 @@ def _fitted_count(
     con: duckdb.DuckDBPyConnection, relation: str, c: dict[str, Any]
 ) -> int | None:
     """The count the classification stores: the count asked for while the field
-    has at least as many distinct values. With fewer, of the count asked for and
-    the number of values the one whose classes hold more features
-    (`_classes_drawn`), then the one with fewer empty classes, then the smaller;
-    1 when that holds a single class or the field has one value or none. Tied values may still draw fewer classes
-    than the count, the same on every recompute. None where there is nothing to
-    fit: a field that is not a number in the data (the checks report it), or no
-    rows, whose classes are computed when data arrives."""
+    has at least as many distinct values. With fewer, of every count from the
+    number of values up to the count asked for the one with the most classes
+    holding a feature (`_classes_drawn`), then the one with fewer empty classes,
+    then the smaller; 1 when that holds a single class or the field has one value
+    or none. Tied values may still leave a class empty, the same on every
+    recompute. None where there is nothing to fit: a field that is not a number
+    in the data (the checks report it), or no rows, whose classes are computed
+    when data arrives."""
     field, wish = c["field"], c["count"]
     if type_class(column_types(con, relation).get(field, "")) not in (
         "integer",
@@ -321,7 +345,7 @@ def _fitted_count(
         return wish
     if values <= 1:
         return 1
-    drawn = _classes_drawn(con, relation, c, (wish, values))
+    drawn = _classes_drawn(con, relation, c, tuple(range(values, wish + 1)))
     # More classes holding a feature, then fewer empty ones, then the smaller count.
     best = max(drawn, key=lambda k: (drawn[k][0], -drawn[k][1], -k))
     return best if drawn[best][0] > 1 else 1
@@ -392,7 +416,7 @@ def categories(
         "color": colors[len(colors) // 2] if colors else None,
         **parts.get(part, {}),
     }
-    doc = styled(geometry, parts)
+    doc = result_styled(geometry, parts)
     classification: dict[str, Any] = {
         "field": field,
         "method": "categories",
@@ -560,7 +584,8 @@ def oev_gueteklassen_stations_style() -> dict[str, Any]:
         values,
         colors,
         "point",
-        symbol={"marker": {"color": "#000000", "size": 6}},
+        # Black markers need no outline to stand out.
+        symbol={"marker": {"color": "#000000", "size": 6}, "outline": False},
         title=style_title("station_category"),
     )
 

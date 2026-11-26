@@ -36,7 +36,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import NO_DATA_GREY, TEAL, statistic_default, styled
+from goatlib.tools.style import NO_DATA_GREY, TEAL, result_styled, statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def groups_style(field: str, geometry: str) -> dict[str, Any]:
     data; the other groups and features without a value are grey."""
     part = MAIN_COLOR[geometry].split(".")[0]
     grey = {part: {"color": NO_DATA_GREY}}
-    doc = styled(geometry, {part: {"color": sample_colors(GROUP_PALETTE, 1)[0]}})
+    doc = result_styled(geometry, {part: {"color": sample_colors(GROUP_PALETTE, 1)[0]}})
     doc["classify"] = [
         {
             "field": field,

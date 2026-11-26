@@ -1,6 +1,6 @@
 """The tool results the style lab draws (`tool_style_cases.py`): current,
-repeatable, within the style contract, small, and one for every tool the
-toolbox offers.
+repeatable, within the style contract, small, and one for every analysis
+tool.
 
 Rewrite the snapshots after changing a tool's style, its result or the cases:
 
@@ -35,8 +35,10 @@ from .tool_style_cases import (
     MAX_FEATURES,
     Case,
     Context,
+    _window,
     build,
     dump,
+    feature_limit,
 )
 
 #: Analysis tools without a case, and why. Custom SQL runs in workflows
@@ -185,7 +187,8 @@ def test_the_snapshot_is_small_and_holds_only_the_styled_fields(
     fields = referenced_fields(snapshot["style"])
     assert set(snapshot["fields"]) == fields
     features = snapshot["features"]["features"]
-    assert len(features) == snapshot["rows"]["kept"] <= MAX_FEATURES
+    assert len(features) == snapshot["rows"]["kept"]
+    assert snapshot["rows"]["kept"] <= feature_limit(snapshot["geometry"])
     assert snapshot["rows"]["kept"] <= snapshot["rows"]["total"]
     assert all(set(f["properties"]) <= fields for f in features)
 
@@ -254,14 +257,10 @@ def test_every_case_names_a_tool_of_the_registry() -> None:
     assert {case.id: case.tool for case in CASES if case.tool not in names} == {}
 
 
-def test_every_tool_of_the_toolbox_has_a_case() -> None:
-    # The analysis tools the toolbox offers; the data tools (category `data`)
-    # write no result of their own to style.
-    offered = {
-        tool.name
-        for tool in TOOL_REGISTRY
-        if not tool.toolbox_hidden and tool.category != "data"
-    }
+def test_every_analysis_tool_has_a_case() -> None:
+    # Every analysis tool, also one the toolbox hides; the data tools
+    # (category `data`) write no result of their own to style.
+    offered = {tool.name for tool in TOOL_REGISTRY if tool.category != "data"}
     with_case = {case.tool for case in CASES}
     assert offered - with_case - set(WITHOUT_CASE) == set()
     # An exemption names a tool of the registry that has no case.
@@ -271,3 +270,29 @@ def test_every_tool_of_the_toolbox_has_a_case() -> None:
 def test_case_ids_and_cases_agree() -> None:
     assert len(BY_ID) == len(CASES)
     assert all(isinstance(case, Case) for case in CASES)
+
+
+def _rows(places: list[tuple[float, float]]) -> list[dict[str, Any]]:
+    return [{"cx": x, "cy": y, "properties": {}} for x, y in places]
+
+
+def test_a_window_over_more_features_on_one_spot_than_the_limit_keeps_the_limit() -> (
+    None
+):
+    rows = _rows([(5.0, 5.0)] * (MAX_FEATURES + 20))
+    assert len(_window(rows, lambda properties: None, MAX_FEATURES)) == MAX_FEATURES
+
+
+def test_crowds_larger_than_the_limit_keep_the_features_nearest_the_middle() -> None:
+    # No window holds from 1 to the limit of features: the middle lies at 15.
+    crowds = [(x, 0.0) for x in (0.0, 10.0, 30.0) for _ in range(MAX_FEATURES + 20)]
+    kept = _window(_rows(crowds), lambda properties: None, MAX_FEATURES)
+    assert len(kept) == MAX_FEATURES
+    assert {r["cx"] for r in kept} == {10.0}
+
+
+def test_points_keep_more_features_than_lines_and_polygons() -> None:
+    assert feature_limit("point") > feature_limit("polygon") == MAX_FEATURES
+    assert feature_limit("line") == MAX_FEATURES
+    spread = _rows([(float(i), float(i % 7)) for i in range(MAX_FEATURES + 20)])
+    assert len(_window(spread, lambda p: None, feature_limit("point"))) == len(spread)

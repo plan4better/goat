@@ -25,6 +25,10 @@
     "shape": "circle",
     "color": "#8c96c6",
     "size": 10
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
    }
   },
   "classify": [

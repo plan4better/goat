@@ -49,7 +49,11 @@ from goatlib.tools.centroid import CentroidToolRunner
 from goatlib.tools.clip import ClipToolRunner
 from goatlib.tools.custom_sql import CustomSqlToolRunner
 from goatlib.tools.difference import DifferenceToolRunner
-from goatlib.tools.dissolve import DissolveToolParams, DissolveToolRunner
+from goatlib.tools.dissolve import (
+    DissolveToolParams,
+    DissolveToolRunner,
+    groups_style,
+)
 from goatlib.tools.finalize_layer import FinalizeLayerRunner
 from goatlib.tools.geocoding import GeocodingToolRunner
 from goatlib.tools.heatmap_2sfca import Heatmap2SFCAToolRunner
@@ -428,7 +432,9 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert issues(con, relation, intent, geometry) == []
     assert issues(con, relation, doc, geometry) == []
     [c] = doc["classify"]
-    assert c["format"] == {"decimals": tool_style.decimals_for(bounds_of(c))}
+    assert c["format"] == {
+        "decimals": tool_style.decimals_for(breaks_of(c), c["computed"]["domain"])
+    }
     assert c["computed"]["no_data"] is True
 
 
@@ -553,6 +559,8 @@ def test_a_plain_origin_destination_point_keeps_the_palette_middle(
     assert marker["color"] == sample_colors("colorbrewer:OrRd", 1)[0]
     assert (marker["size"]["field"], marker["size"]["range"]) == ("weight", [10, 50])
     assert marker["size"]["scale"] == "sqrt"
+    # Left plain by the fit, the points keep the classified default's outline.
+    assert doc["symbol"]["outline"] == {"color": "auto", "width": 1}
     assert issues(con, relation, doc, "point") == []
 
 
@@ -656,10 +664,9 @@ def test_the_huff_docstrings_name_percent() -> None:
 # --- Decimals from the computed classes --------------------------------------
 
 
-def bounds_of(c: dict[str, Any]) -> list[float]:
-    """The domain's minimum, every class break and the domain's maximum."""
-    low, high = c["computed"]["domain"]
-    return [low, *[k["from"] for k in c["classes"] if "from" in k], high]
+def breaks_of(c: dict[str, Any]) -> list[float]:
+    """Every class break."""
+    return [k["from"] for k in c["classes"] if "from" in k]
 
 
 @pytest.mark.parametrize(
@@ -685,6 +692,61 @@ def test_the_decimals_keep_neighbouring_bounds_apart(
     bounds: list[float], decimals: int
 ) -> None:
     assert tool_style.decimals_for(bounds) == decimals
+
+
+def _classes(domain: list[float], breaks: list[float]) -> dict[str, Any]:
+    """A computed numeric classification over `domain` with `breaks`."""
+    starts = [None, *breaks]
+    return {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {"marker": {"color": "#68abb8"}},
+        "classify": [
+            {
+                "field": "v",
+                "method": "quantile",
+                "count": len(starts),
+                "palette": "colorbrewer:BuPu",
+                "classes": [
+                    {"id": f"c{i}", **({"from": b} if b is not None else {})}
+                    for i, b in enumerate(starts, 1)
+                ],
+                "computed": {"domain": domain},
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("domain", "breaks", "decimals"),
+    [
+        # Shares in percent whose minimum lies next to 0: it may read 0.0000.
+        (
+            [5.9588071409e-10, 8.39593561348],
+            [
+                0.000442396983824,
+                0.00531303328892,
+                0.0271568231791,
+                0.0912923319511,
+                0.200190242697,
+                0.671713666131,
+            ],
+            4,
+        ),
+        # The ends stay apart from their break: "1.0 to 1.5" and "1.5 to 2.0".
+        ([1, 2], [1.5], 1),
+        # A minimum other than 0 may read 0, a break may not.
+        ([0.0003, 5], [0.04, 2], 2),
+        # A negative minimum never reads 0 ("-0.0"), next to 0 or far from it.
+        ([-0.0001, 0.5], [0.1, 0.2], 4),
+        ([-50, 0.5], [0.1, 0.2], 1),
+    ],
+)
+def test_the_domain_s_ends_read_apart_from_the_breaks_and_may_read_0(
+    domain: list[float], breaks: list[float], decimals: int
+) -> None:
+    doc = tool_style.with_decimals(_classes(domain, breaks))
+    assert doc["classify"][0]["format"] == {"decimals": decimals}
 
 
 def _computed(
@@ -1153,7 +1215,7 @@ def _category_cases() -> (
                 list(range(5)),
                 "colorbrewer:Set3",
                 "point",
-                symbol={"marker": {"size": 16, "opacity": 0.6}},
+                symbol={"marker": {"size": 16, "opacity": 0.6}, "outline": False},
             ),
             title="Zone",
         ),
@@ -1191,7 +1253,7 @@ def _category_cases() -> (
                 [*range(1, 8), 999],
                 ["#000000"] * 7 + ["#717171"],
                 "point",
-                symbol={"marker": {"color": "#000000", "size": 6}},
+                symbol={"marker": {"color": "#000000", "size": 6}, "outline": False},
             ),
             title="Station category",
         ),
@@ -2266,3 +2328,60 @@ def test_geocoding_keeps_its_fixed_look() -> None:
         },
     )
     assert "classify" not in doc
+
+
+# --- A thin outline around the markers of classified and categorized points --
+
+
+#: The outline a tool's classified or categorized point default draws: a
+#: darker shade of each marker's own color, so a pale marker stays readable.
+MARKER_OUTLINE = {"color": "auto", "width": 1}
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda g: tool_style.classified("v", ORANGES, g),
+        lambda g: tool_style.numeric_default("v", ORANGES, g, "Value"),
+        lambda g: tool_style.categories("v", [1, 2, 3], "colorbrewer:Set3", g),
+        lambda g: tool_style.bands("v", [5, 10], "colorbrewer:YlGn", g, "T", "min"),
+        lambda g: groups_style("v", g),
+    ],
+)
+def test_classified_and_categorized_points_get_a_thin_outline_of_their_own_shade(
+    con: duckdb.DuckDBPyConnection, build: Callable[[str], dict[str, Any]]
+) -> None:
+    assert build("point")["symbol"]["outline"] == MARKER_OUTLINE
+    assert build("polygon")["symbol"]["outline"] is False
+    assert "outline" not in build("line")["symbol"]
+    relation = table(con, "v", "point", "i % 3 + 1", 9)
+    doc = _computed(con, build("point"), relation, "point")
+    assert doc["symbol"]["outline"] == MARKER_OUTLINE
+    # Bands on an ordered palette carry their usual note (`palette_kind_mismatch`).
+    assert [i for i in issues(con, relation, doc, "point") if i.level != "info"] == []
+
+
+def test_an_outline_the_tool_gives_its_points_is_kept_as_given() -> None:
+    white = tool_style.numeric_default(
+        "v", ORANGES, "point", "V", symbol={"outline": {"color": "#ffffff"}}
+    )
+    assert white["symbol"]["outline"] == {"color": "#ffffff"}
+    off = tool_style.categories(
+        "v", [1, 2], ORANGES, "point", symbol={"outline": False}
+    )
+    assert off["symbol"]["outline"] is False
+
+
+def test_plain_points_keep_the_style_of_their_geometry() -> None:
+    """The outline is the classified and categorized defaults' own: `styled`,
+    which the geocoding look and the bundle styles build on, adds none."""
+    assert "outline" not in tool_style.styled("point")["symbol"]
+
+
+def test_the_cluster_summary_and_the_stations_draw_no_outline() -> None:
+    """Overlapping translucent circles would tangle with rings, and black
+    station markers stand out without one."""
+    summary = ZonesClusteringToolRunner()._get_summary_style(MagicMock(nb_cluster=10))
+    stations = tool_style.oev_gueteklassen_stations_style()
+    assert summary["symbol"]["outline"] is False
+    assert stations["symbol"]["outline"] is False

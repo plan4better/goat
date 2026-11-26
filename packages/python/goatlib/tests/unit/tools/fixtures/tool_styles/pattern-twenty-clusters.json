@@ -26,6 +26,10 @@
     "color": "#ccebc5",
     "size": 8,
     "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
    }
   },
   "classify": [

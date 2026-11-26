@@ -28,7 +28,8 @@
     "color": "#fdb462",
     "size": 16,
     "opacity": 0.6
-   }
+   },
+   "outline": false
   },
   "classify": [
    {

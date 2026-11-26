@@ -464,13 +464,14 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
     def _get_summary_style(
         self: Self, params: ClusteringZonesToolParams
     ) -> dict[str, Any]:
-        """The cluster summary: one larger, lighter point per cluster."""
+        """The cluster summary: one larger, lighter point per cluster, without
+        an outline, which would tangle where the translucent circles overlap."""
         return categories(
             "cluster_id",
             list(range(params.nb_cluster)),
             CLUSTER_PALETTE,
             "point",
-            symbol={"marker": {"size": 16, "opacity": 0.6}},
+            symbol={"marker": {"size": 16, "opacity": 0.6}, "outline": False},
             title=style_title("zone"),
         )
 

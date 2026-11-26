@@ -34,7 +34,7 @@
    {
     "field": "matched_points",
     "method": "quantile",
-    "count": 7,
+    "count": 4,
     "palette": "colorbrewer:Oranges",
     "id": "matched_points",
     "title": "matched_points",
@@ -46,48 +46,32 @@
     "classes": [
      {
       "id": "c1",
-      "to": 1.42857142857,
+      "to": 1.75,
       "fill": {
        "color": "#feedde"
       }
      },
      {
       "id": "c2",
-      "from": 1.42857142857,
-      "to": 1.85714285714,
+      "from": 1.75,
+      "to": 2.0,
       "fill": {
-       "color": "#fdd0a2"
+       "color": "#fdbe85"
       }
      },
      {
       "id": "c3",
-      "from": 1.85714285714,
-      "to": 2.0,
-      "fill": {
-       "color": "#fdae6b"
-      }
-     },
-     {
-      "id": "c4",
       "from": 2.0,
-      "to": 2.14285714286,
+      "to": 2.25,
       "fill": {
        "color": "#fd8d3c"
       }
      },
      {
-      "id": "c5",
-      "from": 2.14285714286,
-      "to": 2.57142857143,
+      "id": "c4",
+      "from": 2.25,
       "fill": {
-       "color": "#e6550d"
-      }
-     },
-     {
-      "id": "c6",
-      "from": 2.57142857143,
-      "fill": {
-       "color": "#a63603"
+       "color": "#d94701"
       }
      }
     ],
@@ -103,11 +87,9 @@
       "target": "fill.color",
       "values": {
        "c1": "#feedde",
-       "c2": "#fdd0a2",
-       "c3": "#fdae6b",
-       "c4": "#fd8d3c",
-       "c5": "#e6550d",
-       "c6": "#a63603"
+       "c2": "#fdbe85",
+       "c3": "#fd8d3c",
+       "c4": "#d94701"
       }
      },
      "no_data": false

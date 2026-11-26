@@ -25,7 +25,8 @@
     "shape": "circle",
     "color": "#000000",
     "size": 6
-   }
+   },
+   "outline": false
   },
   "classify": [
    {

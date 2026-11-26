@@ -319,10 +319,10 @@ def tool_default(
 
 
 def decimals_for(c: dict[str, Any]) -> int:
-    """The decimals the computed classes need: their domain's minimum, breaks
-    and maximum apart."""
+    """The decimals the computed classes need: their domain's ends and breaks
+    apart."""
     breaks = [k["from"] for k in c["classes"] if "from" in k]
-    return tool_style.decimals_for([*c["computed"]["domain"], *breaks])
+    return tool_style.decimals_for(breaks, c["computed"]["domain"])
 
 
 def without_format(doc: dict[str, Any]) -> dict[str, Any]:
@@ -400,7 +400,7 @@ def check_fit(
         n = len(c["classes"])
         breaks = [k["to"] for k in c["classes"] if "to" in k]
         assert n == len(breaks) + 1 >= 2
-        assert c["count"] in (wish, min(wish, values))
+        assert min(wish, values) <= c["count"] <= wish
         if not tied:
             assert c["count"] == n <= values
         # Never fewer classes holding a feature than today; as many, then no
@@ -494,12 +494,12 @@ def test_random_small_tied_results_never_draw_fewer_classes(
     ("distribution", "before", "after"),
     [
         # (classes listed, classes holding a feature)
-        ("three_values_tied", (3, 2), (3, 2)),
+        ("three_values_tied", (3, 2), (2, 2)),
         ("four_values_tied", (3, 2), (2, 2)),
         ("five_values_tied", (3, 3), (3, 3)),
-        ("two_values_in_three_rows", (4, 2), (4, 2)),
+        ("two_values_in_three_rows", (4, 2), (2, 2)),
         ("four_values_two_tied", (3, 3), (3, 3)),
-        ("three_values_in_five_rows", (5, 3), (5, 3)),
+        ("three_values_in_five_rows", (5, 3), (4, 3)),
         ("three_values", (2, 2), (3, 3)),
         ("two_rows", (7, 2), (2, 2)),
     ],
@@ -518,6 +518,35 @@ def test_fewer_values_than_wished_keep_the_count_that_draws_more(
         (tool_default(runner, intent, relation, "point"), after),
     ]:
         assert (drawn(doc), holding(con, relation, "total", doc)) == expected
+
+
+@pytest.mark.parametrize(
+    ("values", "count"),
+    [
+        # Three values: four classes hold all three, seven leave three empty.
+        ([3, 2, 2, 1], 4),
+        # Six and seven classes both hold all three values with one empty.
+        ([5, 5, 5, 1, 1, 9], 6),
+    ],
+)
+def test_tied_values_take_the_count_whose_classes_hold_the_most(
+    con: duckdb.DuckDBPyConnection, values: list[int], count: int
+) -> None:
+    """Every count from the number of values up to the wish is compared: more
+    classes holding a feature, then fewer empty ones, then the smaller count."""
+    con.execute(
+        "CREATE TABLE result AS SELECT r.v::DOUBLE AS total, "
+        "ST_Point(r.i, 0) AS geometry FROM (SELECT unnest(?) AS v, "
+        "unnest(range(len(?))) AS i) r",
+        [values, values],
+    )
+    intent = tool_style.classified("total", "colorbrewer:BuPu", "point")
+    fitted = tool_style.fit_classes(con, "result", intent)
+    assert fitted["classify"][0]["count"] == count
+    doc = tool_default(runner_for(TripCountToolRunner, con), intent, "result", "point")
+    held = holding(con, "result", "total", doc)
+    assert held == 3
+    assert drawn(doc) - held <= 1
 
 
 @pytest.mark.parametrize("tool", list(TOOLS))

@@ -50,9 +50,11 @@ FIXTURES = Path(__file__).parent / "fixtures" / "tool_styles"
 #: The time and fingerprint every snapshot's computed values carry.
 AT = "2026-01-01T00:00:00Z"
 DATA = "snapshot-v1"
-#: The most features a snapshot keeps (a hexagon cell takes about a quarter
-#: of a kilobyte), and its largest size in bytes.
+#: The most features a snapshot of lines or polygons keeps (a hexagon cell
+#: takes about a quarter of a kilobyte), of points (a point takes far less),
+#: and its largest size in bytes.
 MAX_FEATURES = 300
+MAX_POINTS = 600
 MAX_BYTES = 100 * 1024
 #: The lab's map in CSS pixels, its tiles' width, and the share of the map a
 #: result fills.
@@ -225,18 +227,27 @@ def _class_key(styled: dict[str, Any]) -> Callable[[dict[str, Any]], Any]:
     return category
 
 
+def feature_limit(geometry: str | None) -> int:
+    """The most features a snapshot of `geometry` keeps."""
+    return MAX_POINTS if geometry == "point" else MAX_FEATURES
+
+
 def _window(
-    rows: list[dict[str, Any]], class_of: Callable[[dict[str, Any]], Any]
+    rows: list[dict[str, Any]],
+    class_of: Callable[[dict[str, Any]], Any],
+    limit: int,
 ) -> list[dict[str, Any]]:
-    """At most `MAX_FEATURES` of `rows`: those whose place lies in a square
+    """At most `limit` of `rows`: those whose place lies in a square
     window. The window's side shrinks from the result's extent by halves of a
     doubling (a factor of the square root of 2 each step) and its centre is
     tried on a grid over the extent, nearest the middle first; the first side
     at which a window of few enough features holds a feature of every legend
     entry wins, and of its windows the one with the most features. Where no
     window holds every entry, the one holding the most entries, from sides
-    down to the one at which no window holds a quarter of the most features."""
-    if len(rows) <= MAX_FEATURES:
+    down to the one at which no window holds a quarter of the most features.
+    Where no window holds from 1 to `limit` features, the `limit` nearest the
+    middle of the extent."""
+    if len(rows) <= limit:
         return rows
     xs = np.array([r["cx"] for r in rows])
     ys = np.array([r["cy"] for r in rows])
@@ -259,14 +270,20 @@ def _window(
             inside = (np.abs(xs - cx) <= half) & (np.abs(ys - cy) <= half)
             count = int(inside.sum())
             largest = max(largest, count)
-            if not 0 < count <= MAX_FEATURES:
+            if not 0 < count <= limit:
                 continue
             held = len({keys[i] for i in np.flatnonzero(inside)})
             if best is None or (held, count) > best:
                 best, chosen = (held, count), inside
-        if best is not None and (best[0] == entries or largest < MAX_FEATURES / 4):
+        if best is not None and (best[0] == entries or largest < limit / 4):
             break
         half /= math.sqrt(2)
+    if chosen is None:
+        # Every window holds none or more than the limit: features crowd on a
+        # spot, so the ones nearest the middle are kept.
+        order = np.argsort(np.hypot(xs - mx, ys - my), kind="stable")
+        chosen = np.zeros(len(rows), dtype=bool)
+        chosen[order[:limit]] = True
     return [r for r, keep in zip(rows, chosen) if keep]
 
 
@@ -275,9 +292,10 @@ def _features(
     relation: str,
     fields: list[str],
     class_of: Callable[[dict[str, Any]], Any],
+    limit: int,
 ) -> tuple[list[dict[str, Any]], int, float]:
     """The result's features in Web Mercator with `fields`, sorted by their
-    place and values; at most `MAX_FEATURES` of them (`_window`); moved so
+    place and values; at most `limit` of them (`_window`); moved so
     their extent's centre lies at 0, 0 and turned back into degrees. With the
     number of features and the zoom that fits the ones kept."""
     geometry = next(
@@ -303,7 +321,7 @@ def _features(
             }
         )
     total = len(rows)
-    kept = _window(rows, class_of)
+    kept = _window(rows, class_of, limit)
     kept.sort(key=lambda r: _sort_key(r, fields))
     x0, y0, x1, y1 = _extent(kept)
     dx, dy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -381,7 +399,9 @@ def build(case: Case, context: Context) -> dict[str, Any]:
             )
         types = column_types(con, relation)
         fields = sorted(referenced_fields(styled))
-        features, total, zoom = _features(con, relation, fields, _class_key(styled))
+        features, total, zoom = _features(
+            con, relation, fields, _class_key(styled), feature_limit(geometry)
+        )
     finally:
         runner._duckdb_con = None
         con.close()

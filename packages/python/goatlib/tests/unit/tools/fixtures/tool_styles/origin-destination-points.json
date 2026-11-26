@@ -45,6 +45,10 @@
      }
     },
     "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
    }
   },
   "classify": [
