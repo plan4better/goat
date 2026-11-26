@@ -1277,6 +1277,8 @@
     "distance": "Entfernung",
     "zone": "Zone",
     "pt_class": "ÖV-Güteklasse",
-    "station_category": "Haltestellenkategorie"
+    "station_category": "Haltestellenkategorie",
+    "matrix_average_time": "Mittlere Reisezeit von den Startpunkten",
+    "matrix_average_distance": "Mittlere Entfernung von den Startpunkten"
   }
 }

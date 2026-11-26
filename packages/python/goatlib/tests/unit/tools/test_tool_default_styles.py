@@ -1718,7 +1718,6 @@ PLAIN_RUNNERS = [
     DifferenceToolRunner,
     MergeToolRunner,
     CustomSqlToolRunner,
-    TravelCostMatrixToolRunner,
 ]
 
 
@@ -1737,6 +1736,170 @@ def test_a_tool_that_passes_its_input_through_stays_plain(
     expected = default_style(DataContext(kind="vector", geometry="point"), seed="L")
     assert "classify" not in doc
     assert doc["symbol"] == expected["symbol"]
+
+
+# --- Travel cost matrix destinations: the average travel cost ---------------
+
+MATRIX_TIME = "Average travel time from the origins"
+MATRIX_DISTANCE = "Average distance from the origins"
+
+
+def _matrix_params(routing_mode: str, cost_type: str = "time") -> Any:
+    from goatlib.tools.travel_cost_matrix import TravelCostMatrixWindmillParams
+
+    return TravelCostMatrixWindmillParams(
+        **IDS,
+        origin_layer_id=U,
+        destination_layer_id=U,
+        origin_id_column="id",
+        destination_id_column="id",
+        routing_mode=routing_mode,
+        cost_type=cost_type,
+    )
+
+
+@pytest.mark.parametrize(
+    ("routing_mode", "cost_type", "title", "unit"),
+    [
+        ("walking", "time", MATRIX_TIME, "min"),
+        ("car", "distance", MATRIX_DISTANCE, "m"),
+        ("pt", "time", MATRIX_TIME, "min"),
+        # A flight distance is meters whatever the cost type says.
+        ("flight_distance", "time", MATRIX_DISTANCE, "m"),
+    ],
+)
+def test_the_matrix_destinations_are_classified_by_their_average_cost(
+    routing_mode: str, cost_type: str, title: str, unit: str
+) -> None:
+    """Lower is better: the ramp turns around, so the nearest destinations
+    are the darkest."""
+    doc = TravelCostMatrixToolRunner().get_layer_style(
+        _matrix_params(routing_mode, cost_type), MagicMock(), "point", "r"
+    )
+    [c] = doc["classify"]
+    assert {k: v for k, v in c.items() if k != "id"} == _expected(
+        "travel_cost", tool_style.EMRLD, title, "point", reverse=True, unit=unit
+    )
+    assert doc["symbol"]["marker"]["color"] == sample_colors(tool_style.EMRLD, 1)[0]
+
+
+def test_the_matrix_table_has_no_style() -> None:
+    assert (
+        TravelCostMatrixToolRunner().get_layer_style(
+            _matrix_params("walking"), MagicMock(), None, "r"
+        )
+        is None
+    )
+
+
+def test_matrix_destinations_without_a_cost_are_no_data(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """Destinations no origin reaches have no cost: grey "No data"; the
+    whole minutes the run writes need no decimals."""
+    relation = table(
+        con,
+        "travel_cost",
+        "point",
+        "CASE WHEN i < 63 THEN i % 21 + 1 END",
+        70,
+        field_type="INTEGER",
+    )
+    intent = TravelCostMatrixToolRunner().get_layer_style(
+        _matrix_params("walking"), MagicMock(), "point", relation
+    )
+    doc = _computed(con, intent, relation, "point")
+    [c] = doc["classify"]
+    assert len(c["classes"]) == 7 and c["reverse"] is True
+    assert c["computed"]["no_data"] is True
+    assert c["format"] == {"decimals": 0}
+    assert issues(con, relation, intent, "point") == []
+    assert issues(con, relation, doc, "point") == []
+
+
+def test_the_destinations_cost_is_the_average_over_the_origins_that_reach_them(
+    tmp_path: Path,
+) -> None:
+    """What the title names: per destination, the mean of its costs from the
+    origins that reach it, rounded to whole units; none reached, no cost."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    matrix, dests, out = (
+        tmp_path / "matrix.parquet",
+        tmp_path / "dests.parquet",
+        tmp_path / "out.parquet",
+    )
+    # Two origins times three destinations, origin by origin.
+    con.execute(
+        f"""COPY (SELECT * FROM (VALUES
+            ('o1', 'a', 10), ('o1', 'b', NULL), ('o1', 'c', NULL),
+            ('o2', 'a', 21), ('o2', 'b', 7), ('o2', 'c', NULL)
+        ) t(origin, destination, travel_cost)) TO '{matrix}' (FORMAT PARQUET)"""
+    )
+    con.execute(
+        f"""COPY (SELECT name, ST_Point(i, 0) AS geometry FROM (VALUES
+            (0, 'a'), (1, 'b'), (2, 'c')) t(i, name)) TO '{dests}' (FORMAT PARQUET)"""
+    )
+    TravelCostMatrixToolRunner()._build_destination_points_parquet(matrix, dests, out)
+    rows = con.execute(
+        f"SELECT name, travel_cost FROM read_parquet('{out}') ORDER BY name"
+    ).fetchall()
+    con.close()
+    assert rows == [("a", 16), ("b", 7), ("c", None)]
+
+
+def test_the_travel_cost_matrix_texts_name_the_average() -> None:
+    from goatlib.tools import travel_cost_matrix
+
+    runner = TravelCostMatrixToolRunner
+    texts = [
+        travel_cost_matrix.__doc__,
+        runner.__doc__,
+        runner._build_destination_points_parquet.__doc__,
+    ]
+    for text in texts:
+        for wrong in ("min_cost", "min cost", "min travel cost", "minimum"):
+            assert wrong not in text.lower()
+        assert "average" in text
+
+
+def test_the_matrix_titles_read_in_german() -> None:
+    assert _titles("de")["matrix_average_time"] == (
+        "Mittlere Reisezeit von den Startpunkten"
+    )
+    assert _titles("de")["matrix_average_distance"] == (
+        "Mittlere Entfernung von den Startpunkten"
+    )
+
+
+def test_a_matrix_destinations_style_handed_in_is_stored_as_given(
+    con: duckdb.DuckDBPyConnection,
+    monkeypatch: pytest.MonkeyPatch,
+    runner_event_loop: asyncio.AbstractEventLoop,
+) -> None:
+    relation = _tiny(con)
+    runner = runner_for(TravelCostMatrixToolRunner, con)
+
+    def own(*args: Any) -> Any:
+        raise AssertionError("the matrix tool's own default was asked for")
+
+    monkeypatch.setattr(runner, "get_layer_style", own)
+    monkeypatch.setattr(runner, "_get_ducklake_snapshot_id", lambda *a: 3)
+    monkeypatch.setattr("goatlib.tools.base.table_path_parts", lambda r: ("a", "b"))
+    runner.db_service = MagicMock(create_layer=AsyncMock())
+    runner_event_loop.run_until_complete(
+        runner._create_db_records(
+            output_layer_id="L",
+            params=_matrix_params("walking"),
+            output_name="Destinations",
+            metadata=DatasetMetadata(path="x", source_type="vector"),
+            table_info={"table_name": relation, "geometry_type": "POINT"},
+            style=USER_STYLE,
+        )
+    )
+    [c] = runner.db_service.create_layer.call_args.kwargs["style"]["classify"]
+    assert (c["field"], c["palette"]) == ("v", "colorbrewer:Oranges")
+    assert "reverse" not in c and "title" not in c
 
 
 def test_a_dissolve_of_everything_into_one_stays_plain() -> None:

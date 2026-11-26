@@ -1265,6 +1265,8 @@
     "distance": "Distance",
     "zone": "Zone",
     "pt_class": "Public transport quality class",
-    "station_category": "Station category"
+    "station_category": "Station category",
+    "matrix_average_time": "Average travel time from the origins",
+    "matrix_average_distance": "Average distance from the origins"
   }
 }
