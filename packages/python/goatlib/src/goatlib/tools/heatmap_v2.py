@@ -369,6 +369,25 @@ class OpportunityV2PointGravity(OpportunityV2PointBase):
     )
 
 
+class OpportunityV2Point2SFCA(OpportunityV2PointGravity):
+    """2SFCA supply card: the potential is the capacity, which defaults to 1000."""
+
+    potential_constant: float | None = Field(
+        1000.0,
+        gt=0.0,
+        description="Constant capacity applied to all features.",
+        json_schema_extra=ui_field(
+            section="opportunities",
+            field_order=6,
+            widget="number",
+            visible_when={
+                "input_path": {"$ne": None},
+                "potential_type": "constant",
+            },
+        ),
+    )
+
+
 class OpportunityV2PointClosestAverage(OpportunityV2PointBase):
     """Closest-Average opportunity card: re-exposes n_destinations."""
 
@@ -1311,7 +1330,7 @@ class Heatmap2SFCAV2WindmillParams(
         ),
     )
     # Supply layers — capacity is carried by the opportunity potential fields.
-    opportunities: list[OpportunityV2PointGravity] = Field(
+    opportunities: list[OpportunityV2Point2SFCA] = Field(
         ...,
         title="Supply Layers",
         min_length=1,
