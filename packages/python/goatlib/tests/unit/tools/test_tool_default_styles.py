@@ -1236,6 +1236,47 @@ def test_a_category_default_and_its_computed_style_pass_the_check(
     assert doc.get("order") == expected.get("order")
 
 
+#: What a tool sets on the main part of its category default, beside the color.
+CATEGORY_PART_ENTRIES = {
+    "buffer constant": {"opacity": 0.7},
+    "buffer constant km": {"opacity": 0.7},
+    "catchment network time": {"width": 3},
+    "catchment network distance": {"width": 3},
+    "spatial_clustering feature points": {"size": 8, "opacity": 0.8},
+    "spatial_clustering summary": {"size": 16, "opacity": 0.6},
+    "oev_gueteklassen stations": {"color": "#000000", "size": 6},
+}
+
+
+@pytest.mark.parametrize("case", list(CATEGORY_CASES))
+def test_a_category_default_keeps_the_middle_color_beside_the_tool_part(
+    con: duckdb.DuckDBPyConnection, case: str
+) -> None:
+    """A feature outside every class draws the middle class's color, also
+    where the tool sets other properties of the main part; a color the tool
+    sets itself wins."""
+    build, geometry, field, values, field_type, _, _ = CATEGORY_CASES[case]
+    relation = table(con, field, geometry, values, 12, field_type=field_type)
+    doc = build(con, relation)
+    part = PART[geometry]
+    colors = [k[part]["color"] for k in doc["classify"][0]["classes"]]
+    entry = CATEGORY_PART_ENTRIES.get(case, {})
+    assert doc["symbol"][part]["color"] == entry.get("color", colors[len(colors) // 2])
+    assert {k: doc["symbol"][part][k] for k in entry} == entry
+
+
+def test_a_category_symbol_beside_the_main_part_keeps_the_middle_color() -> None:
+    doc = tool_style.categories(
+        "v",
+        [1, 2, 3, 4],
+        "colorbrewer:YlGn",
+        "polygon",
+        symbol={"outline": {"color": "#ffffff"}},
+    )
+    assert doc["symbol"]["fill"]["color"] == sample_colors("colorbrewer:YlGn", 4)[2]
+    assert doc["symbol"]["outline"] == {"color": "#ffffff"}
+
+
 @pytest.mark.parametrize("kind", list(CATCHMENT_GEOMETRY))
 def test_catchment_bands_read_from_the_params_without_a_result(kind: str) -> None:
     """Without a result to read, the bands come from the params: the title and
@@ -1287,8 +1328,7 @@ def test_the_nearest_catchment_band_is_the_darkest(
     assert colors == sample_colors("colorbrewer:YlGn", steps, reverse=True)
     assert colors == _target_values(c, geometry, steps)[1]
     assert colors[0] == _ylgn_darkest(steps)
-    if kind != "network":  # the network's own line entry keeps the base color
-        assert intent["symbol"][part]["color"] == colors[steps // 2]
+    assert intent["symbol"][part]["color"] == colors[steps // 2]
     # Fixed classes: computing the style keeps every color and adds no note.
     doc = _computed(con, intent, relation, geometry)
     assert [k[part]["color"] for k in doc["classify"][0]["classes"]] == colors

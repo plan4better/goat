@@ -378,11 +378,17 @@ def categories(
     """A style with one class per value of `field`, in the order given, colored
     along the palette (from its end with `reverse`, as the server and the style
     panel color classes of a reversed palette), and the legend's `title` where
-    given. The classes are fixed: nothing is recomputed."""
+    given. The color without a class is the middle class's, also where
+    `symbol` gives the main part other properties. The classes are fixed:
+    nothing is recomputed."""
     part = _part(geometry)
     colors = sample_colors(palette, len(values), reverse=reverse)
-    middle = colors[len(colors) // 2] if colors else None
-    doc = styled(geometry, {part: {"color": middle}, **(symbol or {})})
+    parts = {**(symbol or {})}
+    parts[part] = {
+        "color": colors[len(colors) // 2] if colors else None,
+        **parts.get(part, {}),
+    }
+    doc = styled(geometry, parts)
     classification: dict[str, Any] = {
         "field": field,
         "method": "categories",
