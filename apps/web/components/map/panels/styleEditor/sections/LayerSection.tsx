@@ -107,7 +107,7 @@ export function VisibleRow() {
 
 /** How the layer mixes with what is drawn under it (spec 4.7), vector and raster layers alike; Normal writes nothing.
  * Where the layer's kind draws without it, the section passes the note and the row shows its value, disabled; else
- * Multiply on a dark basemap notes that it darkens the colors, and Add on a light basemap that it turns them white. */
+ * Multiply on a dark basemap notes that it darkens the colors, and Plus lighter on a light basemap that it turns them white. */
 export function BlendRow({ disabled = false, note }: { disabled?: boolean; note?: string }) {
   const { t } = useTranslation("common");
   const store = useEditor();
@@ -130,7 +130,7 @@ export function BlendRow({ disabled = false, note }: { disabled?: boolean; note?
   );
 }
 
-/** The note a mode needs on the basemap's tone: Multiply darkens a dark one, Add whitens a light one. */
+/** The note a mode needs on the basemap's tone: Multiply darkens a dark one, Plus lighter whitens a light one. */
 function basemapNote(t: TFunction, blend: string, tone: Tone): string | undefined {
   if (blend === "multiply" && tone === "dark") return t("style_editor.blend_dark_basemap");
   if (blend === "plus-lighter" && tone === "light") return t("style_editor.blend_light_basemap");

@@ -167,7 +167,7 @@ describe("the Blend row of a vector layer", () => {
     try {
       vector("polygon", { blend: "plus-lighter" });
       const field = screen.getByRole("combobox", { name: texts.blend });
-      expect(field.textContent).toBe("Add");
+      expect(field.textContent).toBe("Plus lighter");
       await userEvent.click(field);
       const options = within(screen.getByRole("listbox")).getAllByRole("option");
       expect(options).toHaveLength(BLENDS.length);
@@ -179,7 +179,7 @@ describe("the Blend row of a vector layer", () => {
       });
       expect(options.slice(-2).map((option) => within(option).getAllByText(/\S/)[0].textContent)).toEqual([
         "Luminosity",
-        "Add",
+        "Plus lighter",
       ]);
     } finally {
       i18n.removeResourceBundle("en", "common");

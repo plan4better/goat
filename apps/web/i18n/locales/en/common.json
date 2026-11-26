@@ -4078,7 +4078,7 @@
     "value_blend_color_sub": "Takes the layer's hue, keeps the brightness below",
     "value_blend_luminosity": "Luminosity",
     "value_blend_luminosity_sub": "Takes the layer's brightness, keeps the colors below",
-    "value_blend_plus-lighter": "Add",
+    "value_blend_plus-lighter": "Plus lighter",
     "value_blend_plus-lighter_sub": "Adds light: glows on dark basemaps and images",
     "blend_columns": "Columns draw without blending.",
     "blend_heights": "Heights draw without blending; the outline blends.",
