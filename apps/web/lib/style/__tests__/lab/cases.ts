@@ -1,7 +1,8 @@
 // The cases the lab draws: every legend case the map draws from vector data in the browser (not H3 or rasters, which
 // come from server tiles), from the same fixtures the jsdom tests read, imported as JSON; and extra cases for what
 // those leave out: the plain forms of the styles saved most often, icons of each kind, shapes, patterns, dashes,
-// labels, a heatmap, a raised polygon and clusters over points placed in groups.
+// labels, a heatmap, a raised polygon and clusters over points placed in groups. The generated cases of automatic
+// colors, None and transparency are a list of their own (`colorLabCases`).
 import type { FieldType } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { buildLegend } from "@/lib/style/legend";
@@ -10,7 +11,13 @@ import generated from "../../../../../../packages/python/goatlib/tests/unit/styl
 import datasets from "../../../../../../packages/python/goatlib/tests/unit/style/fixtures/sample_datasets.json";
 import examples from "../../../../../../packages/python/goatlib/tests/unit/style/fixtures/spec_examples.json";
 import type { SampleDataset, SpecExample } from "../fixtureTypes";
-import { type GeneratedCases, type LegendCase, buildLegendCases, pointsDrawn } from "../legend/caseList";
+import {
+  type GeneratedCases,
+  type LegendCase,
+  buildColorCases,
+  buildLegendCases,
+  pointsDrawn,
+} from "../legend/caseList";
 import { known } from "../legend/known";
 import type { LabCase, LabGroup } from "./scene";
 
@@ -506,6 +513,25 @@ function defaultGroups(c: LegendCase): LabGroup[] | undefined {
   });
 }
 
+/** A legend case as the lab draws it: none for one without a vector style and a geometry, for H3 (server tiles) and
+ * for one that does not compile; points in groups where the legend lists no entry to sample. */
+function toLabCase(c: LegendCase): LabCaseOf[] {
+  const render = (c.style.render ?? {}) as JsonObject;
+  if (c.style.kind !== "vector" || !c.geometry || render.type === "h3" || known("compiles", c)) return [];
+  const groups = defaultGroups(c);
+  return [
+    {
+      id: c.id,
+      style: c.style,
+      geometry: c.geometry,
+      zoom: c.zoom,
+      fields: c.fields,
+      legendCase: c,
+      ...(groups ? { groups } : {}),
+    },
+  ];
+}
+
 let cached: LabCaseOf[] | undefined;
 
 /** The legend cases with a vector style and a geometry, without H3 and the ones that do not compile (with points in
@@ -516,23 +542,26 @@ export function labCases(): LabCaseOf[] {
       generated as unknown as GeneratedCases,
       examples as unknown as SpecExample[],
       datasets as unknown as Record<string, SampleDataset>
-    ).flatMap((c): LabCaseOf[] => {
-      const render = (c.style.render ?? {}) as JsonObject;
-      if (c.style.kind !== "vector" || !c.geometry || render.type === "h3" || known("compiles", c)) return [];
-      const groups = defaultGroups(c);
-      return [
-        {
-          id: c.id,
-          style: c.style,
-          geometry: c.geometry,
-          zoom: c.zoom,
-          fields: c.fields,
-          legendCase: c,
-          ...(groups ? { groups } : {}),
-        },
-      ];
-    }),
+    ).flatMap(toLabCase),
     ...extras(),
   ];
   return cached;
 }
+
+let cachedColors: LabCaseOf[] | undefined;
+
+/** The generated cases of automatic colors, None and transparency (`buildColorCases`) the lab can draw, as `labCases`
+ * picks them; H3 cases are left out. Each keeps its legend case, whose `tone` the lab replaces by its ground's. */
+export function colorLabCases(): LabCaseOf[] {
+  cachedColors ??= buildColorCases(generated as unknown as GeneratedCases).flatMap(toLabCase);
+  return cachedColors;
+}
+
+/** Whether a generated case of the colors uses a new value: a key on Auto, a part or a class at None, a color with a
+ * transparency. */
+export const usesNewColorValue = (c: LegendCase): boolean =>
+  Object.entries(c.values ?? {}).some(
+    ([name, value]) =>
+      (name.startsWith("auto:") && value === "yes") ||
+      ((name === "none" || name === "alpha") && value !== "no")
+  );

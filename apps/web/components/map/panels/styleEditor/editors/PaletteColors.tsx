@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { checkered } from "@/lib/style/checker";
 import {
   PALETTE_MAX,
   PALETTE_MIN,
@@ -26,11 +27,11 @@ import {
   recolor,
   removeColor,
 } from "@/lib/style/editor/paletteList";
-import { colorsIn, plainNumber } from "@/lib/style/editor/summaries";
+import { colorLabel, colorsIn, plainNumber } from "@/lib/style/editor/summaries";
 
 import { useEditor } from "@/components/map/panels/styleEditor/context";
 import { ClassGrid, ClassGridRow, FOCUS_MARK } from "@/components/map/panels/styleEditor/editors/ClassGrid";
-import { ColorPicker } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
+import { ColorPicker, noneChoice } from "@/components/map/panels/styleEditor/pickers/ColorPicker";
 import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { AddButton } from "@/components/map/panels/styleEditor/rows/AddButton";
 
@@ -59,6 +60,7 @@ function PaletteColorPicker<A>({
   args,
   index,
 }: Omit<PaletteColorsProps<A>, "pickerKey"> & { index: number }) {
+  const { t } = useTranslation("common");
   const store = useEditor();
   const { colors, write } = useSource(args);
   if (index >= colors.length) return null;
@@ -67,6 +69,9 @@ function PaletteColorPicker<A>({
       value={colors[index]}
       docColors={colorsIn(store.document)}
       onChange={(hex) => write(recolor(colors, index, hex))}
+      sentinels={[
+        noneChoice(t("style_editor.none"), colors[index], (hex) => write(recolor(colors, index, hex))),
+      ]}
     />
   );
 }
@@ -98,7 +103,7 @@ export function PaletteColors<A>({ useSource, args, pickerKey }: PaletteColorsPr
   // Where color `i` sits: spread evenly over the range, as a palette's colors are; two decimals at most in the reader's
   // language, as the class lists' bound boxes.
   const placeOf = (i: number) => {
-    if (!valueAt) return colors[i].toUpperCase();
+    if (!valueAt) return colorLabel(t, colors[i]);
     const v = valueAt(colors.length > 1 ? i / (colors.length - 1) : 0);
     return `${plainNumber(v, i18n.language)}${unit ? ` ${unit}` : ""}`;
   };
@@ -113,11 +118,11 @@ export function PaletteColors<A>({ useSource, args, pickerKey }: PaletteColorsPr
           <ClassGridRow
             key={i}
             index={i}
-            title={color.toUpperCase()}
+            title={colorLabel(t, color)}
             swatch={
               <ButtonBase
                 data-palette-swatch
-                aria-label={t("style_editor.palette_color", { n: i + 1, hex: color })}
+                aria-label={t("style_editor.palette_color", { n: i + 1, hex: colorLabel(t, color) })}
                 onClick={(event) =>
                   popover.open("picker", {
                     key: `${pickerKey}:color:${i}`,
@@ -134,7 +139,7 @@ export function PaletteColors<A>({ useSource, args, pickerKey }: PaletteColorsPr
                   borderRadius: 0.5,
                   border: 1,
                   borderColor: "divider",
-                  background: color,
+                  background: checkered(color),
                   ...FOCUS_MARK,
                 }}
               />

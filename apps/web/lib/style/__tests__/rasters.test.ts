@@ -441,6 +441,23 @@ describe("raster files colored in the browser over value tiles", () => {
     valid(out);
   });
 
+  it("the shading's colors keep their own alpha, times the layer opacity", () => {
+    const out = compile({
+      opacity: 0.5,
+      render: {
+        type: "hillshade",
+        shadow_color: "#00000080",
+        highlight_color: "#ffffff00",
+        accent_color: "#33333340",
+      },
+    });
+    const paint = out.layers[0].paint as Record<string, unknown>;
+    expect(paint["hillshade-shadow-color"]).toBe("rgba(0, 0, 0, 0.251)");
+    expect(paint["hillshade-highlight-color"]).toBe("rgba(255, 255, 255, 0)");
+    expect(paint["hillshade-accent-color"]).toBe("rgba(51, 51, 51, 0.1255)");
+    valid(out);
+  });
+
   it("standard hillshade takes the reference defaults and its accent; opacity by zoom fades the shading", () => {
     const out = compile({
       opacity: {

@@ -204,7 +204,7 @@ describe("useProjectAssistantSurface", () => {
         { id: "streets", name: "High Fidelity", tone: "light", imagery: false },
         { id: "light", name: "Light", tone: "light", imagery: false },
         { id: "dark", name: "Dark", tone: "dark", imagery: false },
-        { id: RASTER_ID, name: "Luftbild", tone: "dark", imagery: true },
+        { id: RASTER_ID, name: "Luftbild", tone: "light", imagery: true },
       ],
       view_mode: "2d",
       projection: "mercator",
@@ -220,7 +220,7 @@ describe("useProjectAssistantSurface", () => {
     rerender();
     expect(getActiveSurface()).toBe(first);
     expect(getActiveSurface()?.getContext()).toMatchObject({
-      basemap: { id: RASTER_ID, name: "Luftbild", tone: "dark", imagery: true },
+      basemap: { id: RASTER_ID, name: "Luftbild", tone: "light", imagery: true },
       view_mode: "3d",
       projection: "globe",
     });

@@ -43,6 +43,19 @@ describe("By zoom on a value that is not set", () => {
     ]);
   });
 
+  it("the arrows' color starts from the hue the resolver draws, without the line's transparency", () => {
+    const next = switchMode(
+      doc({ line: { color: "#33669980" }, arrows: {} }),
+      "symbol.arrows.color",
+      "zoom",
+      ctx
+    );
+    expect((getIn(next, "symbol.arrows.color.zoom") as unknown[][]).map((s) => s[1])).toEqual([
+      "#336699",
+      "#336699",
+    ]);
+  });
+
   it("the pattern's color starts from the fill's color", () => {
     const next = switchMode(
       doc({ fill: { color: "#aa3300", pattern: "hatch" } }),

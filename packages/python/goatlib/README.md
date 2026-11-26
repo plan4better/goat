@@ -196,6 +196,20 @@ READMEs means section N of that file.
   (or band formula) as the field: its range as `render.computed.domain`, classes
   into `render.classify`, computed by `raster.stats` from an overview sample with
   the shared class breaks.
+- **A derived color is the word `"auto"` on a color key** (spec 18.10): the
+  color follows another part's color, and for labels the basemap's tone. Which
+  keys take it, by which rule and following what, is defined once, in the
+  specification's table and in `style/data/color_keys.json`; a test walks the
+  JSON Schema and fails for a color key the table does not name, so no key takes
+  the word by accident. The rules themselves (a darker shade, a label's text and
+  halo, the color that reads on a marker) exist once here in `style/colors.py`
+  and once in the web, held equal by the shared fixture
+  `tests/unit/style/fixtures/color_rules.json`. goatlib only validates the word:
+  resolving it for the map, and knowing the basemap's tone, is the web
+  compiler's, since only the map knows what it draws on. A key left out keeps
+  its reference color, so a style that never says `"auto"` keeps its look. The
+  AI's operations write the word on the key itself (`/symbol/outline/color`);
+  `"auto"` sent as a whole part is refused (`style/edit.py`, below).
 
 - **The data fingerprint** (`fingerprint.py`): computed values record the data
   they come from (`ducklake:<layer.data_snapshot>`; a promoted catalog layer's
@@ -232,7 +246,9 @@ READMEs means section N of that file.
   `apply_edits` applies a list of them (`set`, `remove`, `retarget`,
   `use_field`, `round`, `add`, `move`) in order, all or none, and a refusal
   names what exists, so the model's next call can be right; validating the
-  result stays the server's check.
+  result stays the server's check. A key set under a part that is `false`
+  switches the part on, because models change a part key by key and rarely send
+  it as one object.
 - **A style in one line** (`style/summary.py`): `summarize` describes a
   document in plain words for the layer lists the AI reads, from the plain
   dict, so a damaged document gives a shorter line instead of an error.
@@ -391,7 +407,9 @@ stack, so validation runs in core too.
   NaN, the style's values) is transparent. `outside` works for classes as for a
   ramp: with `clamp` the first and last class are open, with `hide` they end at
   their own `from` and `to`, else at the token's `domain`, else at the band's
-  range (the last holding its end), and the cells beyond are transparent.
+  range (the last holding its end), and the cells beyond are transparent. A
+  color's own alpha (`#rrggbbaa`) is painted, blended premultiplied as MapLibre
+  blends the browser's colors; the layer opacity stays the browser's.
 - **A band's class breaks come ready for every method and count** (`stats.py`,
   `precomputed_breaks`): geoapi's raster info gives them with the band's
   statistics for the band it is asked for alone (none without one), or for a
@@ -980,7 +998,7 @@ directory:
 One builder, `PMTilesGenerator` in `io/pmtiles.py`, makes the PMTiles of every layer: tool results, imports and copies, catalog materialization, `sync_pmtiles` and `rebuild_edited_pmtiles`, and the workflow previews in `tools/temp_writer.py`. It writes the layer from a DuckDB query (`tile_query`), ordered by feature id, to a GeoParquet file in the build's temporary directory, then runs manby on that file with a recipe per geometry type (`manby_flags` holds them). A polygon layer gets its label points in a second file, `_anchor.pmtiles`, built from the same input.
 
 - **The marker**: the tileset's description records `MANBY_MARKER` and the version of its recipe next to the DuckLake snapshot id. geoapi filters a stored tile only when it finds the marker, so tiles from before manby (whose point tiles merged nearby points at every zoom) keep the DuckDB path until they are rebuilt. `is_pmtiles_in_sync` wants the marker, the current version of the file's recipe and the snapshot, so a plain `sync_pmtiles` run after the deploy rebuilds those tiles; stopped and started again, it goes on with the layers still stale, where `force` would rebuild every layer. Each kind of tiles (points, lines, polygons, label anchors) has its own version in `MANBY_RECIPES`, and the file says which kind it holds (its anchor layer, else the geometry of its tile statistics), so bumping one after a change to its recipe in `manby_flags` rebuilds only the tiles of that kind, catalog layers' included. A polygon layer's anchor file has to be in sync too, and is published before the main file, so a main file in sync always has its anchors.
-- **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others.
+- **Catalog layers**: `sync_pmtiles` also rebuilds the tiles of promoted catalog layers (its `layers` parameter picks DuckLake layers, catalog layers or both), from their local GeoParquet copy with the materialize job's own step (`generate_catalog_pmtiles` in `tools/catalog_materialize.py`). It never downloads or changes the copy. Catalog layers have no snapshot: their tiles are in sync with the current marker when they are no older than the copy, which the job writes before it builds the tiles, so a dataset materialized again makes its old tiles stale. The layers come from the layer rows, never from listing the directory: feature layers a project uses, without a materialize job queued or running, because `catalog_gc` deletes the files of the others (a layer that lost its project entries, such as the old version after an update, stays only while a published map, a workflow or a template still names it, and keeps its tiles as they are).
 - **Recipes per geometry type** (`manby_flags`): points and label points end each branch of the pyramid where its tile holds everything below (variable depth). Lines and polygons do not: such a tile holds its features whole at full detail, which made the zoomed out tiles of large polygons and of sparse networks the heaviest of a layer. They are stored at every zoom down to the one manby guesses from the spacing of the vertices, at most `max_zoom` (`--largest-maximum-zoom-guess`, so one build), with full precision at the deepest zoom for the tiles geoapi overzooms from it. A point tile holds far fewer features than the others (`POINT_TILE_FEATURE_LIMIT`): MapLibre numbers the pictures of one symbol layer in a tile with a 16-bit counter, so a denser tile of points drawn as icons or shaped markers is not drawn at all. manby drops the densest points where a tile is over the limit and adds zooms where they are needed.
 - **manby is the only builder**: a build manby fails returns None and never fails the tool. geoapi serves a layer without PMTiles from DuckDB, and `sync_pmtiles` builds the missing files when it runs. When only a polygon layer's label build fails, its main tiles are published without anchors (older anchors are removed, or they would leave the layer stale on every sync): the layer is drawn from its tiles, and its label requests go to DuckDB. The one retry is for points whose spacing `-zg` cannot guess a max zoom from (`MANBY_EXIT_NO_ZOOM_GUESS`): they are built to the configured max zoom.
 - **DuckDB first, then manby**: streamed straight from the query, manby and the DuckDB connection sorting the layer had to fit in the worker at the same time, and manby slowed to a crawl under the small memory budget that left it. With the file in between, DuckDB has finished before manby starts, so manby gets half the container (`MANBY_MEMORY_SHARE` in `utils/container_memory.py` says why not more). Streaming also crashed the process on a second build unless pyarrow was imported first (`tests/unit/io/test_manby_repeat_calls.py`); with a file, manby's feeder thread does not run.

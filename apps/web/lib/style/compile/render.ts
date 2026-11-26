@@ -3,24 +3,24 @@
 // from geoapi's hexagon tiles.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { isNone } from "@/lib/style/colors";
 import { cascade, categoryLabels, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { FONT_STACKS, TILE_MAXZOOM } from "@/lib/style/compile/constants";
+import { RULES, derivedValue, ruleOf } from "@/lib/style/compile/derived";
 import { colorText, concat, numberText } from "@/lib/style/compile/imageNames";
 import { type NumberFormatSpec, labelLayers, textField } from "@/lib/style/compile/labels";
 import { MARKER_IMAGE } from "@/lib/style/compile/markerImage";
-import { type PartContext, layerOpacity, makeLayer, put, withLayerOpacity } from "@/lib/style/compile/parts";
+import {
+  type PartContext,
+  layerOpacity,
+  makeLayer,
+  put,
+  ruleInputs,
+  withLayerOpacity,
+} from "@/lib/style/compile/parts";
 import { pointLayers } from "@/lib/style/compile/points";
 import type { FieldType } from "@/lib/style/compile/types";
-import {
-  FILL_COLOR,
-  type Value,
-  combine,
-  fromForm,
-  hasValue,
-  isZoomed,
-  substitute,
-  toProperty,
-} from "@/lib/style/compile/values";
+import { type Value, combine, fromForm, hasValue, isZoomed, toProperty } from "@/lib/style/compile/values";
 import type { Expr } from "@/lib/style/compile/values";
 import { PALETTES } from "@/lib/style/generated/catalog";
 import { DEFAULTS, H3_AUTO_FROM_ZOOM } from "@/lib/style/generated/defaults";
@@ -174,11 +174,17 @@ function dominantIcon(categories: MarkerCategories, base: unknown): PartContext[
   };
 }
 
-/** A cluster's color: that of its most common category, the base color otherwise (one by zoom stays as it is). */
-function dominantColor(categories: MarkerCategories, style: JsonObject): Expr | undefined {
+/** A cluster's color: that of its most common category, the base color otherwise (one by zoom stays as it is), each
+ * color `map`ped. */
+function dominantColor(categories: MarkerCategories, style: JsonObject): PartContext["color"] {
   if (!categories.classes.some((k) => k.color)) return undefined;
-  const base = cascade(style, "marker.color", {});
-  return isZoomed(base) ? undefined : dominant(categories, (k) => k.color, base.expr);
+  if (isZoomed(cascade(style, "marker.color", {}))) return undefined;
+  return (map) =>
+    dominant(
+      categories,
+      (k) => (k.color ? map(k.color) : undefined),
+      (cascade(style, "marker.color", { map }) as { expr: Expr }).expr
+    );
 }
 
 const drawsLikeThePoints = (render: JsonObject) => (render.look ?? DEFAULTS["cluster.look"]) === "points";
@@ -309,7 +315,7 @@ const SHORT = { abbreviate: true, decimals: 0 };
 
 /** The cluster symbol's count label on the cluster itself (spec 8.2: the placement is fixed), without the labels'
  * default halo unless the symbol sets one: the count sits on the cluster's own color. */
-function onCluster(symbol: unknown): unknown {
+export function onCluster(symbol: unknown): unknown {
   if (!isObject(symbol) || !isObject(symbol.label)) return symbol;
   const label: JsonObject = { ...symbol.label, placement: "center" };
   if (label.halo === undefined) label.halo = { width: 0 };
@@ -411,6 +417,9 @@ function mapNumbers(value: Value, fn: (n: number) => Expr): Value | null {
   return stops.some(([, e]) => e === null) ? null : { ...value, stops };
 }
 
+/** A value by zoom held at each stop up to the next (a step), as a badge image draws it. */
+const held = (value: Value): Value => (isZoomed(value) ? { ...value, interpolate: "step" } : value);
+
 /**
  * The count on a badge at the cluster marker's upper right (spec 8.2 `count: badge`): a filled circle in the cluster
  * symbol's marker color with its outline, the number in its label color. The badge and the number are moved by the same
@@ -428,11 +437,11 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
   const fill = cascade(symbol, "marker.color", {});
   const outline = partUsed(symbol, "outline");
   const stroke = outline
-    ? substitute(
-        cascade(symbol, "outline.color", { map: (v) => (v === "fill" ? FILL_COLOR : v) }),
-        FILL_COLOR,
-        fill
-      )
+    ? derivedValue(symbol, "outline.color", {
+        geometry: "point",
+        follow: (map) => (map ? cascade(symbol, "marker.color", { map }) : fill),
+        inputs: ruleInputs(clusters),
+      })
     : { expr: BADGE_RING.color };
   const strokeWidth = outline ? cascade(symbol, "outline.width", {}) : { expr: BADGE_RING.width };
   const sides = BADGE_SIDES.map((side) => Math.round(side * scale));
@@ -499,8 +508,19 @@ function badgeLayer(clusters: PartContext, own: JsonObject): LayerSpecification 
     "text-ignore-placement": true,
   };
   const paint: Record<string, unknown> = {
+    // The badge draws its number without a halo, so the number is not read on one.
     "text-color": toProperty(
-      cascade(symbol, "label.color", { fallback: DEFAULT_CLUSTER_SYMBOL.label.color })
+      derivedValue(
+        { ...symbol, symbol: { ...own, label: { ...label, halo: { width: 0 } } } },
+        "cluster.symbol.label.color",
+        {
+          geometry: "point",
+          // The badge's color as its image draws it: a color by zoom holds each stop up to the next.
+          follow: (map) => held(map ? cascade(symbol, "marker.color", { map }) : fill),
+          fallback: DEFAULT_CLUSTER_SYMBOL.label.color,
+          inputs: ruleInputs(clusters),
+        }
+      )
     ),
   };
   return makeLayer(clusters, "badge", "symbol", "marker", layout, paint, "default", { ordered: false });
@@ -532,6 +552,7 @@ export function clusterLayers(ctx: PartContext, render: JsonObject): LayerSpecif
     sortKey: undefined,
     icon: categories ? dominantIcon(categories, base.icon) : undefined,
     color: categories ? dominantColor(categories, style) : undefined,
+    cluster: true,
   };
   const layers = [...pointLayers(clusters), ...labelLayers(clusters)];
   if (badge) layers.push(badgeLayer(clusters, own));
@@ -609,15 +630,18 @@ export function h3Scale(render: JsonObject, resolution: number): H3Scale {
   return { kind: "ramp", colors: all, min: cells.min, max: cells.max };
 }
 
-function scaleExpr(scale: H3Scale): Expr {
+function scaleExpr(scale: H3Scale, map: (color: string) => string): Expr {
   const value: Expr = ["to-number", ["get", "value"], 0];
-  if (scale.kind === "color") return scale.color;
-  if (scale.kind === "classes")
+  if (scale.kind === "color") return map(scale.color);
+  if (scale.kind === "classes") {
+    const colors = scale.colors.map(map);
     // One class (every cell holds the same value) has no breaks to step through.
     return scale.breaks.length
-      ? ["step", value, scale.colors[0], ...scale.breaks.flatMap((b, i) => [b, scale.colors[i + 1]])]
-      : scale.colors[0];
-  const { colors, min, max } = scale;
+      ? ["step", value, colors[0], ...scale.breaks.flatMap((b, i) => [b, colors[i + 1]])]
+      : colors[0];
+  }
+  const { min, max } = scale;
+  const colors = scale.colors.map(map);
   return [
     "interpolate",
     ["linear"],
@@ -626,8 +650,9 @@ function scaleExpr(scale: H3Scale): Expr {
   ];
 }
 
-/** The hexagons' fill color: one scale per computed resolution, chosen by the hexagon's `resolution`. */
-function h3Color(render: JsonObject): Expr {
+/** The hexagons' fill color: one scale per computed resolution, chosen by the hexagon's `resolution`; `map` turns each
+ * of its colors (into a darker shade, say). */
+function h3Color(render: JsonObject, map: (color: string) => string = (color) => color): Expr {
   const fallback = h3Scale({ ...render, computed: undefined }, 0);
   const computed =
     isObject(render.computed) && isObject(render.computed.resolutions) ? render.computed.resolutions : {};
@@ -637,14 +662,14 @@ function h3Color(render: JsonObject): Expr {
     .sort((a, b) => a - b)
     .map((res) => [res, h3Scale(render, res)] as const)
     .filter(([, scale]) => scale.kind !== "color");
-  if (isObject(render.classify) && render.classify.method === "manual") return scaleExpr(fallback);
-  if (!byResolution.length) return scaleExpr(fallback);
-  if (byResolution.length === 1) return scaleExpr(byResolution[0][1]);
+  if (isObject(render.classify) && render.classify.method === "manual") return scaleExpr(fallback, map);
+  if (!byResolution.length) return scaleExpr(fallback, map);
+  if (byResolution.length === 1) return scaleExpr(byResolution[0][1], map);
   return [
     "match",
     ["get", "resolution"],
-    ...byResolution.flatMap(([res, scale]) => [res, scaleExpr(scale)]),
-    scaleExpr(fallback),
+    ...byResolution.flatMap(([res, scale]) => [res, scaleExpr(scale, map)]),
+    scaleExpr(fallback, map),
   ];
 }
 
@@ -694,8 +719,9 @@ function h3ColumnPaint(ctx: PartContext, render: JsonObject, extrude: JsonObject
   return paint;
 }
 
-/** The hexagons over geoapi's H3 tiles: a fill and, unless its width is 0, an outline; up to `points_from_zoom`.
- * With `extrude` the fill is a fill-extrusion of columns and the outline is not drawn (3D spec 7.6). */
+/** The hexagons over geoapi's H3 tiles: a fill and, where `render.outline` is present and its width is not 0, an
+ * outline; up to `points_from_zoom`. With `extrude` the fill is a fill-extrusion of columns and the outline is not
+ * drawn (3D spec 7.6). */
 export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecification[] {
   const source = h3SourceId(ctx.sourceId);
   const zooms: { minzoom?: number; maxzoom?: number } = {};
@@ -721,11 +747,19 @@ export function h3Layers(ctx: PartContext, render: JsonObject): LayerSpecificati
   const layers = [
     { id: `${ctx.id}-h3-fill`, type: "fill", source, "source-layer": "h3", ...zooms, paint: fillPaint },
   ] as LayerSpecification[];
-  const outline = isObject(render.outline) ? render.outline : {};
+  // No outline unless `render.outline` is present; the keys it leaves out are white and 1 px.
+  if (!isObject(render.outline)) return layers;
+  const outline = render.outline;
   const width = typeof outline.width === "number" ? outline.width : (DEFAULTS["h3.outline.width"] as number);
-  if (width > 0) {
+  const rule = ruleOf("h3.outline.color", outline.color);
+  // An outline that is None draws as one of width 0 (spec 4.6).
+  if (width > 0 && (rule || !isNone(outline.color))) {
     const linePaint: Record<string, unknown> = {
-      "line-color": typeof outline.color === "string" ? outline.color : DEFAULTS["h3.outline.color"],
+      "line-color": rule
+        ? h3Color(render, (color) => RULES[rule](color, ruleInputs(ctx)))
+        : typeof outline.color === "string"
+          ? outline.color
+          : DEFAULTS["h3.outline.color"],
       "line-width": width,
     };
     const layer = layerOpacity(ctx);

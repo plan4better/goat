@@ -28,6 +28,7 @@ import { initView, setSelectedBuilderItem } from "@/lib/store/map/slice";
 import { shownMode } from "@/lib/scene/support";
 import { openingMode, openingTilt, storableView } from "@/lib/scene/view";
 import { StyleStoresProvider, useEditedLayers } from "@/lib/style/editor/StyleStores";
+import { basemapTone } from "@/lib/style/tone";
 import { createSnapToCursorModifier } from "@/lib/utils/dnd-modifier";
 import { getLocFromUrl, writeLocToUrl, writeMapLocToUrl } from "@/lib/utils/map/loc-url";
 import {
@@ -683,6 +684,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                                 projection={projection}
                                 scene={projectMap?.map.scene}
                                 basemap={activeBasemap}
+                                layerTone={basemapTone(activeBasemap)}
                                 onMoveEnd={handleMoveEnd}
                                 onLoad={handleMapLoaded}
                                 isEditor={isProjectEditor}

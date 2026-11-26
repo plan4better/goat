@@ -1832,5 +1832,36 @@
     "palette": "goat:ndvi",
     "count": 5,
     "colors": ["#ce7e45", "#b0b72c", "#529301", "#045802", "#011d01"]
+  },
+  {
+    "palette": ["#cc615c00", "#2166ac"],
+    "count": 3,
+    "colors": ["#cc615c00", "#92658480", "#2166ac"]
+  },
+  {
+    "palette": ["#ff000080", "#0000ff80"],
+    "count": 4,
+    "colors": ["#ff000080", "#df006380", "#ad00af80", "#0000ff80"]
+  },
+  {
+    "palette": ["#000000", "#ffffff00"],
+    "count": 5,
+    "colors": ["#000000", "#3b3b3bbf", "#77777780", "#b9b9b940", "#ffffff00"]
+  },
+  {
+    "palette": ["#2166acff", "#2166AC"],
+    "count": 3,
+    "colors": ["#2166acff", "#2166ac", "#2166ac"]
+  },
+  {
+    "palette": ["#E87AB294", "#2bb381"],
+    "count": 4,
+    "reverse": true,
+    "colors": ["#2bb381", "#86a691db", "#bb94a2b8", "#e87ab294"]
+  },
+  {
+    "palette": ["#00000000", "#ffffff"],
+    "count": 2,
+    "colors": ["#00000000", "#ffffff"]
   }
 ]

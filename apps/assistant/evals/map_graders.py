@@ -7,7 +7,9 @@ Computed values carry the time they were computed (``computed.at``), so
 documents are compared without those stamps. Rasters are graded on the
 stored document only: nothing reads their pixels."""
 
+import colorsys
 import functools
+import json
 import re
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -22,7 +24,21 @@ from goatlib.filter.areas import (
 )
 from goatlib.filter.rows import read_rows
 from goatlib.style.catalog import palettes
+from goatlib.style.colors import (
+    CONTRAST_FLOOR,
+    LABEL_FALLBACK,
+    alpha,
+    contrast_ratio,
+    halo_against,
+    hex_to_rgb,
+    is_none,
+    label_pair,
+    opaque,
+    shade,
+    text_against,
+)
 from goatlib.style.compute import without_stamps
+from goatlib.style.defaults import REFERENCE_DEFAULTS
 from goatlib.style.map_rows import GroupRow, LayerRow, build_map_document
 from goatlib.style.pointer import get, parse_pointer, to_pointer
 from shapely.errors import ShapelyError
@@ -34,6 +50,7 @@ from evals.map_fixture import MAP_LAYERS_BY_ID, map_layer
 from evals.tasks import (
     AreaRule,
     ClassRule,
+    ColorRule,
     LayerRule,
     MapCheck,
     PathRule,
@@ -361,6 +378,216 @@ def _classification_problems(
     return problems
 
 
+def _records(document: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]:
+    """Every class record and rule of a vector style, with a name for it."""
+    for pointer, item in _classifications(document):
+        for record in item.get("classes") or []:
+            if isinstance(record, dict):
+                yield f"{pointer} class {record.get('id')}", record
+        for key in ("other", "no_data"):
+            if isinstance(item.get(key), dict):
+                yield f"{pointer}/{key}", item[key]
+    for rule in document.get("rules") or []:
+        if isinstance(rule, dict):
+            yield f"rule {rule.get('id')}", rule
+
+
+def _part(document: dict[str, Any], name: str) -> dict[str, Any] | bool | None:
+    """A part of the symbol: its keys, ``False`` when switched off, None when
+    absent."""
+    symbol = document.get("symbol")
+    value = symbol.get(name) if isinstance(symbol, dict) else None
+    return value if isinstance(value, dict) or value is False else None
+
+
+def _key(part: Any, key: str, name: str) -> Any:
+    """A key of a part, or the reference default where it is not set."""
+    if isinstance(part, dict) and key in part:
+        return part[key]
+    return REFERENCE_DEFAULTS.get(f"{name}.{key}")
+
+
+def _hue(color: str) -> float | None:
+    """The hue of a color in degrees; None for a grey, which has none."""
+    red, green, blue = (c / 255 for c in hex_to_rgb(color))
+    hue, _, saturation = colorsys.rgb_to_hls(red, green, blue)
+    return None if saturation < 0.15 else hue * 360
+
+
+def _outline_drawn(base: Any, record: Any = None) -> bool:
+    """Whether an outline draws: the symbol's (on, width above 0, opacity not 0),
+    with a class record's or rule's outline over it where given. A part the
+    symbol switches off stays off in every record (spec 3)."""
+    if not isinstance(base, dict) or record is False:
+        return False
+    merged = {**base, **(record if isinstance(record, dict) else {})}
+    width = _key(merged, "width", "outline")
+    opacity = _key(merged, "opacity", "outline")
+    return not (_number(width) and width <= 0) and opacity != 0
+
+
+def _same(a: Any, b: Any) -> bool:
+    """Two colors with the same red, green and blue, whatever their case and
+    alpha."""
+    return (
+        isinstance(a, str)
+        and isinstance(b, str)
+        and str(opaque(a)).lower() == str(opaque(b)).lower()
+    )
+
+
+def _outline_follows(document: dict[str, Any]) -> str | None:
+    outline = _part(document, "outline")
+    color = _key(outline, "color", "outline")
+    if outline is False or color != "auto":
+        return f"outline.color is {color!r}, expected 'auto'"
+    if not _outline_drawn(outline):
+        return "no outline is drawn"
+    for pointer, item in _classifications(document):
+        if _target(item, "polygon") == "outline.color":
+            return f"the classification {pointer} sets outline.color"
+    for name, record in _records(document):
+        own = record.get("outline")
+        if isinstance(own, dict) and own.get("color", "auto") != "auto":
+            return f"{name} sets outline.color {own['color']!r}"
+        if "outline" in record and not _outline_drawn(outline, own):
+            return f"{name} switches the outline off"
+    return None
+
+
+def _label_problem(document: dict[str, Any], geometry: str, tone: str) -> str | None:
+    label = _part(document, "label")
+    if not isinstance(label, dict) or not label.get("text"):
+        return "no label"
+    main_part = MAIN_COLOR[geometry].split(".")[0]
+    main = _key(_part(document, main_part), "color", main_part)
+    feature = main if isinstance(main, str) else None
+    text = _key(label, "color", "label")
+    halo_part = label.get("halo", {})
+    halo = _key(halo_part, "color", "label.halo")
+    width = _key(halo_part, "width", "label.halo")
+    for name, value in (("label.color", text), ("label.halo.color", halo)):
+        if not isinstance(value, str):
+            return f"{name} is {value!r}, not one color"
+    drawn = not is_none(halo) and not (_number(width) and width <= 0)
+    if text == "auto" and halo == "auto":
+        pair = label_pair(feature, tone)
+        text, halo = pair["text"], pair["halo"]
+    elif text == "auto":
+        text = text_against(feature, halo if drawn else None, tone)
+    elif halo == "auto":
+        halo = halo_against(text)
+    ground = halo if drawn else LABEL_FALLBACK[tone]["halo"]
+    if alpha(text) not in (None, 0, 255):
+        return f"text {text} is see-through: its contrast is not reliable"
+    ratio = 1.0 if is_none(text) else contrast_ratio(text, opaque(ground))
+    if not ratio >= CONTRAST_FLOOR:
+        on = "its halo" if drawn else f"the {tone} basemap"
+        return f"text {text} on {on} {ground}: contrast {ratio:.2f}, at least 4.5"
+    return None
+
+
+def _half_transparent(document: dict[str, Any], old: dict[str, Any]) -> str | None:
+    fill = _part(document, "fill")
+    opacity, color = _key(fill, "opacity", "fill"), _key(fill, "color", "fill")
+    shown = alpha(color)
+    if not isinstance(fill, dict) or not _number(opacity) or shown is None:
+        return f"fill {fill!r} is not one color at one opacity"
+    was = _key(_part(old, "fill"), "color", "fill")
+    if not _same(color, was):
+        return f"the fill's color {color} is not the color it had ({was})"
+    if (opacity, shown) == (0.5, 255) or (opacity == 1 and shown in (127, 128)):
+        return None
+    return f"fill at opacity {opacity} with color {color}, expected 50 % in one of them"
+
+
+def _outline_only(document: dict[str, Any], old: dict[str, Any]) -> str | None:
+    fill = _part(document, "fill")
+    fill_color = _key(fill, "color", "fill")
+    if fill is not False and not (
+        _key(fill, "opacity", "fill") == 0 or is_none(fill_color)
+    ):
+        return f"the fill still draws ({fill_color!r})"
+    if document.get("opacity", 1) == 0:
+        return "the layer draws nothing (layer opacity 0)"
+    outline = _part(document, "outline")
+    color = _key(outline, "color", "outline")
+    if not _outline_drawn(outline):
+        return "no outline is drawn"
+    if color == "fill":
+        color = fill_color
+    elif color == "auto":
+        color = shade(fill_color)
+    if not isinstance(color, str) or alpha(color) in (None, 0):
+        return f"the outline draws no color ({color!r})"
+    was = _key(_part(old, "fill"), "color", "fill")
+    hue, wanted = _hue(opaque(color)), _hue(opaque(was))
+    if (
+        hue is None
+        or wanted is None
+        or min(abs(hue - wanted), 360 - abs(hue - wanted)) > 10
+    ):
+        return f"the outline's hue ({color}) is not the fill's ({was})"
+    return None
+
+
+def _class_none(
+    document: dict[str, Any], old: dict[str, Any], field: str, value: str
+) -> str | None:
+    def records(doc: dict[str, Any]) -> dict[str, Any]:
+        found: dict[str, Any] = {}
+        for _, item in _classifications(doc):
+            if item.get("field") != field:
+                continue
+            for record in item.get("classes") or []:
+                key = json.dumps(record.get("values"), sort_keys=True)
+                found[key] = without_stamps(record)
+            for name in ("other", "no_data"):
+                found[name] = without_stamps(item.get(name))
+        return found
+
+    now, was = records(document), records(old)
+    hidden = [
+        key
+        for key in now
+        if key not in ("other", "no_data") and value in (json.loads(key) or [])
+    ]
+    if not hidden:
+        return f"no class of {field} holds {value!r}"
+    fill = now[hidden[0]].get("fill")
+    color = fill.get("color") if isinstance(fill, dict) else fill
+    if not is_none(color):
+        return f"the class of {value!r} has the fill {fill!r}, expected a None color"
+    old_fill = (was.get(hidden[0]) or {}).get("fill")
+    old_color = old_fill.get("color") if isinstance(old_fill, dict) else None
+    if isinstance(old_color, str) and not _same(color, old_color):
+        return f"the None fill {color} of {value!r} lost the hue of {old_color}"
+    if not _outline_drawn(_part(document, "outline"), now[hidden[0]].get("outline")):
+        return f"the class of {value!r} draws no border"
+    changed = sorted(
+        k for k in set(now) | set(was) if k != hidden[0] and now.get(k) != was.get(k)
+    )
+    if changed:
+        return f"other records of {field} changed: {changed}"
+    return None
+
+
+def color_problem(
+    rule: ColorRule, document: dict[str, Any], old: dict[str, Any], geometry: str
+) -> str | None:
+    """Why the style breaks the color rule; None when it holds."""
+    if rule.kind == "outline_follows":
+        return _outline_follows(document)
+    if rule.kind == "labels_readable":
+        return _label_problem(document, geometry, rule.tone)
+    if rule.kind == "fill_half_transparent":
+        return _half_transparent(document, old)
+    if rule.kind == "outline_only":
+        return _outline_only(document, old)
+    assert rule.field is not None and rule.value is not None
+    return _class_none(document, old, rule.field, rule.value)
+
+
 def _kept_features(link: int, query: Any) -> list[dict[str, Any]] | None:
     """The fixture layer's features its stored filter keeps, as the
     statistics stand-ins count them (``selected_features``); None when the
@@ -425,6 +652,12 @@ def grade_style(check: StyleCheck, transcript: Transcript) -> tuple[bool, str]:
             check.classification, document, link, check, after["layers"][link]["query"]
         )
     problems += [p for rule in check.paths if (p := path_problem(document, rule))]
+    geometry = map_layer(link).geometry
+    problems += [
+        p
+        for rule in check.colors
+        if (p := color_problem(rule, document, old, geometry))
+    ]
     if check.paths_any:
         misses = [path_problem(document, rule) for rule in check.paths_any]
         if all(misses):

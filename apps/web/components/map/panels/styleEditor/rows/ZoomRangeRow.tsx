@@ -1,8 +1,9 @@
 // The zooms a layer, part or class shows at (spec 3.5): a two-thumb slider over 0 to 24 with the map zoom marked by
-// the zoom chart's pointer under the track; the ends mean "no limit" and write undefined. Under the track, as in the
-// zoom chart, the pointer drags the map's zoom and a press zooms the map there, a faint pointer showing where.
+// the zoom chart's pointer under the track; the ends mean "no limit" and write undefined. Given one `value`, one thumb
+// picks a single zoom (until which points cluster, from which they show). Under the track, as in the zoom chart, the
+// pointer drags the map's zoom and a press zooms the map there, a faint pointer showing where.
 import { Box, Slider, Typography } from "@mui/material";
-import { type PointerEvent, type ReactNode, memo, useState } from "react";
+import { type PointerEvent, type ReactNode, memo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useZoomTo } from "@/components/map/panels/styleEditor/context";
@@ -10,15 +11,27 @@ import { Row } from "@/components/map/panels/styleEditor/rows/Row";
 
 export const MAX_ZOOM = 24;
 
-export interface ZoomRangeRowProps {
+interface ZoomRowBase {
   label?: ReactNode;
-  from?: number;
-  until?: number;
   mapZoom: number;
   /** The range the layer itself allows, shaded on the track. */
   layerRange?: [number, number];
+}
+
+interface ZoomRangeProps extends ZoomRowBase {
+  from?: number;
+  until?: number;
   onChange: (from: number | undefined, until: number | undefined) => void;
 }
+
+/** One zoom on one thumb, in whole zooms. The row reads the zoom as given; one between whole zooms or past the ends
+ * is written only when the thumb is moved or set on an end. */
+interface ZoomValueProps extends ZoomRowBase {
+  value: number;
+  onValue: (zoom: number) => void;
+}
+
+export type ZoomRangeRowProps = ZoomRangeProps | ZoomValueProps;
 
 /** The zoom chart's pointer at `zoom`: the map's zoom, or (`ghost`) where a press would take it; with its zoom. */
 function ZoomPointer({ zoom, label, ghost }: { zoom: number; label?: boolean; ghost?: boolean }) {
@@ -61,18 +74,16 @@ function ZoomPointer({ zoom, label, ghost }: { zoom: number; label?: boolean; gh
   );
 }
 
-export const ZoomRangeRow = memo(function ZoomRangeRow({
-  label,
-  from,
-  until,
-  mapZoom,
-  layerRange,
-  onChange,
-}: ZoomRangeRowProps) {
+export const ZoomRangeRow = memo(function ZoomRangeRow(props: ZoomRangeRowProps) {
+  const { label, mapZoom, layerRange } = props;
   const { t } = useTranslation("common");
-  const low = from ?? 0;
-  const high = until ?? MAX_ZOOM;
+  const single = "value" in props;
+  const low = single ? 0 : (props.from ?? 0);
+  const high = single ? MAX_ZOOM : (props.until ?? MAX_ZOOM);
   const zoom = Math.min(Math.max(mapZoom, 0), MAX_ZOOM);
+  const rowLabel = label ?? t("style_editor.visible");
+  // The zoom the single thumb wrote while it moved, which its commit then leaves alone.
+  const moved = useRef<number | null>(null);
   const zoomTo = useZoomTo();
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState(false);
@@ -88,7 +99,7 @@ export const ZoomRangeRow = memo(function ZoomRangeRow({
     return Math.abs(((zoomAt(event) - zoom) / MAX_ZOOM) * rect.width) <= 6;
   };
   return (
-    <Row label={label ?? t("style_editor.visible")}>
+    <Row label={rowLabel}>
       {/* Room under the track for the map zoom's pointer and its number. */}
       <Box sx={{ flex: 1, minWidth: 0, px: 2.5, pb: 3 }}>
         {/* The track's own width: the layer's range, the pointer and the slider share it. */}
@@ -146,25 +157,45 @@ export const ZoomRangeRow = memo(function ZoomRangeRow({
           ) : (
             <ZoomPointer zoom={zoom} label />
           )}
-          <Slider
-            size="small"
-            min={0}
-            max={MAX_ZOOM}
-            step={1}
-            value={[low, high]}
-            getAriaLabel={(index) => t(index === 0 ? "style_editor.zoom_from" : "style_editor.zoom_until")}
-            // goatlib takes From below Until: the thumb moved stops one zoom before the other.
-            disableSwap
-            onChange={(_, next, thumb) => {
-              let [a, b] = next as number[];
-              if (b - a < 1) {
-                if (thumb === 0) a = Math.max(0, b - 1);
-                else b = Math.min(MAX_ZOOM, a + 1);
-                if (b - a < 1) [a, b] = thumb === 0 ? [0, 1] : [MAX_ZOOM - 1, MAX_ZOOM];
-              }
-              onChange(a <= 0 ? undefined : a, b >= MAX_ZOOM ? undefined : b);
-            }}
-          />
+          {single ? (
+            <Slider
+              size="small"
+              min={0}
+              max={MAX_ZOOM}
+              step={1}
+              value={Math.min(Math.max(props.value, 0), MAX_ZOOM)}
+              aria-label={typeof rowLabel === "string" ? rowLabel : undefined}
+              onChange={(_, next) => {
+                moved.current = next as number;
+                props.onValue(next as number);
+              }}
+              // A press or a key on the end a stored zoom past it shows at moves nothing: the commit writes the end.
+              onChangeCommitted={(_, next) => {
+                if (next !== moved.current && next !== props.value) props.onValue(next as number);
+                moved.current = null;
+              }}
+            />
+          ) : (
+            <Slider
+              size="small"
+              min={0}
+              max={MAX_ZOOM}
+              step={1}
+              value={[low, high]}
+              getAriaLabel={(index) => t(index === 0 ? "style_editor.zoom_from" : "style_editor.zoom_until")}
+              // goatlib takes From below Until: the thumb moved stops one zoom before the other.
+              disableSwap
+              onChange={(_, next, thumb) => {
+                let [a, b] = next as number[];
+                if (b - a < 1) {
+                  if (thumb === 0) a = Math.max(0, b - 1);
+                  else b = Math.min(MAX_ZOOM, a + 1);
+                  if (b - a < 1) [a, b] = thumb === 0 ? [0, 1] : [MAX_ZOOM - 1, MAX_ZOOM];
+                }
+                props.onChange(a <= 0 ? undefined : a, b >= MAX_ZOOM ? undefined : b);
+              }}
+            />
+          )}
         </Box>
       </Box>
       <Typography
@@ -172,7 +203,7 @@ export const ZoomRangeRow = memo(function ZoomRangeRow({
         color="text.secondary"
         noWrap
         sx={{ flex: "none", minWidth: 52, textAlign: "right", pl: 3 }}>
-        {t("style_editor.zoom_from_to", { from: low, until: high })}
+        {single ? String(props.value) : t("style_editor.zoom_from_to", { from: low, until: high })}
       </Typography>
     </Row>
   );

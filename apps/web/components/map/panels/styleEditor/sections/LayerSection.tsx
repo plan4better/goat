@@ -15,7 +15,6 @@ import { isObject } from "@/lib/style/json";
 
 import {
   useEditor,
-  useMapZoom,
   useScope,
   useStyleData,
   useStyleSelector,
@@ -56,7 +55,6 @@ export function VisibleRow() {
   const { t } = useTranslation("common");
   const popover = usePopover();
   const next = useNextLevel();
-  const mapZoom = useMapZoom();
   const from = useStyleValue<unknown>("min_zoom");
   const until = useStyleValue<unknown>("max_zoom");
   const symbol = useStyleValue<unknown>("symbol");
@@ -94,7 +92,6 @@ export function VisibleRow() {
         popover.open(next, {
           key: "layer:visible",
           title: label,
-          subtitle: t("style_editor.map_at_zoom", { zoom: Math.round(mapZoom * 10) / 10 }),
           anchorTop: anchorTopOf(anchor),
           render: () => <VisibleEditor />,
         })

@@ -4,20 +4,23 @@ import type { LayerSpecification } from "maplibre-gl";
 
 import { cascade, isSet, partUsed, perLayer } from "@/lib/style/compile/cascade";
 import { ICON_HEIGHT } from "@/lib/style/compile/constants";
+import { derivedValue } from "@/lib/style/compile/derived";
 import { keepsColors } from "@/lib/style/compile/images";
 import {
   type Decoration,
   type PartContext,
+  drawsNothing,
   highlightColor,
   highlightWidth,
   layerOpacity,
   makeLayer,
   onDecorations,
   put,
+  ruleInputs,
   withLayerOpacity,
 } from "@/lib/style/compile/parts";
 import { dashArray } from "@/lib/style/compile/polygons";
-import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
+import { type Value, combine, fromForm, toProperty } from "@/lib/style/compile/values";
 
 export function lineLayers(ctx: PartContext): LayerSpecification[] {
   const { style } = ctx;
@@ -32,14 +35,18 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
   put(layout, "line-cap", cascade(style, "line.cap", c), ctx, "line.cap");
   put(layout, "line-join", cascade(style, "line.join", c), ctx, "line.join");
 
-  if (partUsed(style, "casing", "line")) {
+  // A part whose color is None for all draws no layer (spec 4.6).
+  const casingColor = partUsed(style, "casing", "line")
+    ? derivedValue(style, "casing.color", { geometry: "line", fields: ctx.fields, inputs: ruleInputs(ctx) })
+    : null;
+  if (casingColor && !drawsNothing(casingColor)) {
     const casingWidth = combine(
       [width, cascade(style, "casing.width", c)],
       ([l, w]) => ["+", l, ["*", 2, w]],
       { kind: "number" }
     );
     const paint: Record<string, unknown> = {};
-    put(paint, "line-color", cascade(style, "casing.color", c), ctx, "casing.color");
+    put(paint, "line-color", casingColor, ctx, "casing.color");
     paint["line-width"] = toProperty(casingWidth);
     put(paint, "line-offset", offset, ctx, "line.offset");
     put(paint, "line-opacity", cascade(style, "casing.opacity", c), ctx, "casing.opacity");
@@ -47,27 +54,28 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
     layers.push(makeLayer(ctx, "casing", "line", "line", layout, paint));
   }
 
-  const paint: Record<string, unknown> = {};
-  put(paint, "line-color", highlightColor(ctx, lineColor), ctx, "line.color");
-  put(paint, "line-width", highlightWidth(ctx, width), ctx, "line.width");
-  put(paint, "line-offset", offset, ctx, "line.offset");
-  put(paint, "line-opacity", cascade(style, "line.opacity", c), ctx, "line.opacity");
-  put(paint, "line-blur", cascade(style, "line.blur", c), ctx, "line.blur");
-  if (isSet(style, "line.dash"))
-    paint["line-dasharray"] = toProperty(cascade(style, "line.dash", { ...c, map: dashArray }));
-  if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
-  layers.push(makeLayer(ctx, "line", "line", "line", layout, paint));
+  if (!drawsNothing(lineColor)) {
+    const paint: Record<string, unknown> = {};
+    put(paint, "line-color", highlightColor(ctx, lineColor), ctx, "line.color");
+    put(paint, "line-width", highlightWidth(ctx, width), ctx, "line.width");
+    put(paint, "line-offset", offset, ctx, "line.offset");
+    put(paint, "line-opacity", cascade(style, "line.opacity", c), ctx, "line.opacity");
+    put(paint, "line-blur", cascade(style, "line.blur", c), ctx, "line.blur");
+    if (isSet(style, "line.dash"))
+      paint["line-dasharray"] = toProperty(cascade(style, "line.dash", { ...c, map: dashArray }));
+    if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
+    layers.push(makeLayer(ctx, "line", "line", "line", layout, paint));
+  }
 
   if (partUsed(style, "arrows", "line")) layers.push(...arrowLayers(ctx, lineColor));
   return layers;
 }
 
-function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): LayerSpecification[] {
+function arrowLayers(ctx: PartContext, lineColor: Value): LayerSpecification[] {
   const { style } = ctx;
   const c = { fields: ctx.fields };
   // One icon for the layer (spec 3.2), drawn as GOAT's arrow is: pointing north before it is turned along the line.
   const icon = String(perLayer(style, "arrows.icon"));
-  ctx.images.add(icon);
   const placement = perLayer(style, "arrows.placement");
   const direction = perLayer(style, "arrows.direction");
   // The icon turns with the line (its top the way the arrow points) or stays upright on the screen, where the
@@ -76,8 +84,16 @@ function arrowLayers(ctx: PartContext, lineColor: ReturnType<typeof cascade>): L
   const size = combine([cascade(style, "arrows.size", c)], ([s]) => ["/", s, ICON_HEIGHT], {
     kind: "number",
   });
-  // Arrows take the line's color, class by class, unless a record colors them.
-  const color = isSet(style, "arrows.color") ? cascade(style, "arrows.color", c) : lineColor;
+  // Arrows take the line's color, class by class, where no record colors them.
+  const color = derivedValue(style, "arrows.color", {
+    geometry: "line",
+    fields: ctx.fields,
+    follow: (map) => (map ? cascade(style, "line.color", { ...c, map }) : lineColor),
+    inputs: ruleInputs(ctx),
+  });
+  // Library icons take the arrows' color: None for all, they draw nothing (spec 4.6).
+  if (drawsNothing(color) && !keepsColors(icon)) return [];
+  ctx.images.add(icon);
   const layout = {
     "icon-image": icon,
     "icon-size": toProperty(size),

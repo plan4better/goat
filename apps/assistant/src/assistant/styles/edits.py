@@ -23,10 +23,24 @@ from uuid import UUID
 
 from goatlib.style.context import DataContext
 from goatlib.style.defaults import default_style
-from goatlib.style.edit import Edit, Edited, EditError, apply_edits
+from goatlib.style.edit import (
+    Edit,
+    Edited,
+    EditError,
+    apply_edits,
+    part_at,
+    part_key,
+)
 from goatlib.style.ids import assign_ids
 from goatlib.style.merge import _class_skip, changed_paths, diff
-from goatlib.style.pointer import find_index, item_key, parse_pointer, to_pointer
+from goatlib.style.models.classify import NUMERIC_METHODS
+from goatlib.style.pointer import (
+    find_index,
+    get,
+    item_key,
+    parse_pointer,
+    to_pointer,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_ai.exceptions import ToolFailed
 
@@ -40,6 +54,15 @@ MAX_OPERATIONS = 30
 MAX_CHANGED = 50
 #: Issues a refusal lists.
 MAX_LISTED_ISSUES = 5
+_ABSENT = object()
+#: A note when classes a call wrote are not in the style the save stored.
+LOST_ADDED = (
+    "The classes written to {lists} were not kept: the server makes the classes of a "
+    "computed classification itself, as many as its count, so what they held is "
+    "not saved. A value for every class goes on the symbol (for example "
+    "/symbol/outline/color); one class's own value is set by its id from the "
+    "legend in a later call."
+)
 
 Mode = Literal["edit", "new_from", "new_whole", "replace"]
 
@@ -318,6 +341,168 @@ def edited(document: dict[str, Any], operations: Sequence[Edit]) -> Edited:
         return apply_edits(document, operations)
     except EditError as exc:
         raise InputInvalid(str(exc)) from exc
+
+
+def lost_items(
+    stored: dict[str, Any], operations: Sequence[Edit], added: dict[int, str]
+) -> list[str]:
+    """The class lists whose items the call added are not in ``stored``: a
+    computed classification's classes, which the server rebuilds as many as its
+    count. An item a later operation of the call removes is no loss."""
+    lost: list[str] = []
+    for index, item_id in added.items():
+        path = operations[index].path
+        if not path.endswith("/classes"):
+            continue
+        removed = any(
+            later.op == "remove" and later.path == f"{path}/{item_id}"
+            for later in operations[index + 1 :]
+        )
+        try:
+            items = get(stored, path)
+        except (KeyError, ValueError, TypeError):
+            items = None
+        found = isinstance(items, list) and any(
+            isinstance(item, dict) and item.get("id") == item_id for item in items
+        )
+        if not found and not removed and path not in lost:
+            lost.append(path)
+    return lost
+
+
+def _written_classes(
+    document: dict[str, Any],
+    operations: Sequence[Edit],
+    added: dict[int, str] | None = None,
+) -> set[int]:
+    """The classifications (by position in ``document``) whose classes the call
+    writes: a path into their classes, or a value that holds them."""
+    items = document.get("classify")
+    if not isinstance(items, list):
+        return set()
+    ids = {
+        str(item.get("id")): index
+        for index, item in enumerate(items)
+        if isinstance(item, dict) and item.get("id") is not None
+    }
+    written: set[int] = set()
+    for position, operation in enumerate(operations):
+        segments = parse_pointer(operation.path)
+        if not segments or segments[0] != "classify":
+            continue
+        value = operation.value if operation.op == "set" else operation.item
+        if len(segments) == 1 and operation.op == "add":
+            item_id = (added or {}).get(position)
+            if isinstance(value, dict) and "classes" in value and item_id in ids:
+                written.add(ids[item_id])
+            continue
+        if len(segments) == 1 and isinstance(value, list):
+            written |= {
+                i for i, v in enumerate(value) if isinstance(v, dict) and "classes" in v
+            }
+            continue
+        key = segments[1] if len(segments) > 1 else None
+        index = ids.get(key) if key is not None else None
+        if index is None and key is not None and key.isdigit():
+            index = int(key)
+        if index is None:
+            continue
+        if len(segments) == 2 and isinstance(value, dict) and "classes" in value:
+            written.add(index)
+        elif len(segments) > 2 and segments[2] == "classes":
+            written.add(index)
+    return written
+
+
+def rebuilt_classes(
+    document: dict[str, Any],
+    stored: dict[str, Any],
+    operations: Sequence[Edit] = (),
+    added: dict[int, str] | None = None,
+) -> list[str]:
+    """The class lists the call wrote into a classification the server computes
+    that came back as another number of classes: the server rebuilt them, as
+    many as the count, and what they held is not in ``stored``. Classes the call
+    did not write (another count rebuilds them as asked) are never named."""
+    rebuilt: list[str] = []
+    sent, kept = document.get("classify"), stored.get("classify")
+    if not isinstance(sent, list) or not isinstance(kept, list):
+        return rebuilt
+    for index in sorted(_written_classes(document, operations, added)):
+        item = sent[index] if index < len(sent) else None
+        if not isinstance(item, dict) or item.get("method") not in NUMERIC_METHODS:
+            continue
+        written = item.get("classes")
+        if not isinstance(written, list) or not written:
+            continue
+        back = kept[index] if index < len(kept) else None
+        classes = back.get("classes") if isinstance(back, dict) else None
+        if not isinstance(classes, list) or len(classes) != len(written):
+            key = item.get("id") if isinstance(item.get("id"), str) else str(index)
+            rebuilt.append(to_pointer(["classify", key, "classes"]))
+    return rebuilt
+
+
+def operation_notes(
+    base: dict[str, Any], edited: dict[str, Any], operations: Sequence[Edit]
+) -> list[str]:
+    """What the result says about the call's own operations, keyed to setting a
+    part's keys one by one: a `set` of the value the path holds already, a part
+    switched off (false), a part reset to its defaults by `{}`, and a part a key
+    set under it switched on (in a class or rule record, with the layer's own
+    part still false in ``edited``, the document the call made, where it is)."""
+    notes: list[str] = []
+    for index, operation in enumerate(operations):
+        if operation.op != "set":
+            continue
+        number, path, value = index + 1, operation.path, operation.value
+        segments = parse_pointer(path)
+        for end in range(2, len(segments)):
+            above = segments[:end]
+            if part_at(above) and _held(base, to_pointer(above)) is False:
+                # A part the symbol switches off stays off in every class and rule
+                # record; the cluster symbol is a symbol of its own.
+                own = to_pointer(["symbol", above[-1]])
+                stays = (
+                    f"; it stays off while {own} is false"
+                    if above[0] in ("classify", "rules") and _held(edited, own) is False
+                    else ""
+                )
+                notes.append(
+                    f"{to_pointer(above)} was switched off (false); operation "
+                    f"{number} switched it on by setting {path}{stays}."
+                )
+                break
+        part = part_at(segments)
+        key = f"{path}/{part_key(part)}" if part else ""
+        held = _held(base, path)
+        said = json.dumps(value, ensure_ascii=False)
+        if held == value:
+            note = f"Operation {number} sets {path} to {said}, the value it holds"
+            if part and value is False:
+                note += (
+                    ": the part is switched off; to draw it, set one of its keys, "
+                    f"for example {key}"
+                )
+            notes.append(f"{note}.")
+        elif part and value is False:
+            notes.append(
+                f"{path} is now switched off (false). To draw it again, set one of "
+                f"its keys, for example {key}."
+            )
+        if part and value == {}:
+            notes.append(
+                f"Setting {path} to {{}} resets it to its defaults; to change one key, "
+                f"set one of its keys, for example {key}."
+            )
+    return list(dict.fromkeys(notes))
+
+
+def _held(document: dict[str, Any], path: str) -> Any:
+    try:
+        return get(document, path)
+    except (KeyError, ValueError, TypeError):
+        return _ABSENT
 
 
 # ---- the check's issues ----------------------------------------------------------

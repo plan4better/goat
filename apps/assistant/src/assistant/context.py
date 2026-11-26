@@ -139,6 +139,13 @@ class BasemapInfo(_Context):
     imagery: bool = False
 
 
+def advised_tone(basemap: BasemapInfo) -> Literal["light", "dark"]:
+    """The tone the assistant advises colors by: dark over imagery, whatever
+    tone the page sends (a picture of the ground is busy; the page sends the
+    tone a layer's automatic colors follow), else the basemap's tone."""
+    return "dark" if basemap.imagery else basemap.tone
+
+
 class ProjectMapContext(_Page):
     surface: Literal["project.map"]
     project_id: UUID

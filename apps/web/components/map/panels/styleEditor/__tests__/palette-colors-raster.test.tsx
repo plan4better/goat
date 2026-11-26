@@ -87,7 +87,7 @@ describe("a raster palette's colors under Palette", () => {
     expect(outside.compareDocumentPosition(list()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const before = bars();
     await userEvent.click(within(list()).getAllByRole("button", { name: "style_editor.palette_color" })[0]);
-    await userEvent.click(screen.getByRole("button", { name: "#d7301f" }));
+    await userEvent.click(screen.getByRole("button", { name: "#D7301F" }));
     expect(store.get("render.palette")).toEqual(["#d7301f", ...drawn.slice(1)]);
     expect(store.get("render.reverse")).toBeUndefined();
     expect(bars()[0]).not.toBe(before[0]);

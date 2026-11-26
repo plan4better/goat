@@ -4,8 +4,9 @@ The semantics are the browser's before the service existed, vectorized: a ramp
 is a 256-color lookup interpolated in RGB between the palette's colors, stops
 blend linearly or take the nearest stop, classes are `[from, to)` with the first
 match winning (the first and last class reach as far as `outside` lets them),
-categories match the rounded value. No-data (the file's value
-with its float32 rounding, NaN, masked cells and the style's values) is
+categories match the rounded value. A color's own alpha (`#rrggbbaa`) is
+painted, blended premultiplied as the browser blends it. No-data (the file's
+value with its float32 rounding, NaN, masked cells and the style's values) is
 transparent. Opacity and image adjustments stay paint properties in the browser.
 """
 
@@ -16,18 +17,41 @@ import numpy as np
 from goatlib.raster.token import Categories, Classes, Ramp, Rgb, Stops
 
 Coloring = Ramp | Stops | Classes | Categories | Rgb
-#: Colors (H x W x 3, floats) and the cells drawn transparent.
+#: Colors with their alpha (H x W x 4, floats 0 to 255) and the cells drawn
+#: transparent.
 Painted = tuple[np.ndarray, np.ndarray]
 ColorTable = Mapping[int, Sequence[int]]
 
 LUT_SIZE = 256
 
 
-def _rgb(hex_color: str) -> tuple[int, int, int]:
+def _rgba(hex_color: str) -> tuple[int, int, int, int]:
+    """A hex color's red, green, blue and alpha (255 without one)."""
     h = hex_color.lstrip("#")
     if len(h) == 3:
         h = "".join(c * 2 for c in h)
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    alpha = int(h[6:8], 16) if len(h) == 8 else 255
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), alpha
+
+
+def _premultiplied(colors: np.ndarray) -> np.ndarray:
+    """Colors (... x 4) with red, green and blue times their alpha, as they blend;
+    opaque ones as they are."""
+    out = colors.astype("float64")
+    alpha = out[..., 3:]
+    out[..., :3] = np.where(alpha < 255, out[..., :3] * alpha / 255, out[..., :3])
+    return out
+
+
+def _straight(colors: np.ndarray) -> np.ndarray:
+    """Premultiplied colors (... x 4) back to straight ones, opaque ones as they
+    are; alpha 0 is black."""
+    out = colors.copy()
+    alpha = out[..., 3:]
+    partial = (alpha > 0) & (alpha < 255)
+    rgb = out[..., :3] * 255 / np.where(partial, alpha, 255)
+    out[..., :3] = np.where(partial, rgb, np.where(alpha > 0, out[..., :3], 0))
+    return out
 
 
 def _js_round(x: np.ndarray) -> np.ndarray:
@@ -95,12 +119,14 @@ def _style_no_data(values: np.ndarray, no_data: Sequence[float]) -> np.ndarray:
 
 
 def _lut(colors: Sequence[str]) -> np.ndarray:
-    """256 RGB colors, the palette's colors spread evenly over 0..255 and
-    interpolated linearly in between (d3's scaleLinear, as the browser did)."""
-    points = np.array([_rgb(c) for c in colors], dtype="float64")
+    """256 RGBA colors, the palette's colors spread evenly over 0..255 and
+    interpolated linearly in between (d3's scaleLinear, as the browser did),
+    premultiplied by their alpha."""
+    points = _premultiplied(np.array([_rgba(c) for c in colors], dtype="float64"))
     at = np.linspace(0, LUT_SIZE - 1, len(points))
     i = np.arange(LUT_SIZE, dtype="float64")
-    return np.stack([np.interp(i, at, points[:, k]) for k in range(3)], axis=-1)
+    lut = np.stack([np.interp(i, at, points[:, k]) for k in range(4)], axis=-1)
+    return _straight(lut)
 
 
 def _ramp(c: Ramp, v: np.ndarray, band_range: tuple[float, float] | None) -> Painted:
@@ -114,7 +140,7 @@ def _ramp(c: Ramp, v: np.ndarray, band_range: tuple[float, float] | None) -> Pai
 
 def _stops(c: Stops, v: np.ndarray) -> Painted:
     values = np.array([s.value for s in c.stops], dtype="float64")
-    colors = np.array([_rgb(s.color) for s in c.stops], dtype="float64")
+    colors = np.array([_rgba(s.color) for s in c.stops], dtype="float64")
     outside = (v < values[0]) | (v > values[-1])
     hidden = outside if c.outside == "hide" else np.zeros(v.shape, bool)
     if c.interpolate == "nearest":
@@ -122,8 +148,9 @@ def _stops(c: Stops, v: np.ndarray) -> Painted:
         # the midpoint between two stops takes the lower one.
         midpoints = (values[1:] + values[:-1]) / 2
         return colors[np.searchsorted(midpoints, v, side="left")], hidden
-    out = np.stack([np.interp(v, values, colors[:, k]) for k in range(3)], axis=-1)
-    return out, hidden
+    blend = _premultiplied(colors)
+    out = np.stack([np.interp(v, values, blend[:, k]) for k in range(4)], axis=-1)
+    return _straight(out), hidden
 
 
 def _classes(
@@ -134,7 +161,7 @@ def _classes(
     with `hide` they end at their own `from` and `to`, else at the range (the
     domain, else the band's minimum and maximum, as a ramp's), the last one
     holding its end, and the cells beyond are transparent."""
-    out = np.zeros(v.shape + (3,), dtype="float64")
+    out = np.zeros(v.shape + (4,), dtype="float64")
     hidden = np.ones(v.shape, dtype=bool)
     taken = np.zeros(v.shape, dtype=bool)
     hide = c.outside == "hide"
@@ -152,24 +179,24 @@ def _classes(
         match = ~taken & (v >= lo) & below
         taken |= match
         if k.color is not None:
-            out[match] = _rgb(k.color)
+            out[match] = _rgba(k.color)
             hidden[match] = False
     return out, hidden
 
 
 def _categories(c: Categories, v: np.ndarray) -> Painted:
     key = _js_round(v)
-    out = np.zeros(v.shape + (3,), dtype="float64")
+    out = np.zeros(v.shape + (4,), dtype="float64")
     hidden = np.ones(v.shape, dtype=bool)
     matched = np.zeros(v.shape, dtype=bool)
     for k in c.classes:
         match = ~matched & (key == k.value)
         matched |= match
         if k.color is not None:
-            out[match] = _rgb(k.color)
+            out[match] = _rgba(k.color)
             hidden[match] = False
     if c.other is not None:
-        out[~matched] = _rgb(c.other)
+        out[~matched] = _rgba(c.other)
         hidden[~matched] = False
     return out, hidden
 
@@ -194,12 +221,15 @@ def _scale(bits: Sequence[int], band: int) -> float:
     return 255 / (2**b - 1) if b > 8 else 1.0
 
 
-def _rgba(rgb: np.ndarray, hidden: np.ndarray) -> np.ndarray:
-    """Colors (floats, or bytes as they are) and alpha; a hidden cell is all 0."""
+def _bytes(colors: np.ndarray, hidden: np.ndarray) -> np.ndarray:
+    """RGBA bytes of colors (floats, or bytes as they are), opaque where they
+    carry no alpha; a hidden cell, and one at alpha 0, is all 0."""
     out = np.empty(hidden.shape + (4,), dtype="uint8")
-    out[..., :3] = rgb if rgb.dtype == np.uint8 else _to_byte(rgb)
-    out[..., 3] = 255
-    out[hidden] = 0
+    stored = colors if colors.dtype == np.uint8 else _to_byte(colors)
+    out[..., : stored.shape[-1]] = stored
+    if stored.shape[-1] == 3:
+        out[..., 3] = 255
+    out[hidden | (out[..., 3] == 0)] = 0
     return out
 
 
@@ -244,7 +274,7 @@ def colorize(
         rgb, hidden = _classes(coloring, v, band_range)
     else:
         rgb, hidden = _categories(coloring, v)
-    return _rgba(rgb, hidden | bad)
+    return _bytes(rgb, hidden | bad)
 
 
 def _image(
@@ -271,7 +301,7 @@ def _image(
         bad = invalid[first] | _style_no_data(v, c.no_data)
         lo, hi = band_range or (0.0, 2.0 ** (bits[0] if bits else 8) - 1)
         grey = np.clip((v - lo) / ((hi - lo) or 1.0), 0, 1) * 255
-        return _rgba(np.stack([grey] * 3, axis=-1), bad)
+        return _bytes(np.stack([grey] * 3, axis=-1), bad)
     r, g, b = picked
     data = [np.ma.getdata(bands[i]) for i in picked]
     bad = invalid[r] | invalid[g] | invalid[b]
@@ -284,8 +314,8 @@ def _image(
         d.dtype == np.uint8 and _scale(bits, i) == 1.0 for d, i in zip(data, picked)
     ):
         # 8 bit bands are the colors already: no float copy of the tile.
-        return _rgba(np.stack(data, axis=-1), bad)
+        return _bytes(np.stack(data, axis=-1), bad)
     rgb = np.stack(
         [d.astype("float64") * _scale(bits, i) for d, i in zip(data, picked)], axis=-1
     )
-    return _rgba(rgb, bad)
+    return _bytes(rgb, bad)

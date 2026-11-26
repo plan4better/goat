@@ -8,6 +8,8 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { checkered, seeThrough } from "@/lib/style/checker";
+import { isNone, opaque } from "@/lib/style/colors";
 import { DASHES } from "@/lib/style/compile/constants";
 import { defaultResolveIcon } from "@/lib/style/compile/images";
 import { SQUARE_RADIUS } from "@/lib/style/compile/markerImage";
@@ -28,6 +30,8 @@ import {
   valuesText,
 } from "@/lib/style/legend";
 import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
+
+import { CheckerPattern } from "@/components/map/common/CheckerPattern";
 
 import { rampGradient } from "./rampGradient";
 
@@ -58,7 +62,7 @@ function MarkerIcon({ icon, tint, side }: { icon: string; tint: string; side: nu
         display: "block",
         width: side,
         height: side,
-        backgroundColor: tint,
+        background: checkered(tint),
         maskImage: mask,
         WebkitMaskImage: mask,
         maskSize: "contain",
@@ -140,7 +144,7 @@ function BadgeDot({ badge }: { badge: NonNullable<Swatch["badge"]> }) {
         width: 8,
         height: 8,
         borderRadius: "50%",
-        backgroundColor: badge.color,
+        background: checkered(badge.color),
         border: `1px solid ${badge.ring}`,
       }}
     />
@@ -155,9 +159,16 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
   const marker = swatch.marker ?? {};
   const icon = typeof marker.icon === "string" ? marker.icon : undefined;
   const hollow = marker.fill === false || ring === true;
+  const checker = useId();
+  // A None fill draws nothing; one that is not opaque lies over the checkerboard.
+  const fillColor = str(marker.color, "#2bb381");
+  const filled = !hollow && !isNone(fillColor);
   // The marker opacity is the fill's: a hollow marker's outline and icon are not faded by it, as on the map.
   const opacity = hollow ? 1 : num(marker.opacity, 1);
   const stroke = swatch.outline && num(swatch.outline.opacity, 1) > 0 ? swatch.outline : undefined;
+  // A None marker with nothing else to draw shows the checkerboard alone, as the panel shows a None color.
+  const alone = !hollow && isNone(fillColor) && !stroke && !icon;
+  const clear = (filled && seeThrough(fillColor)) || alone;
   const strokeWidth = stroke ? (ring ? 2 : Math.min(num(stroke.width, 1), 2)) : 0;
   const shape = markerShapeOf(marker.shape);
   const round = shape === "circle" || shape === "square";
@@ -194,9 +205,15 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
           height={side}
           viewBox="0 0 24 24"
           style={{ overflow: "visible" }}>
+          {clear && (
+            <defs>
+              <CheckerPattern id={checker} />
+            </defs>
+          )}
+          {clear && <path data-checker-under d={spec.path} fill={`url(#${checker})`} />}
           <path
             d={spec.path}
-            fill={hollow ? "none" : str(marker.color, "#2bb381")}
+            fill={filled ? fillColor : "none"}
             stroke={stroke ? str(stroke.color, "#000000") : undefined}
             strokeWidth={strokeWidth * (24 / side)}
             strokeLinejoin="round"
@@ -225,7 +242,7 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
           width: side,
           height: side,
           borderRadius: marker.shape === "square" ? side * SQUARE_RADIUS : "50%",
-          backgroundColor: hollow ? "transparent" : str(marker.color, "#2bb381"),
+          background: filled || alone ? checkered(fillColor) : "transparent",
           border: stroke ? `${strokeWidth}px solid ${str(stroke.color, "#000000")}` : undefined,
           display: "flex",
           alignItems: "center",
@@ -255,8 +272,32 @@ function LineSwatch({ swatch, sized, nested }: SwatchProps) {
   // The casing shows on each side of the line, inside the box.
   const around = casing ? Math.min(stroke + 2 * Math.min(num(casing.width, 1), 2), 12) : 0;
   const { width, height } = BOX;
+  const checker = useId();
+  // A color that is not opaque shows the checkerboard where nothing of the layer lies under it; a None line on no casing
+  // shows it alone, as the panel shows a None color.
+  const casingShows = casing !== undefined && !isNone(casing.color);
+  const casingClear = casingShows && seeThrough(casing.color);
+  const lineClear = !casingShows && seeThrough(line.color);
+  const under = (strokeWidth: number) => (
+    <line
+      data-checker-under
+      x1="1"
+      y1={height / 2}
+      x2={width - 1}
+      y2={height / 2}
+      stroke={`url(#${checker})`}
+      strokeWidth={strokeWidth}
+    />
+  );
   return (
     <svg width={width} height={height} aria-hidden={nested ? undefined : "true"} style={{ flex: "none" }}>
+      {(casingClear || lineClear) && (
+        <defs>
+          <CheckerPattern id={checker} />
+        </defs>
+      )}
+      {casingClear && under(around)}
+      {lineClear && under(stroke)}
       {casing && (
         <line
           data-casing
@@ -378,7 +419,16 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
     typeof fill.pattern === "string" && fill.pattern !== "none" ? (fill.pattern as PatternKind) : null;
   const width = Math.max(0.6, num(fill.pattern_width, 2) / 2);
   const tile = kind ? patternTile(kind, Math.max(3, num(fill.pattern_spacing, 10) / 2), width) : null;
-  const ink = str(fill.pattern_color, str(fill.color, "#2bb381"));
+  // A pattern color that is not set takes the fill's hue, opaque (spec 4.6).
+  const ink = str(fill.pattern_color, opaque(str(fill.color, "#2bb381")));
+  const checker = useId();
+  // A None fill draws nothing (an outline alone); one that is not opaque lies over the checkerboard, and a None fill
+  // with nothing else to draw shows the checkerboard alone, as the panel shows a None color.
+  const fillColor = str(fill.color, "#2bb381");
+  const drawn = swatch.fill !== undefined && !ring && !isNone(fillColor);
+  const outlined = swatch.outline !== undefined && !isNone(swatch.outline.color);
+  const alone = swatch.fill !== undefined && !ring && !drawn && !outlined && !tile;
+  const clear = (drawn && seeThrough(fillColor)) || alone;
   const stroke =
     sized !== undefined
       ? Math.min(Math.max(num(swatch.outline?.width, 1) * sized, 0.5), CAPS.outline)
@@ -393,6 +443,12 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
       height={BOX.height}
       aria-hidden={nested ? undefined : "true"}
       style={{ flex: "none" }}>
+      {clear && (
+        <defs>
+          <CheckerPattern id={checker} />
+        </defs>
+      )}
+      {clear && <rect data-checker-under {...rect} fill={`url(#${checker})`} />}
       {tile && (
         <defs>
           <pattern id={id} patternUnits="userSpaceOnUse" width={tile.size} height={tile.size}>
@@ -408,7 +464,7 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
       )}
       <rect
         {...rect}
-        fill={swatch.fill && !ring ? str(fill.color, "#2bb381") : "none"}
+        fill={drawn ? fillColor : "none"}
         fillOpacity={num(fill.opacity, 1)}
         stroke={str(swatch.outline?.color, "none")}
         strokeWidth={edge}
@@ -624,8 +680,14 @@ export function StyleLegend({
           ? { mx: 2, my: 2, p: 3, borderRadius: 2, border: 1, borderColor: "divider" }
           : { py: 0.5 }
       }>
+      {/* One line, cut, the full name on hover, as the entries. Print, which passes `renderText`, keeps it wrapping:
+          paper has no hover. */}
       {title && (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        <Typography
+          variant="body2"
+          noWrap={!renderText}
+          title={renderText ? undefined : title}
+          sx={{ fontWeight: 600 }}>
           {title}
         </Typography>
       )}
@@ -720,7 +782,7 @@ export function StyleLegend({
                   sx={{
                     height: 10,
                     borderRadius: 0.5,
-                    background: rampGradient(section),
+                    background: checkered(rampGradient(section)),
                     opacity: section.opacity ?? 1,
                   }}
                 />

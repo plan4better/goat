@@ -93,7 +93,7 @@ class Queryable:
     #: Name this facet is published under, when it differs from the column.
     #: The published names predate the columns that now back them
     #: (``geometry_type_count`` over ``goat:geometryType``, ``type_count`` over
-    #: ``goat:layerType``), and deriving the name from the column would both
+    #: ``goat:dataType``), and deriving the name from the column would both
     #: rename a live API surface and leak extension prefixes into it.
     facet_name: str = ""
     #: Query-parameter name this property is filterable under, when
@@ -145,9 +145,11 @@ _FIELD_DEFS: dict[str, _Seed] = {
     # arrives prefixed. The published API names stay `?type=` and `type_count`
     # -- what they were when a single overloaded `type` column carried both the
     # STAC object kind and the layer type.
-    "goat:layerType": _Seed(
-        "Layer type", facetable=True, facet_name="type", param="type"
+    # The Data type filter: a layer's own kind, or its typed bundle's type (xplan).
+    "goat:dataType": _Seed(
+        "Data type", facetable=True, facet_name="type", param="type"
     ),
+    "goat:layerType": _Seed("Layer type"),
     "title": _Seed("Human-readable title"),
     "description": _Seed("Human-readable description"),
     "datetime": _Seed("Nominal date and time of the data"),
@@ -206,10 +208,9 @@ class _Virtual:
     requires: str
 
 
-#: Non-column queryables. Both were previously hardcoded as one-off ``if``
-#: branches in ``build_filters``, which made them filterable via their query
-#: parameter but *not* via CQL2 or ``sortby`` -- everything else in the API
-#: supports all three. Expressing them here closes that gap.
+#: Non-column queryables. Each is CQL2-addressable and sortable like a column;
+#: its seed in :data:`_FIELD_DEFS` decides whether it also gets a query
+#: parameter.
 _VIRTUAL_FIELDS: dict[str, _Virtual] = {
     # Makes the score sortable as `relevance` and CQL2-addressable.
     "relevance": _Virtual(
@@ -237,6 +238,14 @@ _VIRTUAL_FIELDS: dict[str, _Virtual] = {
         expr="date_part('year', COALESCE(datetime_start, datetime_end))",
         json_type="integer",
         requires="datetime_start",
+    ),
+    # The Data type of a mirror that has no `goat:dataType` column: the layer's
+    # own `goat:layerType`. The service can run ahead of the mirror it reads,
+    # and `?type=` and `type_count` keep working until the mirror is rebuilt.
+    "goat:dataType": _Virtual(
+        expr='"goat:layerType"',
+        json_type="string",
+        requires="goat:layerType",
     ),
 }
 
@@ -336,9 +345,10 @@ def _entry(name: str, expr: str, json_type: str, json_format: str | None) -> Que
 #:
 #: ``goat:layerType`` likewise: on a dataset it is ``bundle`` for a multi-layer
 #: one, which says how the data is packed, not what it is. Hidden here, ``type``
-#: and ``type_count`` read the layers' own kinds (the mirror derives them), so a
-#: bundle of WMS layers is found by "WMS". The column stays on the row for
-#: display ("Bundle · 6").
+#: and ``type_count`` read the layers' ``goat:dataType`` (the mirror derives it:
+#: the layer's own kind, or its typed bundle's type), so a bundle of WMS layers is
+#: found by "WMS" and a plan by "XPlan". The column stays on the row for display
+#: ("Bundle · 6").
 _HIDDEN_COLLECTION_COLUMNS = frozenset(
     {"goat:geometryType", "goat:layerType", "thumbnail_item"}
 )
@@ -348,9 +358,10 @@ def build_registry(
     columns: dict[str, str], *, relation: str = "items"
 ) -> "QueryableRegistry":
     """Build the registry for a table with these ``{column: duckdb_type}``."""
-    hidden = _HIDDEN_COLUMNS | (
+    hidden_here = (
         _HIDDEN_COLLECTION_COLUMNS if relation == "collections" else frozenset()
     )
+    hidden = _HIDDEN_COLUMNS | hidden_here
     entries: dict[str, Queryable] = {}
     for name, duckdb_type in columns.items():
         if name in hidden:
@@ -373,7 +384,14 @@ def build_registry(
         )
 
     for name, virtual in _VIRTUAL_FIELDS.items():
-        if name in entries or virtual.requires not in columns:
+        # A column hidden on the collections relation only is not read through a
+        # virtual field either: a dataset's `goat:layerType` must not stand in
+        # for its layers' Data type.
+        if (
+            name in entries
+            or virtual.requires not in columns
+            or virtual.requires in hidden_here
+        ):
             continue
         seed = _FIELD_DEFS.get(name)
         entries[name] = _entry(

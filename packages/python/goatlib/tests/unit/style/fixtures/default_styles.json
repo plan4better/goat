@@ -1,0 +1,49 @@
+[
+  {
+    "geometry": "point",
+    "seed": "layer-1",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "marker": {
+          "shape": "circle",
+          "color": "#e68310",
+          "size": 10
+        }
+      }
+    }
+  },
+  {
+    "geometry": "line",
+    "seed": "layer-1",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "line": {
+          "color": "#e68310",
+          "width": 2
+        }
+      }
+    }
+  },
+  {
+    "geometry": "polygon",
+    "seed": "layer-1",
+    "style": {
+      "version": "1.0.0",
+      "kind": "vector",
+      "symbol": {
+        "fill": {
+          "color": "#e68310",
+          "opacity": 0.8
+        },
+        "outline": {
+          "color": "auto",
+          "width": 1
+        }
+      }
+    }
+  }
+]

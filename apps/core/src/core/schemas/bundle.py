@@ -139,7 +139,9 @@ class BundleRead(BundleBase, ThumbnailUrlMixin):
     user_id: UUID | None = Field(
         None, description="Bundle owner ID; None if the owning user was deleted"
     )
-    folder_id: UUID = Field(..., description="Folder the bundle lives in")
+    folder_id: UUID | None = Field(
+        None, description="Folder the bundle lives in; None for a catalog bundle"
+    )
     status: str = Field("ready", description="Processing lifecycle status")
     # The mixin turns the stored value into a presigned URL and falls back to the
     # standard dataset image when unset (same logic as layers). validate_default

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { BASEMAPS } from "@/lib/constants/basemaps";
 import {
   lockSnapshot,
   mapElementLayers,
+  mapElementTone,
   materializeMapElements,
   visibleProjectLayers,
 } from "@/lib/print/mapElements";
@@ -150,5 +152,30 @@ describe("mapElementLayers", () => {
     // Unlocked: the project's drawn layers with their live styles; an atlas page can hide its coverage layer.
     expect(mapElementLayers(changed, {}).map((l) => l.id)).toEqual([9]);
     expect(mapElementLayers(projectLayers, {}, { hide: 9 }).map((l) => l.id)).toEqual([7]);
+  });
+});
+
+describe("mapElementTone", () => {
+  const dark = BASEMAPS.find((b) => b.value === "dark")!;
+  const light = BASEMAPS.find((b) => b.value === "light")!;
+  const solid = (color: string) => ({
+    version: 8,
+    sources: {},
+    layers: [{ id: "background", type: "background", paint: { "background-color": color } }],
+  });
+
+  it("is the tone of the project's basemap while the layers are not locked", () => {
+    expect(mapElementTone({}, dark)).toBe("dark");
+    expect(mapElementTone({}, light)).toBe("light");
+    expect(mapElementTone({ locked_basemap_url: dark.url }, light)).toBe("light");
+    expect(mapElementTone({}, undefined)).toBe("light");
+  });
+
+  it("is the tone of the locked basemap where the layers are locked with it", () => {
+    expect(mapElementTone({ lock_layers: true, locked_basemap_url: dark.url }, light)).toBe("dark");
+    expect(mapElementTone({ lock_layers: true, locked_basemap_url: light.url }, dark)).toBe("light");
+    expect(mapElementTone({ lock_layers: true, locked_basemap_url: solid("#151515") }, light)).toBe("dark");
+    // Locked without a basemap: the project's draws.
+    expect(mapElementTone({ lock_layers: true }, dark)).toBe("dark");
   });
 });

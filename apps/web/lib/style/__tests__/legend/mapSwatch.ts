@@ -1,6 +1,7 @@
 // What the map draws for one feature: the compiled layers' filters, paint and layout evaluated by MapLibre's own
 // expression engine, mapped back to the style's `part.key` names. The legend checks compare legend swatches with it.
 import {
+  Color,
   type StylePropertySpecification,
   createPropertyExpression,
   featureFilter,
@@ -97,7 +98,9 @@ export function mapLook(
       out["fill.color"] = read("paint", "fill-color");
       out["fill.opacity"] = read("paint", "fill-opacity");
     } else if (part === "fill" && layer.type === "fill-extrusion") {
-      out["fill.color"] = read("paint", "fill-extrusion-color");
+      // MapLibre draws a volume's color without its alpha (the layer's opacity carries a fixed color's).
+      const color = read("paint", "fill-extrusion-color") as Color;
+      out["fill.color"] = new Color(color.rgb[0], color.rgb[1], color.rgb[2], 1, false);
       out["extrude.height"] = read("paint", "fill-extrusion-height");
     } else if (part === "pattern" && layer.type === "fill") {
       const image = parsePatternImage(imageName(read("paint", "fill-pattern", tileZoom)));
@@ -130,16 +133,68 @@ export function paintValue(
   zoom = 12,
   globals: Record<string, unknown> = {}
 ): unknown {
+  return layerValue(compiled, layerId, "paint", key, properties, zoom, globals);
+}
+
+/** One paint or layout value of one compiled layer as MapLibre evaluates it (`paintValue`); an image's name as its
+ * text. */
+export function layerValue(
+  compiled: CompiledLayer,
+  layerId: string,
+  group: "paint" | "layout",
+  key: string,
+  properties: Record<string, unknown> = {},
+  zoom = 12,
+  globals: Record<string, unknown> = {}
+): unknown {
+  return layerReader(compiled, layerId, group, key)(properties, zoom, globals);
+}
+
+/** `layerValue` of one property, its expression parsed once, for many features and zooms. */
+export function layerReader(
+  compiled: CompiledLayer,
+  layerId: string,
+  group: "paint" | "layout",
+  key: string
+): (properties: Record<string, unknown>, zoom: number, globals?: Record<string, unknown>) => unknown {
   const layer = (compiled.layers as AnyLayer[]).find((l) => l.id === layerId);
   if (!layer) throw new Error(`no layer ${layerId}`);
   const state = Object.fromEntries(Object.entries(compiled.state).map(([name, v]) => [name, v.default]));
   const spec = (latest as unknown as Record<string, Record<string, StylePropertySpecification>>)[
-    `paint_${layer.type}`
+    `${group}_${layer.type}`
   ][key];
-  const raw = layer.paint?.[key];
-  if (raw === undefined) return spec.default;
-  const parsed = createPropertyExpression(raw, `layers[0].paint.${key}`, spec, state);
+  if (!spec) throw new Error(`${layerId} (${layer.type}) has no ${group} property ${key}`);
+  const raw = layer[group]?.[key];
+  if (raw === undefined) return () => spec.default;
+  const parsed = createPropertyExpression(raw, `layers[0].${group}.${key}`, spec, state);
   if (parsed.result !== "success")
     throw new Error(`${layerId} ${key}: ${parsed.value.map((e) => e.message).join("; ")}`);
-  return parsed.value.evaluate({ zoom, ...globals } as never, { type: 1, properties } as never);
+  const expression = parsed.value;
+  return (properties, zoom, globals = {}) => {
+    const value = expression.evaluate({ zoom, ...globals } as never, { type: 1, properties } as never);
+    return key === "icon-image" ? imageName(value) : value;
+  };
+}
+
+const HEX = /^#[0-9a-f]{6}([0-9a-f]{2})?$/i;
+
+/** A color as the map draws it (MapLibre's color, its color text, a hex color): `#rrggbb` without its alpha, and its
+ * alpha (0 to 1); undefined for anything else, and for a MapLibre color at alpha 0, which keeps no hue. */
+export function colorOf(value: unknown): { hex: string; alpha: number } | undefined {
+  if (typeof value === "string" && HEX.test(value))
+    return {
+      hex: value.slice(0, 7).toLowerCase(),
+      alpha: value.length === 9 ? parseInt(value.slice(7), 16) / 255 : 1,
+    };
+  const color = value instanceof Color ? value : typeof value === "string" ? Color.parse(value) : undefined;
+  if (!color || color.a === 0) return undefined;
+  const [r, g, b, a] = color.rgb;
+  const hex = [r, g, b]
+    .map((x) =>
+      Math.round(x * 255)
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("");
+  return { hex: `#${hex}`, alpha: a };
 }

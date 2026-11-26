@@ -5,6 +5,7 @@
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
   type RasterColorSpec,
+  alphaShare,
   classReach,
   rasterColorSpec,
   rgbOf,
@@ -258,7 +259,9 @@ type Knot = [q: number, color: Rgba];
 
 const CLEAR: Rgba = [0, 0, 0, 0];
 
-const fill = (color: string | null, alpha = 1): Rgba => (color === null ? CLEAR : [...rgbOf(color), alpha]);
+/** A color as drawn: its own alpha (spec 4.6) times `alpha` (a color table entry's). */
+const fill = (color: string | null, alpha = 1): Rgba =>
+  color === null ? CLEAR : [...rgbOf(color), alpha * alphaShare(color)];
 
 /** Rounds as goatlib's encoder rounds a value to its code (numpy's rint: halves to even). */
 const rint = (x: number): number => {

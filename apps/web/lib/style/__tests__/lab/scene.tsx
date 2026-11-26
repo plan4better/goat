@@ -1,7 +1,8 @@
 // A lab scene: one GOAT Style drawn by the app's compiler and renderer on a real MapLibre map, with the app's legend
 // beside it. One made-up feature per legend entry sits at a known pixel on a white ground without a basemap, so the
 // checks can look at what is drawn there (a case with its own source, a raster's tiles, draws those instead); every
-// error the page reports is kept.
+// error the page reports is kept. A scene may be drawn on another ground (`LAB_GROUNDS`: a basemap's land color, with a
+// picture of the basemap over it where one is given), compiled for that basemap's tone.
 import { ThemeProvider } from "@mui/material/styles";
 import i18next from "i18next";
 import { Map as MaplibreMap } from "maplibre-gl";
@@ -28,6 +29,7 @@ import {
   listedRules,
 } from "@/lib/style/legend";
 import { applyCompiled } from "@/lib/style/render/apply";
+import { type Tone, basemapTone } from "@/lib/style/tone";
 import { MAPLIBRE_MAP_OPTIONS } from "@/lib/utils/map/maplibre";
 
 import { StyleLegend } from "@/components/map/legend/StyleLegend";
@@ -37,7 +39,8 @@ import { sampleFor } from "../legend/samples";
 /** Glyphs from the local fixtures the lab config serves. */
 export const LAB_GLYPHS = "/lab-glyphs/{fontstack}/{range}.pbf";
 
-const MAP = { width: 640, height: 480 };
+/** The map's size in CSS pixels. */
+export const MAP = { width: 640, height: 480 };
 /** The family the app sets on its page, which the legend's text inherits. */
 export const LAB_FONT = "Mulish";
 const LEGEND_WIDTH = 240;
@@ -48,6 +51,38 @@ export const SAMPLE_SIZE = 60;
 /** How far from its pixel a group's points lie: well inside any merge distance. */
 const GROUP_SPREAD = 8;
 const SETTLE_TIMEOUT_MS = 10_000;
+
+/** What a scene's map is drawn on: a solid color, with a picture over the whole map where `picture` is given (a URL of
+ * a picture of the map's size, which the scene stretches over it), and the tone of the basemap it stands for, which
+ * the compiler gets. */
+export interface LabGround {
+  name: string;
+  /** `#rrggbb`. */
+  color: string;
+  tone: Tone;
+  picture?: string;
+}
+
+/** The color the app's Light and Dark basemaps draw as land, which most of a map shows between its features. */
+export const BASEMAP_LAND = { light: "#f2f3f0", dark: "#0c0c0c" } as const;
+
+/** A dark green grey for satellite imagery where no picture of it is given. */
+const SATELLITE_STAND_IN = "#2f3b33";
+
+const builtInTone = (value: string): Tone => basemapTone({ source: "builtin", type: "vector", value });
+
+/** The grounds of the app's Light, Dark and Satellite basemaps, each with the tone the app gives that basemap. Without
+ * a ground a scene is drawn on white and compiled without a tone. */
+export const LAB_GROUNDS = {
+  light: { name: "light", color: BASEMAP_LAND.light, tone: builtInTone("light") },
+  dark: { name: "dark", color: BASEMAP_LAND.dark, tone: builtInTone("dark") },
+  satellite: { name: "satellite", color: SATELLITE_STAND_IN, tone: builtInTone("satellite") },
+} satisfies Record<string, LabGround>;
+
+const WHITE_GROUND = "#ffffff";
+
+const rgbOf = (hex: string): [number, number, number] =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
 
 export interface LabCase {
   id: string;
@@ -86,6 +121,8 @@ export interface Scene {
   requestedImages: string[];
   /** The style the scene draws. */
   style: JsonObject;
+  /** The ground's color, red, green and blue: white unless the scene was drawn on another ground. */
+  ground: [number, number, number];
   /** What the scene compiled, and what that gave (null when compiling threw): a test compiles a changed style over the
    * same input and applies it over this. */
   input: CompileInput | null;
@@ -335,6 +372,7 @@ export function queueUnmount(unmount: () => Promise<void>): void {
 }
 
 function SceneView({ legend, name }: { legend: Legend | null; name: string }) {
+  // The map's ground is drawn by the map; the legend stays on white, as in the app's panel.
   return (
     <div
       data-lab-scene=""
@@ -361,8 +399,14 @@ function SceneView({ legend, name }: { legend: Legend | null; name: string }) {
 
 /** Draws a case and its legend and resolves once everything is drawn. `groups` (or the case's own) place their points
  * in place of the per-entry samples (clusters, a heatmap); a case's own `source` (a raster's tiles) is drawn in place
- * of any made-up features. `placed` then lists none. A case with both a source and groups is an error. */
-export async function renderScene(c: LabCase, opts: { groups?: LabGroup[] } = {}): Promise<Scene> {
+ * of any made-up features. `placed` then lists none. A case with both a source and groups is an error. `ground` draws
+ * the map on that ground and compiles the style for its tone; `pixelRatio` draws the map's canvas at that many device
+ * pixels per CSS pixel. */
+export async function renderScene(
+  c: LabCase,
+  opts: { groups?: LabGroup[]; ground?: LabGround; pixelRatio?: number } = {}
+): Promise<Scene> {
+  const { ground } = opts;
   await unmounting;
   const errors: string[] = unmountFailures.splice(0);
   const requestedImages: string[] = [];
@@ -413,13 +457,16 @@ export async function renderScene(c: LabCase, opts: { groups?: LabGroup[] } = {}
       zoom: c.zoom,
       attributionControl: false,
       fadeDuration: 0,
+      ...(opts.pixelRatio ? { pixelRatio: opts.pixelRatio } : {}),
       // Keeps the frame in the drawing buffer after compositing, so its pixels can be read back.
       canvasContextAttributes: { preserveDrawingBuffer: true },
       style: {
         version: 8,
         glyphs: LAB_GLYPHS,
         sources: {},
-        layers: [{ id: "ground", type: "background", paint: { "background-color": "#ffffff" } }],
+        layers: [
+          { id: "ground", type: "background", paint: { "background-color": ground?.color ?? WHITE_GROUND } },
+        ],
       },
     });
     teardown.push(() => map.remove());
@@ -457,12 +504,34 @@ export async function renderScene(c: LabCase, opts: { groups?: LabGroup[] } = {}
       errors,
       requestedImages,
       style: c.style,
+      ground: rgbOf(ground?.color ?? WHITE_GROUND),
       input: null,
       compiled: null,
     };
     cleanups.set(scene, close);
 
     await map.once("load");
+    if (ground?.picture) {
+      // The picture over the whole map, under the layers the style adds.
+      const corners = [
+        [0, 0],
+        [MAP.width, 0],
+        [MAP.width, MAP.height],
+        [0, MAP.height],
+      ].map(([x, y]) => map.unproject([x, y]).toArray()) as [
+        [number, number],
+        [number, number],
+        [number, number],
+        [number, number],
+      ];
+      map.addSource("ground-picture", { type: "image", url: ground.picture, coordinates: corners });
+      map.addLayer({
+        id: "ground-picture",
+        type: "raster",
+        source: "ground-picture",
+        paint: { "raster-fade-duration": 0, "raster-resampling": "linear" },
+      });
+    }
     let source = c.source;
     if (source && (opts.groups ?? c.groups))
       errors.push("scene: a case with its own source places no groups of points");
@@ -478,6 +547,7 @@ export async function renderScene(c: LabCase, opts: { groups?: LabGroup[] } = {}
         geometry: c.geometry,
         fields: c.fields,
         source,
+        ...(ground ? { tone: ground.tone } : {}),
       };
       scene.compiled = compileLayer(scene.input);
       const { tileSize } = c;

@@ -2,11 +2,13 @@
 // layer opacity.
 import type { LayerSpecification } from "maplibre-gl";
 
+import { isNone } from "@/lib/style/colors";
 import { featureFilter, isSet } from "@/lib/style/compile/cascade";
 import { HIGHLIGHT } from "@/lib/style/compile/constants";
+import type { RuleInputs } from "@/lib/style/compile/derived";
 import type { ImageCollector } from "@/lib/style/compile/images";
 import type { CompileInput, CompiledLayer, FieldType, Geometry } from "@/lib/style/compile/types";
-import { type Expr, type Value, combine, fromForm, toProperty } from "@/lib/style/compile/values";
+import { type Expr, type Value, combine, fromForm, isZoomed, toProperty } from "@/lib/style/compile/values";
 import { type JsonObject, deepEqual, isObject } from "@/lib/style/json";
 
 export interface PartContext {
@@ -28,8 +30,10 @@ export interface PartContext {
    * none. */
   icon?: { refs: string[]; pick: (map: (ref: string) => Expr, fallback: Expr) => Expr };
   /** The marker color when it is not the cascade's (a cluster drawn like its points takes the color of the category it
-   * mostly holds). */
-  color?: Expr;
+   * mostly holds), with each color `map`ped. */
+  color?: (map: (color: unknown) => Expr) => Expr;
+  /** The context draws the clusters (spec 8.2): its label is the cluster's number, its colors are a cluster symbol's. */
+  cluster?: boolean;
 }
 
 /** MapLibre's own defaults: a property equal to one of these that no record sets is left out. */
@@ -73,6 +77,9 @@ export function put(
   target[key] = property;
 }
 
+/** What the rules of derived colors read besides the followed color: the basemap's tone, light where none is given. */
+export const ruleInputs = (ctx: PartContext): RuleInputs => ({ tone: ctx.input.tone ?? "light" });
+
 /** The active or hovered feature (spec 16 "highlight"). */
 export const ACTIVE: Expr = [
   "any",
@@ -91,6 +98,22 @@ export const highlightWidth = (ctx: PartContext, value: Value): Value =>
   ctx.input.highlight
     ? combine([value], ([v]) => ["case", ACTIVE, ["max", v, HIGHLIGHT.width], v], { kind: "number" })
     : value;
+
+/** Whether a value is `expr` for every feature at every zoom. */
+export const always = (value: Value, expr: Expr) => !isZoomed(value) && value.expr === expr;
+
+/** Whether a color is one color at alpha 0 ("None", spec 4.6) for every feature at every zoom: its part gets no layer,
+ * so it takes no clicks. A color that varies draws nothing through its alpha where it is None. */
+export const drawsNothing = (color: Value): boolean => !isZoomed(color) && isNone(color.expr);
+
+/** `filled` where a feature's marker has its fill (`marker.fill`), `hollow` where it has none. */
+export function byFill(fill: Value, filled: Value, hollow: Value, kind: "number" | "color"): Value {
+  return combine(
+    [fill, filled, hollow],
+    ([f, a, b]) => (f === true ? a : f === false ? b : ["case", ["==", f, false], b, a]),
+    { kind }
+  );
+}
 
 /** A part opacity times the layer opacity, for layers without a layer opacity of their own (spec 4.6). */
 export function withLayerOpacity(ctx: PartContext, opacity: Value): Value {

@@ -1,6 +1,5 @@
 "use client";
 
-import { useTheme } from "@mui/material";
 import { type RefObject, useEffect, useRef } from "react";
 import type { MapRef } from "react-map-gl/maplibre";
 
@@ -66,7 +65,6 @@ export function useProjectAssistantSurface({
   const activeLayerId = useAppSelector((state) => state.layers.activeLayerId);
   const workflowId = useAppSelector((state) => state.workflow.selectedWorkflowId);
   const { basemaps, activeBasemap } = useBasemap(project);
-  const appTheme = useTheme().palette.mode;
   const storedView = useAppSelector((state) => state.map.view);
   // The store outlives the page: a view stored for another project is not this map's.
   const view = project && storedView?.projectId === project.id ? storedView : undefined;
@@ -98,11 +96,10 @@ export function useProjectAssistantSurface({
                 projectId: project.id,
                 map: mapRef.current,
                 activeLayerId,
-                basemap: basemapInfo(activeBasemap, appTheme),
+                basemap: basemapInfo(activeBasemap),
                 basemaps: offeredBasemaps(
                   basemaps.filter((basemap) => basemap.source === "builtin"),
-                  basemaps.filter((basemap) => basemap.source === "custom"),
-                  appTheme
+                  basemaps.filter((basemap) => basemap.source === "custom")
                 ),
                 viewMode: view?.mode,
                 projection: view?.projection,

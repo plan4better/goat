@@ -38,6 +38,9 @@ def styled(
     """The default style of the geometry with `symbol`'s parts merged over it
     (`False` turns a part off)."""
     doc = default_style(DataContext(kind="vector", geometry=geometry), seed=seed)
+    # A tool's polygons draw no outline unless `symbol` gives one.
+    if "outline" in doc["symbol"]:
+        doc["symbol"]["outline"] = False
     for part, value in (symbol or {}).items():
         current = doc["symbol"].get(part)
         doc["symbol"][part] = (

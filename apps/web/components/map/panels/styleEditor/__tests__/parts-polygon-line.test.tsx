@@ -62,6 +62,38 @@ describe("polygon and line parts", () => {
     expect(field.textContent).toBe("style_editor.same_as_fill");
   });
 
+  it("Auto writes auto beside Same as fill, and the rows read Auto", async () => {
+    const { store } = render(
+      { fill: { color: "#7f3c8d" }, outline: { color: "#000000", width: 1 } },
+      "polygon"
+    );
+    await openGroup("style_editor.part_outline");
+    const field = screen.getByRole("button", { name: "style_editor.pick_color" });
+    await userEvent.click(field);
+    const auto = screen.getByRole("button", { name: "style_editor.auto" });
+    const same = screen.getByRole("button", { name: "style_editor.same_as_fill" });
+    expect([auto, same].map((o) => o.getAttribute("aria-pressed"))).toEqual(["false", "false"]);
+    await userEvent.click(auto);
+    expect(store.get("symbol.outline.color")).toBe("auto");
+    expect(auto.getAttribute("aria-pressed")).toBe("true");
+    expect(same.getAttribute("aria-pressed")).toBe("false");
+    expect(field.textContent).toBe("style_editor.auto");
+    // The group row: Auto with the width, its swatch the darker shade the map draws.
+    expect(screen.getAllByText("style_editor.auto · 1 px").length).toBeGreaterThan(0);
+    await userEvent.click(same);
+    expect(store.get("symbol.outline.color")).toBe("fill");
+    expect(auto.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("the casing's color offers Auto and no Same as fill", async () => {
+    const { store } = render({ line: { color: "#f97b72" }, casing: { color: "#ffffff", width: 1 } }, "line");
+    await openGroup("style_editor.part_casing");
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.pick_color" }));
+    expect(screen.queryByRole("button", { name: "style_editor.same_as_fill" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "style_editor.auto" }));
+    expect(store.get("symbol.casing.color")).toBe("auto");
+  });
+
   it("a polygon outline runs on the edge, inside or outside", async () => {
     const { store } = render({ fill: {}, outline: { color: "#000000", width: 4 } }, "polygon");
     await openGroup("style_editor.part_outline");

@@ -3,9 +3,10 @@
 import { isSet, setValues } from "@/lib/style/compile/cascade";
 import { DEFAULT_CLUSTER_SYMBOL } from "@/lib/style/compile/render";
 import type { Geometry } from "@/lib/style/compile/types";
+import { DEFAULT_OUTLINE } from "@/lib/style/defaults";
 import { switchMode, targetsOf } from "@/lib/style/editor/forms";
 import { perLayerPath, recordPaths } from "@/lib/style/editor/sources";
-import { type Path, getIn, setIn } from "@/lib/style/editor/store";
+import { type Path, type Scope, getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, clone, isObject } from "@/lib/style/json";
@@ -30,9 +31,43 @@ export function markerOn(doc: LayerStyle): boolean {
 }
 
 /** `render` for clusters: points that draw an icon or a shape other than a plain circle, in any record, cluster like
- * the points with the count on a badge; plain circles cluster as circles by count (spec 8.2). */
+ * the points with the count on a badge; plain circles cluster as circles by count (spec 8.2). Either way with the
+ * default cluster symbol, its number on Auto (spec 18.10). */
 export function clusterRender(doc: LayerStyle): JsonObject {
-  return markerOn(doc) ? { type: "cluster", look: "points", count: "badge" } : { type: "cluster" };
+  const symbol = clone(DEFAULT_CLUSTER_SYMBOL) as JsonObject;
+  symbol.label = { ...(symbol.label as JsonObject), color: "auto" };
+  return markerOn(doc)
+    ? { type: "cluster", look: "points", count: "badge", symbol }
+    : { type: "cluster", symbol };
+}
+
+/** The paths of the colors a start sets (`color`, `halo.color`). */
+function colorPaths(value: JsonObject, prefix = ""): string[] {
+  return Object.entries(value).flatMap(([key, v]) =>
+    isObject(v) ? colorPaths(v, `${prefix}${key}.`) : key === "color" ? [`${prefix}${key}`] : []
+  );
+}
+
+/** What a part switched on writes with nothing to bring back, given the `start` its colors take (spec 18.10). In a
+ * class or rule (`scope`): `{}` while the layer's own part is an object, which the record then inherits; else the
+ * start. For the layer: the start, unless a class or rule holds the part without one of the start's colors, whose
+ * default color the start would change; then `{}`. */
+export function startFor(doc: LayerStyle, part: string, scope: Scope | null, start: JsonObject): JsonObject {
+  if (scope) return isObject(getIn(doc, `symbol.${part}`)) ? {} : start;
+  const paths = colorPaths(start);
+  const inherits = recordPaths(doc).some(
+    ({ record }) => isObject(record[part]) && paths.some((path) => getIn(record[part], path) === undefined)
+  );
+  return inherits ? {} : start;
+}
+
+/** What an outline or a casing switched on starts with when there is nothing to bring back, as `startFor` decides: an
+ * outline as a new polygon layer's (Auto, 1 px), a casing its color on Auto at its default width. Any other part
+ * starts empty. */
+export function partStart(doc: LayerStyle, part: string, scope: Scope | null): JsonObject {
+  if (part === "outline") return startFor(doc, part, scope, { ...DEFAULT_OUTLINE });
+  if (part === "casing") return startFor(doc, part, scope, { color: "auto" });
+  return {};
 }
 
 /** What switching the layer's icon off takes from its markers: the base marker's icon, shape and what only an icon
@@ -104,7 +139,7 @@ export function iconOff(doc: LayerStyle, ctx: { mapZoom: number; geometry?: Geom
 }
 
 /** The layer's icons and shapes back as `kept` had them (a pin without an icon stays without); with nothing to bring
- * back, the default marker icon. */
+ * back, the default marker icon, its color on Auto unless the marker sets one (spec 18.10). */
 export function restoreIcon(doc: LayerStyle, kept?: IconSettings): LayerStyle {
   const marker = kept?.marker ?? {};
   let next = doc;
@@ -124,7 +159,11 @@ export function restoreIcon(doc: LayerStyle, kept?: IconSettings): LayerStyle {
     if (!isObject(getIn(next, path)) || recordId(next, path) !== id) continue;
     for (const [key, value] of Object.entries(values)) next = setIn(next, `${path}.marker.${key}`, value);
   }
-  return markerOn(next) ? next : setIn(next, `${MARKER}.icon`, DEFAULT_ICON);
+  if (markerOn(next)) return next;
+  next = setIn(next, `${MARKER}.icon`, DEFAULT_ICON);
+  return getIn(next, `${MARKER}.icon_color`) === undefined
+    ? setIn(next, `${MARKER}.icon_color`, "auto")
+    : next;
 }
 
 /** Whether the point symbol is drawn: a heatmap or H3 hides it unless it hands over at `points_from_zoom` (spec 8). */
@@ -173,7 +212,16 @@ function classesColorTheIcon(doc: LayerStyle): LayerStyle {
 
 export function setMarkerShape(doc: LayerStyle, shape: MarkerShape): LayerStyle {
   if (shape !== "icon") {
-    const next = setIn(doc, `${MARKER}.shape`, shape === "circle" ? undefined : shape);
+    let next = setIn(doc, `${MARKER}.shape`, shape === "circle" ? undefined : shape);
+    // The icon alone becomes an icon on the marker: with no icon color, and no other record drawing an icon, its color
+    // starts on Auto (spec 18.10), as a first icon does.
+    if (
+      getIn(doc, `${MARKER}.shape`) === "icon" &&
+      getIn(doc, `${MARKER}.icon`) !== undefined &&
+      getIn(doc, `${MARKER}.icon_color`) === undefined &&
+      !recordPaths(doc).some(({ record }) => isObject(record.marker) && record.marker.icon !== undefined)
+    )
+      next = setIn(next, `${MARKER}.icon_color`, "auto");
     // A pin points at its place with its tip: an anchor set for the shape before goes.
     return isPin(shape) ? setIn(next, `${MARKER}.anchor`, undefined) : next;
   }
@@ -188,7 +236,9 @@ export function setMarkerShape(doc: LayerStyle, shape: MarkerShape): LayerStyle 
 }
 
 /** The marker with icon `ref` at `path` (the base's or a class's); undefined takes the icon off the layer, and a
- * marker that was the icon alone becomes a circle. */
+ * marker that was the icon alone becomes a circle. The layer's first icon, where no record draws one and the marker
+ * sets no icon color, starts with its color on Auto (spec 18.10), as the Icon switch does; a class's icon takes the
+ * layer's icon color. */
 export function setMarkerIcon(
   doc: LayerStyle,
   path: string,
@@ -196,7 +246,13 @@ export function setMarkerIcon(
   ctx: { mapZoom: number; geometry?: Geometry }
 ): LayerStyle {
   if (ref !== undefined) {
-    const next = setIn(doc, path, ref);
+    const first =
+      path === `${MARKER}.icon` &&
+      !isSet(doc as unknown as JsonObject, "marker.icon") &&
+      getIn(doc, `${MARKER}.icon_color`) === undefined &&
+      getIn(doc, `${MARKER}.shape`) !== "icon";
+    let next = setIn(doc, path, ref);
+    if (first) next = setIn(next, `${MARKER}.icon_color`, "auto");
     // A pin symbol on its own stands on its tip, unless an anchor is set.
     const alone = getIn(next, `${MARKER}.shape`) === "icon";
     return path === `${MARKER}.icon` &&
@@ -231,7 +287,7 @@ export function withClusterSymbol(doc: LayerStyle): LayerStyle {
 }
 
 /** The starting range of a cluster value by a field (spec 8.2): the field's for its mean, smallest or largest value;
- * for its sum, from the field's lowest value to ten times its highest. The panel's Range row changes it. */
+ * for its sum, from the field's lowest value to ten times its highest. The Range row of the Size editor changes it. */
 export function clusterValueDomain(
   op: string,
   profile?: { min?: number; max?: number }

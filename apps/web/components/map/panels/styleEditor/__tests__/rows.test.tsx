@@ -125,6 +125,19 @@ describe("rows", () => {
     expect(onCommit).toHaveBeenCalledWith(7);
   });
 
+  it("SliderRow with commitOnLeave reports a typed number once, when its box is left", async () => {
+    const onChange = vi.fn();
+    renderPanel(
+      <SliderRow label="Size" min={2} max={60} step={1} value={40} commitOnLeave onChange={onChange} />
+    );
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    await userEvent.clear(input);
+    await userEvent.type(input, "30");
+    expect(onChange).not.toHaveBeenCalled();
+    await userEvent.tab();
+    expect(onChange.mock.calls).toEqual([[30]]);
+  });
+
   it("pct shows 0 to 100 and reports 0 to 1", async () => {
     const onChange = vi.fn();
     renderPanel(
@@ -249,6 +262,20 @@ describe("rows", () => {
     await userEvent.keyboard("{Enter}");
     await userEvent.keyboard(" ");
     expect(onOpen).toHaveBeenCalledTimes(3);
+  });
+
+  it("ColorField shows a color's own transparency as six digits and a percent over the checkerboard, None at 0%", () => {
+    const { unmount } = renderPanel(<ColorField value="#e87ab294" onOpenPicker={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "style_editor.pick_color" });
+    expect(button.textContent).toBe("#E87AB2 · 58%");
+    const swatch = getComputedStyle(button.firstElementChild as HTMLElement);
+    // The color first, the checkerboard's two layers of corners under it.
+    expect(swatch.backgroundImage.match(/linear-gradient/g)).toHaveLength(3);
+    unmount();
+    renderPanel(<ColorField value="#cc615c00" onOpenPicker={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "style_editor.pick_color" }).textContent).toBe(
+      "style_editor.none"
+    );
   });
 
   it("ColorField shows Same as fill for the sentinel", () => {

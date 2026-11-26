@@ -5,6 +5,8 @@ import { Box, Tooltip, Typography } from "@mui/material";
 import { type ReactNode, memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { checkered } from "@/lib/style/checker";
+
 import { useIsOpener } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { FieldButton, FieldTrailingIcon } from "@/components/map/panels/styleEditor/rows/FieldButton";
 import { Row } from "@/components/map/panels/styleEditor/rows/Row";
@@ -16,7 +18,8 @@ export interface Swatch {
   small?: boolean;
 }
 
-/** The prototype's `.rsw`: 16 px (12 px small), a 40 x 12 strip for ramps, a hairline inner edge. */
+/** The prototype's `.rsw`: 16 px (12 px small), a 40 x 12 strip for ramps, a hairline inner edge; a color that is not
+ * opaque over the swatch checkerboard. */
 export function SwatchBox({ swatch }: { swatch: Swatch }) {
   const size = swatch.small ? 12 : 16;
   return (
@@ -27,7 +30,7 @@ export function SwatchBox({ swatch }: { swatch: Swatch }) {
         flex: "none",
         borderRadius: swatch.wide || swatch.small ? "3px" : "4px",
         boxShadow: (theme) => `inset 0 0 0 1px ${theme.palette.divider}`,
-        background: swatch.background,
+        background: checkered(swatch.background),
       }}
     />
   );

@@ -12,7 +12,6 @@ basemap, the 3D scene and the view (Changing the map). On a page without these
 tools (Workflows, layouts, dashboards, the catalog, home), tell the user to
 open the project's Map page.
 
-The comment above an example names the layer kind or the tool it calls.
 Layers 12 (polygons), 13 (points), 14 (lines) and their fields are invented:
 use your layer's ids and fields.
 
@@ -102,9 +101,10 @@ Only the user's words change that (A new style or variants):
   pointer into the style as style_get shows it; a list item with an id is
   named by its id: `/classify/density/count`, `/rules/r1`, `/popup/blocks/b1`.
 - `set` creates missing objects on the way: `/symbol/label/text` works on a
-  style without a label. A part that is switched off holds `false` (a new
-  polygon layer has `"outline": false`): nothing can be set under it, so set
-  the part whole.
+  style without a label. Change a part with one set per key by path
+  (`/symbol/outline/color`); never reset the part first: `{}` resets its keys
+  (an outline turns white). A key set under a part that is `false` turns it
+  on.
 - A new classification, class, rule or popup block is an `add` to its list
   (`/classify`, `/classify/density/classes`, `/rules`, `/popup/blocks`). The
   result's `added` gives its id by the operation's index, counting from 0. A
@@ -131,7 +131,7 @@ Only the user's words change that (A new style or variants):
 
 <!-- layer: polygon -->
 ```json
-{"layer_project_id": 12, "operations": [{"op": "set", "path": "/symbol/outline", "value": {"color": "#555555", "width": 0.5}}]}
+{"layer_project_id": 12, "operations": [{"op": "set", "path": "/symbol/outline/color", "value": "auto"}, {"op": "set", "path": "/symbol/outline/width", "value": 0.5}]}
 ```
 
 ## Which form for which data
@@ -140,6 +140,8 @@ Only the user's words change that (A new style or variants):
 |---|---|
 | one color for everything | the main part's color: `/symbol/fill/color`, `/symbol/line/color` or `/symbol/marker/color` |
 | the layer more transparent | `/opacity` from 0 to 1 for the whole layer, `/symbol/fill/opacity` for the fill alone |
+| one class or palette color see-through | its last two hex digits (`#3182bd80`: 50 %), which multiply with `opacity` (at 0.8: 40 %) |
+| outline only, a part's or class's color not drawn | None: the color at 0 %, it keeps its hue (`#3182bd00`); with a None fill an `"auto"` outline keeps the layer's color |
 | a text field with up to 12 values | `categories` with `count` = its `distinct_count`, a qualitative palette |
 | a text field with many values | `categories` with `count` 5 to 8 (the most frequent) and `other` in grey; say what "Other" holds |
 | a number, in ranges | a numeric method with `count` and a sequential palette; the server computes the classes |
@@ -188,7 +190,7 @@ side twice); a yes/no field; a rule for features without a value:
 
 - **Kind by meaning.** Sequential for low to high, diverging for two
   directions around a midpoint, qualitative for categories without an order.
-  Another kind is the warning `palette_kind_mismatch`.
+  Another kind warns (`palette_kind_mismatch`).
 - **Sequential:** `colorbrewer:YlOrRd`, `colorbrewer:YlGnBu`,
   `colorbrewer:Blues`, `colorbrewer:Greens`, `colorbrewer:Purples`,
   `d3:viridis`, `d3:cividis`, `d3:plasma`, `d3:magma`, `d3:inferno`.
@@ -201,21 +203,23 @@ side twice); a yes/no field; a rule for features without a value:
   holds a pure red and a pure green.
 - Only the five `d3:` ramps are rated colorblind safe (`colorblind_safe`).
 - **Which end is high.** High values take the end that stands out from the
-  basemap (`tone`, in the page state too). On a light basemap that is the dark
-  end: ColorBrewer ramps as they are, `d3:` ramps with `"reverse": true`. On a
-  dark basemap or imagery it is the light end: `d3:` ramps as they are,
-  ColorBrewer ramps with `"reverse": true`.
-- **Against the basemap.** Light: no pale fills; thin dark grey outlines
-  (`#555555`, 0.5). Dark: no dark fills; light outlines. Imagery (`imagery`
-  true): strong, saturated colors, a white `casing` under lines, an outline
-  around markers. Polygon fills at `opacity` 0.6 to 0.8 show the basemap. Say
-  when the basemap decided a choice.
-- **The user names colors.** One color is a hex value. "A blue ramp" is
-  `colorbrewer:Blues`. Colors of their own are an inline palette: a list of 2
-  to 12 hex colors in place of the id, at least as many as classes
-  (`palette_too_short`). Look any other name up with style_catalog (`kind`
-  `palettes`, `query` or `palette_kind`). Never write a palette id you have
-  not seen here or there.
+  basemap: on a light basemap the dark end (ColorBrewer ramps as they are,
+  `d3:` ramps with `"reverse": true`), on a dark one or imagery the light end
+  (the other way round).
+- Write `"auto"` on the symbol where the user names none, on any basemap: an
+  `outline` or `casing` (a darker shade of what it follows), a label's
+  `color` and `halo` (readable on the basemap), an `icon_color` and a
+  cluster's number (on the marker). "A darker shade of its own (or each
+  class's) color" is `"auto"`; never darker colors per class by hand.
+- **Against the basemap.** Light: no pale fills. Dark: no dark fills; a fixed
+  outline light. Imagery (`imagery`): strong, saturated colors, a
+  `casing` under lines, an outline around markers. Polygon fills at `opacity`
+  0.6 to 0.8 show the basemap. Say when the basemap decided a choice.
+- **The user names colors.** One color is a hex value, "a blue ramp"
+  `colorbrewer:Blues`, colors of their own an inline palette: 2 to 12 hex
+  colors in place of the id, at least one per class (`palette_too_short`).
+  Look any other name up with style_catalog (`kind` `palettes`, `query` or
+  `palette_kind`); never write a palette id you have not seen here or there.
 - Grey (`#9aa3ad`) is for "Other" and features without a value, never for a
   class.
 
@@ -267,8 +271,8 @@ side twice); a yes/no field; a rule for features without a value:
 ## Sizes
 
 - A size by a number is a value form: `range` is the size at the lowest and at
-  the highest value. Markers take `"scale": "sqrt"` (the area grows with the
-  value) and a range such as 4 to 24; line widths a range such as 1 to 8.
+  the highest value. Markers take `"scale": "sqrt"` and a range such as 4 to
+  24; line widths a range such as 1 to 8.
 - With sized markers, add `order` so small ones lie on top, and an
   `opacity` of 0.7 to 0.8 where they overlap. A polygon layer takes a `marker`
   too: one per polygon.
@@ -284,29 +288,28 @@ side twice); a yes/no field; a rule for features without a value:
 
 <!-- layer: line -->
 ```json
-{"layer_project_id": 14, "operations": [{"op": "set", "path": "/symbol/line/width", "value": {"field": "population", "range": [1, 8]}}, {"op": "set", "path": "/symbol/casing", "value": {"color": "#ffffff", "width": 1.5}}]}
+{"layer_project_id": 14, "operations": [{"op": "set", "path": "/symbol/line/width", "value": {"field": "population", "range": [1, 8]}}, {"op": "set", "path": "/symbol/casing", "value": {"color": "auto", "width": 1.5}}]}
 ```
 
 ## Icons and emoji
 
 - style_catalog with `kind` `icons` and no query lists every library icon by
   group: one call, then pick. Find emoji by `query`: one or two English words
-  ("bus", "shop"), or the emoji itself when the user named one. Use only ids
-  it answers: an invented one is `unknown_icon`.
+  ("bus", "shop"), or the emoji itself when the user named one.
 - An icon on a circle: `icon` on a marker with `shape` `circle`, drawn in
-  `icon_color` (white) on the marker's `color`, readable at 16 px or more. A
-  size by zoom gets its icon where it reaches 16 (`icon` by zoom,
+  `icon_color` on the marker's `color`, readable at 16 px or more. A size by
+  zoom gets its icon where it reaches 16 (`icon` by zoom,
   `"interpolate": "step"`), a dot (`goat:circle-solid`) below, in classes
   too. The icon alone: `"shape": "icon"`, tinted with `color`.
 - An emoji keeps its own colors: `color` and `icon_color` do not tint it. Use
   it with `"shape": "icon"`, and never to show a color by class.
 - An icon per category: each class sets its `marker` `icon` and the base
   marker a neutral one, which "Other" and new values draw. At most 8 icons. Any
-  part the classes set (an outline, a label) is set on the base first.
+  part the classes set (an outline, a label) is set on the base too.
 
 <!-- layer: point, classified -->
 ```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker/size", "value": 18}, {"op": "set", "path": "/symbol/marker/icon", "value": "goat:marker"}, {"op": "set", "path": "/classify/category/classes/c1/marker/icon", "value": "goat:school"}, {"op": "set", "path": "/classify/category/classes/c2/marker/icon", "value": "goat:shop"}, {"op": "set", "path": "/classify/category/classes/c3/marker/icon", "value": "goat:park"}]}
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/marker/size", "value": 18}, {"op": "set", "path": "/symbol/marker/icon", "value": "goat:marker"}, {"op": "set", "path": "/symbol/marker/icon_color", "value": "auto"}, {"op": "set", "path": "/classify/category/classes/c1/marker/icon", "value": "goat:school"}, {"op": "set", "path": "/classify/category/classes/c2/marker/icon", "value": "goat:shop"}, {"op": "set", "path": "/classify/category/classes/c3/marker/icon", "value": "goat:park"}]}
 ```
 
 <!-- layer: point -->
@@ -317,20 +320,16 @@ side twice); a yes/no field; a rule for features without a value:
 ## Labels
 
 - `text` is a template: `{name}`, or `"{name}\n{population}"` for two lines.
-  Never `{{ name }}` (`template_syntax`). Numbers take `format`.
-- Label by a text field that names the feature.
-- The text contrasts with the basemap and the halo with the text. Light
-  basemap: the defaults (dark text, light halo). Dark basemap or imagery:
-  `color` `#ffffff` and a `halo` in `#1f2933`.
+  Never `{{ name }}` (`template_syntax`). Numbers take `format`. Label by a
+  text field that names the feature.
 - `placement`: points `auto` or a side such as `above`; lines `line` (along
-  the line); polygons `inside`. Another geometry's word is
-  `placement_not_for_geometry`.
+  the line); polygons `inside`.
 - A layer with many features gets its labels from a zoom on: `min_zoom` 13 for
   dense points, 11 for districts.
 
 <!-- layer: point -->
 ```json
-{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/label", "value": {"text": "{name}", "size": 12, "color": "#ffffff", "halo": {"color": "#1f2933", "width": 1.5}, "placement": "above", "min_zoom": 13}}]}
+{"layer_project_id": 13, "operations": [{"op": "set", "path": "/symbol/label", "value": {"text": "{name}", "color": "auto", "halo": {"color": "auto"}, "placement": "above", "min_zoom": 13}}]}
 ```
 
 ## Popups
@@ -588,8 +587,6 @@ in `issues`. Fix both before you answer; an issue of level info may stay.
   `retarget` (`target` `outline.color`).
 - `zoom_not_whole`: the operation `round` on the zoom's path fixes it.
 - `zoom_needs_step`: a choice or an icon by zoom needs `"interpolate": "step"`.
-- `render_not_for_geometry`: a heatmap, clusters or hexagons draw points
-  only.
 - `override_not_per_feature`: a key that holds one value for the whole layer
   (a label's `placement`, a marker with `shape` `icon`) set in a second place.
   Set it on the base symbol only.

@@ -107,6 +107,30 @@ describe("zoom editor", () => {
     expect(screen.queryByRole("button", { name: "style_editor.remove_stop_aria" })).toBeNull();
   });
 
+  it("a casing color stop in auto reads Auto, and its picker offers Auto", async () => {
+    const { store } = setup(
+      {
+        zoom: [
+          [12, "auto"],
+          [16, "#ffffff"],
+        ],
+      },
+      "casing.color"
+    );
+    const field = screen.getByRole("button", { name: "style_editor.pick_color" });
+    expect(field.textContent).toBe("style_editor.auto");
+    await userEvent.click(field);
+    const auto = screen.getByRole("button", { name: "style_editor.auto" });
+    expect(auto.getAttribute("aria-pressed")).toBe("true");
+    act(() => store.set("symbol.casing.color.zoom.0.1", "#000000"));
+    expect(auto.getAttribute("aria-pressed")).toBe("false");
+    await userEvent.click(auto);
+    expect(store.get("symbol.casing.color.zoom")).toEqual([
+      [12, "auto"],
+      [16, "#ffffff"],
+    ]);
+  });
+
   it("the stop's open color picker closes when the stops change around it: it never writes to another stop", async () => {
     const { store } = setup(
       {

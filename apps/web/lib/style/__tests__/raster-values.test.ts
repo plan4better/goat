@@ -121,7 +121,10 @@ function problem(stops: ReliefStop[], q: number, color: string | null): string |
   const shown = `rgba(${got.map((v) => Number(v.toFixed(2))).join(", ")})`;
   if (color === null) return got[3] === 0 ? null : `code ${q} is ${shown}, expected transparent`;
   const want = hexRgb(color);
-  const near = got[3] === 1 && want.every((v, i) => Math.abs(v - got[i]) <= TOLERANCE);
+  // A color's own alpha is painted (spec 4.6); a six-digit color is opaque.
+  const alpha = color.length === 9 ? parseInt(color.slice(7), 16) : 255;
+  const near =
+    Math.abs(got[3] * 255 - alpha) <= TOLERANCE && want.every((v, i) => Math.abs(v - got[i]) <= TOLERANCE);
   return near ? null : `code ${q} is ${shown}, expected ${color}`;
 }
 
@@ -478,7 +481,7 @@ describe("value tiles", () => {
   });
 
   it("covers every value case of the contract", () => {
-    expect(VALUE_CASES.length).toBe(15);
+    expect(VALUE_CASES.length).toBe(17);
   });
 
   it("places every contract case's colors on its codes", () => {
@@ -496,6 +499,40 @@ describe("value tiles", () => {
       });
     }
     expect(wrong).toEqual([]);
+  });
+
+  it("keeps each color's own alpha in ramps and stops, as the service paints it", () => {
+    // Code 0 is no data: value v is code v + 1.
+    const values = encoded(-1, 1, [0, 100], true);
+    const at = (stops: ReliefStop[] | null, v: number) => colorAt(stops!, codeOf(values, v));
+    const ramp = reliefStops(
+      {
+        kind: "ramp",
+        band: 1,
+        noData: [],
+        colors: ["#ff000080", "#0000ff"],
+        domain: [0, 100],
+        outside: "clamp",
+      },
+      values
+    );
+    expect(at(ramp, 0)).toEqual([255, 0, 0, 0.502]);
+    expect(at(ramp, 100)).toEqual([0, 0, 255, 1]);
+    const stops = [
+      { value: 0, color: "#00ff0000" },
+      { value: 50, color: "#00ff0040" },
+    ];
+    const linear = reliefStops(
+      { kind: "stops", band: 1, noData: [], stops, interpolate: "linear", outside: "clamp" },
+      values
+    );
+    expect(at(linear, 50)).toEqual([0, 255, 0, 0.251]);
+    const nearest = reliefStops(
+      { kind: "stops", band: 1, noData: [], stops, interpolate: "nearest", outside: "clamp" },
+      values
+    );
+    expect(at(nearest, 10)[3]).toBe(0);
+    expect(at(nearest, 40)).toEqual([0, 255, 0, 0.251]);
   });
 
   it("starts with transparent no data at code 0 and never puts two stops on one code", () => {

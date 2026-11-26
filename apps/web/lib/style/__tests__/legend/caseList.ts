@@ -1,11 +1,13 @@
 // The legend test cases built from goatlib's fixtures: the generated styles over a made-up dataset (every pair of
-// style settings, the server's classes written in; packages/python/goatlib/tests/unit/style/legend_cases.py) and the
-// spec's checked examples. No case reads user data. Nothing here reads files, so the style lab builds the same cases
+// style settings, the server's classes written in; packages/python/goatlib/tests/unit/style/legend_cases.py), the
+// spec's checked examples, and the generated block of automatic colors, None and transparency (`buildColorCases`),
+// each case of which carries the basemap's tone it is drawn on. No case reads user data. Nothing here reads files, so the style lab builds the same cases
 // in the browser from the fixtures it imports as JSON; cases.ts loads them for the jsdom tests.
 import { sourceKind } from "@/lib/style/compile";
 import type { CompileInput, FieldType, Geometry } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import type { Tone } from "@/lib/style/tone";
 
 import { type SampleDataset, type SpecExample, fieldTypes } from "../fixtureTypes";
 
@@ -22,18 +24,29 @@ export interface LegendCase {
   dataset?: SampleDataset;
   /** The legend image of a map service that has one. */
   serviceLegendUrl?: string;
+  /** The basemap's tone a case of the colors is drawn on (`CompileInput.tone`); none for the other cases. */
+  tone?: Tone;
 }
 
-/** legend_cases.json: the generated cases over one dataset's fields. */
+interface GeneratedCase {
+  id: string;
+  values: Record<string, string>;
+  geometry: Geometry;
+  zoom: number;
+  style: JsonObject;
+}
+
+/** legend_cases.json: the generated cases over one dataset's fields, and the block of automatic colors, None and
+ * transparency over its own fields (the legend's and `color_hex`, hex text), each case with its basemap's tone and
+ * its settings in `values`: the legend's (`geometry`, `render`, `method`, `target`, `base`, ...), `auto:<key>` ("yes"
+ * where the key is `"auto"`), `label_colors`, `none`, `alpha` and `tone`. */
 export interface GeneratedCases {
   fields: Record<string, FieldType>;
-  cases: Array<{
-    id: string;
-    values: Record<string, string>;
-    geometry: Geometry;
-    zoom: number;
-    style: JsonObject;
-  }>;
+  cases: GeneratedCase[];
+  colors?: {
+    fields: Record<string, FieldType>;
+    cases: Array<GeneratedCase & { tone: Tone }>;
+  };
 }
 
 /** The generated cases, then the spec's examples of a layer style that are valid (not the map documents, the compiled
@@ -60,6 +73,13 @@ export function buildLegendCases(
         };
       }),
   ];
+}
+
+/** The generated cases of automatic colors, None and transparency, each drawn on its basemap's tone; the cases
+ * the review named (`focus-class-none`, `focus-data-color`) come last. */
+export function buildColorCases(generated: GeneratedCases): LegendCase[] {
+  const colors = generated.colors;
+  return colors ? colors.cases.map((c) => ({ ...c, fields: colors.fields })) : [];
 }
 
 /** Whether the map draws the layer's single points at the case's zoom: a heatmap or an H3 layer draws them from
@@ -101,5 +121,12 @@ export function compileInput(c: LegendCase): CompileInput {
   else if (sourceKind(style) === "points")
     source = { type: "points", id: "s", data: "https://geoapi.example/items" };
   else source = { type: "tiles", id: "s", tiles: ["https://tiles.example/{z}/{x}/{y}"] };
-  return { id: "1", style, geometry: c.geometry, fields: c.fields, source };
+  return {
+    id: "1",
+    style,
+    geometry: c.geometry,
+    fields: c.fields,
+    source,
+    ...(c.tone ? { tone: c.tone } : {}),
+  };
 }

@@ -62,7 +62,7 @@ describe("StyledLayers", () => {
       saver: new StyleSaver({ transport, document: style("#111111"), revision: 1 }),
     });
     const layers = [layer("1", "#aaaaaa"), layer("2", "#bbbbbb")];
-    render(<StyledLayers layers={layers} editing={[{ key: "2", store }]} locale="de" />);
+    render(<StyledLayers layers={layers} editing={[{ key: "2", store }]} locale="de" tone="light" />);
     await waitFor(() => expect(syncMock).toHaveBeenCalled());
     const drawn = (call: unknown[]) =>
       (call[2] as RenderLayer[]).map((l) => (l.style as { symbol?: { fill?: unknown } }).symbol?.fill);
@@ -98,11 +98,22 @@ describe("StyledLayers", () => {
         }),
       },
     });
-    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="de" />);
+    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="de" tone="light" />);
     await waitFor(() => expect(syncMock).toHaveBeenCalled());
     expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({
       overlay: "gl-draw-polygon-fill-inactive.cold",
     });
+  });
+
+  it("draws with the basemap's tone, and again when the basemap's tone changes", async () => {
+    const layers = [layer("1", "#aaaaaa")];
+    const { rerender } = render(<StyledLayers layers={layers} locale="en" tone="light" />);
+    await waitFor(() => expect(syncMock).toHaveBeenCalled());
+    expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({ tone: "light" });
+    const draws = syncMock.mock.calls.length;
+    rerender(<StyledLayers layers={layers} locale="en" tone="dark" />);
+    await waitFor(() => expect(syncMock.mock.calls.length).toBeGreaterThan(draws));
+    expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({ tone: "dark" });
   });
 
   it("waits for the map's style before it draws", async () => {
@@ -116,7 +127,7 @@ describe("StyledLayers", () => {
       off: vi.fn(),
     };
     useMapMock.mockReturnValue({ current: { getMap: () => loadingMap } });
-    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" />);
+    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" />);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(syncMock).not.toHaveBeenCalled();
     loaded = true;
@@ -150,7 +161,14 @@ describe("StyledLayers", () => {
       },
     };
     const pending = vi.fn();
-    render(<StyledLayers layers={[layer("1", "#aaaaaa"), raster]} locale="en" onValuesPending={pending} />);
+    render(
+      <StyledLayers
+        layers={[layer("1", "#aaaaaa"), raster]}
+        locale="en"
+        tone="light"
+        onValuesPending={pending}
+      />
+    );
     await waitFor(() => expect(pending).toHaveBeenCalledWith(true));
     expect(valuesMock).toHaveBeenCalledWith(
       `${coverage}?band=1&resampling=nearest&tilesize=512`,
@@ -193,7 +211,7 @@ describe("StyledLayers", () => {
       },
     };
     const pending = vi.fn();
-    render(<StyledLayers layers={[raster]} locale="en" onValuesPending={pending} />);
+    render(<StyledLayers layers={[raster]} locale="en" tone="light" onValuesPending={pending} />);
     await waitFor(() => expect(pending).toHaveBeenCalledWith(true));
     expect(valuesMock).toHaveBeenCalledWith(`${tileset}?tilesize=512`, expect.any(Function));
     const drawn = () => ((syncMock.mock.calls.at(-1) as unknown[])[2] as RenderLayer[])[0];

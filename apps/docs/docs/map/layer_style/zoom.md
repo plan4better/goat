@@ -41,7 +41,7 @@ A new layer is visible at all zooms (<code>All zooms</code>) unless configured o
   <div class="content">Under <code>Zooms</code>, <strong>drag the two handles of the scale</strong> to set where the layer starts and stops showing. The range is written next to the scale, for example <code>8 to 14</code>. A handle at the end of the scale (0 or 24) means no limit on that side.</div>
 </div>
 
-The triangle under the scale marks the current zoom of the map, with its number. Click under the scale to zoom the map to that level, or drag the triangle to zoom it gradually: this way you can check at once how the layer looks at the edges of its range. The editor's subtitle also names the map's zoom, for example <code>Map at zoom 12.5</code>.
+The triangle under the scale marks the current zoom of the map, with its number. Click under the scale to zoom the map to that level, or drag the triangle to zoom it gradually: this way you can check at once how the layer looks at the edges of its range.
 
 ## Zoom ranges of parts, classes and rules
 

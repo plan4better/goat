@@ -37,6 +37,7 @@ export enum MapLayerActions {
   STYLE = "style",
   OPEN_EXPLORER = "openExplorer",
   EXIT_EXPLORER = "exitExplorer",
+  UPDATE_CATALOG = "updateCatalog",
 }
 
 export enum LayerStyleActions {

@@ -114,8 +114,11 @@ TASK_REGISTRY: tuple[TaskDefinition, ...] = (
         display_name="Catalog GC",
         description=(
             "Delete promoted catalog layers with zero layer_project links "
-            "(their parquet, PMTiles and layer row); a grace period covers "
-            "the promote window and remove-then-readd."
+            "(their parquet, PMTiles and layer row) and catalog bundles no "
+            "project group holds. A layer or bundle that a workflow, a "
+            "published map or a template still names is kept; a grace "
+            "period covers the promote window, remove-then-readd and the "
+            "old version after an update."
         ),
         module_path="goatlib.tasks.catalog_gc",
         params_class_name="CatalogGCParams",

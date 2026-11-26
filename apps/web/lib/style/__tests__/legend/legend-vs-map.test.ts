@@ -2,10 +2,15 @@
 // compiled layers gives the look the entry's swatch shows. Compared are the properties an entry stands for (what its
 // classification or rule sets); a block that sets no color draws grey by design, so its color is not compared.
 // Heatmaps, clusters, H3 and rasters are not features with a look of their own and are left to the other checks.
+// A part is drawn on both sides or on neither: a None color draws nothing, in the swatch as on the map. The cases of
+// automatic colors are held against the map on a light and on a dark basemap.
 import { Color } from "@maplibre/maplibre-gl-style-spec";
 import { describe, expect, it } from "vitest";
 
+import { isNone } from "@/lib/style/colors";
 import { compileLayer } from "@/lib/style/compile";
+import { followedKey, isDerivedWord } from "@/lib/style/compile/derived";
+import { parseMarkerImage } from "@/lib/style/compile/markerImage";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
@@ -17,10 +22,11 @@ import {
   listedRules,
 } from "@/lib/style/legend";
 import { countPresence } from "@/lib/style/presence";
+import type { Tone } from "@/lib/style/tone";
 
-import { type LegendCase, compileInput, legendCases, pointsDrawn } from "./cases";
+import { type LegendCase, colorCases, compileInput, legendCases, pointsDrawn } from "./cases";
 import { known } from "./known";
-import { type MapLook, mapLook, paintValue } from "./mapSwatch";
+import { type MapLook, layerValue, mapLook, paintValue } from "./mapSwatch";
 import { sampleFor } from "./samples";
 import { ZOOM_STOPS, attributePaths, inZoomStops } from "./zoomStops";
 
@@ -139,18 +145,74 @@ function same(legend: unknown, map: unknown): boolean {
 
 const show = (value: unknown) => (value instanceof Color ? value.toString() : JSON.stringify(value));
 
-/** The differences between a swatch and a look on `paths`; a path the swatch does not hold is not compared. */
-function compare(label: string, swatch: Swatch, look: MapLook, paths: string[], steady?: string[]): string[] {
-  return paths.flatMap((path) => {
-    const [part, key] = path.split(".");
-    const legend = (swatch as unknown as Record<string, Record<string, unknown> | undefined>)[part]?.[key];
-    if (legend === undefined || !(path in look) || same(legend, look[path])) return [];
-    // By design: a size by zoom is read at one zoom in the legend, and the layer's opacity does not fade it.
-    if (steady?.includes(path)) return [];
-    // A hollow marker has no fill to fade: the map draws its fill at 0, the legend carries `fill: false`.
-    if (path === "marker.opacity" && swatch.marker?.fill === false) return [];
-    return [`${label} ${path}: legend ${show(legend)}, map ${show(look[path])}`];
+/** The parts a swatch and a look can draw, and the key of each part's width where it has one. */
+const PARTS: Record<string, string | undefined> = {
+  fill: undefined,
+  outline: "width",
+  line: "width",
+  casing: undefined,
+  marker: undefined,
+};
+
+/** Whether a color is drawn: some alpha, as MapLibre reads it (a hex color, its color text, its color). */
+const visible = (color: unknown): boolean => {
+  const read = color instanceof Color ? color : typeof color === "string" ? Color.parse(color) : undefined;
+  return read !== undefined && read.a > 0;
+};
+
+/** Whether a swatch draws a part: it holds the part, its color is not None and its width, where it has one, is not 0. */
+function swatchDraws(swatch: Swatch, part: string): boolean {
+  const held = (swatch as unknown as Record<string, Record<string, unknown> | undefined>)[part];
+  if (!held) return false;
+  const width = PARTS[part] && held[PARTS[part]!];
+  return !isNone(held.color) && width !== 0;
+}
+
+/** Whether a look draws a part: its color with some alpha at a width that is not 0. */
+function lookDraws(look: MapLook, part: string): boolean {
+  if (!(`${part}.color` in look) || !visible(look[`${part}.color`])) return false;
+  const width = PARTS[part] && look[`${part}.${PARTS[part]}`];
+  return width !== 0;
+}
+
+/** The differences between a swatch and a look on `paths`; a path the swatch does not hold is not compared. A part of
+ * `paths` the swatch or the look draws is drawn by both; a part neither draws (a None color) is not compared further. */
+function compare(
+  label: string,
+  swatch: Swatch,
+  look: MapLook,
+  paths: string[],
+  steady?: string[],
+  skipped?: Set<string>
+): string[] {
+  const parts = [...new Set(paths.map((path) => path.split(".")[0]))].filter((part) => part in PARTS);
+  const drawnBy = (part: string) => [swatchDraws(swatch, part), lookDraws(look, part)];
+  // (A feature the map does not draw at all is reported on its own.)
+  const presence = parts.flatMap((part) => {
+    const [legend, map] = drawnBy(part);
+    if (legend === map || !Object.keys(look).length) return [];
+    return [
+      `${label} ${part}: ${legend ? "the legend draws it, the map not" : "the map draws it, the legend not"}`,
+    ];
   });
+  const neither = new Set(parts.filter((part) => drawnBy(part).every((d) => !d)));
+  return [
+    ...presence,
+    ...paths.flatMap((path) => {
+      const [part, key] = path.split(".");
+      const legend = (swatch as unknown as Record<string, Record<string, unknown> | undefined>)[part]?.[key];
+      if (neither.has(part)) {
+        if (legend !== undefined && path in look) skipped?.add(`${label} ${path}`);
+        return [];
+      }
+      if (legend === undefined || !(path in look) || same(legend, look[path])) return [];
+      // By design: a size by zoom is read at one zoom in the legend, and the layer's opacity does not fade it.
+      if (steady?.includes(path)) return [];
+      // A hollow marker has no fill to fade: the map draws its fill at 0, the legend carries `fill: false`.
+      if (path === "marker.opacity" && swatch.marker?.fill === false) return [];
+      return [`${label} ${path}: legend ${show(legend)}, map ${show(look[path])}`];
+    }),
+  ];
 }
 
 const targetOf = (c: JsonObject, geometry: Geometry) =>
@@ -173,8 +235,9 @@ const ruledPaths = (rules: JsonObject[], properties: Record<string, unknown>): s
     return matches ? rulePaths(rule) : [];
   });
 
-/** Every place the legend of a case and the map disagree. */
-function differences(c: LegendCase, notCompared?: Set<string>): string[] {
+/** Every place the legend of a case and the map disagree. `skipped` collects what is not compared because a part is
+ * drawn by neither side or follows a field through a derived word. */
+function differences(c: LegendCase, notCompared?: Set<string>, skipped?: Set<string>): string[] {
   const geometry = c.geometry!;
   const compiled = compileLayer(compileInput(c));
   const legend = buildLegend(c.style, { geometry, zoom: c.zoom });
@@ -195,17 +258,31 @@ function differences(c: LegendCase, notCompared?: Set<string>): string[] {
     ...sizesByZoom,
     ...(faded ? ["marker.opacity", "outline.opacity", "fill.opacity", "line.opacity", "casing.opacity"] : []),
   ];
+  /** Whether an entry draws the value at `path` by attribute: its record's (a class's, Other's) or else the base
+   * symbol's value follows a field, or is a word (`"auto"`, `"fill"`) for a color derived from one that does. It has
+   * no one value: the swatch shows a stand-in, the map each feature's own. */
+  const fromField = (path: string, record?: unknown): boolean => {
+    const [part, key] = path.split(".");
+    const own = isObject(record) && isObject(record[part]) ? (record[part] as JsonObject)[key] : undefined;
+    const form = own ?? (isObject(symbol[part]) ? (symbol[part] as JsonObject)[key] : undefined);
+    if (followsField(form)) return true;
+    const followed = isDerivedWord(path, form) ? followedKey(path, geometry) : undefined;
+    return followed !== undefined && fromField(followed, record);
+  };
+  /** `fromField`, noting in `skipped` a path a value of its own by attribute does not explain. */
+  const skip = (label: string, path: string, record?: unknown): boolean => {
+    if (!fromField(path, record)) return false;
+    const [part, key] = path.split(".");
+    if (!followsField(isObject(symbol[part]) ? (symbol[part] as JsonObject)[key] : undefined))
+      skipped?.add(`${label} ${path}`);
+    return true;
+  };
   const out: string[] = [];
   for (const section of legend.sections) {
     if (section.kind === "entries" && section.id === "base") {
       const drawn = look({});
-      // A base value by attribute has no one value: the swatch shows a stand-in, the map each feature's own.
-      const fixed = Object.keys(drawn).filter((path) => {
-        const [part, key] = path.split(".");
-        const form = isObject(symbol[part]) ? (symbol[part] as JsonObject)[key] : undefined;
-        return !followsField(form);
-      });
-      out.push(...compare("base", section.entries[0].swatch, drawn, fixed, steady));
+      const fixed = Object.keys(drawn).filter((path) => !skip("base", path));
+      out.push(...compare("base", section.entries[0].swatch, drawn, fixed, steady, skipped));
     } else if (section.kind === "entries" && section.id === "rules") {
       for (const entry of section.entries) {
         // The rules the legend lists, keyed by their place among those.
@@ -230,7 +307,12 @@ function differences(c: LegendCase, notCompared?: Set<string>): string[] {
           ? own[entry.extra]
           : list(own.classes).find((k, i) => (typeof k.id === "string" ? k.id : String(i)) === entry.id);
         const zoomed = isObject(record) && (record.min_zoom !== undefined || record.max_zoom !== undefined);
-        if (!Object.keys(drawn).length && !zoomed)
+        // (A record whose every part is None draws nothing, in the swatch as on the map.)
+        const held = entry.swatch as unknown as Record<string, Record<string, unknown> | undefined>;
+        const noneAll =
+          Object.keys(PARTS).some((part) => isNone(held[part]?.color)) &&
+          Object.keys(PARTS).every((part) => !swatchDraws(entry.swatch, part));
+        if (!Object.keys(drawn).length && !zoomed && !noneAll)
           out.push(`${section.id}/${entry.id}: the map draws nothing`);
         const ruled = ruledPaths(list(c.style.rules), properties);
         // Beside what the block stands for, an entry shows the base look: compared too, except what is not the
@@ -240,10 +322,9 @@ function differences(c: LegendCase, notCompared?: Set<string>): string[] {
         const others = classify
           .filter((k) => !paths.includes(targetOf(k, geometry)))
           .map((k) => targetOf(k, geometry));
+        const label = `${section.id}/${entry.id}`;
         const rest = Object.keys(drawn).filter((path) => {
-          const [part, key] = path.split(".");
-          const form = isObject(symbol[part]) ? (symbol[part] as JsonObject)[key] : undefined;
-          const byField = followsField(form);
+          const byField = skip(label, path, record);
           const neutral =
             (path === main || path === "marker.icon_color" || path === "fill.pattern_color") &&
             !paths.some((p) => p.endsWith("color"));
@@ -254,8 +335,16 @@ function differences(c: LegendCase, notCompared?: Set<string>): string[] {
             `${section.id}/${entry.id}`,
             entry.swatch,
             drawn,
-            [...paths, ...rest].filter((path) => !ruled.includes(path)),
-            steady
+            [
+              ...paths.filter((path) => {
+                if (!fromField(path, record)) return true;
+                skipped?.add(`${label} ${path}`);
+                return false;
+              }),
+              ...rest,
+            ].filter((path) => !ruled.includes(path)),
+            steady,
+            skipped
           )
         );
         // A class of the height writes its height beside the entry: the height the map raises the feature to.
@@ -331,10 +420,33 @@ describe("the legend against the map", () => {
     expect(cases.length).toBeGreaterThan(100);
   });
 
-  it.each(cases.map((c) => [c.id, c] as const))("%s: each entry shows what the map draws", (_id, c) => {
-    const found = differences(c);
-    if (known("map", c)) expect(found, known("map", c)!.reason).not.toEqual([]);
-    else expect(found).toEqual([]);
+  // (The cases of automatic colors run below, on both basemaps.)
+  it.each(cases.filter((c) => c.tone === undefined).map((c) => [c.id, c] as const))(
+    "%s: each entry shows what the map draws",
+    (_id, c) => {
+      const found = differences(c);
+      if (known("map", c)) expect(found, known("map", c)!.reason).not.toEqual([]);
+      else expect(found).toEqual([]);
+    }
+  );
+
+  // The legend draws no label, so it is one on every basemap; the map's layers are compiled for each tone.
+  const TONES: Tone[] = ["light", "dark"];
+  const colors = colorCases().filter((c) => cases.includes(c));
+  it.each(colors.map((c) => [c.id, c] as const))(
+    "%s: on a light and on a dark basemap each entry shows what the map draws",
+    (_id, c) => {
+      for (const tone of TONES) {
+        const toned = { ...c, tone };
+        const found = differences(toned);
+        if (known("map", toned)) expect(found, `${tone}: ${known("map", toned)!.reason}`).not.toEqual([]);
+        else expect(found, tone).toEqual([]);
+      }
+    }
+  );
+
+  it("holds the cases of automatic colors against the map", () => {
+    expect(colors.length).toBeGreaterThan(50);
   });
 
   it("a heatmap or H3 layer below its points zoom draws no point, and the legend lists none", () => {
@@ -391,7 +503,9 @@ describe("the legend against the map", () => {
     .filter(([, c]) => colorByZoom(c))
     .map(([id, c]) => [`${id}-halfway`, { ...c, id: `${c.id}-halfway`, zoom: c.zoom + 0.5 }] as const);
   it.each(halfway)("%s: between two whole zooms each entry shows the colors the map draws", (_id, c) => {
-    expect(differences(c)).toEqual([]);
+    const found = differences(c);
+    if (known("map", c)) expect(found, known("map", c)!.reason).not.toEqual([]);
+    else expect(found).toEqual([]);
   });
 
   it("colors by zoom are held against the map between two whole zooms, on marker images too", () => {
@@ -427,6 +541,17 @@ describe("the legend against the map", () => {
     for (const c of cases) differences(c, notCompared);
     // Every property a classification sets in the cases is held against the map.
     expect([...notCompared].sort()).toEqual([]);
+  });
+
+  it("leaves out of the comparison only what a None color or a color by attribute explains, never in the legend's own cases", () => {
+    for (const c of cases.filter((x) => x.tone === undefined)) {
+      const skipped = new Set<string>();
+      differences(c, undefined, skipped);
+      expect([...skipped], c.id).toEqual([]);
+    }
+    const skipped = new Set<string>();
+    for (const c of colorCases().filter((x) => cases.includes(x))) differences(c, undefined, skipped);
+    expect(skipped.size).toBeGreaterThan(0);
   });
 });
 
@@ -616,14 +741,19 @@ describe("the density legends against the map", () => {
       return;
     }
     // A cluster of `n` points; with a value by a field, the value at `n` too (one point with it).
-    const at = (key: string, n: number) =>
-      paintValue(
-        compiled,
-        "1-cluster-marker",
-        key,
-        { point_count: n, goat_cluster_value: n, goat_cluster_value_n: 1 },
-        c.zoom
-      );
+    const of = (n: number) => ({ point_count: n, goat_cluster_value: n, goat_cluster_value_n: 1 });
+    const circles = compiled.layers.find((l) => l.id === "1-cluster-marker")?.type === "circle";
+    // A circle with an icon is a marker image: its fill is the cluster's color, its size the image's times its scale.
+    const image = (n: number) =>
+      parseMarkerImage(
+        layerValue(compiled, "1-cluster-marker", "layout", "icon-image", of(n), c.zoom) as string
+      )!;
+    const at = (key: string, n: number): unknown => {
+      if (circles) return paintValue(compiled, "1-cluster-marker", key, of(n), c.zoom);
+      if (key === "circle-color") return image(n).fill;
+      const scale = layerValue(compiled, "1-cluster-marker", "layout", "icon-size", of(n), c.zoom) as number;
+      return (image(n).size * scale) / 2;
+    };
     expect(same(marker.color, at("circle-color", 10)), show(at("circle-color", 10))).toBe(true);
     // The sample's size lies between the smallest and the largest cluster's: over the counts, or over the value's
     // domain.

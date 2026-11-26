@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_CLUSTER_SYMBOL } from "@/lib/style/compile/render";
 import { classificationFor, modeOf, switchMode } from "@/lib/style/editor/forms";
 import { labelTextStyleSummary } from "@/lib/style/editor/labels";
 import {
@@ -202,8 +203,15 @@ describe("icons and shapes from every record", () => {
         { id: "k", field: "kind", method: "categories", other: { marker: { shape: "square" } }, classes: [] },
       ],
     });
-    expect(clusterRender(shapes)).toEqual({ type: "cluster", look: "points", count: "badge" });
-    expect(clusterRender(doc({ symbol: { marker: { color: "#888888" } } }))).toEqual({ type: "cluster" });
+    // Either way with the default cluster symbol, its number on Auto.
+    const symbol = { ...DEFAULT_CLUSTER_SYMBOL, label: { text: "{count}", color: "auto" } };
+    expect(clusterRender(shapes)).toEqual({ type: "cluster", look: "points", count: "badge", symbol });
+    expect(clusterRender(doc({ symbol: { marker: { color: "#888888" } } }))).toEqual({
+      type: "cluster",
+      symbol,
+    });
+    // The default symbol itself, which draws a cluster without one, keeps its white number.
+    expect(DEFAULT_CLUSTER_SYMBOL.label.color).toBe("#ffffff");
   });
 });
 
