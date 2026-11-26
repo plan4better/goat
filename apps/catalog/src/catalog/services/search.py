@@ -656,6 +656,9 @@ Box = tuple[float, float, float, float]
 #: Smallest place area (about 100 m square), so a point has an area to divide by.
 _MIN_PLACE_AREA = 1e-6
 
+#: The share of a footprint's area one piece must hold to stand for its size.
+_MAIN_PIECE_SHARE = 0.9
+
 
 def _place(
     p: SearchParams,
@@ -722,15 +725,31 @@ def _touches_sql(box: Box, geom: str) -> str:
 def _fit_sql(box: Box, geom: str) -> str:
     """How well a row fits the place, higher first: how close its rectangle is
     to the place's size, times how much of its footprint lies inside. First
-    digit only, so the score decides ties. A point counts as the smallest place."""
+    digit only, so the score decides ties. A point counts as the smallest place.
+    The size is that of the main piece where it reaches the place, so far
+    islands do not make a dataset look larger than it is."""
     halves = _halves(box)
     area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
-    overlap = " + ".join(
-        f"GREATEST(0, LEAST(bbox_xmax, {e}) - GREATEST(bbox_xmin, {w})) "
-        f"* GREATEST(0, LEAST(bbox_ymax, {n}) - GREATEST(bbox_ymin, {s}))"
-        for w, s, e, n in halves
-    )
+
+    def overlap_of(xmin: str, ymin: str, xmax: str, ymax: str) -> str:
+        return " + ".join(
+            f"GREATEST(0, LEAST({xmax}, {e}) - GREATEST({xmin}, {w})) "
+            f"* GREATEST(0, LEAST({ymax}, {n}) - GREATEST({ymin}, {s}))"
+            for w, s, e, n in halves
+        )
+
+    overlap = overlap_of("bbox_xmin", "bbox_ymin", "bbox_xmax", "bbox_ymax")
     own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
+    # The one piece holding most of the footprint, NULL when none does. The
+    # whole area is taken once: per piece it cost 1.6 s a search.
+    main_box = (
+        f"CASE WHEN ST_NumGeometries({geom}) > 1 THEN "
+        f"list_transform([ST_Area({geom})], lambda a: ST_Extent(list_filter("
+        f"ST_Dump({geom}), lambda p: a > 0 AND ST_Area(p.geom) >= "
+        f"{_MAIN_PIECE_SHARE} * a)[1].geom))[1] END"
+    )
+    main = overlap_of("ST_XMin(b)", "ST_YMin(b)", "ST_XMax(b)", "ST_YMax(b)")
+    main_own = "(ST_XMax(b) - ST_XMin(b)) * (ST_YMax(b) - ST_YMin(b))"
     inside = " + ".join(
         f"ST_Area(ST_Intersection({geom}, ST_MakeEnvelope({w}, {s}, {e}, {n})))"
         for w, s, e, n in halves
@@ -746,12 +765,20 @@ def _fit_sql(box: Box, geom: str) -> str:
         f"WHEN ST_Area({geom}) > 0 THEN ({inside}) / ST_Area({geom}) "
         f"ELSE ({overlap}) / {own} END"
     )
-    fit = f"GREATEST(x.o / ({own} + {area} - x.o) * x.s, 1e-12)"
+    # GREATEST and LEAST skip a NULL, so a missing main piece is asked first.
+    reached = f"b IS NOT NULL AND ({main}) > 0"
+    sized = (
+        f"list_transform([{main_box}], lambda b: {{"
+        f"'o': CASE WHEN {reached} THEN {main} ELSE {overlap} END, "
+        f"'a': CASE WHEN {reached} THEN {main_own} ELSE {own} END, "
+        f"'s': {share}}})[1]"
+    )
+    fit = f"GREATEST(x.o / (x.a + {area} - x.o) * x.s, 1e-12)"
     point = _MIN_PLACE_AREA / area
     point = round(point, -math.floor(math.log10(point)))
     return (
         f"CASE WHEN COALESCE({own}, 0) = 0 THEN {point} "
-        f"ELSE list_transform([{{'o': {overlap}, 's': {share}}}], lambda x: "
+        f"ELSE list_transform([{sized}], lambda x: "
         f"CASE WHEN x.o > 0 "
         f"THEN ROUND({fit}, CAST(-FLOOR(LOG10({fit})) AS INT)) ELSE 0 END)[1] END"
     )

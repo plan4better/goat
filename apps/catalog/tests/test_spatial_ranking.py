@@ -252,7 +252,8 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
     """The place's own size leads, then a tenth of it (fit 0.1), then ten times
     it (0.01), then a single point inside it (its smallest-place share), whatever
     the score, the date or the size say. A rectangle stretched by a far piece
-    counts only the share of its footprint inside."""
+    counts only the share of its footprint inside, and one stretched by a far
+    island is sized by its main piece."""
 
     def dataset(row_id: str, factor: float, idx: int, month: int) -> Row:
         ring = _scaled(CITY, factor)
@@ -288,8 +289,17 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
         },
     )
     layer_small = _row("layer-small", "Ebene", _scaled(CITY, 1 / 10), june)
+    island = replace(
+        _row("layer-island", "Ebene", _box(11.36, 48.06, 30.01, 48.25), june),
+        geometry_geojson={
+            "type": "MultiPolygon",
+            "coordinates": [[_box(*CITY)], [_box(30.0, 48.06, 30.01, 48.07)]],
+        },
+    )
     write_catalog(
-        tmp_path, n=20, extra_rows=[same, small, big, point, scattered, layer_small]
+        tmp_path,
+        n=20,
+        extra_rows=[same, small, big, point, scattered, layer_small, island],
     )
     write_nuts(tmp_path)
     fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
@@ -302,6 +312,7 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
         assert ids.index("fit-big") < ids.index("fit-point")
 
     layers = _ids(fresh, bbox_boost=CITY)
+    assert layers.index("layer-island") < layers.index("layer-small")
     assert layers.index("layer-small") < layers.index("layer-scattered")
 
 
