@@ -244,7 +244,8 @@ _PRIVATE_ASSET_ROLES = frozenset({"collection-mirror"})
 #: 3: a dataset that publishes its own thumbnail serves it, not a layer's.
 #: 4: Collection Search under a map view counts the matches touching it
 #: (`numberInArea`), and searches rank by place and language in a new order.
-#: 5: a single-point dataset fits as the smallest place, not as a perfect fit.
+#: 5: a single-point dataset fits as the smallest place, not as a perfect fit,
+#: and the fit takes the share inside from the footprint.
 DOCUMENT_VERSION = 5
 
 

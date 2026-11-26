@@ -719,12 +719,10 @@ def _touches_sql(box: Box, geom: str) -> str:
     return f"CASE WHEN {near} THEN COALESCE({hits}, FALSE) ELSE FALSE END"
 
 
-def _fit_sql(box: Box) -> str:
-    """How well a row's extent rectangle fits the place: overlap over union
-    times the share inside, rounded to its first digit so similar fits tie and
-    the score decides. A zero-extent row (a point) counts as the smallest place,
-    so in a country view it is a tiny share, not a perfect fit. The rectangle,
-    since a footprint of scattered cells makes nationwide data look regional."""
+def _fit_sql(box: Box, geom: str) -> str:
+    """How well a row fits the place, higher first: how close its rectangle is
+    to the place's size, times how much of its footprint lies inside. First
+    digit only, so the score decides ties. A point counts as the smallest place."""
     halves = _halves(box)
     area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
     overlap = " + ".join(
@@ -733,12 +731,28 @@ def _fit_sql(box: Box) -> str:
         for w, s, e, n in halves
     )
     own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
-    fit = f"GREATEST(o * o / (({own} + {area} - o) * {own}), 1e-12)"
+    inside = " + ".join(
+        f"ST_Area(ST_Intersection({geom}, ST_MakeEnvelope({w}, {s}, {e}, {n})))"
+        for w, s, e, n in halves
+    )
+    # A rectangle inside the place holds all of its footprint: no spatial call.
+    within = " OR ".join(
+        f"(bbox_xmin >= {w} AND bbox_xmax <= {e} AND bbox_ymin >= {s} "
+        f"AND bbox_ymax <= {n})"
+        for w, s, e, n in halves
+    )
+    share = (
+        f"CASE WHEN {within} THEN 1 "
+        f"WHEN ST_Area({geom}) > 0 THEN ({inside}) / ST_Area({geom}) "
+        f"ELSE ({overlap}) / {own} END"
+    )
+    fit = f"GREATEST(x.o / ({own} + {area} - x.o) * x.s, 1e-12)"
     point = _MIN_PLACE_AREA / area
     point = round(point, -math.floor(math.log10(point)))
     return (
         f"CASE WHEN COALESCE({own}, 0) = 0 THEN {point} "
-        f"ELSE list_transform([{overlap}], lambda o: CASE WHEN o > 0 "
+        f"ELSE list_transform([{{'o': {overlap}, 's': {share}}}], lambda x: "
+        f"CASE WHEN x.o > 0 "
         f"THEN ROUND({fit}, CAST(-FLOOR(LOG10({fit})) AS INT)) ELSE 0 END)[1] END"
     )
 
@@ -778,7 +792,7 @@ def _build_order_by(
 
     # Under a map view a row elsewhere fits 0, whatever its rectangle claims.
     if place is not None:
-        fit = _fit_sql(place[0])
+        fit = _fit_sql(place[0], geom)
         if place[1]:
             fit = f"CASE WHEN {_touches_sql(place[0], geom)} THEN {fit} ELSE 0 END"
         prefix += fit + " DESC, "
