@@ -12,6 +12,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis.aggregate_polygon import AggregatePolygonTool
 from goatlib.analysis.schemas.aggregate import (
     AggregatePolygonParams,
@@ -21,6 +22,11 @@ from goatlib.analysis.schemas.base import (
     FieldStatistic,
     StatisticOperation,
 )
+from goatlib.tools.aggregate_polygon import (
+    AggregatePolygonToolParams,
+    AggregatePolygonToolRunner,
+)
+from goatlib.tools.style_contract import Expectation, StyleContractError
 
 # Test data paths - same data as GOAT Core
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "analysis" / "aggregate"
@@ -30,6 +36,19 @@ ZIPCODE_POLYGON = str(TEST_DATA_DIR / "zipcode_polygon.parquet")  # 10 zipcodes
 # Pre-computed expected values from green_areas.parquet
 TOTAL_GREEN_AREAS = 90
 TOTAL_VALUE = 2531740.53  # Sum of all 'value' fields (area in sqm)
+
+
+def check_style(params: AggregatePolygonParams, field: str) -> None:
+    """The tool's default style keeps the hard rules of the contract on the
+    result, classifying `field`, the column the run wrote; the rules that
+    depend on the data (an empty class of whole counts) are notes."""
+    areas = {"area_layer_id": U} if params.area_layer_path else {}
+    check_tool_style(
+        AggregatePolygonToolRunner,
+        tool_params(AggregatePolygonToolParams, params, source_layer_id=U, **areas),
+        params.output_path,
+        expect=Expectation(field=field),
+    )
 
 
 class TestAggregatePolygonToPolygon:
@@ -68,6 +87,33 @@ class TestAggregatePolygonToPolygon:
         # Total count should be > 0 (green areas intersect zipcodes)
         total_count = df["count"].sum()
         assert total_count > 0, "Should have counted green areas in zipcodes"
+        check_style(params, "count")
+
+    def test_a_renamed_count_column_fails_the_style_contract(
+        self, tmp_path: Path
+    ) -> None:
+        """A run that writes its count under another name breaks the tool's
+        style, and the contract call says so."""
+        output_path = str(tmp_path / "aggregate_count.parquet")
+        params = AggregatePolygonParams(
+            source_path=GREEN_AREAS,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=ZIPCODE_POLYGON,
+            column_statistics=[FieldStatistic(operation=StatisticOperation.count)],
+            output_path=output_path,
+        )
+        AggregatePolygonTool().run(params)
+        renamed = str(tmp_path / "renamed.parquet")
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        con.execute(
+            f"COPY (SELECT * RENAME (count AS n) FROM read_parquet('{output_path}')) "
+            f"TO '{renamed}' (FORMAT PARQUET)"
+        )
+        con.close()
+
+        with pytest.raises(StyleContractError, match="field_missing"):
+            check_style(params.model_copy(update={"output_path": renamed}), "count")
 
     def test_weighted_count_distributes_by_area_ratio(self, tmp_path: Path) -> None:
         """Test weighted COUNT distributes counts by intersection area ratio.
@@ -102,6 +148,7 @@ class TestAggregatePolygonToPolygon:
 
         # Each zipcode should have a reasonable weighted count
         assert (df["count"] >= 0).all(), "Counts should be non-negative"
+        check_style(params, "count")
 
     def test_sum_preserves_total_value_when_weighted(self, tmp_path: Path) -> None:
         """Test weighted SUM preserves the total value across all areas.
@@ -137,6 +184,7 @@ class TestAggregatePolygonToPolygon:
         # Should be close to original total (may be less if some areas outside)
         assert total_weighted_sum > 0
         assert total_weighted_sum <= TOTAL_VALUE * 1.01  # Allow 1% tolerance
+        check_style(params, "sum_value")
 
     def test_unweighted_sum_can_exceed_total(self, tmp_path: Path) -> None:
         """Test unweighted SUM can exceed total when polygons span areas.
@@ -202,6 +250,7 @@ class TestAggregatePolygonToPolygon:
         assert len(valid_means) > 0, "Should have some areas with green areas"
         assert valid_means.min() >= 50  # Should be above source minimum
         assert valid_means.max() <= 300000  # Should be below source maximum
+        check_style(params, "mean_value")
 
 
 class TestAggregatePolygonToH3:
@@ -235,6 +284,7 @@ class TestAggregatePolygonToH3:
         # Total count should equal source polygon count (one centroid per polygon)
         total_count = df["count"].sum()
         assert total_count == TOTAL_GREEN_AREAS
+        check_style(params, "count")
 
     def test_h3_sum_matches_source_total(self, tmp_path: Path) -> None:
         """Test H3 SUM matches the total value from source polygons."""
@@ -264,6 +314,7 @@ class TestAggregatePolygonToH3:
         # Total should match source total (within floating point tolerance)
         total_sum = df["sum_value"].sum()
         assert abs(total_sum - TOTAL_VALUE) < 1.0  # Allow 1 sqm tolerance
+        check_style(params, "sum_value")
 
 
 #: Result names as users type them: spaces, an umlaut, an embedded quote.

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis.aggregate_points import AggregatePointsTool
 from goatlib.analysis.schemas.aggregate import (
     AggregatePointsParams,
@@ -18,11 +19,29 @@ from goatlib.analysis.schemas.base import (
     FieldStatistic,
     StatisticOperation,
 )
+from goatlib.tools.aggregate_points import (
+    AggregatePointsToolParams,
+    AggregatePointsToolRunner,
+)
+from goatlib.tools.style_contract import Expectation
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "vector"
 POINTS_WITH_CATEGORY = str(TEST_DATA_DIR / "points_with_category.parquet")
 ZIPCODE_POLYGON = str(TEST_DATA_DIR / "zipcode_polygon.parquet")
+
+
+def check_style(params: AggregatePointsParams, field: str | None) -> None:
+    """The tool's default style keeps the contract on the result, classifying
+    `field`, the column the run wrote (None: drawn in one color, as a field
+    with one value is)."""
+    areas = {"area_layer_id": U} if params.area_layer_path else {}
+    check_tool_style(
+        AggregatePointsToolRunner,
+        tool_params(AggregatePointsToolParams, params, source_layer_id=U, **areas),
+        params.output_path,
+        expect=Expectation(field=field),
+    )
 
 
 class TestAggregatePointsPolygon:
@@ -64,6 +83,7 @@ class TestAggregatePointsPolygon:
         assert "value_sum" in df.columns
         # All sum values should be >= 0
         assert (df["value_sum"] >= 0).all()
+        check_style(params, "value_sum")
 
     def test_aggregate_points_count(self, tmp_path: Path) -> None:
         """Test aggregating points with COUNT operation."""
@@ -96,6 +116,7 @@ class TestAggregatePointsPolygon:
         assert "count" in df.columns
         # Total count should equal source point count (550)
         assert df["count"].sum() <= 550  # Some points may not fall in any polygon
+        check_style(params, "count")
 
     def test_aggregate_points_mean(self, tmp_path: Path) -> None:
         """Test aggregating points with MEAN operation."""
@@ -126,6 +147,7 @@ class TestAggregatePointsPolygon:
 
         assert len(df) == 10
         assert "value_mean" in df.columns
+        check_style(params, "value_mean")
 
     def test_aggregate_points_with_custom_result_name(self, tmp_path: Path) -> None:
         """Test aggregating points with a custom result column name."""
@@ -161,6 +183,7 @@ class TestAggregatePointsPolygon:
         assert "value_sum" not in df.columns
         # All values should be >= 0
         assert (df["total_value"] >= 0).all()
+        check_style(params, "total_value")
 
     def test_aggregate_points_min_max(self, tmp_path: Path) -> None:
         """Test aggregating points with MIN and MAX operations."""
@@ -316,6 +339,7 @@ class TestAggregatePointsH3:
         assert "geometry" in df.columns
         # Should have some H3 cells
         assert len(df) > 0
+        check_style(params, "value_sum")
 
     def test_aggregate_points_h3_count(self, tmp_path: Path) -> None:
         """Test aggregating points to H3 grid with COUNT."""
@@ -347,6 +371,7 @@ class TestAggregatePointsH3:
         assert "count" in df.columns
         # Total count should equal source points (550)
         assert df["count"].sum() == 550
+        check_style(params, "count")
 
     def test_aggregate_points_h3_with_group_by(self, tmp_path: Path) -> None:
         """Test aggregating points to H3 grid with GROUP BY."""
@@ -456,6 +481,7 @@ class TestAggregatePointsEdgeCases:
         # Should have the polygon with count = 0
         assert len(df) == 1
         assert df["count"].iloc[0] == 0
+        check_style(params, None)
 
     def test_output_path_auto_generated(self, tmp_path: Path) -> None:
         """Test that output path is auto-generated when not specified."""

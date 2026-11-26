@@ -144,9 +144,13 @@ def statistic_title(stat: FieldStatistic, *, area_weighted: bool = False) -> str
 
 def only_negative(runner: Any, relation: str, field: str) -> bool:
     """Whether `field` holds a value below 0 and none above, read with the
-    runner's connection; False where the result cannot be read."""
+    runner's connection; False where the result cannot be read, and without
+    a warning where it has no such column (the run's style check reports
+    that)."""
     column = quote_identifier(field)
     try:
+        if field not in column_types(runner.duckdb_con, relation):
+            return False
         low, high = runner.duckdb_con.execute(
             f"SELECT min({column}), max({column}) FROM {relation}"
         ).fetchone()

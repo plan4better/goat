@@ -22,11 +22,13 @@ from goatlib.tools.origin_destination import (
     OriginDestinationToolParams,
     OriginDestinationToolRunner,
 )
+from goatlib.tools.style_contract import Expectation, assert_tool_style
 
 from .conftest import (
     TEST_CUSTOMER_SCHEMA,
     TEST_FOLDER_ID,
     TEST_USER_ID,
+    get_full_table_path,
     get_pg_connection,
 )
 
@@ -113,6 +115,23 @@ async def test_an_empty_run_saves_a_line_layer_and_a_point_layer(
         style = json.loads(rows["points"]["document"])
         assert style["symbol"]["marker"]["size"]["field"] == "weight"
         assert [c["field"] for c in style["classify"]] == ["weight"]
+        # The tool's default styles keep the style contract on the saved tables.
+        weight = Expectation(field="weight")
+        assert_tool_style(
+            runner,
+            params,
+            get_full_table_path(TEST_USER_ID, result["layer_id"]),
+            "line",
+            expect=weight,
+        )
+        assert_tool_style(
+            runner,
+            params,
+            get_full_table_path(TEST_USER_ID, points["layer_id"]),
+            "point",
+            document=runner.points_style(params),
+            expect=weight,
+        )
     finally:
         await cleanup_output_layer(result["layer_id"])
         await cleanup_output_layer(points["layer_id"])

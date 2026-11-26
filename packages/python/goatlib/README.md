@@ -526,7 +526,17 @@ documents goatlib built or upgraded:
   (`with_decimals`), on the same style the fit acts on and only there: the
   format has no mark that tells a tool's default from a hand-made style. Bands
   of a distance or travel cost (`bands`) are fixed categories in whole units, so
-  they carry their unit, no decimals and the first band on top from the start. A workflow
+  they carry their unit, no decimals and the first band on top from the start.
+  What a tool's style must hold for its result is the style contract
+  (`tools/style_contract.py`): the fields it reads exist, its parts fit the
+  geometry and the document validates (hard rules), plus a title, a no-data
+  color and classes that hold features (design rules). The tool tests assert the
+  hard rules and a class list of one on the results their analyses write
+  (`assert_tool_style`) and report the design rules, which depend on the data,
+  as notes. A run checks the hard rules on the same style the fit acts on: a
+  tool style that breaks one gives the layer the default style of its geometry
+  and a warning. When the check itself fails, the tool's style is kept and the
+  failure logged. A workflow
   preview has no layer: its result and the preview's metadata file carry the
   document as `style`, stamped `temp`, and saving the result computes it again.
 - **Catalog items** promote with their published style asset upgraded for the

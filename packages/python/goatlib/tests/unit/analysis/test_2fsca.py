@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.accessibility.two_step_catchment_area import Heatmap2SFCATool
 from goatlib.analysis.schemas.heatmap import (
     Heatmap2SFCAParams,
@@ -8,6 +9,8 @@ from goatlib.analysis.schemas.heatmap import (
     Opportunity2SFCA,
     TwoSFCAType,
 )
+from goatlib.tools.heatmap_2sfca import Heatmap2SFCAToolParams, Heatmap2SFCAToolRunner
+from goatlib.tools.style_contract import Expectation
 
 
 def test_2sfca_schema_validation():
@@ -225,6 +228,12 @@ def test_2sfca_workflow(data_root: Path, walking_matrix_dir: Path) -> None:
     assert results is not None
     assert len(results) == 1
     assert Path(results[0][1].path).exists()
+    check_tool_style(
+        Heatmap2SFCAToolRunner,
+        tool_params(Heatmap2SFCAToolParams, params, demand_layer_id=U),
+        results[0][1].path,
+        expect=Expectation(field="total_accessibility"),
+    )
 
 
 def test_e2sfca_workflow(data_root: Path, walking_matrix_dir: Path) -> None:

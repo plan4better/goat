@@ -72,6 +72,7 @@ from goatlib.tools.oev_gueteklassen import OevGueteklassenToolRunner
 from goatlib.tools.origin_destination import OriginDestinationToolRunner
 from goatlib.tools.schemas import ToolInputBase
 from goatlib.tools.spatial_clustering import ZonesClusteringToolRunner
+from goatlib.tools.style_contract import Expectation, assert_tool_style
 from goatlib.tools.travel_cost_matrix import TravelCostMatrixToolRunner
 from goatlib.tools.trip_count import TripCountToolRunner
 from goatlib.tools.union import UnionToolRunner
@@ -1354,13 +1355,14 @@ def test_buffer_distances_keep_the_light_to_dark_direction() -> None:
     )
 
 
-def test_a_catchment_style_handed_in_is_stored_as_given(
+def test_a_style_passed_to_the_catchment_record_replaces_its_default(
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
     runner_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
-    """A style given to the layer record keeps its own direction: the
-    catchment's default is not asked for and nothing turns its colors."""
+    """A style passed to the layer record, as a tool passes the style of a
+    further result layer, keeps its own direction: the catchment's default is
+    not asked for and nothing turns its colors."""
     relation = _tiny(con)
     runner = runner_for(CatchmentAreaV2ToolRunner, con)
 
@@ -1673,6 +1675,13 @@ def test_a_join_statistic_named_as_a_target_column_classifies_the_one_written(
     computed = _computed(con, doc, relation, "polygon")
     assert computed["classify"][0]["field"] == column
     assert issues(con, relation, computed, "polygon") == []
+    assert_tool_style(
+        JoinToolRunner(),
+        _join(stat),
+        relation,
+        con=con,
+        expect=Expectation(field=column),
+    )
 
 
 class _Recording:
@@ -1714,13 +1723,14 @@ def test_a_result_that_does_not_match_the_join_stays_plain(
     assert _join_style(con, _join(_stat("count")), relation) is None
 
 
-def test_a_join_style_handed_in_is_not_read_against_the_result(
+def test_a_style_passed_to_the_join_record_skips_its_default(
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
     runner_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
-    """With a style given to the layer record, the join's own default, and its
-    read of the result, are not asked for."""
+    """With a style passed to the layer record, as a tool passes the style of
+    a further result layer, the join's own default, and its read of the
+    result, are not asked for."""
     relation = _tiny(con)
     runner = runner_for(JoinToolRunner, con)
 
@@ -1912,11 +1922,13 @@ def test_the_matrix_titles_read_in_german() -> None:
     )
 
 
-def test_a_matrix_destinations_style_handed_in_is_stored_as_given(
+def test_a_style_passed_to_the_destinations_record_replaces_their_default(
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
     runner_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
+    """A style passed to the layer record, as a tool passes the style of a
+    further result layer, is stored in place of the matrix tool's default."""
     relation = _tiny(con)
     runner = runner_for(TravelCostMatrixToolRunner, con)
 
@@ -1933,7 +1945,7 @@ def test_a_matrix_destinations_style_handed_in_is_stored_as_given(
             params=_matrix_params("walking"),
             output_name="Destinations",
             metadata=DatasetMetadata(path="x", source_type="vector"),
-            table_info={"table_name": relation, "geometry_type": "POINT"},
+            table_info={"table_name": relation, "geometry_type": "POLYGON"},
             style=USER_STYLE,
         )
     )
@@ -2200,12 +2212,13 @@ def test_a_dissolve_by_two_fields_colors_its_groups_by_the_first(
     assert set(color) == {"a", "b"} and color["a"] != color["b"]
 
 
-def test_a_dissolve_style_handed_in_is_stored_as_given(
+def test_a_style_passed_to_the_dissolve_record_replaces_the_groups(
     con: duckdb.DuckDBPyConnection,
     monkeypatch: pytest.MonkeyPatch,
     runner_event_loop: asyncio.AbstractEventLoop,
 ) -> None:
-    """A style given to the layer record is not replaced by the groups."""
+    """A style passed to the layer record, as a tool passes the style of a
+    further result layer, is not replaced by the groups."""
     relation = _tiny(con)
     runner = runner_for(DissolveToolRunner, con)
 

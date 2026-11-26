@@ -83,6 +83,7 @@ from goatlib.style.version import stamp
 from goatlib.tools.db import ToolDatabaseService, normalize_geometry_type
 from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
 from goatlib.tools.style import fit_classes, with_decimals, without_single_classes
+from goatlib.tools.style_contract import hard_problems
 from goatlib.utils.container_memory import JOB_DUCKLAKE_MEMORY_SHARE, set_memory_share
 from goatlib.utils.credentials import postgres_attach_target, postgres_uri
 from goatlib.utils.layer import (
@@ -1271,6 +1272,7 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         fingerprint: str,
         seed: str,
         fit: bool = False,
+        safety_net: bool = True,
     ) -> dict[str, Any]:
         """`document`, or the default style for the geometry (its color picked by
         `seed`), with the values the server computes filled from `relation`; as
@@ -1278,7 +1280,56 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         version its keys need (`stamp`). With `fit` (the style the tool asks for
         in this run), the class counts are fitted to the result first
         (`fit_classes`), a classification left with one class is dropped, and
-        the classes get the decimals they need (`with_decimals`)."""
+        the classes get the decimals they need (`with_decimals`). With `fit`
+        and `safety_net`, a style the tool asked for that breaks a hard rule of
+        the style contract for its result (`hard_problems`: a field the result
+        lacks, a part its geometry cannot draw, a document that does not
+        validate) is replaced by the default style for the geometry, and a
+        warning names the tool and the issue codes."""
+        styled = self._computed_style(
+            document,
+            relation=relation,
+            geometry=geometry,
+            fingerprint=fingerprint,
+            seed=seed,
+            fit=fit,
+        )
+        if document is None or not (fit and safety_net):
+            return styled
+        try:
+            problems = hard_problems(styled, self.duckdb_con, relation, geometry)
+        except Exception:  # the tool's style, unchecked
+            logger.warning("Checking the result's style failed", exc_info=True)
+            return styled
+        if not problems:
+            return styled
+        codes = sorted({code for p in problems for code in p.codes})
+        logger.warning(
+            "The style of %s does not fit its result (%s): the layer gets the "
+            "default style",
+            self.get_tool_type(),
+            ", ".join(codes),
+        )
+        return self._computed_style(
+            None,
+            relation=relation,
+            geometry=geometry,
+            fingerprint=fingerprint,
+            seed=seed,
+            fit=fit,
+        )
+
+    def _computed_style(
+        self: Self,
+        document: dict[str, Any] | None,
+        *,
+        relation: str,
+        geometry: str | None,
+        fingerprint: str,
+        seed: str,
+        fit: bool,
+    ) -> dict[str, Any]:
+        """`computed_style` without the safety net."""
         if document is None:
             document = default_style(
                 DataContext(kind="vector", geometry=geometry), seed=seed
@@ -2343,8 +2394,13 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             output_name: Layer display name
             metadata: Dataset metadata from analysis
             table_info: DuckLake table info
-            style: The layer's GOAT Style document; None asks
-                get_layer_style(). Computed values are filled from the table.
+            style: The tool's own GOAT Style document for a further result
+                layer (a second layer the tool writes beside its result); None
+                asks get_layer_style(). Either is the tool's own style: it is
+                fitted and checked (`computed_style` with `fit`), and computed
+                values are filled from the table. A style from outside (a
+                template's, a filtered copy's source) goes through the paths
+                that pass no `fit`.
 
         Returns:
             Dict with folder_id and layer_project_id (if added to project)

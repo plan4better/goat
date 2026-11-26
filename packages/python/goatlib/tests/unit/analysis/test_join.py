@@ -4,6 +4,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.data_management.join import JoinTool
 from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
 from goatlib.analysis.schemas.data_management import (
@@ -16,6 +17,7 @@ from goatlib.analysis.schemas.data_management import (
     SortOrder,
     SpatialRelationshipType,
 )
+from goatlib.tools.join import JoinToolParams, JoinToolRunner
 
 # Test data directory
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "vector"
@@ -428,6 +430,18 @@ class TestSpatialJoin:
 
         con.close()
         tool.cleanup()
+
+        check_tool_style(
+            JoinToolRunner,
+            tool_params(
+                JoinToolParams,
+                params,
+                target_layer_id=U,
+                join_layer_id=U,
+                calculate_statistics=False,
+            ),
+            result_path,
+        )
 
     def test_spatial_join_within_distance(self) -> None:
         """Test spatial join with within_distance relationship."""

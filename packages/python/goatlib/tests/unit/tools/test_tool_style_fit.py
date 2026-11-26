@@ -551,14 +551,18 @@ def test_a_size_by_field_on_one_value_still_validates(
     assert errors(con, relation, doc, "line") == []
 
 
-def test_a_missing_field_leaves_the_default_as_it_was(
+def test_a_missing_field_gives_the_default_style(
     con: duckdb.DuckDBPyConnection,
 ) -> None:
+    """The style contract's safety net (`test_style_contract.py`)."""
     runner = runner_for(TripCountToolRunner, con)
     relation = result_table(con, "other", "point", "three_values")
     intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", relation)
     doc = tool_default(runner, intent, relation, "point")
-    assert same_ignoring_stamps(doc, today(con, relation, intent, "point"))
+    plain = runner.computed_style(
+        None, relation=relation, geometry="point", fingerprint="f:1", seed="L"
+    )
+    assert same_ignoring_stamps(doc, plain)
 
 
 def test_an_empty_result_keeps_the_classes_asked_for(
@@ -575,6 +579,25 @@ def test_an_empty_result_keeps_the_classes_asked_for(
     doc = tool_default(runner, intent, "empty", "line")
     assert [c["count"] for c in doc["classify"]] == [5]
     assert same_ignoring_stamps(doc, today(con, "empty", intent, "line"))
+
+
+@pytest.mark.parametrize("name", list(TOOLS))
+def test_an_empty_result_keeps_the_tool_s_style(
+    con: duckdb.DuckDBPyConnection, caplog: pytest.LogCaptureFixture, name: str
+) -> None:
+    """No row breaks no hard rule of the style contract: the safety net keeps
+    the tool's classification (`test_style_contract.py`)."""
+    runner_class, build, field, geometry, _ = TOOLS[name]
+    runner = runner_for(runner_class, con)
+    con.execute(
+        f"""CREATE OR REPLACE TABLE empty AS SELECT i::DOUBLE AS "{field}",
+        {GEOMETRY_SQL[geometry]} AS geometry FROM range(0) t(i)"""
+    )
+    intent = build(runner, geometry, "empty")
+    caplog.clear()
+    doc = tool_default(runner, intent, "empty", geometry)
+    assert [c["field"] for c in doc["classify"]] == [field]
+    assert not [r for r in caplog.records if "does not fit" in r.getMessage()]
 
 
 def test_a_fit_that_fails_leaves_the_classes_of_today(
@@ -796,6 +819,41 @@ class TestUserStylesStayAsTheyAre:
         assert same_ignoring_stamps(doc, source)
         assert doc["classify"][0]["count"] == 7
 
+    def _missing_field_style(self) -> dict[str, Any]:
+        return tool_style.classified("gone", "colorbrewer:Oranges", "polygon")
+
+    def test_a_template_style_naming_a_missing_column_is_saved_as_today(
+        self, con: duckdb.DuckDBPyConnection
+    ) -> None:
+        """No safety net on a style handed in (`test_style_contract.py`)."""
+        relation = result_table(con, "v", "polygon", "three_values")
+        remembered = self._missing_field_style()
+        saved = runner_for(FinalizeLayerRunner, con)._layer_style(
+            remembered,
+            geometry_type="POLYGON",
+            relation=relation,
+            data_snapshot=9,
+            layer_id="L",
+        )
+        assert same_ignoring_stamps(saved, today(con, relation, remembered, "polygon"))
+
+    def test_a_filtered_copy_naming_a_missing_column_keeps_it(
+        self, con: duckdb.DuckDBPyConnection
+    ) -> None:
+        relation = result_table(con, "v", "polygon", "three_values")
+        source = self._missing_field_style()
+        runner = runner_for(LayerCreateFilteredToolRunner, con)
+        runner._source_style = source
+        doc = runner.computed_style(
+            runner.get_layer_style(MagicMock(), MagicMock(), "polygon", relation),
+            relation=relation,
+            geometry="polygon",
+            fingerprint="f:1",
+            seed="L",
+            fit=runner.fits_result_style,
+        )
+        assert same_ignoring_stamps(doc, today(con, relation, source, "polygon"))
+
 
 class TestFixedListsAsToday:
     """Category lists (catchment bands, buffer distances, public transport
@@ -819,6 +877,12 @@ class TestFixedListsAsToday:
         self, con: duckdb.DuckDBPyConnection, intent: dict[str, Any]
     ) -> None:
         relation = result_table(con, "v", "polygon", "three_values")
+        field = intent["classify"][0]["field"]
+        if field != "v":  # the public transport classes: their labels
+            con.execute(
+                f"CREATE OR REPLACE TABLE {relation} AS SELECT "
+                f"chr(65 + v::INTEGER) AS {field}, geometry FROM {relation}"
+            )
         doc = tool_default(
             runner_for(TripCountToolRunner, con), intent, relation, "polygon"
         )
