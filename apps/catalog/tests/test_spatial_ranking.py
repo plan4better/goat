@@ -249,7 +249,8 @@ def _scaled(box: list[float], factor: float) -> list[list[float]]:
 
 def test_the_fit_to_the_place(tmp_path: Path) -> None:
     """The place's own size leads, then a tenth of it (fit 0.1), then ten times
-    it (0.01), whatever the score, the date or the size say."""
+    it (0.01), then a single point inside it (its smallest-place share), whatever
+    the score, the date or the size say."""
 
     def dataset(row_id: str, factor: float, idx: int, month: int) -> Row:
         ring = _scaled(CITY, factor)
@@ -260,7 +261,17 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
     same = dataset("fit-same", 1, 3, 1)  # lowest score, oldest
     small = dataset("fit-small", 1 / 10, 1, 2)  # score 5
     big = dataset("fit-big", 10, 0, 9)  # score 7, newest and larger
-    write_catalog(tmp_path, n=20, extra_rows=[same, small, big])
+    point = replace(
+        _row(
+            "fit-point",
+            "Datensatz fit-point",
+            _box(11.5, 48.15, 11.5, 48.15),
+            datetime(2026, 12, 1, tzinfo=timezone.utc),
+        ),
+        type="collection",
+        idx=0,
+    )  # score 7, newest
+    write_catalog(tmp_path, n=20, extra_rows=[same, small, big, point])
     write_nuts(tmp_path)
     fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
     fresh.ensure_current()
@@ -269,6 +280,7 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
         rows, _ = search_collections(fresh, SearchParams(limit=50, **spatial))
         ids = [r["id"] for r in rows]
         assert ids.index("fit-same") < ids.index("fit-small") < ids.index("fit-big")
+        assert ids.index("fit-big") < ids.index("fit-point")
 
 
 def test_the_reader_language_decides_within_a_topic_score(tmp_path: Path) -> None:

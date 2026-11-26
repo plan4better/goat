@@ -722,8 +722,9 @@ def _touches_sql(box: Box, geom: str) -> str:
 def _fit_sql(box: Box) -> str:
     """How well a row's extent rectangle fits the place: overlap over union
     times the share inside, rounded to its first digit so similar fits tie and
-    the score decides. A zero-extent row counts as fitting. The rectangle, since
-    a footprint of scattered cells makes nationwide data look regional."""
+    the score decides. A zero-extent row (a point) counts as the smallest place,
+    so in a country view it is a tiny share, not a perfect fit. The rectangle,
+    since a footprint of scattered cells makes nationwide data look regional."""
     halves = _halves(box)
     area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
     overlap = " + ".join(
@@ -733,8 +734,10 @@ def _fit_sql(box: Box) -> str:
     )
     own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
     fit = f"GREATEST(o * o / (({own} + {area} - o) * {own}), 1e-12)"
+    point = _MIN_PLACE_AREA / area
+    point = round(point, -math.floor(math.log10(point)))
     return (
-        f"CASE WHEN COALESCE({own}, 0) = 0 THEN 1 "
+        f"CASE WHEN COALESCE({own}, 0) = 0 THEN {point} "
         f"ELSE list_transform([{overlap}], lambda o: CASE WHEN o > 0 "
         f"THEN ROUND({fit}, CAST(-FLOOR(LOG10({fit})) AS INT)) ELSE 0 END)[1] END"
     )
