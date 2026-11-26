@@ -136,7 +136,7 @@ class HeatmapClosestAverageToolRunner(BaseToolRunner[HeatmapClosestAverageToolPa
             "total_accessibility",
             EMRLD,
             geometry,
-            style_title("closest_average_time"),
+            style_title("closest_average_time", params.language),
             reverse=True,
             unit="min",
         )

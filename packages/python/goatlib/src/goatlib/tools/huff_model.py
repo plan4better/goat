@@ -212,7 +212,7 @@ class HuffModelToolRunner(BaseToolRunner[HuffModelToolParams]):
             "probability",
             TEAL,
             geometry,
-            style_title("market_share"),
+            style_title("market_share", params.language),
             unit="%",
             outline_areas=True,
         )

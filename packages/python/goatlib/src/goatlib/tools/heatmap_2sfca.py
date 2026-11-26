@@ -160,7 +160,10 @@ class Heatmap2SFCAToolRunner(BaseToolRunner[Heatmap2SFCAToolParams]):
     ) -> dict[str, Any] | None:
         """The 2SFCA index in sunset colors: the supply-demand ratio."""
         return numeric_default(
-            "total_accessibility", SUNSET, geometry, style_title("two_sfca")
+            "total_accessibility",
+            SUNSET,
+            geometry,
+            style_title("two_sfca", params.language),
         )
 
     def process(

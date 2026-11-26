@@ -305,7 +305,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             "weight",
             "colorbrewer:OrRd",
             "line",
-            style_title("sum", field=params.weight_column),
+            style_title("sum", params.language, field=params.weight_column),
             count=5,
             symbol={
                 "line": {
@@ -322,7 +322,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
             "weight",
             "colorbrewer:OrRd",
             "point",
-            style_title("sum", field=params.weight_column),
+            style_title("sum", params.language, field=params.weight_column),
             count=5,
             symbol={
                 "marker": {

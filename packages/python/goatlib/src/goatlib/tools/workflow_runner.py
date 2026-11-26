@@ -19,9 +19,10 @@ from typing import Any
 
 import asyncpg
 import wmill
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from goatlib.filter.normalize import days_ago
+from goatlib.i18n import supported_language
 from goatlib.tools.if_node import IF_FALSE_HANDLE, execute_if_node, layer_field_types
 from goatlib.tools.workflow_dataset_nodes import (
     current_layer_ids,
@@ -73,6 +74,14 @@ class WorkflowRunnerParams(BaseModel):
     variables: list[dict[str, Any]] = Field(
         default_factory=list, description="Workflow variables"
     )
+    language: str | None = Field(
+        None, description="Language of the legend titles the steps write"
+    )
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _only_a_supported_language(cls, value: Any) -> str | None:
+        return supported_language(value)
 
 
 class WorkflowResult(BaseModel):
@@ -950,10 +959,13 @@ def add_run_context(
     project_id: str,
     folder_id: str,
     workflow_id: str,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """`inputs` with what every tool job of a workflow run gets besides its
-    parameters: who runs it, where results go, and temp mode."""
+    parameters: who runs it, where results go, temp mode, and the language
+    of the titles it writes (the run's, over any a step's settings hold)."""
     inputs["user_id"] = user_id
+    inputs["language"] = language
     inputs["project_id"] = project_id
     inputs["folder_id"] = folder_id
 
@@ -996,6 +1008,7 @@ def build_tool_inputs(
         project_id=params.project_id,
         folder_id=params.folder_id,
         workflow_id=params.workflow_id,
+        language=params.language,
     )
 
 
@@ -1113,6 +1126,7 @@ def copy_passed_on_dataset(
         project_id=params.project_id,
         folder_id=params.folder_id,
         workflow_id=params.workflow_id,
+        language=params.language,
     )
     return run_tool_node(step["id"], "layer_create_filtered", inputs)
 
@@ -1286,6 +1300,7 @@ def main(
     nodes: list[dict],
     edges: list[dict],
     variables: list[dict] | None = None,
+    language: str | None = None,
 ) -> dict:
     """Execute workflow: run all tool nodes in topological order.
 
@@ -1298,6 +1313,9 @@ def main(
         folder_id: Folder UUID
         nodes: List of workflow nodes
         edges: List of workflow edges
+        variables: Workflow variables
+        language: Language of the legend titles the steps write (processes
+            sets it from the request; English when not given)
 
     Returns:
         Execution results for each node; `status` "failed" and each failed
@@ -1315,6 +1333,7 @@ def main(
         nodes=nodes,
         edges=edges,
         variables=variables or [],
+        language=language,
     )
 
     # Dataset nodes read what their project entry shows now: a re-run may

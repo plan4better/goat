@@ -227,7 +227,10 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
     ) -> dict[str, Any] | None:
         """Stations classified by their total trips."""
         return numeric_default(
-            "total", "colorbrewer:BuPu", geometry, style_title("trip_count")
+            "total",
+            "colorbrewer:BuPu",
+            geometry,
+            style_title("trip_count", params.language),
         )
 
     def process(

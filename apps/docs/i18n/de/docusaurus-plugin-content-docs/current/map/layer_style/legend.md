@@ -51,7 +51,7 @@ Die Legende führt auf, was die Karte zeichnet:
 Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 
 - <code>In der Legende</code>: Aus lässt die Klassifizierung in der Legende weg.
-- <code>Überschrift</code>: der Titel ihres Abschnitts. Ohne Eingabe gilt der Name des Feldes.
+- <code>Überschrift</code>: der Titel ihres Abschnitts. Ohne Eingabe gilt der Name des Feldes. Beim Ergebnis eines Werkzeugs schreibt GOAT sie, wenn das Werkzeug läuft, in der Sprache, in der Sie GOAT nutzen, und sie bleibt so, auch wenn jemand mit einer anderen Sprache den Layer öffnet.
 - <code>Einheit</code>: eine Einheit hinter Zahlenwerten, etwa km². Namen erhalten keine Einheit.
 - <code>Zahlen</code> (bei Zahlenfeldern): wie die Klassengrenzen erscheinen, mit <code>Dezimalstellen</code>, <code>Tausender</code>, <code>Abkürzen</code>, <code>Vorzeichen</code>, <code>Präfix</code> und <code>Suffix</code>. <code>Wie im Datensatz</code> behält das Format des Datensatzes.
 - <code>Reihenfolge</code> (bei mehreren Klassifizierungen): der Platz der Klassifizierung. Er ist auch die Reihenfolge, in der sie gelten: Wo zwei dieselbe Eigenschaft setzen, gewinnt die spätere.

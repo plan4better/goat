@@ -296,6 +296,7 @@ class AggregatePointsToolRunner(BaseToolRunner[AggregatePointsToolParams]):
             geometry,
             relation,
             outline_areas=not on_h3_cells(params),
+            language=params.language,
         )
 
     def process(

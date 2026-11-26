@@ -1406,7 +1406,8 @@ class HeatmapV2ToolRunner(BaseToolRunner[HeatmapV2WindmillParams]):
                 EMRLD,
                 geometry,
                 style_title(
-                    "closest_average_distance" if distance else "closest_average_time"
+                    "closest_average_distance" if distance else "closest_average_time",
+                    params.language,
                 ),
                 reverse=True,
                 unit="m" if distance else "min",
@@ -1416,12 +1417,12 @@ class HeatmapV2ToolRunner(BaseToolRunner[HeatmapV2WindmillParams]):
                 "total_accessibility",
                 EMRLD,
                 geometry,
-                style_title("connectivity"),
+                style_title("connectivity", params.language),
                 unit="m²",
             )
         title = "two_sfca" if params.heatmap_type == HeatmapType.two_sfca else "gravity"
         return numeric_default(
-            "total_accessibility", EMRLD, geometry, style_title(title)
+            "total_accessibility", EMRLD, geometry, style_title(title, params.language)
         )
 
     # --------------------------------------------------------- helpers

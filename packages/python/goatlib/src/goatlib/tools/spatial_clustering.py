@@ -472,7 +472,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
             CLUSTER_PALETTE,
             "point",
             symbol={"marker": {"size": 16, "opacity": 0.6}, "outline": False},
-            title=style_title("zone"),
+            title=style_title("zone", params.language),
         )
 
     def get_layer_style(
@@ -491,7 +491,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
             symbol={"marker": {"size": 8, "opacity": 0.8}}
             if geometry == "point"
             else None,
-            title=style_title("zone"),
+            title=style_title("zone", params.language),
         )
 
 

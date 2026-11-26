@@ -306,7 +306,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
         ]
         class_count = max(class_values) if class_values else 1
 
-        return oev_gueteklassen_style(class_count=class_count)
+        return oev_gueteklassen_style(class_count, params.language)
 
     def _street_network_graph(
         self: Self, params: OevGueteklassenToolParams, temp_dir: Path
@@ -540,7 +540,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
                         output_name=stations_output_name,
                         metadata=stations_metadata,
                         table_info=stations_table_info,
-                        style=oev_gueteklassen_stations_style(),
+                        style=oev_gueteklassen_stations_style(params.language),
                     )
                 )
                 logger.info(f"Stations layer created: {stations_layer_id}")

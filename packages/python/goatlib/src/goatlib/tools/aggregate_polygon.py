@@ -252,6 +252,7 @@ class AggregatePolygonToolRunner(BaseToolRunner[AggregatePolygonToolParams]):
             and params.area_type == AggregationAreaType.polygon
             and stat.operation in (StatisticOperation.sum, StatisticOperation.mean),
             outline_areas=not on_h3_cells(params),
+            language=params.language,
         )
 
     def process(

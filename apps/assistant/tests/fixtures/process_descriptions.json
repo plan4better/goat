@@ -980,6 +980,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -1802,6 +1828,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -2722,6 +2774,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -3048,6 +3126,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -5077,6 +5181,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -7001,6 +7131,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -9205,6 +9361,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -9515,6 +9697,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -10571,6 +10779,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -11372,6 +11606,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }

@@ -6,10 +6,10 @@ ensuring consistency across buffer, clip, join, layer-import, etc.
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from goatlib.analysis.schemas.ui import ui_field
-from goatlib.i18n import get_translator
+from goatlib.i18n import get_translator, supported_language
 
 # What the web's network selectors answer for the default network
 # (`DEFAULT_NETWORK_BUNDLE` in BundleInput.tsx). It names no bundle.
@@ -35,7 +35,8 @@ class ToolInputBase(BaseModel):
     """Base inputs that ALL tools receive.
 
     Every Windmill tool script should accept these parameters.
-    GeoAPI injects `user_id` and `triggered_by_email` automatically from the auth token.
+    GeoAPI injects `user_id` and `triggered_by_email` automatically from the auth token;
+    processes injects `language` from the request's Accept-Language.
 
     folder_id is optional - if not provided, it will be derived from project_id.
     For layer imports outside a project, folder_id must be provided.
@@ -62,6 +63,13 @@ class ToolInputBase(BaseModel):
             }
         return data
 
+    @field_validator("language", mode="before")
+    @classmethod
+    def _only_a_supported_language(cls, value: Any) -> str | None:
+        """A language the translations hold, without its region; any other
+        value is no language, so the titles are English."""
+        return supported_language(value)
+
     user_id: str = Field(
         ...,
         description="User UUID (injected by GeoAPI)",
@@ -72,6 +80,12 @@ class ToolInputBase(BaseModel):
         alias="_triggered_by_email",
         description="User email (injected by GeoAPI for job tracking/Windmill labels)",
         json_schema_extra=ui_field(section="output", field_order=100, hidden=True),
+    )
+    language: str | None = Field(
+        None,
+        description="Language of the legend titles the run writes (injected by "
+        "processes from the request; English when not given)",
+        json_schema_extra=ui_field(section="output", field_order=101, hidden=True),
     )
     folder_id: str | None = Field(
         None,
