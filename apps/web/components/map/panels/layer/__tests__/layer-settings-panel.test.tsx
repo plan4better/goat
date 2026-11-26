@@ -1,5 +1,5 @@
 import { configureStore } from "@reduxjs/toolkit";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { SWRConfig } from "swr";
@@ -14,6 +14,7 @@ import { MapSidebarItemID } from "@/types/map/common";
 
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 
+import { layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 import LayerSettingsPanel from "@/components/map/panels/layer/LayerSettingsPanel";
 import { EMPTY_DATA } from "@/components/map/panels/styleEditor/context";
 
@@ -35,6 +36,21 @@ vi.mock("@/lib/api/fetcher", () => ({
   },
 }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
+// Each swatch drawn from a layer's base look, with the geometry it is drawn as.
+const { swatches } = vi.hoisted(() => ({ swatches: [] as Array<{ document: unknown; geometry: string }> }));
+vi.mock("@/lib/style/legend", async (original) => {
+  const legend = await original<typeof import("@/lib/style/legend")>();
+  return {
+    ...legend,
+    baseSwatch: (
+      document: Parameters<typeof legend.baseSwatch>[0],
+      ctx: Parameters<typeof legend.baseSwatch>[1]
+    ) => {
+      swatches.push({ document, geometry: ctx.geometry });
+      return legend.baseSwatch(document, ctx);
+    },
+  };
+});
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => ({}) }));
 // The filter tab shows whether it is told it is on screen: its popovers close and its area leaves the map when not.
 vi.mock("@/components/map/panels/filter/LayerFilterPanel", () => ({
@@ -78,19 +94,19 @@ beforeEach(() => {
   requested.length = 0;
 });
 
-function renderPanel(shown: MapLayer = layer) {
+function renderPanel(shown: MapLayer = layer, { others = [] as MapLayer[], registry = true } = {}) {
   const store = configureStore({ reducer: { map: mapReducer, layers: layerReducer } });
   store.dispatch(setSelectedLayers([5]));
   store.dispatch(setActiveRightPanel(MapSidebarItemID.STYLE));
-  return renderWithProviders(
+  const panel = <LayerSettingsPanel projectId="p1" projectLayers={[shown, ...others]} />;
+  const result = renderWithProviders(
     <Provider store={store}>
       <SWRConfig value={{ provider: () => new Map() }}>
-        <StyleStoresProvider>
-          <LayerSettingsPanel projectId="p1" projectLayers={[shown]} />
-        </StyleStoresProvider>
+        {registry ? <StyleStoresProvider>{panel}</StyleStoresProvider> : panel}
       </SWRConfig>
     </Provider>
   );
+  return { ...result, store };
 }
 
 describe("the layer settings panel", () => {
@@ -104,6 +120,76 @@ describe("the layer settings panel", () => {
     expect(within(pickerRow).getByRole("button", { name: "style_editor.redo" })).toBeDefined();
     // The panel Container's header row holds the close button beside the layer's header.
     expect(within(header.parentElement as HTMLElement).getByRole("button", { name: "close" })).toBeDefined();
+  });
+
+  it("a catchment polygon layer's header shows its area swatch, as the layer list draws it", async () => {
+    const catchment = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { color: "#78c679", opacity: 0.8 }, outline: false },
+      classify: [
+        {
+          field: "travel_cost",
+          method: "categories",
+          classes: [
+            { id: "c1", values: [5], fill: { color: "#006837" } },
+            { id: "c2", values: [10], fill: { color: "#ffffcc" } },
+          ],
+        },
+      ],
+    } as unknown as LayerStyle;
+    renderPanel({
+      ...layer,
+      name: "Catchment area",
+      style: { ...layer.style, document: catchment },
+    } as unknown as MapLayer);
+    const header = await screen.findByTestId("layer-settings-header");
+    await waitFor(() => expect(header.querySelector("svg rect")).not.toBeNull());
+    const shared = renderWithProviders(
+      <>{layerSwatchIcon({ style: { document: catchment }, feature_layer_geometry_type: "polygon" })}</>
+    );
+    const area = header.querySelector("svg rect:not([data-checker-under])");
+    expect(area?.getAttribute("fill-opacity")).toBe("0.8");
+    expect(area?.getAttribute("stroke")).toBe("none");
+    expect(header.querySelector("svg")?.outerHTML).toBe(shared.container.querySelector("svg")?.outerHTML);
+  });
+
+  it("switching to a line layer never draws the polygon layer's style as its swatch", async () => {
+    const line = {
+      ...layer,
+      id: 7,
+      layer_id: "dataset-7",
+      name: "Roads",
+      feature_layer_geometry_type: "line",
+      entry: { type: "layer", id: 7 },
+      style: {
+        ...layer.style,
+        id: "s7",
+        document: { version: "1.0.0", kind: "vector", symbol: { line: { color: "#ff0000" } } },
+      },
+    } as unknown as MapLayer;
+    const { store } = renderPanel(layer, { others: [line] });
+    const header = await screen.findByTestId("layer-settings-header");
+    await waitFor(() => expect(header.querySelector("svg rect")).not.toBeNull());
+    swatches.length = 0;
+    act(() => {
+      store.dispatch(setSelectedLayers([7]));
+    });
+    const drawnAsLine = swatches.filter((s) => s.geometry === "line");
+    // From the first render after the switch on, a line swatch draws the line layer's style.
+    expect(drawnAsLine.length).toBeGreaterThan(0);
+    for (const { document } of drawnAsLine)
+      expect((document as { symbol: Record<string, unknown> }).symbol).toEqual({
+        line: { color: "#ff0000" },
+      });
+    expect(within(screen.getByTestId("layer-settings-header")).getByText("Roads")).toBeDefined();
+  });
+
+  it("a vector layer's header shows its swatch from its stored style before its store is there", async () => {
+    // Without the page's store registry the panel never gets a store.
+    renderPanel(layer, { registry: false });
+    const header = await screen.findByTestId("layer-settings-header");
+    expect(header.querySelector("svg rect:not([data-checker-under])")?.getAttribute("fill")).toBe("#cccccc");
   });
 
   it("the style picker heads the style tab as a pill with the active style", async () => {
@@ -120,6 +206,10 @@ describe("the layer settings panel", () => {
     const header = await screen.findByTestId("layer-settings-header");
     expect(within(header).getByText("Districts")).toBeDefined();
     expect(within(header).queryByText(/style_editor\.(kind|geometry)_/)).toBeNull();
+    // The table icon, as the layer list shows it: no swatch and no raster icon.
+    expect(header.querySelector("svg path")).not.toBeNull();
+    expect(header.querySelector("svg rect")).toBeNull();
+    expect(within(header).queryByTestId("raster-layer-icon")).toBeNull();
   });
 
   it("the style body is transparent, so the floating panel's glass shows", async () => {
@@ -152,8 +242,10 @@ describe("the layer settings panel", () => {
         feature_layer_geometry_type: null,
         style: null,
       } as unknown as MapLayer);
-      await screen.findByTestId("layer-settings-header");
+      const header = await screen.findByTestId("layer-settings-header");
       expect(requested.filter((url) => url.includes("/feature-count/"))).toEqual([]);
+      // The raster icon, as the layer list shows it.
+      expect(within(header).getByTestId("raster-layer-icon")).toBeDefined();
       unmount();
     }
   });

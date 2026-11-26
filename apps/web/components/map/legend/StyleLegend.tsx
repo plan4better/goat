@@ -2,7 +2,7 @@
 
 // A layer's legend (spec 7.2) from its data model (buildLegend): the layer list, the style panel's preview, popups'
 // header icons and print draw it with these components.
-import { Box, ButtonBase, Skeleton, type SxProps, type Theme, Typography } from "@mui/material";
+import { Box, ButtonBase, Skeleton, type SxProps, type Theme, Typography, useTheme } from "@mui/material";
 import { Fragment, type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -488,18 +488,24 @@ function HeightBar({ height, tallest }: { height: number; tallest: number }) {
 
 const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
-/** A layer's icon: the swatch of its base look. */
+/** A layer's icon, as the layer list shows it beside its name: a table's and a raster layer's (file or map service)
+ * icon, else the swatch of its style's base look (an area while its geometry is unknown); none without a style. */
 export function layerSwatchIcon(
-  layer: { style?: { document: unknown } | null; feature_layer_geometry_type?: string | null } | undefined,
+  layer:
+    | {
+        type?: string | null;
+        style?: { document: unknown } | null;
+        feature_layer_geometry_type?: string | null;
+      }
+    | undefined,
   zoom = 12
 ): ReactNode | undefined {
-  const geometry = layer?.feature_layer_geometry_type?.toLowerCase();
-  if (!layer?.style || !geometry || !GEOMETRIES.has(geometry)) return undefined;
-  return (
-    <SwatchIcon
-      swatch={baseSwatch(layer.style.document as JsonObject, { geometry: geometry as Geometry, zoom })}
-    />
-  );
+  if (layer?.type === "table") return <TableLayerIcon />;
+  if (layer?.type === "raster") return <RasterLayerIcon />;
+  if (!layer?.style) return undefined;
+  const type = layer.feature_layer_geometry_type?.toLowerCase();
+  const geometry = (type && GEOMETRIES.has(type) ? type : "polygon") as Geometry;
+  return <SwatchIcon swatch={baseSwatch(layer.style.document as JsonObject, { geometry, zoom })} />;
 }
 
 /** A raster layer's icon, as the layer list shows it beside its name. */
@@ -512,6 +518,12 @@ export function RasterLayerIcon() {
       sx={{ fontSize: "1rem", color: "action.active" }}
     />
   );
+}
+
+/** A table's icon, as the layer list shows it beside its name. */
+export function TableLayerIcon() {
+  const theme = useTheme();
+  return <Icon iconName={ICON_NAME.TABLE} style={{ fontSize: "1rem", color: theme.palette.action.active }} />;
 }
 
 /** A popup header's icon: the swatch of the class the clicked feature falls in; a raster layer's, as the layer list
