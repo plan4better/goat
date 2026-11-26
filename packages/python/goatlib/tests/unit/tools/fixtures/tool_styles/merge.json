@@ -1,0 +1,39 @@
+{
+ "id": "merge",
+ "tool": "merge",
+ "layer": "result",
+ "title": "Two point layers merged",
+ "shape": "plain",
+ "source": "analysis",
+ "inputs": [
+  "vector/merge_points_1.parquet",
+  "vector/merge_points_2.parquet"
+ ],
+ "picture": false,
+ "geometry": "point",
+ "fields": {},
+ "zoom": 8.75,
+ "rows": {
+  "total": 5,
+  "kept": 5
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#7f3c8d",
+    "size": 10
+   }
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{},"geometry":{"type":"MultiPoint","coordinates":[[-0.2,-0.300649]]}},
+{"type":"Feature","id":2,"properties":{},"geometry":{"type":"MultiPoint","coordinates":[[-0.1,-0.150766]]}},
+{"type":"Feature","id":3,"properties":{},"geometry":{"type":"MultiPoint","coordinates":[[-0.0,-0.000589]]}},
+{"type":"Feature","id":4,"properties":{},"geometry":{"type":"MultiPoint","coordinates":[[0.1,0.149882]]}},
+{"type":"Feature","id":5,"properties":{},"geometry":{"type":"MultiPoint","coordinates":[[0.2,0.300649]]}}
+]}
+}

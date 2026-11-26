@@ -1,0 +1,141 @@
+{
+ "id": "origin-destination-points",
+ "tool": "origin_destination",
+ "layer": "points",
+ "title": "The zip code points of the flows, sized by the weight that arrives",
+ "shape": "marker sizes and colors by weight",
+ "source": "analysis",
+ "inputs": [
+  "vector/zipcode_point.parquet",
+  "vector/origin_destination_matrix.parquet"
+ ],
+ "picture": true,
+ "geometry": "point",
+ "fields": {
+  "weight": "number"
+ },
+ "zoom": 12.5,
+ "rows": {
+  "total": 10,
+  "kept": 10
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#fc8d59",
+    "size": {
+     "field": "weight",
+     "range": [
+      10,
+      50
+     ],
+     "scale": "sqrt",
+     "computed": {
+      "at": "2026-01-01T00:00:00Z",
+      "data": "snapshot-v1",
+      "scope": "dataset",
+      "domain": [
+       431.0,
+       671.0
+      ]
+     }
+    },
+    "opacity": 0.8
+   }
+  },
+  "classify": [
+   {
+    "field": "weight",
+    "method": "quantile",
+    "count": 5,
+    "palette": "colorbrewer:OrRd",
+    "id": "weight",
+    "title": "Sum of weight",
+    "no_data": {
+     "marker": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 455.2,
+      "marker": {
+       "color": "#fef0d9"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 455.2,
+      "to": 497.4,
+      "marker": {
+       "color": "#fdcc8a"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 497.4,
+      "to": 542.8,
+      "marker": {
+       "color": "#fc8d59"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 542.8,
+      "to": 581.8,
+      "marker": {
+       "color": "#e34a33"
+      }
+     },
+     {
+      "id": "c5",
+      "from": 581.8,
+      "marker": {
+       "color": "#b30000"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      431.0,
+      671.0
+     ],
+     "generated": {
+      "target": "marker.color",
+      "values": {
+       "c1": "#fef0d9",
+       "c2": "#fdcc8a",
+       "c3": "#fc8d59",
+       "c4": "#e34a33",
+       "c5": "#b30000"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"weight":613.0},"geometry":{"type":"Point","coordinates":[-0.012574,0.007633]}},
+{"type":"Feature","id":2,"properties":{"weight":456.0},"geometry":{"type":"Point","coordinates":[-0.009788,-0.007541]}},
+{"type":"Feature","id":3,"properties":{"weight":540.0},"geometry":{"type":"Point","coordinates":[-0.008505,0.019041]}},
+{"type":"Feature","id":4,"properties":{"weight":462.0},"geometry":{"type":"Point","coordinates":[-0.00562,-0.021368]}},
+{"type":"Feature","id":5,"properties":{"weight":431.0},"geometry":{"type":"Point","coordinates":[-0.00353,0.003189]}},
+{"type":"Feature","id":6,"properties":{"weight":547.0},"geometry":{"type":"Point","coordinates":[0.000525,0.012692]}},
+{"type":"Feature","id":7,"properties":{"weight":671.0},"geometry":{"type":"Point","coordinates":[0.001691,0.021368]}},
+{"type":"Feature","id":8,"properties":{"weight":521.0},"geometry":{"type":"Point","coordinates":[0.003592,-0.007557]}},
+{"type":"Feature","id":9,"properties":{"weight":574.0},"geometry":{"type":"Point","coordinates":[0.01236,-0.008564]}},
+{"type":"Feature","id":10,"properties":{"weight":452.0},"geometry":{"type":"Point","coordinates":[0.012574,0.013555]}}
+]}
+}

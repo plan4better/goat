@@ -1,0 +1,263 @@
+{
+ "id": "pattern-catchment-network",
+ "tool": "catchment_area_v2",
+ "layer": "result",
+ "title": "A catchment as a street network",
+ "shape": "lines in the band colors",
+ "source": "pattern",
+ "inputs": [],
+ "picture": true,
+ "geometry": "line",
+ "fields": {
+  "cost_step": "integer"
+ },
+ "zoom": 13.0,
+ "rows": {
+  "total": 160,
+  "kept": 160
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "line": {
+    "color": "#78c679",
+    "width": 3
+   }
+  },
+  "classify": [
+   {
+    "field": "cost_step",
+    "method": "categories",
+    "classes": [
+     {
+      "values": [
+       3
+      ],
+      "line": {
+       "color": "#006837"
+      },
+      "id": "c1"
+     },
+     {
+      "values": [
+       6
+      ],
+      "line": {
+       "color": "#31a354"
+      },
+      "id": "c2"
+     },
+     {
+      "values": [
+       9
+      ],
+      "line": {
+       "color": "#78c679"
+      },
+      "id": "c3"
+     },
+     {
+      "values": [
+       12
+      ],
+      "line": {
+       "color": "#c2e699"
+      },
+      "id": "c4"
+     },
+     {
+      "values": [
+       15
+      ],
+      "line": {
+       "color": "#ffffcc"
+      },
+      "id": "c5"
+     }
+    ],
+    "palette": "colorbrewer:YlGn",
+    "reverse": true,
+    "title": "Travel time",
+    "id": "cost_step",
+    "unit": "min",
+    "format": {
+     "decimals": 0
+    },
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "no_data": false,
+     "other": false
+    }
+   }
+  ],
+  "order": {
+   "by": "classes"
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.0135,0.0],[-0.015,0.0]]}},
+{"type":"Feature","id":2,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.012472,-0.005166],[-0.013858,-0.00574]]}},
+{"type":"Feature","id":3,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.012472,0.005166],[-0.013858,0.00574]]}},
+{"type":"Feature","id":4,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.012,0.0],[-0.0135,0.0]]}},
+{"type":"Feature","id":5,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.011087,-0.004592],[-0.012472,-0.005166]]}},
+{"type":"Feature","id":6,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.011087,0.004592],[-0.012472,0.005166]]}},
+{"type":"Feature","id":7,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.0105,0.0],[-0.012,0.0]]}},
+{"type":"Feature","id":8,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.009701,-0.004018],[-0.011087,-0.004592]]}},
+{"type":"Feature","id":9,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.009701,0.004018],[-0.011087,0.004592]]}},
+{"type":"Feature","id":10,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.009546,-0.009546],[-0.010607,-0.010607]]}},
+{"type":"Feature","id":11,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.009546,0.009546],[-0.010607,0.010607]]}},
+{"type":"Feature","id":12,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.009,0.0],[-0.0105,0.0]]}},
+{"type":"Feature","id":13,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.008485,-0.008485],[-0.009546,-0.009546]]}},
+{"type":"Feature","id":14,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.008485,0.008485],[-0.009546,0.009546]]}},
+{"type":"Feature","id":15,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.008315,-0.003444],[-0.009701,-0.004018]]}},
+{"type":"Feature","id":16,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.008315,0.003444],[-0.009701,0.004018]]}},
+{"type":"Feature","id":17,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.0075,0.0],[-0.009,0.0]]}},
+{"type":"Feature","id":18,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.007425,-0.007425],[-0.008485,-0.008485]]}},
+{"type":"Feature","id":19,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.007425,0.007425],[-0.008485,0.008485]]}},
+{"type":"Feature","id":20,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.006929,-0.00287],[-0.008315,-0.003444]]}},
+{"type":"Feature","id":21,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.006929,0.00287],[-0.008315,0.003444]]}},
+{"type":"Feature","id":22,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.006364,-0.006364],[-0.007425,-0.007425]]}},
+{"type":"Feature","id":23,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.006364,0.006364],[-0.007425,0.007425]]}},
+{"type":"Feature","id":24,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.006,0.0],[-0.0075,0.0]]}},
+{"type":"Feature","id":25,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.005543,-0.002296],[-0.006929,-0.00287]]}},
+{"type":"Feature","id":26,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.005543,0.002296],[-0.006929,0.00287]]}},
+{"type":"Feature","id":27,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.005303,-0.005303],[-0.006364,-0.006364]]}},
+{"type":"Feature","id":28,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.005303,0.005303],[-0.006364,0.006364]]}},
+{"type":"Feature","id":29,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.005166,-0.012472],[-0.00574,-0.013858]]}},
+{"type":"Feature","id":30,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.005166,0.012472],[-0.00574,0.013858]]}},
+{"type":"Feature","id":31,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.0045,0.0],[-0.006,0.0]]}},
+{"type":"Feature","id":32,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.004592,-0.011087],[-0.005166,-0.012472]]}},
+{"type":"Feature","id":33,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.004592,0.011087],[-0.005166,0.012472]]}},
+{"type":"Feature","id":34,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.004157,-0.001722],[-0.005543,-0.002296]]}},
+{"type":"Feature","id":35,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.004157,0.001722],[-0.005543,0.002296]]}},
+{"type":"Feature","id":36,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.004243,-0.004243],[-0.005303,-0.005303]]}},
+{"type":"Feature","id":37,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.004243,0.004243],[-0.005303,0.005303]]}},
+{"type":"Feature","id":38,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.004018,-0.009701],[-0.004592,-0.011087]]}},
+{"type":"Feature","id":39,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.004018,0.009701],[-0.004592,0.011087]]}},
+{"type":"Feature","id":40,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.003,0.0],[-0.0045,0.0]]}},
+{"type":"Feature","id":41,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.003444,-0.008315],[-0.004018,-0.009701]]}},
+{"type":"Feature","id":42,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.003444,0.008315],[-0.004018,0.009701]]}},
+{"type":"Feature","id":43,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.003182,-0.003182],[-0.004243,-0.004243]]}},
+{"type":"Feature","id":44,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.003182,0.003182],[-0.004243,0.004243]]}},
+{"type":"Feature","id":45,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.002772,-0.001148],[-0.004157,-0.001722]]}},
+{"type":"Feature","id":46,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.002772,0.001148],[-0.004157,0.001722]]}},
+{"type":"Feature","id":47,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.00287,-0.006929],[-0.003444,-0.008315]]}},
+{"type":"Feature","id":48,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.00287,0.006929],[-0.003444,0.008315]]}},
+{"type":"Feature","id":49,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.002121,-0.002121],[-0.003182,-0.003182]]}},
+{"type":"Feature","id":50,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.002121,0.002121],[-0.003182,0.003182]]}},
+{"type":"Feature","id":51,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.002296,-0.005543],[-0.00287,-0.006929]]}},
+{"type":"Feature","id":52,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.002296,0.005543],[-0.00287,0.006929]]}},
+{"type":"Feature","id":53,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0015,0.0],[-0.003,0.0]]}},
+{"type":"Feature","id":54,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.001386,-0.000574],[-0.002772,-0.001148]]}},
+{"type":"Feature","id":55,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.001386,0.000574],[-0.002772,0.001148]]}},
+{"type":"Feature","id":56,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.001722,-0.004157],[-0.002296,-0.005543]]}},
+{"type":"Feature","id":57,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.001722,0.004157],[-0.002296,0.005543]]}},
+{"type":"Feature","id":58,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.001061,-0.001061],[-0.002121,-0.002121]]}},
+{"type":"Feature","id":59,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.001061,0.001061],[-0.002121,0.002121]]}},
+{"type":"Feature","id":60,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.001148,-0.002772],[-0.001722,-0.004157]]}},
+{"type":"Feature","id":61,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.001148,0.002772],[-0.001722,0.004157]]}},
+{"type":"Feature","id":62,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.000574,-0.001386],[-0.001148,-0.002772]]}},
+{"type":"Feature","id":63,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.000574,0.001386],[-0.001148,0.002772]]}},
+{"type":"Feature","id":64,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.0015,0.0]]}},
+{"type":"Feature","id":65,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.001386,-0.000574]]}},
+{"type":"Feature","id":66,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.001386,0.000574]]}},
+{"type":"Feature","id":67,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.001061,-0.001061]]}},
+{"type":"Feature","id":68,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.001061,0.001061]]}},
+{"type":"Feature","id":69,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.000574,-0.001386]]}},
+{"type":"Feature","id":70,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.000574,0.001386]]}},
+{"type":"Feature","id":71,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.0135],[-0.0,-0.015]]}},
+{"type":"Feature","id":72,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.012],[-0.0,-0.0135]]}},
+{"type":"Feature","id":73,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.0105],[-0.0,-0.012]]}},
+{"type":"Feature","id":74,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.009],[-0.0,-0.0105]]}},
+{"type":"Feature","id":75,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.0075],[-0.0,-0.009]]}},
+{"type":"Feature","id":76,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.006],[-0.0,-0.0075]]}},
+{"type":"Feature","id":77,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.0045],[-0.0,-0.006]]}},
+{"type":"Feature","id":78,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.003],[-0.0,-0.0045]]}},
+{"type":"Feature","id":79,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,-0.0015],[-0.0,-0.003]]}},
+{"type":"Feature","id":80,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[-0.0,0.0],[-0.0,-0.0015]]}},
+{"type":"Feature","id":81,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.0,0.0015]]}},
+{"type":"Feature","id":82,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0015],[0.0,0.003]]}},
+{"type":"Feature","id":83,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.0,0.003],[0.0,0.0045]]}},
+{"type":"Feature","id":84,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.0,0.0045],[0.0,0.006]]}},
+{"type":"Feature","id":85,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.0,0.006],[0.0,0.0075]]}},
+{"type":"Feature","id":86,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.0,0.0075],[0.0,0.009]]}},
+{"type":"Feature","id":87,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.0,0.009],[0.0,0.0105]]}},
+{"type":"Feature","id":88,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.0,0.0105],[0.0,0.012]]}},
+{"type":"Feature","id":89,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.0,0.012],[0.0,0.0135]]}},
+{"type":"Feature","id":90,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.0,0.0135],[0.0,0.015]]}},
+{"type":"Feature","id":91,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.000574,0.001386]]}},
+{"type":"Feature","id":92,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.000574,-0.001386]]}},
+{"type":"Feature","id":93,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.001061,-0.001061]]}},
+{"type":"Feature","id":94,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.001061,0.001061]]}},
+{"type":"Feature","id":95,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.001386,-0.000574]]}},
+{"type":"Feature","id":96,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.001386,0.000574]]}},
+{"type":"Feature","id":97,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.0015,0.0]]}},
+{"type":"Feature","id":98,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.000574,0.001386],[0.001148,0.002772]]}},
+{"type":"Feature","id":99,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.000574,-0.001386],[0.001148,-0.002772]]}},
+{"type":"Feature","id":100,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.001148,0.002772],[0.001722,0.004157]]}},
+{"type":"Feature","id":101,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.001148,-0.002772],[0.001722,-0.004157]]}},
+{"type":"Feature","id":102,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.001061,-0.001061],[0.002121,-0.002121]]}},
+{"type":"Feature","id":103,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.001061,0.001061],[0.002121,0.002121]]}},
+{"type":"Feature","id":104,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.001722,0.004157],[0.002296,0.005543]]}},
+{"type":"Feature","id":105,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.001722,-0.004157],[0.002296,-0.005543]]}},
+{"type":"Feature","id":106,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.001386,-0.000574],[0.002772,-0.001148]]}},
+{"type":"Feature","id":107,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.001386,0.000574],[0.002772,0.001148]]}},
+{"type":"Feature","id":108,"properties":{"cost_step":3},"geometry":{"type":"LineString","coordinates":[[0.0015,0.0],[0.003,0.0]]}},
+{"type":"Feature","id":109,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.002296,0.005543],[0.00287,0.006929]]}},
+{"type":"Feature","id":110,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.002296,-0.005543],[0.00287,-0.006929]]}},
+{"type":"Feature","id":111,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.002121,-0.002121],[0.003182,-0.003182]]}},
+{"type":"Feature","id":112,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.002121,0.002121],[0.003182,0.003182]]}},
+{"type":"Feature","id":113,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.00287,0.006929],[0.003444,0.008315]]}},
+{"type":"Feature","id":114,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.00287,-0.006929],[0.003444,-0.008315]]}},
+{"type":"Feature","id":115,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.002772,-0.001148],[0.004157,-0.001722]]}},
+{"type":"Feature","id":116,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.002772,0.001148],[0.004157,0.001722]]}},
+{"type":"Feature","id":117,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.003182,-0.003182],[0.004243,-0.004243]]}},
+{"type":"Feature","id":118,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.003182,0.003182],[0.004243,0.004243]]}},
+{"type":"Feature","id":119,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.003444,0.008315],[0.004018,0.009701]]}},
+{"type":"Feature","id":120,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.003444,-0.008315],[0.004018,-0.009701]]}},
+{"type":"Feature","id":121,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.003,0.0],[0.0045,0.0]]}},
+{"type":"Feature","id":122,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.004018,0.009701],[0.004592,0.011087]]}},
+{"type":"Feature","id":123,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.004018,-0.009701],[0.004592,-0.011087]]}},
+{"type":"Feature","id":124,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.004243,-0.004243],[0.005303,-0.005303]]}},
+{"type":"Feature","id":125,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.004243,0.004243],[0.005303,0.005303]]}},
+{"type":"Feature","id":126,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.004157,-0.001722],[0.005543,-0.002296]]}},
+{"type":"Feature","id":127,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.004157,0.001722],[0.005543,0.002296]]}},
+{"type":"Feature","id":128,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.004592,0.011087],[0.005166,0.012472]]}},
+{"type":"Feature","id":129,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.004592,-0.011087],[0.005166,-0.012472]]}},
+{"type":"Feature","id":130,"properties":{"cost_step":6},"geometry":{"type":"LineString","coordinates":[[0.0045,0.0],[0.006,0.0]]}},
+{"type":"Feature","id":131,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.005166,0.012472],[0.00574,0.013858]]}},
+{"type":"Feature","id":132,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.005166,-0.012472],[0.00574,-0.013858]]}},
+{"type":"Feature","id":133,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.005303,-0.005303],[0.006364,-0.006364]]}},
+{"type":"Feature","id":134,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.005303,0.005303],[0.006364,0.006364]]}},
+{"type":"Feature","id":135,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.005543,-0.002296],[0.006929,-0.00287]]}},
+{"type":"Feature","id":136,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.005543,0.002296],[0.006929,0.00287]]}},
+{"type":"Feature","id":137,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.006,0.0],[0.0075,0.0]]}},
+{"type":"Feature","id":138,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.006364,-0.006364],[0.007425,-0.007425]]}},
+{"type":"Feature","id":139,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.006364,0.006364],[0.007425,0.007425]]}},
+{"type":"Feature","id":140,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.006929,-0.00287],[0.008315,-0.003444]]}},
+{"type":"Feature","id":141,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.006929,0.00287],[0.008315,0.003444]]}},
+{"type":"Feature","id":142,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.007425,-0.007425],[0.008485,-0.008485]]}},
+{"type":"Feature","id":143,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.007425,0.007425],[0.008485,0.008485]]}},
+{"type":"Feature","id":144,"properties":{"cost_step":9},"geometry":{"type":"LineString","coordinates":[[0.0075,0.0],[0.009,0.0]]}},
+{"type":"Feature","id":145,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.008315,-0.003444],[0.009701,-0.004018]]}},
+{"type":"Feature","id":146,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.008315,0.003444],[0.009701,0.004018]]}},
+{"type":"Feature","id":147,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.008485,-0.008485],[0.009546,-0.009546]]}},
+{"type":"Feature","id":148,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.008485,0.008485],[0.009546,0.009546]]}},
+{"type":"Feature","id":149,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.009,0.0],[0.0105,0.0]]}},
+{"type":"Feature","id":150,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.009546,-0.009546],[0.010607,-0.010607]]}},
+{"type":"Feature","id":151,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.009546,0.009546],[0.010607,0.010607]]}},
+{"type":"Feature","id":152,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.009701,-0.004018],[0.011087,-0.004592]]}},
+{"type":"Feature","id":153,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.009701,0.004018],[0.011087,0.004592]]}},
+{"type":"Feature","id":154,"properties":{"cost_step":12},"geometry":{"type":"LineString","coordinates":[[0.0105,0.0],[0.012,0.0]]}},
+{"type":"Feature","id":155,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.011087,-0.004592],[0.012472,-0.005166]]}},
+{"type":"Feature","id":156,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.011087,0.004592],[0.012472,0.005166]]}},
+{"type":"Feature","id":157,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.012,0.0],[0.0135,0.0]]}},
+{"type":"Feature","id":158,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.012472,-0.005166],[0.013858,-0.00574]]}},
+{"type":"Feature","id":159,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.012472,0.005166],[0.013858,0.00574]]}},
+{"type":"Feature","id":160,"properties":{"cost_step":15},"geometry":{"type":"LineString","coordinates":[[0.0135,0.0],[0.015,0.0]]}}
+]}
+}

@@ -1,0 +1,142 @@
+{
+ "id": "pattern-half-zeros",
+ "tool": "aggregate_points",
+ "layer": "result",
+ "title": "Half of the areas hold no point, the rest a long tail",
+ "shape": "how zeros and a long tail share the classes",
+ "source": "pattern",
+ "inputs": [],
+ "picture": true,
+ "geometry": "polygon",
+ "fields": {
+  "value_sum": "integer"
+ },
+ "zoom": 14.5,
+ "rows": {
+  "total": 40,
+  "kept": 40
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#fd8d3c",
+    "opacity": 0.8
+   },
+   "outline": false
+  },
+  "classify": [
+   {
+    "field": "value_sum",
+    "method": "quantile",
+    "count": 7,
+    "palette": "colorbrewer:Oranges",
+    "id": "value_sum",
+    "title": "Sum of value",
+    "no_data": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 2.0,
+      "fill": {
+       "color": "#feedde"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 2.0,
+      "to": 5.85714285714,
+      "fill": {
+       "color": "#fdbe85"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 5.85714285714,
+      "to": 20.1428571429,
+      "fill": {
+       "color": "#fd8d3c"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 20.1428571429,
+      "fill": {
+       "color": "#d94701"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      0.0,
+      69.0
+     ],
+     "generated": {
+      "target": "fill.color",
+      "values": {
+       "c1": "#feedde",
+       "c2": "#fdbe85",
+       "c3": "#fd8d3c",
+       "c4": "#d94701"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,-0.00595],[-0.00695,-0.00405],[-0.00505,-0.00405],[-0.00505,-0.00595],[-0.00695,-0.00595]]]}},
+{"type":"Feature","id":2,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,-0.00395],[-0.00695,-0.00205],[-0.00505,-0.00205],[-0.00505,-0.00395],[-0.00695,-0.00395]]]}},
+{"type":"Feature","id":3,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,-0.00195],[-0.00695,-5e-05],[-0.00505,-5e-05],[-0.00505,-0.00195],[-0.00695,-0.00195]]]}},
+{"type":"Feature","id":4,"properties":{"value_sum":1},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,5e-05],[-0.00695,0.00195],[-0.00505,0.00195],[-0.00505,5e-05],[-0.00695,5e-05]]]}},
+{"type":"Feature","id":5,"properties":{"value_sum":6},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,0.00205],[-0.00695,0.00395],[-0.00505,0.00395],[-0.00505,0.00205],[-0.00695,0.00205]]]}},
+{"type":"Feature","id":6,"properties":{"value_sum":28},"geometry":{"type":"Polygon","coordinates":[[[-0.00695,0.00405],[-0.00695,0.00595],[-0.00505,0.00595],[-0.00505,0.00405],[-0.00695,0.00405]]]}},
+{"type":"Feature","id":7,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,-0.00595],[-0.00495,-0.00405],[-0.00305,-0.00405],[-0.00305,-0.00595],[-0.00495,-0.00595]]]}},
+{"type":"Feature","id":8,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,-0.00395],[-0.00495,-0.00205],[-0.00305,-0.00205],[-0.00305,-0.00395],[-0.00495,-0.00395]]]}},
+{"type":"Feature","id":9,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,-0.00195],[-0.00495,-5e-05],[-0.00305,-5e-05],[-0.00305,-0.00195],[-0.00495,-0.00195]]]}},
+{"type":"Feature","id":10,"properties":{"value_sum":2},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,5e-05],[-0.00495,0.00195],[-0.00305,0.00195],[-0.00305,5e-05],[-0.00495,5e-05]]]}},
+{"type":"Feature","id":11,"properties":{"value_sum":7},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,0.00205],[-0.00495,0.00395],[-0.00305,0.00395],[-0.00305,0.00205],[-0.00495,0.00205]]]}},
+{"type":"Feature","id":12,"properties":{"value_sum":36},"geometry":{"type":"Polygon","coordinates":[[[-0.00495,0.00405],[-0.00495,0.00595],[-0.00305,0.00595],[-0.00305,0.00405],[-0.00495,0.00405]]]}},
+{"type":"Feature","id":13,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,-0.00595],[-0.00295,-0.00405],[-0.00105,-0.00405],[-0.00105,-0.00595],[-0.00295,-0.00595]]]}},
+{"type":"Feature","id":14,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,-0.00395],[-0.00295,-0.00205],[-0.00105,-0.00205],[-0.00105,-0.00395],[-0.00295,-0.00395]]]}},
+{"type":"Feature","id":15,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,-0.00195],[-0.00295,-5e-05],[-0.00105,-5e-05],[-0.00105,-0.00195],[-0.00295,-0.00195]]]}},
+{"type":"Feature","id":16,"properties":{"value_sum":2},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,5e-05],[-0.00295,0.00195],[-0.00105,0.00195],[-0.00105,5e-05],[-0.00295,5e-05]]]}},
+{"type":"Feature","id":17,"properties":{"value_sum":9},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,0.00205],[-0.00295,0.00395],[-0.00105,0.00395],[-0.00105,0.00205],[-0.00295,0.00205]]]}},
+{"type":"Feature","id":18,"properties":{"value_sum":44},"geometry":{"type":"Polygon","coordinates":[[[-0.00295,0.00405],[-0.00295,0.00595],[-0.00105,0.00595],[-0.00105,0.00405],[-0.00295,0.00405]]]}},
+{"type":"Feature","id":19,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,-0.00595],[-0.00095,-0.00405],[0.00095,-0.00405],[0.00095,-0.00595],[-0.00095,-0.00595]]]}},
+{"type":"Feature","id":20,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,-0.00395],[-0.00095,-0.00205],[0.00095,-0.00205],[0.00095,-0.00395],[-0.00095,-0.00395]]]}},
+{"type":"Feature","id":21,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,-0.00195],[-0.00095,-5e-05],[0.00095,-5e-05],[0.00095,-0.00195],[-0.00095,-0.00195]]]}},
+{"type":"Feature","id":22,"properties":{"value_sum":2},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,5e-05],[-0.00095,0.00195],[0.00095,0.00195],[0.00095,5e-05],[-0.00095,5e-05]]]}},
+{"type":"Feature","id":23,"properties":{"value_sum":12},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,0.00205],[-0.00095,0.00395],[0.00095,0.00395],[0.00095,0.00205],[-0.00095,0.00205]]]}},
+{"type":"Feature","id":24,"properties":{"value_sum":56},"geometry":{"type":"Polygon","coordinates":[[[-0.00095,0.00405],[-0.00095,0.00595],[0.00095,0.00595],[0.00095,0.00405],[-0.00095,0.00405]]]}},
+{"type":"Feature","id":25,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00105,-0.00595],[0.00105,-0.00405],[0.00295,-0.00405],[0.00295,-0.00595],[0.00105,-0.00595]]]}},
+{"type":"Feature","id":26,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00105,-0.00395],[0.00105,-0.00205],[0.00295,-0.00205],[0.00295,-0.00395],[0.00105,-0.00395]]]}},
+{"type":"Feature","id":27,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00105,-0.00195],[0.00105,-5e-05],[0.00295,-5e-05],[0.00295,-0.00195],[0.00105,-0.00195]]]}},
+{"type":"Feature","id":28,"properties":{"value_sum":3},"geometry":{"type":"Polygon","coordinates":[[[0.00105,5e-05],[0.00105,0.00195],[0.00295,0.00195],[0.00295,5e-05],[0.00105,5e-05]]]}},
+{"type":"Feature","id":29,"properties":{"value_sum":15},"geometry":{"type":"Polygon","coordinates":[[[0.00105,0.00205],[0.00105,0.00395],[0.00295,0.00395],[0.00295,0.00205],[0.00105,0.00205]]]}},
+{"type":"Feature","id":30,"properties":{"value_sum":69},"geometry":{"type":"Polygon","coordinates":[[[0.00105,0.00405],[0.00105,0.00595],[0.00295,0.00595],[0.00295,0.00405],[0.00105,0.00405]]]}},
+{"type":"Feature","id":31,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00305,-0.00595],[0.00305,-0.00405],[0.00495,-0.00405],[0.00495,-0.00595],[0.00305,-0.00595]]]}},
+{"type":"Feature","id":32,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00305,-0.00395],[0.00305,-0.00205],[0.00495,-0.00205],[0.00495,-0.00395],[0.00305,-0.00395]]]}},
+{"type":"Feature","id":33,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00305,-0.00195],[0.00305,-5e-05],[0.00495,-5e-05],[0.00495,-0.00195],[0.00305,-0.00195]]]}},
+{"type":"Feature","id":34,"properties":{"value_sum":4},"geometry":{"type":"Polygon","coordinates":[[[0.00305,5e-05],[0.00305,0.00195],[0.00495,0.00195],[0.00495,5e-05],[0.00305,5e-05]]]}},
+{"type":"Feature","id":35,"properties":{"value_sum":18},"geometry":{"type":"Polygon","coordinates":[[[0.00305,0.00205],[0.00305,0.00395],[0.00495,0.00395],[0.00495,0.00205],[0.00305,0.00205]]]}},
+{"type":"Feature","id":36,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00505,-0.00595],[0.00505,-0.00405],[0.00695,-0.00405],[0.00695,-0.00595],[0.00505,-0.00595]]]}},
+{"type":"Feature","id":37,"properties":{"value_sum":0},"geometry":{"type":"Polygon","coordinates":[[[0.00505,-0.00395],[0.00505,-0.00205],[0.00695,-0.00205],[0.00695,-0.00395],[0.00505,-0.00395]]]}},
+{"type":"Feature","id":38,"properties":{"value_sum":1},"geometry":{"type":"Polygon","coordinates":[[[0.00505,-0.00195],[0.00505,-5e-05],[0.00695,-5e-05],[0.00695,-0.00195],[0.00505,-0.00195]]]}},
+{"type":"Feature","id":39,"properties":{"value_sum":5},"geometry":{"type":"Polygon","coordinates":[[[0.00505,5e-05],[0.00505,0.00195],[0.00695,0.00195],[0.00695,5e-05],[0.00505,5e-05]]]}},
+{"type":"Feature","id":40,"properties":{"value_sum":23},"geometry":{"type":"Polygon","coordinates":[[[0.00505,0.00205],[0.00505,0.00395],[0.00695,0.00395],[0.00695,0.00205],[0.00505,0.00205]]]}}
+]}
+}

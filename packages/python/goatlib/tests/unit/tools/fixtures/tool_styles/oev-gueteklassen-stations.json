@@ -1,0 +1,156 @@
+{
+ "id": "oev-gueteklassen-stations",
+ "tool": "oev_gueteklassen",
+ "layer": "stations",
+ "title": "Stations of categories 1 to 7 and one without service",
+ "shape": "black markers, grey without service",
+ "source": "synthetic",
+ "inputs": [],
+ "picture": true,
+ "geometry": "point",
+ "fields": {
+  "station_category": "integer"
+ },
+ "zoom": 14.5,
+ "rows": {
+  "total": 24,
+  "kept": 24
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#000000",
+    "size": 6
+   }
+  },
+  "classify": [
+   {
+    "field": "station_category",
+    "method": "categories",
+    "classes": [
+     {
+      "values": [
+       1
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c1"
+     },
+     {
+      "values": [
+       2
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c2"
+     },
+     {
+      "values": [
+       3
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c3"
+     },
+     {
+      "values": [
+       4
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c4"
+     },
+     {
+      "values": [
+       5
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c5"
+     },
+     {
+      "values": [
+       6
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c6"
+     },
+     {
+      "values": [
+       7
+      ],
+      "marker": {
+       "color": "#000000"
+      },
+      "id": "c7"
+     },
+     {
+      "values": [
+       999
+      ],
+      "marker": {
+       "color": "#717171"
+      },
+      "id": "c8"
+     }
+    ],
+    "palette": [
+     "#000000",
+     "#000000",
+     "#000000",
+     "#000000",
+     "#000000",
+     "#000000",
+     "#000000",
+     "#717171"
+    ],
+    "title": "Station category",
+    "id": "station_category",
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "no_data": false,
+     "other": false
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"station_category":1},"geometry":{"type":"Point","coordinates":[-0.0075,-0.0045]}},
+{"type":"Feature","id":2,"properties":{"station_category":7},"geometry":{"type":"Point","coordinates":[-0.0075,-0.0015]}},
+{"type":"Feature","id":3,"properties":{"station_category":5},"geometry":{"type":"Point","coordinates":[-0.0075,0.0015]}},
+{"type":"Feature","id":4,"properties":{"station_category":3},"geometry":{"type":"Point","coordinates":[-0.0075,0.0045]}},
+{"type":"Feature","id":5,"properties":{"station_category":2},"geometry":{"type":"Point","coordinates":[-0.0045,-0.0045]}},
+{"type":"Feature","id":6,"properties":{"station_category":999},"geometry":{"type":"Point","coordinates":[-0.0045,-0.0015]}},
+{"type":"Feature","id":7,"properties":{"station_category":6},"geometry":{"type":"Point","coordinates":[-0.0045,0.0015]}},
+{"type":"Feature","id":8,"properties":{"station_category":4},"geometry":{"type":"Point","coordinates":[-0.0045,0.0045]}},
+{"type":"Feature","id":9,"properties":{"station_category":3},"geometry":{"type":"Point","coordinates":[-0.0015,-0.0045]}},
+{"type":"Feature","id":10,"properties":{"station_category":1},"geometry":{"type":"Point","coordinates":[-0.0015,-0.0015]}},
+{"type":"Feature","id":11,"properties":{"station_category":7},"geometry":{"type":"Point","coordinates":[-0.0015,0.0015]}},
+{"type":"Feature","id":12,"properties":{"station_category":5},"geometry":{"type":"Point","coordinates":[-0.0015,0.0045]}},
+{"type":"Feature","id":13,"properties":{"station_category":4},"geometry":{"type":"Point","coordinates":[0.0015,-0.0045]}},
+{"type":"Feature","id":14,"properties":{"station_category":2},"geometry":{"type":"Point","coordinates":[0.0015,-0.0015]}},
+{"type":"Feature","id":15,"properties":{"station_category":999},"geometry":{"type":"Point","coordinates":[0.0015,0.0015]}},
+{"type":"Feature","id":16,"properties":{"station_category":6},"geometry":{"type":"Point","coordinates":[0.0015,0.0045]}},
+{"type":"Feature","id":17,"properties":{"station_category":5},"geometry":{"type":"Point","coordinates":[0.0045,-0.0045]}},
+{"type":"Feature","id":18,"properties":{"station_category":3},"geometry":{"type":"Point","coordinates":[0.0045,-0.0015]}},
+{"type":"Feature","id":19,"properties":{"station_category":1},"geometry":{"type":"Point","coordinates":[0.0045,0.0015]}},
+{"type":"Feature","id":20,"properties":{"station_category":7},"geometry":{"type":"Point","coordinates":[0.0045,0.0045]}},
+{"type":"Feature","id":21,"properties":{"station_category":6},"geometry":{"type":"Point","coordinates":[0.0075,-0.0045]}},
+{"type":"Feature","id":22,"properties":{"station_category":4},"geometry":{"type":"Point","coordinates":[0.0075,-0.0015]}},
+{"type":"Feature","id":23,"properties":{"station_category":2},"geometry":{"type":"Point","coordinates":[0.0075,0.0015]}},
+{"type":"Feature","id":24,"properties":{"station_category":999},"geometry":{"type":"Point","coordinates":[0.0075,0.0045]}}
+]}
+}

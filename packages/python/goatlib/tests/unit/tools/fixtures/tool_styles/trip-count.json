@@ -1,0 +1,169 @@
+{
+ "id": "trip-count",
+ "tool": "trip_count",
+ "layer": "result",
+ "title": "Stations with their whole trip counts, skewed towards a few busy ones",
+ "shape": "trips classified in purple, whole-number labels",
+ "source": "after_engine",
+ "inputs": [],
+ "picture": true,
+ "geometry": "point",
+ "fields": {
+  "total": "integer"
+ },
+ "zoom": 14.0,
+ "rows": {
+  "total": 40,
+  "kept": 40
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#8c96c6",
+    "size": 10
+   }
+  },
+  "classify": [
+   {
+    "field": "total",
+    "method": "quantile",
+    "count": 7,
+    "palette": "colorbrewer:BuPu",
+    "id": "total",
+    "title": "Trips in the time window",
+    "no_data": {
+     "marker": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 3.57142857143,
+      "marker": {
+       "color": "#edf8fb"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 3.57142857143,
+      "to": 10.2857142857,
+      "marker": {
+       "color": "#bfd3e6"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 10.2857142857,
+      "to": 22.1428571429,
+      "marker": {
+       "color": "#9ebcda"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 22.1428571429,
+      "to": 40.1428571429,
+      "marker": {
+       "color": "#8c96c6"
+      }
+     },
+     {
+      "id": "c5",
+      "from": 40.1428571429,
+      "to": 66.2857142857,
+      "marker": {
+       "color": "#8c6bb1"
+      }
+     },
+     {
+      "id": "c6",
+      "from": 66.2857142857,
+      "to": 103.0,
+      "marker": {
+       "color": "#88419d"
+      }
+     },
+     {
+      "id": "c7",
+      "from": 103.0,
+      "marker": {
+       "color": "#6e016b"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      1.0,
+      150.0
+     ],
+     "generated": {
+      "target": "marker.color",
+      "values": {
+       "c1": "#edf8fb",
+       "c2": "#bfd3e6",
+       "c3": "#9ebcda",
+       "c4": "#8c96c6",
+       "c5": "#8c6bb1",
+       "c6": "#88419d",
+       "c7": "#6e016b"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"total":1},"geometry":{"type":"Point","coordinates":[-0.0105,-0.0045]}},
+{"type":"Feature","id":2,"properties":{"total":6},"geometry":{"type":"Point","coordinates":[-0.0105,-0.0015]}},
+{"type":"Feature","id":3,"properties":{"total":20},"geometry":{"type":"Point","coordinates":[-0.0105,0.0015]}},
+{"type":"Feature","id":4,"properties":{"total":47},"geometry":{"type":"Point","coordinates":[-0.0105,0.0045]}},
+{"type":"Feature","id":5,"properties":{"total":92},"geometry":{"type":"Point","coordinates":[-0.0105,0.0075]}},
+{"type":"Feature","id":6,"properties":{"total":5},"geometry":{"type":"Point","coordinates":[-0.0075,-0.0045]}},
+{"type":"Feature","id":7,"properties":{"total":18},"geometry":{"type":"Point","coordinates":[-0.0075,-0.0015]}},
+{"type":"Feature","id":8,"properties":{"total":43},"geometry":{"type":"Point","coordinates":[-0.0075,0.0015]}},
+{"type":"Feature","id":9,"properties":{"total":86},"geometry":{"type":"Point","coordinates":[-0.0075,0.0045]}},
+{"type":"Feature","id":10,"properties":{"total":150},"geometry":{"type":"Point","coordinates":[-0.0075,0.0075]}},
+{"type":"Feature","id":11,"properties":{"total":4},"geometry":{"type":"Point","coordinates":[-0.0045,-0.0075]}},
+{"type":"Feature","id":12,"properties":{"total":15},"geometry":{"type":"Point","coordinates":[-0.0045,-0.0045]}},
+{"type":"Feature","id":13,"properties":{"total":39},"geometry":{"type":"Point","coordinates":[-0.0045,-0.0015]}},
+{"type":"Feature","id":14,"properties":{"total":79},"geometry":{"type":"Point","coordinates":[-0.0045,0.0015]}},
+{"type":"Feature","id":15,"properties":{"total":141},"geometry":{"type":"Point","coordinates":[-0.0045,0.0045]}},
+{"type":"Feature","id":16,"properties":{"total":13},"geometry":{"type":"Point","coordinates":[-0.0015,-0.0075]}},
+{"type":"Feature","id":17,"properties":{"total":35},"geometry":{"type":"Point","coordinates":[-0.0015,-0.0045]}},
+{"type":"Feature","id":18,"properties":{"total":73},"geometry":{"type":"Point","coordinates":[-0.0015,-0.0015]}},
+{"type":"Feature","id":19,"properties":{"total":132},"geometry":{"type":"Point","coordinates":[-0.0015,0.0015]}},
+{"type":"Feature","id":20,"properties":{"total":3},"geometry":{"type":"Point","coordinates":[-0.0015,0.0075]}},
+{"type":"Feature","id":21,"properties":{"total":32},"geometry":{"type":"Point","coordinates":[0.0015,-0.0075]}},
+{"type":"Feature","id":22,"properties":{"total":67},"geometry":{"type":"Point","coordinates":[0.0015,-0.0045]}},
+{"type":"Feature","id":23,"properties":{"total":123},"geometry":{"type":"Point","coordinates":[0.0015,-0.0015]}},
+{"type":"Feature","id":24,"properties":{"total":2},"geometry":{"type":"Point","coordinates":[0.0015,0.0045]}},
+{"type":"Feature","id":25,"properties":{"total":12},"geometry":{"type":"Point","coordinates":[0.0015,0.0075]}},
+{"type":"Feature","id":26,"properties":{"total":62},"geometry":{"type":"Point","coordinates":[0.0045,-0.0075]}},
+{"type":"Feature","id":27,"properties":{"total":115},"geometry":{"type":"Point","coordinates":[0.0045,-0.0045]}},
+{"type":"Feature","id":28,"properties":{"total":2},"geometry":{"type":"Point","coordinates":[0.0045,0.0015]}},
+{"type":"Feature","id":29,"properties":{"total":10},"geometry":{"type":"Point","coordinates":[0.0045,0.0045]}},
+{"type":"Feature","id":30,"properties":{"total":28},"geometry":{"type":"Point","coordinates":[0.0045,0.0075]}},
+{"type":"Feature","id":31,"properties":{"total":107},"geometry":{"type":"Point","coordinates":[0.0075,-0.0075]}},
+{"type":"Feature","id":32,"properties":{"total":1},"geometry":{"type":"Point","coordinates":[0.0075,-0.0015]}},
+{"type":"Feature","id":33,"properties":{"total":8},"geometry":{"type":"Point","coordinates":[0.0075,0.0015]}},
+{"type":"Feature","id":34,"properties":{"total":25},"geometry":{"type":"Point","coordinates":[0.0075,0.0045]}},
+{"type":"Feature","id":35,"properties":{"total":57},"geometry":{"type":"Point","coordinates":[0.0075,0.0075]}},
+{"type":"Feature","id":36,"properties":{"total":1},"geometry":{"type":"Point","coordinates":[0.0105,-0.0045]}},
+{"type":"Feature","id":37,"properties":{"total":7},"geometry":{"type":"Point","coordinates":[0.0105,-0.0015]}},
+{"type":"Feature","id":38,"properties":{"total":23},"geometry":{"type":"Point","coordinates":[0.0105,0.0015]}},
+{"type":"Feature","id":39,"properties":{"total":52},"geometry":{"type":"Point","coordinates":[0.0105,0.0045]}},
+{"type":"Feature","id":40,"properties":{"total":100},"geometry":{"type":"Point","coordinates":[0.0105,0.0075]}}
+]}
+}
