@@ -1271,6 +1271,12 @@
     "connectivity": "Erreichbare Fläche",
     "two_sfca": "Angebot je Nachfrage",
     "market_share": "Marktanteil",
-    "trip_count": "Fahrten im Zeitfenster"
+    "trip_count": "Fahrten im Zeitfenster",
+    "buffer_distance": "Pufferabstand",
+    "travel_time": "Reisezeit",
+    "distance": "Entfernung",
+    "zone": "Zone",
+    "pt_class": "ÖV-Güteklasse",
+    "station_category": "Haltestellenkategorie"
   }
 }

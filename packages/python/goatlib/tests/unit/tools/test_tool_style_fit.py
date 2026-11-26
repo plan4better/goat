@@ -836,11 +836,13 @@ class TestFixedListsAsToday:
         runner = runner_for(BufferToolRunner, con)
         params = BufferToolParams(**IDS, input_layer_id=U, distances=[100, 200, 300])
         intent = runner.get_layer_style(params, MagicMock(), "polygon", "rings")
-        assert intent == tool_style.categories(
+        assert intent == tool_style.bands(
             "buffer_distance",
             [100, 200, 300],
             "colorbrewer:OrRd",
             "polygon",
+            "Buffer distance",
+            "m",
             symbol={"fill": {"opacity": 0.7}},
         )
         doc = tool_default(runner, intent, "rings", "polygon")
@@ -856,9 +858,16 @@ class TestFixedListsAsToday:
         runner = runner_for(CatchmentAreaToolRunner, con)
         params = MagicMock(catchment_area_type="polygon")
         doc = runner.get_layer_style(params, MagicMock(), "polygon", "bands")
-        assert doc == tool_style.categories(
-            "cost_step", [5, 10, 15], "colorbrewer:YlGn", "polygon"
+        assert doc == tool_style.bands(
+            "cost_step",
+            [5, 10, 15],
+            "colorbrewer:YlGn",
+            "polygon",
+            "Travel time",
+            "min",
         )
+        computed = tool_default(runner, doc, "bands", "polygon")
+        assert same_ignoring_stamps(computed, today(con, "bands", doc, "polygon"))
 
 
 def test_a_point_grid_catchment_draws_its_points_in_the_band_colors(

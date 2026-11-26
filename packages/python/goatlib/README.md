@@ -524,7 +524,9 @@ documents goatlib built or upgraded:
   and unit, and grey for features without a value. Its number of decimals
   depends on the classes, so the runner writes it after computing them
   (`with_decimals`), on the same style the fit acts on and only there: the
-  format has no mark that tells a tool's default from a hand-made style. A workflow
+  format has no mark that tells a tool's default from a hand-made style. Bands
+  of a distance or travel cost (`bands`) are fixed categories in whole units, so
+  they carry their unit, no decimals and the first band on top from the start. A workflow
   preview has no layer: its result and the preview's metadata file carry the
   document as `style`, stamped `temp`, and saving the result computes it again.
 - **Catalog items** promote with their published style asset upgraded for the

@@ -3,8 +3,9 @@
 Builders for the looks tools give their results, on top of `goatlib.style`: a
 classification the server computes (`classified`), the default of a result
 whose value is a number per feature (`numeric_default`), fixed categories
-(`categories`), and the few looks tools and bundles always use. Classes of a
-`classified` style are filled from the result data by the tool runner
+(`categories`), bands of a distance or travel cost (`bands`), and the few
+looks tools and bundles always use. Classes of a `classified` style are
+filled from the result data by the tool runner
 (`BaseToolRunner.computed_style`), like any style the server computes, once
 `fit_classes` has fitted the count it asks for to the result; `with_decimals`
 then gives the tool's own classes the decimals they need.
@@ -164,13 +165,14 @@ def statistic_default(
     relation: str,
     *,
     area_weighted: bool = False,
+    negative: bool | None = None,
 ) -> dict[str, Any]:
     """The default of a statistics tool: its first statistic's column `field`
     (`numeric_default`) in the tool's sequential palette, turned around where
-    the column holds only negative values, so the value farthest from 0 is the
-    darkest."""
-    reverse = stat.operation != StatisticOperation.count and only_negative(
-        runner, relation, field
+    the column holds only negative values (`negative`, read from `relation`
+    when not given), so the value farthest from 0 is the darkest."""
+    reverse = stat.operation != StatisticOperation.count and (
+        only_negative(runner, relation, field) if negative is None else negative
     )
     return numeric_default(
         field,
@@ -370,9 +372,11 @@ def categories(
     geometry: str | None,
     *,
     symbol: dict[str, Any] | None = None,
+    title: str | None = None,
 ) -> dict[str, Any]:
     """A style with one class per value of `field`, in the order given, colored
-    along the palette. The classes are fixed: nothing is recomputed."""
+    along the palette, and the legend's `title` where given. The classes are
+    fixed: nothing is recomputed."""
     part = _part(geometry)
     colors = sample_colors(palette, len(values))
     middle = colors[len(colors) // 2] if colors else None
@@ -388,8 +392,31 @@ def categories(
     # The palette new classes take in the editor; an inline one holds 2 to 12 colors.
     if isinstance(palette, str) or 2 <= len(palette) <= 12:
         classification["palette"] = palette
+    if title:
+        classification["title"] = title
     doc["classify"] = [classification]
     return assign_ids(doc)
+
+
+def bands(
+    field: str,
+    steps: list[int],
+    palette: str | list[str],
+    geometry: str | None,
+    title: str,
+    unit: str,
+    *,
+    symbol: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Bands of a distance or travel cost in whole `unit`s: one class per step
+    (`categories`), the legend's title and unit, no decimals, and the first
+    step, the smallest, drawn on top."""
+    doc = categories(field, steps, palette, geometry, symbol=symbol, title=title)
+    c = doc["classify"][0]
+    c["unit"] = unit
+    c["format"] = {"decimals": 0}
+    doc["order"] = {"by": "classes"}
+    return doc
 
 
 #: A network's bulk: mid grey, so it reads as the backdrop it is and whatever is
@@ -494,7 +521,11 @@ def oev_gueteklassen_style(
     )[1:]
     colors = {**OEV_GUETEKLASSEN_COLORS, **dict(zip(extra, darker))}
     return categories(
-        "pt_class_label", labels, [colors[label] for label in labels], "polygon"
+        "pt_class_label",
+        labels,
+        [colors[label] for label in labels],
+        "polygon",
+        title=style_title("pt_class"),
     )
 
 
@@ -512,6 +543,7 @@ def oev_gueteklassen_stations_style() -> dict[str, Any]:
         colors,
         "point",
         symbol={"marker": {"color": "#000000", "size": 6}},
+        title=style_title("station_category"),
     )
 
 

@@ -1259,6 +1259,12 @@
     "connectivity": "Area reached",
     "two_sfca": "Supply per demand",
     "market_share": "Market share",
-    "trip_count": "Trips in the time window"
+    "trip_count": "Trips in the time window",
+    "buffer_distance": "Buffer distance",
+    "travel_time": "Travel time",
+    "distance": "Distance",
+    "zone": "Zone",
+    "pt_class": "Public transport quality class",
+    "station_category": "Station category"
   }
 }

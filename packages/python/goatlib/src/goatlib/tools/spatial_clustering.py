@@ -35,7 +35,7 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import categories
+from goatlib.tools.style import categories, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -471,6 +471,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
             CLUSTER_PALETTE,
             "point",
             symbol={"marker": {"size": 16, "opacity": 0.6}},
+            title=style_title("zone"),
         )
 
     def get_layer_style(
@@ -489,6 +490,7 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
             symbol={"marker": {"size": 8, "opacity": 0.8}}
             if geometry == "point"
             else None,
+            title=style_title("zone"),
         )
 
 
