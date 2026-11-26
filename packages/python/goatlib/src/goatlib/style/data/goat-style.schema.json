@@ -6046,7 +6046,9 @@
         "multiply",
         "screen",
         "overlay",
-        "color"
+        "color",
+        "luminosity",
+        "plus-lighter"
        ],
        "type": "string"
       },
@@ -7267,7 +7269,9 @@
         "multiply",
         "screen",
         "overlay",
-        "color"
+        "color",
+        "luminosity",
+        "plus-lighter"
        ],
        "type": "string"
       },

@@ -100,6 +100,9 @@ const rgbOf = (hex: string): Rgb => [1, 3, 5].map((i) => parseInt(hex.slice(i, i
 /** The pixel at a point of the map, in CSS pixels. */
 const pixel = (s: Scene, [x, y]: [number, number]): Rgb => readRect(s, { x, y, w: 1, h: 1 })[0];
 
+/** A point of the map rounded to its pixel. */
+const at = ({ x, y }: { x: number; y: number }): [number, number] => [Math.round(x), Math.round(y)];
+
 /** The ground on a row, read where no shape is. */
 const groundAt = (s: Scene, y: number): Rgb => pixel(s, [GROUND_X, y]);
 
@@ -125,6 +128,20 @@ function color(a: Rgb, b: Rgb): Rgb {
   if (n < 0) out = out.map((c) => l + ((c - l) * l) / (l - n));
   if (x > 1) out = out.map((c) => l + ((c - l) * (1 - l)) / (x - l));
   return out.map((c) => c * 255) as Rgb;
+}
+
+/** Add (plus-lighter): the two colors added, each channel at most 255. */
+const add = (a: Rgb, b: Rgb): Rgb => a.map((c, i) => Math.min(255, c + b[i])) as Rgb;
+/** Luminosity of `a` over the ground `b`: the ground's hue and saturation with the luminosity of `a`, which is Color
+ * with the two swapped. */
+const luminosity = (a: Rgb, b: Rgb): Rgb => color(b, a);
+/** The hue of a color in degrees, null for a grey (channels within 2 of each other). */
+function hue([r, g, b]: Rgb): number | null {
+  const [x, n] = [Math.max(r, g, b), Math.min(r, g, b)];
+  if (x - n <= 2) return null;
+  const d = x - n;
+  const h = x === r ? ((g - b) / d) % 6 : x === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
 }
 
 /** A pixel against the color a formula gives, both in the message where they differ. */
@@ -156,6 +173,38 @@ async function draw(s: Scene, features: GeoJSON.Feature[]): Promise<void> {
   (s.map.getSource(source) as GeoJSONSource).setData({ type: "FeatureCollection", features });
   await idle;
 }
+
+/** Compiles a vector style over `features` and draws it on the scene's map, below the layer `beforeId` or on top. */
+async function addLayer(
+  s: Scene,
+  id: string,
+  style: JsonObject,
+  geometry: "point" | "line" | "polygon",
+  features: GeoJSON.Feature[],
+  beforeId?: string
+): Promise<void> {
+  const compiled = compileLayer({
+    id,
+    style: { version: "1.0.0", kind: "vector", ...style } as LayerStyle,
+    geometry,
+    source: { type: "points", id, data: { type: "FeatureCollection", features } },
+  });
+  const idle = s.map.once("idle");
+  applyCompiled(s.map, null, compiled, { beforeId });
+  await idle;
+  expect(s.errors).toEqual([]);
+}
+
+/** A line between two pixels of the map. */
+const lineBetween = (s: Scene, from: [number, number], to: [number, number]): GeoJSON.Feature => ({
+  type: "Feature",
+  id: 1,
+  properties: {},
+  geometry: {
+    type: "LineString",
+    coordinates: [s.map.unproject(from).toArray(), s.map.unproject(to).toArray()],
+  },
+});
 
 /** The square most cases draw: across both streets and the name, its edges at x 200 and 440. */
 const AREA = { at: [320, 240] as [number, number], side: 240 };
@@ -339,6 +388,62 @@ describe("blend over the basemap (spec 4.7)", () => {
     await matchesScreenshot(s, "blend-screen-dark");
   });
 
+  it("Add on the dark basemap adds the colors: two areas and a line add up where they overlap, toward white", async () => {
+    // Two lights of two layers overlapping between x 270 and 370, and a line of a third layer down through the overlap
+    // at x 320, all three in Add.
+    const FIRST = "#a0641e";
+    const SECOND = "#1e64a0";
+    const LINE = "#3c3c3c";
+    const light = (fill: string): JsonObject => ({
+      blend: "plus-lighter",
+      symbol: { fill: { color: fill }, outline: false },
+    });
+    const s = await scene(vector("blend-add", light(FIRST)), darkStreets);
+    expect(blendsOf(s)).toEqual({ "blend-add-fill": "plus-lighter" });
+    await draw(s, polygons(s, [{ at: [270, 240], side: 200 }]));
+    await addLayer(
+      s,
+      "blend-add-second",
+      light(SECOND),
+      "polygon",
+      polygons(s, [{ at: [370, 240], side: 200 }])
+    );
+    await addLayer(
+      s,
+      "blend-add-line",
+      { blend: "plus-lighter", symbol: { line: { color: LINE, width: 6 } } },
+      "line",
+      [lineBetween(s, [320, 40], [320, 440])]
+    );
+    expect(s.map.getPaintProperty("blend-add-second-fill", "fill-layer-blend")).toBe("plus-lighter");
+    expect(s.map.getPaintProperty("blend-add-line-line", "line-layer-blend")).toBe("plus-lighter");
+    const [first, second, line] = [FIRST, SECOND, LINE].map(rgbOf);
+    for (const y of [PLAIN_ROW, ...STREET_ROWS]) {
+      const ground = groundAt(s, y);
+      const alone = [pixel(s, [200, y]), pixel(s, [440, y])];
+      expectNear(alone[0], add(first, ground), `the first area alone at row ${y}`);
+      expectNear(alone[1], add(second, ground), `the second area alone at row ${y}`);
+      const overlap = pixel(s, [295, y]);
+      expectNear(overlap, add(add(first, second), ground), `the overlap at row ${y}`);
+      // Lighter than either area alone: no channel darker (a channel at 255 stays there), all of them together more.
+      const sum = (c: Rgb) => c[0] + c[1] + c[2];
+      for (const one of alone) {
+        for (let i = 0; i < 3; i++) expect(overlap[i], `row ${y}`).toBeGreaterThanOrEqual(one[i]);
+        expect(sum(overlap), `row ${y}`).toBeGreaterThan(sum(one) + TOLERANCE);
+      }
+      expectNear(
+        pixel(s, [320, y]),
+        add(line, add(add(first, second), ground)),
+        `the line over the overlap at ${y}`
+      );
+    }
+    // The line alone over the plain ground, above the areas.
+    expectNear(pixel(s, [320, 100]), add(line, groundAt(s, 100)), "the line alone");
+    // Where all three add up past 255, white.
+    expectNear(pixel(s, [320, PLAIN_ROW]), WHITE, "the line over the overlap on the plain ground");
+    await matchesScreenshot(s, "blend-add-dark");
+  });
+
   it("with terrain the multiplied area still holds the product at the scene's center", async () => {
     const s = await scene(vector("blend-terrain", area("multiply")), streets);
     await draw(s, polygons(s, [AREA]));
@@ -359,9 +464,89 @@ describe("blend over the basemap (spec 4.7)", () => {
     const center: [number, number] = [MAP.width / 2, MAP.height / 2];
     expectNear(pixel(s, center), multiply(rgbOf(FILL), rgbOf(BASEMAP_LAND.light)), "multiply at the center");
   });
+
+  // Circles stand on the terrain; fills and the ground are drawn onto it. With a point layer above a multiplied area,
+  // the area mixes with the ground as it does without terrain. With the point layer below it, the area draws under
+  // terrain in its own color, unmixed and over the circles, as with normal (spec 4.7): the "below" case and its
+  // screenshot record that limit, not the look a blend is meant to give.
+  const TERRAIN_CASES = {
+    below: {
+      name: "with terrain a multiplied area above a point layer draws unmixed, in its own color (the 3D limit)",
+      screenshot: "blend-terrain-points-below-draws-unmixed",
+    },
+    above: {
+      name: "with terrain a multiplied area below a point layer mixes as without terrain",
+      screenshot: "blend-terrain-points-above",
+    },
+  } as const;
+  for (const order of ["below", "above"] as const)
+    it(TERRAIN_CASES[order].name, async () => {
+      const id = `blend-terrain-points-${order}`;
+      const s = await scene(vector(id, area("multiply")), streets);
+      await draw(s, polygons(s, [AREA]));
+      const center: [number, number] = [MAP.width / 2, MAP.height / 2];
+      // Two blue circles on the area, left and right of the center on its row.
+      const MARKER = "#2166ac";
+      const places = [center[0] - 70, center[0] + 70].map((px) => s.map.unproject([px, center[1]]));
+      await addLayer(
+        s,
+        `${id}-points`,
+        { symbol: { marker: { color: MARKER, size: 20 }, outline: false } },
+        "point",
+        places.map((place, i) => ({
+          type: "Feature",
+          id: i + 1,
+          properties: {},
+          geometry: { type: "Point", coordinates: place.toArray() },
+        })),
+        order === "below" ? `${id}-fill` : undefined
+      );
+      const ids = (s.map.getStyle().layers ?? []).map((l) => l.id);
+      const [points, fill] = [`${id}-points-marker`, `${id}-fill`].map((l) => ids.indexOf(l));
+      expect([points >= 0 && fill >= 0, points < fill]).toEqual([true, order === "below"]);
+      // Without terrain: the area mixes over the ground, and over the circles where they are below it.
+      const product = multiply(rgbOf(FILL), rgbOf(BASEMAP_LAND.light));
+      const circle = order === "below" ? multiply(rgbOf(FILL), rgbOf(MARKER)) : rgbOf(MARKER);
+      const flat = pixel(s, center);
+      expectNear(flat, product, "the center without terrain");
+      for (const place of places)
+        expectNear(pixel(s, at(s.map.project(place))), circle, "a circle without terrain");
+
+      s.map.addSource("terrain", {
+        type: "raster-dem",
+        tiles: [`${location.origin}/lab-raster/cone/{z}/{x}/{y}.webp`],
+        tileSize: tiles.cone.size,
+        encoding: "custom",
+        ...tiles.cone.encoding,
+      });
+      const idle = s.map.once("idle");
+      s.map.setTerrain({ source: "terrain" });
+      s.map.jumpTo({ pitch: 55 });
+      await idle;
+      expect(s.map.getTerrain()).not.toBeNull();
+      expect(s.errors).toEqual([]);
+      // The circles where they stand on the terrain, clear of the center.
+      const onTerrain = places.map((place) => {
+        const point = at(s.map.project(place));
+        expect(
+          Math.hypot(point[0] - center[0], point[1] - center[1]),
+          "a circle clear of the center"
+        ).toBeGreaterThan(30);
+        return pixel(s, point);
+      });
+      if (order === "above") {
+        expectNear(pixel(s, center), flat, "the center with terrain, as without");
+        for (const drawn of onTerrain) expectNear(drawn, rgbOf(MARKER), "a circle with terrain");
+      } else {
+        // The limit: the area's own color at the center and over the circles, as with normal.
+        expectNear(pixel(s, center), rgbOf(FILL), "the center with terrain");
+        for (const drawn of onTerrain) expectNear(drawn, rgbOf(FILL), "a circle with terrain");
+      }
+      await matchesScreenshot(s, TERRAIN_CASES[order].screenshot);
+    });
 });
 
-describe("a raster image in multiply over a polygon (spec 4.7)", () => {
+describe("a raster image blended over a polygon (spec 4.7)", () => {
   // The raster service's picture of the paletted fixture (make_tiles.py): eight blocks of 32 px in its top row, white,
   // white, grey, grey, green, blue, black and orange, transparent no data around them. The lab answers every tile
   // address with it, drawn 256 px wide, so the tile whose top left corner is at the map's center and the one left of
@@ -426,5 +611,39 @@ describe("a raster image in multiply over a polygon (spec 4.7)", () => {
     ] as Array<[number, number]>)
       expectNear(pixel(s, at), fill, `the polygon's color at ${at}`);
     await matchesScreenshot(s, "blend-raster-over-polygon");
+  });
+
+  it("in luminosity the image gives the light and shade and the polygon keeps its hue", async () => {
+    const s = await scene(image("blend-luminosity", "luminosity"));
+    expect(blendsOf(s)).toEqual({ "blend-luminosity-raster": "luminosity" });
+    const { x, y } = s.map.project([0, 0]);
+    await addLayer(
+      s,
+      "below",
+      { symbol: { fill: { color: FILL }, outline: false } },
+      "polygon",
+      polygons(s, [{ at: [x + TILE / 2, y + 2 * BLOCK], side: TILE - 8 }]),
+      "blend-luminosity-raster"
+    );
+    const fill = rgbOf(FILL);
+    const row = y + BLOCK / 2;
+    // Each block over the polygon against the same block of the tile left of it, over the white ground: there the
+    // image draws as a grey of its own luminosity, which is all luminosity takes from it.
+    const over = [...Array(8).keys()].map((k) => pixel(s, [x + (k + 0.5) * BLOCK, row]));
+    for (let k = 0; k < 8; k++) {
+      const alone = pixel(s, [x - TILE + (k + 0.5) * BLOCK, row]);
+      expect(hue(alone), `block ${k} alone is a grey`).toBeNull();
+      expectNear(over[k], luminosity(alone, fill), `block ${k}`);
+    }
+    // The grey blocks (2 and 3) shade the polygon: darker than its color, in its hue.
+    for (const k of [2, 3]) {
+      expect(lum(over[k]), `block ${k}`).toBeLessThan(lum(fill) - 20);
+      expect(Math.abs(hue(over[k])! - hue(fill)!), `block ${k}: ${over[k]}`).toBeLessThanOrEqual(3);
+    }
+    // White turns it white, black black; the transparent no data below the blocks leaves the polygon's color.
+    expectNear(over[0], WHITE, "white block");
+    expectNear(over[6], [0, 0, 0], "black block");
+    expectNear(pixel(s, [x + TILE / 2, y + 2.5 * BLOCK]), fill, "no data");
+    await matchesScreenshot(s, "blend-luminosity-over-polygon");
   });
 });

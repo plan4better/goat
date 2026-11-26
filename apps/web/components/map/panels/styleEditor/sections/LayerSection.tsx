@@ -14,6 +14,7 @@ import { symbolShown } from "@/lib/style/editor/parts";
 import { recordPaths } from "@/lib/style/editor/sources";
 import { choiceLabel } from "@/lib/style/editor/summaries";
 import { type JsonObject, isObject } from "@/lib/style/json";
+import type { Tone } from "@/lib/style/tone";
 
 import {
   useBasemapTone,
@@ -43,7 +44,7 @@ import { ChoiceRow, NavRow, PanelSection } from "@/components/map/panels/styleEd
 
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
 const DATE_STEPS = ["year", "month", "day"];
-const BLENDS = ["normal", "multiply", "screen", "overlay", "color"];
+const BLENDS = ["normal", "multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"];
 
 /** "All zooms", "From zoom 8", "Up to zoom 14", "Zoom 8 to 14". */
 export function zoomText(t: TFunction, from: unknown, until: unknown): string {
@@ -106,7 +107,7 @@ export function VisibleRow() {
 
 /** How the layer mixes with what is drawn under it (spec 4.7), vector and raster layers alike; Normal writes nothing.
  * Where the layer's kind draws without it, the section passes the note and the row shows its value, disabled; else
- * Multiply on a dark basemap notes that it darkens the colors. */
+ * Multiply on a dark basemap notes that it darkens the colors, and Add on a light basemap that it turns them white. */
 export function BlendRow({ disabled = false, note }: { disabled?: boolean; note?: string }) {
   const { t } = useTranslation("common");
   const store = useEditor();
@@ -123,12 +124,17 @@ export function BlendRow({ disabled = false, note }: { disabled?: boolean; note?
         sub: t(`style_editor.value_blend_${v}_sub`),
       }))}
       disabled={disabled}
-      note={
-        note ?? (current === "multiply" && tone === "dark" ? t("style_editor.blend_dark_basemap") : undefined)
-      }
+      note={note ?? basemapNote(t, current, tone)}
       onChange={(v) => store.set("blend", v === "normal" ? undefined : v)}
     />
   );
+}
+
+/** The note a mode needs on the basemap's tone: Multiply darkens a dark one, Add whitens a light one. */
+function basemapNote(t: TFunction, blend: string, tone: Tone): string | undefined {
+  if (blend === "multiply" && tone === "dark") return t("style_editor.blend_dark_basemap");
+  if (blend === "plus-lighter" && tone === "light") return t("style_editor.blend_light_basemap");
+  return undefined;
 }
 
 /** The Blend row of a vector layer: absent for points that draw no hexagons, disabled for hexagon columns; a raised

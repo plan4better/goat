@@ -850,19 +850,19 @@ def test_edit_error_counts_from_one_and_keeps_the_index() -> None:
 def test_the_spec_names_the_seven_operations_and_no_example_moved() -> None:
     lines = SPEC.read_text().split("\n")
     # The examples above section 20 keep their line numbers: that heading stays on
-    # line 3938 and the paragraph on the AI in 13.1 keeps its three lines.
-    assert lines.index("## 20. For AI authors") + 1 == 3938
-    assert lines[3221].startswith("**The AI**")
-    assert lines[3224] == "" and lines[3225].startswith("**Not used:**")
-    assert all(len(line) <= 120 for line in lines[3221:3224])
+    # line 3944 and the paragraph on the AI in 13.1 keeps its three lines.
+    assert lines.index("## 20. For AI authors") + 1 == 3944
+    assert lines[3227].startswith("**The AI**")
+    assert lines[3230] == "" and lines[3231].startswith("**Not used:**")
+    assert all(len(line) <= 120 for line in lines[3227:3230])
     starts = [
         n + 1
         for n, line in enumerate(lines)
         if line.startswith("```") and re.match(r"<!-- (check|expect):", lines[n - 1])
     ]
     assert len(starts) == len(load_examples())
-    assert max(starts) < 3938
-    section = "\n".join(lines[3937 : lines.index("## 21. Changelog")])
+    assert max(starts) < 3944
+    section = "\n".join(lines[3943 : lines.index("## 21. Changelog")])
     assert "**Edit operations.**" in section
     for op in ("set", "remove", "add", "move", "retarget", "use_field", "round"):
         assert f"| `{op}` |" in section, op

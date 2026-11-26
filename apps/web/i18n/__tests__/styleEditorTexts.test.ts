@@ -208,11 +208,16 @@ describe("the Blend row's texts", () => {
       value_blend_overlay_sub: "Strengthens the contrast of what is below",
       value_blend_color: "Color",
       value_blend_color_sub: "Takes the layer's hue, keeps the brightness below",
+      value_blend_luminosity: "Luminosity",
+      value_blend_luminosity_sub: "Takes the layer's brightness, keeps the colors below",
+      "value_blend_plus-lighter": "Add",
+      "value_blend_plus-lighter_sub": "Adds light: glows on dark basemaps and images",
       blend_columns: "Columns draw without blending.",
       blend_heights: "Heights draw without blending; the outline blends.",
       blend_hillshade: "Shading draws without blending.",
       blend_values: "Colors from values draw without blending.",
       blend_dark_basemap: "On a dark basemap, Multiply draws the colors very dark. Screen lightens instead.",
+      blend_light_basemap: "On a light basemap this turns light colors white.",
     },
     de: {
       blend: "Mischmodus",
@@ -226,16 +231,21 @@ describe("the Blend row's texts", () => {
       value_blend_overlay_sub: "Verstärkt den Kontrast darunter",
       value_blend_color: "Farbe",
       value_blend_color_sub: "Übernimmt den Farbton, behält die Helligkeit darunter",
+      value_blend_luminosity: "Luminanz",
+      value_blend_luminosity_sub: "Übernimmt die Helligkeit, behält die Farben darunter",
+      "value_blend_plus-lighter": "Addieren",
+      "value_blend_plus-lighter_sub": "Addiert Licht: Leuchten auf dunklen Grundkarten und Bildern",
       blend_columns: "Säulen werden ohne Mischmodus gezeichnet.",
       blend_heights: "Höhen werden ohne Mischmodus gezeichnet; der Umriss wird gemischt.",
       blend_hillshade: "Die Schummerung wird ohne Mischmodus gezeichnet.",
       blend_values: "Farben aus Werten werden ohne Mischmodus gezeichnet.",
       blend_dark_basemap:
         "Auf einer dunklen Grundkarte werden die Farben mit Multiplizieren sehr dunkel. Negativ multiplizieren hellt stattdessen auf.",
+      blend_light_basemap: "Auf einer hellen Grundkarte werden helle Farben weiß.",
     },
   };
 
-  it("names the five modes, their sub-lines and the notes in both languages, with the same keys", () => {
+  it("names the seven modes, their sub-lines and the notes in both languages, with the same keys", () => {
     // The locale files hold exactly these blend texts, the same keys in both languages.
     const blendKeys = (texts: Record<string, string>) =>
       Object.keys(texts)

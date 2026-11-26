@@ -333,8 +333,8 @@ def test_the_sections_come_in_the_order_the_model_works() -> None:
     assert re.findall(r"^## (.+)$", _skill().instructions, re.M) == SECTIONS
 
 
-def test_skill_md_stays_within_thirty_four_thousand_eight_hundred_fifty_bytes() -> None:
-    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 34_850
+def test_skill_md_stays_within_thirty_four_thousand_nine_hundred_fifty_bytes() -> None:
+    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 34_950
 
 
 def test_no_dashes_inside_sentences() -> None:
@@ -967,6 +967,7 @@ def test_blend_tints_the_basemap_and_names_what_draws_without_it() -> None:
     draw without a blend."""
     table = _plain(_section("Which form for which data"))
     assert "/blend multiply, the layer below the basemap's labels (set_layer)" in table
+    assert "| a glow on a dark basemap | /blend plus-lighter |" in table
     assert (
         "blend mixes polygons, lines, flat hexagons and images; everything else "
         "draws normally (blend_not_drawn)." in table
@@ -977,6 +978,19 @@ def test_blend_tints_the_basemap_and_names_what_draws_without_it() -> None:
         "A color range, classes, categories, an image in its file's color table "
         "and a hillshade draw without it" in rasters
     )
+
+
+def test_blend_lists_its_values_and_says_what_luminosity_and_add_do() -> None:
+    """The raster reference names the values of blend in the panel's order
+    and says in a phrase what luminosity and plus-lighter do."""
+    values = json_schema()["$defs"]["RasterStyle"]["properties"]["blend"]["anyOf"][0]
+    rasters = _plain(_texts()["rasters.md"])
+    assert f"({', '.join(values['enum'])})" in rasters
+    assert (
+        "luminosity gives the colored areas below the image's light and shade"
+        in rasters
+    )
+    assert "plus-lighter adds its light, a glow on a dark basemap" in rasters
 
 
 #: The parts a class record can switch on for its features.

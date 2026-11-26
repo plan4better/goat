@@ -299,7 +299,15 @@ def test_a_cluster_value_defaults_to_the_count() -> None:
     assert REFERENCE_DEFAULTS["cluster.value"] == {"op": "count"}
 
 
-BLENDS = ["normal", "multiply", "screen", "overlay", "color"]
+BLENDS = [
+    "normal",
+    "multiply",
+    "screen",
+    "overlay",
+    "color",
+    "luminosity",
+    "plus-lighter",
+]
 LAYERS = {
     "vector": {"version": "1.0.0", "kind": "vector"},
     "raster": {"version": "1.0.0", "kind": "raster", "render": {"type": "image"}},
@@ -309,21 +317,26 @@ LAYERS = {
 @pytest.mark.parametrize("kind", ["vector", "raster"])
 @pytest.mark.parametrize("blend", BLENDS)
 def test_a_layer_takes_each_blend(kind: str, blend: str) -> None:
-    assert codes_of(parse_for_write({**LAYERS[kind], "blend": blend})) == []
+    doc = {**LAYERS[kind], "blend": blend}
+    model, issues = parse_for_write(doc)
+    assert codes_of((model, issues)) == []
+    # The value comes back as written, under the library's own name.
+    assert model.blend == blend
+    assert model.model_dump(mode="json", include={"blend"}) == {"blend": blend}
 
 
 @pytest.mark.parametrize("kind", ["vector", "raster"])
 @pytest.mark.parametrize(
     "blend",
     [
-        "luminosity",
-        "plus-lighter",
+        "darken",
+        "plus_lighter",
         "Multiply",
         {"zoom": [[5, "normal"], [10, "multiply"]]},
         1,
     ],
 )
-def test_a_blend_is_one_of_five_fixed_values(kind: str, blend: object) -> None:
+def test_a_blend_is_one_of_seven_fixed_values(kind: str, blend: object) -> None:
     [issue] = parse_for_write({**LAYERS[kind], "blend": blend})[1]
     assert (issue.code, issue.path) == ("invalid_value", "/blend")
     assert all(f"'{b}'" in issue.message for b in BLENDS), issue.message

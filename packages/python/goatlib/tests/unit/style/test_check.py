@@ -615,10 +615,11 @@ CATEGORICAL = {
         ({**RASTER, "render": CATEGORICAL}, None, "color_scale"),
     ],
 )
+@pytest.mark.parametrize("blend", ["multiply", "luminosity", "plus-lighter"])
 def test_a_blend_on_a_layer_that_draws_nothing_that_mixes(
-    doc: dict, geometry: str | None, reason: str
+    doc: dict, geometry: str | None, reason: str, blend: str
 ) -> None:
-    [issue] = check({**doc, "blend": "multiply"}, geometry)
+    [issue] = check({**doc, "blend": blend}, geometry)
     assert (issue.code, issue.level, issue.path, issue.params) == (
         "blend_not_drawn",
         "info",
@@ -646,10 +647,11 @@ def test_a_blend_on_a_layer_that_draws_nothing_that_mixes(
         ({**RASTER, "render": {"type": "image", "bands": [1, 2, 3]}}, None),
     ],
 )
+@pytest.mark.parametrize("blend", ["multiply", "luminosity", "plus-lighter"])
 def test_a_blend_on_a_layer_that_mixes_is_not_reported(
-    doc: dict, geometry: str | None
+    doc: dict, geometry: str | None, blend: str
 ) -> None:
-    assert check({**doc, "blend": "multiply"}, geometry) == []
+    assert check({**doc, "blend": blend}, geometry) == []
 
 
 @pytest.mark.parametrize(

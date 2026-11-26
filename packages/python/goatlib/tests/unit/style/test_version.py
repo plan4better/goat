@@ -324,7 +324,15 @@ def test_blend_belongs_to_1_0_0() -> None:
     keys |= {
         f"{model}.blend={value}"
         for model in ("VectorStyle", "RasterStyle")
-        for value in ("normal", "multiply", "screen", "overlay", "color")
+        for value in (
+            "normal",
+            "multiply",
+            "screen",
+            "overlay",
+            "color",
+            "luminosity",
+            "plus-lighter",
+        )
     }
     assert keys <= base
     assert not keys & set(version.SINCE)

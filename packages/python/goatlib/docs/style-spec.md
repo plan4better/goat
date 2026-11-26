@@ -1131,7 +1131,11 @@ class, rule or zoom stop at None keeps its features on the layer (clicks, highli
 `normal` (the default) covers it; `multiply` multiplies the colors, so the layer darkens what is below and dark lines
 and texts there stay visible (white in the layer changes nothing); `screen` is the reverse and lightens (black changes
 nothing); `overlay` multiplies where the ground is dark and screens where it is light, which raises its contrast;
-`color` takes the layer's hue and saturation and keeps the lightness of what is below. One value for the layer, fixed.
+`color` takes the layer's hue and saturation and keeps the lightness of what is below; `luminosity` is its counterpart
+and takes the layer's lightness, keeping the hue and saturation below (an aerial image or a grey relief above colored
+areas gives the light and shade, the areas keep their colors); `plus-lighter` adds the colors, so light in the layer
+glows on a dark basemap or a darkened image and light colors add up to white (black changes nothing). One value for
+the layer, fixed.
 
 - Each drawn part is one surface before it mixes: features of the layer that overlap do not mix with each other, the
   outline mixes over the fill, the line over its casing.
@@ -1144,7 +1148,9 @@ nothing); `overlay` multiplies where the ground is dark and screens where it is 
   features, heatmaps, clusters, H3 columns, hillshade and a raster's color range, classes or categories get
   `blend_not_drawn` (info); validation does not report an image drawn with its file's color table.
 - A layer at `below_labels` leaves the basemap's labels untouched. On a dark basemap `multiply` makes colors very
-  dark; `screen` lightens instead.
+  dark; `screen` lightens instead. On a light basemap `plus-lighter` turns light colors white.
+- With 3D terrain a blended layer mixes only with the areas, lines and images drawn directly below it: a layer of
+  points, labels or heights in between ends that, and the layer then draws as with `normal`.
 
 ## 5. Classifications
 
@@ -3612,7 +3618,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `kind` | `vector`, `raster` | yes | |
 | `geometry` | `point`, `line`, `polygon` | no | the dataset's |
 | `opacity` | number 0 to 1 (F, Z) | no | 1 |
-| `blend` | `normal`, `multiply`, `screen`, `overlay`, `color` (F) | no | `normal` |
+| `blend` | `normal`, `multiply`, `screen`, `overlay`, `color`, `luminosity`, `plus-lighter` (F) | no | `normal` |
 | `min_zoom`, `max_zoom` | number 0 to 24 | no | 0, 24 |
 | `symbol` | object of parts (18.2) | no | the main part with defaults |
 | `classify` | list of classifications (18.4) | no | none |
@@ -3930,7 +3936,7 @@ ships them).
   and Bold;
 - dash patterns as lists, line patterns, double lines, line gradients;
 - bivariate classifications (two fields into one color);
-- blend modes other than the five of 4.7, a blend by zoom or per feature, and a blend on markers, labels, heatmaps,
+- blend modes other than the seven of 4.7, a blend by zoom or per feature, and a blend on markers, labels, heatmaps,
   clusters, volumes and hillshade;
 - the time dimension of WMS layers;
 - non-spatial tables (no layer style).

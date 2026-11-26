@@ -44,7 +44,10 @@ const NOTES = [
   "style_editor.blend_hillshade",
   "style_editor.blend_values",
   "style_editor.blend_dark_basemap",
+  "style_editor.blend_light_basemap",
 ];
+/** The modes in the order the row lists them. */
+const BLENDS = ["normal", "multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"];
 /** The blend a test's document holds, if any. */
 const storedBlend = (doc: object): string | undefined => ("blend" in doc ? String(doc.blend) : undefined);
 /** The notes under the row that show: none, or the one named. */
@@ -138,7 +141,7 @@ describe("the Blend row of a vector layer", () => {
   it("each choice writes its value; Normal removes the key", async () => {
     const { store } = vector("polygon");
     let current = "normal";
-    for (const next of ["multiply", "screen", "overlay", "color"]) {
+    for (const next of BLENDS.slice(1)) {
       await choose(LABEL, current, next);
       expect(store.get("blend")).toBe(next);
       current = next;
@@ -158,21 +161,26 @@ describe("the Blend row of a vector layer", () => {
     expect(store.canUndo).toBe(false);
   });
 
-  it("names the modes and their sub-lines with the locale's texts", async () => {
+  it("lists the seven modes in order, each with its name and sub-line from the locale's texts", async () => {
     const texts = en.style_editor as Record<string, string>;
     i18n.addResourceBundle("en", "common", en);
     try {
-      vector("polygon", { blend: "multiply" });
+      vector("polygon", { blend: "plus-lighter" });
       const field = screen.getByRole("combobox", { name: texts.blend });
-      expect(field.textContent).toBe(texts.value_blend_multiply);
+      expect(field.textContent).toBe("Add");
       await userEvent.click(field);
-      const menu = screen.getByRole("listbox");
-      for (const value of ["normal", "multiply", "screen", "overlay", "color"]) {
+      const options = within(screen.getByRole("listbox")).getAllByRole("option");
+      expect(options).toHaveLength(BLENDS.length);
+      BLENDS.forEach((value, i) => {
         for (const key of [`value_blend_${value}`, `value_blend_${value}_sub`]) {
           expect(texts[key], key).toBeTruthy();
-          expect(within(menu).getAllByText(texts[key]).length, key).toBeGreaterThan(0);
+          expect(within(options[i]).getByText(texts[key]), key).toBeTruthy();
         }
-      }
+      });
+      expect(options.slice(-2).map((option) => within(option).getAllByText(/\S/)[0].textContent)).toEqual([
+        "Luminosity",
+        "Add",
+      ]);
     } finally {
       i18n.removeResourceBundle("en", "common");
     }
@@ -197,10 +205,53 @@ describe("the Blend row of a vector layer", () => {
       ["multiply", "light", []],
       ["screen", "dark", []],
       ["overlay", "dark", []],
+      ["plus-lighter", "dark", []],
       [undefined, "dark", []],
     ] as const) {
       const { unmount } = vector("polygon", blend ? { blend } : {}, tone);
       expect([blend, tone, notes()]).toEqual([blend, tone, shown]);
+      unmount();
+    }
+  });
+
+  it("the light-basemap note shows for Add on a light basemap only", () => {
+    for (const [blend, tone, shown] of [
+      ["plus-lighter", "light", ["style_editor.blend_light_basemap"]],
+      ["plus-lighter", "dark", []],
+      ["luminosity", "light", []],
+      ["screen", "light", []],
+      ["multiply", "light", []],
+      [undefined, "light", []],
+    ] as const) {
+      const { unmount } = vector("polygon", blend ? { blend } : {}, tone);
+      expect([blend, tone, notes()]).toEqual([blend, tone, shown]);
+      unmount();
+    }
+  });
+
+  it("choosing Add on a light basemap shows the note; Normal takes it away", async () => {
+    const { store } = vector("polygon");
+    await choose(LABEL, "normal", "plus-lighter");
+    expect(store.get("blend")).toBe("plus-lighter");
+    expect(notes()).toEqual(["style_editor.blend_light_basemap"]);
+    await choose(LABEL, "plus-lighter", "luminosity");
+    expect(store.get("blend")).toBe("luminosity");
+    expect(notes()).toEqual([]);
+    await choose(LABEL, "luminosity", "normal");
+    expect("blend" in store.document).toBe(false);
+  });
+
+  it("the note of the layer's kind wins over the basemap notes", () => {
+    for (const [geometry, doc, note] of [
+      [
+        "polygon",
+        { blend: "plus-lighter", symbol: { extrude: { height: 10 } } },
+        "style_editor.blend_heights",
+      ],
+      ["point", { blend: "plus-lighter", render: { type: "h3", extrude: {} } }, "style_editor.blend_columns"],
+    ] as const) {
+      const { unmount } = vector(geometry, doc, "light");
+      expect([geometry, notes()]).toEqual([geometry, [note]]);
       unmount();
     }
   });
@@ -221,6 +272,8 @@ describe("the Blend row of a vector layer", () => {
       ["polygon", {}],
       ["polygon", { blend: "normal" }],
       ["polygon", { blend: "screen" }],
+      ["polygon", { blend: "plus-lighter" }],
+      ["line", { blend: "luminosity" }],
       ["point", { blend: "multiply" }],
       ["point", { render: { type: "h3", extrude: {} } }],
     ] as const) {
@@ -312,6 +365,23 @@ describe("the Blend row of a raster file or a map service", () => {
     await choose(LABEL, "multiply", "normal");
     expect("blend" in store.document).toBe(false);
     expect(notes()).toEqual([]);
+  });
+
+  it("an image writes luminosity and Add; the light-basemap note follows Add, a disabled row keeps its own note", async () => {
+    const { store, unmount } = raster({ render: { type: "image" } }, BYTE, "light");
+    await choose(LABEL, "normal", "luminosity");
+    expect(store.get("blend")).toBe("luminosity");
+    expect(notes()).toEqual([]);
+    await choose(LABEL, "luminosity", "plus-lighter");
+    expect(store.get("blend")).toBe("plus-lighter");
+    expect(notes()).toEqual(["style_editor.blend_light_basemap"]);
+    unmount();
+    const scale = raster(
+      { blend: "plus-lighter", render: { type: "continuous", palette: "goat:elevation" } },
+      BYTE
+    );
+    expect([disabled(), notes()]).toEqual([true, ["style_editor.blend_values"]]);
+    scale.unmount();
   });
 
   it("a map service writes the blend too", async () => {

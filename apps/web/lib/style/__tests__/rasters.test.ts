@@ -910,7 +910,7 @@ describe("a full 8-bit band as categories", () => {
 });
 
 describe("blend (spec 4.7)", () => {
-  const BLENDS = ["multiply", "screen", "overlay", "color"];
+  const BLENDS = ["multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"];
   /** The raster layers' blend property, by layer id; layers without one are left out. */
   const blends = (out: ReturnType<typeof compileLayer>) =>
     Object.fromEntries(

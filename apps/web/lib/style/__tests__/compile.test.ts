@@ -41,7 +41,7 @@ describe("compileLayer", () => {
 
 describe("blend (spec 4.7)", () => {
   const POINTS: CompileInput["source"] = { type: "points", id: "s7", data: "https://geoapi.example/items" };
-  const BLENDS = ["multiply", "screen", "overlay", "color"] as const;
+  const BLENDS = ["multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"] as const;
 
   const compile = (
     style: object,

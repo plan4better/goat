@@ -128,7 +128,7 @@ export function layerOpacity(ctx: PartContext): Value | null {
 }
 
 /** The blends other than `normal`, which MapLibre's `*-layer-blend` takes as they are named (spec 4.7). */
-const BLENDS: readonly unknown[] = ["multiply", "screen", "overlay", "color"];
+const BLENDS: readonly unknown[] = ["multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"];
 
 /** The style's blend when it is one other than `normal` (spec 4.7): the `*-layer-blend` of its fill, line and raster
  * layers that draw its own look; null writes nothing. Takes the whole style, vector or raster. */

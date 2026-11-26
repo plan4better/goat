@@ -160,7 +160,7 @@ describe("blend (spec 4.7)", () => {
     ] as const) {
       const source = { type: "service" as const, id: "s9", service, tiles };
       const plain = compile(style, source);
-      for (const blend of ["multiply", "screen", "overlay", "color"]) {
+      for (const blend of ["multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"]) {
         const out = compile({ ...style, blend }, source);
         expect(out.layers).toEqual([
           { ...plain.layers[0], paint: { ...plain.layers[0].paint, "raster-layer-blend": blend } },

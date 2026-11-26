@@ -91,10 +91,18 @@ def test_schema_carries_the_raster_renders_whose_popup_is_on() -> None:
     assert RASTER_POPUP_ON_BY_DEFAULT == ("continuous", "categorical", "hillshade")
 
 
-def test_schema_takes_the_five_blends_on_both_layer_kinds() -> None:
+def test_schema_takes_the_seven_blends_on_both_layer_kinds() -> None:
     defs = json_schema()["$defs"]
+    blends = [
+        "normal",
+        "multiply",
+        "screen",
+        "overlay",
+        "color",
+        "luminosity",
+        "plus-lighter",
+    ]
     for model in ("VectorStyle", "RasterStyle"):
-        node = json.dumps(defs[model]["properties"]["blend"])
-        for value in ("normal", "multiply", "screen", "overlay", "color"):
-            assert f'"{value}"' in node, (model, value)
-        assert "luminosity" not in node and "Zoom" not in node
+        node = defs[model]["properties"]["blend"]
+        assert node["anyOf"][0]["enum"] == blends, model
+        assert "Zoom" not in json.dumps(node)

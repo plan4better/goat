@@ -424,7 +424,7 @@ loaded before the model styles a layer or changes a layer's filter (the Map page
 `SKILL.md` holds the forms, palettes, classes and map operations, with a reference file each for rasters, for
 looks that could mean an analysis and for popups beyond a list of fields. Its tests (`tests/test_style_a_map_skill.py`)
 apply every example's operations with goatlib, validate every example document, check every palette, icon and tool it
-names, and keep `SKILL.md` within 34,850 bytes, since a loaded skill is resent with every later call.
+names, and keep `SKILL.md` within 34,950 bytes, since a loaded skill is resent with every later call.
 
 A page can offer some of its tools only once the conversation loaded a skill (`tools/registry.SKILL_TOOLS`): every
 call sends the definitions of every tool it offers, and when a call misses the provider's cache they count in full
