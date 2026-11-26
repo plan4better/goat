@@ -175,8 +175,11 @@ class AggregatePolygonTool(AnalysisTool):
             for col, sql in agg_specs
         ]
         total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
-        coalesced_total_select = ", ".join(
-            f"COALESCE(t.{col}, 0) AS {col}" for col, _, _ in stat_cols
+        area_total_select = ", ".join(
+            self.area_statistic_sql(col, stat.operation.value)
+            for stat, (col, _, _) in zip(
+                params.column_statistics, stat_cols, strict=True
+            )
         )
 
         # DESCRIBE reads only this view; unqualified information_schema
@@ -246,7 +249,7 @@ class AggregatePolygonTool(AnalysisTool):
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             select_parts.append(grouped_proj)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
@@ -269,7 +272,7 @@ class AggregatePolygonTool(AnalysisTool):
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
                 SELECT

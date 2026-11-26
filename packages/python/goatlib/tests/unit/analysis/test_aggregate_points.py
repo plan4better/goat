@@ -31,12 +31,12 @@ POINTS_WITH_CATEGORY = str(TEST_DATA_DIR / "points_with_category.parquet")
 ZIPCODE_POLYGON = str(TEST_DATA_DIR / "zipcode_polygon.parquet")
 
 
-def check_style(params: AggregatePointsParams, field: str | None) -> None:
+def check_style(params: AggregatePointsParams, field: str | None) -> dict:
     """The tool's default style keeps the contract on the result, classifying
     `field`, the column the run wrote (None: drawn in one color, as a field
-    with one value is)."""
+    with one value in every area is); returns the style."""
     areas = {"area_layer_id": U} if params.area_layer_path else {}
-    check_tool_style(
+    return check_tool_style(
         AggregatePointsToolRunner,
         tool_params(AggregatePointsToolParams, params, source_layer_id=U, **areas),
         params.output_path,
@@ -627,6 +627,261 @@ class TestAggregatePointsEdgeCases:
         con.close()
         assert len(df) == 1
         assert df["point_id_sum"].iloc[0] == 1200
+
+
+#: Every statistic once, on the integer field `value`.
+EVERY_STATISTIC = [{"operation": "count"}] + [
+    {"operation": operation, "field": "value"}
+    for operation in ("sum", "mean", "min", "max", "standard_deviation")
+]
+
+#: The columns the run writes for `EVERY_STATISTIC`, with the types it
+#: writes them in.
+WRITTEN_TYPES = {
+    "count": "BIGINT",
+    "value_sum": "DOUBLE",
+    "value_mean": "DOUBLE",
+    "value_min": "INTEGER",
+    "value_max": "INTEGER",
+    "value_standard_deviation": "DOUBLE",
+}
+
+
+def _statistics_by_area(output_path: str) -> dict[int, dict[str, object]]:
+    """The statistic columns of each area, read with SQL so a missing value
+    reads None (not NaN)."""
+    con = duckdb.connect()
+    con.execute("LOAD spatial;")
+    rel = con.execute(
+        f"SELECT id, {', '.join(WRITTEN_TYPES)} FROM '{output_path}' ORDER BY id"
+    )
+    names = [d[0] for d in rel.description]
+    rows = {row[0]: dict(zip(names[1:], row[1:])) for row in rel.fetchall()}
+    con.close()
+    return rows
+
+
+class TestAggregatePointsEmptyAreas:
+    """An area without points holds 0 points and a sum of 0; its mean,
+    minimum, maximum and standard deviation have no value."""
+
+    @staticmethod
+    def _write_inputs(tmp_path: Path) -> tuple[str, str]:
+        """Area 1 holds two points (10, 30), area 2 none, area 3 one point
+        (5), area 4 two points without a value."""
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        areas = str(tmp_path / "areas.parquet")
+        points = str(tmp_path / "points.parquet")
+        con.execute(f"""
+            COPY (
+                SELECT id, ST_GeomFromText(wkt) AS geom FROM (VALUES
+                    (1, 'POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'),
+                    (2, 'POLYGON((5 5, 6 5, 6 6, 5 6, 5 5))'),
+                    (3, 'POLYGON((10 0, 11 0, 11 1, 10 1, 10 0))'),
+                    (4, 'POLYGON((20 0, 21 0, 21 1, 20 1, 20 0))')
+                ) t(id, wkt)
+            ) TO '{areas}' (FORMAT PARQUET)
+        """)
+        con.execute(f"""
+            COPY (
+                SELECT * FROM (VALUES
+                    (10, 'a', ST_Point(0.2, 0.2)),
+                    (30, 'b', ST_Point(0.7, 0.7)),
+                    (5, 'a', ST_Point(10.5, 0.5)),
+                    (NULL::INTEGER, 'a', ST_Point(20.2, 0.2)),
+                    (NULL::INTEGER, 'b', ST_Point(20.7, 0.7))
+                ) t(value, category, geom)
+            ) TO '{points}' (FORMAT PARQUET)
+        """)
+        con.close()
+        return areas, points
+
+    def _run(
+        self, tmp_path: Path, group_by: list[str] | None = None
+    ) -> dict[int, dict[str, object]]:
+        areas, points = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                group_by_field=group_by,
+                output_path=output_path,
+            )
+        )
+        return _statistics_by_area(output_path)
+
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_an_area_without_points_has_a_count_and_sum_of_0_and_no_other_value(
+        self, tmp_path: Path, group_by: list[str] | None
+    ) -> None:
+        empty = self._run(tmp_path, group_by)[2]
+        assert empty == {
+            "count": 0,
+            "value_sum": 0,
+            "value_mean": None,
+            "value_min": None,
+            "value_max": None,
+            "value_standard_deviation": None,
+        }
+
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_an_area_with_points_keeps_its_statistics(
+        self, tmp_path: Path, group_by: list[str] | None
+    ) -> None:
+        held = self._run(tmp_path, group_by)[1]
+        assert held == {
+            "count": 2,
+            "value_sum": 40,
+            "value_mean": 20,
+            "value_min": 10,
+            "value_max": 30,
+            "value_standard_deviation": pytest.approx(14.1421356),
+        }
+
+    def test_a_statistic_the_points_do_not_define_has_no_value(
+        self, tmp_path: Path
+    ) -> None:
+        """One point has no standard deviation; points without a value have
+        no mean, minimum or maximum. Their count and sum stay numbers."""
+        rows = self._run(tmp_path)
+        assert rows[3]["count"] == 1
+        assert rows[3]["value_standard_deviation"] is None
+        assert rows[3]["value_mean"] == 5
+        assert rows[4] == {
+            "count": 2,
+            "value_sum": 0,
+            "value_mean": None,
+            "value_min": None,
+            "value_max": None,
+            "value_standard_deviation": None,
+        }
+
+    def test_the_columns_and_their_types_stay_as_predicted(
+        self, tmp_path: Path
+    ) -> None:
+        """The empty areas change no column and no type: the run writes the
+        same columns in the same types, and the prediction is the same."""
+        areas, points = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                output_path=output_path,
+            )
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        written = {
+            name: dtype
+            for name, dtype, *_ in con.execute(
+                f"DESCRIBE SELECT * FROM '{output_path}'"
+            ).fetchall()
+        }
+        con.close()
+        predicted = AggregatePointsToolRunner.predict_output_schema(
+            {
+                "source_layer_id": {"value": "INTEGER", "category": "VARCHAR"},
+                "area_layer_id": {"id": "INTEGER", "geometry": "GEOMETRY"},
+            },
+            {"area_type": "polygon", "column_statistics": EVERY_STATISTIC},
+        )
+
+        assert {k: v for k, v in written.items() if k in WRITTEN_TYPES} == (
+            WRITTEN_TYPES
+        )
+        assert predicted == {
+            "geometry": "GEOMETRY",
+            "id": "INTEGER",
+            "count": "BIGINT",
+            "value_sum": "DOUBLE",
+            "value_mean": "DOUBLE",
+            "value_min": "DOUBLE",
+            "value_max": "DOUBLE",
+            "value_standard_deviation": "DOUBLE",
+        }
+        assert set(written) - {"bbox"} == set(predicted)
+
+    def test_a_mean_over_areas_without_points_keeps_the_tool_s_style(
+        self, tmp_path: Path
+    ) -> None:
+        """A mean that has no value in some areas classifies the others and
+        draws the rest as no data; the style contract holds."""
+        areas, points = self._write_inputs(tmp_path)
+        params = AggregatePointsParams(
+            source_path=points,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        check_style(params, "value_mean")
+
+    def test_a_mean_of_one_value_beside_areas_without_points_lists_no_data(
+        self, tmp_path: Path
+    ) -> None:
+        """One point in one of four areas: its mean is the one value, the
+        other areas have none. The style keeps one class for the value and
+        the no-data look for the rest."""
+        areas, _ = self._write_inputs(tmp_path)
+        points = str(tmp_path / "one_point.parquet")
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        con.execute(
+            f"COPY (SELECT 5 AS value, ST_Point(10.5, 0.5) AS geom) "
+            f"TO '{points}' (FORMAT PARQUET)"
+        )
+        con.close()
+        params = AggregatePointsParams(
+            source_path=points,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        doc = check_style(params, "value_mean")
+        [c] = doc["classify"]
+        assert len(c["classes"]) == 1
+        assert c["computed"]["no_data"] is True
+
+    def test_a_mean_without_a_value_in_any_area_keeps_the_tool_s_style(
+        self, tmp_path: Path
+    ) -> None:
+        """No point falls in any area: the mean column has no value at all.
+        The classification stays without classes, so every area draws as no
+        data and the legend says so."""
+        areas, _ = self._write_inputs(tmp_path)
+        params = AggregatePointsParams(
+            source_path=POINTS_WITH_CATEGORY,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        con = duckdb.connect()
+        values = con.execute(
+            f"SELECT DISTINCT value_mean FROM '{params.output_path}'"
+        ).fetchall()
+        con.close()
+        assert values == [(None,)]
+        [c] = check_style(params, "value_mean")["classify"]
+        assert "classes" not in c
+        assert c["computed"]["no_data"] is True
 
 
 #: Result names as users type them: spaces, an umlaut, an embedded quote.

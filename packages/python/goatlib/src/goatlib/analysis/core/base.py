@@ -672,6 +672,17 @@ class AnalysisTool:
         else:
             raise ValueError(f"Unsupported statistics operation: {operation}")
 
+    @staticmethod
+    def area_statistic_sql(column: str, operation: str) -> str:
+        """The value of statistic `column` (a quoted identifier of table `t`)
+        for each area of a polygon aggregation, where an area no feature
+        falls in has no row in `t`: such an area holds 0 features and a sum
+        of 0, and its mean, minimum, maximum and standard deviation have no
+        value."""
+        if operation.lower() in ("count", "sum"):
+            return f"COALESCE(t.{column}, 0) AS {column}"
+        return f"t.{column} AS {column}"
+
     def _run_implementation(
         self: Self, *args: Any, **kwargs: Any
     ) -> List[Tuple[Path, DatasetMetadata]]:

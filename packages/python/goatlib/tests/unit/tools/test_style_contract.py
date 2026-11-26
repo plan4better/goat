@@ -269,6 +269,23 @@ class TestClasses:
         assert rules(problems) == ["single_class"]
         assert problems[0].level == "design"
 
+    def test_a_class_list_of_one_beside_rows_without_a_value_passes(
+        self, con: duckdb.DuckDBPyConnection
+    ) -> None:
+        """One value and rows without one: the class and the no-data look
+        are the two things the legend lists."""
+        relation = table(con, {"v": "CASE WHEN i < 5 THEN 3.0 END"}, "polygon", 10)
+        doc = computed(
+            con,
+            relation,
+            tool_style.numeric_default("v", ORANGES, "polygon", "Value"),
+            "polygon",
+        )
+        c = doc["classify"][0]
+        assert len(c["classes"]) == 1
+        assert c["computed"]["no_data"] is True
+        assert style_contract(doc, con, relation, "polygon") == []
+
     def test_several_classes_pass(self, con: duckdb.DuckDBPyConnection) -> None:
         relation = table(con, {"v": "i"}, "polygon", 30)
         doc = computed(

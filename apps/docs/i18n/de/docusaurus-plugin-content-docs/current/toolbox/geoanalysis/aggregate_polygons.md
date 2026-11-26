@@ -127,7 +127,7 @@ Die folgenden **Operationen** stehen zur Verfügung:
 
 Sobald der Berechnungsprozess abgeschlossen ist, wird der resultierende Polygon-Layer zur Karte hinzugefügt. Er enthält <b>je Statistik eine zusätzliche Spalte</b> und wird nach der ersten Statistik eingefärbt. Sie können die Werte sehen, indem Sie auf ein Polygon auf der Karte klicken.
 
-- Beim Flächentyp **Polygon** enthält das Ergebnis alle Polygone des Flächen-Layers mit ihren Attributen. Flächen ohne schneidende Polygone erhalten den Wert 0.
+- Beim Flächentyp **Polygon** enthält das Ergebnis alle Polygone des Flächen-Layers mit ihren Attributen. Flächen ohne schneidende Polygone erhalten für **Anzahl** und **Summe** den Wert 0 und für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung** keinen Wert. Eine Fläche mit nur einem schneidenden Polygon erhält für **Standardabweichung** keinen Wert, eine Fläche, deren Polygone im ausgewählten Feld alle keinen Wert haben, für **Mittelwert**, **Minimum**, **Maximum** und **Standardabweichung**.
 - Beim Flächentyp **H3 Grid** enthält das Ergebnis die Hexagone, in denen der Schwerpunkt mindestens eines Polygons liegt. Die Spalte <code>h3_&lt;Auflösung&gt;</code> (z.B. <code>h3_8</code>) enthält die ID des Hexagons.
 - Wenn Sie <code>Gruppenfelder</code> gewählt haben, enthält eine zusätzliche Spalte <code>&lt;Ergebnisspalte&gt;_grouped</code> den Wert jeder Gruppe.
 

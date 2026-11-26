@@ -126,7 +126,7 @@ The following **operations** are available:
 
 As soon as the calculation process is finished, the resulting polygon layer is added to the map. It contains <b>one additional column per statistic</b> and is colored by the first statistic. You can see the values by clicking on a polygon on the map.
 
-- With the area type **Polygon**, the result contains all polygons of the area layer with their attributes. Areas without intersecting polygons get the value 0.
+- With the area type **Polygon**, the result contains all polygons of the area layer with their attributes. Areas without intersecting polygons get 0 for **Count** and **Sum** and no value for **Mean**, **Minimum**, **Maximum** and **Standard deviation**. An area with a single intersecting polygon has no value for **Standard deviation**, and an area whose polygons all lack a value in the selected field has no value for **Mean**, **Minimum**, **Maximum** and **Standard deviation**.
 - With the area type **H3 Grid**, the result contains the hexagons that contain the centroid of at least one polygon. The column <code>h3_&lt;resolution&gt;</code> (e.g. <code>h3_8</code>) holds the ID of the hexagon.
 - If you selected <code>Group Fields</code>, an additional column <code>&lt;result column&gt;_grouped</code> holds the value of each group.
 

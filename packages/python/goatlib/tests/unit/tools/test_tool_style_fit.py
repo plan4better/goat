@@ -374,6 +374,14 @@ def holding(
     return held
 
 
+def has_rows_without_value(
+    con: duckdb.DuckDBPyConnection, relation: str, field: str
+) -> bool:
+    return con.execute(
+        f'SELECT count(*) > 0 FROM {relation} WHERE "{field}" IS NULL'
+    ).fetchone()[0]
+
+
 def check_fit(
     con: duckdb.DuckDBPyConnection,
     runner: BaseToolRunner,
@@ -391,10 +399,19 @@ def check_fit(
     values = distinct_values(con, relation, field)
     before = today(con, relation, intent, geometry)
     if "classify" not in doc:
-        # One color, the tool's own: one value, or no count draws two classes.
+        # One color, the tool's own: one value, or no count draws two classes;
+        # every row has a value.
         assert values <= 1 or holding(con, relation, field, before) <= 1
+        assert not has_rows_without_value(con, relation, field)
         part, key = MAIN_COLOR[geometry].split(".")
         assert doc["symbol"][part][key] == intent["symbol"][part][key]
+    elif values <= 1:
+        # One value or none beside rows without a value: a class for the value
+        # (none without one) and the rows listed as no data.
+        [c] = doc["classify"]
+        assert c["count"] == 1
+        assert len(c.get("classes") or []) == values
+        assert c["computed"]["no_data"] is True
     else:
         [c] = doc["classify"]
         n = len(c["classes"])
@@ -565,17 +582,56 @@ def test_with_many_values_the_default_is_the_one_of_today(
     assert doc["classify"][0]["format"] == {"decimals": 0}
 
 
+@pytest.mark.parametrize("tool", list(TOOLS))
+def test_one_value_beside_rows_without_one_keeps_a_class_and_no_data(
+    con: duckdb.DuckDBPyConnection, tool: str
+) -> None:
+    """A field with one value and rows without a value: one class for the
+    value and the no-data look for the rest, so map and legend show both."""
+    runner_class, build, field, geometry, _ = TOOLS[tool]
+    runner = runner_for(runner_class, con)
+    con.execute(
+        f"""CREATE OR REPLACE TABLE result AS
+        SELECT CASE WHEN i < 10 THEN 5.0 END AS "{field}",
+               {GEOMETRY_SQL[geometry]} AS geometry
+        FROM range(20) t(i)"""
+    )
+    doc = tool_default(runner, build(runner, geometry, "result"), "result", geometry)
+    [c] = doc["classify"]
+    assert c["count"] == 1
+    assert len(c["classes"]) == 1
+    assert "no_data" in c
+    assert c["computed"]["no_data"] is True
+    assert errors(con, "result", doc, geometry) == []
+
+
+@pytest.mark.parametrize("tool", list(TOOLS))
+def test_one_value_in_every_row_stays_plain(
+    con: duckdb.DuckDBPyConnection, tool: str
+) -> None:
+    runner_class, build, field, geometry, _ = TOOLS[tool]
+    runner = runner_for(runner_class, con)
+    relation = result_table(con, field, geometry, "constant")
+    doc = tool_default(runner, build(runner, geometry, relation), relation, geometry)
+    assert "classify" not in doc
+
+
 @pytest.mark.parametrize("distribution", ["constant", "all_null"])
 def test_a_size_by_field_on_one_value_still_validates(
     con: duckdb.DuckDBPyConnection, distribution: str
 ) -> None:
     """The origin-destination width and size follow the weight; with one value
-    or none, the plain color stays valid."""
+    the plain color stays valid, and with none the lines are listed as no
+    data, also valid."""
     runner = runner_for(OriginDestinationToolRunner, con)
     relation = result_table(con, "weight", "line", distribution)
     intent = runner.get_layer_style(_od(), MagicMock(), "line", relation)
     doc = tool_default(runner, intent, relation, "line")
-    assert "classify" not in doc
+    if distribution == "constant":
+        assert "classify" not in doc
+    else:
+        [c] = doc["classify"]
+        assert "classes" not in c and c["computed"]["no_data"] is True
     assert doc["symbol"]["line"]["width"]["field"] == "weight"
     assert errors(con, relation, doc, "line") == []
 

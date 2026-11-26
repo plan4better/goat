@@ -309,10 +309,27 @@ def decimals_for(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
     return MAX_DECIMALS
 
 
+#: The most decimals a single class shows of its value for the value's sake.
+SINGLE_VALUE_DECIMALS = 2
+
+
+def _single_value_decimals(value: float) -> int:
+    """The decimals the label of a class holding the one value `value` shows:
+    the fewest, at most `SINGLE_VALUE_DECIMALS`, that read it as that many
+    would, and more where fewer would read a value other than 0 as 0."""
+    exact = _rounded(value, SINGLE_VALUE_DECIMALS)
+    own = next(
+        d for d in range(SINGLE_VALUE_DECIMALS + 1) if _rounded(value, d) == exact
+    )
+    return max(own, decimals_for([value], [value, value]))
+
+
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
     that has classes and no format of its own: the decimals its class breaks
-    and its domain's ends need (`decimals_for`)."""
+    and its domain's ends need (`decimals_for`); a single class over one value
+    has no break and takes the decimals of that value
+    (`_single_value_decimals`)."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -328,7 +345,13 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
         ):
             breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
-            c = {**c, "format": {"decimals": decimals_for(breaks, domain)}}
+            one = _finite(domain)
+            decimals = (
+                _single_value_decimals(next(iter(one)))
+                if len(c["classes"]) == 1 and len(one) == 1
+                else decimals_for(breaks, domain)
+            )
+            c = {**c, "format": {"decimals": decimals}}
             changed = True
         out.append(c)
     return _with_classify(document, out) if changed else document
@@ -425,9 +448,10 @@ def fit_classes(
     con: duckdb.DuckDBPyConnection, relation: str, document: dict[str, Any]
 ) -> dict[str, Any]:
     """The style a tool asks for in its run with the counts of its numeric
-    classifications fitted to the result (`_fitted_count`); a classification
+    classifications fitted to the result (`_fitted_count`). A classification
     left with one class is left out, so the layer draws in the style's own
-    color."""
+    color, unless the field has rows without a value: then it keeps one class,
+    and map and legend show those rows as no data beside it."""
     classify = document.get("classify")
     if not isinstance(classify, list) or not any(map(_asks_for_classes, classify)):
         return document
@@ -436,22 +460,42 @@ def fit_classes(
         count = _fitted_count(con, relation, c) if _asks_for_classes(c) else None
         if count is None:
             kept.append(c)
-        elif count > 1:
+        elif count > 1 or _has_rows_without_value(con, relation, c["field"]):
             kept.append({**c, "count": count})
     return _with_classify(document, kept)
+
+
+def _has_rows_without_value(
+    con: duckdb.DuckDBPyConnection, relation: str, field: str
+) -> bool:
+    column = quote_identifier(field)
+    return con.execute(
+        f"SELECT EXISTS (SELECT 1 FROM {relation} WHERE {column} IS NULL)"
+    ).fetchone()[0]
+
+
+def _lists_no_data(c: dict[str, Any]) -> bool:
+    """Whether a computed classification found features without a value."""
+    computed = c.get("computed")
+    return isinstance(computed, dict) and computed.get("no_data") is True
 
 
 def without_single_classes(document: dict[str, Any]) -> dict[str, Any]:
     """A fitted style, once computed, without the numeric classifications whose
     breaks all fell together into one class: the style's own color instead of a
-    class list of one."""
+    class list of one. One class beside features without a value stays, so
+    the legend lists both."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
     kept = [
         c
         for c in classify
-        if not (_asks_for_classes(c) and len(c.get("classes") or []) == 1)
+        if not (
+            _asks_for_classes(c)
+            and len(c.get("classes") or []) == 1
+            and not _lists_no_data(c)
+        )
     ]
     return document if len(kept) == len(classify) else _with_classify(document, kept)
 

@@ -489,11 +489,11 @@ def _written_column(names: list[str], params: JoinToolParams) -> str | None:
 
 def _statistic_range(
     runner: BaseToolRunner, relation: str, params: JoinToolParams
-) -> tuple[str, Any, Any, list[str]] | None:
-    """The column of the first statistic (`_written_column`) with its minimum
-    and maximum, read in one pass with the runner's connection, and the
-    result's column names; None where the column cannot be told or the result
-    cannot be read."""
+) -> tuple[str, Any, Any, int, int, list[str]] | None:
+    """The column of the first statistic (`_written_column`) with its minimum,
+    its maximum, the result's rows and the rows without a value in it, read in
+    one pass with the runner's connection, and the result's column names; None
+    where the column cannot be told or the result cannot be read."""
     try:
         con = runner.duckdb_con
         names = [
@@ -508,10 +508,11 @@ def _statistic_range(
             logger.warning("The join's result does not hold the columns it writes")
             return None
         quoted = quote_identifier(column)
-        low, high = con.execute(
-            f"SELECT min({quoted}), max({quoted}) FROM {relation}"
+        low, high, rows, missing = con.execute(
+            f"SELECT min({quoted}), max({quoted}), count(*), "
+            f"count(*) - count({quoted}) FROM {relation}"
         ).fetchone()
-        return column, low, high, names
+        return column, low, high, rows, missing, names
     except Exception:  # the default style
         logger.warning("Reading the join's statistic failed", exc_info=True)
         return None
@@ -601,7 +602,9 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
     ) -> dict[str, Any] | None:
         """The first statistic's column classified in orange, as the aggregates
         (`statistic_default`), where the user asked for statistics and that
-        column holds at least two values; the default style otherwise. The
+        column holds at least two values or rows without a value (the fit of
+        the run then keeps a class for one value and lists those rows as no
+        data); the default style otherwise. The
         target's polygons outlined, H3 cells of a heatmap result not
         (`on_h3_cells` on the columns read here)."""
         stat = _statistic(params)
@@ -610,8 +613,8 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
         read = _statistic_range(self, relation, params)
         if read is None:
             return None
-        column, low, high, names = read
-        if low is None or not low < high:
+        column, low, high, rows, missing, names = read
+        if not rows or (not missing and not low < high):
             return None
         return statistic_default(
             self,
@@ -620,7 +623,7 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             "colorbrewer:Oranges",
             geometry,
             relation,
-            negative=low < 0 and high <= 0,
+            negative=low is not None and low < 0 and high <= 0,
             outline_areas=True,
             columns=names,
         )

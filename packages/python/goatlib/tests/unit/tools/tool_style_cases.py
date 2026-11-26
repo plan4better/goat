@@ -725,6 +725,50 @@ def _aggregate_points(context: Context, work: Path) -> Result:
     )
 
 
+def _mean_onto_zip_codes(
+    source: str, rest: str, field: str
+) -> Callable[[Context, Path], Result]:
+    """The mean of `field` of the points of the test file `source` that the
+    SQL `rest` (a WHERE, ORDER BY or LIMIT, as a source filter keeps them)
+    leaves, onto the ten zip code areas."""
+
+    def make(context: Context, work: Path) -> Result:
+        from goatlib.analysis.geoanalysis.aggregate_points import AggregatePointsTool
+        from goatlib.analysis.schemas.aggregate import (
+            AggregatePointsParams,
+            AggregationAreaType,
+        )
+        from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
+        from goatlib.tools.aggregate_points import (
+            AggregatePointsToolParams,
+            AggregatePointsToolRunner,
+        )
+
+        points = _write(
+            work / "points.parquet",
+            f"SELECT * FROM '{_vector(context, source)}' {rest}",
+        )
+        params = AggregatePointsParams(
+            source_path=str(points),
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=_vector(context, "zipcode_polygon.parquet"),
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field=field)
+            ],
+            output_path=str(work / "out.parquet"),
+        )
+        path = _run(AggregatePointsTool(), params)
+        return Result(
+            AggregatePointsToolRunner(),
+            tool_params(
+                AggregatePointsToolParams, params, source_layer_id=U, area_layer_id=U
+            ),
+            path,
+        )
+
+    return make
+
+
 def _aggregate_polygon(context: Context, work: Path) -> Result:
     from goatlib.analysis.geoanalysis.aggregate_polygon import AggregatePolygonTool
     from goatlib.analysis.schemas.aggregate import (
@@ -1672,6 +1716,46 @@ CASES: list[Case] = [
         ("vector/points_with_category.parquet", "vector/zipcode_polygon.parquet"),
         True,
         _aggregate_points,
+    ),
+    Case(
+        "aggregate-points-mean",
+        "aggregate_points",
+        "result",
+        "The mean value of filtered points per zip code area; three areas hold none",
+        "the mean classified in orange, areas without points grey as no data",
+        "analysis",
+        ("vector/points_with_category.parquet", "vector/zipcode_polygon.parquet"),
+        True,
+        # Three zip code areas hold none of these points.
+        _mean_onto_zip_codes(
+            "points_with_category.parquet",
+            "WHERE category = 'third_category' AND value >= 75",
+            "value",
+        ),
+    ),
+    Case(
+        "aggregate-points-mean-one-value",
+        "aggregate_points",
+        "result",
+        "The mean value of one point per zip code area; nine areas hold none",
+        "one orange class for the one value, areas without points grey as no data",
+        "analysis",
+        ("vector/points_with_category.parquet", "vector/zipcode_polygon.parquet"),
+        True,
+        _mean_onto_zip_codes(
+            "points_with_category.parquet", "ORDER BY value DESC LIMIT 1", "value"
+        ),
+    ),
+    Case(
+        "aggregate-points-mean-no-value",
+        "aggregate_points",
+        "result",
+        "The mean enrollment of schools per zip code area; no school lies in one",
+        "every area grey as no data",
+        "analysis",
+        ("vector/schools.parquet", "vector/zipcode_polygon.parquet"),
+        True,
+        _mean_onto_zip_codes("schools.parquet", "", "enrollment"),
     ),
     Case(
         "aggregate-polygon",

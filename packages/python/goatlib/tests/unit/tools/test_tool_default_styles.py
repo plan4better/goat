@@ -757,6 +757,25 @@ def test_the_domain_s_ends_read_apart_from_the_breaks_and_may_read_0(
     assert doc["classify"][0]["format"] == {"decimals": decimals}
 
 
+@pytest.mark.parametrize(
+    ("value", "decimals"),
+    [
+        (99.7892905504, 2),
+        (0.004, 3),
+        (0.6, 1),
+        (2.5, 1),
+        (1234.5, 1),
+        (100.0, 0),
+        (-0.004, 3),
+    ],
+)
+def test_a_single_class_reads_its_value(value: float, decimals: int) -> None:
+    """One class has no break: its label shows the value with the decimals
+    it needs, at most 2, and more where fewer would read 0."""
+    doc = tool_style.with_decimals(_classes([value, value], []))
+    assert doc["classify"][0]["format"] == {"decimals": decimals}
+
+
 def _computed(
     con: duckdb.DuckDBPyConnection,
     intent: dict[str, Any],
@@ -1637,18 +1656,39 @@ def test_a_join_statistic_of_negative_values_turns_the_ramp_around(
     ("values", "rows"),
     [
         ("1", 10),  # a constant count: one-to-one matches
-        ("CASE WHEN i = 0 THEN 3 END", 10),  # one value among missing ones
-        ("NULL", 10),
         ("i", 0),  # an empty result
     ],
-    ids=["constant", "one value", "no value", "empty"],
+    ids=["constant", "empty"],
 )
-@pytest.mark.parametrize("op", ["count", "sum"])
+@pytest.mark.parametrize("op", ["count", "sum", "mean"])
 def test_a_join_statistic_that_does_not_vary_stays_plain(
     con: duckdb.DuckDBPyConnection, op: str, values: str, rows: int
 ) -> None:
     relation = join_result(con, _appended(op), values, rows)
     assert _join_style(con, _join(_stat(op)), relation) is None
+
+
+@pytest.mark.parametrize(
+    ("values", "classes"),
+    [
+        ("CASE WHEN i = 0 THEN 3 END", 1),  # one value among unmatched rows
+        ("NULL", 0),  # no target matched
+    ],
+    ids=["one value", "no value"],
+)
+@pytest.mark.parametrize("op", ["sum", "mean"])
+def test_a_join_statistic_beside_unmatched_rows_lists_them_as_no_data(
+    con: duckdb.DuckDBPyConnection, op: str, values: str, classes: int
+) -> None:
+    """Unmatched targets have no sum or mean: whether the matched ones share
+    one value or there are none, the unmatched ones draw as no data."""
+    relation = join_result(con, _appended(op), values, 10)
+    doc = _join_style(con, _join(_stat(op)), relation)
+    assert doc is not None
+    [c] = _computed(con, doc, relation, "polygon")["classify"]
+    assert c["field"] == JOIN_COLUMNS[op]
+    assert len(c.get("classes") or []) == classes
+    assert c["computed"]["no_data"] is True
 
 
 @pytest.mark.parametrize(
