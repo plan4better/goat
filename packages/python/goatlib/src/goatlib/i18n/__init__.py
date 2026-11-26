@@ -402,3 +402,13 @@ def get_supported_languages() -> tuple[str, ...]:
 def is_language_supported(language: str) -> bool:
     """Check if a language is supported."""
     return language in SUPPORTED_LANGUAGES
+
+
+def supported_language(tag: object) -> str | None:
+    """The supported language a language tag names, without its region
+    ("de-AT" gives "de"); None for anything else, also for a value that is
+    not a string. Never raises."""
+    if not isinstance(tag, str):
+        return None
+    language = tag.strip().split("-")[0].lower()
+    return language if language in SUPPORTED_LANGUAGES else None

@@ -22,7 +22,7 @@ import duckdb
 from goatlib.analysis.schemas.aggregate import AggregationAreaType
 from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
 from goatlib.analysis.statistics.columns import quote_identifier
-from goatlib.i18n import DEFAULT_LANGUAGE, get_translator
+from goatlib.i18n import DEFAULT_LANGUAGE, get_translator, supported_language
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
 from goatlib.style.compute import Breaks
@@ -148,10 +148,19 @@ def classified(
     return assign_ids(doc)
 
 
-def style_title(key: str, **values: str) -> str:
-    """The legend title `key` of goatlib's translations (`style_titles`), in
-    English, with each `{name}` replaced by its value."""
-    text = get_translator(DEFAULT_LANGUAGE).resolve_key(f"style_titles.{key}") or key
+def style_title(key: str, language: str | None = None, **values: str) -> str:
+    """The legend title `key` of goatlib's translations (`style_titles`) in the
+    run's `language`, English for a language they do not hold or none and for
+    a title the language's texts lack, the key itself where English lacks it
+    too, with each `{name}` replaced by its value. A value (a field name) is
+    never translated."""
+    path = f"style_titles.{key}"
+    run_language = supported_language(language) or DEFAULT_LANGUAGE
+    text = (
+        get_translator(run_language).resolve_key(path)
+        or get_translator(DEFAULT_LANGUAGE).resolve_key(path)
+        or key
+    )
     for name, value in values.items():
         text = text.replace("{" + name + "}", value)
     return text
@@ -191,13 +200,17 @@ def numeric_default(
     return doc
 
 
-def statistic_title(stat: FieldStatistic, *, area_weighted: bool = False) -> str:
+def statistic_title(
+    stat: FieldStatistic, *, area_weighted: bool = False, language: str | None = None
+) -> str:
     """The legend title of a statistic: its custom result name as given, else
-    the operation and the source field in words."""
+    the operation and the source field in words, in the run's `language`."""
     if stat.result_name:
         return stat.result_name
-    title = style_title(stat.operation.value, field=stat.field or "")
-    return style_title("area_weighted", title=title) if area_weighted else title
+    title = style_title(stat.operation.value, language, field=stat.field or "")
+    if area_weighted:
+        return style_title("area_weighted", language, title=title)
+    return title
 
 
 def result_columns(runner: Any, relation: str) -> dict[str, str] | None:
@@ -244,6 +257,7 @@ def statistic_default(
     negative: bool | None = None,
     outline_areas: bool = False,
     columns: Collection[str] | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """The default of a statistics tool: its first statistic's column `field`
     (`numeric_default`) in the tool's sequential palette, turned around where
@@ -251,7 +265,8 @@ def statistic_default(
     when not given), so the value farthest from 0 is the darkest. Polygons
     with `outline_areas` take no outline where the result's `columns` show H3
     cells (`on_h3_cells`). The columns are read from `relation` once, where
-    either needs them and they are not given."""
+    either needs them and they are not given. The title is in the run's
+    `language`."""
     signed = stat.operation != StatisticOperation.count and negative is None
     if columns is None and (signed or (outline_areas and geometry == "polygon")):
         columns = result_columns(runner, relation)
@@ -266,7 +281,7 @@ def statistic_default(
         field,
         palette,
         geometry,
-        statistic_title(stat, area_weighted=area_weighted),
+        statistic_title(stat, area_weighted=area_weighted, language=language),
         reverse=reverse,
         outline_areas=outline_areas,
     )
@@ -667,10 +682,11 @@ def _alpha_label(value: int) -> str:
 
 
 def oev_gueteklassen_style(
-    class_count: int = len(OEV_GUETEKLASSEN_COLORS),
+    class_count: int = len(OEV_GUETEKLASSEN_COLORS), language: str | None = None
 ) -> dict[str, Any]:
     """The ÖV-Güteklassen polygons: one class per label, A to F in their
-    established colors, later labels in darker reds."""
+    established colors, later labels in darker reds; the title in the run's
+    `language`."""
     labels = [_alpha_label(i) for i in range(1, max(1, class_count) + 1)]
     extra = [label for label in labels if label not in OEV_GUETEKLASSEN_COLORS]
     darker = sample_colors(
@@ -682,7 +698,7 @@ def oev_gueteklassen_style(
         labels,
         [colors[label] for label in labels],
         "polygon",
-        title=style_title("pt_class"),
+        title=style_title("pt_class", language),
         outline_areas=True,
     )
 
@@ -691,8 +707,9 @@ def oev_gueteklassen_style(
 OEV_STATION_NO_SERVICE = 999
 
 
-def oev_gueteklassen_stations_style() -> dict[str, Any]:
-    """The stations of an ÖV-Güteklassen run: black, grey without service."""
+def oev_gueteklassen_stations_style(language: str | None = None) -> dict[str, Any]:
+    """The stations of an ÖV-Güteklassen run: black, grey without service; the
+    title in the run's `language`."""
     values = [*range(1, 8), OEV_STATION_NO_SERVICE]
     colors = ["#000000"] * 7 + [BUNDLE_BACKDROP_GREY]
     return categories(
@@ -702,7 +719,7 @@ def oev_gueteklassen_stations_style() -> dict[str, Any]:
         "point",
         # Black markers need no outline to stand out.
         symbol={"marker": {"color": "#000000", "size": 6}, "outline": False},
-        title=style_title("station_category"),
+        title=style_title("station_category", language),
     )
 
 

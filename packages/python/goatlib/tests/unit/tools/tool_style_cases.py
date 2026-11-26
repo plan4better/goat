@@ -43,6 +43,7 @@ from goatlib.style.compute import stable
 from goatlib.style.data_check import referenced_fields
 from goatlib.style.models.classify import NUMERIC_METHODS
 from goatlib.tools.base import BaseToolRunner
+from goatlib.tools.schemas import ToolInputBase
 from goatlib.tools.style_contract import result_geometry, style_contract
 from goatlib.utils.column_types import column_types, type_class
 
@@ -1291,9 +1292,19 @@ def _heatmap_v2(kind: str) -> Callable[[Context, Path], Result]:
         )
         with _routing(HeatmapV2Tool, _engine(compute_heatmap=_heatmap_scores)):
             path = _run(HeatmapV2Tool(), params)
-        # The runner's style reads the heatmap type and the cost type, which
-        # the analysis parameters hold as the tool's do.
-        return Result(runner(), params, path)
+        # The runner's style reads the heatmap type, the cost type and the
+        # run's language from the tool's parameters.
+        return Result(
+            runner(),
+            tool_params(
+                heatmap_v2.HeatmapV2WindmillParams,
+                heatmap_type=params.heatmap_type,
+                routing_mode="walking",
+                cost_type=params.cost_type,
+                max_cost=params.max_cost,
+            ),
+            path,
+        )
 
     return make
 
@@ -1301,7 +1312,10 @@ def _heatmap_v2(kind: str) -> Callable[[Context, Path], Result]:
 def _huff_v2(context: Context, work: Path) -> Result:
     from goatlib.analysis.accessibility.huff_model_v2 import HuffmodelV2Tool
     from goatlib.analysis.schemas.heatmap import HuffmodelV2Params
-    from goatlib.tools.huff_model_v2 import HuffModelV2ToolRunner
+    from goatlib.tools.huff_model_v2 import (
+        HuffModelV2ToolParams,
+        HuffModelV2ToolRunner,
+    )
 
     params = HuffmodelV2Params(
         routing_mode="walking",
@@ -1315,7 +1329,20 @@ def _huff_v2(context: Context, work: Path) -> Result:
     )
     with _routing(HuffmodelV2Tool, _engine(compute_travel_cost_matrix=_travel_matrix)):
         path = _run(HuffmodelV2Tool(), params)
-    return Result(HuffModelV2ToolRunner(), params, path)
+    return Result(
+        HuffModelV2ToolRunner(),
+        tool_params(
+            HuffModelV2ToolParams,
+            demand_layer_id=U,
+            opportunity_layer_id=U,
+            reference_area_layer_id=U,
+            routing_mode="walking",
+            demand_field=params.demand_field,
+            attractivity=params.attractivity,
+            max_cost=params.max_cost,
+        ),
+        path,
+    )
 
 
 def _travel_cost_matrix(context: Context, work: Path) -> Result:
@@ -1541,9 +1568,12 @@ def _heatmap_pattern(
             "heatmap_2sfca_legacy": Heatmap2SFCAToolRunner,
             "heatmap_gravity_legacy": HeatmapGravityToolRunner,
         }[tool]
-        # These runners' styles read nothing from their parameters.
+        # These runners' styles read only the run's language from their
+        # parameters.
         return Result(
-            runner(), None, _cells(work, values, count, "total_accessibility")
+            runner(),
+            tool_params(ToolInputBase),
+            _cells(work, values, count, "total_accessibility"),
         )
 
     return make

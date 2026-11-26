@@ -466,6 +466,50 @@ def test_the_server_sets_who_runs_a_job(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.parametrize(
+    ("header", "sent", "language"),
+    [
+        ({"Accept-Language": "de-AT,de;q=0.9,en;q=0.8"}, None, "de"),
+        ({"Accept-Language": "de"}, "en", "de"),
+        ({"Accept-Language": "en"}, "de", "en"),
+        ({"Accept-Language": "fr-FR,de;q=0.9"}, None, "en"),
+        ({}, "Summe von {field}", "en"),
+        ({}, "de", "en"),
+    ],
+)
+def test_the_server_sets_the_language_of_a_job_from_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+    header: dict[str, str],
+    sent: str | None,
+    language: str,
+) -> None:
+    """The language the run writes its legend titles in is the request's
+    first Accept-Language, reduced to one the tools hold; a caller-sent one
+    is replaced."""
+    from processes.deps.auth import get_optional_user_id
+
+    submitted: list[dict[str, Any]] = []
+
+    async def submit(script_path: str, args: dict[str, Any], **_: Any) -> str:
+        submitted.append(args)
+        return "job-1"
+
+    monkeypatch.setattr(processes_router.windmill_client, "run_script_async", submit)
+    app.dependency_overrides[get_optional_user_id] = lambda: USER
+    inputs: dict[str, Any] = {"input_layer_id": LAYER}
+    if sent is not None:
+        inputs["language"] = sent
+    try:
+        response = TestClient(app).post(
+            "/processes/buffer/execution", json={"inputs": inputs}, headers=header
+        )
+    finally:
+        app.dependency_overrides.pop(get_optional_user_id, None)
+    assert response.status_code < 300, response.text
+    (args,) = submitted
+    assert args["language"] == language
+
+
+@pytest.mark.parametrize(
     ("process_id", "field", "value"),
     [
         ("unique-values", "offset", "0; SELECT pw, 1 FROM lake.main.t_x --"),

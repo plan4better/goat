@@ -793,9 +793,9 @@ class TravelCostMatrixToolRunner(BaseToolRunner[TravelCostMatrixWindmillParams])
             params.routing_mode == RoutingMode.flight_distance
             or params.cost_type == CostType.distance
         ):
-            title, unit = style_title("matrix_average_distance"), "m"
+            title, unit = style_title("matrix_average_distance", params.language), "m"
         else:
-            title, unit = style_title("matrix_average_time"), "min"
+            title, unit = style_title("matrix_average_time", params.language), "min"
         return numeric_default(
             "travel_cost", EMRLD, geometry, title, reverse=True, unit=unit
         )

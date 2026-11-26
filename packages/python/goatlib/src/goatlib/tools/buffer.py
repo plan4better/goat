@@ -132,7 +132,7 @@ class BufferToolRunner(BaseToolRunner[BufferToolParams]):
             distances,
             "colorbrewer:OrRd",
             geometry,
-            style_title("buffer_distance"),
+            style_title("buffer_distance", params.language),
             "m",
             symbol={"fill": {"opacity": 0.7}},
         )

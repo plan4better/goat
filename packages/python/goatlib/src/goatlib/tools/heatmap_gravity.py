@@ -132,7 +132,10 @@ class HeatmapGravityToolRunner(BaseToolRunner[HeatmapGravityToolParams]):
     ) -> dict[str, Any] | None:
         """Gravity accessibility in green: access to opportunities."""
         return numeric_default(
-            "total_accessibility", EMRLD, geometry, style_title("gravity")
+            "total_accessibility",
+            EMRLD,
+            geometry,
+            style_title("gravity", params.language),
         )
 
     def process(

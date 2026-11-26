@@ -626,6 +626,7 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             negative=low is not None and low < 0 and high <= 0,
             outline_areas=True,
             columns=names,
+            language=params.language,
         )
 
     def process(

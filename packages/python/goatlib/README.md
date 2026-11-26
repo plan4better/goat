@@ -524,7 +524,11 @@ documents goatlib built or upgraded:
   style handed on from elsewhere (a template's, a filtered copy's) is not
   fitted. A tool whose result is a number per feature asks for it through
   `numeric_default`: a ramp and direction by the kind of value, a legend title
-  and unit, and grey for features without a value. Its number of decimals
+  and unit, and grey for features without a value. A title is stored text,
+  written once in the run's `language` (`style_title`, from the
+  `style_titles` translations; English for a language they do not hold or
+  none), so it does not follow whoever looks at the layer later; field names
+  and a statistic's own result name are never translated. Its number of decimals
   depends on the classes, so the runner writes it after computing them
   (`with_decimals`), on the same style the fit acts on and only there: the
   format has no mark that tells a tool's default from a hand-made style. The

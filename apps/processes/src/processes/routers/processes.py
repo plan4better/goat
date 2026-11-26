@@ -894,6 +894,9 @@ async def execute_process(
             if key not in ("_triggered_by_email", "triggered_by_email")
         },
         "user_id": str(user_id),
+        # The language the run writes its legend titles in: the request's,
+        # always one the tools hold, never a caller-sent text.
+        "language": get_language_from_request(request),
     }
 
     # What a job that acts as the user gets of the session: the access token

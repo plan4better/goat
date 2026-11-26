@@ -51,7 +51,7 @@ The legend lists what the map draws:
 In <code>Contents</code>, each classification has these settings:
 
 - <code>In legend</code>: off leaves the classification out of the legend.
-- <code>Heading</code>: the title of its section. It defaults to the field's name.
+- <code>Heading</code>: the title of its section. It defaults to the field's name. On the result of a tool, GOAT writes it when the tool runs, in the language you use GOAT in, and it stays as written when someone with another language opens the layer.
 - <code>Unit</code>: a unit after number values, such as km². Names take no unit.
 - <code>Numbers</code> (number fields): how the class bounds read, with <code>Decimals</code>, <code>Thousands</code>, <code>Abbreviate</code>, <code>Sign</code>, <code>Prefix</code> and <code>Suffix</code>. <code>As in the dataset</code> keeps the dataset's own format.
 - <code>Order</code> (with several classifications): the place of the classification. It is also the order in which they apply: where two set the same property, the later one wins.

@@ -290,6 +290,7 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
             geometry,
             relation,
             outline_areas=True,
+            language=params.language,
         )
 
     def process(

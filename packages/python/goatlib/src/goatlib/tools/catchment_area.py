@@ -523,9 +523,9 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
             getattr(params, "measure_type", None),
         )
         if "distance" in measures:
-            title, unit = style_title("distance"), "m"
+            title, unit = style_title("distance", params.language), "m"
         else:
-            title, unit = style_title("travel_time"), "min"
+            title, unit = style_title("travel_time", params.language), "min"
 
         if params.catchment_area_type == CatchmentAreaType.network:
             return bands(

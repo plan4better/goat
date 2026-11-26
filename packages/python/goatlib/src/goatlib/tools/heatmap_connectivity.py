@@ -120,7 +120,11 @@ class HeatmapConnectivityToolRunner(BaseToolRunner[HeatmapConnectivityToolParams
     ) -> dict[str, Any] | None:
         """Connectivity in teal: the area reached, in square meters."""
         return numeric_default(
-            "accessibility", TEAL, geometry, style_title("connectivity"), unit="m²"
+            "accessibility",
+            TEAL,
+            geometry,
+            style_title("connectivity", params.language),
+            unit="m²",
         )
 
     def process(
