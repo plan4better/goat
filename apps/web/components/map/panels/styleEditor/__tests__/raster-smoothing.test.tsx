@@ -1,4 +1,4 @@
-// The raster Layer section's resampling row: codes never blend, so categories and an image drawn with its file's
+// The raster Layer section's resampling row: codes are never smoothed, so categories and an image drawn with its file's
 // color table draw nearest whatever the style says; the row shows that, disabled, with a note.
 import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";

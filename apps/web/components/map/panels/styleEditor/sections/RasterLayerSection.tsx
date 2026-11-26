@@ -1,7 +1,7 @@
 "use client";
 
-// Layer for raster files and map services (prototype 3.6, spec 9): opacity, resampling, the image adjustments, the
-// cell values drawn transparent, the zooms and the position among the basemap's layers (map state, as for vector
+// Layer for raster files and map services (prototype 3.6, spec 9): opacity, blend, resampling, the image adjustments,
+// the cell values drawn transparent, the zooms and the position among the basemap's layers (map state, as for vector
 // layers). A map service has no cells, so no No data; No data waits for the file's info, which names the file's own
 // no-data value.
 import { IconButton, Tooltip } from "@mui/material";
@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import { fetchRasterPoint } from "@/lib/api/rasters";
+import { rasterBlendDrawn } from "@/lib/style/compile/rasters";
 import { noDataApplies } from "@/lib/style/editor/raster";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { bandFactsOf, shortNumber } from "@/lib/style/raster/metadata";
@@ -39,7 +40,7 @@ import {
   usePopover,
 } from "@/components/map/panels/styleEditor/popovers/usePopover";
 import { ChoiceRow, NavRow, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
-import { PositionRow, VisibleRow } from "@/components/map/panels/styleEditor/sections/LayerSection";
+import { BlendRow, PositionRow, VisibleRow } from "@/components/map/panels/styleEditor/sections/LayerSection";
 import { ADJUSTMENTS } from "@/components/map/panels/styleEditor/sections/RasterGeneralSection";
 
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
@@ -164,9 +165,16 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
   );
   // The render's own default: crisp cells for color scales, smooth images and shading (spec 9).
   const fallback = useStyleSelector((doc) => resamplingOf({ render: doc.render }));
-  // Codes never blend: categories and an image drawn with its file's color table stay crisp whatever is set.
+  // Codes are never smoothed: categories and an image drawn with its file's color table stay crisp whatever is set.
   const facts = bandFactsOf(raster?.info);
   const codes = useStyleSelector((doc) => drawsCodes(doc as unknown as JsonObject, facts));
+  // Where the compiler draws no blend (spec 4.7), the row says why: a hillshade's shading, or colors from values (a
+  // color range, classes, categories, an image drawn with its file's color table).
+  const blendOff = useStyleSelector((doc) => {
+    const render = isObject(doc.render) ? (doc.render as JsonObject) : {};
+    if (rasterBlendDrawn(render, facts)) return undefined;
+    return render.type === "hillshade" ? "style_editor.blend_hillshade" : "style_editor.blend_values";
+  });
   const current = codes
     ? "nearest"
     : resampling === "nearest" || resampling === "linear"
@@ -176,6 +184,7 @@ export function RasterLayerSection({ service = false }: { service?: boolean }) {
   return (
     <PanelSection title={t("style_editor.section_layer")}>
       <PropertyRow row={OPACITY} base="" />
+      <BlendRow disabled={blendOff !== undefined} note={blendOff && t(blendOff)} />
       <ChoiceRow<string>
         label={label}
         value={current}

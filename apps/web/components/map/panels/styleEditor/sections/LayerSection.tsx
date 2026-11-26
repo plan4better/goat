@@ -1,19 +1,22 @@
 "use client";
 
-// Layer (prototype 2.7): opacity, the zooms the layer shows at, which features draw on top, the position among the
-// basemap's layers (map state, where there is a map document) and a time field. The filter and the time slider's value
-// belong to the map document.
+// Layer (prototype 2.7): opacity, how the layer mixes with the map below, the zooms the layer shows at, which features
+// draw on top, the position among the basemap's layers (map state, where there is a map document) and a time field. The
+// filter and the time slider's value belong to the map document.
 import { Link, Typography } from "@mui/material";
 import type { TFunction } from "i18next";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
+import { extrudes } from "@/lib/style/compile/polygons";
 import { classifyCount } from "@/lib/style/editor/classify";
 import { symbolShown } from "@/lib/style/editor/parts";
 import { recordPaths } from "@/lib/style/editor/sources";
-import { isObject } from "@/lib/style/json";
+import { choiceLabel } from "@/lib/style/editor/summaries";
+import { type JsonObject, isObject } from "@/lib/style/json";
 
 import {
+  useBasemapTone,
   useEditor,
   useScope,
   useStyleData,
@@ -40,6 +43,7 @@ import { ChoiceRow, NavRow, PanelSection } from "@/components/map/panels/styleEd
 
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
 const DATE_STEPS = ["year", "month", "day"];
+const BLENDS = ["normal", "multiply", "screen", "overlay", "color"];
 
 /** "All zooms", "From zoom 8", "Up to zoom 14", "Zoom 8 to 14". */
 export function zoomText(t: TFunction, from: unknown, until: unknown): string {
@@ -98,6 +102,49 @@ export function VisibleRow() {
       }
     />
   );
+}
+
+/** How the layer mixes with what is drawn under it (spec 4.7), vector and raster layers alike; Normal writes nothing.
+ * Where the layer's kind draws without it, the section passes the note and the row shows its value, disabled; else
+ * Multiply on a dark basemap notes that it darkens the colors. */
+export function BlendRow({ disabled = false, note }: { disabled?: boolean; note?: string }) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const tone = useBasemapTone();
+  const blend = useStyleValue<unknown>("blend");
+  const current = typeof blend === "string" && BLENDS.includes(blend) ? blend : "normal";
+  return (
+    <ChoiceRow<string>
+      label={t("style_editor.blend")}
+      value={current}
+      options={BLENDS.map((v) => ({
+        value: v,
+        label: choiceLabel(t, "blend", v),
+        sub: t(`style_editor.value_blend_${v}_sub`),
+      }))}
+      disabled={disabled}
+      note={
+        note ?? (current === "multiply" && tone === "dark" ? t("style_editor.blend_dark_basemap") : undefined)
+      }
+      onChange={(v) => store.set("blend", v === "normal" ? undefined : v)}
+    />
+  );
+}
+
+/** The Blend row of a vector layer: absent for points that draw no hexagons, disabled for hexagon columns; a raised
+ * polygon's outline still mixes. */
+function VectorBlendRow() {
+  const { t } = useTranslation("common");
+  const { geometry } = useStyleData();
+  const render = useStyleValue<unknown>("render");
+  const raised = useStyleSelector((doc) => geometry === "polygon" && extrudes(doc as unknown as JsonObject));
+  const draw: JsonObject = isObject(render) ? render : {};
+  if (draw.type === "h3") {
+    const columns = isObject(draw.extrude);
+    return <BlendRow disabled={columns} note={columns ? t("style_editor.blend_columns") : undefined} />;
+  }
+  if (geometry === "point" || draw.type === "heatmap" || draw.type === "cluster") return null;
+  return <BlendRow note={raised ? t("style_editor.blend_heights") : undefined} />;
 }
 
 function DrawOrderRow() {
@@ -265,6 +312,7 @@ export function LayerSection() {
         ) : undefined
       }>
       <PropertyRow row={OPACITY} base="" />
+      <VectorBlendRow />
       <VisibleRow />
       {symbolShown(store.document) && <DrawOrderRow />}
       <PositionRow />

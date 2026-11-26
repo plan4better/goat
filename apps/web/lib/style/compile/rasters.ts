@@ -156,6 +156,12 @@ function drawnWithTable(render: JsonObject, facts: Partial<BandFacts> | undefine
   return !(Array.isArray(render.bands) && render.bands.filter((b) => typeof b === "number").length === 3);
 }
 
+/** Whether a raster's blend is drawn (spec 4.7): for an image (or no render) that its file's color table does not
+ * color, with the file's band facts `facts`; the colors of values and a hillshade never mix. */
+export function rasterBlendDrawn(render: JsonObject, facts: Partial<BandFacts> | undefined): boolean {
+  return (render.type === "image" || render.type === undefined) && !drawnWithTable(render, facts);
+}
+
 /** An image's coloring by its file's color table (`tableColorSpec`) with the style's adjustments on its colors, as
  * MapLibre's raster layer would show the image (`imageAdjustment`). */
 function adjusted<S extends { classes: Array<{ color: string | null }> }>(spec: S, style: JsonObject): S {
@@ -220,7 +226,7 @@ export function rasterLayers(
     if (resamplingOf(style, facts) === "nearest") paint["raster-resampling"] = "nearest";
     // An image mixes with what is below (spec 4.7), unless its file's color table colors it, whatever tiles draw it;
     // the colors of values and a hillshade never do.
-    const blend = image && !drawnWithTable(render, source.image?.bands) ? layerBlend(style) : null;
+    const blend = rasterBlendDrawn(render, source.image?.bands) ? layerBlend(style) : null;
     if (blend) paint["raster-layer-blend"] = blend;
     layers.push({
       id: `${id}-raster`,
