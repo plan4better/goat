@@ -5957,7 +5957,8 @@
     "source": "s",
     "source-layer": "default",
     "paint": {
-     "fill-color": "#fcbba1"
+     "fill-color": "#fcbba1",
+     "fill-layer-blend": "multiply"
     }
    },
    {

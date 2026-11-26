@@ -6,6 +6,7 @@
 // tile URL as a token.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { layerBlend } from "@/lib/style/compile/parts";
 import { imageAdjustment, imagePaint, zoomRange } from "@/lib/style/compile/services";
 import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
@@ -147,6 +148,14 @@ export function drawsValueTiles(
   return render.type === "hillshade" || browserStops(spec, values) !== null;
 }
 
+/** Whether an image is drawn with its file's color table (spec 9.1), from the file's facts alone: a color table, values
+ * not scaled, no three chosen bands. The adjustments do not count: with one by zoom the colored tiles draw it, still in
+ * the table's colors. */
+function drawnWithTable(render: JsonObject, facts: Partial<BandFacts> | undefined): boolean {
+  if (!facts?.colorTable || facts.scaled === true) return false;
+  return !(Array.isArray(render.bands) && render.bands.filter((b) => typeof b === "number").length === 3);
+}
+
 /** An image's coloring by its file's color table (`tableColorSpec`) with the style's adjustments on its colors, as
  * MapLibre's raster layer would show the image (`imageAdjustment`). */
 function adjusted<S extends { classes: Array<{ color: string | null }> }>(spec: S, style: JsonObject): S {
@@ -209,6 +218,10 @@ export function rasterLayers(
     };
     const paint = imagePaint(style, render.type === "image" || render.type === undefined);
     if (resamplingOf(style, facts) === "nearest") paint["raster-resampling"] = "nearest";
+    // An image mixes with what is below (spec 4.7), unless its file's color table colors it, whatever tiles draw it;
+    // the colors of values and a hillshade never do.
+    const blend = image && !drawnWithTable(render, source.image?.bands) ? layerBlend(style) : null;
+    if (blend) paint["raster-layer-blend"] = blend;
     layers.push({
       id: `${id}-raster`,
       type: "raster",

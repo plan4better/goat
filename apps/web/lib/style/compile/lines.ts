@@ -12,6 +12,7 @@ import {
   drawsNothing,
   highlightColor,
   highlightWidth,
+  layerBlend,
   layerOpacity,
   makeLayer,
   onDecorations,
@@ -28,6 +29,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
   if (!partUsed(style, "line", "line")) return [];
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
+  const blend = layerBlend(style);
   const width = cascade(style, "line.width", c);
   const offset = cascade(style, "line.offset", c);
   const lineColor = cascade(style, "line.color", c);
@@ -51,6 +53,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
     put(paint, "line-offset", offset, ctx, "line.offset");
     put(paint, "line-opacity", cascade(style, "casing.opacity", c), ctx, "casing.opacity");
     if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
+    if (blend) paint["line-layer-blend"] = blend;
     layers.push(makeLayer(ctx, "casing", "line", "line", layout, paint));
   }
 
@@ -64,6 +67,7 @@ export function lineLayers(ctx: PartContext): LayerSpecification[] {
     if (isSet(style, "line.dash"))
       paint["line-dasharray"] = toProperty(cascade(style, "line.dash", { ...c, map: dashArray }));
     if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
+    if (blend) paint["line-layer-blend"] = blend;
     layers.push(makeLayer(ctx, "line", "line", "line", layout, paint));
   }
 

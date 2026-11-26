@@ -149,3 +149,25 @@ describe("service styles in the URL", () => {
     );
   });
 });
+
+describe("blend (spec 4.7)", () => {
+  it("a map service takes raster-layer-blend on its raster layer; normal writes nothing", () => {
+    const style = { version: "1.0.0", kind: "raster", opacity: 0.9, resampling: "nearest" };
+    for (const [service, tiles] of [
+      ["wms", WMS],
+      ["wmts", "https://wmts.example/{z}/{x}/{y}.png"],
+      ["xyz", "https://tiles.example/{z}/{x}/{y}.png"],
+    ] as const) {
+      const source = { type: "service" as const, id: "s9", service, tiles };
+      const plain = compile(style, source);
+      for (const blend of ["multiply", "screen", "overlay", "color"]) {
+        const out = compile({ ...style, blend }, source);
+        expect(out.layers).toEqual([
+          { ...plain.layers[0], paint: { ...plain.layers[0].paint, "raster-layer-blend": blend } },
+        ]);
+        expect(maplibreErrors(out.layers, out.sources)).toEqual([]);
+      }
+      expect(compile({ ...style, blend: "normal" }, source)).toEqual(plain);
+    }
+  });
+});

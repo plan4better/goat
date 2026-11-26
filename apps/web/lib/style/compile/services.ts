@@ -1,6 +1,7 @@
 // Map services (spec 9.1, 9.8, 16): the service's own pictures as a raster source, with the image adjustments.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { layerBlend } from "@/lib/style/compile/parts";
 import type { CompileSource } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { type JsonObject, isObject } from "@/lib/style/json";
@@ -107,10 +108,13 @@ export function zoomRange(style: JsonObject): { minzoom?: number; maxzoom?: numb
   };
 }
 
-/** The raster layer of a map service; a service sends finished pictures, so every render draws them as an image. */
+/** The raster layer of a map service; a service sends finished pictures, so every render draws them as an image, with
+ * the layer's blend (spec 4.7). */
 export function serviceLayer(id: string, sourceId: string, style: JsonObject): LayerSpecification {
   const paint = imagePaint(style);
   if (style.resampling === "nearest") paint["raster-resampling"] = "nearest";
+  const blend = layerBlend(style);
+  if (blend) paint["raster-layer-blend"] = blend;
   const layer = { id: `${id}-raster`, type: "raster", source: sourceId, ...zoomRange(style), paint };
   return layer as unknown as LayerSpecification;
 }

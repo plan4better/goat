@@ -1,5 +1,5 @@
 // What every part compiler shares: the layer factory (source, filter, zooms), the rule for writing a property, the
-// layer opacity.
+// layer opacity and blend.
 import type { LayerSpecification } from "maplibre-gl";
 
 import { isNone } from "@/lib/style/colors";
@@ -125,6 +125,15 @@ export function withLayerOpacity(ctx: PartContext, opacity: Value): Value {
 export function layerOpacity(ctx: PartContext): Value | null {
   if (ctx.style.opacity === undefined || ctx.style.opacity === 1) return null;
   return fromForm(ctx.style.opacity, "number", 1);
+}
+
+/** The blends other than `normal`, which MapLibre's `*-layer-blend` takes as they are named (spec 4.7). */
+const BLENDS: readonly unknown[] = ["multiply", "screen", "overlay", "color"];
+
+/** The style's blend when it is one other than `normal` (spec 4.7): the `*-layer-blend` of its fill, line and raster
+ * layers that draw its own look; null writes nothing. Takes the whole style, vector or raster. */
+export function layerBlend(style: JsonObject): string | null {
+  return BLENDS.includes(style.blend) ? (style.blend as string) : null;
 }
 
 function zooms(ctx: PartContext, part: string): { minzoom?: number; maxzoom?: number } {
