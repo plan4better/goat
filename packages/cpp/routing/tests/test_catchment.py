@@ -96,7 +96,8 @@ def _assert_costs_valid(costs, budget):
 
 
 def _assert_step_bucket(cost: float, step_cost: float, step_size: float) -> None:
-    expected = math.ceil(cost / step_size) * step_size
+    # The first step at or above the cost; cost 0 (the start) is in the first.
+    expected = max(math.ceil(cost / step_size), 1) * step_size
     assert step_cost >= cost
     assert math.isclose(step_cost, expected, rel_tol=1e-9, abs_tol=1e-9)
 

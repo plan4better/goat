@@ -290,6 +290,12 @@ namespace routing
         double frac;
     };
 
+    // Ids of the edges snapping adds; street edges keep their own,
+    // non-negative ids.
+    constexpr int64_t kConnectorEdgeId = -1;     // snapped point to the street
+    constexpr int64_t kSplitToTargetEdgeId = -2; // split point to the edge's target
+    constexpr int64_t kSplitToSourceEdgeId = -3; // split point to the edge's source
+
     struct SubNetwork
     {
         std::vector<EdgeInfo> edges;

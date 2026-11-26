@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../types.h"
+#include "field_sampler.h"
 
 #include <cstdint>
 #include <vector>
@@ -29,12 +30,7 @@ namespace routing::geometry
         }
     }
 
-    struct SamplePoint
-    {
-        double x;       // EPSG:3857
-        double y;
-        double cost;
-    };
+    using SamplePoint = CostSample;
 
     // A spatially-disjoint patch of a reachability field. Splitting a field
     // into clusters keeps cost-grid cell counts proportional to actual

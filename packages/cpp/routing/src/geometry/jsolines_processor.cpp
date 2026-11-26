@@ -264,6 +264,16 @@ bool point_in_polygon(Point3857 const &p, std::vector<Point3857> const &poly)
 	return inside;
 }
 
+// The unsigned area of a closed ring, in its own (degree) units: enough to
+// tell which of two nested rings is the inner one.
+double ring_area(std::vector<Point3857> const &ring)
+{
+	double twice = 0.0;
+	for (size_t i = 0; i + 1 < ring.size(); ++i)
+		twice += ring[i].x * ring[i + 1].y - ring[i + 1].x * ring[i].y;
+	return std::abs(twice) / 2.0;
+}
+
 std::string to_multipolygon_wkt(
 	std::vector<std::vector<std::vector<Point3857>>> const &polygons)
 {
@@ -380,8 +390,10 @@ std::vector<JsolinesFeature> build_jsolines_wkt(
 					if (!coord_opt) break;  // no-move step: discard degenerate ring
 					PixelCoord coord = *coord_opt;
 
-					double merc_x = west + coord.x * step_x;
-					double merc_y = north - coord.y * step_y;
+					// Surface values sit at cell centres, half a cell in
+					// from the grid's corner.
+					double merc_x = west + (coord.x + 0.5) * step_x;
+					double merc_y = north - (coord.y + 0.5) * step_y;
 					// Skip zero-length segments (coincident consecutive points).
 					Point3857 pt{to_longitude(merc_x), to_latitude(merc_y)};
 					if (ring.empty() ||
@@ -425,18 +437,21 @@ std::vector<JsolinesFeature> build_jsolines_wkt(
 			{
 				continue;
 			}
+			// The innermost shell around it, the smallest: a hole inside an
+			// island inside another hole lies in both that island and the
+			// outer shell.
 			Point3857 test_pt = hole[0];
 			int32_t containing = -1;
+			double containing_area = 0.0;
 			for (size_t i = 0; i < polygons.size(); ++i)
 			{
-				if (point_in_polygon(test_pt, polygons[i][0]))
+				if (!point_in_polygon(test_pt, polygons[i][0]))
+					continue;
+				double const area = ring_area(polygons[i][0]);
+				if (containing == -1 || area < containing_area)
 				{
-					if (containing != -1)
-					{
-						containing = -1;
-						break;
-					}
 					containing = static_cast<int32_t>(i);
+					containing_area = area;
 				}
 			}
 			if (containing >= 0)
