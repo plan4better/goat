@@ -1960,19 +1960,27 @@ def _groups(*fields: str) -> DissolveToolParams:
     return DissolveToolParams(**IDS, input_layer_id=U, dissolve_fields=list(fields))
 
 
-def _groups_style(geometry: str | None, *fields: str) -> Any:
-    return DissolveToolRunner().get_layer_style(
-        _groups(*fields), MagicMock(), geometry, "r"
+def _groups_style(
+    geometry: str | None,
+    *fields: str,
+    con: duckdb.DuckDBPyConnection | None = None,
+    relation: str = "r",
+) -> Any:
+    return runner_for(DissolveToolRunner, con).get_layer_style(
+        _groups(*fields), MagicMock(), geometry, relation
     )
 
 
 @pytest.mark.parametrize("geometry", ["polygon", "line", "point"])
-def test_a_dissolve_by_fields_colors_its_groups(geometry: str) -> None:
+def test_a_dissolve_by_fields_colors_its_groups(
+    con: duckdb.DuckDBPyConnection, geometry: str
+) -> None:
     """The groups of the first dissolve field as categories the server picks:
     the 12 most frequent, the categorical palette, the rest and the features
     without a value grey, the field's name as the title."""
     part = PART[geometry]
-    doc = _groups_style(geometry, "land use")
+    relation = table(con, "land use", geometry, "i % 3", 9, field_type="VARCHAR")
+    doc = _groups_style(geometry, "land use", con=con, relation=relation)
     [c] = doc["classify"]
     assert {k: v for k, v in c.items() if k != "id"} == {
         "field": "land use",
@@ -2002,24 +2010,76 @@ def _class_values(doc: dict[str, Any]) -> list[Any]:
     return [k["values"] for k in doc["classify"][0].get("classes", [])]
 
 
+def test_the_groups_take_as_many_classes_as_the_palette_has_colors() -> None:
+    from goatlib.style.catalog import palettes
+    from goatlib.tools.dissolve import GROUP_COUNT, GROUP_PALETTE
+
+    assert GROUP_COUNT == len(palettes()[GROUP_PALETTE].colors) == 12
+
+
 @pytest.mark.parametrize("geometry", ["polygon", "line", "point"])
-def test_more_than_12_groups_draw_the_rest_as_other(
+def test_12_groups_get_a_class_each_and_no_other(
     con: duckdb.DuckDBPyConnection, geometry: str
 ) -> None:
-    """One row per group: every group is as frequent as the next, so the first
-    12 in sort order get a class each, in 12 different colors."""
+    """One row per group: each of 12 groups gets a class, in 12 different
+    colors, and nothing is left for "Other"."""
     part = PART[geometry]
-    relation = _group_table(con, "'g' || lpad(i::VARCHAR, 2, '0')", 15, geometry)
-    intent = _groups_style(geometry, "kind")
+    relation = _group_table(con, "'g' || lpad(i::VARCHAR, 2, '0')", 12, geometry)
+    intent = _groups_style(geometry, "kind", con=con, relation=relation)
     doc = _computed(con, intent, relation, geometry)
     [c] = doc["classify"]
     assert _class_values(doc) == [[f"g{i:02d}"] for i in range(12)]
     colors = [k[part]["color"] for k in c["classes"]]
     assert colors == sample_colors("colorbrewer:Set3", 12)
     assert len(set(colors)) == 12
-    assert (c["computed"]["other"], c["computed"]["no_data"]) == (True, False)
+    assert (c["computed"]["other"], c["computed"]["no_data"]) == (False, False)
     assert issues(con, relation, intent, geometry) == []
     assert issues(con, relation, doc, geometry) == []
+
+
+@pytest.mark.parametrize(
+    ("values", "rows"),
+    [
+        ("'g' || lpad(i::VARCHAR, 2, '0')", 13),
+        ("CASE WHEN i < 20 THEN 'g' || lpad(i::VARCHAR, 2, '0') END", 40),
+        ("i::VARCHAR", 5000),  # an id-like field
+    ],
+    ids=["13 groups", "13 or more beside no value", "an id per feature"],
+)
+def test_more_groups_than_colors_stay_plain(
+    con: duckdb.DuckDBPyConnection, values: str, rows: int
+) -> None:
+    """More groups than the palette has colors would draw most of them grey
+    as "Other": the result keeps the new-layer style instead."""
+    relation = _group_table(con, values, rows)
+    assert _groups_style("polygon", "kind", con=con, relation=relation) is None
+
+
+def test_groups_that_cannot_be_read_stay_plain(
+    con: duckdb.DuckDBPyConnection, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING"):
+        doc = _groups_style("polygon", "kind", con=con, relation="missing")
+    assert doc is None
+    assert "Reading the dissolve groups failed" in caplog.text
+
+
+def test_the_groups_are_read_once_and_bounded(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    relation = _group_table(con, "i::VARCHAR", 5000)
+    statements: list[str] = []
+    runner = runner_for(DissolveToolRunner, con)
+    real = con
+
+    class Recording:
+        def execute(self, sql: str, *args: Any) -> Any:
+            statements.append(sql)
+            return real.execute(sql, *args)
+
+    runner._duckdb_con = Recording()
+    runner.get_layer_style(_groups("kind"), MagicMock(), "polygon", relation)
+    assert len(statements) == 1 and "LIMIT 13" in statements[0]
 
 
 def test_a_group_without_a_value_is_no_data_beside_12_classes(
@@ -2028,7 +2088,8 @@ def test_a_group_without_a_value_is_no_data_beside_12_classes(
     relation = _group_table(
         con, "CASE WHEN i > 0 THEN 'g' || lpad(i::VARCHAR, 2, '0') END", 13
     )
-    doc = _computed(con, _groups_style("polygon", "kind"), relation, "polygon")
+    intent = _groups_style("polygon", "kind", con=con, relation=relation)
+    doc = _computed(con, intent, relation, "polygon")
     assert _class_values(doc) == [[f"g{i:02d}"] for i in range(1, 13)]
     c = doc["classify"][0]
     assert (c["computed"]["other"], c["computed"]["no_data"]) == (False, True)
@@ -2054,7 +2115,7 @@ def test_groups_of_any_field_type_get_classes(
     expected: list[Any],
 ) -> None:
     relation = table(con, "kind", "polygon", values, 3, field_type=field_type)
-    intent = _groups_style("polygon", "kind")
+    intent = _groups_style("polygon", "kind", con=con, relation=relation)
     doc = _computed(con, intent, relation, "polygon")
     assert _class_values(doc) == expected
     assert issues(con, relation, intent, "polygon") == []
@@ -2070,7 +2131,8 @@ def test_one_group_or_none_still_validates(
     con: duckdb.DuckDBPyConnection, values: str, rows: int, expected: list[Any]
 ) -> None:
     relation = _group_table(con, values, rows)
-    doc = _computed(con, _groups_style("polygon", "kind"), relation, "polygon")
+    intent = _groups_style("polygon", "kind", con=con, relation=relation)
+    doc = _computed(con, intent, relation, "polygon")
     assert _class_values(doc) == expected
     assert [
         i for i in issues(con, relation, doc, "polygon") if i.level == "error"
@@ -2083,7 +2145,8 @@ def test_a_new_group_leaves_the_colors_of_the_others(
     """Computed again on the same groups, the style stays as it is; with a
     group more, the groups it had keep their colors."""
     relation = _group_table(con, "'g' || i::VARCHAR", 5)
-    doc = _computed(con, _groups_style("polygon", "kind"), relation, "polygon")
+    intent = _groups_style("polygon", "kind", con=con, relation=relation)
+    doc = _computed(con, intent, relation, "polygon")
     again, _ = compute_into(con, relation, doc, geometry="polygon", fingerprint="f:2")
     assert same_ignoring_stamps(again, doc)
     before = {k["values"][0]: k["fill"]["color"] for k in doc["classify"][0]["classes"]}
@@ -2126,7 +2189,7 @@ def test_a_dissolve_by_two_fields_colors_its_groups_by_the_first(
     con.execute(f"CREATE TABLE groups AS SELECT * FROM read_parquet('{out}')")
     columns = [r[0] for r in con.execute("DESCRIBE groups").fetchall()]
     assert set(columns) - {"bbox"} == {"geometry", "kind", "sub"}
-    intent = DissolveToolRunner().get_layer_style(
+    intent = runner_for(DissolveToolRunner, con).get_layer_style(
         _groups("kind", "sub"), MagicMock(), "polygon", "groups"
     )
     doc = _computed(con, intent, "groups", "polygon")

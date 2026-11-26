@@ -25,6 +25,7 @@ from goatlib.analysis.schemas.ui import (
     ui_field,
     ui_sections,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.models.io import DatasetMetadata
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
@@ -42,9 +43,26 @@ logger = logging.getLogger(__name__)
 #: The palette of the groups: categorical, as the zone clustering's.
 GROUP_PALETTE = "colorbrewer:Set3"
 
-#: Groups the server gives a class each: the most frequent, as many as the
-#: palette has colors.
+#: Groups the server gives a class each, as many as the palette has colors;
+#: a result with more groups stays plain (`few_groups`).
 GROUP_COUNT = 12
+
+
+def few_groups(runner: Any, relation: str, field: str) -> bool:
+    """Whether `field` holds at most `GROUP_COUNT` distinct values (NULL not
+    counted), read with the runner's connection and counted only up to one
+    more; False where the result cannot be read."""
+    column = quote_identifier(field)
+    try:
+        (values,) = runner.duckdb_con.execute(
+            f"""SELECT count(*) FROM (
+                SELECT DISTINCT {column} FROM {relation}
+                WHERE {column} IS NOT NULL LIMIT {GROUP_COUNT + 1})"""
+        ).fetchone()
+        return values <= GROUP_COUNT
+    except Exception:  # the default style, as without groups
+        logger.warning("Reading the dissolve groups failed", exc_info=True)
+        return False
 
 
 def groups_style(field: str, geometry: str) -> dict[str, Any]:
@@ -248,12 +266,17 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
     ) -> dict[str, Any] | None:
         """Dissolved features classified by their first statistic, in teal;
         without statistics, colored by the groups of the first dissolve field
-        (`groups_style`). Groups that share that field's value share a color.
-        The default style when everything is dissolved into one."""
+        (`groups_style`) while it has no more groups than colors
+        (`few_groups`). Groups that share that field's value share a color.
+        The default style otherwise, and when everything is dissolved into
+        one."""
         if not (params.calculate_statistics and params.field_statistics):
-            if not params.dissolve_fields or geometry is None:
+            field = (params.dissolve_fields or [None])[0]
+            if field is None or geometry is None:
                 return None
-            return groups_style(params.dissolve_fields[0], geometry)
+            if not few_groups(self, relation, field):
+                return None
+            return groups_style(field, geometry)
         stat = params.field_statistics[0]
         return statistic_default(
             self, stat, stat.get_operation_first_column_name(), TEAL, geometry, relation
