@@ -40,7 +40,7 @@ import { setActiveRightPanel, setDataPanelLayerId, setIsDataPanelOpen } from "@/
 import { requestWorkflowReload } from "@/lib/store/workflow/slice";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { baseSwatch, buildLegend, informative, legendDependsOnZoom, titleOnly } from "@/lib/style/legend";
+import { buildLegend, informative, legendDependsOnZoom, titleOnly } from "@/lib/style/legend";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 import type { TimeStep } from "@/lib/style/time";
 import { isBundleMemberLayer, isEditableBundleMember } from "@/lib/utils/bundleEditable";
@@ -86,7 +86,7 @@ import PopupContentRenderer from "@/components/builder/widgets/common/PopupConte
 // Common Components
 import MoreMenu from "@/components/common/PopperMenu";
 import type { PopperMenuItem } from "@/components/common/PopperMenu";
-import { RasterLayerIcon, StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
+import { StyleLegend, TableLayerIcon, layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 import { areaOutlineStore, showSavedArea } from "@/components/map/panels/filter/area/outline";
 import { LayerTimeSlider } from "@/components/map/panels/layer/LayerTimeSlider";
 import { MaskedImageIcon } from "@/components/map/panels/style/other/MaskedImageIcon";
@@ -120,6 +120,8 @@ const BADGE_HOVER = {};
 
 /** The zoom rows read their swatches and legends at when none of them changes with the zoom. */
 const LEGEND_FIXED_ZOOM = 12;
+// No groups, the same array on every render: the tree data is built from it.
+const NO_GROUPS: ProjectLayerGroup[] = [];
 
 // 1. HELPER COMPONENTS
 
@@ -448,7 +450,7 @@ interface ProjectLayerTreeProps {
 export const ProjectLayerTree = ({
   projectId,
   projectLayers = [],
-  projectLayerGroups = [],
+  projectLayerGroups = NO_GROUPS,
   onTreeUpdate,
   onLayerStateChange,
   onGroupStateChange,
@@ -1345,12 +1347,7 @@ export const ProjectLayerTree = ({
       if (item.tablesOf !== undefined) {
         return {
           ...item,
-          icon: (
-            <Icon
-              iconName={ICON_NAME.TABLE}
-              style={{ fontSize: "1rem", color: theme.palette.action.active }}
-            />
-          ),
+          icon: <TableLayerIcon />,
           isVisible: true,
           isSelectable: false,
         };
@@ -1433,17 +1430,18 @@ export const ProjectLayerTree = ({
         };
       }
 
+      // The layer's icon, as every list of layers draws it.
+      const icon = layerSwatchIcon(
+        {
+          type: node.layer_type,
+          feature_layer_geometry_type: node.geometry_type,
+          style: node.style ? { document: node.style } : null,
+        },
+        treeZoom
+      );
+
       if (node.layer_type === "table") {
-        return {
-          ...item,
-          icon: (
-            <Icon
-              iconName={ICON_NAME.TABLE}
-              style={{ fontSize: "1rem", color: theme.palette.action.active }}
-            />
-          ),
-          isVisible: nodeVisibility,
-        };
+        return { ...item, icon, isVisible: nodeVisibility };
       }
 
       // The style says what the row shows (spec 7.2): its zoom range dims it in view mode, its legend options hide the
@@ -1466,12 +1464,6 @@ export const ProjectLayerTree = ({
         style && isVisible && shouldShowLegend && !simpleLegendLayerIds?.includes(node.id)
           ? buildLegend(style, { geometry, zoom: treeZoom, serviceLegendUrl })
           : null;
-      const icon =
-        node.layer_type === "raster" ? (
-          <RasterLayerIcon />
-        ) : style ? (
-          <SwatchIcon swatch={baseSwatch(style, { geometry: geometry ?? "polygon", zoom: treeZoom })} />
-        ) : undefined;
       const caption =
         shouldShowLegend && typeof legendOptions?.caption === "string" ? legendOptions.caption : undefined;
       const time = timeOf(style);

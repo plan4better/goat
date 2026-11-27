@@ -168,8 +168,11 @@ class AggregatePointsTool(AnalysisTool):
             for col, sql in agg_specs
         ]
         total_select = ", ".join(f"{sql} AS {col}" for col, _, sql in stat_cols)
-        coalesced_total_select = ", ".join(
-            f"COALESCE(t.{col}, 0) AS {col}" for col, _, _ in stat_cols
+        area_total_select = ", ".join(
+            self.area_statistic_sql(col, stat.operation.value)
+            for stat, (col, _, _) in zip(
+                params.column_statistics, stat_cols, strict=True
+            )
         )
 
         # DESCRIBE reads only this view; unqualified information_schema
@@ -194,8 +197,19 @@ class AggregatePointsTool(AnalysisTool):
         # point; its parts have their own, smaller boxes for the spatial join,
         # and big parts are cut into small pieces, since the join copies the
         # polygon it tests for every point. A point on an edge two parts or
-        # pieces share matches both, so the pairs are made distinct before
-        # anything is aggregated.
+        # pieces share matches both, so the pairs are grouped to one per area
+        # and point before anything is aggregated.
+        #
+        # A point counts in every area that holds it in its interior and in
+        # one of the areas whose boundary it lies on: the one with the lowest
+        # area_id, the first in the area layer. A point inside a piece is
+        # inside its area. A point that meets two or more areas and lies on
+        # the boundary of every piece it meets is looked up on the areas'
+        # boundaries, cut into short lines for a spatial join like the parts,
+        # since an edge between parts or pieces is not the area's boundary.
+        # A cut adds a vertex where it crosses an edge, and on a slanted edge
+        # that vertex can be off by the last digit; a point there finds no
+        # boundary and counts in each area it meets.
         self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE area_parts AS
             SELECT area_id, UNNEST(ST_Dump({area_g})).geom AS part
@@ -207,10 +221,57 @@ class AggregatePointsTool(AnalysisTool):
             SELECT ROW_NUMBER() OVER () AS __aggregate_point_id, * FROM {source_view}
         """)
         self.con.execute(f"""
-            CREATE OR REPLACE TEMP TABLE area_points AS
-            SELECT DISTINCT p.area_id, s.__aggregate_point_id
+            CREATE OR REPLACE TEMP TABLE area_pairs AS
+            SELECT
+                p.area_id,
+                s.__aggregate_point_id,
+                BOOL_OR(NOT ST_Touches(p.part, s.{source_g})) AS in_piece,
+                COUNT(*) OVER (
+                    PARTITION BY s.__aggregate_point_id
+                ) AS areas_met
             FROM area_parts p
             JOIN source_numbered s ON ST_Intersects(p.part, s.{source_g})
+            GROUP BY p.area_id, s.__aggregate_point_id
+        """)
+        self.con.execute("""
+            CREATE OR REPLACE TEMP TABLE boundary_pairs AS
+            SELECT area_id, __aggregate_point_id
+            FROM area_pairs
+            WHERE areas_met > 1 AND NOT in_piece
+        """)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE area_edges AS
+            SELECT area_id, UNNEST(ST_Dump(ST_Boundary({area_g}))).geom AS edge
+            FROM area_with_id
+            WHERE area_id IN (SELECT area_id FROM boundary_pairs)
+        """)
+        self.subdivide_polygons("area_edges", "edge", cut_lines=True)
+        self.con.execute(f"""
+            CREATE OR REPLACE TEMP TABLE area_points AS
+            WITH on_edge AS (
+                SELECT DISTINCT e.area_id, s.__aggregate_point_id
+                FROM (
+                    SELECT DISTINCT __aggregate_point_id FROM boundary_pairs
+                ) b
+                JOIN source_numbered s
+                ON s.__aggregate_point_id = b.__aggregate_point_id
+                JOIN area_edges e ON ST_Intersects(e.edge, s.{source_g})
+            ),
+            placed AS (
+                SELECT area_id, __aggregate_point_id, true AS inside
+                FROM area_pairs
+                WHERE areas_met = 1 OR in_piece
+                UNION ALL
+                SELECT b.area_id, b.__aggregate_point_id, o.area_id IS NULL
+                FROM boundary_pairs b
+                LEFT JOIN on_edge o
+                ON o.area_id = b.area_id
+                AND o.__aggregate_point_id = b.__aggregate_point_id
+            )
+            SELECT area_id, __aggregate_point_id
+            FROM placed
+            QUALIFY inside OR area_id = MIN(area_id) FILTER (WHERE NOT inside)
+                OVER (PARTITION BY __aggregate_point_id)
         """)
 
         if params.group_by_field:
@@ -237,7 +298,7 @@ class AggregatePointsTool(AnalysisTool):
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                f"{self.json_group_object_sql('group_name', col)} AS {grouped}"
                 for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""
@@ -262,7 +323,7 @@ class AggregatePointsTool(AnalysisTool):
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             select_parts.append(grouped_proj)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
@@ -285,7 +346,7 @@ class AggregatePointsTool(AnalysisTool):
             select_parts = [f"a.{area_g} AS geometry"]
             if area_select_with_prefix:
                 select_parts.append(area_select_with_prefix)
-            select_parts.append(coalesced_total_select)
+            select_parts.append(area_total_select)
             self.con.execute(f"""
                 CREATE OR REPLACE TABLE aggregation_result AS
                 SELECT
@@ -351,7 +412,7 @@ class AggregatePointsTool(AnalysisTool):
             """)
 
             grouped_json_select = ", ".join(
-                f"JSON_GROUP_OBJECT(group_name, {col}) AS {grouped}"
+                f"{self.json_group_object_sql('group_name', col)} AS {grouped}"
                 for col, grouped, _ in stat_cols
             )
             self.con.execute(f"""

@@ -5939,6 +5939,69 @@
   "position": "top",
   "unsupported": []
  },
+ "1124": {
+  "id": "1",
+  "sources": {
+   "s": {
+    "type": "vector",
+    "tiles": [
+     "https://tiles.example/{z}/{x}/{y}"
+    ],
+    "maxzoom": 14
+   }
+  },
+  "layers": [
+   {
+    "id": "1-fill",
+    "type": "fill",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "fill-color": "#fcbba1",
+     "fill-layer-blend": "multiply"
+    }
+   },
+   {
+    "id": "1-outline",
+    "type": "line",
+    "source": "s",
+    "source-layer": "default",
+    "paint": {
+     "line-color": "#ffc300",
+     "line-width": 3,
+     "line-opacity": [
+      "case",
+      [
+       "any",
+       [
+        "boolean",
+        [
+         "feature-state",
+         "active"
+        ],
+        false
+       ],
+       [
+        "boolean",
+        [
+         "feature-state",
+         "hover"
+        ],
+        false
+       ]
+      ],
+      1,
+      0
+     ]
+    }
+   }
+  ],
+  "images": [],
+  "state": {},
+  "tileParams": {},
+  "position": "top",
+  "unsupported": []
+ },
  "1141": {
   "id": "1",
   "sources": {

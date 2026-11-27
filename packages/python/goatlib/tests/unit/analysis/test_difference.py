@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import duckdb
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.difference import DifferenceTool
 from goatlib.analysis.schemas.geoprocessing import DifferenceParams
+from goatlib.tools.difference import DifferenceToolParams, DifferenceToolRunner
 
 
 def test_difference_polygons() -> None:
@@ -58,6 +60,12 @@ def test_difference_polygons() -> None:
 
     print(f"✓ DifferenceTool polygon test passed. Result has {row_count} features.")
     print(f"✓ Output saved to: {output_path}")
+
+    check_tool_style(
+        DifferenceToolRunner,
+        tool_params(DifferenceToolParams, params, input_layer_id=U, overlay_layer_id=U),
+        result_path,
+    )
 
 
 def test_difference_lines() -> None:

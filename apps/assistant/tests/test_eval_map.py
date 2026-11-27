@@ -1749,7 +1749,7 @@ async def test_a_finished_run_puts_its_result_on_the_map_with_the_tools_look(
 ) -> None:
     """A workflow is created and run in the map project, and the layer its
     run saves is in the project with the look the catchment tool gives its
-    result: one class per travel time step, yellow to green."""
+    result: one class per travel time step, the nearest the darkest green."""
     task = _map_task("map-34")
     model = _built_and_run(
         ("project_get_layers", {}),
@@ -1776,6 +1776,7 @@ async def test_a_finished_run_puts_its_result_on_the_map_with_the_tools_look(
         "categories",
     )
     assert classification["palette"] == "colorbrewer:YlGn"
+    assert classification["reverse"] is True
     assert [c["values"] for c in classification["classes"]] == [[5], [10], [15]]
     before, after = transcript.map_before, transcript.map_after
     assert before is not None and after is not None

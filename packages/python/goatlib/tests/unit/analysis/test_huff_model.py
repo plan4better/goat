@@ -3,10 +3,13 @@ from typing import Any
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.accessibility.huff_model import HuffmodelTool
 from goatlib.analysis.schemas.heatmap import (
     HuffmodelParams,
 )
+from goatlib.tools.huff_model import HuffModelToolParams, HuffModelToolRunner
+from goatlib.tools.style_contract import Expectation
 from pydantic import ValidationError
 
 
@@ -90,6 +93,18 @@ def test_huff_model_workflow(data_root: Path, walking_matrix_dir: Path) -> None:
     assert results is not None
     assert len(results) == 1
     assert Path(results[0][1].path).exists()
+    check_tool_style(
+        HuffModelToolRunner,
+        tool_params(
+            HuffModelToolParams,
+            params,
+            demand_layer_id=U,
+            opportunity_layer_id=U,
+            reference_area_layer_id=U,
+        ),
+        results[0][1].path,
+        expect=Expectation(field="probability", unit="%"),
+    )
 
 
 def test_huff_computation_with_known_values() -> None:

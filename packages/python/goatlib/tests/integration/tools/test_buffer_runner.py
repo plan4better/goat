@@ -15,12 +15,14 @@ from pathlib import Path
 import pytest
 from goatlib.tools.base import ToolSettings
 from goatlib.tools.buffer import BufferToolParams, BufferToolRunner
+from goatlib.tools.style_contract import Expectation, assert_tool_style
 
 from .conftest import (
     TEST_CUSTOMER_SCHEMA,
     TEST_FOLDER_ID,
     TEST_PROJECT_ID,
     TEST_USER_ID,
+    get_full_table_path,
 )
 
 pytestmark = pytest.mark.integration
@@ -75,6 +77,13 @@ class TestBufferToolRunner:
             expected_name="Buffer Output",
             min_features=1,
             expected_geometry_type="POLYGON",
+        )
+        # The tool's default style keeps the style contract on the saved table.
+        assert_tool_style(
+            runner,
+            params,
+            get_full_table_path(TEST_USER_ID, output_layer_id),
+            expect=Expectation(field="buffer_distance", unit="m"),
         )
 
         # Cleanup

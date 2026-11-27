@@ -13,8 +13,9 @@ from pathlib import Path
 import pytest
 from goatlib.tools.base import ToolSettings
 from goatlib.tools.dissolve import DissolveToolParams, DissolveToolRunner
+from goatlib.tools.style_contract import assert_tool_style
 
-from .conftest import TEST_FOLDER_ID, TEST_USER_ID
+from .conftest import TEST_FOLDER_ID, TEST_USER_ID, get_full_table_path
 
 pytestmark = pytest.mark.integration
 
@@ -65,6 +66,10 @@ class TestDissolveToolRunner:
             result=result,
             expected_name="Dissolved Polygons",
             min_features=1,
+        )
+        # The tool's default style keeps the style contract on the saved table.
+        assert_tool_style(
+            runner, params, get_full_table_path(TEST_USER_ID, output_layer_id)
         )
 
         # Cleanup

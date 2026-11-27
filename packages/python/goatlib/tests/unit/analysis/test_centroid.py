@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import duckdb
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.centroid import CentroidTool
 from goatlib.analysis.schemas.geoprocessing import CentroidParams
+from goatlib.tools.centroid import CentroidToolParams, CentroidToolRunner
 
 
 def test_centroid_polygons() -> None:
@@ -61,6 +63,12 @@ def test_centroid_polygons() -> None:
 
     print(f"✓ CentroidTool polygon test passed. Result has {row_count} features.")
     print(f"✓ Output saved to: {output_path}")
+
+    check_tool_style(
+        CentroidToolRunner,
+        tool_params(CentroidToolParams, params, input_layer_id=U),
+        result_path,
+    )
 
 
 def test_centroid_multipoints() -> None:

@@ -15,6 +15,7 @@ import {
   drawsNothing,
   highlightColor,
   highlightWidth,
+  layerBlend,
   layerOpacity,
   makeLayer,
   put,
@@ -186,6 +187,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
   const c = { fields: ctx.fields };
   const layers: LayerSpecification[] = [];
   const opacity = layerOpacity(ctx);
+  const blend = layerBlend(style);
   const fillColor = cascade(style, "fill.color", c);
   const derived = { geometry: "polygon" as const, fields: ctx.fields, inputs: ruleInputs(ctx) };
   // A fill that is None for all draws no layer (spec 4.6); its pattern still draws, unless its color is None too.
@@ -200,6 +202,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
       put(paint, "fill-color", fillColor, ctx, "fill.color");
       put(paint, "fill-opacity", fillOpacity, ctx, "fill.opacity");
       if (opacity) paint["fill-layer-opacity"] = toProperty(opacity);
+      if (blend) paint["fill-layer-blend"] = blend;
       layers.push(makeLayer(ctx, "fill", "fill", "fill", {}, paint));
     }
 
@@ -237,6 +240,7 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
       // The pattern draws at full opacity whatever the fill's (spec 3.1); "none" leaves a feature without one.
       put(pattern, "fill-opacity", shown, ctx);
       if (opacity) pattern["fill-layer-opacity"] = toProperty(opacity);
+      if (blend) pattern["fill-layer-blend"] = blend;
       layers.push(makeLayer(ctx, "pattern", "fill", "fill", {}, pattern));
     }
   }
@@ -255,9 +259,10 @@ export function polygonLayers(ctx: PartContext): LayerSpecification[] {
     if (isSet(style, "outline.dash"))
       paint["line-dasharray"] = toProperty(cascade(style, "outline.dash", { ...c, map: dashArray }));
     if (opacity) paint["line-layer-opacity"] = toProperty(opacity);
+    if (blend) paint["line-layer-blend"] = blend;
     layers.push(makeLayer(ctx, "outline", "line", "outline", {}, paint));
   } else if (ctx.input.highlight) {
-    // Without an outline, the active feature still gets GOAT's highlight edge.
+    // Without an outline, the active feature still gets GOAT's highlight edge, drawn as on every layer: no blend.
     const paint = {
       "line-color": HIGHLIGHT.color,
       "line-width": HIGHLIGHT.width,

@@ -1,0 +1,40 @@
+{
+ "id": "intersection",
+ "tool": "intersection",
+ "layer": "result",
+ "title": "Polygons intersected with a boundary",
+ "shape": "plain",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet",
+  "vector/overlay_boundary.parquet"
+ ],
+ "picture": false,
+ "geometry": "polygon",
+ "fields": {},
+ "zoom": 5.75,
+ "rows": {
+  "total": 3,
+  "kept": 3
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#11a579",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[-0.5,1.500663],[-0.5,-2.504675],[-3.5,-2.504675],[-3.5,1.500663],[-0.5,1.500663]]]}},
+{"type":"Feature","id":2,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[2.5,-1.504944],[-2.5,-1.504944],[-2.5,2.504675],[2.5,2.504675],[2.5,-1.504944]]]}},
+{"type":"Feature","id":3,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.5,0.497723],[0.5,2.504675],[3.5,2.504675],[3.5,0.497723],[0.5,0.497723]]]}}
+]}
+}

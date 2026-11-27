@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis import GeocodingTool
 from goatlib.analysis.schemas.geocoding import (
     FieldSourceType,
@@ -13,6 +14,7 @@ from goatlib.analysis.schemas.geocoding import (
     GeocodingParams,
 )
 from goatlib.models.io import DatasetMetadata
+from goatlib.tools.geocoding import GeocodingToolParams, GeocodingToolRunner
 
 # =============================================================================
 # Mock Pelias Responses
@@ -538,6 +540,12 @@ class TestGeocodingTool:
         for p in called_params:
             assert p.get("locality") == "Munich", f"Missing locality in params: {p}"
             assert p.get("country") == "Germany", f"Missing country in params: {p}"
+
+        check_tool_style(
+            GeocodingToolRunner,
+            tool_params(GeocodingToolParams, params, input_layer_id=U),
+            result_path,
+        )
 
     def test_max_features_limit(self, large_input_path: Path, tmp_path: Path) -> None:
         """Test that geocoding fails when input exceeds MAX_FEATURES."""

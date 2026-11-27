@@ -626,7 +626,7 @@
     },
     "weighted_by_intersecting_area": {
       "label": "Weight by Intersection Area",
-      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either."
+      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either. A polygon without a value in the field takes no part in the weighted mean."
     },
     "select_statistics_configuration": {
       "label": "Statistics Configuration",
@@ -1046,7 +1046,7 @@
     },
     "aggregate_points": {
       "title": "Aggregate Points",
-      "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area."
+      "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area. A point on the shared boundary of two or more areas is counted in one of them."
     },
     "union": {
       "title": "Union",
@@ -1244,5 +1244,29 @@
   "size_method": {
     "count": "Count",
     "field": "Field Value"
+  },
+  "style_titles": {
+    "count": "Count",
+    "sum": "Sum of {field}",
+    "mean": "Mean of {field}",
+    "min": "Minimum of {field}",
+    "max": "Maximum of {field}",
+    "standard_deviation": "Standard deviation of {field}",
+    "area_weighted": "{title} (area weighted)",
+    "gravity": "Accessibility (gravity)",
+    "closest_average_time": "Average travel time to the closest destinations",
+    "closest_average_distance": "Average distance to the closest destinations",
+    "connectivity": "Area reached",
+    "two_sfca": "Supply per demand",
+    "market_share": "Market share",
+    "trip_count": "Trips in the time window",
+    "buffer_distance": "Buffer distance",
+    "travel_time": "Travel time",
+    "distance": "Distance",
+    "zone": "Zone",
+    "pt_class": "Public transport quality class",
+    "station_category": "Station category",
+    "matrix_average_time": "Average travel time from the origins",
+    "matrix_average_distance": "Average distance from the origins"
   }
 }

@@ -3,8 +3,10 @@
 import sys
 from pathlib import Path
 
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.union import UnionTool
 from goatlib.analysis.schemas.geoprocessing import UnionParams
+from goatlib.tools.union import UnionToolParams, UnionToolRunner
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "vector"
@@ -33,6 +35,12 @@ def test_self_union():
     else:
         print("❌ Self-union test failed!")
         sys.exit(1)
+
+    check_tool_style(
+        UnionToolRunner,
+        tool_params(UnionToolParams, params, input_layer_id=U),
+        output_path,
+    )
 
 
 def test_two_layer_union():

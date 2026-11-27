@@ -4,8 +4,10 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.data_management.merge import MergeTool
 from goatlib.analysis.schemas.data_management import MergeInputLayer, MergeParams
+from goatlib.tools.merge import MergeToolParams, MergeToolRunner
 
 
 def _layers(*paths: str) -> list[MergeInputLayer]:
@@ -64,6 +66,12 @@ def test_merge_two_point_layers() -> None:
 
     con.close()
     print(f"✓ Merge test passed. Result has {row_count} features.")
+
+    check_tool_style(
+        MergeToolRunner,
+        tool_params(MergeToolParams, params, input_paths=_layers(U, U)),
+        result_path,
+    )
 
 
 def test_merge_without_source_field() -> None:

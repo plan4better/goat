@@ -908,3 +908,85 @@ describe("a full 8-bit band as categories", () => {
     for (const v of [0, 1, 17, 128, 254, 255]) expect(reliefColorAt(stops, BYTES, v)).toBe(hex(v));
   });
 });
+
+describe("blend (spec 4.7)", () => {
+  const BLENDS = ["multiply", "screen", "overlay", "color", "luminosity", "plus-lighter"];
+  /** The raster layers' blend property, by layer id; layers without one are left out. */
+  const blends = (out: ReturnType<typeof compileLayer>) =>
+    Object.fromEntries(
+      out.layers
+        .map((l) => [l.id, (l.paint as Record<string, unknown>)["raster-layer-blend"]] as const)
+        .filter(([, blend]) => blend !== undefined)
+    );
+
+  it("an image drawn without its file's color table takes raster-layer-blend on its raster layer", () => {
+    const style = { opacity: 0.8, brightness: 0.1, render: { type: "image" } };
+    for (const blend of BLENDS) {
+      const out = compile({ ...style, blend });
+      expect(blends(out)).toEqual({ "9-raster": blend });
+      expect(paintOf(out, "9-raster")).toEqual({
+        ...paintOf(compile(style), "9-raster"),
+        "raster-layer-blend": blend,
+      });
+      valid(out);
+    }
+    // No render is an image; chosen bands of a file with a color table are drawn as they are.
+    expect(blends(compile({ blend: "multiply" }))).toEqual({ "9-raster": "multiply" });
+    const chosen = compile({ blend: "multiply", render: { type: "image", bands: [1, 1, 1] } }, TABLE_SOURCE);
+    expect(blends(chosen)).toEqual({ "9-raster": "multiply" });
+    valid(chosen);
+  });
+
+  it("normal writes nothing", () => {
+    const style = { render: { type: "image" } };
+    expect(compile({ ...style, blend: "normal" })).toEqual(compile(style));
+  });
+
+  it("color ranges, classes, categories, a color table and hillshade draw as without it, from the same tiles", () => {
+    const unknown: RasterValues = { ...VALUES, range: null };
+    const cases: Array<[object, CompileInput["source"]]> = [
+      [{ type: "continuous", palette: "goat:elevation", domain: [200, 450] }, LOADED],
+      [{ type: "continuous", palette: "goat:elevation", classify: { method: "quantile", count: 2 } }, LOADED],
+      [{ type: "categorical", classes: [{ value: 200, color: "#4a90c2" }] }, LOADED],
+      // Categories without classes draw the file's own colors from the colored tiles.
+      [{ type: "categorical" }, LOADED],
+      [{ type: "hillshade", palette: "goat:elevation" }, LOADED],
+      // Colors over an unknown range draw the colored tiles, still without a blend.
+      [
+        { type: "continuous", palette: "goat:elevation", domain: [200, 450] },
+        { ...SOURCE, values: unknown },
+      ],
+      // An image drawn with its file's color table, from its values, and from the colored tiles where they failed.
+      [{ type: "image" }, TABLE_SOURCE],
+      [{ type: "image" }, { ...TABLE_SOURCE, values: null }],
+    ];
+    for (const [render, source] of cases) {
+      const plain = compile({ render }, source);
+      for (const blend of BLENDS) {
+        const out = compile({ render, blend }, source);
+        expect([render, out]).toEqual([render, plain]);
+      }
+    }
+    // A color-table image with an adjustment by zoom draws from the colored tiles; the file's table still colors it.
+    const zoomed = {
+      brightness: {
+        zoom: [
+          [8, 0],
+          [14, 0.3],
+        ],
+      },
+      render: { type: "image" },
+    };
+    const tiled = compile(zoomed, TABLE_SOURCE);
+    expect(tiled.layers.map((l) => l.type)).toEqual(["raster"]);
+    for (const blend of BLENDS) expect(compile({ ...zoomed, blend }, TABLE_SOURCE)).toEqual(tiled);
+    // Past the stop limit too.
+    stopLimit.reached = true;
+    try {
+      const render = { type: "continuous", palette: ["#000000", "#ffffff"], domain: [200, 400] };
+      expect(compile({ render, blend: "multiply" })).toEqual(compile({ render }));
+    } finally {
+      stopLimit.reached = false;
+    }
+  });
+});

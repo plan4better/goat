@@ -16,6 +16,7 @@ from goatlib.tools.join import (
     JoinToolParams,
     JoinToolRunner,
 )
+from goatlib.tools.style_contract import Expectation, assert_tool_style
 
 from .conftest import (
     TEST_FOLDER_ID,
@@ -120,6 +121,14 @@ class TestJoinToolRunner:
             f"Columns: {column_names}"
         )
 
+        # The tool's default style keeps the style contract on the saved table.
+        assert_tool_style(
+            runner,
+            params,
+            output_table,
+            expect=Expectation(field="total_capacity"),
+        )
+
         # Cleanup
         await cleanup_output_layer(output_layer_id)
 
@@ -202,6 +211,14 @@ class TestJoinToolRunner:
         assert "count" not in column_names, (
             f"Default column 'count' should not exist when custom name is set. "
             f"Columns: {column_names}"
+        )
+
+        # The tool's default style keeps the style contract on the saved table.
+        assert_tool_style(
+            runner,
+            params,
+            output_table,
+            expect=Expectation(field="matched_points"),
         )
 
         # Cleanup

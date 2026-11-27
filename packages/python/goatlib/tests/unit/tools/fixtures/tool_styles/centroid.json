@@ -1,0 +1,37 @@
+{
+ "id": "centroid",
+ "tool": "centroid",
+ "layer": "result",
+ "title": "Centroids of polygons",
+ "shape": "plain",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet"
+ ],
+ "picture": false,
+ "geometry": "point",
+ "fields": {},
+ "zoom": 5.5,
+ "rows": {
+  "total": 4,
+  "kept": 4
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#3969ac",
+    "size": 10
+   }
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{},"geometry":{"type":"Point","coordinates":[-3.75,-2.761594]}},
+{"type":"Feature","id":2,"properties":{},"geometry":{"type":"Point","coordinates":[-0.75,-0.758802]}},
+{"type":"Feature","id":3,"properties":{},"geometry":{"type":"Point","coordinates":[1.75,0.747518]}},
+{"type":"Feature","id":4,"properties":{},"geometry":{"type":"Point","coordinates":[3.75,2.761594]}}
+]}
+}

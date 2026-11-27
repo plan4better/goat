@@ -6,7 +6,8 @@
     "maplibre: what the setting compiles to, as <spec group>.<name>; a value drawn into an image names the image property.",
     "spec: copied from MapLibre's style spec, over all of maplibre: the highest minimum, the lowest maximum, for paint and",
     "layout properties the zoom expressions they take (blend: interpolated, step, null: none) and whether they take",
-    "data-driven ones (feature).",
+    "data-driven ones (feature); a constant paint property (one without an expression) has spec without zoom and",
+    "feature.",
     "goat: where goatlib sets its own value instead: min, max, zoom, attribute (attribute mappings; default: feature) and",
     "per_feature (classes and rules may set it; default: feature) and choice (a name the compiler turns into the value:",
     "MapLibre's min and max bound what the compiler writes, not the name). Everything else is spec's.",
@@ -1031,6 +1032,21 @@
         "max": 1,
         "zoom": "blend",
         "feature": false
+      }
+    },
+    "blend": {
+      "models": [
+        "VectorStyle.blend",
+        "RasterStyle.blend"
+      ],
+      "maplibre": [
+        "paint_fill.fill-layer-blend",
+        "paint_line.line-layer-blend",
+        "paint_raster.raster-layer-blend"
+      ],
+      "spec": {
+        "min": null,
+        "max": null
       }
     },
     "zoom": {

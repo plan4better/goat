@@ -193,3 +193,70 @@ describe("raster panel texts", () => {
     expect(LANGUAGES.de.no_data_none).toBe("keiner");
   });
 });
+
+describe("the Blend row's texts", () => {
+  const BLEND: Record<"en" | "de", Record<string, string>> = {
+    en: {
+      blend: "Blend",
+      value_blend_normal: "Normal",
+      value_blend_normal_sub: "Covers what is below",
+      value_blend_multiply: "Multiply",
+      value_blend_multiply_sub: "Darkens: streets and names below stay visible",
+      value_blend_screen: "Screen",
+      value_blend_screen_sub: "Lightens: for dark basemaps",
+      value_blend_overlay: "Overlay",
+      value_blend_overlay_sub: "Strengthens the contrast of what is below",
+      value_blend_color: "Color",
+      value_blend_color_sub: "Takes the layer's hue, keeps the brightness below",
+      value_blend_luminosity: "Luminosity",
+      value_blend_luminosity_sub: "Takes the layer's brightness, keeps the colors below",
+      "value_blend_plus-lighter": "Plus lighter",
+      "value_blend_plus-lighter_sub": "Adds light: glows on dark basemaps and images",
+      blend_columns: "Columns draw without blending.",
+      blend_heights: "Heights draw without blending; the outline blends.",
+      blend_hillshade: "Shading draws without blending.",
+      blend_values: "Colors from values draw without blending.",
+      blend_dark_basemap: "On a dark basemap, Multiply draws the colors very dark. Screen lightens instead.",
+      blend_light_basemap: "On a light basemap this turns light colors white.",
+    },
+    de: {
+      blend: "Mischmodus",
+      value_blend_normal: "Normal",
+      value_blend_normal_sub: "Verdeckt, was darunter liegt",
+      value_blend_multiply: "Multiply",
+      value_blend_multiply_sub: "Dunkelt ab: Straßen und Namen darunter bleiben sichtbar",
+      value_blend_screen: "Screen",
+      value_blend_screen_sub: "Hellt auf: für dunkle Grundkarten",
+      value_blend_overlay: "Overlay",
+      value_blend_overlay_sub: "Verstärkt den Kontrast darunter",
+      value_blend_color: "Color",
+      value_blend_color_sub: "Übernimmt den Farbton, behält die Helligkeit darunter",
+      value_blend_luminosity: "Luminosity",
+      value_blend_luminosity_sub: "Übernimmt die Helligkeit, behält die Farben darunter",
+      "value_blend_plus-lighter": "Plus lighter",
+      "value_blend_plus-lighter_sub": "Addiert Licht: Leuchten auf dunklen Grundkarten und Bildern",
+      blend_columns: "Säulen werden ohne Mischmodus gezeichnet.",
+      blend_heights: "Höhen werden ohne Mischmodus gezeichnet; der Umriss wird gemischt.",
+      blend_hillshade: "Die Schummerung wird ohne Mischmodus gezeichnet.",
+      blend_values: "Farben aus Werten werden ohne Mischmodus gezeichnet.",
+      blend_dark_basemap:
+        "Auf einer dunklen Grundkarte werden die Farben mit Multiply sehr dunkel. Screen hellt stattdessen auf.",
+      blend_light_basemap: "Auf einer hellen Grundkarte werden helle Farben weiß.",
+    },
+  };
+
+  it("names the seven modes, their sub-lines and the notes in both languages, with the same keys", () => {
+    // The locale files hold exactly these blend texts, the same keys in both languages.
+    const blendKeys = (texts: Record<string, string>) =>
+      Object.keys(texts)
+        .filter((key) => /^(value_)?blend(_|$)/.test(key))
+        .sort();
+    expect(blendKeys(LANGUAGES.en)).toEqual(Object.keys(BLEND.en).sort());
+    expect(blendKeys(LANGUAGES.de)).toEqual(Object.keys(BLEND.de).sort());
+    for (const language of ["en", "de"] as const)
+      for (const [key, text] of Object.entries(BLEND[language])) {
+        expect([language, key, LANGUAGES[language][key]]).toEqual([language, key, text]);
+        expect(text, key).not.toMatch(/[–—]/);
+      }
+  });
+});

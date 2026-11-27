@@ -40,8 +40,19 @@ def main(
     nodes: list,
     edges: list,
     variables: list | None = None,
+    language: str | None = None,
 ) -> dict:
+    import inspect
+
     from goatlib.tools.workflow_runner import main as _main
+
+    # A worker whose goatlib predates the runner's language still runs the
+    # workflow, with English titles.
+    extra = (
+        {"language": language}
+        if "language" in inspect.signature(_main).parameters
+        else {}
+    )
     return _main(
         user_id=user_id,
         project_id=project_id,
@@ -50,6 +61,7 @@ def main(
         nodes=nodes,
         edges=edges,
         variables=variables,
+        **extra,
     )
 '''
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { TERRAIN_HILLSHADE_LAYER } from "@/lib/scene/compile";
 import * as compileModule from "@/lib/style/compile";
 import * as derivedModule from "@/lib/style/compile/derived";
 import type { CompileSource } from "@/lib/style/compile/types";
@@ -7,6 +8,7 @@ import type { LayerStyle } from "@/lib/style/generated/types";
 import {
   type RenderLayer,
   basemapAnchors,
+  basemapAnchorsOf,
   carryProjectLayers,
   mapLayerIdsOf,
   projectLayerOf,
@@ -457,6 +459,365 @@ describe("syncMapLayers", () => {
         ground: "goat-buildings",
       });
       expect(map.order).toEqual(["base-bg", "1-fill", "1-outline", "goat-buildings", "base-label"]);
+    });
+
+    describe("a basemap of two blocks, the lower with its own buildings below the upper block's land", () => {
+      const twoBlocks = [
+        { id: "base-bg", type: "background" },
+        { id: "low-fill", type: "fill" },
+        { id: "low-road", type: "line", "source-layer": "transportation" },
+        { id: "low-buildings", type: "fill-extrusion" },
+        { id: "low-label", type: "symbol" },
+        { id: "high-land", type: "fill" },
+        { id: "high-road", type: "line", "source-layer": "transportation" },
+        { id: "high-buildings", type: "fill-extrusion" },
+        { id: "high-label", type: "symbol" },
+      ];
+      const lowBlock = ["base-bg", "low-fill", "low-road", "low-buildings", "low-label"];
+      // The scene's anchor is the lowest building layer it shows: the lower block's.
+      const sync = (position?: "top" | "below_labels" | "below_roads") => {
+        const map = orderedMap(twoBlocks);
+        syncMapLayers(map, null, [polygon("2", { ...labelled, entry: position ? { position } : {} })], {
+          locale: "en",
+          anchors: basemapAnchors(twoBlocks),
+          ground: "low-buildings",
+        });
+        return map.order;
+      };
+
+      it("on top: the ground parts go above the upper block's land, below its buildings", () => {
+        expect(sync()).toEqual([
+          ...lowBlock,
+          "high-land",
+          "high-road",
+          "2-fill",
+          "2-outline",
+          "high-buildings",
+          "high-label",
+          "2-label",
+        ]);
+      });
+
+      it("below the labels: the ground parts go below the upper block's buildings, the label below its labels", () => {
+        expect(sync("below_labels")).toEqual([
+          ...lowBlock,
+          "high-land",
+          "high-road",
+          "2-fill",
+          "2-outline",
+          "high-buildings",
+          "2-label",
+          "high-label",
+        ]);
+      });
+
+      it("below the roads: every part goes below the upper block's first road, above its land", () => {
+        expect(sync("below_roads")).toEqual([
+          ...lowBlock,
+          "high-land",
+          "2-fill",
+          "2-outline",
+          "2-label",
+          "high-road",
+          "high-buildings",
+          "high-label",
+        ]);
+      });
+
+      it("the roads anchor, which the scene's terrain shading also goes below, is the upper block's first road", () => {
+        expect(basemapAnchors(twoBlocks).roads).toBe("high-road");
+        expect(basemapAnchorsOf(orderedMap(twoBlocks) as never).roads).toBe("high-road");
+      });
+
+      it("with the lower block's buildings hidden the roads anchor is the first road", () => {
+        const hidden = twoBlocks.map((l) =>
+          l.id === "low-buildings" ? { ...l, layout: { visibility: "none" } } : l
+        );
+        expect(basemapAnchors(hidden).roads).toBe("low-road");
+      });
+
+      it("without a road on the ground above the lower block's buildings the position below the roads takes the labels", () => {
+        // A road's labels are no road.
+        const noRoad = twoBlocks.map((l) =>
+          l.id === "high-road"
+            ? { id: "high-road-name", type: "symbol", "source-layer": "transportation" }
+            : l
+        );
+        expect(basemapAnchors(noRoad).roads).toBeUndefined();
+      });
+
+      it("without a shown building layer in the upper block the parts go where they go without buildings", () => {
+        const hidden = twoBlocks.map((l) =>
+          l.id === "high-buildings" ? { ...l, layout: { visibility: "none" } } : l
+        );
+        const map = orderedMap(hidden);
+        syncMapLayers(map, null, [labelled], {
+          locale: "en",
+          anchors: basemapAnchors(hidden),
+          ground: "low-buildings",
+        });
+        expect(map.order).toEqual([...hidden.map((l) => l.id), "2-fill", "2-outline", "2-label"]);
+      });
+    });
+
+    describe("other shapes of basemaps", () => {
+      type Layer = Record<string, unknown> & { id: string; type: string };
+      /** The order after placing a labelled polygon; the anchors come from `basemap`, the map holds `onMap`. */
+      const placed = (basemap: Layer[], ground: string, onMap: Layer[] = basemap) => {
+        const map = orderedMap(onMap);
+        syncMapLayers(map, null, [labelled], {
+          locale: "en",
+          anchors: basemapAnchors(basemap),
+          ground,
+        });
+        return map.order;
+      };
+      const onTop = (basemap: Layer[]) => [...basemap.map((l) => l.id), "2-fill", "2-outline", "2-label"];
+
+      it("buildings as the last ground layer stay the anchor", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "line" },
+          { id: "d", type: "fill-extrusion" },
+          { id: "e", type: "symbol" },
+        ];
+        expect(placed(basemap, "d")).toEqual(["a", "b", "c", "2-fill", "2-outline", "d", "e", "2-label"]);
+      });
+
+      it("a translucent area above the buildings counts as covering: the parts go where they go without buildings", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill-extrusion" },
+          { id: "c", type: "line" },
+          { id: "d", type: "fill", paint: { "fill-opacity": 0.2 } },
+          { id: "e", type: "symbol" },
+        ];
+        expect(placed(basemap, "b")).toEqual(onTop(basemap));
+      });
+
+      it("an opaque background after the buildings, among the labels, counts as covering", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "fill-extrusion" },
+          { id: "d", type: "symbol" },
+          { id: "e", type: "background" },
+          { id: "f", type: "symbol" },
+        ];
+        expect(placed(basemap, "c")).toEqual(onTop(basemap));
+      });
+
+      it("an opaque fill after the buildings between labels counts as covering", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "fill-extrusion" },
+          { id: "d", type: "symbol" },
+          { id: "e", type: "fill" },
+          { id: "f", type: "symbol" },
+        ];
+        expect(placed(basemap, "c")).toEqual(onTop(basemap));
+      });
+
+      it("an opaque fill among the labels counts as covering", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "fill-extrusion" },
+          { id: "d", type: "symbol" },
+          { id: "e", type: "symbol" },
+          { id: "f", type: "symbol" },
+          { id: "g", type: "fill" },
+          { id: "h", type: "symbol" },
+        ];
+        expect(placed(basemap, "c")).toEqual(onTop(basemap));
+      });
+
+      it("a fill of a pattern among the labels does not count: the buildings stay the anchor", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "line", "source-layer": "transportation" },
+          { id: "c", type: "fill-extrusion" },
+          { id: "d", type: "symbol" },
+          { id: "e", type: "fill", paint: { "fill-pattern": "rocks" } },
+          { id: "f", type: "symbol" },
+        ];
+        expect(placed(basemap, "c")).toEqual([
+          "a",
+          "b",
+          "2-fill",
+          "2-outline",
+          "c",
+          "d",
+          "e",
+          "f",
+          "2-label",
+        ]);
+      });
+
+      it("a hidden area above the buildings does not count", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill-extrusion" },
+          { id: "c", type: "fill", layout: { visibility: "none" } },
+          { id: "d", type: "symbol" },
+        ];
+        expect(placed(basemap, "b")).toEqual(["a", "2-fill", "2-outline", "b", "c", "d", "2-label"]);
+      });
+
+      it("a basemap layer named like the app's own layers counts as the basemap's", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill-extrusion" },
+          { id: "goat-land", type: "fill" },
+          { id: "d", type: "symbol" },
+        ];
+        expect(placed(basemap, "b")).toEqual(onTop(basemap));
+      });
+
+      it("the upper block of fewer ground layers than the lower block has labels: above its land, below its buildings", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "low-fill", type: "fill" },
+          { id: "low-buildings", type: "fill-extrusion" },
+          { id: "low-label-1", type: "symbol" },
+          { id: "low-label-2", type: "symbol" },
+          { id: "low-label-3", type: "symbol" },
+          { id: "high-land", type: "fill" },
+          { id: "high-road", type: "line", "source-layer": "transportation" },
+          { id: "high-buildings", type: "fill-extrusion" },
+          { id: "high-label", type: "symbol" },
+        ];
+        expect(placed(basemap, "low-buildings")).toEqual([
+          "a",
+          "low-fill",
+          "low-buildings",
+          "low-label-1",
+          "low-label-2",
+          "low-label-3",
+          "high-land",
+          "high-road",
+          "2-fill",
+          "2-outline",
+          "high-buildings",
+          "high-label",
+          "2-label",
+        ]);
+      });
+
+      it("a two-block basemap without its own buildings: GOAT's building layer in the lower block is no anchor", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "low-fill", type: "fill" },
+          { id: "low-road", type: "line", "source-layer": "transportation" },
+          { id: "low-label-1", type: "symbol" },
+          { id: "low-label-2", type: "symbol" },
+          { id: "low-label-3", type: "symbol" },
+          { id: "high-land", type: "fill" },
+          { id: "high-road", type: "line", "source-layer": "transportation" },
+          { id: "high-label", type: "symbol" },
+        ];
+        // The scene puts its building layer where the label block starts.
+        expect(basemapAnchors(basemap).buildings).toBe("low-label-1");
+        const onMap = [
+          ...basemap.slice(0, 3),
+          { id: "goat-buildings", type: "fill-extrusion" },
+          ...basemap.slice(3),
+        ];
+        expect(placed(basemap, "goat-buildings", onMap)).toEqual(onTop(onMap));
+      });
+
+      it("a building layer first in the style, under the land, is no anchor", () => {
+        const basemap = [
+          { id: "a", type: "fill-extrusion" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "symbol" },
+        ];
+        expect(placed(basemap, "a")).toEqual(onTop(basemap));
+      });
+
+      it("a style without labels: buildings with only lines above stay the anchor, under an area they are none", () => {
+        const lines = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "c", type: "fill-extrusion" },
+          { id: "d", type: "line" },
+        ];
+        expect(placed(lines, "c")).toEqual(["a", "b", "2-fill", "2-outline", "c", "d", "2-label"]);
+        const area = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill-extrusion" },
+          { id: "c", type: "fill" },
+        ];
+        expect(placed(area, "b")).toEqual(onTop(area));
+      });
+
+      it("a basemap without buildings keeps GOAT's building layer at the start of its labels as the anchor", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill" },
+          { id: "goat-buildings", type: "fill-extrusion" },
+          { id: "c", type: "symbol" },
+        ];
+        expect(placed(basemap, "goat-buildings")).toEqual([
+          "a",
+          "b",
+          "2-fill",
+          "2-outline",
+          "goat-buildings",
+          "c",
+          "2-label",
+        ]);
+      });
+
+      it("the app's terrain shading above GOAT's building layer does not count: the building layer stays the anchor", () => {
+        const basemap = [
+          { id: "bg", type: "background" },
+          { id: "land", type: "fill" },
+          { id: "street", type: "line" },
+          { id: "goat-buildings", type: "fill-extrusion" },
+          { id: TERRAIN_HILLSHADE_LAYER, type: "hillshade" },
+          { id: "name", type: "symbol" },
+          { id: "poi", type: "symbol" },
+        ];
+        expect(placed(basemap, "goat-buildings")).toEqual([
+          "bg",
+          "land",
+          "street",
+          "2-fill",
+          "2-outline",
+          "goat-buildings",
+          TERRAIN_HILLSHADE_LAYER,
+          "name",
+          "poi",
+          "2-label",
+        ]);
+      });
+
+      it("a basemap's own hillshade above the buildings counts as covering", () => {
+        const basemap = [
+          { id: "a", type: "background" },
+          { id: "b", type: "fill-extrusion" },
+          { id: "c", type: "hillshade" },
+          { id: "d", type: "symbol" },
+        ];
+        expect(placed(basemap, "b")).toEqual(onTop(basemap));
+      });
+
+      it("a basemap of raster tiles keeps GOAT's building layer on top of it as the anchor", () => {
+        const basemap = [
+          { id: "a", type: "raster" },
+          { id: "goat-buildings", type: "fill-extrusion" },
+        ];
+        expect(placed(basemap, "goat-buildings")).toEqual([
+          "a",
+          "2-fill",
+          "2-outline",
+          "goat-buildings",
+          "2-label",
+        ]);
+      });
     });
 
     it("a building layer not on the map yet changes nothing", () => {

@@ -24,7 +24,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import TEAL, classified
+from goatlib.tools.style import TEAL, numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,14 @@ class HeatmapConnectivityToolRunner(BaseToolRunner[HeatmapConnectivityToolParams
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """Connectivity in teal: the area reached."""
-        return classified("accessibility", TEAL, geometry)
+        """Connectivity in teal: the area reached, in square meters."""
+        return numeric_default(
+            "accessibility",
+            TEAL,
+            geometry,
+            style_title("connectivity", params.language),
+            unit="m²",
+        )
 
     def process(
         self: Self, params: HeatmapConnectivityToolParams, temp_dir: Path

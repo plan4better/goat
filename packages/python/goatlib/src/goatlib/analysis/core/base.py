@@ -672,6 +672,31 @@ class AnalysisTool:
         else:
             raise ValueError(f"Unsupported statistics operation: {operation}")
 
+    @staticmethod
+    def json_group_object_sql(key: str, value: str) -> str:
+        """`JSON_GROUP_OBJECT(key, value)` with its members ordered by `key`,
+        so the same rows always give the same text. The built-in is a macro
+        that takes no ORDER BY; this is its definition with one added."""
+        return (
+            "CAST('{' || STRING_AGG("
+            f"CASE WHEN {key} IS NULL"
+            " THEN error('json_group_object key cannot be NULL')"
+            f" ELSE to_json(CAST({key} AS VARCHAR)) END || ':' || "
+            f"CASE WHEN {value} IS NULL THEN CAST('null' AS JSON)"
+            f" ELSE to_json({value}) END, ',' ORDER BY {key}) || '}}' AS JSON)"
+        )
+
+    @staticmethod
+    def area_statistic_sql(column: str, operation: str) -> str:
+        """The value of statistic `column` (a quoted identifier of table `t`)
+        for each area of a polygon aggregation, where an area no feature
+        falls in has no row in `t`: such an area holds 0 features and a sum
+        of 0, and its mean, minimum, maximum and standard deviation have no
+        value."""
+        if operation.lower() in ("count", "sum"):
+            return f"COALESCE(t.{column}, 0) AS {column}"
+        return f"t.{column} AS {column}"
+
     def _run_implementation(
         self: Self, *args: Any, **kwargs: Any
     ) -> List[Tuple[Path, DatasetMetadata]]:

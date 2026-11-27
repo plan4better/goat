@@ -91,6 +91,8 @@ class LayerCreateFilteredToolRunner(BaseToolRunner["LayerCreateFilteredParams"])
     output_geometry_type: str | None = None  # Dynamic based on source layer
     output_geometry_follows_input = True
     default_output_name = "Filtered Layer"
+    # The copy keeps the source layer's style as its author made it.
+    fits_result_style = False
     _source_style: dict[str, Any] | None = None
 
     def process(

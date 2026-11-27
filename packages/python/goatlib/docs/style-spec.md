@@ -100,6 +100,7 @@ The sample datasets:
 | `kind` | `vector` or `raster` |
 | `geometry` | optional: `point`, `line` or `polygon`, checked against the dataset (`geometry_mismatch`) |
 | `opacity` | opacity of the whole layer |
+| `blend` | how the layer mixes with what is drawn under it (4.7) |
 | `min_zoom`, `max_zoom` | the zooms at which the layer is drawn (vector and raster) |
 | `symbol` | the base look, made of **parts** (section 3) |
 | `classify` | classifications: one field split into classes, each class changing parts (section 5) |
@@ -1085,17 +1086,18 @@ and may be set in one place only (6.1).
 
 | Property | By zoom | By attribute | By classes and rules |
 |---|---|---|---|
-| fill `color`, `opacity`, `pattern_color`; line `color`, `width`, `opacity`, `offset`, `blur`; outline and casing `color`, `width`, `opacity` | blend | yes | per feature |
-| marker `color`, `size`, `opacity`, `icon_color`, `rotation`; arrows `size`, `color` | blend | yes | per feature |
-| label `size`, `color`, `halo.color`, `halo.width`, `max_width` | blend | yes | per feature |
+| fill `color`, `opacity`, `pattern_color`; line `color`, `width`, `opacity`, `offset`, `blur`; outline and casing `color`, `width`, `opacity` | interpolated | yes | per feature |
+| marker `color`, `size`, `opacity`, `icon_color`, `rotation`; arrows `size`, `color` | interpolated | yes | per feature |
+| label `size`, `color`, `halo.color`, `halo.width`, `max_width` | interpolated | yes | per feature |
 | `dash`, `join`, outline `position`, fill `pattern`, `pattern_spacing`, `pattern_width`, marker `anchor`, marker `icon`, label `font.weight`, `font.style`, label `transform`, label `text` | steps | no | per feature |
 | line `cap` | steps | no | per feature from MapLibre 6, per layer before |
-| marker `offset`, label `offset`, label `letter_spacing` | blend | no | per feature (circles: per layer, see below) |
-| arrows `spacing`, label `line_height`, `spacing`, `padding` | blend | no | per layer |
-| layer `opacity`, heatmap `intensity`, raster settings | blend | no | per layer |
+| marker `offset`, label `offset`, label `letter_spacing` | interpolated | no | per feature (circles: per layer, see below) |
+| arrows `spacing`, label `line_height`, `spacing`, `padding` | interpolated | no | per layer |
+| layer `opacity`, heatmap `intensity`, raster settings | interpolated | no | per layer |
+| layer `blend` | no | no | per layer |
 | marker `fill` | no | no | per feature |
-| extrude `height`, `base` | blend | yes | per feature |
-| extrude `unit`; fill `opacity` while `extrude` is on (3.6) | no (opacity: blend) | no | per layer |
+| extrude `height`, `base` | interpolated | yes | per feature |
+| extrude `unit`; fill `opacity` while `extrude` is on (3.6) | no (opacity: interpolated) | no | per layer |
 | marker `shape`, `allow_overlap`; arrows `placement`, `direction`, `icon`, `turn_with_line`; label `placement`, `lines`, `priority`, `allow_overlap`, `format`, `formats` | no | no | per layer |
 
 - MapLibre cannot move circles per feature (`circle-translate` takes no data), so a circle marker moves by the base
@@ -1110,10 +1112,45 @@ that hue opaque; `"fill"` copies the alpha. One fixed None color gives its part 
 class, rule or zoom stop at None keeps its features on the layer (clicks, highlight). In MapLibre:
 
 - Fills and lines take the layer opacity as `fill-layer-opacity` and `line-layer-opacity` (MapLibre 6): overlaps of one
-  layer do not darken, a polygon's fill and outline still blend; circles, icons and labels multiply it in.
+  layer do not darken, a polygon's fill and outline stay two surfaces; circles, icons and labels multiply it in.
 - An icon's outline is MapLibre's icon halo, without opacity: an outline at opacity 0 draws no halo, any other fully.
 - Hillshade: the layer opacity multiplies its colors' alpha. Extrusion: MapLibre drops the color's alpha: a fixed fill's
   goes into the volumes' opacity, a varying one is lost; a None class or rule is not drawn and takes no clicks.
+
+### 4.7 Blend
+
+> "Districts tinted by land use, the streets and names of the basemap showing through."
+
+<!-- check: districts -->
+```json
+{ "version": "1.0.0", "kind": "vector", "blend": "multiply",
+  "symbol": { "fill": { "color": "#fcbba1" }, "outline": false } }
+```
+
+`blend` says how the layer's colors mix with what is drawn under it, the basemap and the layers below its place (10):
+`normal` (the default) covers it; `multiply` multiplies the colors, so the layer darkens what is below and dark lines
+and texts there stay visible (white in the layer changes nothing); `screen` is the reverse and lightens (black changes
+nothing); `overlay` multiplies where the ground is dark and screens where it is light, which raises its contrast;
+`color` takes the layer's hue and saturation and keeps the lightness of what is below; `luminosity` is its counterpart
+and takes the layer's lightness, keeping the hue and saturation below (an aerial image or a grey relief above colored
+areas gives the light and shade, the areas keep their colors); `plus-lighter` adds the colors, so light in the layer
+glows on a dark basemap or a darkened image and light colors add up to white (black changes nothing). One value for
+the layer, fixed.
+
+- Each drawn part is one surface before it mixes: features of the layer that overlap do not mix with each other, the
+  outline mixes over the fill, the line over its casing.
+- The layer opacity, the part's opacity and the color's alpha (4.6) say how far the mix goes: at 50% a multiplied
+  area lies halfway between the ground and the product.
+- It applies to a polygon's fill, pattern and outline, a line and its casing, flat H3 hexagons and their outline, an
+  image drawn without its file's color table and a map service (9). Markers, labels, arrows, heatmaps, clusters, raised
+  polygons and H3 columns (3.6, 8.3), hillshade (9.6), a raster's color range, classes and categories and an image drawn
+  with its file's color table (9) draw as with `normal`; a raised polygon's outline still mixes. Points drawn as
+  features, heatmaps, clusters, H3 columns, hillshade and a raster's color range, classes or categories get
+  `blend_not_drawn` (info); validation does not report an image drawn with its file's color table.
+- A layer at `below_labels` leaves the basemap's labels untouched. On a dark basemap `multiply` makes colors very
+  dark; `screen` lightens instead. On a light basemap `plus-lighter` turns light colors white.
+- With 3D terrain a blended layer mixes only with the areas, lines and images drawn directly below it: a layer of
+  points, labels or heights in between ends that, and the layer then draws as with `normal`.
 
 ## 5. Classifications
 
@@ -2240,10 +2277,10 @@ and there is no feature limit.
 
 **Top-level keys:**
 
-- `version`, `kind: "raster"`, `opacity`, `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`; default `nearest`
-  for continuous, categorical and hillshade colors, `linear` for images and shading; codes never blend, so
-  `categorical` and an image drawn with its file's color table draw `nearest` whatever it says), `render`, `legend`,
-  `popup`;
+- `version`, `kind: "raster"`, `opacity`, `blend` (4.7), `min_zoom`, `max_zoom`, `resampling` (`linear` or `nearest`;
+  default `nearest` for continuous, categorical and hillshade colors, `linear` for images and shading; codes are never
+  interpolated, so `categorical` and an image drawn with its file's color table draw `nearest` whatever it says),
+  `render`, `legend`, `popup`;
 - for `image` also the adjustments `brightness`, `contrast`, `saturation` (-1 to 1, default 0) and `hue` (degrees).
 
 **Render types:** `image`, `continuous`, `categorical`, `hillshade`. Every type takes:
@@ -2257,6 +2294,10 @@ The raster service (geoapi) reads the cells and MapLibre colors them: `continuou
 image drawn with its file's color table (9.1). The service colors other images, colors over float cells of an unknown
 range, and colorings past 4096 stops whose token fits in a URL (else not supported). Screen and print look the same.
 Map services (9.8) draw as sent, adjustments as MapLibre paint.
+
+A `blend` other than `normal` (4.7) mixes an image drawn without its file's color table and a map service with what is
+drawn under them. A color range, classes, categories, an image drawn with its file's color table and a hillshade draw
+as with `normal`, whatever tiles they are drawn from.
 
 ### 9.1 Image
 
@@ -2476,9 +2517,9 @@ again, as it is their `domain`.
 
 ### 9.5 Categories
 
-Categories never blend codes: they draw `nearest` whatever `resampling` says, from value tiles read `nearest` and from
-the service's colored tiles, whose cells it always reads nearest. Categories without classes draw the file as stored:
-with a color table, as an image drawn with it (9.1), without the adjustments.
+Categories never interpolate codes: they draw `nearest` whatever `resampling` says, from value tiles read `nearest` and
+from the service's colored tiles, whose cells it always reads nearest. Categories without classes draw the file as
+stored: with a color table, as an image drawn with it (9.1), without the adjustments.
 
 > "Land cover classes with my names and colors, wetland hidden, values without a class in grey."
 
@@ -2962,6 +3003,7 @@ Every write is checked: structure first, then against the data. Each issue has:
 | `palette_kind_mismatch` | warning, info | a palette for categories on ordered classes, or the other way round |
 | `mixed_icon_kinds` | info | library and uploaded icons in one marker: compiles to two layers, icons of the two kinds do not sort together |
 | `unclassified_values`, `low_opacity` | info | raster values without a class, a layer under 15% opacity |
+| `blend_not_drawn` | info | a `blend` other than `normal` on a layer that draws nothing that mixes (4.7): points drawn as features (`params` `reason` `points`), a heatmap (`heatmap`) or clusters (`cluster`), H3 columns (`columns`), a hillshade (`hillshade`), a raster's color range, classes or categories (`color_scale`); fix: remove `blend` |
 | `unknown_layer`, `unknown_style`, `duplicate_layer`, `unknown_position` | error | map document: a layer or named style that does not exist, a layer twice, a position the basemap does not have |
 | `base_above_height` | error | a fixed `extrude.base` above a fixed `extrude.height` |
 | `extrude_drops_pattern` | warning | a fill pattern on a layer with `extrude` on: extruded polygons draw no pattern |
@@ -3297,6 +3339,7 @@ are part of the format: an output that breaks one of them draws something else t
 | class and rule zooms | the filter, `["zoom"]` compared with whole numbers |
 | layer and part zooms | the layer's `minzoom` and `maxzoom` |
 | layer `opacity` | `fill-layer-opacity`, `line-layer-opacity` (MapLibre 6), otherwise multiplied into each part (4.6) |
+| layer `blend` | `fill-layer-blend` on the fill and pattern layers, `line-layer-blend` on the outline (not on the highlight edge of a polygon without an outline), casing and line layers and on H3's fill and outline, `raster-layer-blend` on the `raster` layer of an image drawn without its file's color table and of a map service; absent or `normal` writes nothing (4.7) |
 | `order` | `*-sort-key`: circles draw higher keys on top, so `largest` = value; symbols place lower keys first, so `largest` = negated value |
 | `time` | the filter compares the field with `["global-state", "<layer id>:time"]`; a `step` on a date field compares its text cut to the year, month or day, and without field types (the map) a `step` always does |
 | highlight | each part's paint reads `["feature-state", "active"]` (and `"hover"`): color, width, halo, opacity; sizes of icons and labels cannot change |
@@ -3575,6 +3618,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `kind` | `vector`, `raster` | yes | |
 | `geometry` | `point`, `line`, `polygon` | no | the dataset's |
 | `opacity` | number 0 to 1 (F, Z) | no | 1 |
+| `blend` | `normal`, `multiply`, `screen`, `overlay`, `color`, `luminosity`, `plus-lighter` (F) | no | `normal` |
 | `min_zoom`, `max_zoom` | number 0 to 24 | no | 0, 24 |
 | `symbol` | object of parts (18.2) | no | the main part with defaults |
 | `classify` | list of classifications (18.4) | no | none |
@@ -3706,7 +3750,7 @@ part overrides.
 
 | Key | Values and defaults |
 |---|---|
-| top level | `opacity` (1), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone; categorical and an image drawn with its file's color table always `nearest`), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` (on click for `continuous`, `categorical` and `hillshade`, none for `image`) |
+| top level | `opacity` (1), `blend` (`normal`), `min_zoom`, `max_zoom`, `resampling` (`nearest` for continuous, categorical and hillshade colors, `linear` for images and hillshade alone; categorical and an image drawn with its file's color table always `nearest`), `brightness`, `contrast`, `saturation` (0), `hue` (0), `legend`, `popup` (on click for `continuous`, `categorical` and `hillshade`, none for `image`) |
 | `image` | `bands` (`[1, 2, 3]` for 3+ bands), `no_data`; on a map service only `service_style` (the service's first style) |
 | `continuous` | `band` (1), `palette` (`goat:elevation`) + `reverse` + `domain` (band min and max), or `stops`; `interpolate` (`linear`, `nearest`); `outside` (`clamp`); `classify`; `no_data` |
 | `categorical` | `band` (1), `classes` (`value`, `name`, `color`, `visible`), `other_color` (transparent), `no_data` |
@@ -3892,6 +3936,8 @@ ships them).
   and Bold;
 - dash patterns as lists, line patterns, double lines, line gradients;
 - bivariate classifications (two fields into one color);
+- blend modes other than the seven of 4.7, a blend by zoom or per feature, and a blend on markers, labels, heatmaps,
+  clusters, volumes and hillshade;
 - the time dimension of WMS layers;
 - non-spatial tables (no layer style).
 
@@ -3912,6 +3958,7 @@ ships them).
 | many points as a surface | `render: heatmap`; as counts per area, `render: h3` |
 | buildings or areas as volumes | `symbol.extrude.height` (a number field: `{ "field" }`, with `unit: "storeys"` for levels) |
 | a 3D view of the map | the map document's `view.mode: "3d"` and a `pitch`; leave `scene` out unless asked (automatic) |
+| the layer to darken the basemap under it, streets and names showing through | `blend: "multiply"`, and the layer's `position` `below_labels` in the map document (10) |
 
 Common mistakes the validator answers with a fix:
 

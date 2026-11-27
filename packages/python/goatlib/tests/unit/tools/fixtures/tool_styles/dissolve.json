@@ -1,0 +1,119 @@
+{
+ "id": "dissolve",
+ "tool": "dissolve",
+ "layer": "result",
+ "title": "Polygons dissolved by type, with the sum of a value",
+ "shape": "the sum classified, one class per value where values are few",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet"
+ ],
+ "picture": true,
+ "geometry": "polygon",
+ "fields": {
+  "sum_value_a": "number"
+ },
+ "zoom": 4.75,
+ "rows": {
+  "total": 4,
+  "kept": 4
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#68abb8",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  },
+  "classify": [
+   {
+    "field": "sum_value_a",
+    "method": "quantile",
+    "count": 4,
+    "palette": [
+     "#d1eeea",
+     "#a8dbd9",
+     "#85c4c9",
+     "#68abb8",
+     "#4f90a6",
+     "#3b738f",
+     "#2a5674"
+    ],
+    "id": "sum_value_a",
+    "title": "Sum of value_a",
+    "no_data": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 137.5,
+      "fill": {
+       "color": "#d1eeea"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 137.5,
+      "to": 175.0,
+      "fill": {
+       "color": "#85c4c9"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 175.0,
+      "to": 225.0,
+      "fill": {
+       "color": "#4f90a6"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 225.0,
+      "fill": {
+       "color": "#2a5674"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      100.0,
+      300.0
+     ],
+     "generated": {
+      "target": "fill.color",
+      "values": {
+       "c1": "#d1eeea",
+       "c2": "#85c4c9",
+       "c3": "#4f90a6",
+       "c4": "#2a5674"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"sum_value_a":100.0},"geometry":{"type":"Polygon","coordinates":[[[-6.0,-5.019148],[-1.0,-5.019148],[-1.0,-0.019222],[-6.0,-0.019222],[-6.0,-5.019148]]]}},
+{"type":"Feature","id":2,"properties":{"sum_value_a":200.0},"geometry":{"type":"Polygon","coordinates":[[[-3.0,-3.023769],[2.0,-3.023769],[2.0,1.991498],[-3.0,1.991498],[-3.0,-3.023769]]]}},
+{"type":"Feature","id":3,"properties":{"sum_value_a":150.0},"geometry":{"type":"Polygon","coordinates":[[[0.0,-1.022272],[4.0,-1.022272],[4.0,2.999171],[0.0,2.999171],[0.0,-1.022272]]]}},
+{"type":"Feature","id":4,"properties":{"sum_value_a":300.0},"geometry":{"type":"Polygon","coordinates":[[[2.0,0.985368],[6.0,0.985368],[6.0,5.019148],[2.0,5.019148],[2.0,0.985368]]]}}
+]}
+}

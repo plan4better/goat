@@ -177,3 +177,15 @@ def test_scene_and_height_limits() -> None:
     assert limits.effective("h3.extrude.base")["max"] == 200000
     assert limits.effective("extrude.base")["max"] == 5000
     assert limits.inside("scene.light.direction", 365) == 5
+
+
+def test_blend_is_one_fixed_value_per_layer() -> None:
+    # MapLibre's blend properties are constant: no zoom form, nothing per feature.
+    assert limits.SETTINGS["blend"]["maplibre"] == [
+        "paint_fill.fill-layer-blend",
+        "paint_line.line-layer-blend",
+        "paint_raster.raster-layer-blend",
+    ]
+    blend = limits.effective("blend")
+    assert (blend["min"], blend["max"], blend["zoom"]) == (None, None, None)
+    assert (blend["attribute"], blend["per_feature"]) == (False, False)

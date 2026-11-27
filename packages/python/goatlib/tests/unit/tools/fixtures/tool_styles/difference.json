@@ -1,0 +1,41 @@
+{
+ "id": "difference",
+ "tool": "difference",
+ "layer": "result",
+ "title": "Polygons minus a boundary",
+ "shape": "plain",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet",
+  "vector/overlay_boundary.parquet"
+ ],
+ "picture": false,
+ "geometry": "polygon",
+ "fields": {},
+ "zoom": 4.75,
+ "rows": {
+  "total": 4,
+  "kept": 4
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#80ba5a",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  }
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[-1.0,-5.019148],[-6.0,-5.019148],[-6.0,-0.019222],[-4.0,-0.019222],[-4.0,-4.022221],[-1.0,-4.022221],[-1.0,-5.019148]]]}},
+{"type":"Feature","id":2,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[-3.0,1.991498],[2.0,1.991498],[2.0,0.985368],[-3.0,0.985368],[-3.0,1.991498]]]}},
+{"type":"Feature","id":3,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.0,2.999171],[4.0,2.999171],[4.0,-1.022272],[3.0,-1.022272],[3.0,0.985368],[0.0,0.985368],[0.0,2.999171]]]}},
+{"type":"Feature","id":4,"properties":{},"geometry":{"type":"Polygon","coordinates":[[[2.0,0.985368],[2.0,5.019148],[6.0,5.019148],[6.0,0.985368],[3.0,0.985368],[2.0,0.985368]]]}}
+]}
+}

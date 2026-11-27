@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.accessibility.closest_average import HeatmapClosestAverageTool
 from goatlib.analysis.accessibility.connectivity import HeatmapConnectivityTool
 from goatlib.analysis.accessibility.gravity import HeatmapGravityTool
@@ -13,6 +14,19 @@ from goatlib.analysis.schemas.heatmap import (
     OpportunityClosestAverage,
     OpportunityGravity,
 )
+from goatlib.tools.heatmap_closest_average import (
+    HeatmapClosestAverageToolParams,
+    HeatmapClosestAverageToolRunner,
+)
+from goatlib.tools.heatmap_connectivity import (
+    HeatmapConnectivityToolParams,
+    HeatmapConnectivityToolRunner,
+)
+from goatlib.tools.heatmap_gravity import (
+    HeatmapGravityToolParams,
+    HeatmapGravityToolRunner,
+)
+from goatlib.tools.style_contract import Expectation
 
 
 @pytest.mark.parametrize(
@@ -271,6 +285,12 @@ def test_heatmap_gravity_tool(data_root: Path, walking_matrix_dir: Path) -> None
     assert path.exists()
     assert metadata.source_type == "vector"
     # Note: properties are added by tool wrappers, not the analysis layer
+    check_tool_style(
+        HeatmapGravityToolRunner,
+        tool_params(HeatmapGravityToolParams, params),
+        path,
+        expect=Expectation(field="total_accessibility"),
+    )
 
 
 def test_heatmap_closest_average_tool(
@@ -309,6 +329,12 @@ def test_heatmap_closest_average_tool(
     path, metadata = results[0]
     assert path.exists()
     assert metadata.source_type == "vector"
+    check_tool_style(
+        HeatmapClosestAverageToolRunner,
+        tool_params(HeatmapClosestAverageToolParams, params),
+        path,
+        expect=Expectation(field="total_accessibility", reverse=True, unit="min"),
+    )
 
 
 def test_heatmap_connectivity_tool(data_root: Path, walking_matrix_dir: Path) -> None:
@@ -339,6 +365,12 @@ def test_heatmap_connectivity_tool(data_root: Path, walking_matrix_dir: Path) ->
     path, metadata = results[0]
     assert path.exists()
     assert metadata.source_type == "vector"
+    check_tool_style(
+        HeatmapConnectivityToolRunner,
+        tool_params(HeatmapConnectivityToolParams, params, reference_area_layer_id=U),
+        path,
+        expect=Expectation(field="accessibility", unit="m²"),
+    )
 
 
 def test_heatmap_config_needs_only_the_decay_in_use(monkeypatch) -> None:

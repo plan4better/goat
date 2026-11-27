@@ -1,0 +1,112 @@
+{
+ "id": "join",
+ "tool": "join",
+ "layer": "result",
+ "title": "Points joined onto polygons, counting the points in each",
+ "shape": "the count classified in orange",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet",
+  "vector/overlay_points.parquet"
+ ],
+ "picture": true,
+ "geometry": "polygon",
+ "fields": {
+  "matched_points": "integer"
+ },
+ "zoom": 4.75,
+ "rows": {
+  "total": 4,
+  "kept": 4
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#fd8d3c",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  },
+  "classify": [
+   {
+    "field": "matched_points",
+    "method": "quantile",
+    "count": 4,
+    "palette": "colorbrewer:Oranges",
+    "id": "matched_points",
+    "title": "matched_points",
+    "no_data": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 1.75,
+      "fill": {
+       "color": "#feedde"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 1.75,
+      "to": 2.0,
+      "fill": {
+       "color": "#fdbe85"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 2.0,
+      "to": 2.25,
+      "fill": {
+       "color": "#fd8d3c"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 2.25,
+      "fill": {
+       "color": "#d94701"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      1.0,
+      3.0
+     ],
+     "generated": {
+      "target": "fill.color",
+      "values": {
+       "c1": "#feedde",
+       "c2": "#fdbe85",
+       "c3": "#fd8d3c",
+       "c4": "#d94701"
+      }
+     },
+     "no_data": false
+    },
+    "format": {
+     "decimals": 1
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"matched_points":3},"geometry":{"type":"Polygon","coordinates":[[[-6.0,-5.019148],[-1.0,-5.019148],[-1.0,-0.019222],[-6.0,-0.019222],[-6.0,-5.019148]]]}},
+{"type":"Feature","id":2,"properties":{"matched_points":2},"geometry":{"type":"Polygon","coordinates":[[[-3.0,-3.023769],[2.0,-3.023769],[2.0,1.991498],[-3.0,1.991498],[-3.0,-3.023769]]]}},
+{"type":"Feature","id":3,"properties":{"matched_points":2},"geometry":{"type":"Polygon","coordinates":[[[0.0,-1.022272],[4.0,-1.022272],[4.0,2.999171],[0.0,2.999171],[0.0,-1.022272]]]}},
+{"type":"Feature","id":4,"properties":{"matched_points":1},"geometry":{"type":"Polygon","coordinates":[[[2.0,0.985368],[6.0,0.985368],[6.0,5.019148],[2.0,5.019148],[2.0,0.985368]]]}}
+]}
+}

@@ -140,6 +140,8 @@ Only the user's words change that (A new style or variants):
 |---|---|
 | one color for everything | the main part's color: `/symbol/fill/color`, `/symbol/line/color` or `/symbol/marker/color` |
 | the layer more transparent | `/opacity` from 0 to 1 for the whole layer, `/symbol/fill/opacity` for the fill alone |
+| tint the basemap, its streets and names showing through | `/blend` `multiply`, the layer below the basemap's labels (`set_layer`) |
+| a glow on a dark basemap | `/blend` `plus-lighter` |
 | one class or palette color see-through | its last two hex digits (`#3182bd80`: 50 %), which multiply with `opacity` (at 0.8: 40 %) |
 | outline only, a part's or class's color not drawn | None: the color at 0 %, it keeps its hue (`#3182bd00`); with a None fill an `"auto"` outline keeps the layer's color |
 | a text field with up to 12 values | `categories` with `count` = its `distinct_count`, a qualitative palette |
@@ -156,6 +158,9 @@ Only the user's words change that (A new style or variants):
 | a field empty for more than half the features | not one to style by: say so, offer another |
 | a look for some features only, by several fields or empty values | a rule: an item of `/rules` with `when` and the parts it changes |
 | many points as a surface, or counted per cell | `render` (looks-and-analyses.md) |
+
+`blend` mixes polygons, lines, flat hexagons and images; everything else
+draws normally (`blend_not_drawn`).
 
 The most frequent categories, the rest in grey; a ramp for a long tail; a
 diverging ramp around 0 for values from -12 to 9 (the domain takes the larger

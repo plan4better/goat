@@ -5,10 +5,12 @@ with various statistics operations.
 """
 
 import json
+import statistics
 from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoanalysis.aggregate_points import AggregatePointsTool
 from goatlib.analysis.schemas.aggregate import (
     AggregatePointsParams,
@@ -18,11 +20,29 @@ from goatlib.analysis.schemas.base import (
     FieldStatistic,
     StatisticOperation,
 )
+from goatlib.tools.aggregate_points import (
+    AggregatePointsToolParams,
+    AggregatePointsToolRunner,
+)
+from goatlib.tools.style_contract import Expectation
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent.parent.parent / "data" / "vector"
 POINTS_WITH_CATEGORY = str(TEST_DATA_DIR / "points_with_category.parquet")
 ZIPCODE_POLYGON = str(TEST_DATA_DIR / "zipcode_polygon.parquet")
+
+
+def check_style(params: AggregatePointsParams, field: str | None) -> dict:
+    """The tool's default style keeps the contract on the result, classifying
+    `field`, the column the run wrote (None: drawn in one color, as a field
+    with one value in every area is); returns the style."""
+    areas = {"area_layer_id": U} if params.area_layer_path else {}
+    return check_tool_style(
+        AggregatePointsToolRunner,
+        tool_params(AggregatePointsToolParams, params, source_layer_id=U, **areas),
+        params.output_path,
+        expect=Expectation(field=field),
+    )
 
 
 class TestAggregatePointsPolygon:
@@ -64,6 +84,7 @@ class TestAggregatePointsPolygon:
         assert "value_sum" in df.columns
         # All sum values should be >= 0
         assert (df["value_sum"] >= 0).all()
+        check_style(params, "value_sum")
 
     def test_aggregate_points_count(self, tmp_path: Path) -> None:
         """Test aggregating points with COUNT operation."""
@@ -96,6 +117,7 @@ class TestAggregatePointsPolygon:
         assert "count" in df.columns
         # Total count should equal source point count (550)
         assert df["count"].sum() <= 550  # Some points may not fall in any polygon
+        check_style(params, "count")
 
     def test_aggregate_points_mean(self, tmp_path: Path) -> None:
         """Test aggregating points with MEAN operation."""
@@ -126,6 +148,7 @@ class TestAggregatePointsPolygon:
 
         assert len(df) == 10
         assert "value_mean" in df.columns
+        check_style(params, "value_mean")
 
     def test_aggregate_points_with_custom_result_name(self, tmp_path: Path) -> None:
         """Test aggregating points with a custom result column name."""
@@ -161,6 +184,7 @@ class TestAggregatePointsPolygon:
         assert "value_sum" not in df.columns
         # All values should be >= 0
         assert (df["total_value"] >= 0).all()
+        check_style(params, "total_value")
 
     def test_aggregate_points_min_max(self, tmp_path: Path) -> None:
         """Test aggregating points with MIN and MAX operations."""
@@ -316,6 +340,7 @@ class TestAggregatePointsH3:
         assert "geometry" in df.columns
         # Should have some H3 cells
         assert len(df) > 0
+        check_style(params, "value_sum")
 
     def test_aggregate_points_h3_count(self, tmp_path: Path) -> None:
         """Test aggregating points to H3 grid with COUNT."""
@@ -347,6 +372,7 @@ class TestAggregatePointsH3:
         assert "count" in df.columns
         # Total count should equal source points (550)
         assert df["count"].sum() == 550
+        check_style(params, "count")
 
     def test_aggregate_points_h3_with_group_by(self, tmp_path: Path) -> None:
         """Test aggregating points to H3 grid with GROUP BY."""
@@ -456,6 +482,7 @@ class TestAggregatePointsEdgeCases:
         # Should have the polygon with count = 0
         assert len(df) == 1
         assert df["count"].iloc[0] == 0
+        check_style(params, None)
 
     def test_output_path_auto_generated(self, tmp_path: Path) -> None:
         """Test that output path is auto-generated when not specified."""
@@ -601,6 +628,550 @@ class TestAggregatePointsEdgeCases:
         con.close()
         assert len(df) == 1
         assert df["point_id_sum"].iloc[0] == 1200
+
+
+#: Every statistic once, on the integer field `value`.
+EVERY_STATISTIC = [{"operation": "count"}] + [
+    {"operation": operation, "field": "value"}
+    for operation in ("sum", "mean", "min", "max", "standard_deviation")
+]
+
+#: The columns the run writes for `EVERY_STATISTIC`, with the types it
+#: writes them in.
+WRITTEN_TYPES = {
+    "count": "BIGINT",
+    "value_sum": "DOUBLE",
+    "value_mean": "DOUBLE",
+    "value_min": "INTEGER",
+    "value_max": "INTEGER",
+    "value_standard_deviation": "DOUBLE",
+}
+
+
+def _statistics_by_area(output_path: str) -> dict[int, dict[str, object]]:
+    """The statistic columns of each area, read with SQL so a missing value
+    reads None (not NaN)."""
+    con = duckdb.connect()
+    con.execute("LOAD spatial;")
+    rel = con.execute(
+        f"SELECT id, {', '.join(WRITTEN_TYPES)} FROM '{output_path}' ORDER BY id"
+    )
+    names = [d[0] for d in rel.description]
+    rows = {row[0]: dict(zip(names[1:], row[1:])) for row in rel.fetchall()}
+    con.close()
+    return rows
+
+
+class TestAggregatePointsEmptyAreas:
+    """An area without points holds 0 points and a sum of 0; its mean,
+    minimum, maximum and standard deviation have no value."""
+
+    @staticmethod
+    def _write_inputs(tmp_path: Path) -> tuple[str, str]:
+        """Area 1 holds two points (10, 30), area 2 none, area 3 one point
+        (5), area 4 two points without a value."""
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        areas = str(tmp_path / "areas.parquet")
+        points = str(tmp_path / "points.parquet")
+        con.execute(f"""
+            COPY (
+                SELECT id, ST_GeomFromText(wkt) AS geom FROM (VALUES
+                    (1, 'POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'),
+                    (2, 'POLYGON((5 5, 6 5, 6 6, 5 6, 5 5))'),
+                    (3, 'POLYGON((10 0, 11 0, 11 1, 10 1, 10 0))'),
+                    (4, 'POLYGON((20 0, 21 0, 21 1, 20 1, 20 0))')
+                ) t(id, wkt)
+            ) TO '{areas}' (FORMAT PARQUET)
+        """)
+        con.execute(f"""
+            COPY (
+                SELECT * FROM (VALUES
+                    (10, 'a', ST_Point(0.2, 0.2)),
+                    (30, 'b', ST_Point(0.7, 0.7)),
+                    (5, 'a', ST_Point(10.5, 0.5)),
+                    (NULL::INTEGER, 'a', ST_Point(20.2, 0.2)),
+                    (NULL::INTEGER, 'b', ST_Point(20.7, 0.7))
+                ) t(value, category, geom)
+            ) TO '{points}' (FORMAT PARQUET)
+        """)
+        con.close()
+        return areas, points
+
+    def _run(
+        self, tmp_path: Path, group_by: list[str] | None = None
+    ) -> dict[int, dict[str, object]]:
+        areas, points = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                group_by_field=group_by,
+                output_path=output_path,
+            )
+        )
+        return _statistics_by_area(output_path)
+
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_an_area_without_points_has_a_count_and_sum_of_0_and_no_other_value(
+        self, tmp_path: Path, group_by: list[str] | None
+    ) -> None:
+        empty = self._run(tmp_path, group_by)[2]
+        assert empty == {
+            "count": 0,
+            "value_sum": 0,
+            "value_mean": None,
+            "value_min": None,
+            "value_max": None,
+            "value_standard_deviation": None,
+        }
+
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_an_area_with_points_keeps_its_statistics(
+        self, tmp_path: Path, group_by: list[str] | None
+    ) -> None:
+        held = self._run(tmp_path, group_by)[1]
+        assert held == {
+            "count": 2,
+            "value_sum": 40,
+            "value_mean": 20,
+            "value_min": 10,
+            "value_max": 30,
+            "value_standard_deviation": pytest.approx(14.1421356),
+        }
+
+    def test_a_statistic_the_points_do_not_define_has_no_value(
+        self, tmp_path: Path
+    ) -> None:
+        """One point has no standard deviation; points without a value have
+        no mean, minimum or maximum. Their count and sum stay numbers."""
+        rows = self._run(tmp_path)
+        assert rows[3]["count"] == 1
+        assert rows[3]["value_standard_deviation"] is None
+        assert rows[3]["value_mean"] == 5
+        assert rows[4] == {
+            "count": 2,
+            "value_sum": 0,
+            "value_mean": None,
+            "value_min": None,
+            "value_max": None,
+            "value_standard_deviation": None,
+        }
+
+    def test_the_columns_and_their_types_stay_as_predicted(
+        self, tmp_path: Path
+    ) -> None:
+        """The empty areas change no column and no type: the run writes the
+        same columns in the same types, and the prediction is the same."""
+        areas, points = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                output_path=output_path,
+            )
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        written = {
+            name: dtype
+            for name, dtype, *_ in con.execute(
+                f"DESCRIBE SELECT * FROM '{output_path}'"
+            ).fetchall()
+        }
+        con.close()
+        predicted = AggregatePointsToolRunner.predict_output_schema(
+            {
+                "source_layer_id": {"value": "INTEGER", "category": "VARCHAR"},
+                "area_layer_id": {"id": "INTEGER", "geometry": "GEOMETRY"},
+            },
+            {"area_type": "polygon", "column_statistics": EVERY_STATISTIC},
+        )
+
+        assert {k: v for k, v in written.items() if k in WRITTEN_TYPES} == (
+            WRITTEN_TYPES
+        )
+        assert predicted == {
+            "geometry": "GEOMETRY",
+            "id": "INTEGER",
+            "count": "BIGINT",
+            "value_sum": "DOUBLE",
+            "value_mean": "DOUBLE",
+            "value_min": "DOUBLE",
+            "value_max": "DOUBLE",
+            "value_standard_deviation": "DOUBLE",
+        }
+        assert set(written) - {"bbox"} == set(predicted)
+
+    def test_a_mean_over_areas_without_points_keeps_the_tool_s_style(
+        self, tmp_path: Path
+    ) -> None:
+        """A mean that has no value in some areas classifies the others and
+        draws the rest as no data; the style contract holds."""
+        areas, points = self._write_inputs(tmp_path)
+        params = AggregatePointsParams(
+            source_path=points,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        check_style(params, "value_mean")
+
+    def test_a_mean_of_one_value_beside_areas_without_points_lists_no_data(
+        self, tmp_path: Path
+    ) -> None:
+        """One point in one of four areas: its mean is the one value, the
+        other areas have none. The style keeps one class for the value and
+        the no-data look for the rest."""
+        areas, _ = self._write_inputs(tmp_path)
+        points = str(tmp_path / "one_point.parquet")
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        con.execute(
+            f"COPY (SELECT 5 AS value, ST_Point(10.5, 0.5) AS geom) "
+            f"TO '{points}' (FORMAT PARQUET)"
+        )
+        con.close()
+        params = AggregatePointsParams(
+            source_path=points,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        doc = check_style(params, "value_mean")
+        [c] = doc["classify"]
+        assert len(c["classes"]) == 1
+        assert c["computed"]["no_data"] is True
+
+    def test_a_mean_without_a_value_in_any_area_keeps_the_tool_s_style(
+        self, tmp_path: Path
+    ) -> None:
+        """No point falls in any area: the mean column has no value at all.
+        The classification stays without classes, so every area draws as no
+        data and the legend says so."""
+        areas, _ = self._write_inputs(tmp_path)
+        params = AggregatePointsParams(
+            source_path=POINTS_WITH_CATEGORY,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas,
+            column_statistics=[
+                FieldStatistic(operation=StatisticOperation.mean, field="value")
+            ],
+            output_path=str(tmp_path / "out.parquet"),
+        )
+        AggregatePointsTool().run(params)
+        con = duckdb.connect()
+        values = con.execute(
+            f"SELECT DISTINCT value_mean FROM '{params.output_path}'"
+        ).fetchall()
+        con.close()
+        assert values == [(None,)]
+        [c] = check_style(params, "value_mean")["classify"]
+        assert "classes" not in c
+        assert c["computed"]["no_data"] is True
+
+
+def _statistics_of(values: list[int]) -> dict[str, object]:
+    """Every statistic of `EVERY_STATISTIC` over `values`, as an area holding
+    points with these values writes them."""
+    if not values:
+        return {
+            "count": 0,
+            "value_sum": 0,
+            "value_mean": None,
+            "value_min": None,
+            "value_max": None,
+            "value_standard_deviation": None,
+        }
+    return {
+        "count": len(values),
+        "value_sum": pytest.approx(sum(values)),
+        "value_mean": pytest.approx(statistics.mean(values)),
+        "value_min": min(values),
+        "value_max": max(values),
+        "value_standard_deviation": (
+            pytest.approx(statistics.stdev(values)) if len(values) > 1 else None
+        ),
+    }
+
+
+class TestAggregatePointsSharedBoundary:
+    """A point counts in every area that holds it in its interior, and in
+    one of the areas whose boundary it lies on: the first of them in the
+    area layer."""
+
+    #: The values of the points each area holds.
+    HELD = {
+        1: [10, 20],
+        2: [],
+        3: [5],
+        4: [80],
+        5: [40],
+        6: [40],
+        8: [160],
+        9: [],
+        10: [160],
+    }
+
+    @staticmethod
+    def _write_inputs(tmp_path: Path) -> tuple[str, str]:
+        """Areas 1 to 4 are four squares meeting at (1, 1). Areas 5 and 6
+        overlap. Areas 8 and 9 share an edge and both lie inside area 10.
+        Points: on the edge of areas 1 and 2 (10, a), on the corner of areas
+        1 to 4 (20, b), inside area 3 (5, a), on the outer edge of area 4
+        (80, a), inside the overlap of areas 5 and 6 (40, a), and on the
+        edge of areas 8 and 9 inside area 10 (160, b)."""
+        con = duckdb.connect()
+        con.execute("INSTALL spatial; LOAD spatial;")
+        areas = str(tmp_path / "areas.parquet")
+        points = str(tmp_path / "points.parquet")
+        con.execute(f"""
+            COPY (
+                SELECT id, ST_GeomFromText(wkt) AS geom FROM (VALUES
+                    (1, 'POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))'),
+                    (2, 'POLYGON((1 0, 2 0, 2 1, 1 1, 1 0))'),
+                    (3, 'POLYGON((0 1, 1 1, 1 2, 0 2, 0 1))'),
+                    (4, 'POLYGON((1 1, 2 1, 2 2, 1 2, 1 1))'),
+                    (5, 'POLYGON((10 0, 12 0, 12 2, 10 2, 10 0))'),
+                    (6, 'POLYGON((11 0, 13 0, 13 2, 11 2, 11 0))'),
+                    (8, 'POLYGON((20 0, 21 0, 21 1, 20 1, 20 0))'),
+                    (9, 'POLYGON((21 0, 22 0, 22 1, 21 1, 21 0))'),
+                    (10, 'POLYGON((19.5 -0.5, 22.5 -0.5, 22.5 1.5, 19.5 1.5, 19.5 -0.5))')
+                ) t(id, wkt)
+                ORDER BY id
+            ) TO '{areas}' (FORMAT PARQUET)
+        """)
+        con.execute(f"""
+            COPY (
+                SELECT * FROM (VALUES
+                    (10, 'a', ST_Point(1, 0.5)),
+                    (20, 'b', ST_Point(1, 1)),
+                    (5, 'a', ST_Point(0.5, 1.5)),
+                    (80, 'a', ST_Point(2, 1.5)),
+                    (40, 'a', ST_Point(11.5, 1)),
+                    (160, 'b', ST_Point(21, 0.5))
+                ) t(value, category, geom)
+            ) TO '{points}' (FORMAT PARQUET)
+        """)
+        con.close()
+        return areas, points
+
+    def _run(self, tmp_path: Path, group_by: list[str] | None = None) -> str:
+        areas, points = self._write_inputs(tmp_path)
+        output_path = str(tmp_path / "out.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType.polygon,
+                area_layer_path=areas,
+                column_statistics=[FieldStatistic(**s) for s in EVERY_STATISTIC],
+                group_by_field=group_by,
+                output_path=output_path,
+            )
+        )
+        return output_path
+
+    @pytest.mark.parametrize("group_by", [None, ["category"]])
+    def test_a_point_on_a_shared_boundary_counts_in_one_area(
+        self, tmp_path: Path, group_by: list[str] | None
+    ) -> None:
+        """Once on a shared edge and on a four-way corner, in both
+        overlapping areas, once on an outer edge, and on an edge inside an
+        overlap in the first of the two areas plus the overlap."""
+        rows = _statistics_by_area(self._run(tmp_path, group_by))
+        assert rows == {
+            area: _statistics_of(values) for area, values in self.HELD.items()
+        }
+
+    def test_the_grouped_statistics_agree_with_the_count(self, tmp_path: Path) -> None:
+        output_path = self._run(tmp_path, ["category"])
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        grouped = {
+            area: None if value is None else _as_dict(value)
+            for area, value in con.execute(
+                f"SELECT id, count_grouped FROM '{output_path}' ORDER BY id"
+            ).fetchall()
+        }
+        con.close()
+        assert grouped == {
+            1: {"a": 1, "b": 1},
+            2: None,
+            3: {"a": 1},
+            4: {"a": 1},
+            5: {"a": 1},
+            6: {"a": 1},
+            8: {"b": 1},
+            9: None,
+            10: {"b": 1},
+        }
+
+
+def _ring(points: list[tuple[float, float]]) -> str:
+    return "POLYGON((" + ", ".join(f"{x!r} {y!r}" for x, y in points) + "))"
+
+
+def _count_by_area(
+    tmp_path: Path,
+    areas: list[tuple[int, str]],
+    points: list[tuple[float, float]],
+    memory_limit: str | None = None,
+) -> dict[int, int]:
+    """Write `areas` (id and WKT, in this order) and `points`, run a count on
+    them, under `memory_limit` if given, and read the count of each area."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    areas_path = str(tmp_path / "areas.parquet")
+    points_path = str(tmp_path / "points.parquet")
+    con.execute("CREATE TABLE a (id INTEGER, wkt VARCHAR)")
+    con.executemany("INSERT INTO a VALUES (?, ?)", areas)
+    con.execute(
+        f"COPY (SELECT id, ST_GeomFromText(wkt) AS geom FROM a ORDER BY id) "
+        f"TO '{areas_path}' (FORMAT PARQUET)"
+    )
+    con.execute("CREATE TABLE p (x DOUBLE, y DOUBLE)")
+    con.executemany("INSERT INTO p VALUES (?, ?)", points)
+    con.execute(
+        f"COPY (SELECT ST_Point(x, y) AS geom FROM p) "
+        f"TO '{points_path}' (FORMAT PARQUET)"
+    )
+    con.close()
+    output_path = str(tmp_path / "out.parquet")
+    tool = AggregatePointsTool()
+    if memory_limit:
+        # One thread, so the memory a run needs does not grow with the machine.
+        tool.con.execute(f"SET threads = 1; SET memory_limit = '{memory_limit}'")
+    tool.run(
+        AggregatePointsParams(
+            source_path=points_path,
+            area_type=AggregationAreaType.polygon,
+            area_layer_path=areas_path,
+            column_statistics=[FieldStatistic(operation=StatisticOperation.count)],
+            output_path=output_path,
+        )
+    )
+    con = duckdb.connect()
+    counts = dict(
+        con.execute(f"SELECT id, count FROM '{output_path}' ORDER BY id").fetchall()
+    )
+    con.close()
+    return counts
+
+
+class TestAggregatePointsBigBoundaries:
+    """The boundary rule on areas big enough to be cut into pieces."""
+
+    def test_points_on_a_long_shared_boundary_count_once_within_little_memory(
+        self, tmp_path: Path
+    ) -> None:
+        """Two areas of 6,005 vertices share a staircase of 3,000 steps, and
+        500 points lie on it. Each counts once, in the first area, and the
+        run fits in 128 MB: the boundary is looked up in short pieces, not by
+        copying the whole area for every point."""
+        steps, side = 3000, 1 / 4096
+        stairs = []
+        for i in range(steps):
+            stairs += [(i * side, i * side), ((i + 1) * side, i * side)]
+        top = steps * side
+        stairs.append((top, top))
+        left = stairs + [(top, top + 1), (-1, top + 1), (-1, 0), (0, 0)]
+        right = stairs + [(top + 1, top), (top + 1, -1), (0, -1), (0, 0)]
+        points = [((6 * i + 1) * side, (6 * i + 0.5) * side) for i in range(500)]
+
+        counts = _count_by_area(
+            tmp_path, [(1, _ring(left)), (2, _ring(right))], points, "128MB"
+        )
+
+        assert counts == {1: 500, 2: 0}
+
+    @pytest.mark.parametrize("overlap", [False, True])
+    def test_a_point_on_a_line_the_area_is_cut_along_counts_in_it(
+        self, tmp_path: Path, overlap: bool
+    ) -> None:
+        """A unit square of 1,200 vertices is cut along x = 0.5 and
+        y = 0.5. A point on that cut is inside the square, alone and inside
+        an area that overlaps it."""
+        edge = [i / 300 for i in range(300)]
+        square = (
+            [(x, 0.0) for x in edge]
+            + [(1.0, y) for y in edge]
+            + [(1 - x, 1.0) for x in edge]
+            + [(0.0, 1 - y) for y in edge]
+            + [(0.0, 0.0)]
+        )
+        areas = [(1, _ring(square))]
+        if overlap:
+            areas.append((2, "POLYGON((0.4 0.2, 0.6 0.2, 0.6 0.3, 0.4 0.3, 0.4 0.2))"))
+
+        counts = _count_by_area(tmp_path, areas, [(0.5, 0.25)])
+
+        assert counts == ({1: 1, 2: 1} if overlap else {1: 1})
+
+
+@pytest.mark.parametrize("area_type", ["polygon", "h3_grid"])
+def test_the_grouped_column_is_the_same_text_on_every_run(
+    tmp_path: Path, area_type: str
+) -> None:
+    """Thirty groups in one area: the members of the grouped column are
+    ordered by group name, so two runs write the same text."""
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    areas = str(tmp_path / "areas.parquet")
+    points = str(tmp_path / "points.parquet")
+    con.execute(f"""
+        COPY (SELECT 1 AS id, ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))')
+            AS geom) TO '{areas}' (FORMAT PARQUET)
+    """)
+    con.execute(f"""
+        COPY (
+            SELECT i AS value, printf('g%02d', (i * 7) % 30) AS category,
+                ST_Point(0.5 + i * 0.0001, 0.5) AS geom
+            FROM range(30) t(i)
+        ) TO '{points}' (FORMAT PARQUET)
+    """)
+    con.close()
+    texts = []
+    for run in range(2):
+        output_path = str(tmp_path / f"out{run}.parquet")
+        AggregatePointsTool().run(
+            AggregatePointsParams(
+                source_path=points,
+                area_type=AggregationAreaType(area_type),
+                area_layer_path=areas if area_type == "polygon" else None,
+                h3_resolution=None if area_type == "polygon" else 8,
+                column_statistics=[FieldStatistic(operation="count")],
+                group_by_field=["category"],
+                output_path=output_path,
+            )
+        )
+        con = duckdb.connect()
+        con.execute("LOAD spatial;")
+        texts.append(
+            sorted(
+                row[0]
+                for row in con.execute(
+                    f"SELECT CAST(count_grouped AS VARCHAR) FROM '{output_path}'"
+                ).fetchall()
+            )
+        )
+        con.close()
+    assert texts[0] == texts[1]
+    for text in texts[0]:
+        assert list(json.loads(text)) == sorted(json.loads(text))
 
 
 #: Result names as users type them: spaces, an umlaut, an embedded quote.

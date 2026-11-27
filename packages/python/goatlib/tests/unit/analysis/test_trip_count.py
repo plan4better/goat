@@ -5,6 +5,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.accessibility import (
     TRANSPORT_MODE_MAPPING,
     PTTimeWindow,
@@ -12,6 +13,8 @@ from goatlib.analysis.accessibility import (
     TripCountStationTool,
 )
 from goatlib.analysis.schemas.base import PTTimeWindow as BasePTTimeWindow
+from goatlib.tools.style_contract import Expectation
+from goatlib.tools.trip_count import TripCountToolParams, TripCountToolRunner
 
 # =============================================================================
 # Fixtures
@@ -331,6 +334,13 @@ class TestTripCountStationTool:
         print(f"Stations with service: {result['stations_with_service']}")
         print(f"Total trips counted: {result['total_trips']}")
         print(f"Average frequency (minutes): {result['average_frequency_minutes']}")
+
+        check_tool_style(
+            TripCountToolRunner,
+            tool_params(TripCountToolParams, reference_area_layer_id=U),
+            output_path,
+            expect=Expectation(field="total"),
+        )
 
     def test_trip_count_saturday(
         self,

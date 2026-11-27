@@ -1,0 +1,179 @@
+{
+ "id": "travel-cost-matrix-destinations",
+ "tool": "travel_cost_matrix",
+ "layer": "destinations",
+ "title": "Destination points with the average walking time from three origins",
+ "shape": "the ramp reversed, the nearest darkest, labels in min, unreached grey",
+ "source": "after_engine",
+ "inputs": [],
+ "picture": true,
+ "geometry": "point",
+ "fields": {
+  "travel_cost": "integer"
+ },
+ "zoom": 14.75,
+ "rows": {
+  "total": 36,
+  "kept": 36
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "marker": {
+    "shape": "circle",
+    "color": "#4c9b82",
+    "size": 10
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  },
+  "classify": [
+   {
+    "field": "travel_cost",
+    "method": "quantile",
+    "count": 7,
+    "palette": [
+     "#d3f2a3",
+     "#97e196",
+     "#6cc08b",
+     "#4c9b82",
+     "#217a79",
+     "#105965",
+     "#074050"
+    ],
+    "id": "travel_cost",
+    "reverse": true,
+    "title": "Average travel time from the origins",
+    "unit": "min",
+    "no_data": {
+     "marker": {
+      "color": "#cccccc"
+     }
+    },
+    "classes": [
+     {
+      "id": "c1",
+      "to": 5.0,
+      "marker": {
+       "color": "#074050"
+      }
+     },
+     {
+      "id": "c2",
+      "from": 5.0,
+      "to": 7.0,
+      "marker": {
+       "color": "#105965"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 7.0,
+      "to": 8.0,
+      "marker": {
+       "color": "#217a79"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 8.0,
+      "to": 10.0,
+      "marker": {
+       "color": "#4c9b82"
+      }
+     },
+     {
+      "id": "c5",
+      "from": 10.0,
+      "to": 11.2857142857,
+      "marker": {
+       "color": "#6cc08b"
+      }
+     },
+     {
+      "id": "c6",
+      "from": 11.2857142857,
+      "to": 12.1428571429,
+      "marker": {
+       "color": "#97e196"
+      }
+     },
+     {
+      "id": "c7",
+      "from": 12.1428571429,
+      "marker": {
+       "color": "#d3f2a3"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "domain": [
+      3.0,
+      13.0
+     ],
+     "generated": {
+      "target": "marker.color",
+      "values": {
+       "c1": "#074050",
+       "c2": "#105965",
+       "c3": "#217a79",
+       "c4": "#4c9b82",
+       "c5": "#6cc08b",
+       "c6": "#97e196",
+       "c7": "#d3f2a3"
+      }
+     },
+     "no_data": true
+    },
+    "format": {
+     "decimals": 0
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"travel_cost":4},"geometry":{"type":"Point","coordinates":[-0.005,-0.005]}},
+{"type":"Feature","id":2,"properties":{"travel_cost":5},"geometry":{"type":"Point","coordinates":[-0.005,-0.003]}},
+{"type":"Feature","id":3,"properties":{"travel_cost":7},"geometry":{"type":"Point","coordinates":[-0.005,-0.001]}},
+{"type":"Feature","id":4,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[-0.005,0.001]}},
+{"type":"Feature","id":5,"properties":{"travel_cost":10},"geometry":{"type":"Point","coordinates":[-0.005,0.003]}},
+{"type":"Feature","id":6,"properties":{"travel_cost":12},"geometry":{"type":"Point","coordinates":[-0.005,0.005]}},
+{"type":"Feature","id":7,"properties":{"travel_cost":3},"geometry":{"type":"Point","coordinates":[-0.003,-0.005]}},
+{"type":"Feature","id":8,"properties":{"travel_cost":5},"geometry":{"type":"Point","coordinates":[-0.003,-0.003]}},
+{"type":"Feature","id":9,"properties":{"travel_cost":6},"geometry":{"type":"Point","coordinates":[-0.003,-0.001]}},
+{"type":"Feature","id":10,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[-0.003,0.001]}},
+{"type":"Feature","id":11,"properties":{"travel_cost":9},"geometry":{"type":"Point","coordinates":[-0.003,0.003]}},
+{"type":"Feature","id":12,"properties":{"travel_cost":11},"geometry":{"type":"Point","coordinates":[-0.003,0.005]}},
+{"type":"Feature","id":13,"properties":{"travel_cost":4},"geometry":{"type":"Point","coordinates":[-0.001,-0.005]}},
+{"type":"Feature","id":14,"properties":{"travel_cost":5},"geometry":{"type":"Point","coordinates":[-0.001,-0.003]}},
+{"type":"Feature","id":15,"properties":{"travel_cost":7},"geometry":{"type":"Point","coordinates":[-0.001,-0.001]}},
+{"type":"Feature","id":16,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[-0.001,0.001]}},
+{"type":"Feature","id":17,"properties":{"travel_cost":10},"geometry":{"type":"Point","coordinates":[-0.001,0.003]}},
+{"type":"Feature","id":18,"properties":{"travel_cost":12},"geometry":{"type":"Point","coordinates":[-0.001,0.005]}},
+{"type":"Feature","id":19,"properties":{"travel_cost":5},"geometry":{"type":"Point","coordinates":[0.001,-0.005]}},
+{"type":"Feature","id":20,"properties":{"travel_cost":7},"geometry":{"type":"Point","coordinates":[0.001,-0.003]}},
+{"type":"Feature","id":21,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[0.001,-0.001]}},
+{"type":"Feature","id":22,"properties":{"travel_cost":10},"geometry":{"type":"Point","coordinates":[0.001,0.001]}},
+{"type":"Feature","id":23,"properties":{"travel_cost":12},"geometry":{"type":"Point","coordinates":[0.001,0.003]}},
+{"type":"Feature","id":24,"properties":{"travel_cost":13},"geometry":{"type":"Point","coordinates":[0.001,0.005]}},
+{"type":"Feature","id":25,"properties":{"travel_cost":7},"geometry":{"type":"Point","coordinates":[0.003,-0.005]}},
+{"type":"Feature","id":26,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[0.003,-0.003]}},
+{"type":"Feature","id":27,"properties":{"travel_cost":10},"geometry":{"type":"Point","coordinates":[0.003,-0.001]}},
+{"type":"Feature","id":28,"properties":{"travel_cost":12},"geometry":{"type":"Point","coordinates":[0.003,0.001]}},
+{"type":"Feature","id":29,"properties":{"travel_cost":13},"geometry":{"type":"Point","coordinates":[0.003,0.003]}},
+{"type":"Feature","id":30,"properties":{"travel_cost":13},"geometry":{"type":"Point","coordinates":[0.003,0.005]}},
+{"type":"Feature","id":31,"properties":{"travel_cost":8},"geometry":{"type":"Point","coordinates":[0.005,-0.005]}},
+{"type":"Feature","id":32,"properties":{"travel_cost":10},"geometry":{"type":"Point","coordinates":[0.005,-0.003]}},
+{"type":"Feature","id":33,"properties":{"travel_cost":12},"geometry":{"type":"Point","coordinates":[0.005,-0.001]}},
+{"type":"Feature","id":34,"properties":{"travel_cost":13},"geometry":{"type":"Point","coordinates":[0.005,0.001]}},
+{"type":"Feature","id":35,"properties":{"travel_cost":13},"geometry":{"type":"Point","coordinates":[0.005,0.003]}},
+{"type":"Feature","id":36,"properties":{"travel_cost":null},"geometry":{"type":"Point","coordinates":[0.005,0.005]}}
+]}
+}

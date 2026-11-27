@@ -112,6 +112,7 @@ def generate_windmill_script(
             "overlay_path",
             "output_crs",
             "triggered_by_email",  # Injected by GeoAPI, not user-facing
+            "language",  # Injected by processes, not user-facing
             "access_token",  # Injected by processes service
             "refresh_token",  # Injected by processes service
             "core_url",  # Injected by processes service

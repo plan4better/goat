@@ -5,7 +5,7 @@ still gets every finding these rules can make.
 """
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, get_args
 
 from goatlib.style.catalog import keeps_colors, palettes
 from goatlib.style.context import DataContext
@@ -13,6 +13,7 @@ from goatlib.style.cql import as_text
 from goatlib.style.issues import Fix, Issue, make_issue
 from goatlib.style.models.classify import NUMERIC_METHODS
 from goatlib.style.models.parts import LABEL_PLACEMENTS, PARTS, PER_LAYER_KEYS
+from goatlib.style.models.values import Blend
 from goatlib.style.pointer import item_key, to_pointer
 from goatlib.style.template import liquid_to_label, problems
 
@@ -160,6 +161,7 @@ def check_document(
             issues_r.append(
                 make_issue("low_opacity", "/opacity", "The layer is under 15% opacity.")
             )
+        _blend_not_drawn(issues_r, doc, None)
         return issues_r
     geometry = geometry or (
         doc["geometry"] if isinstance(doc.get("geometry"), str) else None
@@ -319,7 +321,51 @@ def check_document(
         issues.append(
             make_issue("low_opacity", "/opacity", "The layer is under 15% opacity.")
         )
+    _blend_not_drawn(issues, doc, geometry)
     return issues
+
+
+def _blend_not_drawn(
+    issues: list[Issue], doc: dict[str, Any], geometry: str | None
+) -> None:
+    """A blend other than `normal` on a layer that draws nothing that mixes (spec 4.7).
+
+    Points drawn as features are known only with the geometry. An image drawn with
+    its file's color table does not mix either, but whether an image draws its table
+    depends on the file (a context's `color_table` alone does not say), so it is
+    not reported, with or without a context.
+    """
+    blend = doc.get("blend")
+    if blend == "normal" or blend not in get_args(Blend):
+        return
+    render = doc.get("render") if isinstance(doc.get("render"), dict) else {}
+    render_type = render.get("type")
+    reason = None
+    if doc.get("kind") == "raster":
+        if render_type == "hillshade":
+            reason = "hillshade"
+        elif render_type in ("continuous", "categorical"):
+            reason = "color_scale"
+    elif render_type == "h3":
+        if isinstance(render.get("extrude"), dict):
+            reason = "columns"
+    elif render_type in ("heatmap", "cluster"):
+        reason = render_type
+    elif geometry == "point" and render_type in (None, "features"):
+        reason = "points"
+    if reason is None:
+        return
+    issues.append(
+        make_issue(
+            "blend_not_drawn",
+            "/blend",
+            "Nothing of this layer mixes with the map below: markers, labels, heatmaps, "
+            "clusters, columns, hillshade and raster color ranges, classes and "
+            "categories draw normally.",
+            fix=Fix(op="remove", path="/blend"),
+            params={"reason": reason},
+        )
+    )
 
 
 def _per_feature(value: Any) -> bool:
