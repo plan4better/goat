@@ -60,6 +60,11 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
         # Determine timeout based on endpoint
         path = request.url.path
 
+        # Saving the Explorer's edits keeps its own time (pt_edits): stopped
+        # here, its write would run on unseen, holding the bundle's lock.
+        if request.method == "POST" and path.endswith("/changes"):
+            return await call_next(request)
+
         if "/tiles/" in path:
             timeout = settings.TILE_TIMEOUT
         elif "/download" in path:

@@ -8,6 +8,9 @@ DuckDB transaction keeping a stop's derived columns in step and rolling back
 whole.
 """
 
+import asyncio
+import threading
+import time
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -77,8 +80,10 @@ def save(mock_ducklake_manager):
     s = S()
     s.invalidated = []
 
-    def apply_sync(members: Any, changes: ChangeSet, configs: Any) -> Applied:
-        return s.apply(members, changes, configs)
+    def apply_sync(
+        members: Any, changes: ChangeSet, configs: Any, guard: Any
+    ) -> Applied:
+        return s.apply(members, changes, configs, guard)
 
     async def invalidate(info: Any) -> None:
         s.invalidated.append(info.layer_id)
@@ -120,6 +125,14 @@ def save(mock_ducklake_manager):
     main.app.dependency_overrides.pop(get_user_id, None)
 
 
+def stopped(guard: Any, timeout: float = 5) -> bool:
+    """Wait for ``guard`` to be stopped; whether it was."""
+    end = time.monotonic() + timeout
+    while not guard.stopped and time.monotonic() < end:
+        time.sleep(0.01)
+    return guard.stopped
+
+
 def post(s: Any, base: int = 3, ops: Any = None) -> Any:
     return s.client.post(
         URL, json={"base_revision": base, "changes": {"ops": ops or [RENAME]}}
@@ -152,7 +165,7 @@ def test_a_save_moves_the_bundle_on_and_rebuilds_it(save) -> None:
     assert sorted(save.invalidated) == sorted(
         [MEMBERS["stops"], MEMBERS["shape_lines"]]
     )
-    members, changes, _ = save.apply.call_args.args
+    members, changes, _, _ = save.apply.call_args.args
     assert set(members) == set(MEMBERS)
     assert changes.ops[0].values == {"stop_name": "First"}
 
@@ -352,7 +365,9 @@ def test_a_moved_stop_keeps_its_bbox(lake: duckdb.DuckDBPyConnection) -> None:
             }
         ]
     )
-    pt_edits._apply_sync(members("stops", "trips", "stop_times"), changes, {})
+    pt_edits._apply_sync(
+        members("stops", "trips", "stop_times"), changes, {}, pt_edits._Guard()
+    )
     assert lake.execute(
         "SELECT ST_AsText(geometry), bbox.xmin, bbox.ymax FROM stops WHERE stop_id = 'S2'"
     ).fetchone() == ("POINT (13.5 52.6)", 13.5, 52.6)
@@ -373,10 +388,207 @@ def test_a_refused_change_set_rolls_back_whole(lake: duckdb.DuckDBPyConnection) 
         ]
     )
     with pytest.raises(ChangeSetIntegrityError):
-        pt_edits._apply_sync(members("stops", "trips", "stop_times"), changes, {})
+        pt_edits._apply_sync(
+            members("stops", "trips", "stop_times"), changes, {}, pt_edits._Guard()
+        )
     assert lake.execute(
         "SELECT stop_id, stop_name FROM stops ORDER BY 1"
     ).fetchall() == [
         ("S1", "First"),
         ("S2", "Second"),
     ]
+
+
+def test_a_save_out_of_time_is_stopped_and_undone(
+    lake: duckdb.DuckDBPyConnection,
+) -> None:
+    """Stopped (out of time), the write refuses its next statement and rolls
+    back: nothing of it stays."""
+    from geoapi.routers import pt_edits
+
+    guard = pt_edits._Guard()
+    assert guard.stop()
+    changes = ChangeSet(
+        ops=[
+            {
+                "role": "stops",
+                "op": "update",
+                "key": {"stop_id": "S1"},
+                "values": {"stop_name": "Renamed"},
+            }
+        ]
+    )
+    with pytest.raises(pt_edits._SaveStopped):
+        pt_edits._apply_sync(
+            members("stops", "trips", "stop_times"), changes, {}, guard
+        )
+    assert lake.execute(
+        "SELECT stop_name FROM stops WHERE stop_id = 'S1'"
+    ).fetchone() == ("First",)
+
+
+def test_a_save_out_of_time_says_nothing_was_saved(save) -> None:
+    """Past its time the save is stopped, waited for while it rolls back, and
+    answered as not made: a 504 that says so, the revision not moved on."""
+    from geoapi.routers import pt_edits
+
+    seen: dict[str, Any] = {}
+
+    def slow(members: Any, changes: Any, configs: Any, guard: Any) -> Any:
+        seen["stopped"] = stopped(guard)
+        raise pt_edits._SaveStopped()
+
+    save.apply.side_effect = slow
+    with patch.object(pt_edits, "SAVE_TIMEOUT_S", 0.2):
+        response = post(save)
+    assert response.status_code == 504
+    assert "nothing was saved" in response.json()["detail"]
+    assert seen["stopped"] is True
+
+
+def test_a_save_committing_as_time_runs_out_is_saved(save) -> None:
+    """Time runs out while the write commits: DuckLake has the change, so
+    it is let finish and answered as saved, the revision moved on with it."""
+    from geoapi.routers import pt_edits
+
+    def committing(members: Any, changes: Any, configs: Any, guard: Any) -> Any:
+        guard.commit()
+        time.sleep(0.5)
+        return Applied(rows={"stops": {"inserted": 0, "updated": 1, "deleted": 0}})
+
+    save.apply.side_effect = committing
+    with patch.object(pt_edits, "SAVE_TIMEOUT_S", 0.1):
+        response = post(save)
+    assert response.status_code == 200
+    assert response.json()["revision"] == 4
+    assert save.lock.revision == 4
+
+
+def _save_in_task(save: Any, cancel_when: threading.Event) -> Any:
+    """``save_changes`` run as its own task, cancelled once ``cancel_when``
+    is set: what it answers, or the CancelledError it raises."""
+    from geoapi.routers import pt_edits
+
+    async def run() -> Any:
+        task = asyncio.ensure_future(
+            pt_edits.save_changes(
+                UUID(BUNDLE),
+                pt_edits.ChangesRequest(
+                    base_revision=3, changes=ChangeSet(ops=[RENAME])
+                ),
+                MagicMock(),
+                USER,
+            )
+        )
+        await asyncio.get_running_loop().run_in_executor(None, cancel_when.wait, 5)
+        task.cancel()
+        try:
+            return await task
+        except asyncio.CancelledError as e:
+            return e
+
+    return asyncio.run(run())
+
+
+def test_a_cancelled_save_is_stopped_and_undone(save) -> None:
+    """The request cancelled mid-write: the write is stopped, waited for
+    while it rolls back, and the revision is not moved on."""
+    from geoapi.routers import pt_edits
+
+    started = threading.Event()
+    seen: dict[str, Any] = {}
+
+    def slow(members: Any, changes: Any, configs: Any, guard: Any) -> Any:
+        started.set()
+        seen["stopped"] = stopped(guard)
+        time.sleep(0.2)  # rolling back
+        seen["done"] = True
+        raise pt_edits._SaveStopped()
+
+    save.apply.side_effect = slow
+    assert isinstance(_save_in_task(save, started), asyncio.CancelledError)
+    assert seen == {"stopped": True, "done": True}
+    assert save.lock.revision == 3
+
+
+def test_a_save_cancelled_while_committing_is_saved(save) -> None:
+    """The request cancelled once the write commits: DuckLake has the
+    change, so the revision moves on with it."""
+    committing = threading.Event()
+
+    def commit(members: Any, changes: Any, configs: Any, guard: Any) -> Any:
+        guard.commit()
+        committing.set()
+        time.sleep(0.2)
+        return Applied(rows={"stops": {"inserted": 0, "updated": 1, "deleted": 0}})
+
+    save.apply.side_effect = commit
+    response = _save_in_task(save, committing)
+    assert response.revision == 4
+    assert save.lock.revision == 4
+
+
+def test_a_write_stopped_before_its_commit_commits_nothing(
+    lake: duckdb.DuckDBPyConnection,
+) -> None:
+    """Stopped after its last statement and before its COMMIT, the write
+    rolls back: it never commits once the request has answered 504."""
+    from geoapi.routers import pt_edits
+
+    guard = pt_edits._Guard()
+    real = pt_edits.apply_changeset
+
+    def then_stopped(*args: Any, **kwargs: Any) -> Any:
+        applied = real(*args, **kwargs)
+        assert guard.stop()
+        return applied
+
+    with patch.object(pt_edits, "apply_changeset", then_stopped):
+        with pytest.raises(pt_edits._SaveStopped):
+            pt_edits._apply_sync(
+                members("stops", "trips", "stop_times"),
+                ChangeSet(ops=[{**RENAME, "values": {"stop_name": "Renamed"}}]),
+                {},
+                guard,
+            )
+    assert lake.execute(
+        "SELECT stop_name FROM stops WHERE stop_id = 'S1'"
+    ).fetchone() == ("First",)
+
+
+def test_only_the_running_write_is_interrupted() -> None:
+    """The write connection is shared: the request interrupts it only while
+    its write runs on it, never once the write is done."""
+    from geoapi.routers import pt_edits
+
+    con = MagicMock()
+
+    @contextmanager
+    def connection() -> Iterator[Any]:
+        yield con
+
+    guard = pt_edits._Guard()
+    with (
+        patch.object(pt_edits.ducklake_write_manager, "connection", connection),
+        patch.object(pt_edits, "apply_changeset", return_value=Applied()),
+    ):
+        pt_edits._apply_sync({}, ChangeSet(ops=[RENAME]), {}, guard)
+    assert not guard.stop()  # it committed: nothing left to stop
+    con.interrupt.assert_not_called()
+
+    guard = pt_edits._Guard()
+
+    def stopped_midway(*args: Any, **kwargs: Any) -> Any:
+        assert guard.stop()
+        return Applied()
+
+    with (
+        patch.object(pt_edits.ducklake_write_manager, "connection", connection),
+        patch.object(pt_edits, "apply_changeset", stopped_midway),
+    ):
+        with pytest.raises(pt_edits._SaveStopped):
+            pt_edits._apply_sync({}, ChangeSet(ops=[RENAME]), {}, guard)
+    con.interrupt.assert_called_once()
+    assert [c.args[0] for c in con.execute.call_args_list][-1] == "ROLLBACK"
+    guard.stop()
+    con.interrupt.assert_called_once()

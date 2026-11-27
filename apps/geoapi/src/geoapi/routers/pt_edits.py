@@ -22,6 +22,14 @@ One save, all or nothing:
 4. Postgres commits only after DuckLake has. An Explorer snapshot build, which
    reads the revision and the data under the same lock taken shared, can never
    pair the new revision with the old data.
+5. A save has SAVE_TIMEOUT_S to write. Past it, the write is stopped and both
+   transactions roll back before the answer (a 504 saying nothing was saved),
+   so the lock is let go and the Explorer's edits stay its own to save again.
+   A write already committing when time runs out is let finish, and answered
+   as saved: the two sides agree on whether DuckLake committed (``_Guard``).
+   The rows are written a statement per table and kind, not per row
+   (goatlib's ``apply_changeset``): the largest edit measured so far, some
+   12,000 rows, applies in about 16 s.
 
 Then, outside the transaction: the written layers' tile caches are dropped,
 and the bundle's artifacts (and the bundles built from it) are rebuilt. The
@@ -31,6 +39,7 @@ the saved bundle.
 
 import asyncio
 import logging
+import threading
 from typing import Any, Awaitable, Callable, TypeVar
 from uuid import UUID
 
@@ -75,6 +84,81 @@ _ROLES = tuple(
 )
 #: Members whose rows carry a geometry, so a write fills its derived columns.
 _GEOMETRY_ROLES = ("stops", "shape_lines")
+
+#: How long a save may write before it is stopped and undone, in seconds:
+#: under the minute a proxy in front of geoapi commonly allows a request, so
+#: geoapi answers first, and truthfully. (The request timeout middleware
+#: leaves this route alone: stopping a reply there left the write running,
+#: holding the bundle's lock, to commit after the Explorer was told it
+#: failed.)
+SAVE_TIMEOUT_S = 50.0
+
+
+class _SaveStopped(Exception):
+    """The save ran out of time and was stopped before writing more."""
+
+
+class _Guard:
+    """Shared by the request and the thread writing: whether the write is
+    stopped, whether it is committing, and the connection it runs on. One
+    lock orders the two: the request stops a write that is not committing
+    yet, and a write stopped never commits, so a 504 always means nothing
+    was saved."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.stopped = False
+        self._committing = False
+        self._con: Any = None
+
+    def running(self, con: Any) -> None:
+        """The write runs on ``con`` (None: no longer)."""
+        with self._lock:
+            self._con = con
+
+    def stop(self) -> bool:
+        """Stop the write and interrupt its statement, unless it is
+        committing: then it is let finish, and False says so."""
+        with self._lock:
+            if self._committing:
+                return False
+            self.stopped = True
+            # Only while the write runs on it: the connection is shared, and
+            # the next request's statement on it is not this save's to stop.
+            if self._con is not None:
+                self._con.interrupt()
+            return True
+
+    def commit(self) -> None:
+        """Called by the write before its COMMIT: refused once stopped."""
+        with self._lock:
+            if self.stopped:
+                raise _SaveStopped()
+            self._committing = True
+
+
+class _Stoppable:
+    """The write's DuckDB connection, stoppable from the request: each
+    statement after ``stop`` is refused, and the one running interrupted."""
+
+    def __init__(self, con: Any, guard: _Guard) -> None:
+        self._con = con
+        self._guard = guard
+
+    def _check(self) -> None:
+        if self._guard.stopped:
+            raise _SaveStopped()
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        self._check()
+        return self._con.execute(*args, **kwargs)
+
+    def executemany(self, *args: Any, **kwargs: Any) -> Any:
+        self._check()
+        return self._con.executemany(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._con, name)
 
 
 class ChangesRequest(BaseModel):
@@ -150,8 +234,10 @@ def _apply_sync(
     members: dict[str, LayerInfo],
     changes: ChangeSet,
     configs: dict[str, dict[str, Any]],
+    guard: _Guard,
 ) -> Applied:
-    """Apply the change set in one DuckLake transaction. Runs in a thread."""
+    """Apply the change set in one DuckLake transaction. Runs in a thread;
+    stopped by ``guard`` (out of time), it stops and rolls back."""
 
     def derived(role: str, columns: Any, geom_sql: str) -> list[tuple[str, str]]:
         # The columns a layer derives from its geometry, spelled as every
@@ -165,14 +251,33 @@ def _apply_sync(
 
     tables = {role: info.full_table_name for role, info in members.items()}
     with ducklake_write_manager.connection() as con:
-        con.execute("BEGIN")
+        guard.running(con)
         try:
-            applied = apply_changeset(con, tables, changes, derived)
-            con.execute("COMMIT")
-        except Exception:
-            con.execute("ROLLBACK")
-            raise
+            con.execute("BEGIN")
+            try:
+                applied = apply_changeset(
+                    _Stoppable(con, guard), tables, changes, derived
+                )
+                guard.commit()
+                con.execute("COMMIT")
+            except BaseException:
+                # Not interrupted any more: the rollback must run whole.
+                guard.running(None)
+                con.execute("ROLLBACK")
+                raise
+        finally:
+            guard.running(None)
     return applied
+
+
+async def _finished(job: "asyncio.Future[Any]") -> None:
+    """Wait for ``job`` to end, however it ends: failed, or this request
+    cancelled again while it waits."""
+    while not job.done():
+        try:
+            await asyncio.shield(job)
+        except BaseException:
+            pass
 
 
 @router.post(
@@ -204,9 +309,38 @@ async def save_changes(
     }
 
     async def write() -> Applied:
+        guard = _Guard()
+        job = loop.run_in_executor(
+            None, _apply_sync, members, body.changes, configs, guard
+        )
         try:
-            return await loop.run_in_executor(
-                None, _apply_sync, members, body.changes, configs
+            return await asyncio.wait_for(asyncio.shield(job), timeout=SAVE_TIMEOUT_S)
+        except asyncio.CancelledError:
+            # The request cancelled: stopped and waited for as when out of
+            # time. One already committing has saved, so the revision must
+            # move on with it: answered as saved, not cancelled.
+            committing = not guard.stop()
+            await _finished(job)
+            if committing and not job.cancelled() and job.exception() is None:
+                return job.result()
+            raise
+        except asyncio.TimeoutError:
+            if not guard.stop():
+                # Committing as time ran out: it is let finish, and its
+                # answer stands.
+                await _finished(job)
+                return job.result()
+            # Out of time: stopped, and waited for while it rolls back, so the
+            # bundle's lock is let go with nothing written.
+            await _finished(job)
+            logger.warning(
+                "Save of bundle %s stopped after %ss, nothing written",
+                bundle_id,
+                SAVE_TIMEOUT_S,
+            )
+            raise HTTPException(
+                status_code=504,
+                detail="It took too long, so nothing was saved.",
             )
         except ChangeSetIntegrityError as e:
             raise HTTPException(
