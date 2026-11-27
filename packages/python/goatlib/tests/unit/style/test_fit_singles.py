@@ -2,12 +2,14 @@
 7.2 and 12), written for classes fitted to the data (`fit`)."""
 
 import copy
+import math
 from typing import Any
 
+import pytest
 from goatlib.style.compute import needed_stats
 from goatlib.style.data import compute_into, fitted_breaks
 from goatlib.style.edit import settle_fit
-from goatlib.tools.style import with_decimals
+from goatlib.tools.style import value_decimals, with_decimals
 
 from .test_fit_classes import computed, fit_doc, table
 
@@ -238,7 +240,7 @@ def _with_singles(values: dict[str, float], bound: float) -> dict[str, Any]:
     }
 
 
-def test_a_single_value_reads_its_first_3_digits_up_to_2_decimals() -> None:
+def test_a_single_value_reads_its_first_3_significant_digits() -> None:
     def decimals(values: dict[str, float], bound: float) -> int:
         doc = with_decimals(_with_singles(values, bound))
         return doc["classify"][0]["format"]["decimals"]
@@ -247,3 +249,99 @@ def test_a_single_value_reads_its_first_3_digits_up_to_2_decimals() -> None:
     assert decimals({"c2": 1234.5}, 1234.5) == 0
     assert decimals({"c2": 30.0}, 30.0) == 0
     assert decimals({"c2": 2.125}, 2.125) == 2
+
+
+@pytest.mark.parametrize(
+    ("value", "decimals"),
+    [
+        (0.0, 0),
+        (1.0, 0),
+        (12.5, 1),
+        (0.087, 3),
+        (0.004, 3),
+        (1234.5, 0),
+        (99.789, 1),
+        (78.8234567, 1),
+        (25146.77, 0),
+        (0.00318, 5),
+        (-3.0, 0),
+        (1e-9, 9),
+        (30.0, 0),
+        (0.12345, 3),
+    ],
+)
+def test_the_decimals_of_a_value_shown_alone(value: float, decimals: int) -> None:
+    assert value_decimals(value) == decimals
+
+
+def test_a_constant_of_three_decimals_reads_all_three() -> None:
+    out, _ = computed(table([0.087] * 6), fit_doc())
+    assert with_decimals(out)["classify"][0]["format"] == {"decimals": 3}
+
+
+# Manual classes with closed ends: values outside them are in no class.
+
+
+def test_closed_ends_of_manual_classes_leave_out_the_values_beyond_them() -> None:
+    con = table([0.0] * 50 + [float(i) for i in range(1, 51)])
+    doc = copy.deepcopy(MANUAL)
+    doc["classify"][0]["classes"] = [
+        {"id": "c1", "from": 0.5, "to": 1},
+        {"id": "c2", "from": 1, "to": 2},
+        {"id": "c3", "from": 2, "to": 49},
+        {"id": "c4", "from": 49, "to": 49.5},
+    ]
+    out, _ = computed(con, doc)
+    # The zeros lie below the first class, 50 above the last: in no class.
+    assert singles(out) == {"c2": 1.0, "c4": 49.0}
+
+
+def test_open_ends_of_manual_classes_hold_every_value_beyond_their_bounds() -> None:
+    con = table([0.0] * 5 + [float(i) for i in range(1, 6)])
+    doc = copy.deepcopy(MANUAL)
+    doc["classify"][0]["classes"] = [
+        {"id": "c1", "to": 1},
+        {"id": "c2", "from": 1, "to": 5},
+        {"id": "c3", "from": 5},
+    ]
+    out, _ = computed(con, doc)
+    assert singles(out) == {"c1": 0.0, "c3": 5.0}
+
+
+# Zero is never negative where `fit` computes values.
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [-0.0, 0.0, 0.0, 1.0, 2.0, 3.0],
+        [0.0, 0.0, -0.0, 1.0, 2.0, 3.0],
+        [-0.0] * 3 + [5.0],
+    ],
+)
+def test_negative_zero_reads_as_zero(values: list[float]) -> None:
+    out, _ = computed(table(values), fit_doc())
+    c = out["classify"][0]["computed"]
+    zeros = [c["domain"][0], *(v for v in c["single"].values() if v == 0)]
+    assert zeros and all(math.copysign(1.0, v) == 1.0 for v in zeros), c
+    b = fitted_breaks(table(values), "t", "v", 7)
+    assert math.copysign(1.0, b.min) == 1.0
+    assert all(math.copysign(1.0, s) == 1.0 for s in b.singles if s == 0)
+
+
+# A field the data no longer has: what the server wrote stays, as without fit.
+
+
+def test_a_fitted_classification_whose_field_is_gone_keeps_what_it_computed() -> None:
+    con = table([1.0] * 10 + [2.0] * 3 + [3.0])
+    out, _ = computed(con, fit_doc())
+    before = out["classify"][0]["computed"]
+    assert before["single"]
+    con.execute("ALTER TABLE t RENAME COLUMN v TO w")
+    again, _ = compute_into(con, "t", out, geometry="polygon", fingerprint="g")
+    after = again["classify"][0]["computed"]
+    assert (after["single"], after["generated"], after["domain"]) == (
+        before["single"],
+        before["generated"],
+        before["domain"],
+    )

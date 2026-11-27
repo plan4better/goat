@@ -92,9 +92,11 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
   }
 
   /** One edit; consecutive edits with the same key within 600 ms are one undo step. A classification fitted to the data
-   * is settled as the edit leaves it (`settleFit`). */
-  update(fn: (doc: LayerStyle) => LayerStyle, coalesceKey?: string): void {
-    const next = settleFit(this.current, fn(this.current));
+   * is settled as the edit leaves it (`settleFit`); with `replaces` (a whole document or whole parts put in place: a
+   * reset, a paste) the result is taken as it is, its `fit` included. */
+  update(fn: (doc: LayerStyle) => LayerStyle, coalesceKey?: string, opts: { replaces?: boolean } = {}): void {
+    const edited = fn(this.current);
+    const next = opts.replaces ? edited : settleFit(this.current, edited);
     if (next === this.current) return;
     const now = Date.now();
     const merges =

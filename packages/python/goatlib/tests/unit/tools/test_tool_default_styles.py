@@ -632,6 +632,32 @@ def test_a_statistic_of_negative_values_turns_the_ramp_around(
     assert (c["palette"] == "colorbrewer:RdBu") is diverging
 
 
+@pytest.mark.parametrize(
+    ("values", "reverse", "diverging"),
+    [
+        # 5 of 100 rows with a value other than 0 below 0: a real share.
+        ("CASE WHEN i < 5 THEN -1 ELSE i END", False, True),
+        # 4 of 100: the tool's own ramp, fitted as any one-signed result.
+        ("CASE WHEN i < 4 THEN -1 ELSE i END", False, False),
+        ("CASE WHEN i = 0 THEN -0.5 ELSE i END", False, False),
+        # Mostly below 0 with one row above: turned around, as all below 0.
+        ("CASE WHEN i = 0 THEN 0.5 ELSE -i END", True, False),
+        # Zeros count on neither side.
+        ("CASE WHEN i < 5 THEN -1 WHEN i < 60 THEN 0 ELSE i END", False, True),
+    ],
+)
+def test_a_statistic_takes_the_diverging_palette_only_with_a_real_share_below_and_above_0(
+    con: duckdb.DuckDBPyConnection, values: str, reverse: bool, diverging: bool
+) -> None:
+    relation = table(con, "value_sum", "polygon", values, 100)
+    doc = runner_for(AggregatePointsToolRunner, con).get_layer_style(
+        _aggregate_points(**_stat("sum")), MagicMock(), "polygon", relation
+    )
+    [c] = doc["classify"]
+    assert ("reverse" in c) is reverse
+    assert (c["palette"] == "colorbrewer:RdBu") is diverging
+
+
 def test_a_result_that_cannot_be_read_keeps_the_ramp(
     con: duckdb.DuckDBPyConnection, caplog: pytest.LogCaptureFixture
 ) -> None:

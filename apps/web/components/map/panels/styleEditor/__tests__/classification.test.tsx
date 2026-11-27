@@ -209,7 +209,9 @@ describe("classification editor", () => {
       shell(doc([{ ...QUANTILE, count: 7, fit: true }]));
       expect(within(rowOf("style_editor.classes")).getByText("Up to 7, fitted")).toBeDefined();
     } finally {
-      i18n.removeResourceBundle("en", "common");
+      // Only the key this test added: later tests keep the bundle.
+      delete (i18n.getResourceBundle("en", "common") as { style_editor: Record<string, string> }).style_editor
+        .count_fitted;
     }
   });
 
@@ -721,6 +723,30 @@ describe("class values", () => {
       shell(doc([{ ...MANUAL, classes: [{ to: 10 }, { from: 10, to: 100 }, { from: 100 }] }]));
       const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
       expect(names.map((n) => n.placeholder).at(-1)).toBe("style_editor.range_and_more");
+    });
+
+    it("a class that holds one value reads that value after its bound, as the legend does; the others their range", () => {
+      shell(
+        doc([
+          {
+            ...MANUAL,
+            fit: true,
+            classes: [
+              { id: "a", to: 10 },
+              { id: "b", from: 10, to: 20 },
+              { id: "c", from: 20 },
+            ],
+            computed: { ...computed, single: { a: 5, c: 100 } },
+          },
+        ])
+      );
+      const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+      expect(names.map((n) => n.placeholder)).toEqual(["5", "style_editor.range_to 20", "100"]);
+      // The bounds stay to type.
+      const bounds = screen.getAllByRole("textbox", {
+        name: "style_editor.lower_bound",
+      }) as HTMLInputElement[];
+      expect(bounds.map((b) => b.value)).toEqual(["10", "20"]);
     });
   });
 });

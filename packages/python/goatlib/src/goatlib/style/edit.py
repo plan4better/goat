@@ -23,7 +23,7 @@ from pydantic import (
 )
 
 from goatlib.style.colors import COLOR_KEYS
-from goatlib.style.compute import _drop
+from goatlib.style.compute import _drop, _put
 from goatlib.style.compute import _get as _value_at
 from goatlib.style.ids import assign_ids, existing_ids
 from goatlib.style.issues import Fix
@@ -286,14 +286,21 @@ def settle_fit(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
 
 def _settled(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     if after.get("method") == "manual":
-        return after
+        return after if before.get("method") == "manual" else _as_manual(after)
     if any(before.get(k) != after.get(k) for k in ("field", "method", "count")):
         return {k: v for k, v in after.items() if k != "fit"}
     if after.get("method") != "quantile" or not _class_edited(before, after):
         return after
-    out = {k: v for k, v in after.items() if k not in ("count", "computed")}
+    return _as_manual(after)
+
+
+def _as_manual(c: dict[str, Any]) -> dict[str, Any]:
+    """`c` with its classes as they are, manual: without `count` and the values
+    the server wrote (`computed.generated`); the rest of `computed` stays where
+    it holds the data's minimum and maximum."""
+    out = {k: v for k, v in c.items() if k not in ("count", "computed")}
     out["method"] = "manual"
-    computed = after.get("computed")
+    computed = c.get("computed")
     if isinstance(computed, dict) and isinstance(computed.get("domain"), list):
         out["computed"] = {k: v for k, v in computed.items() if k != "generated"}
     return out
@@ -303,19 +310,34 @@ def _class_edited(before: dict[str, Any], after: dict[str, Any]) -> bool:
     """Whether a class in both gained a key or changed a key's value (`_gains`),
     leaving out its id, from and to, and the server's value at the generated
     target while it is still what the server wrote. A key removed (a palette
-    or range picked clears the values at the target) is no class edit."""
+    or range picked clears the values at the target) is no class edit. A new
+    `target` moves each class's value from the old one (as the retarget fix
+    does) before the two are compared, so values it moved are no class edit."""
     computed = before.get("computed")
     generated = computed.get("generated") if isinstance(computed, dict) else None
     target = generated.get("target") if isinstance(generated, dict) else None
     values = generated.get("values") if isinstance(generated, dict) else None
     written = values if isinstance(values, dict) else {}
+    old = before.get("target") if isinstance(before.get("target"), str) else target
+    new = after.get("target")
+    moved = isinstance(old, str) and isinstance(new, str) and old != new
+    at = new if moved else target
 
     def own(k: dict[str, Any]) -> dict[str, Any]:
         out = {key: v for key, v in k.items() if key not in ("id", "from", "to")}
         wrote = written.get(k.get("id"), _UNSET)
-        if isinstance(target, str) and _value_at(out, target) == wrote:
+        if isinstance(at, str) and _value_at(out, at) == wrote:
             out = copy.deepcopy(out)
-            _drop(out, target)
+            _drop(out, at)
+        return out
+
+    def relocated(k: dict[str, Any]) -> dict[str, Any]:
+        value = _value_at(k, old) if moved else None
+        if value is None:
+            return k
+        out = copy.deepcopy(k)
+        _drop(out, old)
+        _put(out, new, value)
         return out
 
     earlier = {
@@ -324,7 +346,7 @@ def _class_edited(before: dict[str, Any], after: dict[str, Any]) -> bool:
         if isinstance(k, dict) and isinstance(k.get("id"), str)
     }
     return any(
-        _gains(own(earlier[k["id"]]), own(k))
+        _gains(own(relocated(earlier[k["id"]])), own(k))
         for k in after.get("classes") or []
         if isinstance(k, dict) and k.get("id") in earlier
     )

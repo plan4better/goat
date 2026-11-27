@@ -1370,12 +1370,19 @@ function rangeNumber(opts: { locale: string; format?: RangeFormat }): (v: number
   return (v: number) => `${opts.format?.prefix ?? ""}${formatter.format(v)}${opts.format?.suffix ?? ""}`;
 }
 
-/** A numeric class's range as its label reads it: the one value it holds where the server recorded it
- * (`computed.single`, spec 7.2), else its `from` and `to`. */
-export function classRange(c: JsonObject, k: JsonObject): { from?: number; to?: number } {
+/** The one value a numeric class holds where the server recorded it (`computed.single`, spec 7.2), for classes fitted
+ * to the data (`fit`) only. */
+export function singleValue(c: JsonObject, k: JsonObject): number | undefined {
+  if (c.fit !== true) return undefined;
   const single = isObject(c.computed) && isObject(c.computed.single) ? c.computed.single : undefined;
   const value = single && typeof k.id === "string" ? single[k.id] : undefined;
-  if (typeof value === "number") return { from: value, to: value };
+  return typeof value === "number" ? value : undefined;
+}
+
+/** A numeric class's range as its label reads it: the one value it holds (`singleValue`), else its `from` and `to`. */
+export function classRange(c: JsonObject, k: JsonObject): { from?: number; to?: number } {
+  const value = singleValue(c, k);
+  if (value !== undefined) return { from: value, to: value };
   return {
     ...(typeof k.from === "number" ? { from: k.from } : {}),
     ...(typeof k.to === "number" ? { to: k.to } : {}),

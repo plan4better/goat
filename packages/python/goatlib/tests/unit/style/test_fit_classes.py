@@ -17,7 +17,7 @@ from goatlib.style.compute import (
     same_ignoring_stamps,
 )
 from goatlib.style.context import DataContext
-from goatlib.style.data import compute_into, compute_stats, fitted_breaks
+from goatlib.style.data import centred, compute_into, compute_stats, fitted_breaks
 from goatlib.style.validate import validate
 
 RDBU = sample_colors("colorbrewer:RdBu", 7)
@@ -375,7 +375,8 @@ def test_a_first_class_holding_only_zeros_takes_the_middle_color() -> None:
 
 
 def test_few_negative_values_take_the_colors_next_to_the_middle() -> None:
-    values = [-1.0] + [float(i) for i in range(1, 51)]
+    # Three rows below 0 of 53: a real share (`CENTRE_SHARE`), one value.
+    values = [-1.0] * 3 + [float(i) for i in range(1, 51)]
     con = table(values)
     out, _ = computed(con, fit_doc(palette="colorbrewer:RdBu"))
     assert colors(out)[0] == RDBU[2]
@@ -390,15 +391,72 @@ def test_the_centre_honours_reverse() -> None:
     assert colors(out) == [flipped[i] for i in (0, 1, 2, 4, 5, 6)]
 
 
+def half(side: str, n: int, zero: bool = False, reverse: bool = False) -> list[str]:
+    """The colors of `n` classes on one side of a diverging palette (RdBu), the
+    middle color first or last for a class that holds 0 alone."""
+    m = n - zero
+    spread = sample_colors("colorbrewer:RdBu", 2 * m + 1, reverse=reverse)
+    if side == "above":
+        return spread[m : m + 1] * zero + spread[m + 1 :]
+    return spread[:m] + spread[m : m + 1] * zero
+
+
 @pytest.mark.parametrize(
-    "values",
-    [[float(i) for i in range(1, 51)], [float(-i) for i in range(1, 51)]],
+    ("values", "side"),
+    [
+        ([float(i) for i in range(1, 51)], "above"),
+        ([float(-i) for i in range(1, 51)], "below"),
+        # One row of 1,001 below 0: no real share, the side with the data's bulk.
+        ([-0.5] + [float(i) for i in range(1, 1001)], "above"),
+        ([0.5] + [float(-i) for i in range(1, 1001)], "below"),
+    ],
 )
-def test_one_sided_data_has_no_centre(values: list[float]) -> None:
+def test_data_without_a_real_share_on_both_sides_takes_one_half_of_the_palette(
+    values: list[float], side: str
+) -> None:
     con = table(values)
     b = fitted_breaks(con, "t", "v", 7, centre=True)
-    assert b == fitted_breaks(con, "t", "v", 7)
-    assert b.positions == ()
+    plain = fitted_breaks(con, "t", "v", 7)
+    # The classes are those of any fitted classification: as many as quantile.
+    assert (b.breaks, b.min, b.max, b.singles) == (
+        plain.breaks,
+        plain.min,
+        plain.max,
+        plain.singles,
+    )
+    assert len(b.breaks) + 1 == 7
+    out, _ = computed(con, fit_doc(palette="colorbrewer:RdBu"))
+    assert colors(out) == half(side, 7)
+    out, _ = computed(con, fit_doc(palette="colorbrewer:RdBu", reverse=True))
+    assert colors(out) == half(side, 7, reverse=True)
+
+
+def test_zeros_alone_on_one_side_take_the_middle_color() -> None:
+    con = table([0.0] * 50 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc(palette="colorbrewer:RdBu"))
+    n = len(out["classify"][0]["classes"])
+    assert colors(out) == half("above", n, zero=True)
+
+
+def test_only_zeros_take_the_middle_color() -> None:
+    out, _ = computed(table([0.0] * 5), fit_doc(palette="colorbrewer:RdBu"))
+    assert colors(out) == [sample_colors("colorbrewer:RdBu", 1)[0]]
+
+
+@pytest.mark.parametrize(("below", "centred"), [(5, True), (4, False)])
+def test_the_centre_needs_a_real_share_on_both_sides(below: int, centred: bool) -> None:
+    # Of 100 rows with a value other than 0, 5 below 0 is a real share, 4 not.
+    values = [-1.0] * below + [float(i) for i in range(1, 101 - below)] + [0.0] * 30
+    b = fitted_breaks(table(values), "t", "v", 7, centre=True)
+    assert (0.0 in b.breaks and b.min == -1.0 and b.positions[0] < 3) is centred
+
+
+def test_a_centred_classification_without_fit_is_as_today() -> None:
+    doc = fit_doc(palette="colorbrewer:RdBu")
+    del doc["classify"][0]["fit"]
+    con = table([-0.5] + [float(i) for i in range(1, 1001)])
+    out, _ = computed(con, doc)
+    assert colors(out) == sample_colors("colorbrewer:RdBu", 7)
 
 
 # Computing a document.
@@ -473,7 +531,41 @@ def test_random_tied_tables(seed: int) -> None:
         one = held_values[0] if len(held_values) == 1 else None
         assert b.singles[i] == one, (b, i, held_values)
     if centre:
-        if b.positions:
+        below, above = con.execute(
+            "SELECT count(*) FILTER (v < 0), count(*) FILTER (v > 0) FROM t "
+            "WHERE isfinite(v)"
+        ).fetchone()
+        h = n // 2
+        if centred(below, above) and h >= 1:
+            # Each side fitted apart into at most half the count, and into no
+            # fewer classes holding a feature than plain quantile classes of
+            # that side's rows at half the count.
+            zero = b.breaks.index(0.0)
+            assert zero + 1 <= h, (b, below, above)
+            assert len(b.breaks) - zero <= h, (b, below, above)
+            assert len(counts) <= min(n, 2 * h), (b, counts)
+            for name, where, own in (
+                ("lo", "v < 0", counts[: zero + 1]),
+                ("hi", "v >= 0", counts[zero + 1 :]),
+            ):
+                con.execute(f"CREATE TABLE {name} AS SELECT v FROM t WHERE {where}")
+                key = ("breaks", "v", "quantile", str(h))
+                side = compute_stats(con, name, [key])[key]
+                then = held(con, side, name)
+                assert len(own) >= sum(1 for c in then if c), (b, name, own, then)
+        else:
+            today = plain(con, n)
+            then = held(con, today) if today.min is not None else []
+            assert len(counts) >= sum(1 for c in then if c), (b, counts, then)
+            # One half of the palette, the middle only for a class of 0 alone.
+            if b.positions:
+                steps = b.steps
+                assert len(b.positions) == len(counts)
+                assert all(0 <= p < steps for p in b.positions)
+                middle = steps // 2
+                sides = {p < middle for p in b.positions if p != middle}
+                assert len(sides) <= 1, b
+        if b.positions and 0.0 in b.breaks and centred(below, above):
             # A class from 0 that holds only zeros takes the middle color.
             h = n // 2
             i = b.breaks.index(0.0) + 1

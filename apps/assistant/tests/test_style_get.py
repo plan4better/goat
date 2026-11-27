@@ -506,11 +506,34 @@ async def test_a_class_that_holds_a_single_value_is_labelled_with_it() -> None:
     _quantile_districts(state)
     stored = state.styles[state.active_style_id(31)].document["classify"][0]
     first, last = stored["classes"][0]["id"], stored["classes"][-1]["id"]
+    stored["fit"] = True
     stored["computed"]["single"] = {first: 12.5, last: 9000.0, "zz": 1.0}
     result = await _get(_Services(state), layer_project_id=31)
     [legend] = result["legend"]
     assert legend["classes"][0]["label"] == number_text(12.5)
     assert legend["classes"][-1]["label"] == number_text(9000.0)
+    assert " to " in legend["classes"][1]["label"]
+
+
+async def test_single_values_without_fit_are_not_read() -> None:
+    state = MapState()
+    _quantile_districts(state)
+    stored = state.styles[state.active_style_id(31)].document["classify"][0]
+    stored["computed"]["single"] = {stored["classes"][0]["id"]: 12.5}
+    result = await _get(_Services(state), layer_project_id=31)
+    [legend] = result["legend"]
+    assert legend["classes"][0]["label"].startswith("below ")
+
+
+async def test_a_class_id_that_is_not_a_text_reads_its_range() -> None:
+    state = MapState()
+    _quantile_districts(state)
+    stored = state.styles[state.active_style_id(31)].document["classify"][0]
+    stored["fit"] = True
+    stored["computed"]["single"] = {stored["classes"][1]["id"]: 12.5}
+    stored["classes"][1]["id"] = ["not", "a", "text"]
+    result = await _get(_Services(state), layer_project_id=31)
+    [legend] = result["legend"]
     assert " to " in legend["classes"][1]["label"]
 
 

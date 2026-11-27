@@ -39,7 +39,9 @@ export function ResetToDataset({ paths }: { paths: Path[] }) {
       <IconButton
         aria-label={label}
         sx={{ my: -1 }}
-        onClick={() => store.update((doc) => resetParts(doc, reference, paths, geometry))}>
+        onClick={() =>
+          store.update((doc) => resetParts(doc, reference, paths, geometry), undefined, { replaces: true })
+        }>
         <Icon iconName={ICON_NAME.REFRESH} sx={{ fontSize: 16 }} />
       </IconButton>
     </Tooltip>

@@ -1278,9 +1278,12 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         `seed`), with the values the server computes filled from `relation`; as
         it is when they cannot be computed. Either way with the lowest GOAT Style
         version its keys need (`stamp`). With `fit` (the style the tool asks for
-        in this run), the class counts are fitted to the result first
-        (`fit_classes`), a classification left with one class is dropped, and
-        the classes get the decimals they need (`with_decimals`). With `fit`
+        in this run), a numeric classification without the style key `fit` has
+        its count fitted to the result first (`fit_classes`) and is dropped
+        where it is left with one class and no features without a value
+        (`without_single_classes`); one with the key `fit` is fitted by the
+        compute and keeps a class of one value. Then the classes get the
+        decimals they need (`with_decimals`). With `fit`
         and `safety_net`, a style the tool asked for that breaks a hard rule of
         the style contract for its result (`hard_problems`: a field the result
         lacks, a part its geometry cannot draw, a document that does not

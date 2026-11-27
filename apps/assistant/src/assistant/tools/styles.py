@@ -739,7 +739,8 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
         # had an error before.
         own = edits.written_pointers(document, args.operations, added)
     elif args.document is not None:
-        document = args.document
+        # Never fit where the stored style has none; settled as an edit is.
+        document = edits.whole(before, args.document)
     else:
         document = base
 

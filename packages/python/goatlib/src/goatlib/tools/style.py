@@ -29,7 +29,7 @@ from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
 from goatlib.style.compute import STABLE_DIGITS, Breaks
 from goatlib.style.context import DataContext
-from goatlib.style.data import compute_stats
+from goatlib.style.data import centred, compute_stats, signed_rows
 from goatlib.style.defaults import default_style
 from goatlib.style.ids import assign_ids
 from goatlib.style.models.classify import NUMERIC_METHODS
@@ -249,6 +249,16 @@ def read_range(
         return None, None
 
 
+def read_signed_rows(runner: Any, relation: str, field: str) -> tuple[int, int]:
+    """How many rows of `field` lie below 0 and above 0 (`signed_rows`), read
+    with the runner's connection; (0, 0) where the result cannot be read."""
+    try:
+        return signed_rows(runner.duckdb_con, relation, field)
+    except Exception:  # the ramp as it is
+        logger.warning("Reading the result's signed rows failed", exc_info=True)
+        return 0, 0
+
+
 #: The palette of a statistic whose values lie on both sides of 0: red below,
 #: blue above, its middle at 0 (`fit` centres classes on a diverging palette).
 SIGNED_PALETTE = "colorbrewer:RdBu"
@@ -271,8 +281,9 @@ def statistic_default(
     """The default of a statistics tool: its first statistic's column `field`
     (`numeric_default`) in the tool's sequential palette, turned around where
     the column holds only negative values, so the value farthest from 0 is the
-    darkest, and in `SIGNED_PALETTE` where it holds values on both sides of 0
-    (a count never does). The column's lowest and highest value are
+    darkest, and in `SIGNED_PALETTE` where both sides of 0 hold a real share
+    of its rows (`centred`; a count never does); with values on both sides but
+    no such share, as the side that holds most rows. The column's lowest and highest value are
     `value_range`, read from `relation` when not given. Polygons with
     `outline_areas` take no outline where the result's `columns` show H3
     cells (`on_h3_cells`). The columns are read from `relation` once, where
@@ -287,6 +298,12 @@ def statistic_default(
     low, high = value_range if signed and value_range else (None, None)
     reverse = low is not None and low < 0 and high <= 0
     crosses = low is not None and low < 0 < high
+    if crosses:
+        # Centred only with a real share on both sides; else as the side that
+        # holds most rows.
+        below, above = read_signed_rows(runner, relation, field)
+        reverse = below > above and not centred(below, above)
+        crosses = centred(below, above)
     if columns is not None and on_h3_cells(columns=columns):
         outline_areas = False
     return numeric_default(
@@ -351,19 +368,19 @@ def _single_value_decimals(value: float) -> int:
     return max(own, decimals_for([value], [value, value]))
 
 
-#: The significant digits a class's single value shows, within
-#: `SINGLE_VALUE_DECIMALS`: a label of one number states that number.
+#: The significant digits a value shown alone (a class's single value) reads.
 SINGLE_VALUE_DIGITS = 3
 
 
-def _value_decimals(value: float) -> int:
-    """The fewest decimals, at most `SINGLE_VALUE_DECIMALS`, that read `value`
-    to its first `SINGLE_VALUE_DIGITS` significant digits (10.5 one, 84.56 one,
-    1234.5 none, 30 none)."""
-    if value == 0:
+def value_decimals(value: float) -> int:
+    """The decimals a value shown alone reads with: the fewest that show its
+    first `SINGLE_VALUE_DIGITS` significant digits as they round, never more
+    than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789 one, 1234.5
+    none, 0.087 three, 0.00318 five, 30 none)."""
+    if value == 0 or not math.isfinite(value):
         return 0
     whole = math.floor(math.log10(abs(value))) + 1
-    wanted = min(SINGLE_VALUE_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
+    wanted = min(MAX_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
     exact = _rounded(value, wanted)
     return next(d for d in range(wanted + 1) if _rounded(value, d) == exact)
 
@@ -386,11 +403,12 @@ def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
     that has classes and no format of its own: the decimals its class breaks,
-    the values of the classes that hold one (`computed.single`) and its
-    domain's ends need (`decimals_for`), and at least those that read each such
-    value to its first digits (`_value_decimals`): a label of one number
-    states that number. A single class over one value has no break and takes
-    the decimals of that value (`_single_value_decimals`)."""
+    the values of the classes that hold one (`computed.single`, read with
+    `fit` only) and its
+    domain's ends need (`decimals_for`), and at least those each such value
+    reads with when shown alone (`value_decimals`). A single class over one
+    value has no break and takes the decimals of that value: as a value shown
+    alone with `fit`, else `_single_value_decimals`."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -406,14 +424,15 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
         ):
             breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
-            single = (c.get("computed") or {}).get("single")
+            fitted = c.get("fit") is True
+            single = (c.get("computed") or {}).get("single") if fitted else None
             values = _finite(single.values()) if isinstance(single, dict) else set()
             breaks += _as_bounds(values, [*breaks, *domain])
             one = _finite(domain)
             decimals = (
-                _single_value_decimals(next(iter(one)))
+                (value_decimals if fitted else _single_value_decimals)(next(iter(one)))
                 if len(c["classes"]) == 1 and len(one) == 1
-                else max([decimals_for(breaks, domain), *map(_value_decimals, values)])
+                else max([decimals_for(breaks, domain), *map(value_decimals, values)])
             )
             c = {**c, "format": {"decimals": decimals}}
             changed = True

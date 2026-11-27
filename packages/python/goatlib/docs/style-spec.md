@@ -1339,16 +1339,16 @@ AI never set it. `count` is then the most classes, not a fixed number:
   quantile classes would lose a class (two breaks on the same value, or a break on the lowest or highest value) gets a
   class of its own, from the value to the next. Where quantile classes lose none, the classes are theirs. Values alike
   to 12 significant digits count as one value (one class, one break).
-- **Centre at 0:** with a diverging palette (a catalogue palette of kind `diverging`) over data on both sides of 0, the
-  values below 0 and those from 0 up are fitted apart, each into at most half of `count`, and 0 is a break. The
-  classes below 0 take the palette's colors before its middle, those above 0 the colors after it, and a class that
-  holds 0 alone the middle color. Switching to or from a diverging palette turns the centre on or off.
+- **Centre at 0:** with a diverging palette (catalogue kind `diverging`) and at least 5% of the rows other than 0 on
+  each side of 0, the values below 0 and from 0 up are fitted apart into at most half of `count` each, 0 is a break,
+  and classes take the colors before the middle (below 0), after it (above 0) or the middle (0 alone). Otherwise they
+  take the half on the side with most rows, the middle only for 0 alone. Switching the palette turns this on or off.
 - **Every compute fits again,** so a result that gains values gets its classes back; `count` stays as written. Fewer
   classes than `count` are by design and give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on
   other methods.
-- **Legend:** a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also once a class
-  edit made the classes `manual`: the server records the value with every compute, so a class that comes to hold two
-  values reads its range again.
+- **Legend:** with `fit`, a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also
+  once a class edit made the classes `manual`: recorded with every compute (a closed first or last class leaves the
+  values beyond it out), so a class that comes to hold two values reads its range again.
 - **Edits:** choosing a field, a count or a method other than `manual` removes `fit`, and the classes compute as asked
   from then on. A change to one class (its color, name, visibility, zooms or a part, not its bounds) keeps the classes
   as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes nothing in how

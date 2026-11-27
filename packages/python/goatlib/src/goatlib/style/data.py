@@ -236,7 +236,10 @@ def compute_stats(
                 result.breaks, result.min, result.max, expected
             )
         elif kind == "single" and numeric:
-            out[key] = class_singles(con, relation, field, [float(b) for b in key[2:]])
+            low, high = (float(b) if b else None for b in key[2:4])
+            out[key] = class_singles(
+                con, relation, field, [float(b) for b in key[4:]], low=low, high=high
+            )
         elif kind == "top" and ftype is not None:
             uv = calculate_unique_values(
                 con, relation, field, order=SortOrder.descendent, limit=int(key[2])
@@ -260,10 +263,16 @@ def compute_stats(
 _FLOOR = Context(prec=STABLE_DIGITS, rounding=ROUND_FLOOR)
 
 
+def _zero(value: Any) -> Any:
+    """`value` with a negative zero as 0: -0.0 and 0.0 are one value, and which
+    one the data gives back depends on the order of its rows."""
+    return 0.0 if value == 0 and isinstance(value, float) else value
+
+
 def _held(value: float) -> float:
     """A break on a data value, `stable`, and never above the value: rounded up,
     it would leave the value's features in the class below."""
-    rounded = stable(value)
+    rounded = _zero(stable(value))
     return rounded if rounded <= value else float(_FLOOR.plus(Decimal(value)))
 
 
@@ -451,6 +460,53 @@ def _fitted_rest(
     return best[1] if best is not None else None
 
 
+#: The share of the rows with a value other than 0 that each side of 0 holds at
+#: least for classes to be centred at 0 (a diverging palette's middle): with
+#: fewer on one side, the classes are those of the other side's data.
+CENTRE_SHARE = 0.05
+
+
+def centred(below: int, above: int) -> bool:
+    """Whether rows below 0 (`below`) and above 0 (`above`) both hold a real
+    share: at least `CENTRE_SHARE` of the rows with a value other than 0."""
+    total = below + above
+    return total > 0 and min(below, above) >= CENTRE_SHARE * total
+
+
+def signed_rows(
+    con: duckdb.DuckDBPyConnection, relation: str, field: str
+) -> tuple[int, int]:
+    """How many rows of `relation` hold a finite value of `field` below 0, and
+    how many above 0."""
+    column = quote_identifier(field)
+    value = f"CAST({column} AS DOUBLE)"
+    below, above = con.execute(
+        f"""SELECT count(*) FILTER (WHERE {value} < 0),
+                   count(*) FILTER (WHERE {value} > 0)
+            FROM {relation} WHERE {column} IS NOT NULL AND isfinite({column})"""
+    ).fetchone()
+    return int(below), int(above)
+
+
+def _one_side(
+    n: int, below: int, above: int, singles: tuple[float | None, ...]
+) -> tuple[tuple[int, ...], int]:
+    """The places of `n` classes in a diverging palette that is not centred,
+    and the palette's steps: the half on the side with more rows (`below`,
+    `above`), the middle color only for a class that holds 0 alone, next to
+    the half."""
+    up = above >= below
+    edge = singles[0] if up else singles[-1]
+    zero = bool(singles) and edge == 0
+    m = n - zero
+    places = (
+        (*((m,) if zero else ()), *range(m + 1, 2 * m + 1))
+        if up
+        else (*range(m), *((m,) if zero else ()))
+    )
+    return places, 2 * m + 1
+
+
 def fitted_breaks(
     con: duckdb.DuckDBPyConnection,
     relation: str,
@@ -461,13 +517,18 @@ def fitted_breaks(
 ) -> Breaks:
     """Quantile classes fitted to the data (`fit`, the specification's 5.2): at
     most `count`, every class holding a feature (`_fit`). With `centre` (a
-    diverging palette) and values on both sides of 0, the values below 0 and
-    those from 0 up are fitted apart, each into at most `count // 2` classes;
-    0 is a break, and each class's place in the palette (`Breaks.positions`)
-    gives the classes below 0 the colors before the middle one, a class that
-    holds 0 alone the middle one, and the classes above 0 those after it."""
+    diverging palette) and a real share of the rows on both sides of 0
+    (`centred`), the values below 0 and those from 0 up are fitted apart, each
+    into at most `count // 2` classes; 0 is a break, and each class's place in
+    the palette (`Breaks.positions`) gives the classes below 0 the colors before
+    the middle one, a class that holds 0 alone the middle one, and the classes
+    above 0 those after it. With `centre` and no such share, the classes are
+    fitted as without it and take the half of the palette on the side that
+    holds most rows (`_one_side`). Zero is never negative in what this
+    returns."""
     half = count // 2
-    if centre and half >= 1:
+    below_rows, above_rows = signed_rows(con, relation, field) if centre else (0, 0)
+    if centre and half >= 1 and centred(below_rows, above_rows):
         column = f"CAST({quote_identifier(field)} AS DOUBLE)"
         below = _fit(con, relation, field, half, f"{column} < 0")
         above = _fit(con, relation, field, half, f"{column} >= 0")
@@ -499,8 +560,19 @@ def fitted_breaks(
         if whole.values is not None
         else class_singles(con, relation, field, whole.breaks)
     )
+    places, steps = (
+        _one_side(len(whole.breaks) + 1, below_rows, above_rows, singles)
+        if centre
+        else ((), 0)
+    )
     return Breaks(
-        whole.breaks, stable(whole.min), stable(whole.max), False, (), singles
+        whole.breaks,
+        _zero(stable(whole.min)),
+        _zero(stable(whole.max)),
+        False,
+        places,
+        singles,
+        steps,
     )
 
 
@@ -521,7 +593,9 @@ def _singles(
         lows[index] = min(low, lows.get(index, low))
         highs[index] = max(high, highs.get(index, high))
     return tuple(
-        stable(lows[i]) if i in lows and stable(lows[i]) == stable(highs[i]) else None
+        _zero(stable(lows[i]))
+        if i in lows and stable(lows[i]) == stable(highs[i])
+        else None
         for i in range(classes)
     )
 
@@ -531,17 +605,24 @@ def class_singles(
     relation: str,
     field: str,
     breaks: tuple[float, ...] | list[float],
+    *,
+    low: float | None = None,
+    high: float | None = None,
 ) -> tuple[float | None, ...]:
     """Per class of `breaks` (from inclusive, to exclusive), the one value it
-    holds (`_singles`): one query over the field's finite values."""
+    holds (`_singles`): one query over the field's finite values. A first class
+    that starts at `low` and a last one that ends at `high` (exclusive) leave
+    the values beyond them out: they are in no class."""
     column = quote_identifier(field)
     value = f"CAST({column} AS DOUBLE)"
     rows = con.execute(
         f"""SELECT len(list_filter(?::DOUBLE[], b -> b <= {value})) AS i,
                    min({value}), max({value})
             FROM {relation} WHERE {column} IS NOT NULL AND isfinite({column})
+              AND (?::DOUBLE IS NULL OR {value} >= ?::DOUBLE)
+              AND (?::DOUBLE IS NULL OR {value} < ?::DOUBLE)
             GROUP BY i""",
-        [list(breaks)],
+        [list(breaks), low, low, high, high],
     ).fetchall()
     return _singles(rows, len(breaks) + 1)
 

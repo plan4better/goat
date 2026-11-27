@@ -3900,5 +3900,353 @@
     }
    ]
   }
+ },
+ {
+  "name": "a retarget that moves the class values keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "outline": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "outline": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.color"
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "outline": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "outline": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.color"
+    }
+   ]
+  }
+ },
+ {
+  "name": "manual chosen by the method alone drops count and the values the server wrote",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
  }
 ]

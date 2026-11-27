@@ -127,6 +127,36 @@ describe("reset to the dataset's style", () => {
     expect(store.get("symbol.fill")).toEqual({ color: "#d7301f" });
   });
 
+  it("puts the dataset's classes fitted to the data back as they are, fit included", async () => {
+    const fitted = {
+      id: "v",
+      field: "v",
+      method: "quantile",
+      count: 7,
+      fit: true,
+      palette: "colorbrewer:Blues",
+      classes: [
+        { id: "c1", to: 4, fill: { color: "#deebf7" } },
+        { id: "c2", from: 4, fill: { color: "#3182bd" } },
+      ],
+      computed: {
+        data: "f1",
+        domain: [0, 9],
+        generated: { target: "fill.color", values: { c1: "#deebf7", c2: "#3182bd" } },
+      },
+    };
+    dataset.style = { document: { ...DATASET_DOC, classify: [fitted] } };
+    // The count picked in the panel: the classes compute as any others, without fit.
+    const { fit: _fit, ...counted } = { ...fitted, count: 5 };
+    const { store } = setup(
+      { fill: { color: "#2bb381", opacity: 0.8 }, outline: false },
+      { classify: [counted] }
+    );
+    await openGroup("style_editor.part_fill");
+    await userEvent.click(screen.getByRole("button", { name: RESET }));
+    expect(store.get("classify")).toEqual([fitted]);
+  });
+
   it("goes back to the built-in default for a dataset without a default style", async () => {
     dataset.style = undefined;
     dataset.error = { status: 404 };

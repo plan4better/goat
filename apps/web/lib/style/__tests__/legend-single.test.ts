@@ -68,6 +68,16 @@ describe("a class that holds a single value", () => {
     expect(entries(classification({ single: { zz: 3 } }))).toEqual(before);
   });
 
+  it("a classification without fit reads its ranges, single values or not", () => {
+    const { fit: _fit, ...plain } = classification(single);
+    expect(entries(plain).map((e) => e.range)).toEqual([
+      { to: 1 },
+      { from: 1, to: 1500.5 },
+      { from: 1500.5 },
+    ]);
+    expect(classRange(plain, plain.classes[2])).toEqual({ from: 1500.5 });
+  });
+
   it("classRange reads the class's own bounds without the key", () => {
     const c = classification(single);
     expect(classRange(c, c.classes[1])).toEqual({ from: 1, to: 1500.5 });

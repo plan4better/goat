@@ -34,6 +34,7 @@ import {
   classRange,
   labelRange,
   rangeText,
+  singleValue,
   valuesText,
 } from "@/lib/style/legend";
 
@@ -614,7 +615,10 @@ export function ClassList({
             record={i}
             target={target}
             label={
-              bounds && i > 0 ? rangeAfterBound(record, rangeOptions(c, t, i18n.language), t) : auto(record)
+              // After a typed bound the rest of the range, or the one value the class holds, as the legend reads it.
+              bounds && i > 0 && singleValue(c, record) === undefined
+                ? rangeAfterBound(record, rangeOptions(c, t, i18n.language), t)
+                : auto(record)
             }
             range={auto(record)}
             count={counts?.classes?.[i]}

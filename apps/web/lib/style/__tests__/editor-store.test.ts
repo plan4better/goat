@@ -378,4 +378,41 @@ describe("EditorStore and classes fitted to the data", () => {
     expect(store.get("classify.0.fit")).toBeUndefined();
     expect(store.get("classify.0.count")).toBe(5);
   });
+
+  it("a whole document put in place is taken as it is, fit included, as one undo step", () => {
+    const [colored] = fitEditCases();
+    const fitted = structuredClone(colored.before) as LayerStyle;
+    const { store } = storeOf(structuredClone(fitted));
+    store.set("classify.0.count", 5);
+    const counted = store.document;
+    store.update(() => structuredClone(fitted), undefined, { replaces: true });
+    expect(store.document).toEqual(fitted);
+    store.undo();
+    expect(store.document).toBe(counted);
+    store.redo();
+    expect(store.document).toEqual(fitted);
+  });
+
+  it("classes recolored, then the whole document put back, keep fit and the server's colors", () => {
+    const [colored] = fitEditCases();
+    const fitted = structuredClone(colored.before) as LayerStyle;
+    const { store } = storeOf(structuredClone(fitted));
+    store.set("classify.0.classes.0.fill.color", "#ff0000");
+    expect(store.get("classify.0.method")).toBe("manual");
+    store.update(() => structuredClone(fitted), undefined, { replaces: true });
+    expect(store.document).toEqual(fitted);
+  });
+
+  it("a document without fit put in place is the very document given, as an edit's is", () => {
+    const [colored] = fitEditCases();
+    const plain = structuredClone(colored.before);
+    delete plain.classify[0].fit;
+    const { store } = storeOf(structuredClone(plain));
+    const replacement = { ...structuredClone(plain), opacity: 0.5 } as LayerStyle;
+    store.update(() => replacement, undefined, { replaces: true });
+    expect(store.document).toBe(replacement);
+    const edited = { ...structuredClone(plain), opacity: 0.4 } as LayerStyle;
+    store.update(() => edited);
+    expect(store.document).toBe(edited);
+  });
 });

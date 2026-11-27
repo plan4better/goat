@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { layerReducer, setStyleClipboard } from "@/lib/store/layer/slice";
+import { setIn } from "@/lib/style/editor/paths";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { StyleSaver } from "@/lib/style/save";
@@ -38,6 +39,33 @@ vi.mock("react-toastify", () => ({ toast }));
 const POLYGON = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const POINT = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#ff0000" } } } as LayerStyle;
 
+/** A tool's result: quantile classes fitted to its data, with the colors and single values the server wrote. */
+const FITTED = {
+  version: "1.0.0",
+  kind: "vector",
+  symbol: { fill: { color: "#cccccc" } },
+  classify: [
+    {
+      id: "v",
+      field: "v",
+      method: "quantile",
+      count: 7,
+      fit: true,
+      palette: "colorbrewer:Blues",
+      classes: [
+        { id: "c1", to: 4, fill: { color: "#deebf7" } },
+        { id: "c2", from: 4, fill: { color: "#3182bd" } },
+      ],
+      computed: {
+        data: "f1",
+        domain: [0, 9],
+        generated: { target: "fill.color", values: { c1: "#deebf7", c2: "#3182bd" } },
+        single: { c2: 9 },
+      },
+    },
+  ],
+} as unknown as LayerStyle;
+
 const layerWith = (others: string[], position = 0) =>
   ({
     id: 5,
@@ -51,10 +79,10 @@ const layerWith = (others: string[], position = 0) =>
     otherStyles: others.map((name, i) => ({ id: `o${i}`, name })),
   }) as unknown as MapLayer;
 
-function setup(layer: MapLayer, opts: { canSetDefault?: boolean } = {}) {
+function setup(layer: MapLayer, opts: { canSetDefault?: boolean; document?: LayerStyle } = {}) {
   const reduxStore = configureStore({ reducer: { layers: layerReducer } });
   const editor = new EditorStore({
-    saver: new StyleSaver({ transport: echoTransport(), document: POLYGON, revision: 1 }),
+    saver: new StyleSaver({ transport: echoTransport(), document: opts.document ?? POLYGON, revision: 1 }),
   });
   const onSwitch = vi.fn(async () => undefined);
   const onChanged = vi.fn(async () => undefined);
@@ -296,6 +324,81 @@ describe("named styles", () => {
     expect(screen.queryByRole("button", { name: "style_editor.reset_to_dataset" })).toBeNull();
   });
 
+  it("the whole-style reset of fitted classes after a count picked brings them back fitted", async () => {
+    ds.dataset = FITTED;
+    const { editor } = setup(layerWith([]), { document: structuredClone(FITTED) });
+    act(() => editor.set("classify.0.count", 5));
+    expect(editor.get("classify.0.fit")).toBeUndefined();
+    await openStyles();
+    await openMenu();
+    await userEvent.click(item("style_editor.reset_to_dataset"));
+    expect(editor.document).toEqual(FITTED);
+  });
+
+  it("the whole-style reset after another palette was computed brings the fitted classes back as they were", async () => {
+    ds.dataset = FITTED;
+    // Another palette picked and computed: the server wrote its colors into the classes.
+    const greens = { c1: "#e5f5e0", c2: "#31a354" };
+    let recolored = setIn(structuredClone(FITTED), "classify.0.palette", "colorbrewer:Greens");
+    recolored = setIn(recolored, "classify.0.computed.generated.values", greens);
+    recolored = setIn(recolored, "classify.0.classes.0.fill.color", greens.c1);
+    recolored = setIn(recolored, "classify.0.classes.1.fill.color", greens.c2);
+    const { editor } = setup(layerWith([]), { document: recolored });
+    await openStyles();
+    await openMenu();
+    await userEvent.click(item("style_editor.reset_to_dataset"));
+    expect(editor.document).toEqual(FITTED);
+  });
+
+  it("a fitted style pasted onto fitted classes is taken as it is, and undo restores the classes before", async () => {
+    const other = structuredClone(FITTED) as unknown as { classify: Array<Record<string, unknown>> };
+    // Another result of the same tool: three classes, so other colors on the same ids.
+    other.classify[0].classes = [
+      { id: "c1", to: 1, fill: { color: "#eff3ff" } },
+      { id: "c2", from: 1, to: 2, fill: { color: "#6baed6" } },
+      { id: "c3", from: 2, fill: { color: "#08519c" } },
+    ];
+    other.classify[0].computed = {
+      data: "f2",
+      domain: [0, 5],
+      generated: { target: "fill.color", values: { c1: "#eff3ff", c2: "#6baed6", c3: "#08519c" } },
+      single: { c1: 0, c2: 1 },
+    };
+    const pasted = other as unknown as LayerStyle;
+    const { reduxStore, editor } = setup(layerWith([]), { document: structuredClone(FITTED) });
+    act(() => {
+      reduxStore.dispatch(
+        setStyleClipboard({
+          sourceLayerName: "Result 2",
+          document: pasted,
+          kind: "vector",
+          geometry: "polygon",
+        })
+      );
+    });
+    await openStyles();
+    await userEvent.click(button("style_editor.paste_style"));
+    expect(editor.document).toEqual(pasted);
+    act(() => editor.undo());
+    expect(editor.document).toEqual(FITTED);
+  });
+
+  it("a style without fit pasted is the very document copied", async () => {
+    const plain = structuredClone(FITTED) as unknown as { classify: Array<Record<string, unknown>> };
+    delete plain.classify[0].fit;
+    delete (plain.classify[0].computed as Record<string, unknown>).single;
+    const copied = { ...structuredClone(plain), opacity: 0.5 } as unknown as LayerStyle;
+    const { reduxStore, editor } = setup(layerWith([]), { document: plain as unknown as LayerStyle });
+    act(() => {
+      reduxStore.dispatch(
+        setStyleClipboard({ sourceLayerName: "Parks", document: copied, kind: "vector", geometry: "polygon" })
+      );
+    });
+    await openStyles();
+    await userEvent.click(button("style_editor.paste_style"));
+    expect(editor.document).toBe(reduxStore.getState().layers.styleClipboard?.document);
+  });
+
   it("copy and paste are the panel's text buttons, not outlined boxes", async () => {
     setup(layerWith([]));
     await openStyles();
@@ -319,7 +422,11 @@ describe("named styles", () => {
         copy_from: "a",
       });
     } finally {
-      i18n.removeResourceBundle("en", "common");
+      // Only the keys this test added: later tests keep the bundle.
+      const words = (i18n.getResourceBundle("en", "common") as { style_editor: Record<string, string> })
+        .style_editor;
+      delete words.copy_of;
+      delete words.style_more;
     }
   });
 });

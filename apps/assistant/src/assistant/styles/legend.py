@@ -249,7 +249,12 @@ def _counted(document: dict[str, Any]) -> list[_Counted]:
         if method != "categories" and breaks is None:
             continue
         computed = c.get("computed")
-        single = computed.get("single") if isinstance(computed, dict) else None
+        # Single values are read for classes fitted to the data only.
+        single = (
+            computed.get("single")
+            if isinstance(computed, dict) and c.get("fit") is True
+            else None
+        )
         found.append(
             _Counted(
                 to_pointer(["classify", item_key(c, index)]),

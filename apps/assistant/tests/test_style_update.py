@@ -1345,6 +1345,195 @@ async def test_a_replace_pick_counts_only_for_the_request_it_answered() -> None:
     assert result.revision_after == 2
 
 
+# ---- fit in a whole document -----------------------------------------------------
+
+FITTED = {
+    "id": "density",
+    "field": "density",
+    "method": "quantile",
+    "count": 7,
+    "fit": True,
+    "palette": "colorbrewer:OrRd",
+}
+
+
+def _fitted_districts(state: MapState) -> str:
+    """Districts with a tool's classes fitted to the data, stored; the style's id."""
+    document = _document(state, state.active_style_id(31))
+    document["classify"] = [dict(FITTED)]
+    _save(state, 31, document)
+    return state.active_style_id(31)
+
+
+def _as_written(document: dict[str, Any]) -> dict[str, Any]:
+    """A stored document as the model writes it whole: no computed values, no
+    classes of a computed method."""
+    out = copy.deepcopy(document)
+    for c in out.get("classify") or []:
+        c.pop("computed", None)
+        if c.get("method") != "manual":
+            c.pop("classes", None)
+    return out
+
+
+async def test_a_whole_new_style_never_carries_fit() -> None:
+    state = MapState()
+    services = _Services(state)
+    document = _document(state, state.active_style_id(31))
+    document["classify"] = [dict(FITTED)]
+    with pytest.raises(InputInvalid) as raised:
+        await _update(
+            services,
+            layer_project_id=31,
+            new_style={"name": "Fitted", "asked": "as a new style"},
+            document=document,
+        )
+    assert "/classify/density/fit" in raised.value.message
+    assert services.writes() == []
+
+
+async def test_a_replace_never_adds_fit_where_the_stored_style_has_none() -> None:
+    state = MapState()
+    active = state.active_style_id(31)
+    document = _document(state, active)
+    document["classify"] = [{**FITTED, "fit": False}]
+    _save(state, 31, document)
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    replacement = _as_written(_document(state, active))
+    replacement["classify"][0]["fit"] = True
+    with pytest.raises(InputInvalid) as raised:
+        await _update(
+            services, layer_project_id=31, style_id=active, document=replacement
+        )
+    assert "/classify/density/fit" in raised.value.message
+    assert services.writes() == []
+    # A classification the stored style has not, by id or by place.
+    replacement = _as_written(_document(state, active))
+    replacement["classify"].append({**FITTED, "id": "more", "target": "outline.width"})
+    with pytest.raises(InputInvalid, match="/classify/more/fit"):
+        await _update(
+            services, layer_project_id=31, style_id=active, document=replacement
+        )
+    assert services.writes() == []
+
+
+async def test_a_replace_of_fitted_classes_settles_fit_as_an_edit_does() -> None:
+    state = MapState()
+    active = _fitted_districts(state)
+    stored = _document(state, active)
+    assert stored["classify"][0]["fit"] is True
+    # A new count: the classes compute as asked, without fit.
+    replacement = _as_written(stored)
+    replacement["classify"][0]["count"] = 5
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=replacement)
+    saved = state.styles[active].document["classify"][0]
+    assert (saved["count"], "fit" in saved) == (5, False)
+    assert "fit" not in services.body("POST", "/check")["document"]["classify"][0]
+
+
+async def test_a_replace_that_keeps_the_fitted_classes_keeps_fit() -> None:
+    state = MapState()
+    active = _fitted_districts(state)
+    replacement = _as_written(_document(state, active))
+    replacement["classify"][0]["title"] = "Density"
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=replacement)
+    saved = state.styles[active].document["classify"][0]
+    assert (saved["title"], saved["fit"], saved["count"]) == ("Density", True, 7)
+
+
+async def test_a_replace_that_recolors_one_fitted_class_keeps_every_class() -> None:
+    """One class listed with a change and no bounds lies over the stored
+    classes by id, as an operation would: the classes stay as they are,
+    manual, with that one color changed."""
+    state = MapState()
+    active = _fitted_districts(state)
+    stored = _document(state, active)["classify"][0]
+    first = stored["classes"][0]["id"]
+    replacement = _as_written(_document(state, active))
+    replacement["classify"][0]["classes"] = [
+        {"id": first, "fill": {"color": "#ff0000"}}
+    ]
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=replacement)
+    saved = state.styles[active].document["classify"][0]
+    assert (saved["method"], saved["fit"]) == ("manual", True)
+    expected = copy.deepcopy(stored["classes"])
+    expected[0]["fill"]["color"] = "#ff0000"
+    assert saved["classes"] == expected
+
+
+async def test_a_replace_listing_a_class_id_the_stored_style_has_not_is_taken_as_written() -> (
+    None
+):
+    state = MapState()
+    active = _fitted_districts(state)
+    count = len(_document(state, active)["classify"][0]["classes"])
+    replacement = _as_written(_document(state, active))
+    replacement["classify"][0]["classes"] = [
+        {"id": "nope", "fill": {"color": "#ff0000"}}
+    ]
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=replacement)
+    saved = state.styles[active].document["classify"][0]
+    # No stored class changed: the classes stay fitted and the server computes them.
+    assert (saved["method"], saved["fit"], len(saved["classes"])) == (
+        "quantile",
+        True,
+        count,
+    )
+    assert "nope" not in [k["id"] for k in saved["classes"]]
+
+
+async def test_a_replace_with_classes_of_its_own_bounds_is_taken_as_written() -> None:
+    state = MapState()
+    active = _fitted_districts(state)
+    stored = _document(state, active)["classify"][0]["classes"]
+    replacement = _as_written(_document(state, active))
+    own = [
+        {"id": stored[0]["id"], "to": 2000, "fill": {"color": "#ff0000"}},
+        {"id": stored[1]["id"], "from": 2000, "to": 4000, "fill": {"color": "#00ff00"}},
+        {"id": stored[2]["id"], "from": 4000, "fill": {"color": "#0000ff"}},
+    ]
+    replacement["classify"][0]["classes"] = own
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=replacement)
+    saved = state.styles[active].document["classify"][0]
+    assert (saved["method"], saved["fit"]) == ("manual", True)
+    assert saved["classes"] == own
+
+
+async def test_computed_values_in_a_whole_document_are_the_servers() -> None:
+    """A whole document's computed values are not stored: the server computes
+    its own, `single` included, for a new style and a replaced one."""
+    state = MapState()
+    active = state.active_style_id(31)
+    document = _document(state, active)
+    stamp = {"at": "2026-01-01T00:00:00Z", "data": "elsewhere", "scope": "dataset"}
+    document["classify"] = [
+        {
+            "id": "density",
+            "field": "density",
+            "method": "manual",
+            "classes": [{"id": "a", "to": 1000}, {"id": "b", "from": 1000}],
+            "computed": {**stamp, "domain": [0, 1], "single": {"a": 1.0}},
+        }
+    ]
+    created = await _run(
+        _Services(state),
+        layer_project_id=31,
+        new_style={"name": "Copied", "asked": "as a new style"},
+        document=document,
+    )
+    services = _Services(state, asks=_picked(f"replace_style:{active}"))
+    await _run(services, layer_project_id=31, style_id=active, document=document)
+    for style_id in (created.style_id, active):
+        computed = state.styles[style_id].document["classify"][0]["computed"]
+        assert "single" not in computed
+        assert computed["data"] != "elsewhere" and computed["domain"] != [0, 1]
+
+
 async def test_too_many_styles_lets_the_card_offer_each_replacement() -> None:
     state = MapState()
     for n in range(9):

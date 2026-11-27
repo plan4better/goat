@@ -245,6 +245,45 @@ describe("classification edits", () => {
     ).toBeUndefined();
   });
 
+  it("a moved break drops the single value of the two classes it touches at once, the others stay", () => {
+    const d = doc({
+      classify: [
+        {
+          id: "c",
+          field: "density",
+          method: "manual",
+          fit: true,
+          classes: [
+            { id: "a", to: 1 },
+            { id: "b", from: 1, to: 2 },
+            { id: "c", from: 2, to: 5 },
+            { id: "d", from: 5 },
+          ],
+          computed: { at: "x", domain: [0, 9], single: { a: 0, b: 1, c: 2, d: 9 } },
+        },
+      ],
+    });
+    expect(classify(setManualBound(d, 0, 2, 3))[0].computed).toEqual({
+      at: "x",
+      domain: [0, 9],
+      single: { a: 0, d: 9 },
+    });
+    // No single value left: the key goes.
+    const two = doc({
+      classify: [
+        {
+          ...classify(d)[0],
+          classes: [
+            { id: "a", to: 1 },
+            { id: "b", from: 1 },
+          ],
+          computed: { at: "x", domain: [0, 9], single: { b: 1 } },
+        },
+      ],
+    });
+    expect(classify(setManualBound(two, 0, 1, 2))[0].computed).toEqual({ at: "x", domain: [0, 9] });
+  });
+
   it("removes and moves classifications", () => {
     const d = doc({
       classify: [

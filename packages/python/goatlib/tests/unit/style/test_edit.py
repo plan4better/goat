@@ -964,3 +964,23 @@ def test_the_palette_set_by_an_edit_keeps_fit() -> None:
     ).document
     assert doc["classify"][0]["fit"] is True
     assert doc["classify"][0]["method"] == "quantile"
+
+
+def test_a_retarget_by_an_edit_keeps_fit_and_the_computed_classes() -> None:
+    doc = run(
+        FITTED, {"op": "retarget", "path": "/classify/v", "target": "outline.color"}
+    ).document
+    c = doc["classify"][0]
+    assert (c["method"], c["count"], c["fit"]) == ("quantile", 7, True)
+    assert c["target"] == "outline.color"
+    assert c["classes"][0]["outline"] == {"color": "#deebf7"}
+
+
+def test_manual_chosen_by_an_edit_drops_count_and_the_values_the_server_wrote() -> None:
+    doc = run(
+        FITTED, {"op": "set", "path": "/classify/v/method", "value": "manual"}
+    ).document
+    c = doc["classify"][0]
+    assert (c["method"], c["fit"], "count" in c) == ("manual", True, False)
+    assert "generated" not in c["computed"] and c["computed"]["domain"] == [0, 9]
+    assert c["classes"] == FITTED["classify"][0]["classes"]
