@@ -35,6 +35,7 @@ from goatlib.style.compute import (
     needed_stats,
     settled_class_keys,
     stable,
+    without_single,
 )
 from goatlib.style.context import DataContext, FieldInfo, FieldType
 from goatlib.style.cql import as_text
@@ -235,11 +236,6 @@ def compute_stats(
             out[key] = breaks_for_classes(
                 result.breaks, result.min, result.max, expected
             )
-        elif kind == "single" and numeric:
-            low, high = (float(b) if b else None for b in key[2:4])
-            out[key] = class_singles(
-                con, relation, field, [float(b) for b in key[4:]], low=low, high=high
-            )
         elif kind == "top" and ftype is not None:
             uv = calculate_unique_values(
                 con, relation, field, order=SortOrder.descendent, limit=int(key[2])
@@ -276,10 +272,15 @@ def _held(value: float) -> float:
     return rounded if rounded <= value else float(_FLOOR.plus(Decimal(value)))
 
 
-def _cuts(values: Any, low: float) -> tuple[float, ...]:
+def _cuts(values: Any, low: float, high: float | None = None) -> tuple[float, ...]:
     """Breaks on data `values` (`_held`), sorted, each once, above the minimum
-    `low`: values that read alike to 12 digits are one."""
-    return tuple(sorted({b for b in map(_held, values) if b > low}))
+    `low` and, with `high`, below that maximum: no class starts at the
+    maximum, which stays in the last class with the values below it. Values
+    that read alike to 12 digits are one."""
+    top = _held(high) if high is not None else None
+    return tuple(
+        sorted({b for b in map(_held, values) if b > low and (top is None or b < top)})
+    )
 
 
 @dataclass(frozen=True)
@@ -301,6 +302,8 @@ def _fit(
     field: str,
     n: int,
     side: str = "TRUE",
+    *,
+    top: bool = True,
 ) -> _Fitted:
     """At most `n` quantile classes over the field's finite values that meet
     `side`, each holding a feature (the specification's 5.2, "Fit to the
@@ -308,13 +311,15 @@ def _fit(
     a value on which quantile classes would lose a class gets a class of its
     own (`_own_values`), and the other values take quantile breaks moved up
     onto their next value (`_fitted_rest`). Where those make more than `n`
-    classes in all, the least frequent own value gives its class back."""
+    classes in all, the least frequent own value gives its class back. With
+    `top` (the values hold the data's maximum) no break falls on the maximum:
+    the last class holds it and the values below it, and reads as a range."""
     column = quote_identifier(field)
     value = f"CAST({column} AS DOUBLE)"
     rows = f"{column} IS NOT NULL AND isfinite({column}) AND ({side})"
     # The values are read only up to one more than `n`: all of them where
     # there are at most `n`.
-    low, high, after_low, top = con.execute(
+    low, high, after_low, values = con.execute(
         f"""SELECT min(v), max(v),
                    min(v) FILTER (WHERE v > (
                        SELECT min({value}) FROM {relation} WHERE {rows})),
@@ -326,13 +331,16 @@ def _fit(
     ).fetchone()
     if low is None:
         return _Fitted((), None, None)
-    if len(top) <= n:
-        breaks = _cuts(top, low)
-        return _Fitted(breaks, low, high, bool(breaks), tuple(top))
-    own, known = _own_values(con, relation, field, side, n)
+    closed = high if top else None
+    if len(values) <= n:
+        breaks = _cuts(values, low, closed)
+        return _Fitted(breaks, low, high, bool(breaks), tuple(values))
+    own, known = _own_values(con, relation, field, side, n, closed)
     rows_of: dict[float, int] | None = None
     while True:
-        breaks = _fitted_rest(con, relation, field, side, own, n, low, high, known)
+        breaks = _fitted_rest(
+            con, relation, field, side, own, n, low, high, known, closed
+        )
         if breaks is not None:
             alone = bool(breaks) and breaks[0] == _held(after_low)
             return _Fitted(breaks, low, high, alone)
@@ -426,17 +434,25 @@ def _others(field: str, side: str, own: list[float]) -> str:
 
 
 def _own_values(
-    con: duckdb.DuckDBPyConnection, relation: str, field: str, side: str, n: int
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    field: str,
+    side: str,
+    n: int,
+    closed: float | None = None,
 ) -> tuple[list[float], _Quantiles | None]:
     """The values on which quantile classes would lose a class: with k classes
     left for the values not yet taken, a quantile break on their lowest or
     highest value or two breaks on one value. Each round asks one quantile
     over the values left and takes every such value; the rounds go on while
     one finds a value and at least 2 classes are left. Also the last round's
-    quantiles where they are of the values left beside the values returned."""
+    quantiles where they are of the values left beside the values returned.
+    The maximum `closed` is set apart like an own value but takes no class of
+    its own (it stays in the last class), so it leaves the classes to the
+    others."""
     own: list[float] = []
     last: _Quantiles | None = None
-    while (k := n - len(own)) >= 2:
+    while (k := n - sum(1 for v in own if v != closed)) >= 2:
         last = _quantiles(con, relation, field, _others(field, side, own), own, [k - 1])
         if last.min is None or last.min == last.max:
             break
@@ -479,6 +495,7 @@ def _fitted_rest(
     low: float,
     high: float,
     known: _Quantiles | None = None,
+    closed: float | None = None,
 ) -> tuple[float, ...] | None:
     """The breaks of `_fit` around the `own` values' classes: each own value
     and the value after it, and the quantile breaks of the other values for kk
@@ -490,15 +507,17 @@ def _fitted_rest(
     The kk of the classes left (`left`) that gives `n` classes in all ranks
     first, so where `known` (quantiles of the same values) holds that kk's
     quantiles and they give `n` classes, no other kk is asked. At most one
-    query for the quantiles `known` lacks, every count's in one."""
-    left = n - len(own)
+    query for the quantiles `known` lacks, every count's in one. With the
+    maximum `closed`, no break falls on it (`_cuts`), and an own value equal
+    to it takes no class."""
+    left = n - sum(1 for v in own if v != closed)
     where = _others(field, side, own)
     moved: dict[float, float | None] = {}
     fixed: set[float] = set()
 
     def classes(kk: int, quantiles: _Quantiles) -> tuple[float, ...]:
         cuts = {moved.get(b) for b in quantiles.breaks(kk - 1)} | fixed
-        return _cuts((b for b in cuts if b is not None and b <= high), low)
+        return _cuts((b for b in cuts if b is not None and b <= high), low, closed)
 
     shortcut = known is not None and 1 <= left <= n and known.holds(left - 1)
     if known is not None and shortcut:
@@ -582,16 +601,20 @@ def signed_rows(
     return int(below), int(above)
 
 
-def _one_side(
-    n: int, below: int, above: int, singles: tuple[float | None, ...]
-) -> tuple[tuple[int, ...], int]:
-    """The places of `n` classes in a diverging palette that is not centred,
-    and the palette's steps: the half on the side with more rows (`below`,
-    `above`), the middle color only for a class that holds 0 alone, next to
-    the half."""
+def _one_side(whole: _Fitted, below: int, above: int) -> tuple[tuple[int, ...], int]:
+    """The places of the classes of `whole` in a diverging palette that is not
+    centred, and the palette's steps: the half on the side with more rows
+    (`below`, `above`), the middle color only for a class that holds 0 alone,
+    next to the half (the first class when it holds the minimum 0 alone, or the
+    one class of data that is all 0; the maximum never has a class alone)."""
     up = above >= below
-    edge = singles[0] if up else singles[-1]
-    zero = bool(singles) and edge == 0
+    n = len(whole.breaks) + 1
+    if up:
+        zero = whole.min == 0 and (
+            whole.first_alone if whole.breaks else whole.max == 0
+        )
+    else:
+        zero = not whole.breaks and whole.min == 0 and whole.max == 0
     m = n - zero
     places = (
         (*((m,) if zero else ()), *range(m + 1, 2 * m + 1))
@@ -624,7 +647,7 @@ def fitted_breaks(
     below_rows, above_rows = signed_rows(con, relation, field) if centre else (0, 0)
     if centre and half >= 1 and centred(below_rows, above_rows):
         column = f"CAST({quote_identifier(field)} AS DOUBLE)"
-        below = _fit(con, relation, field, half, f"{column} < 0")
+        below = _fit(con, relation, field, half, f"{column} < 0", top=False)
         above = _fit(con, relation, field, half, f"{column} >= 0")
         if below.min is not None and above.max is not None and above.max > 0:
             a = len(below.breaks) + 1
@@ -641,84 +664,19 @@ def fitted_breaks(
                     *((half,) if zero else ()),
                     *range(half + 1, half + 1 + b),
                 ),
-                class_singles(con, relation, field, breaks),
             )
     whole = _fit(con, relation, field, count)
     if whole.min is None:
         return Breaks((), None, None, False)
-    singles = (
-        _singles(
-            [(_class_of(v, whole.breaks), v, v) for v in whole.values],
-            len(whole.breaks) + 1,
-        )
-        if whole.values is not None
-        else class_singles(con, relation, field, whole.breaks)
-    )
-    places, steps = (
-        _one_side(len(whole.breaks) + 1, below_rows, above_rows, singles)
-        if centre
-        else ((), 0)
-    )
+    places, steps = _one_side(whole, below_rows, above_rows) if centre else ((), 0)
     return Breaks(
         whole.breaks,
         _zero(stable(whole.min)),
         _zero(stable(whole.max)),
         False,
         places,
-        singles,
         steps,
     )
-
-
-def _class_of(value: float, breaks: tuple[float, ...]) -> int:
-    """The class a value falls in: one past every break at or below it."""
-    return sum(1 for b in breaks if b <= value)
-
-
-def _singles(
-    groups: list[tuple[int, float, float]], classes: int
-) -> tuple[float | None, ...]:
-    """Per class, the one value it holds (`stable`), from the lowest and
-    highest value each group of a class holds; none where a class holds values
-    that differ in their first 12 significant digits, or none at all."""
-    lows: dict[int, float] = {}
-    highs: dict[int, float] = {}
-    for index, low, high in groups:
-        lows[index] = min(low, lows.get(index, low))
-        highs[index] = max(high, highs.get(index, high))
-    return tuple(
-        _zero(stable(lows[i]))
-        if i in lows and stable(lows[i]) == stable(highs[i])
-        else None
-        for i in range(classes)
-    )
-
-
-def class_singles(
-    con: duckdb.DuckDBPyConnection,
-    relation: str,
-    field: str,
-    breaks: tuple[float, ...] | list[float],
-    *,
-    low: float | None = None,
-    high: float | None = None,
-) -> tuple[float | None, ...]:
-    """Per class of `breaks` (from inclusive, to exclusive), the one value it
-    holds (`_singles`): one query over the field's finite values. A first class
-    that starts at `low` and a last one that ends at `high` (exclusive) leave
-    the values beyond them out: they are in no class."""
-    column = quote_identifier(field)
-    value = f"CAST({column} AS DOUBLE)"
-    rows = con.execute(
-        f"""SELECT len(list_filter(?::DOUBLE[], b -> b <= {value})) AS i,
-                   min({value}), max({value})
-            FROM {relation} WHERE {column} IS NOT NULL AND isfinite({column})
-              AND (?::DOUBLE IS NULL OR {value} >= ?::DOUBLE)
-              AND (?::DOUBLE IS NULL OR {value} < ?::DOUBLE)
-            GROUP BY i""",
-        [list(breaks), low, low, high, high],
-    ).fetchall()
-    return _singles(rows, len(breaks) + 1)
 
 
 def _presence(
@@ -777,7 +735,9 @@ def compute_into(
     """A copy of `document` with the values the server computes (classes,
     domains) written in from the relation's data and stamped with `fingerprint`,
     and the notes (12). The relation is read only when the style needs values;
-    what the server wrote into parts that need none any more is removed."""
+    what the server wrote into parts that need none any more is removed. A
+    `computed.single` is left out (`without_single`)."""
+    document = without_single(document)
     settled = settled_class_keys(document, fingerprint)
     keys = [key for key in needed_stats(document) if key not in settled]
     return apply_computed(

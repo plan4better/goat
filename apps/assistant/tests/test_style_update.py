@@ -1506,7 +1506,8 @@ async def test_a_replace_with_classes_of_its_own_bounds_is_taken_as_written() ->
 
 async def test_computed_values_in_a_whole_document_are_the_servers() -> None:
     """A whole document's computed values are not stored: the server computes
-    its own, `single` included, for a new style and a replaced one."""
+    its own, without a `single` the document carries, for a new style and a
+    replaced one."""
     state = MapState()
     active = state.active_style_id(31)
     document = _document(state, active)

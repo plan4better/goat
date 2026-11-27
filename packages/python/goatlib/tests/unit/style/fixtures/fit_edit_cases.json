@@ -4250,7 +4250,7 @@
   }
  },
  {
-  "name": "a class edit keeps the single values and decimals the server recorded",
+  "name": "a class edit keeps the decimals the server recorded",
   "before": {
    "version": "1.0.0",
    "kind": "vector",
@@ -4305,9 +4305,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4367,9 +4364,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4421,9 +4415,6 @@
        9
       ],
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4431,7 +4422,7 @@
   }
  },
  {
-  "name": "a palette picked keeps fit, the single values and the decimals",
+  "name": "a palette picked keeps fit and the decimals",
   "before": {
    "version": "1.0.0",
    "kind": "vector",
@@ -4486,9 +4477,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4542,9 +4530,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4598,9 +4583,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4608,7 +4590,7 @@
   }
  },
  {
-  "name": "a count chosen removes fit and leaves the single values and decimals to the next compute",
+  "name": "a count chosen removes fit and keeps the recorded decimals as the format",
   "before": {
    "version": "1.0.0",
    "kind": "vector",
@@ -4663,9 +4645,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4725,9 +4704,6 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
      }
     }
@@ -4786,10 +4762,387 @@
        }
       },
       "no_data": false,
-      "single": {
-       "c1": 0
-      },
       "decimals": 2
+     },
+     "format": {
+      "decimals": 2
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field chosen removes fit and adds the recorded decimals to the format",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "suffix": " min"
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "w",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "suffix": " min"
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "w",
+     "method": "quantile",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "suffix": " min",
+      "decimals": 2
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "another method removes fit and keeps the format's own decimals",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "decimals": 0
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "equal_interval",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "decimals": 0
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "equal_interval",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false,
+      "decimals": 2
+     },
+     "format": {
+      "decimals": 0
      }
     }
    ]

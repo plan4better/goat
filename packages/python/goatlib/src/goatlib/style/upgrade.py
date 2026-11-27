@@ -15,6 +15,7 @@ from typing import Any
 from goatlib.style import limits
 from goatlib.style import version as versions
 from goatlib.style.catalog import palettes
+from goatlib.style.compute import without_single
 from goatlib.style.context import DataContext
 from goatlib.style.convert_v0 import LossyNote, UpgradeResult, convert_v0
 from goatlib.style.pointer import item_key, to_pointer
@@ -39,7 +40,8 @@ def upgrade(
     doc: dict[str, Any], ctx: DataContext, *, strict: bool = False
 ) -> UpgradeResult:
     """`doc` at the current version, its values inside the bounds goatlib takes
-    from MapLibre; a current document inside them is returned as it is.
+    from MapLibre and without `computed.single` (`without_single`); a current
+    document inside them without that key is returned as it is.
 
     `strict=True` is for a document being written: one at the current version is
     returned as it is, so the validator reports a value outside the bounds (or a
@@ -62,7 +64,10 @@ def upgrade(
     current = UpgradeResult(
         document=doc, map_state={}, lossy=(), version_from=version[0]
     )
-    return current if strict else bring_inside(rename_hillshade(current))
+    if strict:
+        return current
+    current = replace(current, document=without_single(current.document))
+    return bring_inside(rename_hillshade(current))
 
 
 def rename_hillshade(result: UpgradeResult) -> UpgradeResult:

@@ -444,8 +444,7 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     # Fitted classes: the compute records their decimals, no format is written.
     assert "format" not in c
     assert c["computed"]["decimals"] == tool_style.decimals_for(
-        breaks_of(c) + list((c["computed"].get("single") or {}).values()),
-        c["computed"]["domain"],
+        breaks_of(c), c["computed"]["domain"]
     )
     assert c["computed"]["no_data"] is True
 
@@ -1651,9 +1650,9 @@ def test_a_join_statistic_that_varies_is_classified(
 @pytest.mark.parametrize(
     ("values", "classes"),
     [
-        ("i % 2", 2),
-        # One feature apart: one class per value all the same.
-        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 2),
+        # Two values: one class from the one to the other.
+        ("i % 2", 1),
+        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 1),
     ],
 )
 def test_a_join_statistic_of_two_values_is_fitted_as_any_tool_default(

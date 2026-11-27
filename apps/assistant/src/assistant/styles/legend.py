@@ -26,7 +26,6 @@ import json
 import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from dataclasses import field as dataclass_field
 from decimal import Decimal
 from typing import Any, TypeGuard
 
@@ -181,9 +180,6 @@ class _Counted:
     classes: list[dict[str, Any]]
     #: Numeric classes: every limit of the classes, ascending.
     breaks: list[float] | None
-    #: Classes fitted to the data: class id to the one value the class holds
-    #: (`computed.single`).
-    single: dict[str, float] = dataclass_field(default_factory=dict)
 
 
 def _inner_limits(classes: list[dict[str, Any]]) -> list[float] | None:
@@ -248,13 +244,6 @@ def _counted(document: dict[str, Any]) -> list[_Counted]:
         breaks = None if method == "categories" else _limits(classes)
         if method != "categories" and breaks is None:
             continue
-        computed = c.get("computed")
-        # Single values are read for classes fitted to the data only.
-        single = (
-            computed.get("single")
-            if isinstance(computed, dict) and c.get("fit") is True
-            else None
-        )
         found.append(
             _Counted(
                 to_pointer(["classify", item_key(c, index)]),
@@ -262,11 +251,6 @@ def _counted(document: dict[str, Any]) -> list[_Counted]:
                 method,
                 classes,
                 breaks,
-                {
-                    k: v
-                    for k, v in (single if isinstance(single, dict) else {}).items()
-                    if _is_number(v)
-                },
             )
         )
     return found
@@ -297,10 +281,6 @@ def _label(c: _Counted, record: dict[str, Any]) -> str:
         texts = [value_text(v) for v in listed[:LABEL_VALUES]]
         rest = len(listed) - len(texts)
         return ", ".join(texts) + (f" and {rest} more" if rest > 0 else "")
-    rid = record.get("id")
-    one = c.single.get(rid) if isinstance(rid, str) else None
-    if one is not None:
-        return number_text(one)
     low, high = record.get("from"), record.get("to")
     if _is_number(low) and _is_number(high):
         return f"{number_text(low)} to {number_text(high)}"

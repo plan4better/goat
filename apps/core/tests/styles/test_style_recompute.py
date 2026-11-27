@@ -11,6 +11,8 @@ from core.db.models.layer_style import LayerStyle, LayerStyleRevision
 from core.services import style as style_service
 from core.services.processes import StyleCheckUnavailable
 from core.services.style import read_stored, read_style
+from goatlib.style.context import DataContext
+from goatlib.style.validate import validate
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.styles.conftest import StyleWorld
@@ -327,3 +329,43 @@ async def test_a_save_check_reads_issues_with_a_newer_key(
     )
     _, issues = await style_service.check_document(stored, stored.document, "t")
     assert [i.model_dump(mode="json", exclude_none=True) for i in issues] == [MERGED]
+
+
+@pytest.mark.asyncio
+async def test_opening_the_panel_on_a_style_with_single_values_raises_no_issue(
+    db_session: AsyncSession, style_world: StyleWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stored style that still holds `computed.single`, a key the format does
+    not have: the panel's check and the browser get it without the key, so it
+    raises no issue before the next save."""
+    style_id = await style_without_facts(db_session, style_world)
+    stored = await read_stored(db_session, style_id)
+    document = copy.deepcopy(stored.document)
+    c = document["classify"][0]
+    c["fit"] = True
+    c["computed"] = {**c["computed"], "no_data": False, "single": {"c1": 1.0}}
+    await db_session.execute(
+        text(
+            f"UPDATE {S}.layer_style SET document = CAST(:doc AS jsonb) WHERE id = :id"
+        ),
+        {"id": style_id, "doc": json.dumps(document)},
+    )
+    await db_session.commit()
+    seen: list[dict[str, Any]] = []
+
+    async def check(**kwargs: Any) -> dict[str, Any]:
+        # processes validates the document it is sent.
+        seen.append(kwargs["document"])
+        issues = validate(
+            kwargs["document"], DataContext(kind="vector", geometry="polygon")
+        )
+        return {
+            "document": copy.deepcopy(kwargs["document"]),
+            "issues": [i.model_dump(mode="json", exclude_none=True) for i in issues],
+        }
+
+    monkeypatch.setattr(style_service, "style_check", check)
+    result = await read(db_session, style_id, check=True)
+    assert [i["code"] for i in result.issues if i["level"] == "error"] == []
+    assert "single" not in seen[0]["classify"][0]["computed"]
+    assert "single" not in result.document["classify"][0]["computed"]

@@ -183,9 +183,10 @@ def _calculate_quantile_breaks_by_count(
     For example, with num_breaks=4 (quintiles = 5 classes):
     percentiles = [0.2, 0.4, 0.6, 0.8]
 
-    Each fraction is asked as its own PERCENTILE_CONT of a number literal:
-    DuckDB reads the literal as a DECIMAL, and a list of fractions
-    (`quantile_cont(x, [...])`) gives other last digits.
+    Each fraction is asked as its own PERCENTILE_CONT of a number literal,
+    which DuckDB reads as a DECIMAL. One `quantile_cont` over a list of the
+    same literals cast to DOUBLE gives the same numbers; a DOUBLE parameter
+    list or a list of DECIMAL literals gives other last digits.
     """
     # Generate internal percentile values that exclude 0.0 (min) and 1.0 (max)
     # e.g., for 4 breaks (5 classes): 0.2, 0.4, 0.6, 0.8. Equal fractions of

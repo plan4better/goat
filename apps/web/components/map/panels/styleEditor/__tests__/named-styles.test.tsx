@@ -39,7 +39,7 @@ vi.mock("react-toastify", () => ({ toast }));
 const POLYGON = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 const POINT = { version: "1.0.0", kind: "vector", symbol: { marker: { color: "#ff0000" } } } as LayerStyle;
 
-/** A tool's result: quantile classes fitted to its data, with the colors and single values the server wrote. */
+/** A tool's result: quantile classes fitted to its data, with the colors the server wrote. */
 const FITTED = {
   version: "1.0.0",
   kind: "vector",
@@ -60,7 +60,6 @@ const FITTED = {
         data: "f1",
         domain: [0, 9],
         generated: { target: "fill.color", values: { c1: "#deebf7", c2: "#3182bd" } },
-        single: { c2: 9 },
       },
     },
   ],
@@ -362,7 +361,6 @@ describe("named styles", () => {
       data: "f2",
       domain: [0, 5],
       generated: { target: "fill.color", values: { c1: "#eff3ff", c2: "#6baed6", c3: "#08519c" } },
-      single: { c1: 0, c2: 1 },
     };
     const pasted = other as unknown as LayerStyle;
     const { reduxStore, editor } = setup(layerWith([]), { document: structuredClone(FITTED) });
@@ -386,7 +384,6 @@ describe("named styles", () => {
   it("a style without fit pasted is the very document copied", async () => {
     const plain = structuredClone(FITTED) as unknown as { classify: Array<Record<string, unknown>> };
     delete plain.classify[0].fit;
-    delete (plain.classify[0].computed as Record<string, unknown>).single;
     const copied = { ...structuredClone(plain), opacity: 0.5 } as unknown as LayerStyle;
     const { reduxStore, editor } = setup(layerWith([]), { document: plain as unknown as LayerStyle });
     act(() => {

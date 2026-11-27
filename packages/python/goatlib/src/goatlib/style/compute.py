@@ -7,7 +7,7 @@ into a copy of the document next to the intent. No IO here.
 
 import copy
 import math
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Context, Decimal
 from typing import Any
@@ -34,7 +34,11 @@ from goatlib.style.models.classify import (
     ColorClassification,
 )
 from goatlib.style.models.render import H3Render
-from goatlib.style.models.values import ByAttributeColor, ByAttributeNumber
+from goatlib.style.models.values import (
+    MAX_DECIMALS,
+    ByAttributeColor,
+    ByAttributeNumber,
+)
 from goatlib.style.pointer import item_key, to_pointer
 
 #: Classes a numeric method makes when the classification gives no `count` (18.4).
@@ -44,10 +48,7 @@ DEFAULT_COUNT = 5
 #: (a value form's domain, or the minimum and maximum of manual classes);
 #: quantile classes fitted to the data (`fit`) ask for `("breaks", field,
 #: "quantile", count, "fit")`, on a diverging palette with a sixth part
-#: `"centre"`; their single values, for manual classes with `fit`,
-#: `("single", field, from, to, *breaks)` (the first class's `from` and the last
-#: class's `to`, empty where open, and the classes' inner bounds, as text);
-#: a sqrt or log scale reads its range over the values it can map,
+#: `"centre"`; a sqrt or log scale reads its range over the values it can map,
 #: `("range", field, "sqrt")` (from 0) and `("range", field, "log")` (above 0).
 #: A raster's "field" is its band as a formula (`b1`, or the formula's expression),
 #: and its breaks inside an author's domain carry it: `("breaks", "b1", method,
@@ -63,15 +64,13 @@ class Breaks:
     `merged` when equal breaks left fewer than the classes asked for. Classes
     fitted on a diverging palette (`positions`) take, per class, the color at
     that place of the palette sampled to `steps` colors (centred at 0:
-    `2 * (count // 2) + 1`). Classes fitted to the data know, per class, the one
-    value it holds or None (`singles`)."""
+    `2 * (count // 2) + 1`)."""
 
     breaks: tuple[float, ...]
     min: float | None
     max: float | None
     merged: bool
     positions: tuple[int, ...] = ()
-    singles: tuple[float | None, ...] = ()
     #: The colors the palette is sampled to for `positions`; 0 for
     #: `2 * (count // 2) + 1`.
     steps: int = 0
@@ -120,9 +119,6 @@ def breaks_for_classes(
     return Breaks(kept, minimum, maximum, len(kept) < classes - 1)
 
 
-#: The most decimals a number format takes.
-MAX_DECIMALS = 10
-
 #: Enough digits to round any float to `MAX_DECIMALS` decimals.
 _ROUNDING = Context(prec=400)
 
@@ -160,15 +156,30 @@ def decimals_for(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
     return MAX_DECIMALS
 
 
-#: The significant digits a value shown alone (a class's single value) reads.
+#: The most decimals a single class shows of its value for the value's sake.
+SINGLE_VALUE_DECIMALS = 2
+
+
+def single_value_decimals(value: float) -> int:
+    """The decimals the label of a class holding the one value `value` shows:
+    the fewest, at most `SINGLE_VALUE_DECIMALS`, that read it as that many
+    would, and more where fewer would read a value other than 0 as 0."""
+    exact = rounded(value, SINGLE_VALUE_DECIMALS)
+    own = next(
+        d for d in range(SINGLE_VALUE_DECIMALS + 1) if rounded(value, d) == exact
+    )
+    return max(own, decimals_for([value], [value, value]))
+
+
+#: The significant digits a value that stands for itself reads with.
 SINGLE_VALUE_DIGITS = 3
 
 
 def value_decimals(value: float) -> int:
-    """The decimals a value shown alone reads with: the fewest that show its
-    first `SINGLE_VALUE_DIGITS` significant digits as they round, never more
-    than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789 one, 1234.5
-    none, 0.087 three, 0.00318 five, 30 none)."""
+    """The decimals a value that stands for itself reads with: the fewest that
+    show its first `SINGLE_VALUE_DIGITS` significant digits as they round,
+    never more than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789
+    one, 1234.5 none, 0.087 three, 0.00318 five, 30 none)."""
     if value == 0 or not math.isfinite(value):
         return 0
     whole = math.floor(math.log10(abs(value))) + 1
@@ -177,43 +188,54 @@ def value_decimals(value: float) -> int:
     return next(d for d in range(wanted + 1) if rounded(value, d) == exact)
 
 
-def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
-    """The `values`, each that is one of the `numbers` to 12 significant
-    digits as that number: a class's single value is mostly its own bound, or
-    the data's minimum, stored with another last digit, and the two are one
-    number to tell apart from the others."""
-    known = _finite(numbers)
-    return [
-        next(
-            (k for k in known if abs(v - k) <= abs(k) * 10 ** (1 - STABLE_DIGITS)),
-            v,
-        )
-        for v in values
-    ]
-
-
-def class_decimals(
-    c: dict[str, Any], alone: Callable[[float], int] = value_decimals
-) -> int | None:
+def class_decimals(c: dict[str, Any]) -> int | None:
     """The decimals the labels of a numeric classification's computed classes
-    need: the decimals its class breaks, the values of the classes that hold
-    one (`computed.single`, read with `fit` only) and its domain's ends need
-    (`decimals_for`), and at least those each such value reads with when shown
-    alone (`value_decimals`). A single class over one value has no break and
-    takes the decimals `alone` gives that value. None without classes or a
-    domain."""
+    need: the decimals its class breaks and its domain's ends need
+    (`decimals_for`). A single class over one value has no break and takes the
+    decimals of that value: with `fit` its first three significant digits
+    (`value_decimals`), else `single_value_decimals`. None without classes or
+    a domain."""
     computed = c.get("computed") if isinstance(c.get("computed"), dict) else {}
     domain, classes = computed.get("domain"), c.get("classes")
     if not domain or not classes or not isinstance(classes, list):
         return None
     breaks = [k.get("from") for k in classes if isinstance(k, dict)]
-    single = computed.get("single") if c.get("fit") is True else None
-    values = _finite(single.values()) if isinstance(single, dict) else set()
-    breaks += _as_bounds(values, [*breaks, *domain])
     one = _finite(domain)
     if len(classes) == 1 and len(one) == 1:
-        return alone(next(iter(one)))
-    return max([decimals_for(breaks, domain), *map(value_decimals, values)])
+        value = next(iter(one))
+        return (
+            value_decimals(value)
+            if c.get("fit") is True
+            else (single_value_decimals(value))
+        )
+    return decimals_for(breaks, domain)
+
+
+def without_single(doc: Any) -> Any:
+    """`doc` without `single` in its classifications' computed values, a key
+    the format does not have and no compute writes: a classification that
+    holds it would not read as valid. The document is copied only when it
+    changes."""
+    classify = doc.get("classify") if isinstance(doc, dict) else None
+    if not isinstance(classify, list):
+        return doc
+
+    def holds(c: Any) -> bool:
+        return (
+            isinstance(c, dict)
+            and isinstance(c.get("computed"), dict)
+            and "single" in c["computed"]
+        )
+
+    if not any(map(holds, classify)):
+        return doc
+    kept = [
+        {**c, "computed": {k: v for k, v in c["computed"].items() if k != "single"}}
+        if holds(c)
+        else c
+        for c in classify
+    ]
+    return {**doc, "classify": kept}
 
 
 def records_decimals(c: dict[str, Any]) -> bool:
@@ -247,52 +269,6 @@ def _breaks_key(c: dict[str, Any]) -> StatKey | None:
             return (*key, "fit", *(("centre",) if _diverging(c.get("palette")) else ()))
         return key
     return None
-
-
-def _single_key(c: dict[str, Any]) -> StatKey | None:
-    """Manual classes with `fit` (a tool's classes kept as they are, 5.2): the
-    one value each class holds, asked with the first class's `from` and the
-    last class's `to` where they close the classes (else empty) and the
-    classes' inner bounds."""
-    if not (
-        c.get("method") == "manual"
-        and c.get("fit") is True
-        and isinstance(c.get("field"), str)
-    ):
-        return None
-    classes = as_list(c.get("classes"))
-    bounds = [k.get("from") for k in classes[1:] if isinstance(k, dict)]
-    # One class holds the field's every value: a key without bounds.
-    if not classes or not all(_number(b) for b in bounds):
-        return None
-    first, last = classes[0], classes[-1]
-    ends = [
-        k.get(end) if isinstance(k, dict) and _number(k.get(end)) else None
-        for k, end in ((first, "from"), (last, "to"))
-    ]
-    return (
-        "single",
-        c["field"],
-        *("" if e is None else repr(float(e)) for e in ends),
-        *(repr(float(b)) for b in bounds),
-    )
-
-
-def _number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _singles_by_id(classes: list[Any], singles: Any) -> dict[str, float] | None:
-    """`computed.single`: class id to the one value the class holds, for the
-    classes that hold one; None where none does or the classes do not match."""
-    if not isinstance(singles, tuple) or len(singles) != len(classes):
-        return None
-    found = {
-        k["id"]: v
-        for k, v in zip(classes, singles)
-        if v is not None and isinstance(k, dict) and isinstance(k.get("id"), str)
-    }
-    return found or None
 
 
 def _top_key(c: dict[str, Any]) -> StatKey | None:
@@ -595,7 +571,7 @@ def needed_stats(doc: dict[str, Any]) -> list[StatKey]:
         return [k for k in keys if k is not None]
     keys: list[StatKey] = []
     for _, c in _classifications(doc):
-        for key in (_class_key(c), _single_key(c), _presence_key(c)):
+        for key in (_class_key(c), _presence_key(c)):
             if key is not None:
                 keys.append(key)
     keys.extend(_range_key(v) for v in _value_forms(doc))
@@ -893,21 +869,9 @@ def apply_computed(
     counters: dict[str, int] = {}
     for ci, c in _classifications(out):
         if (range_key := _manual_range_key(c)) is not None:
-            # Manual classes stay as they are: only the field's minimum and maximum,
-            # and with `fit` the value of each class that holds one.
-            single = None
-            if (single_key := _single_key(c)) is not None:
-                previous = c.get("computed")
-                single = (
-                    _singles_by_id(as_list(c.get("classes")), stats[single_key])
-                    if single_key in stats
-                    else previous.get("single")
-                    if isinstance(previous, dict)
-                    else None
-                )
+            # Manual classes stay as they are: only the field's minimum and maximum.
             c["computed"] = {
                 **_manual_computed(c, stats.get(range_key), stamp, notes, ci),
-                **({"single": single} if single else {}),
                 **_facts(stats, c),
             }
             _record_decimals(c)
@@ -928,12 +892,9 @@ def apply_computed(
         # The data's minimum and maximum of numeric classes: the first and last
         # class are open, and their labels read the data's ends.
         domain: Any = None
-        single = None
         if isinstance(breaks, Breaks) and breaks.min is not None:
             generated = _numeric(c, breaks, geometry, ids, counters)
             domain = [breaks.min, breaks.max]
-            if _fitted(c):
-                single = _singles_by_id(c["classes"], breaks.singles)
             fewer = _fewer_classes(c, breaks, to_pointer(["classify", item_key(c, ci)]))
             if fewer is not None:
                 notes.append(fewer)
@@ -948,12 +909,10 @@ def apply_computed(
                 notes.append(_no_values(["classify", item_key(c, ci)], c["field"]))
             generated = previous.get("generated")
             domain = previous.get("domain") if breaks_key else None
-            single = previous.get("single") if _fitted(c) else None
         c["computed"] = {
             **stamp,
             **({"domain": domain} if domain else {}),
             **({"generated": generated} if generated else {}),
-            **({"single": single} if single else {}),
             **_facts(stats, c),
         }
         _record_decimals(c)

@@ -1334,11 +1334,11 @@ AI never set it. `count` is then the most classes, not a fixed number:
 }
 ```
 
-- **Classes:** a field with at most `count` values gets one class per value. Otherwise every class holds at least one
-  feature: each break lies on a value of the data, a quantile break moved up to the next value. A value on which
-  quantile classes would lose a class (two breaks on the same value, or a break on the lowest or highest value) gets a
-  class of its own, from the value to the next. Where quantile classes lose none, the classes are theirs. Values alike
-  to 12 significant digits count as one value (one class, one break).
+- **Classes:** every class holds a feature and each break lies on a value of the data (a quantile break moved up to the
+  next value); no break lies on the maximum, which shares the last class with a smaller value ("12 to 13"). A field with
+  at most `count` values gets a class per value, the highest in the class of the one below. A value on which quantile
+  classes would lose a class (two breaks on one value, or a break on the lowest or highest) gets a class from it to the
+  next (the maximum none). Where quantile loses none, the classes are its. Values alike to 12 digits are one value.
 - **Centre at 0:** with a diverging palette (catalogue kind `diverging`) and at least 5% of the rows other than 0 on
   each side of 0, the values below 0 and from 0 up are fitted apart into at most half of `count` each, 0 is a break,
   and classes take the colors before the middle (below 0), after it (above 0) or the middle (0 alone). Otherwise they
@@ -1346,14 +1346,14 @@ AI never set it. `count` is then the most classes, not a fixed number:
 - **Every compute fits again,** also the labels' decimals (`computed.decimals`, where `format` sets no `decimals`), so a
   result that gains values gets its classes back; `count` stays as written. Fewer classes than `count` are by design and
   give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on other methods.
-- **Legend:** with `fit`, a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also
-  once a class edit made the classes `manual`: recorded with every compute (a closed first or last class leaves the
-  values beyond it out), so a class that comes to hold two values reads its range again.
-- **Edits:** choosing a field, a count or a method other than `manual` removes `fit`, and the classes compute as asked
-  from then on. A change to one class (its color, name, visibility, zooms or a part, not its bounds) keeps the classes
-  as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes nothing in how
-  manual classes compute. Moving a break or choosing `manual` does the same. A palette, `reverse`, `range`, `target`,
-  title, `unit`, `format`, `no_data`, `other` or `legend` keeps `fit`, as does a key a class loses.
+- **Legend:** every class reads as a range with the bounds the classes share (7.2), the last one up to the maximum, a
+  class of one value too; a single class over one value reads it to 3 significant digits, else the bounds read apart.
+  A stored style's `single` in `computed` is read without it.
+- **Edits:** a field, count or method other than `manual` removes `fit` (`computed.decimals` become `format.decimals`
+  where none is set); the classes compute as asked. A change to one class (color, name, visibility, zooms, a part) keeps
+  the classes as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes
+  nothing in how manual classes compute. Moving a break or choosing `manual` does the same. A palette, `reverse`,
+  `range`, `target`, title, `unit`, `format`, `no_data`, `other` or `legend` keeps `fit`, as does a key a class loses.
 
 > "Fill by density around its mean (standard deviations, on a diverging palette); outline width by population in
 > natural breaks."
@@ -1848,7 +1848,7 @@ rasters and map services do not change.
 |---|---|
 | layer without classifications | one swatch with the layer name |
 | classification | a section titled `title` (default: the field's display name; classifications of one field with the same classes, categories or numeric bounds, are one section whose entries show all they set), one entry per class in list order, then `other`, then `no_data` (these two when the data holds such features, `computed.other` and `computed.no_data`, with the look the style gives them or the base look; while not computed, when the style has a record; never when hidden or left out); none while it has no classes (not computed yet, or the field has no values) |
-| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text, or for a class that holds a single value (`computed.single`, written for `fit`, 5.2) that value; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
+| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
 | rule | its `name`, a swatch of what it changes; a rule that hides its features has no entry; rules that only set zooms need `legend: false` (or show a plain entry); in a layer without classes the features no rule matches follow as "Other features" |
 | value form with `palette` | a color ramp with the domain's ends, formatted |
 | value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain, under the field's name |
@@ -1863,8 +1863,8 @@ rasters and map services do not change.
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
-- **Range text** uses the classification's `format` and `unit`: "under 2,800", "2,800 to 3,600", "6,300 and more";
-  the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more".
+- **Range text** uses the classification's `format` (with `fit` and no `format.decimals`, `computed.decimals`) and
+  `unit`: "2,800 to 3,600"; the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more".
 - **Only what a swatch draws:** a classification shows in the legend when it sets what a swatch draws: the color,
   size, opacity, width, dash, shape, icon, icon color, hollow fill or pattern of a part, the arrows' color or the
   height. One that sets only a label's text, color or font, a marker's rotation, offset or anchor, a line's offset,
@@ -3143,8 +3143,8 @@ to the intent, with the data it came from.
 | raster `continuous` or `hillshade` palette without `domain`; raster classes with a method | the minimum and maximum, and class breaks, of the band or band formula, from a sample of its values (the file's overviews) | `render.computed`; `render.classify.classes` + `computed` |
 
 - **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, on every classification of a field `no_data` and `other` (whether the data has features without a value in the field and, for categories, values no class lists: the legend lists "No data" and "Other" when it has, 7.2; a classification whose classes are the author's is held against the data for these alone; a style that lacks them, one computed before they were recorded or converted from the old format, is not stale for that and gets them with its next computation or when its panel opens, its classes untouched; `no_data: null` says the server looked and could not tell), and on a classification `generated`: the
-  target and the value the server wrote per class id; with `fit` (5.2), also on `manual` classes, `single`: the value
-  of each class that holds one, by class id (absent where none does), and `decimals`: the decimals its labels need.
+  target and the value the server wrote per class id; with `fit` (5.2), also on `manual` classes, `decimals`: the
+  decimals its labels need.
 - **Fingerprint:** an opaque string the server writes, telling which data the values were computed from:
   - a DuckLake layer: the snapshot of the layer's last data change (`ducklake:455812`). core tracks it per layer from
     DuckLake's change log (inserts and deletes, also inlined ones, and schema changes; not compaction), so every
@@ -3773,7 +3773,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `legend` | `false` | no | shown |
 | `classes` | list of class records (18.5) | no | computed |
 | `other`, `no_data` | class record | no | none |
-| `computed` | `{ at, data, scope, no_data, other, generated, single, decimals }` | server | |
+| `computed` | `{ at, data, scope, no_data, other, generated, decimals }` | server | |
 
 ### 18.5 Class record
 

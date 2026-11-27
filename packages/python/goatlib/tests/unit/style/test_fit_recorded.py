@@ -1,6 +1,7 @@
 """Classes fitted to the data (`fit`) over seeded random columns, against
-recorded results: the breaks, the places in the palette, the single values and
-the decimals of every case stay exactly as recorded, to the last digit.
+recorded results: the breaks and the places in the palette of every case stay
+exactly as recorded, to the last digit, and the compute records the decimals
+their bounds need.
 
 Rewrite the recorded results only when the fitted classes are meant to change:
 
@@ -18,6 +19,7 @@ from typing import Any
 import duckdb
 import pytest
 from goatlib.style import data
+from goatlib.style.compute import decimals_for, value_decimals
 from goatlib.style.data import compute_into, fitted_breaks
 
 FIXTURE = Path(__file__).parent / "fixtures" / "fit_recorded_cases.json"
@@ -145,7 +147,6 @@ def fitted(seed: int) -> dict[str, Any]:
         "max": b.max,
         "merged": b.merged,
         "positions": list(b.positions),
-        "singles": list(b.singles),
         "steps": b.steps,
     }
 
@@ -168,31 +169,74 @@ def _recorded() -> list[dict[str, Any]]:
     not os.environ.get("GOAT_WRITE_FIXTURES"), reason="writes the recorded results"
 )
 def test_write_the_recorded_results() -> None:
-    from goatlib.tools.style import with_decimals
-
-    cases = []
-    for seed in range(CASES):
-        case = fitted(seed)
-        con, count, centre = table(seed)
-        out, _ = compute_into(
-            con, "t", fit_doc(count, centre), geometry="polygon", fingerprint="f"
-        )
-        c = with_decimals(out)["classify"][0]
-        case["decimals"] = (c.get("format") or {}).get("decimals")
-        cases.append(case)
+    cases = [fitted(seed) for seed in range(CASES)]
     FIXTURE.write_text("[\n" + ",\n".join(json.dumps(c) for c in cases) + "\n]\n")
 
 
 @pytest.mark.parametrize("seed", range(CASES))
 def test_the_fitted_classes_are_the_recorded_ones(seed: int) -> None:
-    recorded = _recorded()[seed]
-    expected = {k: v for k, v in recorded.items() if k != "decimals"}
-    assert json.dumps(fitted(seed)) == json.dumps(expected)
+    assert json.dumps(fitted(seed)) == json.dumps(_recorded()[seed])
+
+
+def bound_decimals(case: dict[str, Any]) -> int | None:
+    """The decimals the recorded classes' bounds and domain need; one class over
+    one value those of the value."""
+    low, high, breaks = case["min"], case["max"], case["breaks"]
+    if low is None:
+        return None
+    if not breaks and low == high:
+        return value_decimals(low)
+    return decimals_for(breaks, [low, high])
 
 
 @pytest.mark.parametrize("seed", range(CASES))
-def test_the_compute_records_the_recorded_decimals(seed: int) -> None:
-    assert computed_decimals(seed) == _recorded()[seed]["decimals"]
+def test_the_compute_records_the_decimals_of_the_bounds(seed: int) -> None:
+    assert computed_decimals(seed) == bound_decimals(_recorded()[seed])
+
+
+@pytest.mark.parametrize("seed", range(0, CASES, 7))
+def test_the_one_pass_quantiles_equal_separate_terms(seed: int) -> None:
+    # `_quantiles` asks every fraction in one list; each must be the number a
+    # separate PERCENTILE_CONT of the same literal gives (`calculate_class_breaks`).
+    con, _, _ = table(seed)
+    rows = "v IS NOT NULL AND isfinite(v)"
+    for k in (1, 2, 3, 4, 5, 6, 8, 12, 16, 40):
+        got = data._quantiles(con, "t", "v", "TRUE", [], [k])
+        fractions = data._fractions(k)
+        terms = ", ".join(
+            f"PERCENTILE_CONT({p}) WITHIN GROUP (ORDER BY v)" for p in fractions
+        )
+        separate = con.execute(f"SELECT {terms} FROM t WHERE {rows}").fetchone()
+        assert [got.at[p] for p in fractions] == list(separate), (seed, k)
+
+
+@pytest.mark.parametrize(
+    "sql_type", ["DOUBLE", "REAL", "INTEGER", "BIGINT", "DECIMAL(12,3)"]
+)
+def test_one_quantile_over_literal_fractions_equals_separate_terms(
+    sql_type: str,
+) -> None:
+    # At the raw level, before any rounding: one `quantile_cont` over the
+    # fraction literals cast to DOUBLE gives the very numbers of separate
+    # PERCENTILE_CONT terms of the same literals.
+    r = random.Random(sql_type)
+    values = [r.uniform(-1000, 1000) for _ in range(997)]
+    con = duckdb.connect()
+    con.execute(f"CREATE TABLE t (v {sql_type})")
+    con.execute(f"INSERT INTO t SELECT unnest(?::DOUBLE[])::{sql_type}", [values])
+    # 996 rows after the first: these fractions fall on whole positions, where
+    # a fraction one bit off moves the result (a DOUBLE parameter list or a
+    # list of DECIMAL literals differs here in the last digit).
+    fractions = sorted(
+        {i / k for k in (3, 4, 6, 12, 83, 166, 249) for i in range(1, k)}
+    )
+    listed = ", ".join(f"{p}::DOUBLE" for p in fractions)
+    [one] = con.execute(f"SELECT quantile_cont(v, [{listed}]) FROM t").fetchone()
+    terms = ", ".join(
+        f"PERCENTILE_CONT({p}) WITHIN GROUP (ORDER BY v)" for p in fractions
+    )
+    separate = con.execute(f"SELECT {terms} FROM t").fetchone()
+    assert list(one) == list(separate)
 
 
 class _Counting:
@@ -224,8 +268,7 @@ def _quantile_passes(queries: list[str]) -> int:
 
 def test_values_that_differ_take_one_quantile_pass() -> None:
     # The quantiles of the count asked for give that many classes: no other
-    # count is asked. The values, the moved breaks and the single values take
-    # one query each.
+    # count is asked. The values and the moved breaks take one query each.
     r = random.Random(1)
     values = [r.uniform(0, 1000) for _ in range(5000)]
     queries = _queries(values, 9)
@@ -246,7 +289,7 @@ def test_each_class_given_back_takes_one_pass(
 ) -> None:
     # A recorded case whose own values take more classes than its count: the
     # least frequent gives its class back, and the rest is fitted again.
-    con, count, centre = table(111)
+    con, count, centre = table(83)
     counting = _Counting(con)
     passes: list[int] = []
     results: list[Any] = []
@@ -262,4 +305,6 @@ def test_each_class_given_back_takes_one_pass(
     fitted_breaks(counting, "t", "v", count, centre=centre)  # type: ignore[arg-type]
     assert results.count(None) >= 1
     assert passes[0] <= 1 and passes[1:] == [1] * (len(passes) - 1)
-    assert len(counting.queries) <= 13
+    # The values, four rounds of own values (three with a nearest-value query),
+    # the rest fitted twice and the own values' rows counted once.
+    assert len(counting.queries) <= 14

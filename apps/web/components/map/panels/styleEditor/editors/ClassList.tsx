@@ -28,15 +28,7 @@ import { HATCH, choiceLabel, compoundOptions, plainNumber, swatchOf } from "@/li
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import {
-  classDomain,
-  classFormat,
-  classRange,
-  labelRange,
-  rangeText,
-  singleValue,
-  valuesText,
-} from "@/lib/style/legend";
+import { classDomain, classFormat, labelRange, rangeText, valuesText } from "@/lib/style/legend";
 
 import {
   useBasemapTone,
@@ -477,7 +469,10 @@ export function classLabel(
   if (typeof record.name === "string" && record.name) return record.name;
   if (Array.isArray(record.values))
     return valuesText(record.values as Array<string | number | boolean>, rangeOptions(c, t, locale));
-  return rangeText(classRange(c, record), rangeOptions(c, t, locale));
+  return rangeText(
+    { from: record.from as number | undefined, to: record.to as number | undefined },
+    rangeOptions(c, t, locale)
+  );
 }
 
 /** The range of a manual class after its typed bound: "to 14.81"; for the last class "to" the data's maximum, else
@@ -615,10 +610,7 @@ export function ClassList({
             record={i}
             target={target}
             label={
-              // After a typed bound the rest of the range, or the one value the class holds, as the legend reads it.
-              bounds && i > 0 && singleValue(c, record) === undefined
-                ? rangeAfterBound(record, rangeOptions(c, t, i18n.language), t)
-                : auto(record)
+              bounds && i > 0 ? rangeAfterBound(record, rangeOptions(c, t, i18n.language), t) : auto(record)
             }
             range={auto(record)}
             count={counts?.classes?.[i]}

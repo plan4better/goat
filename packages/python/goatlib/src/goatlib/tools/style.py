@@ -26,14 +26,8 @@ from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.i18n import DEFAULT_LANGUAGE, get_translator, supported_language
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
-from goatlib.style.compute import (
-    Breaks,
-    class_decimals,
-    records_decimals,
-    rounded,
-)
+from goatlib.style.compute import Breaks, class_decimals, records_decimals
 from goatlib.style.compute import decimals_for as decimals_for
-from goatlib.style.compute import value_decimals as value_decimals
 from goatlib.style.context import DataContext
 from goatlib.style.data import centred, compute_stats, signed_rows
 from goatlib.style.defaults import default_style
@@ -320,29 +314,12 @@ def statistic_default(
     )
 
 
-#: The most decimals a single class shows of its value for the value's sake.
-SINGLE_VALUE_DECIMALS = 2
-
-
-def _single_value_decimals(value: float) -> int:
-    """The decimals the label of a class holding the one value `value` shows:
-    the fewest, at most `SINGLE_VALUE_DECIMALS`, that read it as that many
-    would, and more where fewer would read a value other than 0 as 0."""
-    exact = rounded(value, SINGLE_VALUE_DECIMALS)
-    own = next(
-        d for d in range(SINGLE_VALUE_DECIMALS + 1) if rounded(value, d) == exact
-    )
-    return max(own, decimals_for([value], [value, value]))
-
-
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
     that has classes and no format of its own, and whose decimals the server
     does not record (`records_decimals`: those with `fit` read
     `computed.decimals`, which follows the data): the decimals its classes
-    need (`class_decimals`). A single class over one value takes the decimals
-    of that value: as a value shown alone with `fit`, else
-    `_single_value_decimals`."""
+    need (`class_decimals`)."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -354,10 +331,7 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
             and not records_decimals(c)
         ):
-            fitted = c.get("fit") is True
-            decimals = class_decimals(
-                c, value_decimals if fitted else _single_value_decimals
-            )
+            decimals = class_decimals(c)
             if decimals is not None:
                 c = {**c, "format": {"decimals": decimals}}
                 changed = True

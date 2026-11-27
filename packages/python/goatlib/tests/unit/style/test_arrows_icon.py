@@ -77,15 +77,26 @@ def test_turning_with_the_line_is_one_value_for_the_layer(contexts: dict) -> Non
     assert codes(Arrows, {"turn_with_line": by_zoom}) != []
     doc = {
         **V,
-        "symbol": {"line": {}, "arrows": {"icon": "goat:park", "turn_with_line": False}},
+        "symbol": {
+            "line": {},
+            "arrows": {"icon": "goat:park", "turn_with_line": False},
+        },
         "classify": [
             {
                 "field": "status",
                 "method": "categories",
-                "classes": [{"values": ["planned"], "arrows": {"turn_with_line": True}}],
+                "classes": [
+                    {"values": ["planned"], "arrows": {"turn_with_line": True}}
+                ],
             }
         ],
     }
     assert "override_not_per_feature" in _codes(doc, contexts["routes"])
-    doc = {**V, "symbol": {"line": {}, "arrows": {"icon": "goat:park", "turn_with_line": False}}}
+    doc = {
+        **V,
+        "symbol": {
+            "line": {},
+            "arrows": {"icon": "goat:park", "turn_with_line": False},
+        },
+    }
     assert _codes(doc, contexts["routes"]) == set()

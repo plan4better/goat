@@ -521,8 +521,9 @@ documents goatlib built or upgraded:
   loses values grows or shrinks its classes. Only tools write it, so a style
   made by hand computes as it always did; a class edit in the panel or by the
   assistant turns a fitted classification manual as it is, and an edit of its
-  field, method or count removes the key (`style/edit.py`, `settle_fit`, and
-  the web editor's `settleFit`). The runner's own fit of a run's style
+  field, method or count removes the key and keeps the recorded decimals as
+  the format's where it states none (`style/edit.py`, `settle_fit`, and the
+  web editor's `settleFit`). The runner's own fit of a run's style
   (`tools/style.py`, `fit_classes`: the count fitted once to the distinct
   values, a single class dropped unless features without a value sit beside
   it) is left for a numeric classification a tool asks for without the key. A
@@ -543,13 +544,12 @@ documents goatlib built or upgraded:
   style. One rule serves both. The
   domain's ends and the breaks read apart, but an end at or above 0 may read 0,
   so a minimum next to 0 does not push every label to many decimals. A single
-  class over one value has no break and shows the value itself: with `fit` as
-  any value shown alone (below), else with up to two decimals and more where
-  fewer would read it as 0. A fitted class that holds
-  one value is labelled with it (`computed.single`, which the legend and the
-  panel read), so the decimals also show each such value with its first three
-  significant digits (0.087 reads 0.087, 99.789 reads 99.8, 1234.5 reads
-  1,235); a value with more digits is rounded.
+  class over one value has no break and shows the value itself: with `fit`
+  with its first three significant digits and never more decimals than it has
+  (`value_decimals`: 0.087, 99.8, 1,235), else with up to two decimals and more
+  where fewer would read it as 0. Every other class reads as a range, a fitted
+  class that holds one value too: the fit puts no break on the maximum, so the
+  last class ends at it and starts below it ("12 to 13 min").
   Classified and categorized point looks draw each marker with a thin outline
   in a darker shade of its own color (`result_styled`), so a pale class stays
   readable on a light basemap; the cluster summary's overlapping translucent

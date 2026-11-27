@@ -501,18 +501,20 @@ async def test_legend_numbers_for_classes_use_the_stored_limits_and_the_layers_f
     assert legend["features"] == 60
 
 
-async def test_a_class_that_holds_a_single_value_is_labelled_with_it() -> None:
+async def test_fitted_classes_read_their_ranges() -> None:
+    # A stored document may still hold single values: they are not read.
     state = MapState()
     _quantile_districts(state)
     stored = state.styles[state.active_style_id(31)].document["classify"][0]
-    first, last = stored["classes"][0]["id"], stored["classes"][-1]["id"]
     stored["fit"] = True
-    stored["computed"]["single"] = {first: 12.5, last: 9000.0, "zz": 1.0}
-    result = await _get(_Services(state), layer_project_id=31)
-    [legend] = result["legend"]
-    assert legend["classes"][0]["label"] == number_text(12.5)
-    assert legend["classes"][-1]["label"] == number_text(9000.0)
-    assert " to " in legend["classes"][1]["label"]
+    before = (await _get(_Services(state), layer_project_id=31))["legend"]
+    first, last = stored["classes"][0]["id"], stored["classes"][-1]["id"]
+    stored["computed"]["single"] = {first: 12.5, last: 9000.0}
+    [legend] = (await _get(_Services(state), layer_project_id=31))["legend"]
+    labels = [k["label"] for k in legend["classes"]]
+    assert labels == [k["label"] for k in before[0]["classes"]]
+    assert labels[0].startswith("below ") and labels[-1].endswith(" and above")
+    assert all(" to " in label for label in labels[1:-1])
 
 
 @pytest.mark.parametrize("fmt", [None, {"decimals": 0}])
@@ -522,40 +524,15 @@ async def test_the_recorded_decimals_leave_the_exact_labels(fmt: Any) -> None:
     state = MapState()
     _quantile_districts(state)
     stored = state.styles[state.active_style_id(31)].document["classify"][0]
-    first = stored["classes"][0]["id"]
     stored["fit"] = True
-    stored["computed"]["single"] = {first: 12.5}
     before = (await _get(_Services(state), layer_project_id=31))["legend"]
     stored["computed"]["decimals"] = 3
     if fmt is not None:
         stored["format"] = fmt
     [legend] = (await _get(_Services(state), layer_project_id=31))["legend"]
-    assert legend["classes"][0]["label"] == number_text(12.5)
     assert [k["label"] for k in legend["classes"]] == [
         k["label"] for k in before[0]["classes"]
     ]
-
-
-async def test_single_values_without_fit_are_not_read() -> None:
-    state = MapState()
-    _quantile_districts(state)
-    stored = state.styles[state.active_style_id(31)].document["classify"][0]
-    stored["computed"]["single"] = {stored["classes"][0]["id"]: 12.5}
-    result = await _get(_Services(state), layer_project_id=31)
-    [legend] = result["legend"]
-    assert legend["classes"][0]["label"].startswith("below ")
-
-
-async def test_a_class_id_that_is_not_a_text_reads_its_range() -> None:
-    state = MapState()
-    _quantile_districts(state)
-    stored = state.styles[state.active_style_id(31)].document["classify"][0]
-    stored["fit"] = True
-    stored["computed"]["single"] = {stored["classes"][1]["id"]: 12.5}
-    stored["classes"][1]["id"] = ["not", "a", "text"]
-    result = await _get(_Services(state), layer_project_id=31)
-    [legend] = result["legend"]
-    assert " to " in legend["classes"][1]["label"]
 
 
 async def test_shares_add_up_to_one_with_other_and_without_value() -> None:

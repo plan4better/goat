@@ -346,10 +346,9 @@ def tool_default(
 
 
 def decimals_for(c: dict[str, Any]) -> int:
-    """The decimals the computed classes need: their domain's ends, breaks
-    and single values apart."""
+    """The decimals the computed classes need: their domain's ends and breaks
+    apart."""
     breaks = [k["from"] for k in c["classes"] if "from" in k]
-    breaks += list((c["computed"].get("single") or {}).values())
     return tool_style.decimals_for(breaks, c["computed"]["domain"])
 
 
@@ -400,6 +399,21 @@ def holding(
         ).fetchone()[0]
         held += found > 0
     return held
+
+
+def top_alone(
+    con: duckdb.DuckDBPyConnection, relation: str, field: str, doc: dict[str, Any]
+) -> bool:
+    """Whether the last class of `doc` starts at a bound and holds only the
+    field's maximum."""
+    classes = (doc.get("classify") or [{}])[0].get("classes") or []
+    start = classes[-1].get("from") if classes else None
+    if start is None:
+        return False
+    return con.execute(
+        f'SELECT count(DISTINCT "{field}") = 1 FROM {relation} WHERE "{field}" >= ?',
+        [start],
+    ).fetchone()[0]
 
 
 def has_rows_without_value(
@@ -476,8 +490,10 @@ def check_fitted(
 ) -> dict[str, Any]:
     """The invariants of a default with `fit`: the stored count is the wish and
     the classes at most the wish, one class per value where the field has no
-    more, every class holding a feature, one class only for one value, and
-    never fewer classes holding a feature than without the key."""
+    more but none for the maximum alone (it shares the class below), every
+    class holding a feature, and never fewer classes holding a feature than
+    without the key, once a class of the maximum alone is counted with the
+    class below it."""
     wish = intent["classify"][0]["count"]
     doc = tool_default(runner, intent, relation, geometry)
     assert errors(con, relation, doc, geometry) == []
@@ -486,13 +502,18 @@ def check_fitted(
     values = values_read(con, relation, field)
     n = len(c.get("classes") or [])
     if values <= wish:
-        assert n == values
+        assert n == (values - 1 if values >= 2 else values)
     else:
         assert 2 <= n <= wish
     if n:
         assert holding(con, relation, field, doc) == n
-        then = holding(con, relation, field, unfitted(con, relation, intent, geometry))
-        assert n >= then
+        plain = unfitted(con, relation, intent, geometry)
+        then = holding(con, relation, field, plain)
+        assert n >= then - top_alone(con, relation, field, plain)
+        last = c["classes"][-1]
+        if "from" in last:
+            # The last class holds the maximum and a smaller value.
+            assert not top_alone(con, relation, field, doc)
     if n >= 2:
         assert "format" not in c
         assert c["computed"]["decimals"] == decimals_for(c)
@@ -580,15 +601,15 @@ def test_random_small_tied_results_never_draw_fewer_classes(
     ("distribution", "before", "after", "fitted"),
     [
         # (classes listed, classes holding a feature): without the key, fitted
-        # once in the run, and with `fit`
-        ("three_values_tied", (3, 2), (2, 2), (3, 3)),
-        ("four_values_tied", (3, 2), (2, 2), (4, 4)),
-        ("five_values_tied", (3, 3), (3, 3), (5, 5)),
-        ("two_values_in_three_rows", (4, 2), (2, 2), (2, 2)),
-        ("four_values_two_tied", (3, 3), (3, 3), (4, 4)),
-        ("three_values_in_five_rows", (5, 3), (4, 3), (3, 3)),
-        ("three_values", (2, 2), (3, 3), (3, 3)),
-        ("two_rows", (7, 2), (2, 2), (2, 2)),
+        # once in the run, and with `fit` (the maximum shares the last class)
+        ("three_values_tied", (3, 2), (2, 2), (2, 2)),
+        ("four_values_tied", (3, 2), (2, 2), (3, 3)),
+        ("five_values_tied", (3, 3), (3, 3), (4, 4)),
+        ("two_values_in_three_rows", (4, 2), (2, 2), (1, 1)),
+        ("four_values_two_tied", (3, 3), (3, 3), (3, 3)),
+        ("three_values_in_five_rows", (5, 3), (4, 3), (2, 2)),
+        ("three_values", (2, 2), (3, 3), (2, 2)),
+        ("two_rows", (7, 2), (2, 2), (1, 1)),
     ],
 )
 def test_fewer_values_than_wished_keep_the_count_that_draws_more(
@@ -935,7 +956,7 @@ class TestEveryPath:
         small = result_table(con, "total", "point", "three_values")
         intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", small)
         preview = tool_default(runner, intent, small, "point")
-        assert len(preview["classify"][0]["classes"]) == 3
+        assert len(preview["classify"][0]["classes"]) == 2
         many = result_table(con, "total", "point", "many_values", name="many")
         saved = runner_for(FinalizeLayerRunner, con)._layer_style(
             preview,
