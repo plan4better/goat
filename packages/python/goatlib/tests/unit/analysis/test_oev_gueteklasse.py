@@ -303,23 +303,15 @@ class TestOevGueteklasseFrequencyIntervals:
 
         tool = OevGueteklasseTool()
         try:
-            tool.con.execute("""
-                CREATE OR REPLACE TABLE station_trip_counts AS
-                SELECT
-                    'stop_1' AS stop_id,
-                    'Stop 1' AS stop_name,
-                    NULL::VARCHAR AS parent_station,
-                    48.1::DOUBLE AS stop_lat,
-                    11.5::DOUBLE AS stop_lon,
-                    ST_Point(11.5, 48.1) AS geom,
-                    3::INTEGER AS route_type,
-                    12::INTEGER AS trip_count
-            """)
-            tool.con.execute(
-                "CREATE TABLE gtfs_stations "
-                "(stop_id VARCHAR, stop_name VARCHAR, geom GEOMETRY)"
+            # 12 trips one way in two hours: a one-way line, every 10 min.
+            _feed(
+                tool,
+                [
+                    ("stop_1", None, "L1", "east", 3, k * 600, "through")
+                    for k in range(12)
+                ],
             )
-
+            tool._count_pt_services(time_window)
             tool._calculate_station_categories(config, time_window)
             row = tool.con.execute("""
                 SELECT time_interval, station_category, frequency_minutes
@@ -339,6 +331,176 @@ class TestOevGueteklasseFrequencyIntervals:
 # =============================================================================
 # Integration Tests - OevGueteklasseTool
 # =============================================================================
+
+
+def _clock(seconds: int) -> str:
+    return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
+
+
+def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> None:
+    """The tables a station count reads, from ``calls``: (stop, its parent
+    station, line, which way the trip goes, "east" or "west", route type,
+    seconds into the day, and whether it passes the stop, "through", or
+    "ends" or "starts" there). Each call is a trip of its own, with stops
+    either side of this one as it goes (outside the area): what its direction
+    is read from. ``tie``: the stop before is in the same minute as the stop,
+    as the shipped feed's minute times often have it, and the stop before
+    that a minute earlier."""
+    tool.con.execute("""
+        CREATE OR REPLACE TABLE gtfs_stop_times (
+            stop_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, call_order INTEGER,
+            route_type INTEGER, arrival_time VARCHAR, is_weekday BOOLEAN,
+            is_saturday BOOLEAN, is_sunday BOOLEAN, h3_3 INTEGER)
+    """)
+    tool.con.execute("""
+        CREATE OR REPLACE TABLE gtfs_stops (
+            stop_id VARCHAR, stop_name VARCHAR, stop_lat DOUBLE, stop_lon DOUBLE,
+            location_type VARCHAR, parent_station VARCHAR, h3_3 INTEGER,
+            geom GEOMETRY)
+    """)
+    rows, stops, places = [], {}, {}
+    for k, (stop, parent, line, way, route_type, at, kind) in enumerate(calls):
+        trip = f"t{k}"
+        step = 0.01 if way == "east" else -0.01
+        before = [(f"{stop}:{-step}", 11.5 - step, at - 60 if tie else at - 120)]
+        if tie:
+            before = [(f"{stop}:{-2 * step}", 11.5 - 2 * step, at - 60)] + [
+                (f"{stop}:{-step}", 11.5 - step, at)
+            ]
+        here = [(stop, 11.5, at)]
+        after = [(f"{stop}:{step}", 11.5 + step, at + 120)]
+        legs = {
+            "through": before + here + after,
+            "ends": before + here,
+            "starts": here + after,
+        }[kind]
+        for sid, lon, t in legs:
+            order = t if tie else len([r for r in rows if r[1] == trip])
+            rows.append((sid, trip, line, order, route_type, _clock(t)))
+            places[sid] = lon
+        stops[stop] = parent
+    tool.con.executemany(
+        "INSERT INTO gtfs_stop_times VALUES (?, ?, ?, ?, ?, ?, true, true, true, 1)",
+        rows,
+    )
+    tool.con.executemany(
+        "INSERT INTO gtfs_stops VALUES (?, ?, 48.1, ?, '0', NULL, 1, ST_Point(?, 48.1))",
+        [(sid, sid, lon, lon) for sid, lon in places.items()],
+    )
+    tool.con.execute("""
+        CREATE OR REPLACE TABLE stations_in_area (
+            stop_id VARCHAR, stop_name VARCHAR, parent_station VARCHAR,
+            h3_3 INTEGER, geom GEOMETRY)
+    """)
+    tool.con.executemany(
+        "INSERT INTO stations_in_area VALUES (?, ?, ?, 1, ST_Point(11.5, 48.1))",
+        [(stop, stop, parent) for stop, parent in stops.items()],
+    )
+    tool.con.execute(
+        "CREATE OR REPLACE TABLE gtfs_stations "
+        "(stop_id VARCHAR, stop_name VARCHAR, geom GEOMETRY)"
+    )
+
+
+class TestOevGueteklasseDirections:
+    """A line's service at a stop is per direction it serves the stop in,
+    read from its trips' stops either side (core GTFS only), however the feed
+    lays out its platforms: every stop of a line running every 10 minutes
+    each way reads 10 minutes, its termini included."""
+
+    CONFIG = OevGueteklasseStationConfig(
+        groups={"3": "C"},
+        time_frequency=[5, 10, 20],
+        categories=[{"C": 1}, {"C": 2}, {"C": 3}],
+        classification={"1": {300: "1"}, "2": {300: "2"}, "3": {300: "3"}},
+    )
+    WINDOW = PTTimeWindow(weekday="weekday", from_time=0, to_time=7200)
+
+    def frequencies(self, calls: list[tuple], tie: bool = False) -> dict[str, float]:
+        tool = OevGueteklasseTool()
+        try:
+            _feed(tool, calls, tie)
+            tool._count_pt_services(self.WINDOW)
+            tool._calculate_station_categories(self.CONFIG, self.WINDOW)
+            return dict(
+                tool.con.execute(
+                    "SELECT stop_id, frequency_minutes FROM station_frequencies"
+                ).fetchall()
+            )
+        finally:
+            tool.cleanup()
+
+    @staticmethod
+    def every_10(stop, parent, line, way, kind="through", offset=0):
+        """A line's 12 trips in two hours at a stop, one way."""
+        return [
+            (stop, parent, line, way, 3, offset + 300 + k * 600, kind)
+            for k in range(12)
+        ]
+
+    def test_a_stop_passed_both_ways(self) -> None:
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L1", "west")
+        )
+        assert f["mid"] == pytest.approx(10.0)
+
+    def test_a_terminus_on_one_platform(self) -> None:
+        """Trips ending there and trips starting there, on one platform:
+        two directions, not one counted twice (Oßweil Mehrzweckhalle)."""
+        f = self.frequencies(
+            self.every_10("end", None, "L1", "east", "ends")
+            + self.every_10("end", None, "L1", "west", "starts", offset=60)
+        )
+        assert f["end"] == pytest.approx(10.0)
+
+    def test_a_terminus_turned_in_a_loop(self) -> None:
+        """A bus arriving and leaving pointing the same way (it turns in a
+        loop): still service arriving and service leaving, two directions."""
+        f = self.frequencies(
+            self.every_10("loop_end", None, "L1", "east", "ends")
+            + self.every_10("loop_end", None, "L1", "east", "starts", offset=60)
+        )
+        assert f["loop_end"] == pytest.approx(10.0)
+
+    def test_a_terminus_on_two_platforms(self) -> None:
+        f = self.frequencies(
+            self.every_10("end_a", "END", "L1", "east", "ends")
+            + self.every_10("end_b", "END", "L1", "west", "starts")
+        )
+        assert f["END"] == pytest.approx(10.0)
+
+    def test_a_one_way_loop(self) -> None:
+        f = self.frequencies(self.every_10("loop", None, "L1", "east"))
+        assert f["loop"] == pytest.approx(10.0)
+
+    def test_short_turns_ending_there_keep_their_way(self) -> None:
+        """A line's trips one way, half of them ending at the stop: one
+        direction, every 5 minutes."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L1", "east", "ends", offset=120)
+        )
+        assert f["mid"] == pytest.approx(5.0)
+
+    def test_two_lines_add_up(self) -> None:
+        both = [
+            call
+            for line in ("L1", "L2")
+            for way in ("east", "west")
+            for call in self.every_10("mid", None, line, way)
+        ]
+        assert self.frequencies(both)["mid"] == pytest.approx(5.0)
+
+    def test_stops_in_the_same_minute(self) -> None:
+        """Minute times, the stop before in the stop's own minute: the
+        directions read from the stops a minute away."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L1", "west"),
+            tie=True,
+        )
+        assert f["mid"] == pytest.approx(10.0)
 
 
 class TestOevGueteklasseTool:

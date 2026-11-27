@@ -576,8 +576,12 @@ class PTToolBase(AnalysisTool):
         """Import GTFS stop_times parquet.
 
         Creates a view 'gtfs_stop_times' with standardized columns:
-        - stop_id, route_type, arrival_time, is_weekday, is_saturday,
-          is_sunday, h3_3
+        - stop_id, trip_id, route_id, call_order, route_type, arrival_time,
+          is_weekday, is_saturday, is_sunday, h3_3
+
+        ``call_order`` places a call on its trip. The shipped file has no
+        stop_sequence, so it is the arrival time in seconds: calls a minute
+        apart are in order, calls in the same minute tie.
 
         Args:
             stop_times_path: Path to GTFS stop_times parquet file.
@@ -586,6 +590,11 @@ class PTToolBase(AnalysisTool):
             CREATE OR REPLACE VIEW gtfs_stop_times AS
             SELECT
                 stop_id,
+                trip_id,
+                route_id,
+                CAST(split_part(arrival_time, ':', 1) AS INTEGER) * 3600
+                    + CAST(split_part(arrival_time, ':', 2) AS INTEGER) * 60
+                    + CAST(split_part(arrival_time, ':', 3) AS INTEGER) AS call_order,
                 route_type,
                 arrival_time,
                 is_weekday,
@@ -696,6 +705,9 @@ class PTToolBase(AnalysisTool):
             )
             SELECT
                 st.stop_id,
+                st.trip_id,
+                t.route_id,
+                CAST(st.stop_sequence AS INTEGER) AS call_order,
                 r.route_type,
                 st.arrival_time,
                 {str(is_weekday).lower()} AS is_weekday,
