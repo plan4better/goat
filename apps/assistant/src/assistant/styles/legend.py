@@ -292,7 +292,8 @@ def _label(c: _Counted, record: dict[str, Any]) -> str:
         texts = [value_text(v) for v in listed[:LABEL_VALUES]]
         rest = len(listed) - len(texts)
         return ", ".join(texts) + (f" and {rest} more" if rest > 0 else "")
-    one = c.single.get(record.get("id"))
+    rid = record.get("id")
+    one = c.single.get(rid) if isinstance(rid, str) else None
     if one is not None:
         return number_text(one)
     low, high = record.get("from"), record.get("to")
