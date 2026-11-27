@@ -1,7 +1,7 @@
 // The style panel's document (spec 13.1): the browser's copy lives in the StyleSaver, which saves it; this store
 // edits it by path, keeps undo history and the class scope, and tells subscribers. Updates share every unchanged
 // subtree, so a row that reads an unchanged path gets the same value and does not render again.
-import { isIntentEdit } from "@/lib/style/editor/classify";
+import { isIntentEdit, settleFit } from "@/lib/style/editor/classify";
 import { type Path, getIn, setIn } from "@/lib/style/editor/paths";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { withRuleIds } from "@/lib/style/ids";
@@ -91,9 +91,10 @@ export class EditorStore<S extends DocumentSaver<LayerStyle> = StyleSaver> {
     this.update((doc) => setIn(doc, path, value), path);
   }
 
-  /** One edit; consecutive edits with the same key within 600 ms are one undo step. */
+  /** One edit; consecutive edits with the same key within 600 ms are one undo step. A classification fitted to the data
+   * is settled as the edit leaves it (`settleFit`). */
   update(fn: (doc: LayerStyle) => LayerStyle, coalesceKey?: string): void {
-    const next = fn(this.current);
+    const next = settleFit(this.current, fn(this.current));
     if (next === this.current) return;
     const now = Date.now();
     const merges =

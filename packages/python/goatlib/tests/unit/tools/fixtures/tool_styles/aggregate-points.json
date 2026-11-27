@@ -40,6 +40,7 @@
     "count": 7,
     "palette": "colorbrewer:Oranges",
     "id": "count",
+    "fit": true,
     "title": "Count",
     "no_data": {
      "fill": {
@@ -49,54 +50,54 @@
     "classes": [
      {
       "id": "c1",
-      "to": 22.8571428571,
+      "to": 30.0,
       "fill": {
        "color": "#feedde"
       }
      },
      {
       "id": "c2",
-      "from": 22.8571428571,
-      "to": 35.7142857143,
+      "from": 30.0,
+      "to": 40.0,
       "fill": {
        "color": "#fdd0a2"
       }
      },
      {
       "id": "c3",
-      "from": 35.7142857143,
-      "to": 48.5714285714,
+      "from": 40.0,
+      "to": 50.0,
       "fill": {
        "color": "#fdae6b"
       }
      },
      {
       "id": "c4",
-      "from": 48.5714285714,
-      "to": 61.4285714286,
+      "from": 50.0,
+      "to": 70.0,
       "fill": {
        "color": "#fd8d3c"
       }
      },
      {
       "id": "c5",
-      "from": 61.4285714286,
-      "to": 74.2857142857,
+      "from": 70.0,
+      "to": 80.0,
       "fill": {
        "color": "#f16913"
       }
      },
      {
       "id": "c6",
-      "from": 74.2857142857,
-      "to": 87.1428571429,
+      "from": 80.0,
+      "to": 90.0,
       "fill": {
        "color": "#d94801"
       }
      },
      {
       "id": "c7",
-      "from": 87.1428571429,
+      "from": 90.0,
       "fill": {
        "color": "#8c2d04"
       }

@@ -42,6 +42,7 @@
      "#074050"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "title": "Area reached",
     "unit": "m²",
     "no_data": {

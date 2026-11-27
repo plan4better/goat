@@ -255,8 +255,32 @@ class TestTheDocumentValidates:
         assert style_contract(doc, con, relation, "polygon") == []
 
 
+def unfitted_default(*args: Any) -> dict[str, Any]:
+    """A numeric default without `fit`: classes as the count asks."""
+    doc = tool_style.numeric_default(*args)
+    del doc["classify"][0]["fit"]
+    return doc
+
+
 class TestClasses:
     def test_a_class_list_of_one_fails(self, con: duckdb.DuckDBPyConnection) -> None:
+        relation = table(con, {"v": "3.0"}, "polygon", 10)
+        doc = computed(
+            con,
+            relation,
+            unfitted_default("v", ORANGES, "polygon", "Value"),
+            "polygon",
+        )
+        assert len(doc["classify"][0]["classes"]) == 1
+        problems = style_contract(doc, con, relation, "polygon")
+        assert rules(problems) == ["single_class"]
+        assert problems[0].level == "design"
+
+    def test_fitted_classes_of_one_value_are_one_class(
+        self, con: duckdb.DuckDBPyConnection
+    ) -> None:
+        """With `fit` the one class holds the one value and grows back with
+        the data."""
         relation = table(con, {"v": "3.0"}, "polygon", 10)
         doc = computed(
             con,
@@ -265,9 +289,7 @@ class TestClasses:
             "polygon",
         )
         assert len(doc["classify"][0]["classes"]) == 1
-        problems = style_contract(doc, con, relation, "polygon")
-        assert rules(problems) == ["single_class"]
-        assert problems[0].level == "design"
+        assert style_contract(doc, con, relation, "polygon") == []
 
     def test_a_class_list_of_one_beside_rows_without_a_value_passes(
         self, con: duckdb.DuckDBPyConnection
@@ -615,7 +637,7 @@ class TestNotesInTheToolTests:
         doc = computed(
             con,
             relation,
-            tool_style.numeric_default("v", ORANGES, "polygon", "Value"),
+            unfitted_default("v", ORANGES, "polygon", "Value"),
             "polygon",
         )
         with pytest.raises(StyleContractError, match="single_class"):

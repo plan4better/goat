@@ -1780,5 +1780,257 @@
    ]
   },
   "refused": []
+ },
+ {
+  "name": "fit removed with a new count while the server recomputed the classes",
+  "base": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "incoming": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "current": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3,
+       "to": 6,
+       "fill": {
+        "color": "#9ecae1"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 6,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T11:00:00Z",
+      "data": "f2",
+      "scope": "dataset",
+      "domain": [
+       0,
+       12
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#9ecae1",
+        "c3": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3,
+       "to": 6,
+       "fill": {
+        "color": "#9ecae1"
+       }
+      },
+      {
+       "id": "c3",
+       "from": 6,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T11:00:00Z",
+      "data": "f2",
+      "scope": "dataset",
+      "domain": [
+       0,
+       12
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#9ecae1",
+        "c3": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "refused": []
  }
 ]

@@ -1,0 +1,3904 @@
+[
+ {
+  "name": "a class color picked by hand keeps the classes as they are, manual",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a class name keeps the classes as they are, manual",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       },
+       "name": "Many"
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       },
+       "name": "Many"
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a hidden class keeps the classes as they are, manual",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       },
+       "visible": false
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       },
+       "visible": false
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a class's own part keeps the classes as they are, manual",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7",
+        "opacity": 0.5
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7",
+        "opacity": 0.5
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a palette picked clears the server's colors and keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Greens",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Greens",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "reverse keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "reverse": true
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "reverse": true
+    }
+   ]
+  }
+ },
+ {
+  "name": "title, unit, format, no data and legend keep fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Other",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#000000"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "unit": "m",
+     "format": {
+      "decimals": 1
+     },
+     "legend": false
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Other",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#000000"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "unit": "m",
+     "format": {
+      "decimals": 1
+     },
+     "legend": false
+    }
+   ]
+  }
+ },
+ {
+  "name": "new bounds from the server are no class edit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 5,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 5,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 5,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 5,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a count chosen removes fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a field chosen removes fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "w",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "w",
+     "method": "quantile",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "another method removes fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "natural_breaks",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "natural_breaks",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "manual chosen keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a break moved by hand keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 3,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 3,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a class edit on manual classes keeps them as they are",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a classification from manual back to quantile removes fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "manual",
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 2,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 2,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a classification without fit is left alone",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a classification without an id matches by its place",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "each classification by its id",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "w",
+     "field": "w",
+     "method": "categories",
+     "count": 3
+    },
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    },
+    {
+     "id": "w",
+     "field": "w",
+     "method": "categories",
+     "count": 3
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 5,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    },
+    {
+     "id": "w",
+     "field": "w",
+     "method": "categories",
+     "count": 3
+    }
+   ]
+  }
+ },
+ {
+  "name": "a new classification is left alone",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": []
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a palette picked clears a color set by hand and keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#ff0000"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Greens",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Greens",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a key removed from a class is no class edit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       },
+       "name": "Many"
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  }
+ },
+ {
+  "name": "a range picked clears the server's values and keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "outline": {
+        "width": 1
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "outline": {
+        "width": 3
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "outline.width",
+       "values": {
+        "c1": 1,
+        "c2": 3
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.width"
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "outline.width",
+       "values": {
+        "c1": 1,
+        "c2": 3
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.width",
+     "range": [
+      2,
+      6
+     ]
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "outline.width",
+       "values": {
+        "c1": 1,
+        "c2": 3
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.width",
+     "range": [
+      2,
+      6
+     ]
+    }
+   ]
+  }
+ },
+ {
+  "name": "a target changed keeps fit",
+  "before": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4,
+       "fill": {
+        "color": "#deebf7"
+       }
+      },
+      {
+       "id": "c2",
+       "from": 4,
+       "fill": {
+        "color": "#3182bd"
+       }
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     }
+    }
+   ]
+  },
+  "after": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.color"
+    }
+   ]
+  },
+  "expected": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "id": "v",
+     "title": "Value",
+     "field": "v",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:Blues",
+     "classes": [
+      {
+       "id": "c1",
+       "to": 4
+      },
+      {
+       "id": "c2",
+       "from": 4
+      }
+     ],
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     },
+     "computed": {
+      "at": "2026-11-27T10:00:00Z",
+      "data": "f1",
+      "scope": "dataset",
+      "domain": [
+       0,
+       9
+      ],
+      "generated": {
+       "target": "fill.color",
+       "values": {
+        "c1": "#deebf7",
+        "c2": "#3182bd"
+       }
+      },
+      "no_data": false
+     },
+     "target": "outline.color"
+    }
+   ]
+  }
+ }
+]

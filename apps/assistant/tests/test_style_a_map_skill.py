@@ -333,8 +333,8 @@ def test_the_sections_come_in_the_order_the_model_works() -> None:
     assert re.findall(r"^## (.+)$", _skill().instructions, re.M) == SECTIONS
 
 
-def test_skill_md_stays_within_thirty_four_thousand_nine_hundred_fifty_bytes() -> None:
-    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 34_950
+def test_skill_md_stays_within_thirty_five_thousand_one_hundred_fifty_bytes() -> None:
+    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 35_150
 
 
 def test_no_dashes_inside_sentences() -> None:
@@ -676,6 +676,15 @@ def test_a_computed_classification_is_colored_by_its_palette() -> None:
     assert "project_field_statistics once" in classes
     assert "Never color the classes of a computed method one by one" in classes
     assert "only when the user names that class" in classes
+
+
+def test_fit_is_a_tool_s_key_the_assistant_never_sets() -> None:
+    classes = _plain(_section("Classes"))
+    assert "fit on a tool's classes is the tool's: never set it" in classes
+    assert "A new count, method or field removes it" in classes
+    assert "a change to one class keeps the classes as they are, manual" in classes
+    description = " ".join(UPDATE_STYLE.description.split())
+    assert "Never set fit" in description and "tool" in description
 
 
 def test_it_chooses_what_the_user_left_open_and_lists_icons_in_one_call() -> None:

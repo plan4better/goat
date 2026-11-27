@@ -108,6 +108,7 @@
  "Classification.computed",
  "Classification.count",
  "Classification.field",
+ "Classification.fit",
  "Classification.format",
  "Classification.id",
  "Classification.legend",

@@ -37,9 +37,10 @@
    {
     "field": "matched_points",
     "method": "quantile",
-    "count": 4,
+    "count": 7,
     "palette": "colorbrewer:Oranges",
     "id": "matched_points",
+    "fit": true,
     "title": "matched_points",
     "no_data": {
      "fill": {
@@ -49,32 +50,24 @@
     "classes": [
      {
       "id": "c1",
-      "to": 1.75,
+      "to": 2.0,
       "fill": {
-       "color": "#feedde"
+       "color": "#fee6ce"
       }
      },
      {
       "id": "c2",
-      "from": 1.75,
-      "to": 2.0,
+      "from": 2.0,
+      "to": 3.0,
       "fill": {
-       "color": "#fdbe85"
+       "color": "#fdae6b"
       }
      },
      {
       "id": "c3",
-      "from": 2.0,
-      "to": 2.25,
+      "from": 3.0,
       "fill": {
-       "color": "#fd8d3c"
-      }
-     },
-     {
-      "id": "c4",
-      "from": 2.25,
-      "fill": {
-       "color": "#d94701"
+       "color": "#e6550d"
       }
      }
     ],
@@ -89,16 +82,15 @@
      "generated": {
       "target": "fill.color",
       "values": {
-       "c1": "#feedde",
-       "c2": "#fdbe85",
-       "c3": "#fd8d3c",
-       "c4": "#d94701"
+       "c1": "#fee6ce",
+       "c2": "#fdae6b",
+       "c3": "#e6550d"
       }
      },
      "no_data": false
     },
     "format": {
-     "decimals": 1
+     "decimals": 0
     }
    }
   ]

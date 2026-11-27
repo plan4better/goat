@@ -203,6 +203,31 @@ describe("classification editor", () => {
     expect(store.get("classify.0.count")).toBe(2);
   });
 
+  it("classes fitted to the data say the count is the most; other classes say nothing", () => {
+    i18n.addResource("en", "common", "style_editor.count_fitted", "Up to {{count}}, fitted");
+    try {
+      shell(doc([{ ...QUANTILE, count: 7, fit: true }]));
+      expect(within(rowOf("style_editor.classes")).getByText("Up to 7, fitted")).toBeDefined();
+    } finally {
+      i18n.removeResourceBundle("en", "common");
+    }
+  });
+
+  it("fit on another method shows no caption", () => {
+    shell(doc([{ ...QUANTILE, method: "natural_breaks", fit: true }]));
+    expect(screen.queryByText("style_editor.count_fitted")).toBeNull();
+  });
+
+  it("a count picked on fitted classes removes fit and the caption", async () => {
+    const { store } = shell(doc([{ ...QUANTILE, count: 7, fit: true }]));
+    expect(screen.getByText("style_editor.count_fitted")).toBeDefined();
+    const { options } = await countMenu();
+    await userEvent.click(options[3]);
+    expect(store.get("classify.0.count")).toBe(5);
+    expect(store.get("classify.0.fit")).toBeUndefined();
+    expect(screen.queryByText("style_editor.count_fitted")).toBeNull();
+  });
+
   it("numeric classes show a stored 10 as picked", async () => {
     shell(doc([{ ...QUANTILE, count: 10 }]));
     const { options, selected } = await countMenu();

@@ -155,6 +155,7 @@ class Classification(StyleModel):
     field: Annotated[str, Field(min_length=1)]
     method: Method
     count: Annotated[int, Field(ge=1, le=MAX_COUNT)] | None = None
+    fit: bool = False
     target: TargetPath | None = None
     palette: PaletteRef | None = None
     reverse: bool = False

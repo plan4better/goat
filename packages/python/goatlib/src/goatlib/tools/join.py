@@ -623,7 +623,7 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             "colorbrewer:Oranges",
             geometry,
             relation,
-            negative=low is not None and low < 0 and high <= 0,
+            value_range=(low, high),
             outline_areas=True,
             columns=names,
             language=params.language,

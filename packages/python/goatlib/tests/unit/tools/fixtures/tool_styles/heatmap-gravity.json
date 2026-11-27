@@ -42,6 +42,7 @@
      "#074050"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "title": "Accessibility (gravity)",
     "no_data": {
      "fill": {
@@ -61,7 +62,7 @@
       "from": 0.2,
       "to": 0.4,
       "fill": {
-       "color": "#82d091"
+       "color": "#8fda94"
       }
      },
      {
@@ -69,7 +70,7 @@
       "from": 0.4,
       "to": 0.6,
       "fill": {
-       "color": "#4c9b82"
+       "color": "#60b187"
       }
      },
      {
@@ -77,12 +78,20 @@
       "from": 0.6,
       "to": 0.8,
       "fill": {
-       "color": "#19696f"
+       "color": "#35877d"
       }
      },
      {
       "id": "c5",
       "from": 0.8,
+      "to": 1.0,
+      "fill": {
+       "color": "#145f69"
+      }
+     },
+     {
+      "id": "c6",
+      "from": 1.0,
       "fill": {
        "color": "#074050"
       }
@@ -100,10 +109,11 @@
       "target": "fill.color",
       "values": {
        "c1": "#d3f2a3",
-       "c2": "#82d091",
-       "c3": "#4c9b82",
-       "c4": "#19696f",
-       "c5": "#074050"
+       "c2": "#8fda94",
+       "c3": "#60b187",
+       "c4": "#35877d",
+       "c5": "#145f69",
+       "c6": "#074050"
       }
      },
      "no_data": false

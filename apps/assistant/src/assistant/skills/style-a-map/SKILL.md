@@ -259,6 +259,9 @@ side twice); a yes/no field; a rule for features without a value:
   and keep `palette` to say where they come from.
 - A new `count` rebuilds the classes: colors and names set by hand on them are
   lost. A new `method` or `palette` keeps them.
+- `fit` on a tool's classes is the tool's: never set it. A new `count`,
+  `method` or `field` removes it; a change to one class keeps the classes as
+  they are, `manual`.
 - **Never color the classes of a computed method one by one**: set `palette`
   (with `reverse`), `count` or `method`. A class's own color only when the
   user names that class.

@@ -622,6 +622,7 @@ export interface Classification {
     | "geometric_interval"
     | "manual";
   count?: number | null;
+  fit?: boolean;
   target?:
     | (
         | "arrows.color"

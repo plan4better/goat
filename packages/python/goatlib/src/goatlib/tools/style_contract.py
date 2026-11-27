@@ -9,7 +9,8 @@ level:
   without an error (`invalid`: a part the geometry cannot draw, a palette
   shorter than the classes, a field of the wrong type, ...);
 - `design`, what a tool's default is made to hold beyond that: no computed
-  class list of one, unless features without a value are listed beside it
+  class list of one, unless features without a value are listed beside it or
+  the classes are fitted to the data (`fit`, one class for one value)
   (`single_class`), the column the run wrote is the one
   classified (`field_expected`, where the caller names it), no class without a
   feature where the field has at least as many distinct values as classes
@@ -171,8 +172,9 @@ def _class_problems(
         return []
     computed = c.get("computed")
     no_data = isinstance(computed, dict) and computed.get("no_data") is True
-    # One class beside features without a value is a legend of two entries.
-    if len(classes) == 1 and not no_data:
+    # One class beside features without a value is a legend of two entries;
+    # classes fitted to the data make one class only for one value.
+    if len(classes) == 1 and not no_data and c.get("fit") is not True:
         return [
             Problem(
                 "single_class",

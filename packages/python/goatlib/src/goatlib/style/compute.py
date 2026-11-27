@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from goatlib.style.catalog import palettes
 from goatlib.style.check import MAIN_COLOR, as_list, part_values, record_places
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
@@ -40,6 +41,9 @@ DEFAULT_COUNT = 5
 
 #: `("breaks", field, method, count)`, `("top", field, count)`, `("range", field)`
 #: (a value form's domain, or the minimum and maximum of manual classes);
+#: quantile classes fitted to the data (`fit`) ask for `("breaks", field,
+#: "quantile", count, "fit")`, centred at 0 on a diverging palette with a sixth
+#: part `"centre"`;
 #: a sqrt or log scale reads its range over the values it can map,
 #: `("range", field, "sqrt")` (from 0) and `("range", field, "log")` (above 0).
 #: A raster's "field" is its band as a formula (`b1`, or the formula's expression),
@@ -53,12 +57,15 @@ StatKey = tuple[str, ...]
 @dataclass(frozen=True)
 class Breaks:
     """Inner breaks over the data's minimum and maximum (None without data);
-    `merged` when equal breaks left fewer than the classes asked for."""
+    `merged` when equal breaks left fewer than the classes asked for. Classes
+    centred at 0 (`positions`) take, per class, the color at that place of the
+    palette sampled to `2 * (count // 2) + 1` colors."""
 
     breaks: tuple[float, ...]
     min: float | None
     max: float | None
     merged: bool
+    positions: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,9 +118,22 @@ def _count(c: dict[str, Any]) -> int | None:
     return None
 
 
+def _fitted(c: dict[str, Any]) -> bool:
+    """Quantile classes fitted to the data (5.2); `fit` on another method is ignored."""
+    return c.get("fit") is True and c.get("method") == "quantile"
+
+
+def _diverging(palette: Any) -> bool:
+    entry = palettes().get(palette) if isinstance(palette, str) else None
+    return entry is not None and entry.kind == "diverging"
+
+
 def _breaks_key(c: dict[str, Any]) -> StatKey | None:
     if c.get("method") in NUMERIC_METHODS and isinstance(c.get("field"), str):
-        return ("breaks", c["field"], c["method"], str(_count(c) or DEFAULT_COUNT))
+        key = ("breaks", c["field"], c["method"], str(_count(c) or DEFAULT_COUNT))
+        if _fitted(c):
+            return (*key, "fit", *(("centre",) if _diverging(c.get("palette")) else ()))
+        return key
     return None
 
 
@@ -454,10 +474,11 @@ def _put(record: dict[str, Any], target: str, value: Any) -> None:
 
 
 def _target_values(
-    c: dict[str, Any], geometry: str | None, n: int
+    c: dict[str, Any], geometry: str | None, n: int, positions: tuple[int, ...] = ()
 ) -> tuple[str | None, list[Any] | None]:
     """The target generated classes fill, and its values for `n` classes: colors
-    from the palette, numbers from the range, nothing for choices (5.4)."""
+    from the palette, numbers from the range, nothing for choices (5.4). Colors
+    of classes centred at 0 are taken at their `positions` (`Breaks`)."""
     target = c.get("target")
     if not isinstance(target, str):
         target = MAIN_COLOR.get(geometry or "")
@@ -470,6 +491,10 @@ def _target_values(
             c.get("palette")
             or DEFAULT_CLASSIFY_PALETTE["categories" if categories else "numeric"]
         )
+        if positions:
+            steps = 2 * ((_count(c) or DEFAULT_COUNT) // 2) + 1
+            spread = sample_colors(palette, steps, reverse=c.get("reverse") is True)
+            return target, [spread[p] for p in positions]
         try:
             colors = sample_colors(
                 palette,
@@ -575,7 +600,7 @@ def _numeric(
     else:
         classes = [{} for _ in range(n)]
     _with_ids(classes, ids, counters)
-    target, values = _target_values(c, geometry, n)
+    target, values = _target_values(c, geometry, n, b.positions)
     ours = _ours(classes, c, target)
     written: dict[str, Any] = {}
     for i, k in enumerate(classes):
@@ -802,7 +827,10 @@ def _fewer_classes(c: dict[str, Any], b: Breaks, pointer: str) -> Issue | None:
     break on another break or on the data's edge would leave a class empty or
     with one value, and it is joined to the next: a quantile's breaks meet only
     where values repeat, those of the other methods (and breaks rounded to
-    whole numbers) also without."""
+    whole numbers) also without. Classes fitted to the data (`fit`) are fewer
+    by design: no note."""
+    if _fitted(c):
+        return None
     asked = _count(c) or DEFAULT_COUNT
     if c.get("method") == "geometric_interval" and b.min is not None and b.min <= 0:
         return make_issue(

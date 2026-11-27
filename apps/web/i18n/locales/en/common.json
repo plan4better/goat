@@ -3875,6 +3875,7 @@
     "count_top": "Top {{count}}",
     "count_classes_one": "{{count}} class",
     "count_classes_other": "{{count}} classes",
+    "count_fitted": "Up to {{count}} classes, fitted to the data",
     "reversed": "reversed",
     "range": "Range",
     "range_own": "Your own values",

@@ -5,6 +5,8 @@ import { type DocumentSaver, EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
 
+import { fitEditCases } from "./fixtures";
+
 const doc = (extra: object = {}) =>
   ({
     version: "1.0.0",
@@ -346,5 +348,34 @@ describe("EditorStore", () => {
     store.takeOutside({ document: red(), revision: 2 });
     expect(store.document).toEqual(doc());
     expect(store.canUndo).toBe(false);
+  });
+});
+
+describe("EditorStore and classes fitted to the data", () => {
+  it("an edit of one class keeps the classes as they are, manual", () => {
+    const [colored] = fitEditCases();
+    const { store } = storeOf(structuredClone(colored.before));
+    store.set("classify.0.classes.0.fill.color", "#ff0000");
+    expect(store.document).toEqual(colored.expected);
+    store.undo();
+    expect(store.document).toEqual(colored.before);
+  });
+
+  it("an edit of a document without fit stores what the edit returned", () => {
+    const [colored] = fitEditCases();
+    const before = structuredClone(colored.before);
+    delete before.classify[0].fit;
+    const { store } = storeOf(before);
+    let returned: LayerStyle | undefined;
+    store.update((doc) => (returned = { ...doc, opacity: 0.5 } as LayerStyle));
+    expect(store.document).toBe(returned);
+  });
+
+  it("a count picked removes fit", () => {
+    const [colored] = fitEditCases();
+    const { store } = storeOf(structuredClone(colored.before));
+    store.set("classify.0.count", 5);
+    expect(store.get("classify.0.fit")).toBeUndefined();
+    expect(store.get("classify.0.count")).toBe(5);
   });
 });

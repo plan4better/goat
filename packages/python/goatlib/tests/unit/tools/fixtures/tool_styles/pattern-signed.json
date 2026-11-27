@@ -22,7 +22,7 @@
   "kind": "vector",
   "symbol": {
    "fill": {
-    "color": "#fd8d3c",
+    "color": "#f7f7f7",
     "opacity": 0.8
    },
    "outline": {
@@ -35,8 +35,9 @@
     "field": "sum_value",
     "method": "quantile",
     "count": 7,
-    "palette": "colorbrewer:Oranges",
+    "palette": "colorbrewer:RdBu",
     "id": "sum_value",
+    "fit": true,
     "title": "Sum of value",
     "no_data": {
      "fill": {
@@ -48,54 +49,46 @@
       "id": "c1",
       "to": -315.0,
       "fill": {
-       "color": "#feedde"
+       "color": "#b2182b"
       }
      },
      {
       "id": "c2",
       "from": -315.0,
-      "to": -140.0,
+      "to": -175.0,
       "fill": {
-       "color": "#fdd0a2"
+       "color": "#ef8a62"
       }
      },
      {
       "id": "c3",
-      "from": -140.0,
-      "to": 35.0,
+      "from": -175.0,
+      "to": 0.0,
       "fill": {
-       "color": "#fdae6b"
+       "color": "#fddbc7"
       }
      },
      {
       "id": "c4",
-      "from": 35.0,
-      "to": 210.0,
+      "from": 0.0,
+      "to": 245.0,
       "fill": {
-       "color": "#fd8d3c"
+       "color": "#d1e5f0"
       }
      },
      {
       "id": "c5",
-      "from": 210.0,
-      "to": 385.0,
+      "from": 245.0,
+      "to": 490.0,
       "fill": {
-       "color": "#f16913"
+       "color": "#67a9cf"
       }
      },
      {
       "id": "c6",
-      "from": 385.0,
-      "to": 560.0,
+      "from": 490.0,
       "fill": {
-       "color": "#d94801"
-      }
-     },
-     {
-      "id": "c7",
-      "from": 560.0,
-      "fill": {
-       "color": "#8c2d04"
+       "color": "#2166ac"
       }
      }
     ],
@@ -110,13 +103,12 @@
      "generated": {
       "target": "fill.color",
       "values": {
-       "c1": "#feedde",
-       "c2": "#fdd0a2",
-       "c3": "#fdae6b",
-       "c4": "#fd8d3c",
-       "c5": "#f16913",
-       "c6": "#d94801",
-       "c7": "#8c2d04"
+       "c1": "#b2182b",
+       "c2": "#ef8a62",
+       "c3": "#fddbc7",
+       "c4": "#d1e5f0",
+       "c5": "#67a9cf",
+       "c6": "#2166ac"
       }
      },
      "no_data": false

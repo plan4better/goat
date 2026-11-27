@@ -42,6 +42,7 @@
      "#074050"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "title": "Accessibility (gravity)",
     "no_data": {
      "fill": {
@@ -51,22 +52,54 @@
     "classes": [
      {
       "id": "c1",
-      "to": 7.3,
+      "to": 6.6,
       "fill": {
        "color": "#d3f2a3"
       }
      },
      {
       "id": "c2",
-      "from": 7.3,
-      "to": 8.6,
+      "from": 6.6,
+      "to": 7.2,
+      "fill": {
+       "color": "#97e196"
+      }
+     },
+     {
+      "id": "c3",
+      "from": 7.2,
+      "to": 7.8,
+      "fill": {
+       "color": "#6cc08b"
+      }
+     },
+     {
+      "id": "c4",
+      "from": 7.8,
+      "to": 8.2,
       "fill": {
        "color": "#4c9b82"
       }
      },
      {
-      "id": "c3",
-      "from": 8.6,
+      "id": "c5",
+      "from": 8.2,
+      "to": 8.8,
+      "fill": {
+       "color": "#217a79"
+      }
+     },
+     {
+      "id": "c6",
+      "from": 8.8,
+      "to": 12.5,
+      "fill": {
+       "color": "#105965"
+      }
+     },
+     {
+      "id": "c7",
+      "from": 12.5,
       "fill": {
        "color": "#074050"
       }
@@ -84,14 +117,18 @@
       "target": "fill.color",
       "values": {
        "c1": "#d3f2a3",
-       "c2": "#4c9b82",
-       "c3": "#074050"
+       "c2": "#97e196",
+       "c3": "#6cc08b",
+       "c4": "#4c9b82",
+       "c5": "#217a79",
+       "c6": "#105965",
+       "c7": "#074050"
       }
      },
      "no_data": false
     },
     "format": {
-     "decimals": 0
+     "decimals": 1
     }
    }
   ]

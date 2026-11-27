@@ -42,6 +42,7 @@
      "#074050"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "reverse": true,
     "title": "Average travel time to the closest destinations",
     "unit": "min",

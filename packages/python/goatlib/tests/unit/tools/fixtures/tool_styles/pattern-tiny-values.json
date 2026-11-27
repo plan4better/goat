@@ -42,6 +42,7 @@
      "#5c53a5"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "title": "Supply per demand",
     "no_data": {
      "fill": {
@@ -51,14 +52,14 @@
     "classes": [
      {
       "id": "c1",
-      "to": 7.2e-05,
+      "to": 7.4e-05,
       "fill": {
        "color": "#f3e79b"
       }
      },
      {
       "id": "c2",
-      "from": 7.2e-05,
+      "from": 7.4e-05,
       "to": 9.4e-05,
       "fill": {
        "color": "#fac484"
@@ -67,38 +68,38 @@
      {
       "id": "c3",
       "from": 9.4e-05,
-      "to": 0.000116,
+      "to": 0.000118,
       "fill": {
        "color": "#f8a07e"
       }
      },
      {
       "id": "c4",
-      "from": 0.000116,
-      "to": 0.000139,
+      "from": 0.000118,
+      "to": 0.000142,
       "fill": {
        "color": "#eb7f86"
       }
      },
      {
       "id": "c5",
-      "from": 0.000139,
-      "to": 0.000161,
+      "from": 0.000142,
+      "to": 0.000162,
       "fill": {
        "color": "#ce6693"
       }
      },
      {
       "id": "c6",
-      "from": 0.000161,
-      "to": 0.000183,
+      "from": 0.000162,
+      "to": 0.000186,
       "fill": {
        "color": "#a059a0"
       }
      },
      {
       "id": "c7",
-      "from": 0.000183,
+      "from": 0.000186,
       "fill": {
        "color": "#5c53a5"
       }

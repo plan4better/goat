@@ -1400,6 +1400,35 @@
   }
  },
  {
+  "line": 1317,
+  "target": "districts",
+  "expect": [],
+  "doc": {
+   "version": "1.0.0",
+   "kind": "vector",
+   "symbol": {
+    "fill": {
+     "color": "#cccccc"
+    }
+   },
+   "classify": [
+    {
+     "title": "Inhabitants per km²",
+     "field": "density",
+     "method": "quantile",
+     "count": 7,
+     "fit": true,
+     "palette": "colorbrewer:OrRd",
+     "no_data": {
+      "fill": {
+       "color": "#cccccc"
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
   "line": 986,
   "target": "districts",
   "expect": [],
