@@ -187,7 +187,7 @@ class OevGueteklasseTool(PTToolBase):
                 SELECT
                     CASE WHEN s.parent_station IS NOT NULL AND s.parent_station != ''
                          THEN s.parent_station ELSE s.stop_id END AS group_id,
-                    t.route_type, t.route_id, t.trip_id, t.stop_id, t.call_order AS o
+                    t.route_type, t.route_id, hash(t.trip_id) AS trip_id, hash(t.stop_id) AS stop_id, t.call_order AS o
                 FROM stations_in_area s
                 JOIN gtfs_stop_times t ON s.stop_id = t.stop_id AND s.h3_3 = t.h3_3
                 WHERE t.{weekday_col} = true
@@ -195,10 +195,11 @@ class OevGueteklasseTool(PTToolBase):
                   AND t.arrival_time <= '{to_time}'
             ),
             trip_calls AS (
-                SELECT t.trip_id, t.stop_id, t.call_order AS o,
-                       g.stop_lon AS x, g.stop_lat AS y
+                SELECT hash(t.trip_id) AS trip_id, hash(t.stop_id) AS stop_id,
+                       t.call_order AS o,
+                       CAST(g.stop_lon AS FLOAT) AS x, CAST(g.stop_lat AS FLOAT) AS y
                 FROM gtfs_stop_times t JOIN gtfs_stops g USING (stop_id)
-                WHERE t.trip_id IN (SELECT trip_id FROM calls)
+                WHERE hash(t.trip_id) IN (SELECT trip_id FROM calls)
             ),
             -- Stops sharing a call_order (minute times) go in order of
             -- distance from the trip's stops the minute before (the first
