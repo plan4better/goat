@@ -57,6 +57,7 @@ CUSTOMER_READS: tuple[str, ...] = (
 #: The authz functions; customer.can calls the others.
 AUTHZ_FUNCTIONS: tuple[str, ...] = (
     "authorization",
+    "bundle_is_catalog",
     "can",
     "check_layer",
     "check_organization",

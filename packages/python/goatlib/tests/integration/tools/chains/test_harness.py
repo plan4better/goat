@@ -1,21 +1,26 @@
 """What the chain harness itself promises: it refuses the app's own data,
 passes a script its arguments the way Windmill does, saves each run's
 workflow as core does, fails a test whose dataset steps name a layer the
-world does not have, and gives each run only its own jobs."""
+world does not have, gives each run only its own jobs, checks each tool
+step's preview style against the style contract, and sees the safety net
+replace a tool's style."""
 
 import asyncio
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import pytest
-from goatlib.tools.base import ToolSettings
+from goatlib.tools import style as tool_style
+from goatlib.tools.base import BaseToolRunner, ToolSettings
 from goatlib.tools.sync_windmill import FINALIZE_LAYER_SCRIPT, windmill_script
 
 from ..conftest import TEST_CUSTOMER_SCHEMA, get_pg_connection
-from .configs import dataset, edge, tool, workflow
-from .conftest import refusal
+from .configs import dataset, edge, export, tool, workflow
+from .conftest import SAFETY_NET, ChainRun, _check_tool_styles, _SafetyNet, refusal
 from .windmill_stand_in import windmill_arguments
 from .world import SCHULEN
 
@@ -69,6 +74,52 @@ def test_a_script_without_kwargs_gets_its_arguments_as_windmill_binds_them() -> 
         "folder_id": None,
         "layer_name": "Gespeichert",
     }
+
+
+def test_a_tool_step_s_preview_style_is_checked_against_its_result(
+    tmp_path: Path,
+) -> None:
+    """Point bands fit the point result; polygon bands on it fail; a step
+    that is no tool is not checked."""
+    points = tmp_path / "points.parquet"
+    with duckdb.connect() as con:
+        con.execute("INSTALL spatial; LOAD spatial;")
+        con.execute(
+            "COPY (SELECT (i % 2 + 1) * 5 AS cost_step, ST_Point(i, 0) AS geometry "
+            f"FROM range(10) t(i)) TO '{points}' (FORMAT PARQUET)"
+        )
+
+    def bands(geometry: str) -> dict[str, Any]:
+        return tool_style.bands(
+            "cost_step", [5, 10], "colorbrewer:YlGn", geometry, "Travel time", "min"
+        )
+
+    def run(style: dict[str, Any]) -> ChainRun:
+        step = {"geometry_type": "POINT", "parquet_path": str(points), "style": style}
+        return ChainRun({"node_results": {"reach": step, "save": step}}, {}, tmp_path)
+
+    config = workflow([tool("reach", "catchment_area"), export("save", "Saved")], [])
+    _check_tool_styles(run(bands("point")), config)
+    with pytest.raises(AssertionError, match="part_not_for_geometry"):
+        _check_tool_styles(run(bands("polygon")), config)
+    _check_tool_styles(run(bands("polygon")), workflow([export("save", "S")], []))
+
+
+def test_the_safety_net_is_seen_after_a_tool_replaces_the_root_handlers() -> None:
+    recorder = _SafetyNet()
+    base_logger = logging.getLogger("goatlib.tools.base")
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    base_logger.addHandler(recorder)
+    try:
+        BaseToolRunner._configure_logging_for_windmill()
+        base_logger.warning("The style of buffer %s (unknown_field)", SAFETY_NET)
+        base_logger.warning("Computing the result's style failed")
+    finally:
+        base_logger.removeHandler(recorder)
+        root.handlers[:] = handlers
+        root.setLevel(level)
+    assert recorder.replaced == [f"The style of buffer {SAFETY_NET} (unknown_field)"]
 
 
 def test_a_script_with_kwargs_gets_every_argument_as_sent() -> None:

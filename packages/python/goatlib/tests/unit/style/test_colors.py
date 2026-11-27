@@ -1,16 +1,27 @@
 import json
+import math
 from typing import Any
 
 import pytest
 from goatlib.style.catalog import palette_colors
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
+    alpha,
+    contrast_ratio,
     default_range,
+    halo_against,
     hex_to_rgb,
+    is_none,
+    label_pair,
+    on_color,
+    opaque,
     parse_color,
     range_values,
+    readable_shade,
     rgb_to_hex,
     sample_colors,
+    shade,
+    text_against,
 )
 
 from .conftest import FIXTURES
@@ -21,6 +32,13 @@ from .conftest import FIXTURES
 #: rewrites the `colors` of every row.
 PALETTE_SAMPLES: list[dict[str, Any]] = json.loads(
     (FIXTURES / "palette_samples.json").read_text()
+)
+#: The color rules derived colors are made of (spec 3.1), which the web's `shade`,
+#: `contrastRatio`, `readableShade` and `onColor` must also give (lib/style/__tests__/colors.test.ts):
+#: inputs and expected outputs by function, malformed inputs included (`null` is None; a
+#: contrast ratio of `null` is NaN).
+COLOR_RULES: dict[str, list[dict[str, Any]]] = json.loads(
+    (FIXTURES / "color_rules.json").read_text()
 )
 
 
@@ -108,3 +126,149 @@ def test_shared_palette_samples(row: dict[str, Any]) -> None:
         )
         == row["colors"]
     )
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["shade"], ids=lambda r: str(r["color"]))
+def test_shared_shades(row: dict[str, Any]) -> None:
+    assert shade(row["color"]) == row["expected"]
+
+
+def test_the_shade_rounds_exact_halves_up() -> None:
+    # 15 x 0.7 is 10.5 exactly, though 10.499... in floating point.
+    assert shade("#0f0f0f") == "#0b0b0b"
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["contrast_ratio"], ids=lambda r: f"{r['a']}-{r['b']}"
+)
+def test_shared_contrast_ratios(row: dict[str, Any]) -> None:
+    got = contrast_ratio(row["a"], row["b"])
+    if row["expected"] is None:
+        assert math.isnan(got)
+    else:
+        assert got == pytest.approx(row["expected"], abs=5e-5)
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["readable_shade"], ids=lambda r: f"{r['color']}-{r['against']}"
+)
+def test_shared_readable_shades(row: dict[str, Any]) -> None:
+    assert readable_shade(row["color"], row["against"]) == row["expected"]
+
+
+def test_a_readable_shade_meets_the_floor_where_it_can() -> None:
+    for row in COLOR_RULES["readable_shade"]:
+        got = readable_shade(row["color"], row["against"])
+        hexes = all(
+            isinstance(c, str) and len(c) in (7, 9) and c.startswith("#")
+            for c in (row["color"], row["against"])
+        )
+        if (
+            hexes
+            and not math.isnan(contrast_ratio(got, row["against"]))
+            and shade(got) != got
+        ):
+            assert contrast_ratio(got, row["against"]) >= 4.5
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["on_color"], ids=lambda r: str(r["color"]))
+def test_shared_on_colors(row: dict[str, Any]) -> None:
+    assert on_color(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["alpha"], ids=lambda r: str(r["color"]))
+def test_shared_alphas(row: dict[str, Any]) -> None:
+    assert alpha(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["is_none"], ids=lambda r: str(r["color"]))
+def test_shared_none_colors(row: dict[str, Any]) -> None:
+    assert is_none(row["color"]) is row["expected"]
+
+
+@pytest.mark.parametrize("row", COLOR_RULES["opaque"], ids=lambda r: str(r["color"]))
+def test_shared_opaque_colors(row: dict[str, Any]) -> None:
+    assert opaque(row["color"]) == row["expected"]
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["label_pair"], ids=lambda r: f"{r['color']}-{r['tone']}"
+)
+def test_shared_label_pairs(row: dict[str, Any]) -> None:
+    assert label_pair(row["color"], row["tone"]) == {
+        "text": row["text"],
+        "halo": row["halo"],
+    }
+
+
+def test_a_label_pair_meets_the_floor_for_every_color_on_both_tones() -> None:
+    colors = [*palette_colors("carto:Bold"), "#f2b701", "#ffffff", "#000000"]
+    colors += ["#2bb381", "#808080", "#ffff00"]
+    for color in colors:
+        for tone in ("light", "dark"):
+            pair = label_pair(color, tone)
+            assert contrast_ratio(pair["text"], pair["halo"]) >= 4.5, (color, tone)
+
+
+@pytest.mark.parametrize(
+    "row", COLOR_RULES["halo_against"], ids=lambda r: str(r["text"])
+)
+def test_shared_halos_against_a_text(row: dict[str, Any]) -> None:
+    assert halo_against(row["text"]) == row["expected"]
+
+
+@pytest.mark.parametrize(
+    "row",
+    COLOR_RULES["text_against"],
+    ids=lambda r: f"{r['color']}-{r['halo']}-{r['tone']}-{r.get('text')}",
+)
+def test_shared_texts_against_a_halo(row: dict[str, Any]) -> None:
+    assert (
+        text_against(row["color"], row["halo"], row["tone"], row.get("text"))
+        == row["expected"]
+    )
+
+
+#: Feature colors and halos the floor is checked over: neutrals, mid tones, saturated
+#: and light colors, a halo with its own transparency.
+_FEATURES = [
+    *palette_colors("carto:Bold"),
+    "#ffd400",
+    "#2bb381",
+    "#2166ac",
+    "#ffffff",
+    "#000000",
+    "#808080",
+    "#e7298a",
+    "#3a3541",
+]
+_HALOS = [*_FEATURES, "#ffffff80", "#777777", "#767676", "#595959", "#a0a0a0"]
+
+
+def test_a_text_against_a_set_halo_meets_the_floor_for_every_color_and_tone() -> None:
+    for color in [*_FEATURES, "fill", None]:
+        for halo in _HALOS:
+            for tone in ("light", "dark"):
+                for text in (None, on_color(color)):
+                    got = text_against(color, halo, tone, text)
+                    assert contrast_ratio(got, halo) >= 4.5, (color, halo, tone, text)
+    for row in COLOR_RULES["text_against"]:
+        if is_none(row["halo"]) or alpha(row["halo"]) is None:
+            continue
+        assert contrast_ratio(row["expected"], row["halo"]) >= 4.5, row
+
+
+def test_a_text_against_a_halo_that_is_not_set_follows_the_table() -> None:
+    for tone in ("light", "dark"):
+        for halo in ("#ffffff00", None, "auto"):
+            assert (
+                text_against("#7f3c8d", halo, tone)
+                == label_pair("#7f3c8d", tone)["text"]
+            )
+        assert text_against("#7f3c8d", None, tone, "#123456") == "#123456"
+
+
+def test_a_halo_against_a_text_meets_the_floor_for_every_grey() -> None:
+    for v in range(256):
+        text = f"#{v:02x}{v:02x}{v:02x}"
+        assert contrast_ratio(text, halo_against(text)) >= 4.5, text

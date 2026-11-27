@@ -2,7 +2,10 @@
 
 from goatlib.style.context import DataContext
 from goatlib.style.validate import validate
-from goatlib.tools.style import oev_gueteklassen_style
+from goatlib.tools.style import (
+    oev_gueteklassen_stations_style,
+    oev_gueteklassen_style,
+)
 
 POLYGONS = DataContext(kind="vector", geometry="polygon")
 
@@ -35,3 +38,14 @@ class TestOevGueteklassenStyle:
         assert "G" in colors and "Z" in colors
         assert colors["G"] != colors["F"]
         assert [i for i in validate(style, POLYGONS) if i.level == "error"] == []
+
+    def test_the_legend_names_the_class_and_the_station_category(
+        self: "TestOevGueteklassenStyle",
+    ) -> None:
+        """The legend heading names the value; the classes stay as they are."""
+        [classes] = oev_gueteklassen_style()["classify"]
+        [stations] = oev_gueteklassen_stations_style()["classify"]
+        assert classes["title"] == "Public transport quality class"
+        assert stations["title"] == "Station category"
+        for c in (classes, stations):
+            assert "unit" not in c and "format" not in c

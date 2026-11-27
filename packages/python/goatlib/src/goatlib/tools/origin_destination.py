@@ -28,7 +28,7 @@ from goatlib.tools.schemas import (
     ToolOutputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import classified
+from goatlib.tools.style import numeric_default, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -299,31 +299,35 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """The OD lines: colored by weight classes, wider with more weight."""
-        return classified(
+        """The OD lines: colored by weight classes, wider with more weight, by
+        its square root, so one large flow leaves the others room to differ."""
+        return numeric_default(
             "weight",
             "colorbrewer:OrRd",
             "line",
+            style_title("sum", params.language, field=params.weight_column),
             count=5,
             symbol={
                 "line": {
                     "opacity": 0.8,
-                    "width": {"field": "weight", "range": [1, 10]},
+                    "width": {"field": "weight", "range": [1, 10], "scale": "sqrt"},
                 }
             },
         )
 
-    def points_style(self: Self) -> dict[str, Any]:
-        """The OD points: colored by weight classes, larger with more weight."""
-        return classified(
+    def points_style(self: Self, params: OriginDestinationToolParams) -> dict[str, Any]:
+        """The OD points: colored by weight classes, larger with more weight, by
+        its square root as the lines."""
+        return numeric_default(
             "weight",
             "colorbrewer:OrRd",
             "point",
+            style_title("sum", params.language, field=params.weight_column),
             count=5,
             symbol={
                 "marker": {
                     "opacity": 0.8,
-                    "size": {"field": "weight", "range": [10, 50]},
+                    "size": {"field": "weight", "range": [10, 50], "scale": "sqrt"},
                 }
             },
         )
@@ -433,7 +437,7 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
                     output_name=output_name_points,
                     metadata=metadata_points,
                     table_info=table_info_points,
-                    style=self.points_style(),
+                    style=self.points_style(params),
                 )
             )
 

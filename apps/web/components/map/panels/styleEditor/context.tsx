@@ -1,8 +1,8 @@
 "use client";
 
-// The style panel's React bindings. The store, the layer's data and the map zoom travel in separate contexts, so a
-// zoom change does not render every row; a row reads its value with useStyleValue and renders only when that value
-// changes.
+// The style panel's React bindings. The store, the layer's data, the map zoom and the basemap's tone travel in
+// separate contexts, so a zoom change does not render every row; a row reads its value with useStyleValue and renders
+// only when that value changes.
 import type { Map as MaplibreMap } from "maplibre-gl";
 import {
   type ReactNode,
@@ -24,6 +24,7 @@ import { recordValuesAt } from "@/lib/style/editor/sources";
 import type { EditorStore, Path, Scope } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type RasterInfo, type ValueSample, sampleOf } from "@/lib/style/raster/metadata";
+import type { Tone } from "@/lib/style/tone";
 import type { ServiceStyle } from "@/lib/utils/externalService";
 import type { UploadedAsset } from "@/lib/validations/assets";
 
@@ -106,12 +107,14 @@ const StoreContext = createContext<EditorStore | null>(null);
 const DataContext = createContext<StyleData>(EMPTY_DATA);
 const ZoomContext = createContext<number>(0);
 const MapContext = createContext<MaplibreMap | null>(null);
+const ToneContext = createContext<Tone>("light");
 
 export function StyleEditorProvider({
   store,
   data,
   mapZoom,
   map = null,
+  tone = "light",
   children,
 }: {
   store: EditorStore;
@@ -119,18 +122,25 @@ export function StyleEditorProvider({
   mapZoom: number;
   /** The map the layer is drawn on: raster editors read cell values in its view. */
   map?: MaplibreMap | null;
+  /** The tone of the basemap the map draws (`basemapTone`): swatches show the derived colors the map draws. */
+  tone?: Tone;
   children: ReactNode;
 }) {
   return (
     <StoreContext.Provider value={store}>
       <DataContext.Provider value={data}>
         <MapContext.Provider value={map}>
-          <ZoomContext.Provider value={mapZoom}>{children}</ZoomContext.Provider>
+          <ToneContext.Provider value={tone}>
+            <ZoomContext.Provider value={mapZoom}>{children}</ZoomContext.Provider>
+          </ToneContext.Provider>
         </MapContext.Provider>
       </DataContext.Provider>
     </StoreContext.Provider>
   );
 }
+
+/** The tone of the basemap the map draws, for the derived colors the panel shows. */
+export const useBasemapTone = (): Tone => useContext(ToneContext);
 
 export const useEditorMap = (): MaplibreMap | null => useContext(MapContext);
 

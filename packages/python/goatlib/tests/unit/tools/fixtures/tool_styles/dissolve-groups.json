@@ -1,0 +1,116 @@
+{
+ "id": "dissolve-groups",
+ "tool": "dissolve",
+ "layer": "result",
+ "title": "Polygons dissolved by type, without statistics",
+ "shape": "one color per group",
+ "source": "analysis",
+ "inputs": [
+  "vector/overlay_polygons.parquet"
+ ],
+ "picture": true,
+ "geometry": "polygon",
+ "fields": {
+  "type_a": "string"
+ },
+ "zoom": 4.75,
+ "rows": {
+  "total": 4,
+  "kept": 4
+ },
+ "contract": [],
+ "style": {
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": {
+   "fill": {
+    "color": "#8dd3c7",
+    "opacity": 0.8
+   },
+   "outline": {
+    "color": "auto",
+    "width": 1
+   }
+  },
+  "classify": [
+   {
+    "field": "type_a",
+    "method": "categories",
+    "count": 12,
+    "palette": "colorbrewer:Set3",
+    "title": "type_a",
+    "other": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "no_data": {
+     "fill": {
+      "color": "#cccccc"
+     }
+    },
+    "id": "type_a",
+    "classes": [
+     {
+      "values": [
+       "commercial"
+      ],
+      "id": "c1",
+      "fill": {
+       "color": "#8dd3c7"
+      }
+     },
+     {
+      "values": [
+       "industrial"
+      ],
+      "id": "c2",
+      "fill": {
+       "color": "#ffffb3"
+      }
+     },
+     {
+      "values": [
+       "mixed"
+      ],
+      "id": "c3",
+      "fill": {
+       "color": "#bebada"
+      }
+     },
+     {
+      "values": [
+       "residential"
+      ],
+      "id": "c4",
+      "fill": {
+       "color": "#fb8072"
+      }
+     }
+    ],
+    "computed": {
+     "at": "2026-01-01T00:00:00Z",
+     "data": "snapshot-v1",
+     "scope": "dataset",
+     "generated": {
+      "target": "fill.color",
+      "values": {
+       "c1": "#8dd3c7",
+       "c2": "#ffffb3",
+       "c3": "#bebada",
+       "c4": "#fb8072"
+      }
+     },
+     "no_data": false,
+     "other": false
+    }
+   }
+  ]
+ },
+ "features": {"type": "FeatureCollection", "features": [
+{"type":"Feature","id":1,"properties":{"type_a":"commercial"},"geometry":{"type":"Polygon","coordinates":[[[-6.0,-5.019148],[-1.0,-5.019148],[-1.0,-0.019222],[-6.0,-0.019222],[-6.0,-5.019148]]]}},
+{"type":"Feature","id":2,"properties":{"type_a":"residential"},"geometry":{"type":"Polygon","coordinates":[[[-3.0,-3.023769],[2.0,-3.023769],[2.0,1.991498],[-3.0,1.991498],[-3.0,-3.023769]]]}},
+{"type":"Feature","id":3,"properties":{"type_a":"industrial"},"geometry":{"type":"Polygon","coordinates":[[[0.0,-1.022272],[4.0,-1.022272],[4.0,2.999171],[0.0,2.999171],[0.0,-1.022272]]]}},
+{"type":"Feature","id":4,"properties":{"type_a":"mixed"},"geometry":{"type":"Polygon","coordinates":[[[2.0,0.985368],[6.0,0.985368],[6.0,5.019148],[2.0,5.019148],[2.0,0.985368]]]}}
+]}
+}

@@ -11,7 +11,7 @@ from goatobs import setup_observability
 from starlette.middleware.gzip import GZipMiddleware
 
 from catalog.config import CatalogSettings
-from catalog.deps import get_store
+from catalog.deps import etag_for, get_store, is_ranked
 from catalog.errors import ApiError, NotModifiedError
 from catalog.routers.assets import router as assets_router
 from catalog.routers.nuts import router as nuts_router
@@ -141,19 +141,19 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
         ``/stac``.
 
         The whole catalog has a single state, so one seed serves every
-        response. That seed is a digest of the files actually loaded, NOT the
-        upstream VERSION marker: the mirror is derived from the published file
-        (``goatlib.tasks.catalog_mirror``), so the same upstream version can
-        produce different served bytes whenever the converter changes -- and a
-        tag that does not move then tells a client with a stale body that its
-        cache is still current, forever. Only 2xx
-        responses are stamped -- an error response (400/401/404/...) isn't
-        cacheable and shouldn't imply "this body is what If-None-Match
-        should compare against". The conditional-GET 304 short-circuit
-        itself lives in ``catalog.deps.check_not_modified`` (a dependency
-        that runs after the auth dependency), not here, so this middleware
-        never needs to
-        inspect ``If-None-Match`` at all.
+        response; a ranked route folds in the languages its order used
+        (``catalog.deps.etag_for``). That seed is a digest of the files
+        actually loaded, NOT the upstream VERSION marker: the mirror is
+        derived from the published file (``goatlib.tasks.catalog_mirror``),
+        so the same upstream version can produce different served bytes
+        whenever the converter changes -- and a tag that does not move then
+        tells a client with a stale body that its cache is still current,
+        forever. Only 2xx responses are stamped -- an error response
+        (400/401/404/...) isn't cacheable and shouldn't imply "this body is
+        what If-None-Match should compare against". The conditional-GET 304
+        short-circuit itself lives in ``catalog.deps.check_not_modified`` (a
+        dependency that runs after the auth dependency), not here, so this
+        middleware never needs to inspect ``If-None-Match`` at all.
 
         Stamps whatever seed ``catalog.deps.get_store`` observed for
         THIS request (``request.state.catalog_etag_seed``, set before the
@@ -178,13 +178,22 @@ def create_app(settings: CatalogSettings | None = None) -> FastAPI:
             seed = getattr(request.state, "catalog_etag_seed", None)
             if seed is None:
                 seed = store.etag_seed
-            response.headers["ETag"] = f'W/"{seed}"'
+            response.headers["ETag"] = etag_for(request, seed)
             # A handler that already stated its own freshness keeps it: most
             # responses are metadata a sync can change, but a data preview is
             # fixed for the life of a mirror generation and can be cached far
             # longer. The ETag is stamped either way, so a stale client
             # revalidates into a 304 rather than a re-render.
             response.headers.setdefault("Cache-Control", "public, max-age=60")
+        # Searches rank by Accept-Language when no language_boost is given.
+        # Added to what CORS and compression set, and on the 304 too; also
+        # when the proxy kept the root path, which `is_ranked` strips.
+        if (
+            request.method == "GET"
+            and is_ranked(request)
+            and (200 <= response.status_code < 300 or response.status_code == 304)
+        ):
+            response.headers.add_vary_header("Accept-Language")
         return response
 
     @app.get("/healthz")

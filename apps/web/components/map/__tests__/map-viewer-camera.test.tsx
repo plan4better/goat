@@ -52,7 +52,13 @@ const viewer = (props: Partial<React.ComponentProps<typeof MapViewer>> = {}, sto
   return render(
     <ThemeProvider theme={createTheme()}>
       <Provider store={store}>
-        <MapViewer mapRef={null} layers={[]} mapStyle="https://tiles.example/style.json" {...props} />
+        <MapViewer
+          mapRef={null}
+          layers={[]}
+          mapStyle="https://tiles.example/style.json"
+          layerTone="light"
+          {...props}
+        />
       </Provider>
     </ThemeProvider>
   );

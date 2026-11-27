@@ -95,7 +95,7 @@
    {
     "id": "aggregate_points",
     "title": "Aggregate Points",
-    "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area.",
+    "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area. A point on the shared boundary of two or more areas is counted in one of them.",
     "version": "1.0.0",
     "keywords": [
      "geoanalysis",
@@ -657,7 +657,7 @@
   "aggregate_points": {
    "id": "aggregate_points",
    "title": "Aggregate Points",
-   "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area.",
+   "description": "Summarizes point features within designated areas. Calculates the total count of points and computes statistics like sum, mean, min, or max for each area. A point on the shared boundary of two or more areas is counted in one of them.",
    "version": "1.0.0",
    "keywords": [
     "geoanalysis",
@@ -971,6 +971,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -1748,17 +1774,17 @@
     },
     "weighted_by_intersecting_area": {
      "title": "Weight by Intersection Area",
-     "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either.",
+     "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either. A polygon without a value in the field takes no part in the weighted mean.",
      "schema": {
       "default": false,
-      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either.",
+      "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either. A polygon without a value in the field takes no part in the weighted mean.",
       "title": "Weight by Intersection Area",
       "type": "boolean",
       "x-ui": {
        "field_order": 3,
        "section": "statistics",
        "label": "Weight by Intersection Area",
-       "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either."
+       "description": "If enabled, the value of each source polygon is weighted by its share inside the area (the share of each source polygon's area that lies in it). A plain count stays unweighted; min and max, the standard deviation, and an H3 grid (each polygon goes to the cell of its centroid), are not weighted either. A polygon without a value in the field takes no part in the weighted mean."
       }
      },
      "minOccurs": 0,
@@ -1802,6 +1828,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -2722,6 +2774,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -3048,6 +3126,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -5077,6 +5181,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -7001,6 +7131,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -9205,6 +9361,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -9515,6 +9697,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }
@@ -10571,6 +10779,32 @@
      "keywords": [],
      "metadata": []
     },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
     "folder_id": {
      "title": "Folder Id",
      "description": "Destination folder UUID for output layer. If not provided, derived from project_id.",
@@ -11372,6 +11606,32 @@
       "title": "Triggered By Email",
       "x-ui": {
        "field_order": 100,
+       "hidden": true,
+       "section": "output"
+      }
+     },
+     "minOccurs": 0,
+     "maxOccurs": 1,
+     "keywords": [],
+     "metadata": []
+    },
+    "language": {
+     "title": "Language",
+     "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+     "schema": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "description": "Language of the legend titles the run writes (injected by processes from the request; English when not given)",
+      "title": "Language",
+      "x-ui": {
+       "field_order": 101,
        "hidden": true,
        "section": "output"
       }

@@ -39,6 +39,7 @@ const SAMPLES: Record<string, Record<string, unknown>> = {
   unknown_category_cell: { case: "cell", values: [9], count: 1 },
   unclassified_values: { values: [2, 3, 4] },
   low_opacity: {},
+  blend_not_drawn: { reason: "heatmap" },
   nothing_drawn: {},
   mixed_icon_kinds: {},
   extrude_drops_pattern: {},
@@ -83,6 +84,16 @@ describe("the style panel's issue texts", () => {
     expect(issueText(de, issue("too_many_features_for_render", { limit: 100000, features: 100001 }))).toMatch(
       /100\.000 Objekte .* 100\.001\./
     );
+  });
+
+  it("says in both languages that nothing of a layer mixes with the map below, whatever the reason", () => {
+    for (const reason of ["points", "heatmap", "cluster", "columns", "hillshade", "color_scale"]) {
+      const blend = issue("blend_not_drawn", { reason });
+      expect(issueText(commonT("en"), blend)).toBe("Nothing of this layer mixes with the map below.");
+      expect(issueText(commonT("de"), blend)).toBe(
+        "Nichts von diesem Layer wird mit der Karte darunter gemischt."
+      );
+    }
   });
 
   it("keeps the server's text for a code or case without a text, or without the values its text needs", () => {

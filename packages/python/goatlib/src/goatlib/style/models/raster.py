@@ -10,6 +10,7 @@ from goatlib.style.models.base import LAX, StyleModel
 from goatlib.style.models.classify import ColorClassification
 from goatlib.style.models.popup import RasterPopup
 from goatlib.style.models.values import (
+    Blend,
     Color,
     Computed,
     Domain,
@@ -179,6 +180,7 @@ class RasterStyle(StyleModel):
     version: SpecVersionStr
     kind: Literal["raster"]
     opacity: LayerOpacityValue | None = None
+    blend: Blend | None = None
     min_zoom: ZoomLevel | None = None
     max_zoom: ZoomLevel | None = None
     resampling: Literal["linear", "nearest"] | None = None

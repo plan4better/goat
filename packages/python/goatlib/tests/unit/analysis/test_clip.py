@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import duckdb
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.clip import ClipTool
 from goatlib.analysis.schemas.geoprocessing import ClipParams
+from goatlib.tools.clip import ClipToolParams, ClipToolRunner
 
 
 def test_clip_polygons() -> None:
@@ -50,6 +52,12 @@ def test_clip_polygons() -> None:
 
     print(f"✓ ClipTool polygon test passed. Result has {row_count} features.")
     print(f"✓ Output saved to: {output_path}")
+
+    check_tool_style(
+        ClipToolRunner,
+        tool_params(ClipToolParams, params, input_layer_id=U, overlay_layer_id=U),
+        result_path,
+    )
 
 
 def test_clip_lines() -> None:

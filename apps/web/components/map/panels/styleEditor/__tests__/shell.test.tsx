@@ -2,14 +2,17 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
 
-import { StyleEditor } from "@/components/map/panels/styleEditor/StyleEditor";
+import { layerSwatchIcon } from "@/components/map/legend/StyleLegend";
+import { StyleEditor, StyleHeader } from "@/components/map/panels/styleEditor/StyleEditor";
 import { EMPTY_DATA } from "@/components/map/panels/styleEditor/context";
 
-import { renderWithProviders } from "./renderPanel";
+import { echoTransport, renderWithProviders } from "./renderPanel";
 
 const DOC = { version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } } as LayerStyle;
 
@@ -68,13 +71,79 @@ describe("style editor shell", () => {
     expect(screen.getByText("style_editor.geometry_polygon · style_editor.feature_count")).toBeDefined();
   });
 
-  it("the header dot shows the main color", () => {
+  it("the header shows the layer's area swatch, which follows the style being edited", () => {
     const { ui, store } = setup();
     renderWithProviders(ui);
-    const dot = screen.getByTestId("layer-dot");
-    expect(dot.style.backgroundColor).toBe("rgb(204, 204, 204)");
+    const header = screen.getByTestId("layer-settings-header");
+    const area = () => header.querySelector("svg rect:not([data-checker-under])");
+    expect(area()?.getAttribute("fill")).toBe("#cccccc");
     act(() => store.set("symbol.fill.color", "#ff0000"));
-    expect(dot.style.backgroundColor).toBe("rgb(255, 0, 0)");
+    expect(area()?.getAttribute("fill")).toBe("#ff0000");
+  });
+
+  it("the header swatch of a color with its own transparency lies over the swatch checkerboard", () => {
+    const { ui, store } = setup();
+    renderWithProviders(ui);
+    act(() => store.set("symbol.fill.color", "#ff000080"));
+    expect(screen.getByTestId("layer-settings-header").querySelector("[data-checker-under]")).not.toBeNull();
+  });
+
+  it("the header shows a line layer's line swatch and a point layer's marker", () => {
+    const line = { version: "1.0.0", kind: "vector", symbol: { line: { color: "#00ff00" } } } as LayerStyle;
+    const lineStore = new EditorStore({
+      saver: new StyleSaver({ transport: echoTransport(), document: line, revision: 1 }),
+    });
+    const { unmount } = renderWithProviders(
+      <StyleHeader
+        layer={{ id: "l2", name: "Roads", geometry: "line", kind: "vector" }}
+        store={lineStore}
+        zoom={12}
+      />
+    );
+    const swatch = screen.getByTestId("layer-settings-header").querySelector("svg");
+    expect(swatch?.querySelector("rect")).toBeNull();
+    expect(swatch?.innerHTML).toContain("#00ff00");
+    unmount();
+    const point = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { marker: { color: "#0000ff" } },
+    } as LayerStyle;
+    const pointStore = new EditorStore({
+      saver: new StyleSaver({ transport: echoTransport(), document: point, revision: 1 }),
+    });
+    renderWithProviders(
+      <StyleHeader
+        layer={{ id: "l3", name: "Stops", geometry: "point", kind: "vector" }}
+        store={pointStore}
+        zoom={12}
+      />
+    );
+    const header = screen.getByTestId("layer-settings-header");
+    expect(header.querySelector("rect")).toBeNull();
+    // The marker as the layer list draws it.
+    const listed = renderWithProviders(
+      <>{layerSwatchIcon({ style: { document: point }, feature_layer_geometry_type: "point" })}</>
+    );
+    expect(header.firstElementChild?.innerHTML).toBe(listed.container.innerHTML);
+    expect(listed.container.innerHTML).toContain("marker");
+  });
+
+  it("the header shows the raster icon for a raster file and a map service, and the table icon for a table", () => {
+    for (const kind of ["raster", "service"] as const) {
+      const { unmount } = renderWithProviders(
+        <StyleHeader layer={{ id: "r1", name: "Elevation", kind }} store={null} zoom={12} />
+      );
+      expect(screen.getByTestId("raster-layer-icon")).toBeDefined();
+      unmount();
+    }
+    renderWithProviders(
+      <StyleHeader layer={{ id: "t1", name: "Counts", kind: "vector" }} store={null} zoom={12} table noHint />
+    );
+    const icon = screen.getByTestId("layer-settings-header").querySelector("svg path");
+    const table = renderWithProviders(<Icon iconName={ICON_NAME.TABLE} />).container.querySelector("path");
+    expect(icon?.getAttribute("d")).toBe(table?.getAttribute("d"));
+    expect(screen.queryByTestId("raster-layer-icon")).toBeNull();
   });
 
   it.each([

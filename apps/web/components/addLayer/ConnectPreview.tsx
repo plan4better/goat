@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Typography, useTheme } from "@mui/material";
+import { Box, CircularProgress, Typography, useTheme } from "@mui/material";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,18 +19,27 @@ const GERMANY = { longitude: 10.4, latitude: 51.1, zoom: 4.5 };
 /**
  * The picked layer drawn from the service itself, before it is added.
  *
- * Live tiles over the basemap, so what shows here is what the layer will show: a blank
- * preview means a blank layer, which is worth knowing before adding it.
+ * Live tiles over the basemap, so what shows here is what the layer will show: for a web
+ * service, a blank preview means a blank layer, which is worth knowing before adding it. A COG
+ * the browser cannot draw (its storage does not let the browser read it, or it is not in web
+ * mercator) shows `note` in place of the map: GOAT's server reads it once it is added.
  */
 const ConnectPreview = ({
   source,
   bounds,
   height,
+  checking = false,
+  note,
 }: {
   source: PreviewSource | null;
   bounds?: LngLatBounds;
   /** Fills its container when omitted. */
   height?: number;
+  /** The source is still being read: the loading indicator and no map yet, so it opens on `bounds` once they are
+   * known (the map reads its first view once, when it is created), and no prompt to pick a layer. */
+  checking?: boolean;
+  /** Shown in place of the map, for a source the browser cannot draw. */
+  note?: string;
 }) => {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -56,53 +65,71 @@ const ConnectPreview = ({
         border: `1px solid ${theme.palette.divider}`,
         flexShrink: 0,
       }}>
-      <MapLibre
-        {...MAPLIBRE_MAP_OPTIONS}
-        ref={map}
-        // Named: the dialog opens over the project map, inside the same `MapProvider`, and
-        // a second id-less map there throws "Multiple maps with the same id: default".
-        id="connect-service-preview"
-        initialViewState={bounds ? { bounds, fitBoundsOptions: { padding: 24, maxZoom: 16 } } : GERMANY}
-        style={{ width: "100%", height: "100%" }}
-        mapStyle={basemapStyle}
-        attributionControl={false}>
-        {source && (
-          <Source
-            // A new address is a new source: MapLibre cannot swap a source's tiles in place.
-            key={source.url}
-            id="connect-service-preview-source"
-            type="raster"
-            tileSize={256}
-            {...(source.kind === "cog"
-              ? { url: source.url }
-              : {
-                  tiles: source.tiles ?? [source.url],
-                  ...(source.scheme ? { scheme: source.scheme } : {}),
-                })}>
-            <MapLayer id="connect-service-preview-layer" type="raster" />
-          </Source>
-        )}
-        <DetailMapAttribution />
-      </MapLibre>
+      {!checking && !note && (
+        <MapLibre
+          {...MAPLIBRE_MAP_OPTIONS}
+          ref={map}
+          // Named: the dialog opens over the project map, inside the same `MapProvider`, and
+          // a second id-less map there throws "Multiple maps with the same id: default".
+          id="connect-service-preview"
+          initialViewState={bounds ? { bounds, fitBoundsOptions: { padding: 24, maxZoom: 16 } } : GERMANY}
+          style={{ width: "100%", height: "100%" }}
+          mapStyle={basemapStyle}
+          attributionControl={false}>
+          {source && (
+            <Source
+              // A new address is a new source: MapLibre cannot swap a source's tiles in place.
+              key={source.url}
+              id="connect-service-preview-source"
+              type="raster"
+              tileSize={256}
+              {...(source.kind === "cog"
+                ? { url: source.url }
+                : {
+                    tiles: source.tiles ?? [source.url],
+                    ...(source.scheme ? { scheme: source.scheme } : {}),
+                  })}>
+              <MapLayer id="connect-service-preview-layer" type="raster" />
+            </Source>
+          )}
+          <DetailMapAttribution />
+        </MapLibre>
+      )}
 
-      <Typography
-        variant="caption"
-        fontWeight={700}
-        sx={{
-          position: "absolute",
-          left: 10,
-          top: 10,
-          px: 2.5,
-          py: 0.75,
-          borderRadius: 999,
-          backgroundColor: theme.palette.background.paper,
-          boxShadow: theme.shadows[1],
-          pointerEvents: "none",
-        }}>
-        {t("connect_service_preview_badge")}
-      </Typography>
+      {/* The badge says the map is live from the service; a note stands in place of the map. */}
+      {!checking && !note && (
+        <Typography
+          variant="caption"
+          fontWeight={700}
+          sx={{
+            position: "absolute",
+            left: 10,
+            top: 10,
+            px: 2.5,
+            py: 0.75,
+            borderRadius: 999,
+            backgroundColor: theme.palette.background.paper,
+            boxShadow: theme.shadows[1],
+            pointerEvents: "none",
+          }}>
+          {t("connect_service_preview_badge")}
+        </Typography>
+      )}
 
-      {!source && (
+      {checking && (
+        <Box
+          sx={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}>
+          <CircularProgress size={26} />
+        </Box>
+      )}
+
+      {(note || (!source && !checking)) && (
         <Box
           sx={{
             position: "absolute",
@@ -112,8 +139,12 @@ const ConnectPreview = ({
             justifyContent: "center",
             backgroundColor: theme.palette.mode === "dark" ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.7)",
           }}>
-          <Typography variant="body2" fontWeight={600} color="text.secondary">
-            {t("connect_service_pick_to_preview")}
+          <Typography
+            variant="body2"
+            fontWeight={600}
+            color="text.secondary"
+            sx={{ px: 6, textAlign: "center", lineHeight: 1.55 }}>
+            {note ?? t("connect_service_pick_to_preview")}
           </Typography>
         </Box>
       )}

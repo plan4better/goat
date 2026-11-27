@@ -50,7 +50,7 @@ export function NumberFormatEditor({ path }: { path: Path }) {
       <ChoiceRow<string>
         label={label}
         value={decimals}
-        options={values.map((v) => ({ value: v, label: v === "auto" ? t("style_editor.auto") : v }))}
+        options={values.map((v) => ({ value: v, label: v === "auto" ? t("style_editor.decimals_auto") : v }))}
         onChange={(v) => write({ decimals: v === "auto" ? "auto" : Number(v) })}
       />
       <SwitchRow

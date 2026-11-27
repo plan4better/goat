@@ -420,6 +420,63 @@
     ]
   },
   {
+    "id": "classes-alpha",
+    "about": "Class colors with their own alpha: from the palette, blended between its colors with their alphas, and an own color; the colors' alpha is painted, the layer opacity stays in the browser.",
+    "style": {
+      "version": "1.0.0",
+      "kind": "raster",
+      "opacity": 0.5,
+      "render": {
+        "type": "continuous",
+        "band": 1,
+        "palette": ["#aa000080", "#0000aa"],
+        "domain": [0, 30],
+        "classify": {
+          "method": "manual",
+          "classes": [
+            { "to": 10 },
+            { "from": 10, "to": 20 },
+            { "from": 20, "to": 25, "color": "#00aa0033" },
+            { "from": 25 }
+          ]
+        }
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiNhYTAwMDA4MCIsInRvIjoxMH0seyJjb2xvciI6IiM5NDAwM2ZhYSIsImZyb20iOjEwLCJ0byI6MjB9LHsiY29sb3IiOiIjMDBhYTAwMzMiLCJmcm9tIjoyMCwidG8iOjI1fSx7ImNvbG9yIjoiIzAwMDBhYSIsImZyb20iOjI1fV0sImRvbWFpbiI6bnVsbCwia2luZCI6ImNsYXNzZXMiLCJub0RhdGEiOltdLCJvdXRzaWRlIjoiY2xhbXAiLCJ2IjoxfQ",
+    "samples": [
+      { "value": 5, "color": "#aa000080" },
+      { "value": 15, "color": "#94003faa" },
+      { "value": 22, "color": "#00aa0033" },
+      { "value": 28, "color": "#0000aa" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
+    "id": "categories-alpha",
+    "about": "Categories with their own alpha, an opaque one beside them, and other values in a transparent grey.",
+    "style": {
+      "version": "1.0.0",
+      "kind": "raster",
+      "render": {
+        "type": "categorical",
+        "band": 1,
+        "classes": [
+          { "value": 1, "color": "#4a90c280" },
+          { "value": 3, "color": "#2e7d32" }
+        ],
+        "other_color": "#cccccc40"
+      }
+    },
+    "token": "eyJiYW5kIjoxLCJjbGFzc2VzIjpbeyJjb2xvciI6IiM0YTkwYzI4MCIsInZhbHVlIjoxfSx7ImNvbG9yIjoiIzJlN2QzMiIsInZhbHVlIjozfV0sImtpbmQiOiJjYXRlZ29yaWVzIiwibm9EYXRhIjpbXSwib3RoZXIiOiIjY2NjY2NjNDAiLCJ2IjoxfQ",
+    "file": { "dtype": "int16", "no_data": -9999 },
+    "samples": [
+      { "value": 1, "color": "#4a90c280" },
+      { "value": 3, "color": "#2e7d32" },
+      { "value": 7, "color": "#cccccc40" },
+      { "value": -9999, "color": null, "no_data": true }
+    ]
+  },
+  {
     "id": "image-bands",
     "about": "An 8-bit image with bands 3, 1 and 2 as red, green and blue; an image has no legend.",
     "style": { "version": "1.0.0", "kind": "raster", "render": { "type": "image", "bands": [3, 1, 2] } },

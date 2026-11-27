@@ -20,6 +20,7 @@ export interface VectorStyle {
   kind: "vector";
   geometry?: ("point" | "line" | "polygon") | null;
   opacity?: (number | ZoomLayerOpacity) | null;
+  blend?: ("normal" | "multiply" | "screen" | "overlay" | "color" | "luminosity" | "plus-lighter") | null;
   min_zoom?: number | null;
   max_zoom?: number | null;
   symbol?: Symbol | null;
@@ -64,7 +65,7 @@ export interface Symbol {
 export interface Fill {
   min_zoom?: number | null;
   max_zoom?: number | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomColor | ByAttributeColor | RawColorField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
   pattern?:
     | (
@@ -72,7 +73,7 @@ export interface Fill {
         | ZoomStepPattern
       )
     | null;
-  pattern_color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  pattern_color?: (string | ZoomColor | ByAttributeColor | RawColorField) | null;
   pattern_spacing?: (number | ZoomStepPatternPx) | null;
   pattern_width?: (number | ZoomStepPatternPx) | null;
 }
@@ -129,12 +130,13 @@ export interface Generated {
   };
 }
 /**
- * A field's value used as it is: degrees for a rotation, hex colors from a text field.
+ * Hex colors read from a text field as they are. `no_data` is not drawn; it takes
+ * any value but the derived words `"auto"` and `"fill"`.
  *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
- * via the `definition` "RawField".
+ * via the `definition` "RawColorField".
  */
-export interface RawField {
+export interface RawColorField {
   field: string;
   no_data?: {
     [k: string]: unknown;
@@ -167,6 +169,18 @@ export interface ByAttributeNumber {
   computed?: Computed | null;
 }
 /**
+ * A field's value used as it is: degrees for a rotation, hex colors from a text field.
+ *
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "RawField".
+ */
+export interface RawField {
+  field: string;
+  no_data?: {
+    [k: string]: unknown;
+  };
+}
+/**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "ZoomStepPattern".
  */
@@ -191,7 +205,7 @@ export interface ZoomStepPatternPx {
 export interface Outline {
   min_zoom?: number | null;
   max_zoom?: number | null;
-  color?: (string | ZoomOutlineColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomOutlineColor | ByAttributeColor | RawColorField) | null;
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
   dash?: (("solid" | "dashed" | "dotted" | "dash_dot") | ZoomStepDash) | null;
@@ -240,7 +254,7 @@ export interface ZoomStepOutlinePosition {
 export interface Line {
   min_zoom?: number | null;
   max_zoom?: number | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomColor | ByAttributeColor | RawColorField) | null;
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
   dash?: (("solid" | "dashed" | "dotted" | "dash_dot") | ZoomStepDash) | null;
@@ -283,9 +297,18 @@ export interface ZoomLineOffset {
 export interface Casing {
   min_zoom?: number | null;
   max_zoom?: number | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomCasingColor | ByAttributeColor | RawColorField) | null;
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomCasingColor".
+ */
+export interface ZoomCasingColor {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
 }
 /**
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
@@ -298,7 +321,7 @@ export interface Arrows {
   direction?: ("forward" | "backward" | "both") | null;
   spacing?: (number | ZoomSpacing) | null;
   size?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomColor | ByAttributeColor | RawColorField) | null;
   icon?: string | null;
   turn_with_line?: boolean | null;
 }
@@ -334,12 +357,12 @@ export interface Marker {
         | "icon"
       )
     | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomColor | ByAttributeColor | RawColorField) | null;
   fill?: boolean | null;
   size?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
   opacity?: (number | ZoomUnit | ByAttributeNumber | RawField) | null;
   icon?: (string | ZoomStepIcon) | null;
-  icon_color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  icon_color?: (string | ZoomAutoColor | ByAttributeColor | RawColorField) | null;
   rotation?: (number | ZoomDegrees | ByAttributeNumber | RawField) | null;
   anchor?:
     | (
@@ -365,6 +388,15 @@ export interface Marker {
  * via the `definition` "ZoomStepIcon".
  */
 export interface ZoomStepIcon {
+  zoom: [unknown, unknown][];
+  interpolate?: "linear" | "exponential" | "step";
+  base?: number;
+}
+/**
+ * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
+ * via the `definition` "ZoomAutoColor".
+ */
+export interface ZoomAutoColor {
   zoom: [unknown, unknown][];
   interpolate?: "linear" | "exponential" | "step";
   base?: number;
@@ -409,7 +441,7 @@ export interface Label {
     [k: string]: NumberFormat;
   } | null;
   size?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomAutoColor | ByAttributeColor | RawColorField) | null;
   halo?: Halo | null;
   font?: Font | null;
   placement?:
@@ -457,7 +489,7 @@ export interface NumberFormat {
  * via the `definition` "Halo".
  */
 export interface Halo {
-  color?: (string | ZoomColor | ByAttributeColor | RawField) | null;
+  color?: (string | ZoomAutoColor | ByAttributeColor | RawColorField) | null;
   width?: (number | ZoomPx | ByAttributeNumber | RawField) | null;
 }
 /**
@@ -1077,6 +1109,9 @@ export interface ColorClass {
   max_zoom?: number | null;
 }
 /**
+ * The cell borders of flat hexagons, drawn while this is present (also
+ * empty: white, 1 px); absent, no borders are drawn.
+ *
  * This interface was referenced by `GoatStyleDocuments`'s JSON-Schema
  * via the `definition` "H3Outline".
  */
@@ -1139,6 +1174,7 @@ export interface RasterStyle {
   version: string;
   kind: "raster";
   opacity?: (number | ZoomLayerOpacity) | null;
+  blend?: ("normal" | "multiply" | "screen" | "overlay" | "color" | "luminosity" | "plus-lighter") | null;
   min_zoom?: number | null;
   max_zoom?: number | null;
   resampling?: ("linear" | "nearest") | null;

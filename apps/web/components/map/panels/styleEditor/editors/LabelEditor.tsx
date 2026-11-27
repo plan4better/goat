@@ -34,6 +34,7 @@ import { type JsonObject, isObject } from "@/lib/style/json";
 
 import { IssueNotice, useIssueAt } from "@/components/map/panels/styleEditor/IssueNotice";
 import {
+  useBasemapTone,
   useEditor,
   useMapZoom,
   useScope,
@@ -494,12 +495,13 @@ function SummaryRow({
   );
 }
 
-/** What the summaries read: the fields, the map zoom, the geometry and the panel's language. */
+/** What the summaries read: the fields, the map zoom, the geometry, the panel's language and the basemap's tone. */
 function useSummaryContext(): LabelSummaryContext {
   const { i18n } = useTranslation("common");
   const { fields, geometry } = useStyleData();
   const mapZoom = useMapZoom();
-  return { fields, mapZoom, geometry, language: i18n.language };
+  const tone = useBasemapTone();
+  return { fields, mapZoom, geometry, language: i18n.language, tone };
 }
 
 function HaloRow({ base }: { base: Path }) {

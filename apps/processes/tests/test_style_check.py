@@ -549,3 +549,57 @@ def test_a_query_parameter_the_route_does_not_know_is_ignored() -> None:
     response, _, checked = _post_signed_in(QUANTILE_DOC, "?a_later_ask=true")
     assert response.status_code == 200, response.text
     assert len(checked) == 1
+
+
+@pytest.fixture
+def tied_layer(tmp_path, monkeypatch) -> tuple[AnalyticsService, str]:
+    """A catalog layer whose `density` holds four values, one of them in most
+    rows: quantile breaks fall together on it."""
+    monkeypatch.setenv("CATALOG_LAYERS_DIR", str(tmp_path))
+    path = tmp_path / f"{TABLE}.parquet"
+    con = duckdb.connect()
+    con.execute(
+        "COPY (SELECT (CASE WHEN i < 20 THEN 0 WHEN i < 25 THEN 1 "
+        "WHEN i < 27 THEN 2 ELSE 5 END)::DOUBLE AS density "
+        f"FROM range(28) r(i)) TO '{path}' (FORMAT PARQUET)"
+    )
+    con.close()
+    with patch(
+        "processes.services.analytics_service.ducklake_manager", _fresh_connections()
+    ):
+        yield AnalyticsService(), f"read_parquet('{path}')"
+
+
+def test_a_fitted_tool_default_is_computed_again_unchanged(tied_layer) -> None:
+    """A tool's default fitted to its result (goatlib's `fit_classes`) keeps its
+    classes when the style check computes it for a new data stamp, on a field
+    whose tied values make the quantile breaks fall together."""
+    from goatlib.style.compute import same_ignoring_stamps
+    from goatlib.style.data import compute_into
+    from goatlib.tools import style as tool_style
+
+    service, relation = tied_layer
+    con = duckdb.connect()
+    intent = tool_style.classified("density", "colorbrewer:OrRd", "polygon")
+    stored, _ = compute_into(
+        con,
+        relation,
+        tool_style.fit_classes(con, relation, intent),
+        geometry="polygon",
+        fingerprint="temp",
+    )
+    con.close()
+    [c] = stored["classify"]
+    # Four values: the wish (7) makes 3 classes, one of them empty; a count of 4
+    # makes 2 holding the same features, and is stored.
+    assert (c["count"], len(c["classes"])) == (4, 2)
+
+    result = service.style_check(
+        collection=LAYER,
+        document=stored,
+        geometry="polygon",
+        fingerprint="ducklake:3",
+        issue_params=True,
+    )
+    assert same_ignoring_stamps(result["document"], stored)
+    assert result["document"]["classify"][0]["computed"]["data"] == "ducklake:3"

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from assistant.surfaces import Locale
 
-EVAL_SET_VERSION = 32
+EVAL_SET_VERSION = 33
 
 HERE = Path(__file__).resolve().parent
 Suite = Literal["catalog", "project", "workflow", "map"]
@@ -239,6 +239,46 @@ class LegendRule(_Check):
     max_other: float | None = None
 
 
+class ColorRule(_Check):
+    """An outcome of the checked style's colors, read with goatlib's color
+    rules (spec 4.6 and 18.10) on the base symbol, classes and rules aside
+    where a kind does not name them:
+
+    - ``outline_follows``: the outline is ``"auto"``, a darker shade of each
+      feature's fill, it draws (width above 0, opacity not 0), and no
+      classification, class or rule sets its color or switches it off;
+    - ``labels_readable``: the label's opaque text reads on its halo by the
+      contrast floor (4.5 to 1) on a basemap of ``tone``, ``"auto"`` resolved as
+      the map resolves it; without a halo the text is read on the dark or light
+      ground goatlib's fallback label takes for the tone;
+    - ``fill_half_transparent``: the fill draws at 50 % in the color it had,
+      through its ``opacity`` or through its color's own transparency, not both;
+    - ``outline_only``: the fill draws nothing (off, opacity 0 or a None color),
+      the layer's opacity is not 0, and an outline is drawn in the hue of the
+      fill the style had before;
+    - ``class_none``: the class of ``value`` in the classification of ``field``
+      has a None fill in the hue it had and still draws its border, and the
+      classification's other records are as before.
+    """
+
+    kind: Literal[
+        "outline_follows",
+        "labels_readable",
+        "fill_half_transparent",
+        "outline_only",
+        "class_none",
+    ]
+    tone: Literal["light", "dark"] = "light"
+    field: str | None = None
+    value: str | None = None
+
+    @model_validator(mode="after")
+    def _names_its_class(self) -> "ColorRule":
+        if self.kind == "class_none" and (self.field is None or self.value is None):
+            raise ValueError("class_none names a field and a value")
+        return self
+
+
 class StyleCheck(_Graded):
     """The style the layer draws after the answer, as core stored it: it
     differs from the style active before (computed stamps aside), has no
@@ -260,6 +300,8 @@ class StyleCheck(_Graded):
     paths: list[PathRule] = Field(default_factory=list)
     #: At least one of these holds.
     paths_any: list[PathRule] = Field(default_factory=list)
+    #: Each of these holds.
+    colors: list[ColorRule] = Field(default_factory=list)
     legend: LegendRule | None = None
     #: Pointers whose value equals the one in the style active before.
     unchanged: list[str] = Field(default_factory=list)

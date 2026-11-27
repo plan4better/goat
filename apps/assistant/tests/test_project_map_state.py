@@ -320,6 +320,38 @@ async def test_the_map_brief_names_basemap_offered_basemaps_view_and_scene() -> 
     assert "basemap" not in (await _layers(state, page=page))["map"]
 
 
+IMAGE = {
+    "id": "6d3c2a1e-0f4b-4c5d-8e9f-0a1b2c3d4e5f",
+    "name": "Luftbild",
+    "tone": "light",
+    "imagery": True,
+}
+
+
+@pytest.mark.parametrize(
+    ("shown", "tone"),
+    [
+        (IMAGE, "dark"),
+        (BASEMAPS[2], "dark"),
+        (BASEMAPS[1], "dark"),
+        (BASEMAPS[0], "light"),
+    ],
+    ids=["custom image", "satellite", "dark", "light"],
+)
+async def test_the_map_brief_advises_by_imagery_as_dark(
+    shown: dict[str, Any], tone: str
+) -> None:
+    """The basemap's tone in the map brief is the one the assistant advises by:
+    dark over imagery, whatever tone the page sends (a custom image comes as
+    light, the tone automatic colors follow)."""
+    state = MapState()
+    state.basemap = shown["id"]
+    page = {**MAP_PAGE, "basemap": shown, "basemaps": [*BASEMAPS, IMAGE]}
+    brief = (await _layers(state, page=page))["map"]
+    assert brief["basemap"]["tone"] == tone
+    assert {b["id"]: b["tone"] for b in brief["basemaps"]}[shown["id"]] == tone
+
+
 async def test_another_projects_layers_carry_no_map_brief() -> None:
     core = _core(map_core(MapState()), map_core(MapState(), read_only=True))
     result = await execute(GET_LAYERS, _env(core), {"project_id": MAP_VIEW_PROJECT_ID})

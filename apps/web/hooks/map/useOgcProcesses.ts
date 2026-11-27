@@ -59,6 +59,8 @@ async function fetchProcessDescription(processId: string, language: string): Pro
 interface ExecuteProcessArgs {
   processId: string;
   inputs: Record<string, unknown>;
+  /** The UI language: the run writes its result's legend titles in it. */
+  language: string;
 }
 
 /** A refused run, with the HTTP status so the caller can tell the user why
@@ -74,11 +76,11 @@ export class ProcessExecutionError extends Error {
 }
 
 async function executeProcess(_url: string, { arg }: { arg: ExecuteProcessArgs }): Promise<OGCJobStatus> {
-  const { processId, inputs } = arg;
+  const { processId, inputs, language } = arg;
 
   const response = await apiRequestAuth(`${PROCESSES_API_URL}/${processId}/execution`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Accept-Language": language },
     body: JSON.stringify({ inputs }),
   });
 
@@ -150,10 +152,11 @@ export function useProcessDescription(processId: string | undefined) {
  * Hook to execute a process
  */
 export function useProcessExecution() {
+  const { i18n } = useTranslation();
   const { trigger, isMutating, error, data } = useSWRMutation("ogc-execute", executeProcess);
 
   const execute = async (processId: string, inputs: Record<string, unknown>) => {
-    return trigger({ processId, inputs });
+    return trigger({ processId, inputs, language: i18n.language || "en" });
   };
 
   return {

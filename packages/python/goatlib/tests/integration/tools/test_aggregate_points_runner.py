@@ -16,6 +16,7 @@ from goatlib.tools.aggregate_points import (
     AggregatePointsToolRunner,
 )
 from goatlib.tools.base import ToolSettings
+from goatlib.tools.style_contract import Expectation, assert_tool_style
 
 from .conftest import (
     TEST_FOLDER_ID,
@@ -102,6 +103,10 @@ class TestAggregatePointsToolRunner:
             "count" not in column_names
         ), f"Default column 'count' should not exist when custom name is set. Columns: {column_names}"
 
+        # The tool's default style keeps the style contract on the saved table
+        # (one point per cell: one value, drawn in one color).
+        assert_tool_style(runner, params, output_table)
+
         # Cleanup
         await cleanup_output_layer(output_layer_id)
 
@@ -171,6 +176,14 @@ class TestAggregatePointsToolRunner:
         assert (
             "capacity_sum" not in column_names
         ), f"Default column 'capacity_sum' should not exist when custom name is set. Columns: {column_names}"
+
+        # The tool's default style keeps the style contract on the saved table.
+        assert_tool_style(
+            runner,
+            params,
+            output_table,
+            expect=Expectation(field="total_capacity"),
+        )
 
         # Cleanup
         await cleanup_output_layer(output_layer_id)

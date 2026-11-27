@@ -12,7 +12,7 @@ from goatlib.style.models.popup import Popup
 from goatlib.style.models.raster import LayerOpacityValue, RasterStyle
 from goatlib.style.models.render import VectorRender
 from goatlib.style.models.rules import Rule
-from goatlib.style.models.values import ZoomLevel
+from goatlib.style.models.values import Blend, ZoomLevel
 from goatlib.style.version import SpecVersionStr
 
 
@@ -74,6 +74,7 @@ class VectorStyle(StyleModel):
     kind: Literal["vector"]
     geometry: Literal["point", "line", "polygon"] | None = None
     opacity: LayerOpacityValue | None = None
+    blend: Blend | None = None
     min_zoom: ZoomLevel | None = None
     max_zoom: ZoomLevel | None = None
     symbol: Symbol | None = None

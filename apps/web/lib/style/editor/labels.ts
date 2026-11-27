@@ -3,17 +3,26 @@
 // what the label editor's summary rows show (Halo, Text style, Position) for the layer or the scoped class or rule.
 import type { TFunction } from "i18next";
 
+import { isNone } from "@/lib/style/colors";
 import { type NumberFormatSpec, parseTemplate } from "@/lib/style/compile/labels";
 import { extrudes } from "@/lib/style/compile/polygons";
 import type { FieldType, Geometry } from "@/lib/style/compile/types";
 import { LABEL_FONT_CHOICE, keyOf, modeOf } from "@/lib/style/editor/forms";
+import { startFor } from "@/lib/style/editor/parts";
 import { type Path, getIn } from "@/lib/style/editor/paths";
 import { isPerLayer, perLayerPath, summaryView } from "@/lib/style/editor/sources";
 import type { Scope } from "@/lib/style/editor/store";
-import { choiceLabel, compoundLabel, summarize, summaryNumber, swatchOf } from "@/lib/style/editor/summaries";
+import {
+  choiceLabel,
+  compoundLabel,
+  scopedSwatchOf,
+  summarize,
+  summaryNumber,
+} from "@/lib/style/editor/summaries";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
+import type { Tone } from "@/lib/style/tone";
 
 import type { FieldInfo } from "@/components/map/panels/styleEditor/context";
 
@@ -96,6 +105,8 @@ export interface LabelSummaryContext {
   geometry?: Geometry;
   /** The panel's language: the summary's first letter is a capital in it. */
   language: string;
+  /** The tone of the basemap the map draws: a swatch shows the derived color the map draws (light by default). */
+  tone?: Tone;
 }
 
 const TEXT_NUMBERS = ["letter_spacing", "line_height", "max_width"] as const;
@@ -148,7 +159,7 @@ export function labelTextStyleSummary(
   return text.charAt(0).toLocaleUpperCase(ctx.language) + text.slice(1);
 }
 
-/** The Halo row: the color's swatch and the width ("1.5 px", "1,5 px" in German), "None" at 0. */
+/** The Halo row: the color's swatch and the width ("1.5 px", "1,5 px" in German), "None" at 0 or for a None color. */
 export function labelHaloSummary(
   doc: LayerStyle,
   base: Path,
@@ -158,15 +169,36 @@ export function labelHaloSummary(
 ): { text: string; swatch: string } {
   const width = `${base}.halo.width`;
   const color = `${base}.halo.color`;
-  const swatch = swatchOf(summaryView(doc, scope, color).doc, color, ctx.geometry, {
-    scoped: scope !== null,
+  const swatch = scopedSwatchOf(doc, color, ctx.geometry, {
+    scope,
+    view: summaryView(doc, scope, color).doc,
+    tone: ctx.tone,
   });
   const { doc: shown, later } = summaryView(doc, scope, width);
-  const none = !later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0;
+  const colorShown = summaryView(doc, scope, color);
+  const none =
+    (!later && modeOf(shown, width, ctx.geometry) === "fixed" && getIn(shown, width) === 0) ||
+    (!colorShown.later && isNone(getIn(colorShown.doc, color)));
   return { text: none ? t("style_editor.halo_none") : summarize(doc, width, t, { ...ctx, scope }), swatch };
 }
 
 const DEFAULT_PLACEMENT: Record<Geometry, string> = { point: "auto", line: "line", polygon: "auto" };
+
+/** The halo color a point label starts with: `"auto"`, the label pair's halo, as on lines and polygons. */
+export const POINT_LABEL_HALO = "auto";
+
+/** What a label starts with when its switch turns it on with nothing to bring back: text and halo on Auto. */
+export const startingLabel = (geometry: Geometry | undefined): JsonObject => ({
+  color: "auto",
+  halo: { color: geometry === "point" ? POINT_LABEL_HALO : "auto" },
+});
+
+/** The label a switch writes, for the layer or a class or rule (`scope`), with nothing to bring back: the starting
+ * label, or an empty one where that keeps what is drawn, as `startFor` decides (a class's label inherits the layer's;
+ * a class's label without its own colors keeps the default ones). */
+export function labelStart(doc: LayerStyle, geometry: Geometry | undefined, scope: Scope | null): JsonObject {
+  return startFor(doc, "label", scope, startingLabel(geometry));
+}
 
 /** The Position row: the label's placement (one for the layer); polygons with a height put it on the roofs. */
 export function labelPositionSummary(

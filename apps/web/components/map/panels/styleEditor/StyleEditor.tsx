@@ -3,7 +3,7 @@
 // The style panel of one layer: header with undo and redo, the save status, damaged-data notice and the Style
 // sections, with their popovers. The store belongs to its owner (the page's registry, or the dev route), which keeps
 // it, and its pending save, after the panel closes.
-import { Box, IconButton, Tooltip, Typography, useTheme } from "@mui/material";
+import { Box, IconButton, Tooltip, Typography } from "@mui/material";
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,10 +11,10 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Geometry } from "@/lib/style/compile/types";
-import { MAIN_COLOR } from "@/lib/style/editor/forms";
 import type { EditorStore } from "@/lib/style/editor/store";
-import { DEFAULTS } from "@/lib/style/generated/defaults";
+import type { Tone } from "@/lib/style/tone";
 
+import { layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 import { DamagedNotice, IssuesProvider } from "@/components/map/panels/styleEditor/IssueNotice";
 import { StatusLine } from "@/components/map/panels/styleEditor/StatusLine";
 import { type StyleData, StyleEditorProvider } from "@/components/map/panels/styleEditor/context";
@@ -33,6 +33,8 @@ export interface StyleEditorProps {
   data: StyleData;
   map: MaplibreMap | null;
   mapZoom: number;
+  /** The tone of the basemap the map draws (`basemapTone`); light by default. */
+  tone?: Tone;
   /** Shown under the header, outside the scrolling sections (the named styles row). */
   top?: ReactNode;
   /** Off where the host shows the header itself (the project page's layer panel). */
@@ -64,31 +66,45 @@ function useHistoryKeys(store: EditorStore, root: RefObject<HTMLElement | null>)
   }, [store, root]);
 }
 
-/** The layer's main color as a dot; gray while it varies (by zoom, attribute or classes). */
-function LayerDot({ geometry, store }: { geometry: Geometry; store: EditorStore }) {
-  const theme = useTheme();
-  const key = MAIN_COLOR[geometry];
-  const read = () => store.get(`symbol.${key}`);
-  const value = useSyncExternalStore(store.subscribe, read, read);
-  const color =
-    value === undefined
-      ? (DEFAULTS[key] as string)
-      : typeof value === "string"
-        ? value
-        : theme.palette.text.disabled;
-  return (
-    <Box
-      data-testid="layer-dot"
-      style={{ backgroundColor: color }}
-      sx={{ width: 12, height: 12, borderRadius: "50%", flex: "none" }}
-    />
+const noSubscribe = () => () => undefined;
+
+/** The layer's icon as every list of layers draws it, from the style being edited. */
+function LayerIcon({
+  layer,
+  store,
+  storedDocument,
+  table,
+  zoom,
+}: {
+  layer: EditorLayer;
+  store: EditorStore | null;
+  storedDocument?: unknown;
+  table?: boolean;
+  zoom: number;
+}) {
+  const read = () => store?.document;
+  const document = useSyncExternalStore(store?.subscribe ?? noSubscribe, read, read) ?? storedDocument;
+  const icon = layerSwatchIcon(
+    {
+      type: table ? "table" : layer.kind === "vector" ? "feature" : "raster",
+      feature_layer_geometry_type: layer.geometry,
+      style: document ? { document } : null,
+    },
+    zoom
   );
+  return icon ? <Box sx={{ display: "flex", flex: "none" }}>{icon}</Box> : null;
 }
 
 export interface StyleHeaderProps {
   layer: EditorLayer;
-  /** The style's store: undo and redo, and the dot's color; none while it loads. */
+  /** The style's store, whose document the layer's swatch draws; none while it loads and for a table. */
   store: EditorStore | null;
+  /** The layer's stored style document, drawn while there is no store. */
+  storedDocument?: unknown;
+  /** The zoom the layer's swatch is drawn for: the legends'. */
+  zoom: number;
+  /** A table: its icon, and no swatch. */
+  table?: boolean;
   featureCount?: number;
   /** No line under the name: what the layer holds says nothing (a table, several layers). */
   noHint?: boolean;
@@ -129,9 +145,17 @@ export function HistoryButtons({ store }: { store: EditorStore }) {
   );
 }
 
-/** The panel's header content (prototype `.phead`): the layer's dot and name and what it holds. On the
+/** The panel's header content (prototype `.phead`): the layer's icon and name and what it holds. On the
  * project page it sits in the panel `Container`'s header, which adds the paddings and the close button. */
-export function StyleHeader({ layer, store, featureCount, noHint }: StyleHeaderProps) {
+export function StyleHeader({
+  layer,
+  store,
+  storedDocument,
+  zoom,
+  table,
+  featureCount,
+  noHint,
+}: StyleHeaderProps) {
   const { t } = useTranslation("common");
   const kind =
     layer.kind === "vector" && layer.geometry
@@ -145,7 +169,7 @@ export function StyleHeader({ layer, store, featureCount, noHint }: StyleHeaderP
     <Box
       data-testid="layer-settings-header"
       sx={{ display: "flex", alignItems: "center", gap: 2, flex: 1, minWidth: 0 }}>
-      {layer.geometry && store && <LayerDot geometry={layer.geometry} store={store} />}
+      <LayerIcon layer={layer} store={store} storedDocument={storedDocument} table={table} zoom={zoom} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography component="h2" variant="body1" fontWeight="bold" noWrap title={layer.name}>
           {layer.name}
@@ -172,6 +196,7 @@ export function StyleEditor({
   data,
   map,
   mapZoom,
+  tone,
   top,
   header = true,
   shown = true,
@@ -182,7 +207,7 @@ export function StyleEditor({
   const issues = useIssuesOf(store);
 
   return (
-    <StyleEditorProvider store={store} data={data} mapZoom={mapZoom} map={map}>
+    <StyleEditorProvider store={store} data={data} mapZoom={mapZoom} map={map} tone={tone}>
       <IssuesProvider issues={issues}>
         <Box
           ref={root}
@@ -198,7 +223,7 @@ export function StyleEditor({
           <PopoverProvider scope={store} shown={shown}>
             {header && (
               <Box sx={{ display: "flex", px: 3, pt: 4, pb: 2 }}>
-                <StyleHeader layer={layer} store={store} featureCount={data.featureCount} />
+                <StyleHeader layer={layer} store={store} zoom={mapZoom} featureCount={data.featureCount} />
                 <HistoryButtons store={store} />
               </Box>
             )}

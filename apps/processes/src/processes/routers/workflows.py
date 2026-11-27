@@ -308,7 +308,8 @@ async def execute_workflow(
         workflow_id: UUID of the workflow
         request: Workflow configuration (nodes, edges, project info)
         user_id: Authenticated user ID
-        language: UI language for the issues' texts (Accept-Language)
+        language: UI language (Accept-Language) for the issues' texts and
+            the legend titles the steps write
 
     Returns:
         Job ID and status info
@@ -374,6 +375,8 @@ async def execute_workflow(
         "folder_id": request.folder_id,
         "nodes": request.nodes,
         "edges": request.edges,
+        # The steps write their legend titles in it.
+        "language": language,
     }
     if request.variables:
         job_inputs["variables"] = request.variables

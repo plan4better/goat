@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from goatlib.style.edit import ID_LISTS, Edit, Edited, EditError, apply_edits
+from goatlib.style.edit import (
+    ID_LISTS,
+    Edit,
+    Edited,
+    EditError,
+    apply_edits,
+    part_at,
+    part_key,
+)
 from goatlib.style.ids import assign_ids
 from goatlib.style.issues import Fix
 from goatlib.style.ops import apply_fix
@@ -138,6 +146,154 @@ def test_set_of_a_missing_id_list_item_says_to_use_add() -> None:
     error = refused(DOC, {"op": "set", "path": "/rules/r9", "value": {"min_zoom": 3}})
     assert "r1" in error.reason and "r2" in error.reason
     assert "add" in error.reason
+
+
+def test_a_class_of_a_classification_the_server_computes_is_set_after_the_save() -> (
+    None
+):
+    """A classification set in the same call has no classes yet. Where the
+    server computes them, a class added now would be rebuilt on the save: the
+    refusal says what works instead of advising add. A classification whose
+    classes are written by hand still hears to add one."""
+    doc = {"version": "1.0.0", "kind": "vector"}
+    for classification in (
+        {"field": "density", "method": "quantile", "count": 5},
+        {"field": "land_use", "method": "categories", "count": 5},
+    ):
+        error = refused(
+            doc,
+            {"op": "set", "path": "/classify", "value": [classification]},
+            {
+                "op": "set",
+                "path": f"/classify/{classification['field']}/classes/c1/outline/color",
+                "value": "auto",
+            },
+        )
+        assert error.index == 1
+        assert "has no items yet" in error.reason
+        assert "add operation" not in error.reason
+        assert "on the symbol" in error.reason and "later call" in error.reason
+    manual = refused(
+        doc,
+        {
+            "op": "set",
+            "path": "/classify",
+            "value": [{"field": "density", "method": "manual"}],
+        },
+        {"op": "set", "path": "/classify/density/classes/c1/outline/color", "value": "auto"},
+    )  # fmt: skip
+    assert "add one with the add operation" in manual.reason
+
+
+OFF = {
+    "version": "1.0.0",
+    "kind": "vector",
+    "symbol": {"fill": {"color": "#deebf7"}, "outline": False},
+}
+
+
+def test_a_key_set_under_a_switched_off_part_switches_it_on() -> None:
+    """A part that holds false becomes an object with the key the operation
+    sets; its other keys stay absent and take their defaults."""
+    off = {
+        "version": "1.0.0",
+        "kind": "vector",
+        "symbol": {
+            "fill": {"color": "#deebf7"},
+            "outline": False,
+            "casing": False,
+            "label": False,
+            "marker": False,
+        },
+    }
+    done = run(
+        off,
+        {"op": "set", "path": "/symbol/outline/color", "value": "auto"},
+        {"op": "set", "path": "/symbol/outline/width", "value": 0.5},
+        {"op": "set", "path": "/symbol/casing/color", "value": "auto"},
+        {"op": "set", "path": "/symbol/label/text", "value": "{name}"},
+        {"op": "set", "path": "/symbol/marker/size", "value": 12},
+    ).document["symbol"]
+    assert done["outline"] == {"color": "auto", "width": 0.5}
+    assert done["casing"] == {"color": "auto"}
+    assert done["label"] == {"text": "{name}"}
+    assert done["marker"] == {"size": 12}
+    # A class record's part the same way; an absent part is created as before.
+    classified = {
+        **OFF,
+        "classify": [
+            {"id": "use", "field": "use", "method": "categories",
+             "classes": [{"id": "c1", "values": ["a"], "outline": False}]}
+        ],
+    }  # fmt: skip
+    record = run(
+        classified,
+        {
+            "op": "set",
+            "path": "/classify/use/classes/c1/outline/color",
+            "value": "auto",
+        },
+    ).document["classify"][0]["classes"][0]
+    assert record["outline"] == {"color": "auto"}
+    absent = {"version": "1.0.0", "kind": "vector", "symbol": {"fill": {}}}
+    created = run(absent, {"op": "set", "path": "/symbol/casing/width", "value": 2})
+    assert created.document["symbol"]["casing"] == {"width": 2}
+    # Under something that is no part, the refusal stays as it was.
+    doc = {"version": "1.0.0", "kind": "vector", "opacity": 0.5}
+    plain = refused(doc, {"op": "set", "path": "/opacity/x", "value": 1})
+    assert "whole instead." in plain.reason
+    removed = refused(OFF, {"op": "remove", "path": "/symbol/outline/color"})
+    assert "holds false" in removed.reason
+
+
+def test_a_part_set_to_a_value_that_is_no_object_names_the_key_to_set() -> None:
+    """A part is an object of its keys, or false. A color sent as the whole part
+    is named on its color key where that key takes it; "auto" only where the
+    part's color key accepts it (color_keys.json)."""
+    error = refused(OFF, {"op": "set", "path": "/symbol/outline", "value": "auto"})
+    assert "/symbol/outline is a part" in error.reason
+    assert 'set /symbol/outline/color to "auto"' in error.reason
+    error = refused(OFF, {"op": "set", "path": "/symbol/casing", "value": "#555555"})
+    assert 'set /symbol/casing/color to "#555555"' in error.reason
+    error = refused(OFF, {"op": "set", "path": "/symbol/outline", "value": "fill"})
+    assert 'set /symbol/outline/color to "fill"' in error.reason
+    for part in ("fill", "line", "marker"):
+        error = refused(OFF, {"op": "set", "path": f"/symbol/{part}", "value": "auto"})
+        assert f"/symbol/{part} is a part" in error.reason
+        assert '"auto"' not in error.reason.split("instead", 1)[1], error.reason
+        assert f"/symbol/{part}/color to a hex color" in error.reason
+    error = refused(OFF, {"op": "set", "path": "/symbol/label", "value": True})
+    assert "/symbol/label/text" in error.reason
+    # A class record's part too; false, null and an object stay values.
+    classified = {
+        **OFF,
+        "classify": [
+            {"id": "use", "field": "use", "method": "categories",
+             "classes": [{"id": "c1", "values": ["a"], "fill": {"color": "#111111"}}]}
+        ],
+    }  # fmt: skip
+    error = refused(
+        classified,
+        {"op": "set", "path": "/classify/use/classes/c1/outline", "value": "auto"},
+    )
+    assert "is a part" in error.reason
+    for value in (False, None, {"color": "auto"}):
+        run(OFF, {"op": "set", "path": "/symbol/outline", "value": value})
+
+
+def test_part_at_and_part_key() -> None:
+    assert part_at(["symbol", "outline"]) == "outline"
+    assert part_at(["classify", "use", "classes", "c1", "label"]) == "label"
+    assert part_at(["rules", "r1", "fill"]) == "fill"
+    assert part_at(["classify", "use", "other", "outline"]) == "outline"
+    assert part_at(["symbol", "outline", "color"]) is None
+    assert part_at(["legend", "outline"]) is None
+    assert [part_key(p) for p in ("outline", "label", "extrude", "marker")] == [
+        "color",
+        "text",
+        "height",
+        "color",
+    ]
 
 
 def test_set_does_not_create_an_id_list_on_the_way() -> None:
@@ -694,19 +850,19 @@ def test_edit_error_counts_from_one_and_keeps_the_index() -> None:
 def test_the_spec_names_the_seven_operations_and_no_example_moved() -> None:
     lines = SPEC.read_text().split("\n")
     # The examples above section 20 keep their line numbers: that heading stays on
-    # line 3747 and the paragraph on the AI in 13.1 keeps its three lines.
-    assert lines.index("## 20. For AI authors") + 1 == 3747
-    assert lines[3156].startswith("**The AI**")
-    assert lines[3159] == "" and lines[3160].startswith("**Not used:**")
-    assert all(len(line) <= 120 for line in lines[3156:3159])
+    # line 3944 and the paragraph on the AI in 13.1 keeps its three lines.
+    assert lines.index("## 20. For AI authors") + 1 == 3944
+    assert lines[3227].startswith("**The AI**")
+    assert lines[3230] == "" and lines[3231].startswith("**Not used:**")
+    assert all(len(line) <= 120 for line in lines[3227:3230])
     starts = [
         n + 1
         for n, line in enumerate(lines)
         if line.startswith("```") and re.match(r"<!-- (check|expect):", lines[n - 1])
     ]
     assert len(starts) == len(load_examples())
-    assert max(starts) < 3747
-    section = "\n".join(lines[3746 : lines.index("## 21. Changelog")])
+    assert max(starts) < 3944
+    section = "\n".join(lines[3943 : lines.index("## 21. Changelog")])
     assert "**Edit operations.**" in section
     for op in ("set", "remove", "add", "move", "retarget", "use_field", "round"):
         assert f"| `{op}` |" in section, op

@@ -6,12 +6,19 @@
 // tile URL as a token.
 import type { LayerSpecification, SourceSpecification } from "maplibre-gl";
 
+import { layerBlend } from "@/lib/style/compile/parts";
 import { imageAdjustment, imagePaint, zoomRange } from "@/lib/style/compile/services";
 import type { CompileSource, CompiledLayer } from "@/lib/style/compile/types";
 import { combine, fromForm, toProperty } from "@/lib/style/compile/values";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type RasterColorSpec, rasterColorSpec, rgbOf, tableColorSpec } from "@/lib/style/raster/color";
+import {
+  type RasterColorSpec,
+  alphaShare,
+  rasterColorSpec,
+  rgbOf,
+  tableColorSpec,
+} from "@/lib/style/raster/color";
 import { MAX_TOKEN_LENGTH, rasterToken } from "@/lib/style/raster/token";
 import {
   type BandFacts,
@@ -49,7 +56,7 @@ export const illumination = (direction: number, altitude: number): Record<string
 });
 
 /** The hillshade paint (spec 9.6): one light that follows the scene's, or GDAL's four for `multidirectional`; the
- * layer opacity goes into the colors' alpha, since a hillshade has no opacity of its own. */
+ * layer opacity multiplies the colors' own alpha, since a hillshade has no opacity of its own. */
 function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, unknown> {
   const pick = <T>(key: string): T => (render[key] ?? DEFAULTS[`hillshade.${key}`]) as T;
   const method = pick<string>("method");
@@ -62,7 +69,9 @@ function hillshadePaint(style: JsonObject, render: JsonObject): Record<string, u
         [opacity],
         ([a]) => {
           const [r, g, b] = rgbOf(hex);
-          return `rgba(${r}, ${g}, ${b}, ${typeof a === "number" ? Number(a.toFixed(4)) : 1})`;
+          // The color's own alpha times the layer opacity (spec 4.6).
+          const alpha = alphaShare(hex) * (typeof a === "number" ? a : 1);
+          return `rgba(${r}, ${g}, ${b}, ${Number(alpha.toFixed(4))})`;
         },
         { kind: "color" }
       )
@@ -139,6 +148,20 @@ export function drawsValueTiles(
   return render.type === "hillshade" || browserStops(spec, values) !== null;
 }
 
+/** Whether an image is drawn with its file's color table (spec 9.1), from the file's facts alone: a color table, values
+ * not scaled, no three chosen bands. The adjustments do not count: with one by zoom the colored tiles draw it, still in
+ * the table's colors. */
+function drawnWithTable(render: JsonObject, facts: Partial<BandFacts> | undefined): boolean {
+  if (!facts?.colorTable || facts.scaled === true) return false;
+  return !(Array.isArray(render.bands) && render.bands.filter((b) => typeof b === "number").length === 3);
+}
+
+/** Whether a raster's blend is drawn (spec 4.7): for an image (or no render) that its file's color table does not
+ * color, with the file's band facts `facts`; the colors of values and a hillshade never mix. */
+export function rasterBlendDrawn(render: JsonObject, facts: Partial<BandFacts> | undefined): boolean {
+  return (render.type === "image" || render.type === undefined) && !drawnWithTable(render, facts);
+}
+
 /** An image's coloring by its file's color table (`tableColorSpec`) with the style's adjustments on its colors, as
  * MapLibre's raster layer would show the image (`imageAdjustment`). */
 function adjusted<S extends { classes: Array<{ color: string | null }> }>(spec: S, style: JsonObject): S {
@@ -201,6 +224,10 @@ export function rasterLayers(
     };
     const paint = imagePaint(style, render.type === "image" || render.type === undefined);
     if (resamplingOf(style, facts) === "nearest") paint["raster-resampling"] = "nearest";
+    // An image mixes with what is below (spec 4.7), unless its file's color table colors it, whatever tiles draw it;
+    // the colors of values and a hillshade never do.
+    const blend = rasterBlendDrawn(render, source.image?.bands) ? layerBlend(style) : null;
+    if (blend) paint["raster-layer-blend"] = blend;
     layers.push({
       id: `${id}-raster`,
       type: "raster",

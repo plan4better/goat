@@ -15,6 +15,7 @@ from goatlib.style.context import DataContext
 #: for images and hillshade alone) are the compiler's.
 REFERENCE_DEFAULTS: dict[str, Any] = {
     "opacity": 1,
+    "blend": "normal",
     "min_zoom": 0,
     "max_zoom": 24,
     "fill.color": "#2bb381",
@@ -99,6 +100,7 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
     "h3.extrude.base": 0,
     "h3.extrude.scale": "sqrt",
     "raster.opacity": 1,
+    "raster.blend": "normal",
     "raster.resampling": "linear",
     "raster.brightness": 0,
     "raster.contrast": 0,
@@ -132,17 +134,13 @@ REFERENCE_DEFAULTS: dict[str, Any] = {
 RASTER_POPUP_ON_BY_DEFAULT = ("continuous", "categorical", "hillshade")
 
 
-#: Today's look for new layers: a color from the Spectral palette, picked by the
-#: layer id instead of at random, so the same layer always gets the same color.
-DEFAULT_PALETTE = "colorbrewer:Spectral"
-#: Spectral's light yellows and greens, left out: they are hard to see on a light basemap.
-_PALE = {"#fee08b", "#ffffbf", "#e6f598", "#abdda4"}
+#: The look of new layers: a color from this palette, picked by the layer id
+#: instead of at random, so the same layer always gets the same color.
+DEFAULT_PALETTE = "carto:Bold"
 
 
 def _color(seed: str | None) -> str:
-    colors = [c for c in palette_colors(DEFAULT_PALETTE) if c.lower() not in _PALE] or [
-        "#2bb381"
-    ]
+    colors = palette_colors(DEFAULT_PALETTE) or ["#2bb381"]
     if seed is None:
         return colors[0]
     return colors[hashlib.sha256(seed.encode()).digest()[0] % len(colors)]
@@ -161,5 +159,9 @@ def default_style(ctx: DataContext, *, seed: str | None = None) -> dict[str, Any
     elif ctx.geometry == "line":
         symbol = {"line": {"color": color, "width": 2}}
     else:
-        symbol = {"fill": {"color": color, "opacity": 0.8}, "outline": False}
+        # A thin outline in a darker shade of the fill, which follows the fill's color.
+        symbol = {
+            "fill": {"color": color, "opacity": 0.8},
+            "outline": {"color": "auto", "width": 1},
+        }
     return {"version": "1.0.0", "kind": "vector", "symbol": symbol}

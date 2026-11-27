@@ -333,8 +333,8 @@ def test_the_sections_come_in_the_order_the_model_works() -> None:
     assert re.findall(r"^## (.+)$", _skill().instructions, re.M) == SECTIONS
 
 
-def test_skill_md_stays_under_thirty_four_and_a_half_thousand_bytes() -> None:
-    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 34_500
+def test_skill_md_stays_within_thirty_four_thousand_nine_hundred_fifty_bytes() -> None:
+    assert len((SKILLS_DIR / NAME / "SKILL.md").read_bytes()) <= 34_950
 
 
 def test_no_dashes_inside_sentences() -> None:
@@ -693,7 +693,7 @@ def test_it_says_what_style_get_leaves_out_and_what_a_result_can_carry() -> None
     for key in ("part", "cut", "not_saved", "incomplete", "added"):
         assert key in _plain(_section("Writing the change")), key
     assert "all or nothing" in text or "all or none" in text
-    # A part that is off holds false, and nothing can be set under it.
+    # A part that is off holds false; a key set under it turns it on.
     assert "false" in _plain(_section("Writing the change"))
 
 
@@ -960,6 +960,39 @@ def test_rasters_have_a_worked_band_formula() -> None:
     assert formulas and all(re.fullmatch(r"[b0-9 ()+*/.-]+", f) for f in formulas)
 
 
+def test_blend_tints_the_basemap_and_names_what_draws_without_it() -> None:
+    """Multiply tints the basemap below its labels; polygons, lines, flat
+    hexagons and images mix, everything else draws normally. On a raster only
+    an image or a map service mixes: the colors of values and a hillshade
+    draw without a blend."""
+    table = _plain(_section("Which form for which data"))
+    assert "/blend multiply, the layer below the basemap's labels (set_layer)" in table
+    assert "| a glow on a dark basemap | /blend plus-lighter |" in table
+    assert (
+        "blend mixes polygons, lines, flat hexagons and images; everything else "
+        "draws normally (blend_not_drawn)." in table
+    )
+    rasters = _plain(_texts()["rasters.md"])
+    assert "blend beside render mixes an image or a map service" in rasters
+    assert (
+        "A color range, classes, categories, an image in its file's color table "
+        "and a hillshade draw without it" in rasters
+    )
+
+
+def test_blend_lists_its_values_and_says_what_luminosity_and_add_do() -> None:
+    """The raster reference names the values of blend in the panel's order
+    and says in a phrase what luminosity and plus-lighter do."""
+    values = json_schema()["$defs"]["RasterStyle"]["properties"]["blend"]["anyOf"][0]
+    rasters = _plain(_texts()["rasters.md"])
+    assert f"({', '.join(values['enum'])})" in rasters
+    assert (
+        "luminosity gives the colored areas below the image's light and shade"
+        in rasters
+    )
+    assert "plus-lighter adds its light, a glow on a dark basemap" in rasters
+
+
 #: The parts a class record can switch on for its features.
 _CLASS_PARTS = ("fill", "outline", "line", "casing", "marker", "label")
 
@@ -983,7 +1016,9 @@ def test_a_part_or_an_icon_the_classes_set_is_set_on_the_base_too() -> None:
     icons = _plain(_section("Icons and emoji"))
     assert "the base marker a neutral one" in icons
     assert '"Other" and new values draw' in icons
-    assert "set on the base first" in icons
+    # The base gets the part as an object, never false.
+    assert "set on the base first" not in icons
+    assert "is set on the base too" in icons
     assert "the base marker keeps shape circle" not in icons
     for example in _style_calls():
         document = _result(example)
@@ -1036,6 +1071,94 @@ def test_an_icon_shows_from_the_zoom_where_its_marker_is_large_enough() -> None:
         assert dot == "goat:circle-solid" and icon != dot
         assert _at_zoom(size, low) < 16 <= _at_zoom(size, switch)
         assert _at_zoom(size, switch - 1) < 16
+
+
+#: The keys of a document that hold parts rather than name them.
+_RECORDS = {"symbol", "classify", "classes", "other", "no_data", "rules"}
+
+
+def _auto_keys(node: Any, path: tuple[str, ...] = ()) -> list[str]:
+    """The keys of a style document that hold "auto", named as goatlib's color
+    key table names them: part keys without the record around them, lists
+    without their brackets, the cluster symbol's under ``cluster.symbol``."""
+    found: list[str] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            found += _auto_keys(value, (*path, key))
+    elif isinstance(node, list):
+        for item in node:
+            found += _auto_keys(item, path)
+    elif node == "auto" and path and path[-1] in ("color", "icon_color"):
+        if path[:2] == ("render", "symbol"):
+            found.append(".".join(("cluster", *path[1:])))
+        else:
+            found.append(".".join(p for p in path if p not in _RECORDS))
+    return found
+
+
+def test_auto_none_and_transparency_replace_hand_picked_colors() -> None:
+    """The colors GOAT derives are written as "auto" where the user names
+    none, a part or class not drawn is a None color that keeps its hue, and a
+    color's own transparency is told apart from a part's opacity. The advice
+    "auto" replaces (white labels in a dark halo, a dark grey outline, a white
+    icon) is gone, and the examples write what the rules say."""
+    from goatlib.style.colors import COLOR_KEYS
+
+    text = _plain(_skill().instructions)
+    for hand_picked in ("#1f2933", "#555555"):
+        assert hand_picked not in text, hand_picked
+    assert "(white)" not in _plain(_section("Icons and emoji"))
+    palettes = _plain(_section("Palettes"))
+    [auto] = [line for line in palettes.split("- ") if line.startswith('Write "auto"')]
+    for key in ("outline", "casing", "color", "halo", "icon_color", "cluster"):
+        assert key in auto, key
+    # Written on the symbol, not left out (an absent outline color is white)
+    # and not on classes the server computes; a darker shade on any basemap.
+    assert "names none" in auto and "on the symbol" in auto
+    # The user's words tie to the value, written as the whole outline when it
+    # is off, never as darker colors computed per class.
+    assert "darker shade of its own (or each class's) color" in auto
+    assert "never darker colors per class" in auto
+    assert "whole" not in auto and "when it is false" not in auto
+    # A part's keys are set one by one by path, never after a reset of the part,
+    # and the outline example does so.
+    writing = _plain(_section("Writing the change"))
+    assert "one set per key" in writing and "/symbol/outline/color" in writing
+    assert "never reset the part first" in writing
+    assert "turns it on" in writing and "set the part whole" not in writing
+    [outline] = [e for e in _style_calls() if "/symbol/outline" in json.dumps(e.call)]
+    paths = [o["path"] for o in outline.call["operations"]]
+    assert paths == ["/symbol/outline/color", "/symbol/outline/width"]
+    assert "on any basemap" in auto
+    [against] = [line for line in palettes.split("- ") if "Against the basemap" in line]
+    assert "a fixed outline light" in against and "light outlines" not in against
+    assert "white" not in against
+    assert "palette_kind_mismatch" in palettes
+    forms = _plain(_section("Which form for which data"))
+    assert "keeps its hue" in forms and "00" in forms
+    assert '"auto" outline keeps the layer\'s color' in forms
+    assert "last two hex digits" in forms and "multiply with opacity" in forms
+    # An opacity set already multiplies in; None hides a color, not a class.
+    assert "(at 0.8: 40 %)" in forms and "palette color" in forms
+    assert "a part's or class's color not drawn" in forms
+    # Every "auto" an example writes sits on a key that accepts it.
+    accepted = {k for k, rule in COLOR_KEYS.items() if rule.get("accepted")}
+    written: set[str] = set()
+    for example in _style_calls():
+        keys = _auto_keys(_result(example))
+        assert set(keys) <= accepted, (example.call, set(keys) - accepted)
+        written |= set(keys)
+    assert {
+        "outline.color",
+        "casing.color",
+        "label.color",
+        "label.halo.color",
+        "marker.icon_color",
+        "cluster.symbol.label.color",
+    } <= written
+    [label] = [e for e in _style_calls() if "/symbol/label" in json.dumps(e.call)]
+    value = label.call["operations"][0]["value"]
+    assert value["color"] == "auto" and value["halo"]["color"] == "auto"
 
 
 def _popup_calls() -> list[Example]:

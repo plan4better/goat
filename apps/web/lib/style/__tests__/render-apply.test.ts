@@ -189,6 +189,25 @@ describe("applyCompiled", () => {
     expect(map.calls).toEqual(["setPaintProperty 9-fill fill-color"]);
   });
 
+  it("a blend set and taken off again sets fill-layer-blend, then resets it", () => {
+    const map = fakeMap();
+    const set = vi.spyOn(map, "setPaintProperty");
+    const style = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { color: "#cccccc" }, outline: false },
+    };
+    const plain = compiled(style);
+    const blended = compiled({ ...style, blend: "multiply" });
+    applyCompiled(map, null, plain);
+    applyCompiled(map, plain, blended);
+    expect(set.mock.calls).toEqual([["9-fill", "fill-layer-blend", "multiply"]]);
+    set.mockClear();
+    // MapLibre resets a paint property set to undefined to its default, normal.
+    applyCompiled(map, blended, plain);
+    expect(set.mock.calls).toEqual([["9-fill", "fill-layer-blend", undefined]]);
+  });
+
   it("unchanged output calls nothing", () => {
     const map = fakeMap();
     const first = compiled({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } } });

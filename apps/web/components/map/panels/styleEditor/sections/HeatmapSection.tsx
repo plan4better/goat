@@ -1,8 +1,9 @@
 "use client";
 
 // Heatmap (spec 8.1): the colors of the density ramp, radius and intensity (fixed or by zoom), the weight of each
-// point, and the zoom from which the points themselves show.
-import { Box } from "@mui/material";
+// point, and the zoom from which the points themselves show (a row that opens its switch and slider).
+import { Box, Typography } from "@mui/material";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { paletteList } from "@/lib/style/editor/paletteList";
@@ -14,23 +15,39 @@ import { isObject } from "@/lib/style/json";
 import {
   type FieldProfile,
   useEditor,
+  useLiveMapZoom,
   useStyleData,
   useStyleValue,
 } from "@/components/map/panels/styleEditor/context";
 import { useRangeBoxes } from "@/components/map/panels/styleEditor/editors/AttributeEditor";
 import { PaletteColors, type PaletteSource } from "@/components/map/panels/styleEditor/editors/PaletteColors";
+import { HeaderSwitch, togglePart } from "@/components/map/panels/styleEditor/editors/PartEditor";
 import { PropertyRow } from "@/components/map/panels/styleEditor/editors/PropertyRow";
 import type { PartRow } from "@/components/map/panels/styleEditor/editors/partRows";
 import { PalettePicker, paletteColors } from "@/components/map/panels/styleEditor/pickers/PalettePicker";
 import { PLAIN } from "@/components/map/panels/styleEditor/plainText";
-import { anchorTopOf, usePopover } from "@/components/map/panels/styleEditor/popovers/usePopover";
-import { ChoiceRow, NavRow, NumberInput, PanelSection, Row } from "@/components/map/panels/styleEditor/rows";
+import {
+  anchorTopOf,
+  useCloseWhenGone,
+  useNextLevel,
+  usePopover,
+} from "@/components/map/panels/styleEditor/popovers/usePopover";
+import {
+  ChoiceRow,
+  GroupRow,
+  NavRow,
+  NumberInput,
+  PanelSection,
+  Row,
+  ZoomRangeRow,
+} from "@/components/map/panels/styleEditor/rows";
 
 const RADIUS: PartRow = { type: "number", key: "radius", label: "style_editor.radius" };
 const INTENSITY: PartRow = { type: "number", key: "intensity", label: "style_editor.intensity" };
 const OPACITY: PartRow = { type: "number", key: "opacity", label: "style_editor.opacity" };
-const POINT_ZOOMS = [10, 11, 12, 13, 14, 15, 16, 17, 18];
-const NEVER = "never";
+/** The zoom the points show from when their switch turns them on with nothing to bring back. */
+const POINTS_START = 10;
+const POINTS: Path = "render.points_from_zoom";
 
 type Palette = string | string[];
 
@@ -88,39 +105,100 @@ function useRenderPalette({
   };
 }
 
-/** The colors of a render (`render.palette`, `render.reverse`): the heatmap's density ramp, H3's cell values, with
- * the palette's colors as a list to edit under the row. `onPick` runs after a palette is picked. */
-export function RenderPaletteRow({ fallback, kinds, onPick }: RenderPaletteProps) {
+/** The colors of a render as the Colors row and the Palette row show them: the palette's name ("Custom" for a list of
+ * its own) and its ramp, in the order the map draws them. */
+function useRampView(fallback: string) {
   const { t } = useTranslation("common");
-  const popover = usePopover();
   const value = useStyleValue<Palette | undefined>("render.palette") ?? fallback;
   const reverse = useStyleValue<boolean | undefined>("render.reverse");
   // A copy: an inline palette is the stored list itself.
   const colors = [...paletteColors(value)];
   if (reverse) colors.reverse();
-  const label = t("style_editor.colors");
+  return {
+    name: Array.isArray(value) ? t("style_editor.palette_custom") : (PALETTES[value]?.name ?? value),
+    reverse: reverse === true,
+    swatch: { background: `linear-gradient(90deg, ${colors.join(", ")})`, wide: true },
+  };
+}
+
+interface RenderColorsProps extends RenderPaletteProps {
+  /** Rows between the Palette and the colors' list (H3's Classes). */
+  classes?: ReactNode;
+}
+
+/** The Colors editor of a render of `type`, built as a color by attribute's: the Palette (opening the palette picker),
+ * `classes`, and a continuous ramp's colors as a list to edit at the bottom (classes take their colors from the
+ * palette). It closes once the render is another one. */
+function RenderColorsEditor({
+  fallback,
+  kinds,
+  onPick,
+  classes,
+  type,
+}: RenderColorsProps & { type: unknown }) {
+  const { t } = useTranslation("common");
+  const popover = usePopover();
+  const renderType = useStyleValue<unknown>("render.type");
   const classified = isObject(useStyleValue<unknown>("render.classify"));
+  const ramp = useRampView(fallback);
+  useCloseWhenGone(renderType !== type);
   return (
     <>
       <NavRow
-        label={label}
-        value={Array.isArray(value) ? t("style_editor.palette_custom") : (PALETTES[value]?.name ?? value)}
-        swatch={{ background: `linear-gradient(90deg, ${colors.join(", ")})`, wide: true }}
+        label={t("style_editor.palette")}
+        value={`${ramp.name}${ramp.reverse ? `, ${t("style_editor.reversed")}` : ""}`}
+        swatch={ramp.swatch}
         onOpen={(anchor) =>
           popover.open("picker", {
             key: "render:palette",
-            title: label,
+            title: t("style_editor.palette"),
             anchorTop: anchorTopOf(anchor),
             anchorEl: anchor,
             render: () => <RenderPalettePicker fallback={fallback} kinds={kinds} onPick={onPick} />,
           })
         }
       />
-      {/* A continuous ramp's colors to edit; H3 classes are edited in their rows. */}
+      {classes}
       {!classified && (
         <PaletteColors useSource={useRenderPalette} args={{ fallback, onPick }} pickerKey="render:palette" />
       )}
     </>
+  );
+}
+
+/** The colors of a render (`render.palette`, `render.reverse`): the heatmap's density ramp, H3's cell values, as one
+ * row with the ramp and the palette's name that opens their editor (`RenderColorsEditor`). `onPick` runs after a
+ * palette is picked. */
+export function RenderPaletteRow({ fallback, kinds, onPick, classes }: RenderColorsProps) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const ramp = useRampView(fallback);
+  const label = t("style_editor.colors");
+  return (
+    <NavRow
+      label={label}
+      value={ramp.name}
+      swatch={ramp.swatch}
+      onOpen={(anchor) => {
+        const type = store.get("render.type");
+        popover.open(next, {
+          key: "render:colors",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          render: () => (
+            <RenderColorsEditor
+              fallback={fallback}
+              kinds={kinds}
+              onPick={onPick}
+              classes={classes}
+              type={type}
+            />
+          ),
+        });
+      }}
+    />
   );
 }
 
@@ -203,24 +281,78 @@ export function DomainRow({ path }: { path: Path }) {
   );
 }
 
-/** From which zoom the points themselves draw instead of the render; `never` names what draws instead. */
-export function PointsRow({ never }: { never: string }) {
+/** The points' switch, for their editor's header: on brings back the zoom it switched off, else zoom 10;
+ * off removes `render.points_from_zoom`: the points never show. */
+function PointsSwitch() {
   const { t } = useTranslation("common");
   const store = useEditor();
-  const zoom = useStyleValue<unknown>("render.points_from_zoom");
+  const on = typeof useStyleValue<unknown>(POINTS) === "number";
+  return (
+    <HeaderSwitch
+      name={t("style_editor.part_name_points")}
+      on={on}
+      onToggle={() => togglePart(store, POINTS, !on, undefined, POINTS_START, { offAbsent: true })}
+    />
+  );
+}
+
+/** The points' editor: while on, the zoom from which they show on the zoom slider, the map's zoom marked, and `note`
+ * on what the map shows on either side. It closes once the layer draws as another render than `type`. */
+function PointsEditor({ type, note }: { type: unknown; note: string }) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const { geometry } = useStyleData();
+  const renderType = useStyleValue<unknown>("render.type");
+  const zoom = useStyleValue<unknown>(POINTS);
+  const mapZoom = useLiveMapZoom();
+  useCloseWhenGone(geometry !== "point" || renderType !== type);
+  if (typeof zoom !== "number")
+    return (
+      <Typography variant="body2" color="text.secondary" sx={{ px: 3, py: 2 }}>
+        {t("style_editor.part_off_note")}
+      </Typography>
+    );
+  return (
+    <>
+      <ZoomRangeRow
+        label={t("style_editor.zoom_from")}
+        value={zoom}
+        mapZoom={mapZoom}
+        // Its own undo step, apart from the switch's.
+        onValue={(next) => store.update((doc) => setIn(doc, POINTS, next), `${POINTS}.zoom`)}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 3, pt: 2 }}>
+        {note}
+      </Typography>
+    </>
+  );
+}
+
+/** From which zoom the points themselves draw instead of the render, as one row opening its editor; `never` names
+ * what draws instead, `note` says it in the editor. */
+export function PointsRow({ never, note }: { never: string; note: string }) {
+  const { t } = useTranslation("common");
+  const store = useEditor();
+  const popover = usePopover();
+  const next = useNextLevel();
+  const zoom = useStyleValue<unknown>(POINTS);
+  const on = typeof zoom === "number";
   const label = t("style_editor.points");
   return (
-    <ChoiceRow<string>
+    <GroupRow
       label={label}
-      value={typeof zoom === "number" ? String(zoom) : NEVER}
-      options={[
-        { value: NEVER, label: never },
-        ...POINT_ZOOMS.map((z) => ({
-          value: String(z),
-          label: t("style_editor.points_from_zoom", { zoom: z }),
-        })),
-      ]}
-      onChange={(value) => store.set("render.points_from_zoom", value === NEVER ? undefined : Number(value))}
+      off={!on}
+      value={on ? t("style_editor.points_from_zoom", { zoom }) : never}
+      onOpen={(anchor) => {
+        const type = store.get("render.type");
+        popover.open(next, {
+          key: "render:points",
+          title: label,
+          anchorTop: anchorTopOf(anchor),
+          actions: <PointsSwitch />,
+          render: () => <PointsEditor type={type} note={note} />,
+        });
+      }}
     />
   );
 }
@@ -238,7 +370,7 @@ export function HeatmapSection() {
       <PropertyRow row={OPACITY} base="render" />
       <WeightRow />
       <WeightRange />
-      <PointsRow never={t("style_editor.points_never")} />
+      <PointsRow never={t("style_editor.points_never")} note={t("style_editor.points_note")} />
     </PanelSection>
   );
 }

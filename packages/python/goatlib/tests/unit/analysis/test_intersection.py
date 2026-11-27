@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import duckdb
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.geoprocessing.intersection import IntersectionTool
 from goatlib.analysis.schemas.geoprocessing import IntersectionParams
+from goatlib.tools.intersection import IntersectionToolParams, IntersectionToolRunner
 
 
 def test_intersection_polygons() -> None:
@@ -57,6 +59,14 @@ def test_intersection_polygons() -> None:
     print(f"✓ IntersectionTool polygon test passed. Result has {row_count} features.")
     print(f"✓ Output saved to: {output_path}")
     print(f"✓ Columns: {column_names}")
+
+    check_tool_style(
+        IntersectionToolRunner,
+        tool_params(
+            IntersectionToolParams, params, input_layer_id=U, overlay_layer_id=U
+        ),
+        result_path,
+    )
 
 
 def test_intersection_lines() -> None:

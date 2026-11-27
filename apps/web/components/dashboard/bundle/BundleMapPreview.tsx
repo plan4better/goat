@@ -10,10 +10,11 @@ import { useDatasetStyles } from "@/lib/api/map";
 import { getBasemapUrl } from "@/lib/constants/basemaps";
 import { DrawProvider } from "@/lib/providers/DrawProvider";
 import type { ViewLayer } from "@/lib/style/render/viewLayers";
+import { basemapTone } from "@/lib/style/tone";
 import { globalExtent, wktToGeoJSON } from "@/lib/utils/map/wkt";
 import type { Layer } from "@/lib/validations/layer";
 
-import { useCatalogBasemapStyle } from "@/hooks/catalog/useCatalogBasemapStyle";
+import { useCatalogBasemap } from "@/hooks/catalog/useCatalogBasemapStyle";
 
 import DetailMapAttribution from "@/components/dashboard/common/DetailMapAttribution";
 import MapViewer from "@/components/map/MapViewer";
@@ -41,7 +42,8 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
   const mapRef = useRef<MapRef | null>(null);
   // `MapViewer` needs a style from the first render; the light basemap stands
   // in where the theme lookup finds none.
-  const basemapStyle = useCatalogBasemapStyle() ?? getBasemapUrl(null);
+  const catalogBasemap = useCatalogBasemap();
+  const basemapStyle = catalogBasemap?.url ?? getBasemapUrl(null);
 
   const drawable = useMemo(
     () =>
@@ -104,6 +106,7 @@ const BundleMapPreview: React.FC<{ layers: Layer[] }> = ({ layers }) => {
               fitBoundsOptions: { padding: 40 },
             }}
             mapStyle={basemapStyle}
+            layerTone={basemapTone(catalogBasemap)}
             touchZoomRotate={false}
             activeFeatureMarker={false}
             containerSx={{

@@ -252,6 +252,17 @@ describe("LayerGroupSwitcher", () => {
     expect(screen.queryByTestId("legend-preview")).toBeNull();
   });
 
+  it("a long name beside the layer's swatch stays on one line, cut, with the full name on hover", () => {
+    const long = "Copernicus_DSM_COG_10_N52_00_E013_00_DEM";
+    // A legend of the base look only: the layer's swatch and name in a row.
+    layers[2] = layer(2, long, 1, true);
+    renderSwitcher();
+    const name = screen.getAllByText(long).find((node) => node.tagName === "P");
+    expect(name?.getAttribute("title")).toBe(long);
+    expect(name?.className).toContain("MuiTypography-noWrap");
+    expect(getComputedStyle(name!).minWidth).toBe("0px");
+  });
+
   it("draws the layer's swatch at the zoom the map is at, not at the whole zoom nearest it", () => {
     // A fill color by zoom: at 12.6 the map blends 30% of the way, at 13 half of the way.
     const document = {

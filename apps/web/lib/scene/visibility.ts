@@ -1,4 +1,4 @@
-// Whether a scene section shows at the current camera (MapLibre 6.16): the globe renders below the end of its handover
+// Whether a scene section shows at the current camera (MapLibre 6.19): the globe renders below the end of its handover
 // to mercator (`GLOBE_HANDOVER`), and while it renders MapLibre draws no fog and the sky is seen from space; a set fog
 // shows on terrain from a tilt of 60 (full at 70; the automatic fog is none); the sky band shows above the horizon
 // from a tilt of about 69; the globe glow only around the globe. The light always shows (buildings, hillshades).

@@ -8,7 +8,7 @@ import { DEFAULT_FONT_FAMILY, LEGEND_TYPOGRAPHY_DEFAULTS } from "@/lib/constants
 import { mapElementLayers } from "@/lib/print/mapElements";
 import type { Geometry } from "@/lib/style/compile/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type Legend, baseSwatch, informative, titleOnly } from "@/lib/style/legend";
+import { type Legend, informative, titleOnly } from "@/lib/style/legend";
 import { printScope } from "@/lib/style/render/viewPresence";
 import { cleanEditedText } from "@/lib/utils/editableText";
 import type { ReportElement } from "@/lib/validations/reportLayout";
@@ -16,7 +16,7 @@ import type { ReportElement } from "@/lib/validations/reportLayout";
 import type { MapLayer } from "@/hooks/map/useMapLayers";
 import { legendLayerOf, useLayerLegend } from "@/hooks/style/useLegendPresence";
 
-import { StyleLegend, SwatchIcon } from "@/components/map/legend/StyleLegend";
+import { StyleLegend, layerSwatchIcon } from "@/components/map/legend/StyleLegend";
 
 /**
  * Convert TypographyStyle to MUI sx props
@@ -364,9 +364,7 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({
       {showLayerName && !layerNameCleared && (
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
           {!detailed && style && geometry && (
-            <Box sx={{ flexShrink: 0, display: "flex" }}>
-              <SwatchIcon swatch={baseSwatch(style, { geometry, zoom })} />
-            </Box>
+            <Box sx={{ flexShrink: 0, display: "flex" }}>{layerSwatchIcon(layer, zoom)}</Box>
           )}
           <EditableText
             text={editable && textOverrides?.[layerNameKey] ? textOverrides[layerNameKey] : layer.name}

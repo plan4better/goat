@@ -1,5 +1,6 @@
 // A number as a slider and its value as text that turns into a field (room kept for the longest value of the range,
-// so the slider holds still). `onChange` fires on every tick (the map follows the drag), `onCommit` once on release.
+// so the slider holds still). `onChange` fires on every tick (the map follows the drag), `onCommit` once on release;
+// a typed number is reported as it is typed, or with `commitOnLeave` once as a whole when the box is left.
 import { Slider } from "@mui/material";
 import { type ReactNode, memo } from "react";
 
@@ -30,6 +31,8 @@ export interface SliderRowProps {
   mode?: ReactNode;
   note?: ReactNode;
   off?: boolean;
+  /** A typed number is reported only when the box is left or Enter is pressed (a value the handler clamps). */
+  commitOnLeave?: boolean;
 }
 
 export const SliderRow = memo(function SliderRow({
@@ -45,6 +48,7 @@ export const SliderRow = memo(function SliderRow({
   mode,
   note,
   off,
+  commitOnLeave,
 }: SliderRowProps) {
   return (
     <Row label={label} actions={mode} note={note} off={off}>
@@ -67,6 +71,7 @@ export const SliderRow = memo(function SliderRow({
         plain
         reserve={Math.max(VALUE_CHARS, valueChars(min, max, step, pct))}
         ariaLabel={typeof label === "string" ? label : undefined}
+        commitOnLeave={commitOnLeave}
         onChange={(next) => {
           onChange(next);
           onCommit?.(next);

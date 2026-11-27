@@ -25,6 +25,7 @@ import {
 import { rasterValuesOver } from "@/lib/style/render/rasterValues";
 import { PENDING_KEY } from "@/lib/style/render/viewLayers";
 import { type PresenceMap, watchViewPresence } from "@/lib/style/render/viewPresence";
+import type { Tone } from "@/lib/style/tone";
 import { lowestOverlayId } from "@/lib/utils/map/overlayLayers";
 
 import { useBasemapStacking } from "@/hooks/map/useBasemapStacking";
@@ -41,9 +42,13 @@ interface StyledLayersProps {
   editing?: EditedLayer[];
   /** The map's number locale. */
   locale: string;
+  /** The tone of the basemap the map draws (`basemapTone`): a layer whose automatic colors follow it compiles again
+   * when it changes. */
+  tone: Tone;
   /** The lowest layer that stays above the project layers. */
   overlay?: string;
-  /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below it. */
+  /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below the building layer
+   * the renderer derives from it (`syncMapLayers`), or where they go without buildings. */
   ground?: string;
   /** Every MapLibre layer id the renderer drew, after each change (interactive layers, snapping). */
   onLayersChange?: (ids: string[]) => void;
@@ -122,6 +127,7 @@ export function StyledLayers({
   layers,
   editing = [],
   locale,
+  tone,
   overlay,
   ground,
   onLayersChange,
@@ -130,8 +136,8 @@ export function StyledLayers({
 }: StyledLayersProps) {
   const { current } = useMap();
   const map = current?.getMap() as StyleMap | undefined;
-  const latest = useRef({ layers, locale, overlay, ground, onLayersChange, onValuesPending });
-  latest.current = { layers, locale, overlay, ground, onLayersChange, onValuesPending };
+  const latest = useRef({ layers, locale, tone, overlay, ground, onLayersChange, onValuesPending });
+  latest.current = { layers, locale, tone, overlay, ground, onLayersChange, onValuesPending };
   const drawnIds = useRef("");
   const redraw = useRef<() => void>(() => undefined);
   const [rasterValues] = useState(() => rasterValuesOver(loadRasterValues, () => redraw.current()));
@@ -163,7 +169,13 @@ export function StyledLayers({
         return;
       }
       ready.current = true;
-      const { layers: next, locale: nextLocale, overlay: nextOverlay, ground: nextGround } = latest.current;
+      const {
+        layers: next,
+        locale: nextLocale,
+        tone: nextTone,
+        overlay: nextOverlay,
+        ground: nextGround,
+      } = latest.current;
       anchors.current ??= basemapAnchorsOf(map);
       const edits = next.map((layer) => {
         const document = edited.current.get(layer.key);
@@ -177,6 +189,7 @@ export function StyledLayers({
           // The map's overlays (drawing, measuring, a filter's area) stay above the project layers.
           overlay: nextOverlay ?? lowestOverlayId(map.getStyle()?.layers),
           ground: nextGround,
+          tone: nextTone,
         });
       } catch (error) {
         if (!String(error).includes("Style is not done loading")) throw error;
@@ -208,7 +221,7 @@ export function StyledLayers({
     [draw]
   );
 
-  useEffect(() => draw(), [layers, locale, overlay, ground, draw]);
+  useEffect(() => draw(), [layers, locale, tone, overlay, ground, draw]);
 
   const stacked = useMemo(
     () => layers.map((layer) => layer.key).filter((key) => !key.startsWith(PENDING_KEY)),
@@ -255,7 +268,10 @@ export function StyledLayers({
       frame.current = null;
       rasterValues.dispose();
       if (map && state.current)
-        state.current = syncMapLayers(map, state.current, [], { locale: latest.current.locale });
+        state.current = syncMapLayers(map, state.current, [], {
+          locale: latest.current.locale,
+          tone: latest.current.tone,
+        });
     },
     [map, rasterValues]
   );

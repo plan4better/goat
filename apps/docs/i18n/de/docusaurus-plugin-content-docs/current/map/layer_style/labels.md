@@ -26,7 +26,7 @@ sidebar_position: 3
 
 <div class="step">
   <div class="step-number">4</div>
-  <div class="content">Legen Sie <code>Größe</code> und <code>Farbe</code> des Textes fest. Die drei Zeilen darunter, <code>Halo</code>, <code>Textstil</code> und <code>Platzierung</code>, fassen jeweils ihre Einstellungen zusammen; ein Klick öffnet die Einstellungen neben dem Editor.</div>
+  <div class="content">Legen Sie <code>Größe</code> und <code>Farbe</code> des Textes fest. Eine neue Beschriftung beginnt bei Text und Halo mit <code>Auto</code>: GOAT wählt beide aus der Farbe des Objekts passend zur hellen oder dunklen Grundkarte, sodass der Text lesbar bleibt. Die drei Zeilen darunter, <code>Halo</code>, <code>Textstil</code> und <code>Platzierung</code>, fassen jeweils ihre Einstellungen zusammen; ein Klick öffnet die Einstellungen neben dem Editor.</div>
 </div>
 
 Die Zeile im Abschnitt zeigt dann das Feld und die Größe, zum Beispiel <code>Name · 12 px</code>.
@@ -50,7 +50,7 @@ Die Zeile im Abschnitt zeigt dann das Feld und die Größe, zum Beispiel <code>N
 
 ## Halo
 
-<code>Halo</code> zeigt Farbe und Breite des Halos, zum Beispiel <code>1,5 px</code>, oder <code>Keiner</code>. Ein Klick darauf legt seine <code>Farbe</code> und <code>Breite</code> fest: einen Rand um die Buchstaben, der sie auf unruhigem Hintergrund lesbar hält.
+<code>Halo</code> zeigt Farbe und Breite des Halos, zum Beispiel <code>1,5 px</code>, oder <code>Keiner</code>. Ein Klick darauf legt seine <code>Farbe</code> und <code>Breite</code> fest: einen Rand um die Buchstaben, der sie auf unruhigem Hintergrund lesbar hält. <code>Auto</code> gibt ihm eine Farbe, die den Text lesbar hält.
 
 ## Textstil
 
@@ -86,6 +86,6 @@ Eine Beschriftung kann je Klasse verschieden sein, etwa größer für Hauptstra�
 ## Bewährte Praktiken
 
 - Verwenden Sie **kleinere Schriften für dichte Layer**, um visuelle Unordnung zu reduzieren.
-- Fügen Sie **Halos mit kontrastierenden Farben** hinzu (helle Halos auf dunklen Karten, dunkle Halos auf hellen Karten), um die Lesbarkeit zu verbessern.
+- Lassen Sie **Text und Halo auf <code>Auto</code>**, damit Beschriftungen auf hellen und dunklen Grundkarten lesbar bleiben; bei eigenen Farben geben Sie dem Halo eine Farbe, die **mit dem Text kontrastiert**.
 - Lassen Sie **Überlappen für eine übersichtlichere Karte aus** und legen Sie eine Priorität fest, damit die wichtigsten Beschriftungen bleiben, wenn der Platz knapp ist.
 - Zeigen Sie ausführliche Beschriftungen **erst ab einer Zoomstufe** und testen Sie Ihre Beschriftungen bei verschiedenen Zoomstufen.

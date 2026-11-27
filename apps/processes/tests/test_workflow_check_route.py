@@ -438,6 +438,34 @@ def test_a_run_with_only_warnings_starts(
     assert args["edges"] == ROADS_TO_BUFFER
 
 
+@pytest.mark.parametrize(
+    ("header", "language"),
+    [({"Accept-Language": "de-DE,de;q=0.9"}, "de"), ({}, "en")],
+)
+def test_a_run_hands_the_runner_the_language_of_the_request(
+    client: TestClient,
+    check: FakeCheck,
+    submitted: list[dict[str, Any]],
+    header: dict[str, str],
+    language: str,
+) -> None:
+    """The steps write their legend titles in it."""
+    response = client.post(
+        f"/workflows/{WORKFLOW}/execute",
+        json={
+            "project_id": PROJECT,
+            "folder_id": FOLDER,
+            "nodes": [ROADS, BUFFER],
+            "edges": ROADS_TO_BUFFER,
+        },
+        headers=header,
+    )
+
+    assert response.status_code == 201, response.text
+    (args,) = submitted
+    assert args["language"] == language
+
+
 def test_a_refused_run_leaves_the_previous_results(
     client: TestClient,
     check: FakeCheck,

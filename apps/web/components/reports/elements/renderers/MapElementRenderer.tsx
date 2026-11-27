@@ -10,6 +10,7 @@ import { BUILDINGS_TILES_URL, TERRAIN_TILES_URL } from "@/lib/constants";
 import { BASEMAPS, DEFAULT_BASEMAP, getBasemapUrl } from "@/lib/constants/basemaps";
 import type { AtlasPage } from "@/lib/print/atlas-utils";
 import { calculateMapViewport, zoomToScale } from "@/lib/print/atlas-utils";
+import { mapElementTone } from "@/lib/print/mapElements";
 import { mmToPx, SCREEN_DPI } from "@/lib/print/units";
 import { isImageryBasemap, toneOf } from "@/lib/scene/auto";
 import { buildingsAnchor } from "@/lib/scene/compile";
@@ -428,6 +429,8 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
               <StyledLayers
                 layers={renderLayers}
                 locale={locale || i18n.language}
+                // The locked basemap's tone where it draws one, else the project's basemap's.
+                tone={mapElementTone((element.config ?? {}) as Record<string, unknown>, basemap)}
                 ground={buildingsAnchor(appliedScene)}
                 presenceScope={printScope(element.id)}
                 onValuesPending={setValuesPending}

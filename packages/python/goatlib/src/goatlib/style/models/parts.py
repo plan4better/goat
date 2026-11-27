@@ -60,7 +60,17 @@ Dash = Literal["solid", "dashed", "dotted", "dash_dot"]
 #: `<library>:<name>` (`goat:park`, `emoji:1f525`) or `asset:<id>` for an uploaded icon;
 #: which libraries exist is checked against the catalogue (`unknown_icon`).
 IconRef = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*:[A-Za-z0-9._-]+$")]
-ColorOrFill = Annotated[str, Field(pattern=HEX[:-1] + "|^fill$")]
+#: An outline color: a color, `"fill"` (the color the main part draws) or `"auto"`
+#: (a darker shade of it, `goatlib.style.colors.shade`).
+OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|fill|auto)$")]
+#: A casing color: a color or `"auto"` (a darker shade of the line's color).
+CasingColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
+#: An H3 outline color: a color or `"auto"` (a darker shade of each hexagon's color).
+H3OutlineColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
+#: A label's text or halo color, or a marker's icon color: a color or `"auto"` (a
+#: label's text and halo chosen together for the basemap, an icon or a cluster's
+#: number in white or dark on the color underneath; spec 18.10).
+AutoColor = Annotated[str, Field(pattern=f"^({HEX[1:-1]}|auto)$")]
 XY = Annotated[tuple[float, float], LAX]
 
 ColorValue = value_type(
@@ -70,17 +80,23 @@ ColorValue = value_type(
         "fill.color",
         "fill.pattern_color",
         "line.color",
-        "casing.color",
         "arrows.color",
         "marker.color",
-        "marker.icon_color",
-        "label.color",
-        "label.halo.color",
         attribute="color",
     ),
 )
+AutoColorValue = value_type(
+    "AutoColor",
+    AutoColor,
+    **limits.forms(
+        "marker.icon_color", "label.color", "label.halo.color", attribute="color"
+    ),
+)
 OutlineColorValue = value_type(
-    "OutlineColor", ColorOrFill, **limits.forms("outline.color", attribute="color")
+    "OutlineColor", OutlineColor, **limits.forms("outline.color", attribute="color")
+)
+CasingColorValue = value_type(
+    "CasingColor", CasingColor, **limits.forms("casing.color", attribute="color")
 )
 UnitValue = value_type(
     "Unit",
@@ -260,7 +276,7 @@ class Line(_Part):
 
 
 class Casing(_Part):
-    color: ColorValue | None = None
+    color: CasingColorValue | None = None
     width: PxValue | None = None
     opacity: UnitValue | None = None
 
@@ -305,7 +321,7 @@ class Marker(_Part):
     size: PxValue | None = None
     opacity: UnitValue | None = None
     icon: IconValue | None = None
-    icon_color: ColorValue | None = None
+    icon_color: AutoColorValue | None = None
     rotation: DegreesValue | None = None
     anchor: AnchorValue | None = None
     offset: OffsetValue | None = None
@@ -313,7 +329,7 @@ class Marker(_Part):
 
 
 class Halo(StyleModel):
-    color: ColorValue | None = None
+    color: AutoColorValue | None = None
     width: PxValue | None = None
 
 
@@ -378,7 +394,7 @@ class Label(_Part):
     format: NumberFormat | None = None
     formats: dict[str, NumberFormat] | None = None
     size: PxValue | None = None
-    color: ColorValue | None = None
+    color: AutoColorValue | None = None
     halo: Halo | None = None
     font: Font | None = None
     placement: LabelPlacement | None = None

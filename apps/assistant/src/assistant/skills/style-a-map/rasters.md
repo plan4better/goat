@@ -35,6 +35,13 @@ and blue; `[4, 1, 2]` shows near infrared as red when it is band 4. The
 adjustments `brightness`, `contrast` and `saturation` (-1 to 1) and `hue`
 (degrees) sit beside `render` and work with `image` only (`unknown_key` with
 any other type).
+`blend` beside `render` mixes an image or a map service with the map below
+(`normal`, `multiply`, `screen`, `overlay`, `color`, `luminosity`,
+`plus-lighter`): `multiply` lets the map show through its white,
+`luminosity` gives the colored areas below the image's light and shade, and
+`plus-lighter` adds its light, a glow on a dark basemap. A color range,
+classes, categories, an image in its file's color table and a hillshade draw
+without it.
 
 <!-- layer: raster -->
 ```json

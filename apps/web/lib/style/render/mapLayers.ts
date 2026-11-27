@@ -5,7 +5,9 @@
 // clicks, the feature editor and measuring use instead of id conventions.
 import type { FilterSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
+import { TERRAIN_HILLSHADE_LAYER } from "@/lib/scene/compile";
 import { compileLayer } from "@/lib/style/compile";
+import { usesTone } from "@/lib/style/compile/derived";
 import { h3SourceId } from "@/lib/style/compile/render";
 import type {
   CompileInput,
@@ -15,7 +17,7 @@ import type {
   Position,
 } from "@/lib/style/compile/types";
 import type { LayerStyle } from "@/lib/style/generated/types";
-import { deepEqual } from "@/lib/style/json";
+import { type JsonObject, deepEqual } from "@/lib/style/json";
 import {
   type PreviewMap,
   applyCompiled,
@@ -23,6 +25,7 @@ import {
   removeCompiled,
   withTileParams,
 } from "@/lib/style/render/apply";
+import type { Tone } from "@/lib/style/tone";
 
 /** One project layer as the renderer draws it. */
 export interface RenderLayer {
@@ -54,8 +57,11 @@ export interface SyncOptions {
   anchors?: Anchors;
   /** The lowest layer that stays above every project layer (the popup highlight, drawing tools). */
   overlay?: string;
-  /** The scene's lowest 3D building layer: the project layers' parts drawn on the ground go below it (`GROUND`). */
+  /** The scene's lowest 3D building layer: the project layers' parts drawn on the ground go below the building layer
+   * `groundAnchor` derives from it (`GROUND`). */
   ground?: string;
+  /** The tone of the basemap the layers draw on (`basemapTone`), for their automatic colors; light by default. */
+  tone?: Tone;
 }
 
 interface Placed {
@@ -69,8 +75,10 @@ export interface MapLayersState {
   locale?: string;
   anchors?: Anchors;
   overlay?: string;
-  /** The building layer the ground parts went below: `ground` while it is on the map. */
+  /** The building layer the ground parts went below: `groundAnchor` of `ground` while that is on the map. */
   ground?: string;
+  /** The basemap's tone the layers were compiled for. */
+  tone?: Tone;
 }
 
 export type RendererMap = PreviewMap & {
@@ -111,43 +119,109 @@ function labelBlockStart(list: Array<{ type: string }>): number {
 }
 
 /**
- * The anchors of a vector basemap: the first symbol layer of its label block (labels), its first road layer, and the
- * layer the block starts at (buildings). Every basemap GOAT offers draws roads, boundaries or relief after its flat
- * building fill and ends in the block of labels, so the layers below the labels and GOAT's buildings go above all of
- * its ground. Raster and solid basemaps have none of the three, so every layer draws on top.
+ * The anchors of a vector basemap: the first symbol layer of its label block (labels), its first road layer drawn on
+ * the ground, and the layer the block starts at (buildings). Every basemap GOAT offers draws roads, boundaries or
+ * relief after its flat building fill and ends in the block of labels, so the layers below the labels and GOAT's
+ * buildings go above all of its ground. Raster and solid basemaps have none of the three, so every layer draws on top.
+ * Where a shown building layer with a covering area above it (`covers`) lies above the first road, as in a basemap of
+ * two blocks whose lower one has its own buildings, the roads anchor is the first road above the highest such building
+ * layer, else none.
  */
-export function basemapAnchors(
-  layers: Array<{ id: string; type: string; "source-layer"?: string }> | undefined
-): Anchors {
+export function basemapAnchors(layers: BasemapLayer[] | undefined): Anchors {
   const list = layers ?? [];
   const start = labelBlockStart(list);
+  const road = (l: BasemapLayer) =>
+    GROUND.has(l.type) && l["source-layer"] !== undefined && ROAD_SOURCE_LAYERS.has(l["source-layer"]);
+  const firstRoad = list.findIndex(road);
+  const covered = lastCovering(list);
+  let buried = -1;
+  list.forEach((l, i) => {
+    if (i > firstRoad && i < covered && l.type === "fill-extrusion" && visible(l)) buried = i;
+  });
   return {
     labels: list.slice(start).find((l) => l.type === "symbol")?.id,
-    roads: list.find((l) => l["source-layer"] !== undefined && ROAD_SOURCE_LAYERS.has(l["source-layer"]))?.id,
+    roads: firstRoad < 0 ? undefined : list.slice(buried < 0 ? firstRoad : buried + 1).find(road)?.id,
     buildings: list[start]?.id,
   };
+}
+
+/** A basemap layer as the anchors read it. */
+interface BasemapLayer {
+  id: string;
+  type: string;
+  source?: unknown;
+  "source-layer"?: string;
+  layout?: { visibility?: unknown };
+  paint?: object;
+}
+
+/** Ground layer types that cover an area, so that what is drawn below them is hidden where they draw. */
+const AREA = new Set(["background", "fill", "raster", "hillshade", "color-relief"]);
+
+const visible = (l: BasemapLayer) => l.layout?.visibility !== "none";
+
+/**
+ * Whether a basemap layer hides what is drawn below it: a visible background, fill, raster, hillshade or color relief,
+ * whatever its opacity, except a fill of a pattern, which leaves most of what is below it visible.
+ */
+const covers = (l: BasemapLayer) =>
+  visible(l) &&
+  AREA.has(l.type) &&
+  !(
+    l.type === "fill" && (l.paint as { "fill-pattern"?: unknown } | undefined)?.["fill-pattern"] !== undefined
+  );
+
+/** The index of the highest covering layer of the list (`covers`), -1 for none. */
+function lastCovering(list: BasemapLayer[]): number {
+  for (let i = list.length - 1; i >= 0; i--) if (covers(list[i])) return i;
+  return -1;
 }
 
 /**
  * The anchors of the basemap on a map, from its style's layers that are neither the renderer's, GOAT's scene (`goat-`
  * ids) nor on a GeoJSON source (the mask, the drawing and measuring tools, the popup highlight, drawn on top).
  */
-export function basemapAnchorsOf(map: {
-  getStyle():
-    | {
-        layers?: Array<{ id: string; type: string; source?: unknown; "source-layer"?: string }>;
-        sources?: Record<string, { type?: string }>;
-      }
-    | undefined;
-}): Anchors {
-  const style = map.getStyle();
-  const onGeojson = (source: unknown) =>
-    typeof source === "string" && style?.sources?.[source]?.type === "geojson";
-  return basemapAnchors(
-    style?.layers?.filter(
-      (l) => !projectLayerOf(map, l.id) && !l.id.startsWith("goat-") && !onGeojson(l.source)
-    )
+export function basemapAnchorsOf(map: StyledMap): Anchors {
+  return basemapAnchors(basemapLayersOf(map, map.getStyle()));
+}
+
+interface StyledMap {
+  getStyle(): { layers?: BasemapLayer[]; sources?: Record<string, { type?: string }> } | undefined;
+}
+
+const onGeojson = (style: ReturnType<StyledMap["getStyle"]>, source: unknown) =>
+  typeof source === "string" && style?.sources?.[source]?.type === "geojson";
+
+/** The basemap's layers on a map, bottom to top: those `basemapAnchorsOf` reads. */
+function basemapLayersOf(map: object, style: ReturnType<StyledMap["getStyle"]>) {
+  return (style?.layers ?? []).filter(
+    (l) => !projectLayerOf(map, l.id) && !l.id.startsWith("goat-") && !onGeojson(style, l.source)
   );
+}
+
+/**
+ * The building layer the project layers' ground parts go below: the scene's (`ground`) where no covering area
+ * (`covers`) is drawn above it, else the lowest shown building layer above it with none drawn above it, else none, so
+ * that the ground parts go where they go without buildings. The invariant: an anchor never puts the ground parts
+ * under a visible area of the map's style, wherever in the style that area is; the one exception is a fill of a
+ * pattern. It reads only the layers' order, types, visibility and whether a fill draws a pattern; every layer counts
+ * but the renderer's own (its registry), those on a GeoJSON source (the mask, the drawing and measuring tools, the
+ * popup highlight, drawn on top) and the scene's translucent terrain shading. The scene's other layers need no
+ * exception: its building layer covers no area, and a footprint's copy sits right above the basemap footprint it
+ * copies, which counts in its place.
+ */
+function groundAnchor(map: Partial<StyledMap>, ground: string | undefined): string | undefined {
+  if (ground === undefined) return undefined;
+  const style = map.getStyle?.();
+  if (!style?.layers) return ground;
+  const list = style.layers.filter(
+    (l) => !projectLayerOf(map, l.id) && !onGeojson(style, l.source) && l.id !== TERRAIN_HILLSHADE_LAYER
+  );
+  const at = list.findIndex((l) => l.id === ground);
+  if (at < 0) return ground;
+  const covered = lastCovering(list);
+  if (at > covered) return ground;
+  return list.find((l, i) => i > covered && l.type === "fill-extrusion" && visible(l))?.id;
 }
 
 /** Layer types that take a filter (rasters and hillshades do not). */
@@ -164,7 +238,7 @@ function withFilters(layer: LayerSpecification, extra: unknown[]): LayerSpecific
   return { ...layer, filter } as LayerSpecification;
 }
 
-function compile(layer: RenderLayer): CompiledLayer {
+function compile(layer: RenderLayer, tone: Tone): CompiledLayer {
   const out = withTileParams(
     compileLayer({
       id: layer.key,
@@ -174,6 +248,7 @@ function compile(layer: RenderLayer): CompiledLayer {
       entry: layer.entry,
       highlight: true,
       resolveIcon: layer.resolveIcon,
+      tone,
     })
   );
   // The map's locale is the renderer's: a layer's default must not overwrite it.
@@ -263,7 +338,14 @@ export function syncMapLayers(
   }
 
   const anchors = opts.anchors ?? {};
-  const ground = opts.ground && map.getLayer(opts.ground) ? opts.ground : undefined;
+  const tone = opts.tone ?? "light";
+  // A new basemap tone compiles again only the layers whose automatic colors follow it.
+  const retoned = (layer: RenderLayer) =>
+    prev !== null && (prev.tone ?? "light") !== tone && usesTone(layer.style as unknown as JsonObject);
+  const ground = groundAnchor(
+    map as unknown as Partial<StyledMap>,
+    opts.ground && map.getLayer(opts.ground) ? opts.ground : undefined
+  );
   const reorder =
     !prev ||
     !deepEqual(
@@ -318,7 +400,8 @@ export function syncMapLayers(
     const low = splits(position) ? stackBefore(true) : raised;
     const beforeId = (l: LayerSpecification) => (onGround(position, l) ? low : raised);
     const old = prev?.placed.get(layer.key);
-    let compiled = old && sameInput(old.layer, layer) ? old.compiled : compile(layer);
+    let compiled =
+      old && sameInput(old.layer, layer) && !retoned(layer) ? old.compiled : compile(layer, tone);
     if (compiled !== old?.compiled) applyCompiled(map, old?.compiled ?? null, compiled, { beforeId });
     else if (timeOf(old.layer) !== timeOf(layer)) {
       // A moved time slider sets its global state; the default keeps the value for restoreGlobalState.
@@ -354,7 +437,7 @@ export function syncMapLayers(
   }
   registries.set(map, registry);
 
-  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground };
+  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground, tone };
 }
 
 /** Sets the global state again (the locale, every time slider's value) after a new style replaced it. */

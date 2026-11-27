@@ -11,7 +11,7 @@ import duckdb
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from goatlib.analysis.data_management.join import JoinTool
-from goatlib.analysis.schemas.base import FieldStatistic
+from goatlib.analysis.schemas.base import FieldStatistic, StatisticOperation
 from goatlib.analysis.schemas.data_management import (
     AttributeRelationship,
     JoinOperationType,
@@ -27,12 +27,15 @@ from goatlib.analysis.schemas.ui import (
     ui_field,
     ui_sections,
 )
+from goatlib.analysis.statistics.columns import quote_identifier
+from goatlib.io.bbox_columns import is_bbox_struct
 from goatlib.models.io import DatasetMetadata
 from goatlib.tools.base import BaseToolRunner
 from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
+from goatlib.tools.style import statistic_default
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +449,75 @@ def _join_fields(params: JoinToolParams, join_path: Path) -> list[str]:
     return [name for name, data_type, *_ in rows if not _is_geometry(name, data_type)]
 
 
+def _statistic(params: JoinToolParams) -> FieldStatistic | None:
+    """The first statistic of a run that writes statistics: one-to-one with
+    statistics on, not disjoint (as ``predict_output_schema``)."""
+    disjoint = (
+        params.use_spatial_relationship
+        and params.spatial_relationship == SpatialRelationshipType.disjoint
+    )
+    if (
+        disjoint
+        or params.join_operation != JoinOperationType.one_to_one
+        or not params.calculate_statistics
+        or not params.field_statistics
+    ):
+        return None
+    return params.field_statistics[0]
+
+
+def _written_column(names: list[str], params: JoinToolParams) -> str | None:
+    """The name the run wrote its first statistic under. The analysis appends
+    `match_count` (without a count) and the statistic columns after the target
+    layer's, and the database renames one whose name is taken, as
+    `predict_output_schema` predicts (`unique_column_name`). So the result's
+    columns before the appended ones are the target's, and the prediction from
+    them must give the result's columns (`names`, without the bounding box);
+    None where it does not."""
+    stats = params.field_statistics or []
+    match_count = not any(s.operation == StatisticOperation.count for s in stats)
+    target = names[: len(names) - len(stats) - match_count]
+    if not target:
+        return None
+    predicted = JoinToolRunner.predict_output_schema(
+        {"target_layer_id": dict.fromkeys(target, "")}, params.model_dump(mode="json")
+    )
+    if list(predicted) != names:
+        return None
+    return names[len(target) + match_count]
+
+
+def _statistic_range(
+    runner: BaseToolRunner, relation: str, params: JoinToolParams
+) -> tuple[str, Any, Any, int, int, list[str]] | None:
+    """The column of the first statistic (`_written_column`) with its minimum,
+    its maximum, the result's rows and the rows without a value in it, read in
+    one pass with the runner's connection, and the result's column names; None
+    where the column cannot be told or the result cannot be read."""
+    try:
+        con = runner.duckdb_con
+        names = [
+            name
+            for name, data_type, *_ in con.execute(
+                f"DESCRIBE SELECT * FROM {relation}"
+            ).fetchall()
+            if not is_bbox_struct(data_type)
+        ]
+        column = _written_column(names, params)
+        if column is None:
+            logger.warning("The join's result does not hold the columns it writes")
+            return None
+        quoted = quote_identifier(column)
+        low, high, rows, missing = con.execute(
+            f"SELECT min({quoted}), max({quoted}), count(*), "
+            f"count(*) - count({quoted}) FROM {relation}"
+        ).fetchone()
+        return column, low, high, rows, missing, names
+    except Exception:  # the default style
+        logger.warning("Reading the join's statistic failed", exc_info=True)
+        return None
+
+
 class JoinToolRunner(BaseToolRunner[JoinToolParams]):
     """Join tool runner for Windmill."""
 
@@ -520,6 +592,42 @@ class JoinToolRunner(BaseToolRunner[JoinToolParams]):
             if col in picked:
                 add(f"join_{col}", dtype)
         return columns
+
+    def get_layer_style(
+        self: Self,
+        params: JoinToolParams,
+        metadata: DatasetMetadata,
+        geometry: str | None,
+        relation: str,
+    ) -> dict[str, Any] | None:
+        """The first statistic's column classified in orange, as the aggregates
+        (`statistic_default`), where the user asked for statistics and that
+        column holds at least two values or rows without a value (the fit of
+        the run then keeps a class for one value and lists those rows as no
+        data); the default style otherwise. The
+        target's polygons outlined, H3 cells of a heatmap result not
+        (`on_h3_cells` on the columns read here)."""
+        stat = _statistic(params)
+        if stat is None or geometry is None:
+            return None
+        read = _statistic_range(self, relation, params)
+        if read is None:
+            return None
+        column, low, high, rows, missing, names = read
+        if not rows or (not missing and not low < high):
+            return None
+        return statistic_default(
+            self,
+            stat,
+            column,
+            "colorbrewer:Oranges",
+            geometry,
+            relation,
+            negative=low is not None and low < 0 and high <= 0,
+            outline_areas=True,
+            columns=names,
+            language=params.language,
+        )
 
     def process(
         self: Self, params: JoinToolParams, temp_dir: Path

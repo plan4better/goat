@@ -5,6 +5,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from fixtures.tool_style import U, check_tool_style, tool_params
 from goatlib.analysis.accessibility import (
     STATION_CONFIG_DEFAULT,
     OevGueteklasseParams,
@@ -13,6 +14,12 @@ from goatlib.analysis.accessibility import (
     PTTimeWindow,
 )
 from goatlib.analysis.schemas.oev_gueteklasse import CatchmentType
+from goatlib.tools.oev_gueteklassen import (
+    OevGueteklassenToolParams,
+    OevGueteklassenToolRunner,
+)
+from goatlib.tools.style import oev_gueteklassen_stations_style
+from goatlib.tools.style_contract import Expectation
 
 # =============================================================================
 # Fixtures
@@ -445,6 +452,24 @@ class TestOevGueteklasseTool:
         print(f"Total stations in area: {result['total_stations']}")
         print(f"Stations with service: {result['stations_with_service']}")
         print(f"Quality class distribution: {result['quality_class_counts']}")
+
+        # The analysis ran with the default station configuration.
+        tool_style_params = tool_params(
+            OevGueteklassenToolParams, reference_area_layer_id=U
+        )
+        check_tool_style(
+            OevGueteklassenToolRunner,
+            tool_style_params,
+            output_path,
+            expect=Expectation(field="pt_class_label", method="categories"),
+        )
+        check_tool_style(
+            OevGueteklassenToolRunner,
+            tool_style_params,
+            stations_output_path,
+            document=oev_gueteklassen_stations_style(),
+            expect=Expectation(field="station_category", method="categories"),
+        )
 
     def test_oev_gueteklasse_network_catchment(
         self,

@@ -57,6 +57,16 @@ describe("addItemToProject", () => {
     await added.undo();
     expect(api.deleteProjectLayerGroup).toHaveBeenCalledWith("p1", 9);
     expect(api.deleteProjectLayer).not.toHaveBeenCalled();
+    // A catalog plan comes in as a bundle group too, and leaves with it.
+    vi.clearAllMocks();
+    api.addCatalogLayersToProject.mockResolvedValue([
+      { id: 34, layer_project_group_id: 7 },
+      { id: 35, layer_project_group_id: 7 },
+    ]);
+    await (await addItemToProject("p1", { kind: "catalog", id: "plan", title: "Plan" })).undo();
+    expect(api.deleteProjectLayerGroup).toHaveBeenCalledTimes(1);
+    expect(api.deleteProjectLayerGroup).toHaveBeenCalledWith("p1", 7);
+    expect(api.deleteProjectLayer).not.toHaveBeenCalled();
   });
 
   it("passes a refusal on", async () => {

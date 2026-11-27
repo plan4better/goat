@@ -22,13 +22,26 @@ from pydantic import (
     model_validator,
 )
 
+from goatlib.style.colors import COLOR_KEYS
 from goatlib.style.ids import assign_ids, existing_ids
 from goatlib.style.issues import Fix
 from goatlib.style.merge import _class_skip, _is_id_list
+from goatlib.style.models.parts import PARTS
 from goatlib.style.ops import apply_fix
 from goatlib.style.pointer import find_index, item_key, parse_pointer, to_pointer
 
 Op = Literal["set", "remove", "retarget", "use_field", "round", "add", "move"]
+
+#: A path into the classes of a classification the server computes, before it has
+#: any: a class added now would be rebuilt on the save, as many as the count.
+NO_CLASSES_YET = (
+    "{path} has no items yet: the server computes this classification's classes "
+    "when the style is saved, and rebuilds classes added before unless they are as "
+    "many as its count. A value for every "
+    "class goes on the symbol (for example /symbol/outline/color) or on the "
+    "classification's own settings; one class's own value is set in a later call, "
+    "by its id, once the classes exist."
+)
 
 ID_LISTS: tuple[str, ...] = (
     "/classify",
@@ -251,10 +264,61 @@ def _apply(doc: dict[str, Any], edit: Edit) -> tuple[dict[str, Any], Any]:
     return doc, None
 
 
+def part_at(segments: Sequence[str]) -> str | None:
+    """The part the path's last segment names where it sits in a symbol, a class
+    record, a rule or a classification's `other` or `no_data`; None elsewhere."""
+    if len(segments) < 2 or segments[-1] not in PARTS:
+        return None
+    parents = segments[:-1]
+    if parents[-1] in ("symbol", "other", "no_data"):
+        return segments[-1]
+    if len(parents) >= 2 and parents[-2] in ("classes", "rules"):
+        return segments[-1]
+    return None
+
+
+def part_key(part: str) -> str:
+    """The key a hint names for a part: a label's text, an extrusion's height,
+    else its color."""
+    fields = PARTS[part].model_fields
+    return next(key for key in ("text", "color", "height") if key in fields)
+
+
+def _key_hint(path: str, part: str, value: Any) -> str:
+    """How to set one key of a part instead of the whole part: the value sent
+    on the part's color key where that key takes it, else the key to set."""
+    takes = _is_color(value) and value != "auto"
+    if value == "auto":
+        takes = bool(COLOR_KEYS.get(f"{part}.color", {}).get("accepted"))
+    if value == "fill":
+        takes = part == "outline"
+    key = part_key(part)
+    if takes and "color" in PARTS[part].model_fields:
+        return f"set {path}/color to {json.dumps(value)}"
+    if key == "color":
+        return f"set {path}/color to a hex color"
+    return f"set {path}/{key}"
+
+
+def _is_color(value: Any) -> bool:
+    return value == "auto" or (
+        isinstance(value, str)
+        and re.fullmatch(r"#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?", value) is not None
+    )
+
+
 def _set(doc: dict[str, Any], segments: list[str], value: Any) -> None:
     node, at = _walk(doc, segments, create=True)
     last = segments[-1]
     _check_last(doc, node, at, last)
+    part = part_at([*at, last]) if isinstance(node, dict) else None
+    if part and not (isinstance(value, dict) or value is False or value is None):
+        path = to_pointer([*at, last])
+        raise _RefusalError(
+            f"{path} is a part: an object of its keys, or false to switch it off, not "
+            f"{_shown(value)}. Set its keys one by one instead: "
+            f"{_key_hint(path, part, value)}."
+        )
     value = copy.deepcopy(value)
     if isinstance(node, dict):
         node[last] = value
@@ -372,7 +436,8 @@ def _walk(
     doc: dict[str, Any], segments: list[str], *, create: bool
 ) -> tuple[Any, list[str]]:
     """The container of the path's last segment, and the path to it with ids for
-    id-list items. `create` makes missing objects on the way (never a list)."""
+    id-list items. `create` makes missing objects on the way (never a list) and
+    switches on a part that holds false: it becomes an object for the key set."""
     node: Any = doc
     at: list[str] = []
     for segment in segments[:-1]:
@@ -380,10 +445,16 @@ def _walk(
             _check_key(doc, at, segment)
             child = node.get(segment)
             if child is None and _is_id_list((*at, segment)):
+                if segment == "classes" and _class_skip(node):
+                    raise _RefusalError(
+                        NO_CLASSES_YET.format(path=to_pointer([*at, segment]))
+                    )
                 raise _RefusalError(
                     f"{to_pointer([*at, segment])} has no items yet; add one with the "
                     "add operation."
                 )
+            if child is False and create and part_at([*at, segment]):
+                child = node[segment] = {}
             if child is None and create:
                 child = node[segment] = {}
             elif segment not in node:

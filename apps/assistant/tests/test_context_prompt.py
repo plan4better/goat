@@ -701,6 +701,44 @@ def test_the_map_guidance_tells_what_tone_and_imagery_mean() -> None:
     assert _BASEMAP_TONE not in without
 
 
+#: The guidance sentence as the assistant has always sent it.
+GUIDANCE = (
+    "The basemap's tone and imagery in the page state guide colors: on a light "
+    "basemap avoid pale fills and white outlines or casings, on a dark one avoid "
+    "dark fills and dark outlines or casings, and over imagery use strong, "
+    "saturated colors with a halo or casing."
+)
+IMAGE_ID = "6d3c2a1e-0f4b-4c5d-8e9f-0a1b2c3d4e5f"
+
+
+@pytest.mark.parametrize(
+    ("sent", "before"),
+    [
+        # A custom image basemap: the web sends the tone automatic colors follow
+        # (light); before, it sent dark for any imagery.
+        (
+            {"id": IMAGE_ID, "name": "Luftbild", "tone": "light", "imagery": True},
+            {"id": IMAGE_ID, "name": "Luftbild", "tone": "dark", "imagery": True},
+        ),
+        (SATELLITE, SATELLITE),
+        (DARK, DARK),
+        (LIGHT, LIGHT),
+    ],
+    ids=["custom image", "satellite", "dark", "light"],
+)
+def test_the_model_reads_the_basemap_as_before_imagery_as_dark(
+    sent: dict[str, object], before: dict[str, object]
+) -> None:
+    """The note's guidance and the page state's basemap read as they did
+    before the web sent the layer tone: imagery is advised by as dark."""
+    note = render_note(parse_context(_map_with_basemap(basemap=sent)), None, "en")
+    assert GUIDANCE in note.splitlines()
+    assert _state(note)["basemap"] == {"imagery": False, **before}
+    assert note == render_note(
+        parse_context(_map_with_basemap(basemap=before)), None, "en"
+    )
+
+
 def test_the_instructions_point_to_core_find_layers_for_layers_in_projects() -> None:
     assert "core_find_layers" in INSTRUCTIONS
     assert "which of my projects use" in " ".join(INSTRUCTIONS.split())

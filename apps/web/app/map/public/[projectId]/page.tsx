@@ -23,6 +23,7 @@ import type { RootState } from "@/lib/store";
 import { selectProjectLayers } from "@/lib/store/layer/selectors";
 import { setProjectLayerGroups, setProjectLayers } from "@/lib/store/layer/slice";
 import { initView, setMapMode, setProject } from "@/lib/store/map/slice";
+import { basemapTone } from "@/lib/style/tone";
 import { filterSelectableProjectLayers } from "@/lib/utils/map/layer";
 import { getLocFromUrl, writeLocToUrl, writeMapLocToUrl } from "@/lib/utils/map/loc-url";
 import type { ProjectLayerGroup } from "@/lib/validations/project";
@@ -287,6 +288,7 @@ export default function MapPage(props: { params: Promise<{ projectId: string }> 
                   projection={projection}
                   scene={sharedProject?.config.map?.scene}
                   basemap={activeBasemap}
+                  layerTone={basemapTone(activeBasemap)}
                   onMoveEnd={handleMoveEnd}
                   onLoad={handleMapLoaded}
                   isEditor={false}

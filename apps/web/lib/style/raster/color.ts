@@ -1,6 +1,7 @@
 // The coloring of a raster file (spec 9): a style's render resolved into what the raster service colors cells with
 // (goatlib.raster.token, same keys). Palettes become colors and class colors come from the palette here, so the
 // service needs no palette catalog; class names and legend texts never travel.
+import { alphaOf } from "@/lib/style/colors";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { paletteColors, paletteSteps } from "@/lib/style/palettes";
@@ -63,6 +64,9 @@ export const rgbOf = (hex: string): [number, number, number] => {
   const full = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.slice(0, 6);
   return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
 };
+
+/** A hex color's own alpha as a share, 0 to 1 (spec 4.6): `alphaOf` / 255; 1 for `#rgb` and `#rrggbb`. */
+export const alphaShare = (hex: string): number => (alphaOf(hex) ?? 255) / 255;
 
 /** The band a render colors: a number, or a formula's expression; null when it is neither. */
 function bandOf(render: JsonObject): Band | null {

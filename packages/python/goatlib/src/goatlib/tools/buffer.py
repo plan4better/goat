@@ -29,7 +29,7 @@ from goatlib.tools.schemas import (
     ToolInputBase,
     get_default_layer_name,
 )
-from goatlib.tools.style import categories
+from goatlib.tools.style import bands, style_title
 
 logger = logging.getLogger(__name__)
 
@@ -118,8 +118,8 @@ class BufferToolRunner(BaseToolRunner[BufferToolParams]):
         geometry: str | None,
         relation: str,
     ) -> dict[str, Any] | None:
-        """One class per buffer distance, in orange-red; the default style for
-        distances read from a field."""
+        """One band per buffer distance in meters, in orange-red, the smallest
+        on top; the default style for distances read from a field."""
         if params.distance_type != DistanceType.constant or not params.distances:
             return None
         from goatlib.utils.helper import UNIT_TO_METERS
@@ -127,11 +127,13 @@ class BufferToolRunner(BaseToolRunner[BufferToolParams]):
         unit_mult = UNIT_TO_METERS.get(params.units, 1.0)
         # Whole meters, as the distances are stored in the parquet
         distances = sorted({int(round(d * unit_mult)) for d in params.distances})
-        return categories(
+        return bands(
             "buffer_distance",
             distances,
             "colorbrewer:OrRd",
             geometry,
+            style_title("buffer_distance", params.language),
+            "m",
             symbol={"fill": {"opacity": 0.7}},
         )
 
