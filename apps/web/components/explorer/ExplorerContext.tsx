@@ -174,6 +174,9 @@ export function ExplorerProvider({ bundleId, children }: { bundleId: string; chi
   // stations with theirs.
   useEffect(() => () => networkStore.reset(), [bundleId]);
   useEffect(() => networkStore.update({ shapeLinesLayerId }), [shapeLinesLayerId]);
+  const tilesRevision =
+    saved && saved.manifest === manifest ? saved.revision : (manifest?.layers_revision ?? null);
+  useEffect(() => networkStore.update({ tilesRevision }), [tilesRevision]);
   const has = (tables: string[]) =>
     state.status === "ready" || (state.status === "loading" && hasTables(state, tables));
   const shapesIn = has(["shapes_meta", "shape_route", "routes"]);

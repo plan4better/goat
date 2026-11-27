@@ -1,8 +1,10 @@
 /**
  * Editing in the Explorer, for a user who may write the bundle: the edit
  * bar on the Explorer tab (on the Layers tab it is hidden: editing lives in
- * the Explorer, board 17), its keys, the exit dialog wherever leaving starts,
- * and the browser's warning before a reload drops unsaved changes.
+ * the Explorer, board 17), its second row (the selection's actions or a line
+ * mode's controls) and under it what a tool does; its keys, the dialogs
+ * edits are made in, the exit dialog wherever leaving starts, and the
+ * browser's warning before a reload drops unsaved changes.
  */
 import { useEffect } from "react";
 
@@ -15,10 +17,14 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { EditBar } from "@/components/explorer/edit/EditBar";
+import { EditModeResolver } from "@/components/explorer/edit/EditModeResolver";
 import { ExitDialog } from "@/components/explorer/edit/ExitDialog";
 import { LineContextMenu } from "@/components/explorer/edit/LineContextMenu";
-import { SelectionResolver } from "@/components/explorer/edit/SelectionResolver";
+import { LinePropertiesDialog } from "@/components/explorer/edit/LinePropertiesDialog";
+import { ServiceDialog } from "@/components/explorer/edit/ServiceDialog";
+import { StopDialog } from "@/components/explorer/edit/StopDialog";
 import { ToolHint } from "@/components/explorer/edit/ToolHint";
+import { TripDialogs } from "@/components/explorer/edit/TripDialogs";
 
 export function ExplorerEditing({ compact, barHidden }: { compact: boolean; barHidden: boolean }) {
   const { session } = useExplorer();
@@ -40,9 +46,13 @@ export function ExplorerEditing({ compact, barHidden }: { compact: boolean; barH
           <ToolHint />
         </>
       )}
-      <SelectionResolver />
+      <EditModeResolver />
       <LineContextMenu />
       <ExitDialog />
+      <ServiceDialog />
+      <LinePropertiesDialog />
+      <StopDialog />
+      <TripDialogs />
     </>
   );
 }

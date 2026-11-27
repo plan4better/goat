@@ -24,12 +24,12 @@ export interface ExplorerFilters {
   agencies: number[];
 }
 
-export type ExplorerRouteTab = "stops" | "service" | "calendar" | "properties";
+export type ExplorerRouteTab = "stops" | "service" | "calendar";
 /** The trip panel's tabs: its stops, or the days it runs. */
 export type ExplorerTripTab = "stops" | "calendar";
 /** The stop panel's tabs: its schedule for the date, the next departures,
- * and for an editor its properties. */
-export type ExplorerStopTab = "schedule" | "departures" | "properties";
+ * and its details (fields, lines, station). */
+export type ExplorerStopTab = "schedule" | "departures" | "details";
 
 /** The destination picker's choice: all directions, or a direction (by its
  * key, its main pattern's index) whole, or one of its patterns
@@ -70,8 +70,19 @@ export interface ExplorerStrip {
 /** The settings dialog's tabs (settings.ts). */
 export type ExplorerSettingsTab = "data" | "rates" | "periods" | "vehicles";
 
-/** The edit bar's tools (board 17): Select, and the three that create. */
-export type ExplorerEditTool = "select" | "stop" | "route" | "area";
+/** The edit bar's tools (board 17): Select, and the two that create. */
+export type ExplorerEditTool = "select" | "stop" | "route";
+
+/** A line edited on the map until Done: its stops, or its path. */
+export type ExplorerEditMode = "stops" | "path";
+
+/** The dialog an edit is made in, from a selection's actions. */
+export type ExplorerEditDialog =
+  | { kind: "line"; route_idx: number }
+  | { kind: "stop"; stop_idx: number }
+  | { kind: "trip-times"; trip_idx: number }
+  | { kind: "trip-shift"; trip_idx: number }
+  | { kind: "trip-duplicate"; trip_idx: number; dep_s: number };
 
 /** Editing, for a user who may write the bundle. The changes themselves are
  * the session's (lib/explorer/edit/session.ts); this mirrors their summaries
@@ -93,6 +104,16 @@ export interface ExplorerEdit {
   saveProblem: string | null;
   /** The edit being made, not yet applied (lib/explorer/edit/drafts.ts). */
   draft: EditDraft | null;
+  /** The service dialog (4.1), open for a line and the direction it opened
+   * on (Direction.key); it fills itself from a headway draft of that line. */
+  service: { route_idx: number; direction: number | null } | null;
+  /** The dialog an edit is made in, opened from a selection's actions (its
+   * tab only shows what it edits): a line's properties, a stop's, a trip's
+   * times or its shift. */
+  dialog: ExplorerEditDialog | null;
+  /** A line edited on the map until Done (the modes): its stops added,
+   * removed and cut back ("stops"), or its path dragged ("path"). */
+  mode: { route_idx: number; kind: ExplorerEditMode } | null;
   /** This user edits the open bundle (its session is ready): what the map,
    * outside the Explorer's data, needs to know to let a stop be dragged. */
   enabled: boolean;
@@ -188,7 +209,15 @@ export interface ExplorerState {
   settingsTab: ExplorerSettingsTab | null;
   /** A right click on the selected line, while editing: where (on the
    * page, and on the map), and on which stop, if one. */
-  lineMenu: { x: number; y: number; lon: number; lat: number; stop_idx: number | null } | null;
+  lineMenu: {
+    x: number;
+    y: number;
+    lon: number;
+    lat: number;
+    stop_idx: number | null;
+    /** Out of a line mode: the selection's actions. */
+    selection?: boolean;
+  } | null;
   /** The network's extent, `[west, south, east, north]`: the map fits it
    * once on opening. */
   bounds: [number, number, number, number] | null;
@@ -212,15 +241,13 @@ export interface ExplorerState {
    * drawing is in, the direction they are of is picked (setExplorerDrawing),
    * so the route opens the way it was clicked, not in its first direction. */
   clickedShapes: { routeId: string; shapeIds: string[] } | null;
-  /** The path selected on the picked direction, and a click on its line
-   * waiting to be placed along it (the selection resolver does, with the
-   * database the map does not have); `n` counts the clicks. */
+  /** The path being rerouted, from "Edit path": named in the
+   * reroute's panel. */
   path: ExplorerPath | null;
-  pathClick: { lon: number; lat: number; n: number } | null;
   edit: ExplorerEdit;
 }
 
-/** Select a route (or none): another route starts on its Overview tab, in
+/** Select a route (or none): another route starts on its Service tab, in
  * its own first direction; what the right panel opened from the route it
  * leaves goes with it. */
 function selectRoute(state: ExplorerState, routeId: string | null): void {
@@ -228,6 +255,8 @@ function selectRoute(state: ExplorerState, routeId: string | null): void {
     state.routeTab = "service";
     state.pattern = null;
     state.path = null;
+    // The mode is on the line left.
+    state.edit.mode = null;
     if (state.panel.fromRoute !== null && state.panel.fromRoute === state.selectedRouteId)
       state.panel = { ...state.panel, stack: [], fromRoute: null };
   }
@@ -245,6 +274,9 @@ const NO_EDITS: ExplorerEdit = {
   exit: null,
   saveProblem: null,
   draft: null,
+  service: null,
+  dialog: null,
+  mode: null,
   enabled: false,
 };
 
@@ -295,7 +327,6 @@ const initialState: ExplorerState = {
   focus: null,
   clickedShapes: null,
   path: null,
-  pathClick: null,
   edit: NO_EDITS,
 };
 
@@ -366,15 +397,10 @@ const explorerSlice = createSlice({
       state.pattern = action.payload;
       state.path = null;
     },
-    /** A click on the picked direction's line, to place along it. */
-    clickExplorerPath: (state, action: PayloadAction<{ lon: number; lat: number }>) => {
-      state.pathClick = { ...action.payload, n: (state.pathClick?.n ?? 0) + 1 };
-    },
-    /** The path the click falls on (none: the click was not on a line). A
-     * path, a trip and a stop are one level, one at a time. */
+    /** The path a reroute starts on (none: let go). A path, a trip and a
+     * stop are one level, one at a time. */
     setExplorerPath: (state, action: PayloadAction<ExplorerPath | null>) => {
       state.path = action.payload;
-      state.pathClick = null;
       if (action.payload) {
         state.panel = { stack: [], fromRoute: null };
         state.edit.draft = null;
@@ -385,7 +411,6 @@ const explorerSlice = createSlice({
       selectRoute(state, null);
       state.panel = { stack: [], fromRoute: null };
       state.path = null;
-      state.pathClick = null;
       state.edit.draft = null;
     },
     openExplorerSettings: (state, action: PayloadAction<ExplorerSettingsTab | null>) => {
@@ -487,6 +512,8 @@ const explorerSlice = createSlice({
     setEditTool: (state, action: PayloadAction<ExplorerEditTool>) => {
       state.edit.tool = action.payload;
       state.edit.listOpen = false;
+      // A tool that creates leaves the mode.
+      if (action.payload !== "select") state.edit.mode = null;
       // The Route tool draws a new line (1.1): its panel open from the start.
       state.edit.draft =
         action.payload === "route" ? { kind: "line-new", stops: [], values: NO_LINE_VALUES } : null;
@@ -560,6 +587,21 @@ const explorerSlice = createSlice({
     setChangeListOpen: (state, action: PayloadAction<boolean>) => {
       state.edit.listOpen = action.payload;
     },
+    setServiceDialog: (state, action: PayloadAction<ExplorerEdit["service"]>) => {
+      state.edit.service = action.payload;
+    },
+    setEditDialog: (state, action: PayloadAction<ExplorerEdit["dialog"]>) => {
+      state.edit.dialog = action.payload;
+    },
+    /** Into "Edit stops" or "Edit path" on a line, or out of it: in it,
+     * Select, and no draft but the mode's own. The map stays where it is. */
+    setEditMode: (state, action: PayloadAction<ExplorerEdit["mode"]>) => {
+      state.edit.mode = action.payload;
+      state.edit.tool = "select";
+      state.edit.draft = null;
+      state.path = null;
+      state.lineMenu = null;
+    },
     /** Leaving with changes: the dialog asks what to do with them. */
     askToLeave: (state) => {
       state.edit.exit = "asking";
@@ -631,10 +673,12 @@ export const {
   editUndone,
   editRedone,
   setChangeListOpen,
+  setServiceDialog,
+  setEditDialog,
+  setEditMode,
   askToLeave,
   setExitState,
   saveFailed,
-  clickExplorerPath,
   setExplorerPath,
   clearExplorerSelection,
 } = explorerSlice.actions;
@@ -659,7 +703,10 @@ export function rightPanelOpen(state: ExplorerState): boolean {
       kind === "line-delete" ||
       kind === "line-extend" ||
       kind === "route-details" ||
-      kind === "line-new")
+      kind === "line-new" ||
+      kind === "line-headway" ||
+      kind === "line-span" ||
+      kind === "line-speed")
   );
 }
 

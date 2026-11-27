@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { selectionLevel, selectionScope } from "@/lib/explorer/edit/selection";
 import {
   clearExplorerSelection,
-  clickExplorerPath,
   explorerReducer,
   openExplorer,
   openExplorerPanel,
   pickExplorerPattern,
   selectExplorerRoute,
+  setEditDraft,
+  setEditMode,
+  setEditTool,
   setExplorerPath,
 } from "@/lib/store/explorer/slice";
 
@@ -30,28 +31,13 @@ const PATH = {
 const STOP = { stop_idx: 4, name: "Fourth", lon: 13.43, lat: 52.5 };
 
 describe("the selection", () => {
-  it("goes down a level at a time, each with its scope", () => {
-    let state = open();
-    expect(selectionLevel(state)).toBeNull();
-    state = explorerReducer(state, selectExplorerRoute("R1"));
-    expect([selectionLevel(state), selectionScope(state)]).toEqual(["route", "route"]);
-    state = explorerReducer(state, pickExplorerPattern({ direction: 3, pattern_idx: null }));
-    expect([selectionLevel(state), selectionScope(state)]).toEqual(["direction", "direction"]);
-    state = explorerReducer(state, pickExplorerPattern({ direction: 3, pattern_idx: 5 }));
-    expect(selectionScope(state)).toBe("pattern");
-    state = explorerReducer(state, setExplorerPath(PATH));
-    expect([selectionLevel(state), selectionScope(state)]).toEqual(["path", "pattern"]);
-  });
-
   it("holds one of a path, a trip and a stop", () => {
     let state = explorerReducer(open(), selectExplorerRoute("R1"));
     state = explorerReducer(state, openExplorerPanel({ item: { kind: "stop", stop: STOP } }));
-    expect([selectionLevel(state), selectionScope(state)]).toEqual(["stop", "stop"]);
     state = explorerReducer(state, setExplorerPath(PATH));
-    expect(selectionLevel(state)).toBe("path");
+    expect(state.path).toEqual(PATH);
     expect(state.panel.stack).toEqual([]);
     state = explorerReducer(state, openExplorerPanel({ item: { kind: "trip", trip_idx: 2, run_dep_s: 0 } }));
-    expect([selectionLevel(state), selectionScope(state)]).toEqual(["trip", "trip"]);
     expect(state.path).toBeNull();
   });
 
@@ -62,19 +48,26 @@ describe("the selection", () => {
     expect(explorerReducer(state, selectExplorerRoute("R2")).path).toBeNull();
   });
 
-  it("waits for a click on the line to be placed, then holds the path", () => {
-    let state = explorerReducer(open(), clickExplorerPath({ lon: 13.4, lat: 52.5 }));
-    state = explorerReducer(state, clickExplorerPath({ lon: 13.41, lat: 52.5 }));
-    expect(state.pathClick).toEqual({ lon: 13.41, lat: 52.5, n: 2 });
-    state = explorerReducer(state, setExplorerPath(PATH));
-    expect(state.pathClick).toBeNull();
-  });
-
   it("is cleared whole by Esc", () => {
     let state = explorerReducer(open(), selectExplorerRoute("R1"));
     state = explorerReducer(state, setExplorerPath(PATH));
     state = explorerReducer(state, clearExplorerSelection());
-    expect(selectionLevel(state)).toBeNull();
+    expect(state.path).toBeNull();
     expect(state.selectedRouteId).toBeNull();
+  });
+});
+
+describe("the line modes", () => {
+  it("starts with Select and no draft, and ends with its line or another tool", () => {
+    let state = explorerReducer(open(), selectExplorerRoute("R1"));
+    state = explorerReducer(state, setEditDraft({ kind: "stop-delete", stop_idx: 3 }));
+    state = explorerReducer(state, setEditMode({ route_idx: 0, kind: "stops" }));
+    expect(state.edit.mode).toEqual({ route_idx: 0, kind: "stops" });
+    expect(state.edit.draft).toBeNull();
+    expect(state.edit.tool).toBe("select");
+    expect(explorerReducer(state, selectExplorerRoute("R2")).edit.mode).toBeNull();
+    expect(explorerReducer(state, setEditTool("stop")).edit.mode).toBeNull();
+    // Select again keeps it.
+    expect(explorerReducer(state, setEditTool("select")).edit.mode).toEqual({ route_idx: 0, kind: "stops" });
   });
 });

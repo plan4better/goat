@@ -118,10 +118,9 @@ function LineChoice({ route, chosen, onClick }: { route: RouteRow; chosen: boole
 export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
-  const { db, complete, session } = useExplorer();
-  // Schedule | Departures, and for an editor the stop's Properties (board 23).
-  const chosenTab = useAppSelector((s) => s.explorer.stopTab);
-  const tab = chosenTab === "properties" && !session ? "schedule" : chosenTab;
+  const { db, complete } = useExplorer();
+  // Schedule | Departures | Details (its fields, lines, station; board 23).
+  const tab = useAppSelector((s) => s.explorer.stopTab);
   const date = useAppSelector((s) => s.explorer.date);
   const now = usePlaybackMinute();
   const routes = useRoutes(db);
@@ -301,9 +300,9 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
         sx={{ minHeight: 36, flexShrink: 0, borderBottom: 1, borderColor: "divider" }}>
         <Tab value="schedule" label={t("explorer_stop_tab_schedule")} sx={TAB_SX} />
         <Tab value="departures" label={t("explorer_stop_tab_departures")} sx={TAB_SX} />
-        {session && <Tab value="properties" label={t("explorer_stop_tab_properties")} sx={TAB_SX} />}
+        <Tab value="details" label={t("explorer_stop_tab_details")} sx={TAB_SX} />
       </Tabs>
-      {tab === "properties" ? (
+      {tab === "details" ? (
         <StopDetails stop_idx={stop.stop_idx} lines={servedBy} />
       ) : (
         <>

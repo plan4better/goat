@@ -7,10 +7,11 @@
  * - with Select, the picked stop dragged to move it (board 23): where it
  *   goes, a dashed line from where it was and how far, and the paths through
  *   it as they would run, dotted in their line's colour, until Apply or Cancel;
- * - with Select, the selected path dragged off its line to reroute it (1.2):
- *   a handle halfway along it, then one at each point it runs through, and
- *   one halfway between each two on the path as drawn, to drag out another;
- *   a point double-clicked goes. Handles are diamonds, never taken for stops.
+ * - "Edit stops" and "Edit path" (EditModeLayers): stops added to the line,
+ *   or a path dragged off it to reroute it (1.2);
+ * - a reroute's handles: one at each point it runs through, and one halfway
+ *   between each two on the path as drawn, to drag out another; a point
+ *   double-clicked goes. Handles are diamonds, never taken for stops.
  */
 import { useTheme } from "@mui/material/styles";
 import type { FeatureCollection } from "geojson";
@@ -23,13 +24,13 @@ import { draftPathsStore, previewedStore } from "@/lib/explorer/edit/draftStore"
 import { metres } from "@/lib/explorer/edit/ops/geo";
 import { mapColor, mapPalette } from "@/lib/explorer/mapPalette";
 import { networkStore } from "@/lib/explorer/network";
-import { selectionStore } from "@/lib/explorer/selectionStore";
 import { pickedStop, placeStop, setEditDraft } from "@/lib/store/explorer/slice";
 import { setMapCursor } from "@/lib/store/map/slice";
 
 import { useDragPoint } from "@/hooks/explorer/useDragPoint";
-import { lineScope } from "@/hooks/explorer/useLineStopEdits";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+
+import { EditModeLayers } from "@/components/explorer/edit/EditModeLayers";
 
 const EMPTY: FeatureCollection = { type: "FeatureCollection", features: [] };
 
@@ -45,6 +46,11 @@ export const EDIT_DRAW_ORDER = [
   "explorer-reroute-band",
   "explorer-reroute-band-point",
   "explorer-reroute-handle",
+  "explorer-mode-stop-ring",
+  "explorer-mode-band",
+  "explorer-mode-band-point",
+  "explorer-mode-ghost",
+  "explorer-mode-ghost-handle",
 ];
 
 type LonLat = [number, number];
@@ -86,7 +92,7 @@ const DOT_SPACING = 9;
  * a point to drag is not taken for a stop. A distance field as the dot, so
  * it is tinted with the theme's grey (the green is the selection's) and
  * haloed white. */
-const HANDLE = "explorer-reroute-handle-icon";
+export const HANDLE = "explorer-reroute-handle-icon";
 function handleImage(): { image: ImageData; options: object } {
   // At twice the CSS size: 12 px corner to corner, room round it for the halo.
   const size = 40;
@@ -125,6 +131,7 @@ export function ExplorerEditLayers() {
   const { current: map } = useMap();
   const editor = useAppSelector((s) => s.explorer.edit.enabled);
   const tool = useAppSelector((s) => s.explorer.edit.tool);
+  const lineMode = useAppSelector((s) => !!s.explorer.edit.mode);
   const draft = useAppSelector((s) => s.explorer.edit.draft);
   const picked = useAppSelector((s) => (s.explorer.active ? pickedStop(s.explorer) : null));
   const network = useSyncExternalStore(
@@ -142,23 +149,15 @@ export function ExplorerEditLayers() {
   // Where the point being dragged is, before it is let go.
   const [dragAt, setDragAt] = useState<LonLat | null>(null);
 
-  // The path selected, and the points a reroute of it runs through.
-  const path = useAppSelector((s) => (s.explorer.active ? s.explorer.path : null));
-  const selection = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSnapshot, () => null);
+  // The path being rerouted (begun in "Edit path", EditModeLayers), and the
+  // points the reroute runs through.
   const rerouting = draft?.kind === "line-reroute" ? draft : null;
-  const drawing = useAppSelector((s) => s.explorer.drawing);
-  const choice = useAppSelector((s) => s.explorer.pattern);
-  const selected = useMemo(() => {
-    const line = path ? (selection?.[0]?.coordinates as LonLat[] | undefined) : undefined;
-    return line && line.length > 1 ? line : null;
-  }, [path, selection]);
-  const ends = useMemo<[LonLat, LonLat] | null>(
-    () => rerouting?.ends ?? (selected ? [selected[0], selected[selected.length - 1]] : null),
-    [rerouting, selected]
-  );
+  const ends = rerouting?.ends ?? null;
   const via = useMemo(() => rerouting?.via ?? [], [rerouting]);
   const way = useMemo(() => (ends ? [ends[0], ...via, ends[1]] : []), [ends, via]);
-  const bendable = editor && tool === "select" && !!ends && (!!rerouting || (!!path && !draft));
+  // A reroute starts from "Edit path" (EditModeLayers); its
+  // handles are the reroute's.
+  const bendable = editor && tool === "select" && !!ends && !!rerouting;
   // A handle being dragged: where it is, and which (a point `k`, or a new
   // one between points `ins` and `ins + 1` of the way).
   const [bend, setBend] = useState<{ at: LonLat; k?: number; ins?: number } | null>(null);
@@ -184,11 +183,6 @@ export function ExplorerEditLayers() {
   }, [guide, via]);
   const handles = useMemo<FeatureCollection>(() => {
     if (!bendable) return EMPTY;
-    // Not yet rerouted: one handle, halfway along the path as it runs.
-    if (!rerouting)
-      return selected
-        ? { type: "FeatureCollection", features: [pointAt(halfway(selected), { ins: 0, ghost: true })] }
-        : EMPTY;
     return {
       type: "FeatureCollection",
       features: [
@@ -201,7 +195,7 @@ export function ExplorerEditLayers() {
         ...via.map((p, k) => pointAt(p, { k, ghost: false })),
       ],
     };
-  }, [bendable, rerouting, selected, way, via, guide, cuts]);
+  }, [bendable, way, via, guide, cuts]);
   const band = useMemo<FeatureCollection>(() => {
     if (!bend || !way.length) return EMPTY;
     const [before, after] =
@@ -229,21 +223,7 @@ export function ExplorerEditLayers() {
     (at, f) => setBend(at && { at, ...grabbedOf(f) }),
     (at, f) => {
       const g = grabbedOf(f);
-      if (!rerouting) {
-        const scope = path && drawing && lineScope(path.route_idx, drawing, choice);
-        if (path && ends && scope)
-          dispatch(
-            setEditDraft({
-              kind: "line-reroute",
-              a: path.from_stop,
-              b: path.to_stop,
-              ends,
-              via: [at],
-              scope: { ...scope, pattern_idx: path.pattern_idx },
-            })
-          );
-        return;
-      }
+      if (!rerouting) return;
       const next =
         g.k !== undefined
           ? via.map((p, k) => (k === g.k ? at : p))
@@ -316,11 +296,13 @@ export function ExplorerEditLayers() {
     };
   }, [map]);
 
-  // With Select, the picked stop is dragged to move it.
+  // With Select, the picked stop is dragged to move it; not in a line mode,
+  // where a press on the map is the mode's (a click and a drag never mean
+  // two things).
   useDragPoint(
     map?.getMap(),
     ["explorer-picked-stop-dot", "explorer-picked-stop-halo"],
-    editor && tool === "select" && !!picked && !!pickedAt && !moving,
+    editor && tool === "select" && !!picked && !!pickedAt && !moving && !lineMode,
     setDragAt,
     ([lon, lat]) =>
       picked && dispatch(setEditDraft({ kind: "stop-move", stop_idx: picked.stop_idx, lon, lat }))
@@ -403,6 +385,7 @@ export function ExplorerEditLayers() {
       draft?.kind === "line-stop-add" ||
       draft?.kind === "line-extend" ||
       draft?.kind === "line-new" ||
+      draft?.kind === "line-cut" ||
       !!rerouting) &&
     !dragAt &&
     !bend;
@@ -427,6 +410,7 @@ export function ExplorerEditLayers() {
 
   return (
     <>
+      <EditModeLayers />
       <Source key="explorer-draft-paths" id="explorer-draft-paths" type="geojson" data={preview}>
         {/* The old path as the network draws it, faint where it is replaced. */}
         <Layer

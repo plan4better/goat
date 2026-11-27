@@ -5,12 +5,13 @@
  * to the item it was opened from, × closes it. It does not fold away
  * (dropped 20 Oct 2026): closed, it is opened again from where it came.
  */
-import { Box, ButtonBase, IconButton, Stack, type Theme, Tooltip, Typography, alpha } from "@mui/material";
+import { Box, ButtonBase, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { isServiceDraft } from "@/lib/explorer/edit/drafts";
 import { clock } from "@/lib/explorer/format";
 import {
   type ExplorerPanelItem,
@@ -35,6 +36,7 @@ import { InsertStopPanel } from "@/components/explorer/edit/InsertStopPanel";
 import { NewLinePanel } from "@/components/explorer/edit/NewLinePanel";
 import { NewStopPanel } from "@/components/explorer/edit/NewStopPanel";
 import { ReroutePanel } from "@/components/explorer/edit/ReroutePanel";
+import { ServiceEffectCard } from "@/components/explorer/edit/ServiceEffectCard";
 import { StopPanel } from "@/components/explorer/right/StopPanel";
 import { TripPanel } from "@/components/explorer/right/TripPanel";
 import { EXPLORER_RIGHT_PANEL_WIDTH } from "@/components/explorer/right/panelSize";
@@ -81,20 +83,17 @@ function RightPanel() {
   const extending = edit?.draft.kind === "line-extend" ? edit.draft : null;
   // A line being drawn with the Route tool (1.1).
   const drawingLine = edit?.draft.kind === "line-new" ? edit.draft : null;
-  // A line being deleted: its delete card alone, nothing open above it (1.5).
-  // Or a line's own fields being edited: the line's in the left panel.
-  const deletingLine = edit?.draft.kind === "line-delete" || edit?.draft.kind === "route-details";
-  if (!item && !placing && !inserting && !rerouting && !extending && !drawingLine && !deletingLine)
+  // An edit made in a dialog on a line (deleted, its fields, its service):
+  // its Apply bar alone, nothing open above it.
+  const lineDialogEdit =
+    edit?.draft.kind === "line-delete" || edit?.draft.kind === "route-details" || isServiceDraft(edit?.draft);
+  if (!item && !placing && !inserting && !rerouting && !extending && !drawingLine && !lineDialogEdit)
     return null;
   // A draft that fills the panel (a new stop, a stop added to a line) is the
-  // edit itself: its fields and its confirmation one panel, outlined as the
-  // edit panel is. Any other edit is made on the item shown, its
-  // confirmation a panel of its own under it.
+  // edit itself: its fields and its confirmation one panel. Any other edit is
+  // made on the item shown, its confirmation a panel of its own under it.
+  // Both as every other floating panel: no outline or glow of their own.
   const whole = !!(placing || inserting || rerouting || extending || drawingLine);
-  const editSx = (theme: Theme) => ({
-    border: `1.5px solid ${alpha(theme.palette.primary.main, 0.7)}`,
-    boxShadow: `0 0 12px ${alpha(theme.palette.primary.main, 0.35)}`,
-  });
   const applyBar = edit && (
     <ApplyBar
       edit={edit}
@@ -108,6 +107,8 @@ function RightPanel() {
           <DeleteStopCascade edit={edit} routeByIdx={routeByIdx} />
         ) : edit.building?.kind === "line-delete" ? (
           <DeleteLineCascade edit={edit} routeByIdx={routeByIdx} />
+        ) : isServiceDraft(edit.draft) ? (
+          <ServiceEffectCard edit={edit} />
         ) : null
       }
     />
@@ -123,7 +124,7 @@ function RightPanel() {
             width={EXPLORER_RIGHT_PANEL_WIDTH}
             maxHeight="100%"
             minHeight={0}
-            sx={(theme) => ({ flex: 1, minHeight: 0, ...(whole ? editSx(theme) : {}) })}>
+            sx={{ flex: 1, minHeight: 0 }}>
             {/* The back link starts on the panel's content line: its own padding
           (0.5) and the row's (2) make the content's (PX). */}
             <Stack
@@ -193,12 +194,7 @@ function RightPanel() {
           </FloatingPanel>
         )}
         {edit && !whole && (
-          <FloatingPanel
-            width={EXPLORER_RIGHT_PANEL_WIDTH}
-            minHeight={0}
-            // Outlined in the theme's green, its shadow tinted with it: where
-            // the edit waits to be applied, to draw the eye.
-            sx={(theme) => ({ flexShrink: 0, ...editSx(theme) })}>
+          <FloatingPanel width={EXPLORER_RIGHT_PANEL_WIDTH} minHeight={0} sx={{ flexShrink: 0 }}>
             {applyBar}
           </FloatingPanel>
         )}

@@ -127,9 +127,17 @@ function WeekRow({ weekdays, color }: { weekdays: number[]; color: string }) {
 const SWATCH = 10;
 const INDENT = 18;
 
-/** A service pattern: its colour, as its days in the month grid, its name
- * and its usual week. */
-function PatternRow({
+/** A service pattern's name, as the Schedule tab gives it: its weekdays
+ * ("Mon–Fri"), daily, or "Individual dates". */
+export function dayTypeName(type: DayType, lang: string, t: (key: string) => string): string {
+  return type.weekdays.length
+    ? (weekdayList(type.weekdays, lang) ?? t("explorer_daily"))
+    : t("explorer_individual_dates");
+}
+
+/** A service pattern (the service dialog's day types too): its colour, as
+ * its days in the month grid, its name and its usual week. */
+export function PatternRow({
   type,
   color,
   of,
@@ -144,12 +152,12 @@ function PatternRow({
   const { t, i18n } = useTranslation("common");
   const lang = i18n.language;
   const regular = type.weekdays.length > 0;
-  const name = regular
-    ? (weekdayList(type.weekdays, lang) ?? t("explorer_daily"))
-    : t("explorer_individual_dates");
+  const name = dayTypeName(type, lang, t);
   // Its days only where the service period above does not already say them.
+  // Its first to last day always: when a day type runs is read at a glance.
   const facts = [
     ...(type.days.length !== period.days ? [t("explorer_n_days", { count: type.days.length })] : []),
+    ...(type.days.length ? [dateSpan(type.days[0], type.days[type.days.length - 1], lang)] : []),
     ...(of === "line" || type.trips > 1 ? [t("explorer_trips_a_day", { count: type.trips })] : []),
   ];
   return (

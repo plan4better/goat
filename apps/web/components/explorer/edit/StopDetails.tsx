@@ -1,10 +1,10 @@
 /**
- * A stop's Properties tab (board 23), for a user who may edit the bundle: its
- * GTFS fields (stops.txt) edited in place, those its location type has
- * (`stopRules.ts`), each checked on its field; then what goes with its type:
- * the lines calling at a stop, the locations in a station. Typing makes a
- * draft; the Apply bar under the panel applies it, Cancel puts the fields
- * back.
+ * A stop's Details tab (board 23), for everyone: its GTFS fields (stops.txt)
+ * as they are, those its location type has
+ * (`stopRules.ts`); then what goes with its type: the lines calling at a
+ * stop, the locations in a station. Edited from the stop's action bar, in
+ * its dialog (decided 26 Nov 2026: panels show, dialogs edit), where the
+ * same fields are edited (StopEditor), each checked on its field.
  */
 import AccessibleIcon from "@mui/icons-material/Accessible";
 import DoorFrontIcon from "@mui/icons-material/DoorFront";
@@ -14,7 +14,6 @@ import WorkspacesOutlinedIcon from "@mui/icons-material/WorkspacesOutlined";
 import {
   Autocomplete,
   Box,
-  Button,
   List,
   ListItemButton,
   MenuItem,
@@ -27,7 +26,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
+import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import {
   EDITABLE_LOCATION_TYPES,
@@ -38,7 +37,6 @@ import {
 import { metres } from "@/lib/explorer/edit/ops/geo";
 import {
   type StopField,
-  locationKind,
   nameRequired,
   parentRequired,
   parentTypeFor,
@@ -63,7 +61,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { RouteListItem } from "@/components/explorer/RouteListItem";
-import { PX, SectionHeader } from "@/components/explorer/SectionHeader";
+import { ICON_GAP, PX, SectionHeader } from "@/components/explorer/SectionHeader";
 import { StopMarker } from "@/components/explorer/StopMarker";
 
 /** The label column, as wide as the longest label ("Description"). */
@@ -78,11 +76,15 @@ export const FIELD_SX = {
     fontSize: "0.8125rem",
   },
   "& .MuiOutlinedInput-root:not(.MuiAutocomplete-inputRoot)": { height: 32 },
-  "& .MuiInputBase-input": { px: 1.25, py: 0 },
+  // Text 10 px in from the border, where a dropdown's value starts too.
+  "& .MuiInputBase-input": { px: "10px", py: 0 },
+  // A mark at the start (a colour's swatch) brings its own room: none of
+  // MUI's 14 px before it.
+  "& .MuiInputBase-adornedStart": { pl: 0 },
   // The search fields' own padding off: their text starts where the other
   // fields' does.
   "&& .MuiAutocomplete-inputRoot": { py: 0, pl: 0 },
-  "&& .MuiAutocomplete-inputRoot .MuiAutocomplete-input": { px: 1.25, py: 0, height: 32 },
+  "&& .MuiAutocomplete-inputRoot .MuiAutocomplete-input": { px: "10px", py: 0, height: 32 },
   // Its arrow where the dropdowns' is (MUI puts it 2 px further in).
   "&& .MuiAutocomplete-endAdornment": { right: "7px" },
   "& .MuiSelect-select": { display: "flex", alignItems: "center" },
@@ -99,7 +101,7 @@ export const POPUP_SX = { mt: 0.5, borderRadius: "12px", boxShadow: "rgba(0, 0, 
  * label, a quiet note at the right. */
 export function Choice({ icon, label, note }: { icon: ReactNode; label: string; note?: string | null }) {
   return (
-    <Stack direction="row" alignItems="center" spacing="8px" sx={{ flex: 1, minWidth: 0 }}>
+    <Stack direction="row" alignItems="center" spacing={ICON_GAP} sx={{ flex: 1, minWidth: 0 }}>
       <Box
         aria-hidden
         sx={{ width: 16, flexShrink: 0, display: "flex", justifyContent: "center", color: "text.secondary" }}>
@@ -277,7 +279,8 @@ export function NearestPicker({
             startAdornment: picked ? (
               <Box
                 aria-hidden
-                sx={{ display: "flex", justifyContent: "center", width: 16, ml: 1.25, mr: "3px" }}>
+                // Where a dropdown's mark sits, its words where theirs start.
+                sx={{ display: "flex", justifyContent: "center", width: 16, ml: "10px", mr: "-2px" }}>
                 {mark}
               </Box>
             ) : undefined,
@@ -638,19 +641,102 @@ export function TypeSections({
   return null;
 }
 
+/** A stop's Details tab: its fields as they are; then what goes with its
+ * type. Edited from its action bar (StopDialog). */
 export function StopDetails({ stop_idx, lines }: { stop_idx: number; lines: RouteRow[] }) {
   const { t } = useTranslation("common");
+  const { db } = useExplorer();
+  const query = useStopRecord(db, stop_idx);
+  const record = query.data;
+  if (query.error)
+    return (
+      <Typography variant="body2" color="error" sx={{ px: PX, mt: 2 }}>
+        {query.error}
+      </Typography>
+    );
+  if (!record) return null;
+  const { stop_idx: _i, stop_id: _id, lat, lon, ...values } = record;
+  return (
+    <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", pb: 2 }}>
+      <DetailsSection first ruled icon={ICON_NAME.INFO} label={t("explorer_stop_tab_properties")}>
+        <StopView values={values} lat={lat} lon={lon} />
+      </DetailsSection>
+      <TypeSections type={values.location_type} stop_idx={stop_idx} lines={lines} />
+    </Box>
+  );
+}
+
+/** A stop's fields as they are, in the rows the dialog edits them in. */
+function StopView({ values, lat, lon }: { values: StopValues; lat: number | null; lon: number | null }) {
+  const { t } = useTranslation("common");
+  const { db } = useExplorer();
+  const parent = useStopRecord(values.parent_idx === null ? undefined : db, values.parent_idx ?? -1).data;
+  const shown = stopFieldsShown(values);
+  const text = (v: string | null | undefined) => (
+    <Typography
+      color={v ? "text.primary" : "text.secondary"}
+      sx={{ fontSize: "0.8125rem", lineHeight: "32px", wordBreak: "break-word" }}>
+      {v || "–"}
+    </Typography>
+  );
+  const inherits = values.parent_idx !== null;
+  return (
+    <Stack spacing="4px" sx={{ px: PX }}>
+      <Row label={t("explorer_stop_field_name")}>{text(values.name)}</Row>
+      <Row label={t("explorer_stop_field_location_type")}>
+        <Box sx={{ height: 32, display: "flex" }}>
+          <Choice
+            icon={typeIcon(values.location_type)}
+            label={t(`explorer_location_type_${values.location_type}`)}
+          />
+        </Box>
+      </Row>
+      {shown.has("parent_idx") && (
+        <Row
+          label={t(
+            values.location_type === 4
+              ? "explorer_stop_field_parent_platform"
+              : "explorer_stop_field_parent_idx"
+          )}>
+          {text(values.parent_idx === null ? null : (parent?.name ?? "…"))}
+        </Row>
+      )}
+      {shown.has("platform_code") && values.platform_code && (
+        <Row label={t("explorer_stop_field_platform_code")}>{text(values.platform_code)}</Row>
+      )}
+      <Row label={t("explorer_stop_field_wheelchair")}>
+        <Box sx={{ height: 32, display: "flex" }}>
+          <Choice
+            icon={wheelchairIcon(values.wheelchair, inherits)}
+            label={t(
+              values.wheelchair === 0 && inherits
+                ? "explorer_wheelchair_inherit"
+                : `explorer_wheelchair_${values.wheelchair}`
+            )}
+          />
+        </Box>
+      </Row>
+      <Row label={t("explorer_stop_field_location")}>
+        {text(lat === null || lon === null ? null : `${Number(lat.toFixed(6))}, ${Number(lon.toFixed(6))}`)}
+      </Row>
+    </Stack>
+  );
+}
+
+/** A stop's fields, edited (its dialog, StopDialog): typing makes a draft
+ * the Apply bar applies; a position typed, or the stop dragged on the map,
+ * a move. */
+export function StopEditor({ stop_idx }: { stop_idx: number }) {
   const dispatch = useAppDispatch();
   const { db } = useExplorer();
   const query = useStopRecord(db, stop_idx);
   const record = query.data;
   const draft = useAppSelector((s) => s.explorer.edit.draft);
   const edit = useDraftEditShown();
-  const deleting = draft?.kind === "stop-delete" && draft.stop_idx === stop_idx;
   const moving = draft?.kind === "stop-move" && draft.stop_idx === stop_idx ? draft : null;
   if (query.error)
     return (
-      <Typography variant="body2" color="error" sx={{ px: PX, mt: 2 }}>
+      <Typography variant="body2" color="error">
         {query.error}
       </Typography>
     );
@@ -665,53 +751,26 @@ export function StopDetails({ stop_idx, lines }: { stop_idx: number; lines: Rout
   };
   const refused =
     edit?.draft.kind === "stop-details" && edit.built && !edit.built.ok ? edit.built.refused : null;
-
   return (
-    <Box
-      sx={{
-        flex: 1,
-        minHeight: 0,
-        overflowY: "auto",
-        display: "flex",
-        flexDirection: "column",
-        pb: 2,
-      }}>
-      <DetailsSection first ruled icon={ICON_NAME.EDIT} label={t("explorer_stop_tab_properties")}>
-        <StopFields
-          values={values}
-          onChange={set}
-          self={stop_idx}
-          typeFixed
-          refused={refused}
-          lat={moving ? moving.lat : lat}
-          lon={moving ? moving.lon : lon}
-          onLocation={(lon2, lat2) =>
-            dispatch(
-              setEditDraft(
-                // Back where it was: nothing to apply.
-                lon2 === lon && lat2 === lat ? null : { kind: "stop-move", stop_idx, lon: lon2, lat: lat2 }
-              )
+    <Box sx={{ mx: -PX }}>
+      <StopFields
+        values={values}
+        onChange={set}
+        self={stop_idx}
+        typeFixed
+        refused={refused}
+        lat={moving ? moving.lat : lat}
+        lon={moving ? moving.lon : lon}
+        onLocation={(lon2, lat2) =>
+          dispatch(
+            setEditDraft(
+              // Back where it was: nothing to apply.
+              lon2 === lon && lat2 === lat ? null : { kind: "stop-move", stop_idx, lon: lon2, lat: lat2 }
             )
-          }
-          moved={moving && lat !== null && lon !== null ? metres([lon, lat], [moving.lon, moving.lat]) : null}
-        />
-      </DetailsSection>
-      <TypeSections type={values.location_type} stop_idx={stop_idx} lines={lines} />
-      {!deleting && (
-        // At the foot of the tab, at the right, as the Apply bar's buttons;
-        // what it takes with it is said once it is pressed (the delete card).
-        <Stack direction="row" justifyContent="flex-end" sx={{ px: PX, mt: "auto", pt: 2 }}>
-          <Button
-            size="small"
-            variant="outlined"
-            color="error"
-            onClick={() => dispatch(setEditDraft({ kind: "stop-delete", stop_idx }))}
-            startIcon={<Icon iconName={ICON_NAME.TRASH} style={{ fontSize: 12 }} htmlColor="inherit" />}
-            sx={{ flexShrink: 0, borderRadius: "16px", px: 1.5, fontWeight: 700, textTransform: "none" }}>
-            {t(`explorer_delete_${locationKind(values.location_type)}`)}
-          </Button>
-        </Stack>
-      )}
+          )
+        }
+        moved={moving && lat !== null && lon !== null ? metres([lon, lat], [moving.lon, moving.lat]) : null}
+      />
     </Box>
   );
 }

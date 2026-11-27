@@ -9,15 +9,15 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { openFixtureDb } from "@/lib/explorer/__tests__/fixtureDb";
 import type { SqlRunner } from "@/lib/explorer/db/types";
-import { pathAt, tripPattern } from "@/lib/explorer/derive/path";
+import { type PatternLine, patternLine, stretchAt } from "@/lib/explorer/derive/path";
 
 let db: SqlRunner;
-const pattern = async (trip_id: string) =>
-  (await tripPattern(
-    db,
-    (await db.all<{ trip_idx: number }>(`SELECT trip_idx FROM trips WHERE trip_id = '${trip_id}'`))[0]
-      .trip_idx
-  )) as number;
+const lineOf = async (trip_id: string) => {
+  const [{ pattern_idx }] = await db.all<{ pattern_idx: number }>(
+    `SELECT pattern_idx FROM trips WHERE trip_id = '${trip_id}'`
+  );
+  return (await patternLine(db, pattern_idx)) as PatternLine;
+};
 
 beforeAll(async () => {
   db = await openFixtureDb();
@@ -25,22 +25,37 @@ beforeAll(async () => {
 
 describe("a path between two stops", () => {
   it("is the stretch around the click", async () => {
-    const p = await pathAt(db, await pattern("T1"), 13.416, 52.5004);
+    const p = stretchAt(await lineOf("T1"), 13.416, 52.5004);
     // Between Second (13.41) and Third (13.42); stops count from 0.
     expect(p).toMatchObject({ from_i: 1, to_i: 2, from_name: "Second", to_name: "Third" });
     // Its line runs from the one stop to the other.
-    expect(p?.line[0][0]).toBeCloseTo(13.41, 3);
-    expect(p?.line.at(-1)?.[0]).toBeCloseTo(13.42, 3);
+    expect(p.line[0][0]).toBeCloseTo(13.41, 3);
+    expect(p.line.at(-1)?.[0]).toBeCloseTo(13.42, 3);
+  });
+
+  it("places the click on the line, and says how far off it was in metres", async () => {
+    const p = stretchAt(await lineOf("T1"), 13.416, 52.5004);
+    // The line runs along 52.5° N: the nearest point is straight south.
+    expect(p.at[0]).toBeCloseTo(13.416, 6);
+    expect(p.at[1]).toBeCloseTo(52.5, 6);
+    // 0.0004° of latitude is about 44.5 m.
+    expect(p.off).toBeCloseTo(0.0004 * 111_195, 1);
+    // A click on the line is no distance off it.
+    expect(stretchAt(await lineOf("T1"), 13.416, 52.5).off).toBeCloseTo(0, 6);
   });
 
   it("is the first or last stretch for a click beyond the ends", async () => {
-    const p = await pattern("T1");
-    expect(await pathAt(db, p, 13.3, 52.5)).toMatchObject({ from_i: 0, to_i: 1 });
-    expect(await pathAt(db, p, 13.6, 52.5)).toMatchObject({ from_i: 3, to_i: 4, to_name: "Fifth" });
+    const line = await lineOf("T1");
+    const first = stretchAt(line, 13.3, 52.5);
+    expect(first).toMatchObject({ from_i: 0, to_i: 1 });
+    // Placed at the line's start, 0.1° of longitude short of it.
+    expect(first.at[0]).toBeCloseTo(13.4, 5);
+    expect(first.off).toBeCloseTo(0.1 * 111_195 * Math.cos((52.5 * Math.PI) / 180), -1);
+    expect(stretchAt(line, 13.6, 52.5)).toMatchObject({ from_i: 3, to_i: 4, to_name: "Fifth" });
   });
 
   it("follows a trip without a shape along the line through its stops", async () => {
-    const p = await pathAt(db, await pattern("T3"), 13.435, 52.5);
+    const p = stretchAt(await lineOf("T3"), 13.435, 52.5);
     expect(p).toMatchObject({ from_name: "Fifth", to_name: "Fourth" });
   });
 });

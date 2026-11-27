@@ -2,8 +2,11 @@
  * The edit bar (board 17): one fixed bar at the top of the map, right of
  * GOAT's round map buttons, for a user who may write the bundle. It holds
  * only what works without a selection — Select, the tools that create (Stop,
- * Route, Area), Snap, Undo/Redo and the change count — and never changes with
- * the selection; what can be done to a selection appears with it.
+ * Line), Snap, Undo/Redo and the change count — and never changes with
+ * the selection. Under its tools, on the same surface, a second row
+ * (EditBarRow): what can be done to the selection, or a line mode's
+ * direction and Done; what the pointer does is said under the bar
+ * (ToolHint).
  *
  * Under a narrow map the tools show as icons only, their names and keys in
  * the tooltips. The count opens the change list.
@@ -25,8 +28,10 @@ import { isApplePlatform } from "@/lib/utils/platform";
 
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
+import { ICON_GAP } from "@/components/explorer/SectionHeader";
 import { StopMarker } from "@/components/explorer/StopMarker";
 import { ChangeList } from "@/components/explorer/edit/ChangeList";
+import { EditBarRow } from "@/components/explorer/edit/EditBarRow";
 
 /** The bar's height (GOAT's round map buttons'), and what sits inside it:
  * every control the same height, inset the same from the bar's edge. */
@@ -41,22 +46,20 @@ const ICON_SIZE = 12;
 
 /** The tools, each marked as the Explorer marks what it makes: a stop as
  * the map draws one (StopMarker), a line by the Lines section's icon. */
-const TOOLS: { tool: ExplorerEditTool; mark: ReactNode; key: string; ready: boolean }[] = [
+const TOOLS: { tool: ExplorerEditTool; mark: ReactNode; key: string }[] = [
   {
     tool: "select",
     mark: <Icon iconName={ICON_NAME.ARROW_POINTER} style={{ fontSize: 12 }} htmlColor="inherit" />,
     key: "V",
-    ready: true,
   },
   // In the button's colour, as the other tools' icons: green when chosen.
-  { tool: "stop", mark: <StopMarker size={11} fill="currentColor" />, key: "S", ready: true },
+  { tool: "stop", mark: <StopMarker size={11} fill="currentColor" />, key: "S" },
+  // A new line (its code keeps GTFS's "route").
   {
     tool: "route",
     mark: <Icon iconName={ICON_NAME.ROUTE} style={{ fontSize: 12 }} htmlColor="inherit" />,
-    key: "R",
-    ready: true,
+    key: "L",
   },
-  // Area (board 20) is left out until it is built (6 Nov 2026).
 ];
 
 function Divider() {
@@ -102,7 +105,7 @@ function BarButton({
             // Room either side, so a chosen tool's fill is not tight round
             // its name. In pixels: the theme's spacing unit is 4 px.
             px: tight ? "10px" : compact ? "10px" : "14px",
-            gap: "8px",
+            gap: ICON_GAP,
             borderRadius: `${ITEM_H / 2}px`,
             color: active ? "primary.main" : "text.secondary",
             bgcolor: (theme) => (active ? alpha(theme.palette.primary.main, 0.1) : "transparent"),
@@ -214,92 +217,98 @@ export function EditBar({
   const redoKey = apple ? "⇧⌘Z" : t("explorer_ctrl_key", { key: "Y" });
 
   return (
-    <Stack
-      direction="row"
-      alignItems="center"
-      role="toolbar"
-      aria-label={t("explorer_edit_tools")}
+    // The Explorer's floating surface, as the bottom bar's and the panels'
+    // (FloatingPanel): the tools, and under them the second row, if any.
+    <Box
       sx={{
-        height: BAR_H,
-        px: `${INSET}px`,
-        // A little air between neighbouring controls.
-        columnGap: "4px",
+        width: "fit-content",
         borderRadius: `${BAR_H / 2}px`,
-        // The Explorer's floating surface, as the bottom bar's and the
-        // panels' (FloatingPanel).
+        overflow: "hidden",
         bgcolor: (theme) => alpha(theme.palette.background.paper, 0.9),
         backdropFilter: "blur(10px)",
         boxShadow: "rgba(0, 0, 0, 0.2) 0px 0px 10px",
         pointerEvents: "all",
       }}>
-      {TOOLS.map(({ tool, mark, key, ready }, i) => {
-        const label = t(`explorer_tool_${tool}`);
-        return (
-          <Box key={tool} sx={{ display: "flex", alignItems: "center", columnGap: "4px" }}>
-            <BarButton
-              label={label}
-              hint={ready ? `${label} · ${key}` : t("explorer_tool_soon", { tool: label })}
-              mark={mark}
-              active={edit.tool === tool}
-              disabled={!ready}
-              compact={compact}
-              tight={tool !== "select"}
-              onClick={() => dispatch(setEditTool(tool))}
-            />
-            {/* Select apart from the tools that create. */}
-            {i === 0 && <Divider />}
-          </Box>
-        );
-      })}
-      <Divider />
-      <BarButton
-        label={t("explorer_snap")}
-        hint={t("explorer_snap_hint")}
-        mark={<Icon iconName={ICON_NAME.MAGNET} style={{ fontSize: ICON_SIZE }} htmlColor="inherit" />}
-        compact={compact}
-        tight
-        onClick={() => dispatch(setEditSnap(!edit.snap))}>
-        <Toggle on={edit.snap} />
-      </BarButton>
-      <Divider />
-      <HistoryButton
-        label={t("undo")}
-        hint={`${t("undo")} · ${undoKey}`}
-        icon={ICON_NAME.UNDO}
-        disabled={!count}
-        onClick={() => void undo()}
-      />
-      <HistoryButton
-        label={t("redo")}
-        hint={`${t("redo")} · ${redoKey}`}
-        icon={ICON_NAME.REDO}
-        disabled={!edit.redo.length}
-        onClick={() => void redo()}
-      />
-      {/* The count: dark once something changed, a quiet grey before. */}
-      <ButtonBase
-        ref={pill}
-        aria-haspopup="dialog"
-        aria-expanded={edit.listOpen}
-        onClick={() => dispatch(setChangeListOpen(!edit.listOpen))}
+      <Stack
+        direction="row"
+        alignItems="center"
+        role="toolbar"
+        aria-label={t("explorer_edit_tools")}
         sx={{
-          height: ITEM_H,
-          // As roomy as the tools: 14 px before the text, 12 after the chevron.
-          ml: "4px",
-          pl: "14px",
-          pr: "12px",
-          gap: "8px",
-          borderRadius: `${ITEM_H / 2}px`,
-          bgcolor: count ? "text.primary" : "action.hover",
-          color: count ? "background.paper" : "text.secondary",
-          "&:hover": { bgcolor: count ? "text.primary" : "action.selected" },
+          height: BAR_H,
+          px: `${INSET}px`,
+          // A little air between neighbouring controls.
+          columnGap: "4px",
         }}>
-        <Typography color="inherit" noWrap sx={{ fontSize: LABEL_SIZE, fontWeight: LABEL_WEIGHT }}>
-          {count ? t("explorer_edits", { count }) : t("explorer_edits_none")}
-        </Typography>
-        <Icon iconName={ICON_NAME.CHEVRON_DOWN} style={{ fontSize: 9 }} htmlColor="inherit" />
-      </ButtonBase>
-      <ChangeList anchor={pill.current} undo={undo} />
-    </Stack>
+        {TOOLS.map(({ tool, mark, key }, i) => {
+          const label = t(`explorer_tool_${tool}`);
+          return (
+            <Box key={tool} sx={{ display: "flex", alignItems: "center", columnGap: "4px" }}>
+              <BarButton
+                label={label}
+                hint={`${label} · ${key}`}
+                mark={mark}
+                active={edit.tool === tool}
+                compact={compact}
+                tight={tool !== "select"}
+                onClick={() => dispatch(setEditTool(tool))}
+              />
+              {/* Select apart from the tools that create. */}
+              {i === 0 && <Divider />}
+            </Box>
+          );
+        })}
+        <Divider />
+        <BarButton
+          label={t("explorer_snap")}
+          hint={t("explorer_snap_hint")}
+          mark={<Icon iconName={ICON_NAME.MAGNET} style={{ fontSize: ICON_SIZE }} htmlColor="inherit" />}
+          compact={compact}
+          tight
+          onClick={() => dispatch(setEditSnap(!edit.snap))}>
+          <Toggle on={edit.snap} />
+        </BarButton>
+        <Divider />
+        <HistoryButton
+          label={t("undo")}
+          hint={`${t("undo")} · ${undoKey}`}
+          icon={ICON_NAME.UNDO}
+          disabled={!count}
+          onClick={() => void undo()}
+        />
+        <HistoryButton
+          label={t("redo")}
+          hint={`${t("redo")} · ${redoKey}`}
+          icon={ICON_NAME.REDO}
+          disabled={!edit.redo.length}
+          onClick={() => void redo()}
+        />
+        {/* The count: dark once something changed, a quiet grey before. */}
+        <ButtonBase
+          ref={pill}
+          aria-haspopup="dialog"
+          aria-expanded={edit.listOpen}
+          onClick={() => dispatch(setChangeListOpen(!edit.listOpen))}
+          sx={{
+            height: ITEM_H,
+            // As roomy as the tools: 14 px before the text, 12 after the chevron.
+            ml: "4px",
+            pl: "14px",
+            pr: "12px",
+            gap: ICON_GAP,
+            borderRadius: `${ITEM_H / 2}px`,
+            bgcolor: count ? "text.primary" : "action.hover",
+            color: count ? "background.paper" : "text.secondary",
+            "&:hover": { bgcolor: count ? "text.primary" : "action.selected" },
+          }}>
+          <Typography color="inherit" noWrap sx={{ fontSize: LABEL_SIZE, fontWeight: LABEL_WEIGHT }}>
+            {count ? t("explorer_edits", { count }) : t("explorer_edits_none")}
+          </Typography>
+          <Icon iconName={ICON_NAME.CHEVRON_DOWN} style={{ fontSize: 9 }} htmlColor="inherit" />
+        </ButtonBase>
+        <ChangeList anchor={pill.current} undo={undo} />
+      </Stack>
+      <EditBarRow compact={compact} />
+    </Box>
   );
 }

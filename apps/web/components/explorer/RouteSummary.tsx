@@ -1,7 +1,8 @@
 /**
- * A route's summary in the left panel (board 6): its name and its tabs —
- * Overview (board 22, the default; read-only until editing), Stops (board
- * 10) and Schedule (board 11).
+ * A route's summary in the left panel (board 6): its name and its tabs,
+ * Service (board 22, the default), Stops (board 10) and Schedule (board 11).
+ * Tabs only show: a line is edited from its action bar under the edit bar
+ * (useSelectionActions); its own fields in its Properties dialog.
  */
 import { Box, ButtonBase, Skeleton, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { useEffect } from "react";
@@ -29,7 +30,6 @@ import { RouteCalendar } from "@/components/explorer/RouteCalendar";
 import { RouteService } from "@/components/explorer/RouteService";
 import { RouteStops } from "@/components/explorer/RouteStops";
 import { ICON_GAP, TAB_SX } from "@/components/explorer/SectionHeader";
-import { RouteDetails } from "@/components/explorer/edit/RouteDetails";
 import { modeIcon } from "@/components/explorer/modeIcon";
 
 /** A tab's shape while the route's figures are worked out, so it fills in
@@ -63,10 +63,8 @@ const META_LINE = "20px";
 export function RouteSummary({ route }: { route: RouteRow }) {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
-  const { db, complete, window, dataPeriod, shapeLinesLayerId, settings, session } = useExplorer();
-  const chosen = useAppSelector((s) => s.explorer.routeTab);
-  // Properties is an editor's: without editing, the overview.
-  const tab = chosen === "properties" && !session ? "service" : chosen;
+  const { db, complete, window, dataPeriod, shapeLinesLayerId, settings } = useExplorer();
+  const tab = useAppSelector((s) => s.explorer.routeTab);
   const date = useAppSelector((s) => s.explorer.date);
   // The cost period once known (shared with the cost card), the feed's
   // window until then: this tab needs no cost to show.
@@ -142,11 +140,9 @@ export function RouteSummary({ route }: { route: RouteRow }) {
           value={tab}
           onChange={(_e, value: ExplorerRouteTab) => dispatch(setExplorerRouteTab(value))}
           sx={{ minHeight: 36 }}>
-          <Tab value="service" label={t("explorer_tab_overview")} sx={TAB_SX} />
+          <Tab value="service" label={t("explorer_tab_service")} sx={TAB_SX} />
           <Tab value="stops" label={t("explorer_tab_stops")} sx={TAB_SX} />
           <Tab value="calendar" label={t("explorer_schedule_tab")} sx={TAB_SX} />
-          {/* For an editor, as a stop's: the line's own fields, and its delete. */}
-          {session && <Tab value="properties" label={t("explorer_stop_tab_properties")} sx={TAB_SX} />}
         </Tabs>
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2.5 }}>
@@ -155,8 +151,7 @@ export function RouteSummary({ route }: { route: RouteRow }) {
             {summary.error}
           </Typography>
         )}
-        {!summary.data && !summary.error && tab !== "calendar" && tab !== "properties" && <SummarySkeleton />}
-        {tab === "properties" && <RouteDetails route_idx={route.route_idx} />}
+        {!summary.data && !summary.error && tab !== "calendar" && <SummarySkeleton />}
         {tab === "calendar" && <RouteCalendar trips={route} id={`route:${route.route_idx}`} of="line" />}
         {summary.data && tab === "service" && <RouteService route={route} data={summary.data} />}
         {summary.data && tab === "stops" && (

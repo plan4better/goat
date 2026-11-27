@@ -5,22 +5,10 @@
  * where short turns end (no connecting lines at the stops, 22 Oct 2026). Picking a stop
  * shows it on the map.
  */
-import {
-  Box,
-  ButtonBase,
-  IconButton,
-  Stack,
-  type SxProps,
-  type Theme,
-  Tooltip,
-  Typography,
-  alpha,
-} from "@mui/material";
+import { Box, ButtonBase, Stack, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { memo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-
-import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Direction } from "@/lib/explorer/derive/directions";
 import type { LineStop } from "@/lib/explorer/derive/stopsLine";
@@ -30,7 +18,6 @@ import { modeOf, routeColor } from "@/lib/explorer/modes";
 import { closeExplorerPanel, openExplorerPanel, pickedStop } from "@/lib/store/explorer/slice";
 
 import { type RouteRow, useRouteTrips, useStopsLine } from "@/hooks/explorer/useExplorerData";
-import { useLineStopEdits } from "@/hooks/explorer/useLineStopEdits";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { directionItems, tripsByPattern, useDirectionChoice } from "@/components/explorer/DirectionPicker";
@@ -47,7 +34,6 @@ const StopRow = memo(function StopRow({
   last,
   selected,
   onPick,
-  room,
 }: {
   stop: LineStop;
   color: string;
@@ -55,8 +41,6 @@ const StopRow = memo(function StopRow({
   last: boolean;
   selected: boolean;
   onPick: (stop: LineStop) => void;
-  /** Room kept for a pill at the row's end. */
-  room?: boolean;
 }) {
   const end = first || last;
   return (
@@ -77,11 +61,7 @@ const StopRow = memo(function StopRow({
         <Rail color={color} top={!first} bottom={!last} />
         <StopDot color={color} end={end} />
       </Box>
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={0.75}
-        sx={{ flex: 1, minWidth: 0, py: 0.5, pr: room ? PILL_ROOM : 0 }}>
+      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ flex: 1, minWidth: 0, py: 0.5 }}>
         <Typography variant="body2" fontWeight={end ? 700 : 500} noWrap title={stop.name}>
           {stop.name}
         </Typography>
@@ -97,18 +77,7 @@ const StopRow = memo(function StopRow({
 });
 
 /** Between two stops: how far, how long; and where short turns end. */
-const HopRow = memo(function HopRow({
-  stop,
-  color,
-  last,
-  onInsert,
-}: {
-  stop: LineStop;
-  color: string;
-  last: boolean;
-  /** While editing: a stop added to the line here (3.1), on hover. */
-  onInsert?: () => void;
-}) {
+const HopRow = memo(function HopRow({ stop, color, last }: { stop: LineStop; color: string; last: boolean }) {
   const { t, i18n } = useTranslation("common");
   const theme = useTheme();
   const turn = theme.palette.warning.main;
@@ -159,111 +128,15 @@ const HopRow = memo(function HopRow({
           <Typography variant="caption" color="text.disabled" sx={{ flex: 1, minWidth: 0 }} noWrap>
             {hop}
           </Typography>
-          {onInsert && (
-            <ActionPill
-              tone="primary"
-              icon={ICON_NAME.PLUS}
-              label={t("explorer_add_stop_to_line")}
-              onClick={onInsert}
-              shownOn=".hop:hover &"
-              sx={PILL_SX}
-            />
-          )}
         </Stack>
       )}
     </>
   );
 });
 
-/** Where the hover pills sit, the same in every row so they line up: left of
- * the minutes column, centred on their row. */
-const PILL_SX = { position: "absolute", right: 32, top: "50%", transform: "translateY(-50%)" } as const;
-/** Room kept at a row's end while editing, so a long name ends, ellipsised,
- * before the pill rather than under it. */
-const PILL_ROOM = "48px";
-
-/** A row's action while editing (board 27): the stop off the line, as a
- * red pill on hover, as the green one between stops adds one. */
-function StopActions({ onRemove }: { onRemove: () => void }) {
-  const { t } = useTranslation("common");
-  return (
-    <ActionPill
-      tone="error"
-      icon={ICON_NAME.MINUS}
-      label={t("explorer_remove_stop_from_line")}
-      onClick={onRemove}
-      shownOn=".stop:hover &"
-      sx={PILL_SX}
-    />
-  );
-}
-
-/** Beyond either end of the line, while editing: the line run on from it,
- * as a green pill on hover, as the one between stops adds a stop. */
-function ExtendRow({ onExtend }: { onExtend: () => void }) {
-  const { t } = useTranslation("common");
-  return (
-    <Box className="ext" sx={{ position: "relative", minHeight: 22 }}>
-      <ActionPill
-        tone="primary"
-        icon={ICON_NAME.PLUS}
-        label={t("explorer_extend_line")}
-        onClick={onExtend}
-        shownOn=".ext:hover &"
-        sx={PILL_SX}
-      />
-    </Box>
-  );
-}
-
-/** An action on hover, as a small pill in its colour: green to add, red to
- * take away; named by its tooltip. */
-function ActionPill({
-  tone,
-  icon,
-  label,
-  onClick,
-  shownOn,
-  sx,
-}: {
-  tone: "primary" | "error";
-  icon: ICON_NAME;
-  label: string;
-  onClick: () => void;
-  /** The hover that shows it (a selector ending in `&`). */
-  shownOn: string;
-  sx?: SxProps<Theme>;
-}) {
-  return (
-    <Tooltip title={label} placement="top">
-      <IconButton
-        size="small"
-        onClick={onClick}
-        aria-label={label}
-        sx={[
-          {
-            px: 1.5,
-            py: 0.5,
-            borderRadius: "16px",
-            color: `${tone}.main`,
-            bgcolor: (theme) => alpha(theme.palette[tone].main, 0.12),
-            "&:hover": { bgcolor: (theme) => alpha(theme.palette[tone].main, 0.2) },
-            opacity: 0,
-            [`${shownOn}, &:focus-visible`]: { opacity: 1 },
-          },
-          ...(Array.isArray(sx) ? sx : [sx]),
-        ]}>
-        <Icon iconName={icon} style={{ fontSize: "11px" }} htmlColor="inherit" />
-      </IconButton>
-    </Tooltip>
-  );
-}
-
 export function RouteStops({ route, directions }: { route: RouteRow; directions: Direction[] }) {
   const { t, i18n } = useTranslation("common");
   const dispatch = useAppDispatch();
-  const editing = useAppSelector((s) => s.explorer.edit.enabled);
-  const { insertBetween, removeFromLine, extend } = useLineStopEdits();
 
   const { db, complete, shapeDistUnit, settings } = useExplorer();
   const date = useAppSelector((s) => s.explorer.date);
@@ -360,41 +233,22 @@ export function RouteStops({ route, directions }: { route: RouteRow; directions:
 
       {data && (
         <Box>
-          {editing && data.stops.length > 0 && (
-            <ExtendRow onExtend={() => extend(data.stops[0].stop_idx, "start")} />
-          )}
           {data.stops.map((s, i) => {
             const last = i === data.stops.length - 1;
             return (
-              <Box key={`${s.stop_idx}:${i}`} className="row" sx={{ position: "relative" }}>
-                {/* The stop's own row: its remove pill shows over it alone,
-                    not over the gap below, where the add pill is. */}
-                <Box className="stop" sx={{ position: "relative" }}>
-                  <StopRow
-                    stop={s}
-                    color={color}
-                    first={i === 0}
-                    last={last}
-                    selected={picked?.stop_idx === s.stop_idx}
-                    onPick={pickStop}
-                    room={editing}
-                  />
-                  {editing && <StopActions onRemove={() => removeFromLine(s)} />}
-                </Box>
-                <HopRow
+              <Box key={`${s.stop_idx}:${i}`}>
+                <StopRow
                   stop={s}
                   color={color}
+                  first={i === 0}
                   last={last}
-                  onInsert={
-                    editing && !last ? () => insertBetween(s.stop_idx, data.stops[i + 1].stop_idx) : undefined
-                  }
+                  selected={picked?.stop_idx === s.stop_idx}
+                  onPick={pickStop}
                 />
+                <HopRow stop={s} color={color} last={last} />
               </Box>
             );
           })}
-          {editing && data.stops.length > 0 && (
-            <ExtendRow onExtend={() => extend(data.stops[data.stops.length - 1].stop_idx, "end")} />
-          )}
         </Box>
       )}
     </Box>

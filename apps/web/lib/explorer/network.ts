@@ -34,6 +34,10 @@ export interface NetworkRoute {
 export interface NetworkDrawing {
   /** The bundle's shape_lines layer, which the map draws shapes from. */
   shapeLinesLayerId: string | null;
+  /** The bundle's revision its tiles are asked for at: a save moves it on,
+   * so the map asks for them again rather than keep those it loaded before
+   * (the lines as they were, where it had looked). */
+  tilesRevision: number | null;
   /** By `shape_id`, as the tiles carry it. */
   shapes: Map<string, NetworkShape>;
   /** A route's shapes, for highlighting it. */
@@ -70,6 +74,7 @@ export const NO_REDRAWN: FeatureCollection<LineString, { shape_id: string }> = {
 
 const EMPTY: NetworkDrawing = {
   shapeLinesLayerId: null,
+  tilesRevision: null,
   shapes: new Map(),
   byRoute: new Map(),
   routes: new Map(),

@@ -16,7 +16,7 @@ import type { RouteRow } from "@/hooks/explorer/useExplorerData";
 import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 import { RouteBadge } from "@/components/explorer/RouteBadge";
-import { ICON_GAP } from "@/components/explorer/SectionHeader";
+import { CHECKBOX_SX, ICON_GAP } from "@/components/explorer/SectionHeader";
 
 function Heading({ children }: { children: string }) {
   return (
@@ -71,22 +71,23 @@ export function DeleteLineCascade({
           </Typography>
           <Heading>{t("explorer_affected_paths")}</Heading>
           <Typography variant="caption" color="text.secondary" display="block">
-            {f.paths} · {t("explorer_line_delete_paths_hint")}
+            {f.paths}
           </Typography>
           {f.only_here > 0 ? (
             <FormControlLabel
-              sx={{ mt: 1, ml: -0.75, alignItems: "flex-start" }}
+              // The box centred on its one line of words.
+              sx={{ mt: 1, mx: 0, gap: ICON_GAP, alignItems: "center" }}
               control={
                 <Checkbox
                   size="small"
                   color="error"
                   checked={draft.stops}
                   onChange={(e) => dispatch(setEditDraft({ ...draft, stops: e.target.checked }))}
-                  sx={{ p: 0.5 }}
+                  sx={CHECKBOX_SX}
                 />
               }
               label={
-                <Typography variant="caption" sx={{ display: "block", pt: "5px" }}>
+                <Typography variant="caption" sx={{ display: "block" }}>
                   {t("explorer_line_delete_stops", { count: f.only_here })}
                 </Typography>
               }

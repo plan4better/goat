@@ -18,6 +18,7 @@ import { type ExplorerFilters, NO_FILTERS, setExplorerFilters } from "@/lib/stor
 import type { AgencyRow, RouteRow } from "@/hooks/explorer/useExplorerData";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
+import { CHECKBOX_SX, ICON_GAP } from "@/components/explorer/SectionHeader";
 import { StopMarker } from "@/components/explorer/StopMarker";
 import { modeIcon } from "@/components/explorer/modeIcon";
 import DropdownFooter from "@/components/map/panels/style/other/DropdownFooter";
@@ -65,9 +66,16 @@ function Option({
       component="label"
       direction="row"
       alignItems="center"
-      spacing={1}
-      sx={{ px: 1, pr: 2, minHeight: 34, cursor: "pointer", "&:hover": { bgcolor: "action.hover" } }}>
-      <Checkbox size="small" checked={checked} onChange={onToggle} />
+      // Box, icon and words ICON_GAP apart, as everywhere in the Explorer.
+      sx={{
+        pl: "18px",
+        pr: 2,
+        columnGap: ICON_GAP,
+        minHeight: 34,
+        cursor: "pointer",
+        "&:hover": { bgcolor: "action.hover" },
+      }}>
+      <Checkbox size="small" checked={checked} onChange={onToggle} sx={CHECKBOX_SX} />
       <Box sx={{ display: "flex", color: "text.secondary" }}>
         {typeof icon === "string" ? (
           <Icon iconName={icon} style={{ fontSize: 13 }} htmlColor="inherit" />

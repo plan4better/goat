@@ -1,10 +1,11 @@
 /**
- * A right click on the selected line, while editing: on one of its stops,
- * the stop's edits on the line (as its row's menu in the Stops tab has
- * them), and at either end of the line, the line run on from it; on the
- * line between two stops, a stop added there (as the Stops tab's hover
- * action between them). Along the variant picked, else the
- * direction's main pattern, as a click on the line selects.
+ * The map's menu while editing. Out of a line mode, a right click
+ * selects what is under it and offers its actions, as the selection's bar
+ * has them (useSelectionActions). In "Edit stops", on one of the line's stops
+ * (a click or a right click): the stop's edits on the line, off it, the
+ * line ended or started there, and at either end, the line run on from it;
+ * a right click on the line between two stops: a stop added there. Along
+ * the variant picked, else the direction's main pattern.
  */
 import { Popover } from "@mui/material";
 import type { TFunction } from "i18next";
@@ -13,23 +14,31 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import { pathAt } from "@/lib/explorer/derive/path";
+import { patternLine, stretchAt } from "@/lib/explorer/derive/path";
 import { shownPattern } from "@/lib/explorer/directionChoice";
 import type { LineEnd } from "@/lib/explorer/edit/ops/extendLine";
 import { sqlNumber } from "@/lib/explorer/edit/sql";
 import { closeExplorerLineMenu } from "@/lib/store/explorer/slice";
 
 import { type LineStopRef, useLineStopEdits } from "@/hooks/explorer/useLineStopEdits";
+import { useSelectionActions } from "@/hooks/explorer/useSelectionActions";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { PopperMenuContent, type PopperMenuItem } from "@/components/common/PopperMenu";
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 
-/** A stop's edits on its line, in its row's menu and on the map alike: at
- * either end (`end`), the line extended from it too. */
-export function lineStopMenu(t: TFunction, end?: LineEnd): PopperMenuItem[] {
+/** A stop's edits on its line: at either end (`end`), the line extended
+ * from it; the line ended there unless it is the last stop (`i` of `n`),
+ * started there unless the first; off the line. */
+function lineStopMenu(t: TFunction, i: number, n: number, end?: LineEnd): PopperMenuItem[] {
   return [
     ...(end ? [{ id: `extend-${end}`, label: t("explorer_extend_line"), icon: ICON_NAME.PLUS }] : []),
+    ...(i < n - 1
+      ? [{ id: "cut-end", label: t("explorer_line_cut_end"), icon: ICON_NAME.CHEVRON_RIGHT, group: "cut" }]
+      : []),
+    ...(i > 0
+      ? [{ id: "cut-start", label: t("explorer_line_cut_start"), icon: ICON_NAME.CHEVRON_LEFT, group: "cut" }]
+      : []),
     {
       id: "remove",
       label: t("explorer_remove_stop_from_line"),
@@ -39,15 +48,19 @@ export function lineStopMenu(t: TFunction, end?: LineEnd): PopperMenuItem[] {
   ];
 }
 
-/** The line between two stops: a stop added there (as the Stops tab's +
- * between them is named). */
+/** The line between two stops: a stop added there, one there is (picked
+ * next, nearest first) or a new one where the line was clicked. */
 function segmentMenu(t: TFunction): PopperMenuItem[] {
-  return [{ id: "insert", label: t("explorer_add_stop_to_line"), icon: ICON_NAME.PLUS }];
+  return [
+    { id: "insert", label: t("explorer_insert_existing_stop"), icon: ICON_NAME.PLUS },
+    { id: "create", label: t("explorer_create_new_stop"), icon: ICON_NAME.CIRCLE_DOT },
+  ];
 }
 
 type Resolved =
   | { kind: "stop"; stop: LineStopRef; items: PopperMenuItem[] }
-  | { kind: "segment"; a: number; b: number; items: PopperMenuItem[] };
+  | { kind: "segment"; a: number; b: number; at: [number, number]; items: PopperMenuItem[] }
+  | { kind: "selection"; items: PopperMenuItem[] };
 
 export function LineContextMenu() {
   const { t } = useTranslation("common");
@@ -56,14 +69,24 @@ export function LineContextMenu() {
   const at = useAppSelector((s) => s.explorer.lineMenu);
   const drawing = useAppSelector((s) => s.explorer.drawing);
   const choice = useAppSelector((s) => s.explorer.pattern);
-  const { insertBetween, removeFromLine, extend } = useLineStopEdits();
+  const { insertBetween, createBetween, removeFromLine, extend, cutLine } = useLineStopEdits();
+  const selection = useSelectionActions();
   const [resolved, setResolved] = useState<Resolved | null>(null);
 
   useEffect(() => {
     setResolved(null);
-    if (!at || !db || !drawing) return;
-    const pattern = shownPattern(choice, drawing.directions);
-    if (pattern === null) return;
+    if (!at) return;
+    // A menu with nothing to offer is let go at once: one held open unseen
+    // would hold the map's clicks and keys (the mode stands down for it).
+    if (at.selection) {
+      if (!selection) dispatch(closeExplorerLineMenu());
+      return;
+    }
+    const pattern = drawing && shownPattern(choice, drawing.directions);
+    if (!db || pattern === null || pattern === undefined) {
+      dispatch(closeExplorerLineMenu());
+      return;
+    }
     let current = true;
     const close = () => current && dispatch(closeExplorerLineMenu());
     (async () => {
@@ -80,26 +103,45 @@ export function LineContextMenu() {
         // At either end of the line shown: extended from there too.
         const end: LineEnd | undefined =
           at.stop_idx === stops[stops.length - 1] ? "end" : at.stop_idx === stops[0] ? "start" : undefined;
-        if (row) setResolved({ kind: "stop", stop: row, items: lineStopMenu(t, end) });
+        const i = stops.indexOf(at.stop_idx);
+        if (row) setResolved({ kind: "stop", stop: row, items: lineStopMenu(t, i, stops.length, end) });
         else close();
         return;
       }
-      // On the line: between the two stops around the click.
-      const path = await pathAt(db, pattern, at.lon, at.lat);
+      // On the line: between the two stops around the click, and the point
+      // on the line under it, where a new stop goes.
+      const line = await patternLine(db, pattern);
       if (!current) return;
+      const path = line && stretchAt(line, at.lon, at.lat);
       if (path && stops[path.from_i] !== undefined && stops[path.to_i] !== undefined)
-        setResolved({ kind: "segment", a: stops[path.from_i], b: stops[path.to_i], items: segmentMenu(t) });
+        setResolved({
+          kind: "segment",
+          a: stops[path.from_i],
+          b: stops[path.to_i],
+          at: path.at,
+          items: segmentMenu(t),
+        });
       else close();
     })().catch(close);
     return () => {
       current = false;
     };
-  }, [at, db, drawing, choice, t, dispatch]);
+  }, [at, db, drawing, choice, t, dispatch, selection]);
 
   const close = () => dispatch(closeExplorerLineMenu());
+  // The selection's actions, as its bar has them, once the right click has
+  // selected what it was on.
+  const shown: Resolved | null = at?.selection
+    ? selection
+      ? {
+          kind: "selection",
+          items: selection.actions.map((a) => ({ id: a.id, label: a.label, icon: a.icon })),
+        }
+      : null
+    : resolved;
   return (
     <Popover
-      open={!!at && !!resolved}
+      open={!!at && !!shown}
       // Esc closes it after the keys' other listeners have seen it open,
       // so the editor's Esc does not also let go of the selection.
       onClose={(_e, reason) => (reason === "escapeKeyDown" ? setTimeout(close) : close())}
@@ -107,15 +149,20 @@ export function LineContextMenu() {
       anchorPosition={at ? { top: at.y, left: at.x } : undefined}
       // The menu's own paper, as PopperMenu draws it.
       slotProps={{ paper: { sx: { boxShadow: "none", bgcolor: "transparent", overflow: "visible" } } }}>
-      {resolved && (
+      {shown && (
         <PopperMenuContent
-          menuItems={resolved.items}
+          menuItems={shown.items}
           onPick={(item) => {
             close();
-            if (resolved.kind === "segment") insertBetween(resolved.a, resolved.b);
+            if (shown.kind === "selection") selection?.actions.find((a) => a.id === item.id)?.run();
+            else if (shown.kind === "segment")
+              if (item.id === "create") createBetween(shown.a, shown.b, shown.at[0], shown.at[1]);
+              else insertBetween(shown.a, shown.b);
             else if (item.id === "extend-end" || item.id === "extend-start")
-              extend(resolved.stop.stop_idx, item.id === "extend-end" ? "end" : "start");
-            else removeFromLine(resolved.stop);
+              extend(shown.stop.stop_idx, item.id === "extend-end" ? "end" : "start");
+            else if (item.id === "cut-end" || item.id === "cut-start")
+              cutLine(shown.stop, item.id === "cut-end" ? "end" : "start");
+            else removeFromLine(shown.stop);
           }}
         />
       )}

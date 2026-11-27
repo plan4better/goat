@@ -32,9 +32,9 @@ import { useAppDispatch } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { RAIL, Rail, StopDot } from "@/components/explorer/LineDiagram";
-import { PX } from "@/components/explorer/SectionHeader";
+import { ICON_GAP, PX } from "@/components/explorer/SectionHeader";
 import { StopMarker } from "@/components/explorer/StopMarker";
-import { Swatch } from "@/components/explorer/edit/RouteDetails";
+import { ColourField } from "@/components/explorer/edit/RouteDetails";
 import {
   DetailsSection,
   FIELD_SX,
@@ -150,7 +150,7 @@ export function NewLinePanel({ draft }: { draft: Drawing }) {
         sx={FIELD_SX}>
         {options.map((o) => (
           <MenuItem key={String(o.value)} value={o.value} sx={OPTION_SX}>
-            <Stack direction="row" alignItems="center" spacing="8px" sx={{ minWidth: 0 }}>
+            <Stack direction="row" alignItems="center" spacing={ICON_GAP} sx={{ minWidth: 0 }}>
               {o.icon && <Icon iconName={o.icon} style={{ fontSize: 12 }} htmlColor="inherit" />}
               <Typography noWrap sx={{ fontSize: "0.8125rem" }}>
                 {o.label}
@@ -161,7 +161,6 @@ export function NewLinePanel({ draft }: { draft: Drawing }) {
       </TextField>
     </Row>
   );
-  const hex = values.color.trim().replace(/^#/, "");
 
   return (
     <Stack sx={{ flex: 1, minHeight: 0, overflowY: "auto", pb: 2 }}>
@@ -194,26 +193,12 @@ export function NewLinePanel({ draft }: { draft: Drawing }) {
             (v) => set("agency_idx", { agency_idx: Number(v) })
           )}
         <Row label={t("explorer_line_field_color")}>
-          <TextField
-            size="small"
-            fullWidth
+          <ColourField
             value={values.color}
-            placeholder="RRGGBB"
-            error={!!error("color")}
-            helperText={error("color")}
+            label={t("explorer_line_field_color")}
+            error={error("color")}
             onBlur={leave("color")}
-            onChange={(e) => set("color", { color: e.target.value })}
-            inputProps={{ "aria-label": t("explorer_line_field_color") }}
-            InputProps={{
-              startAdornment: (
-                <Swatch
-                  hex={/^[0-9A-Fa-f]{6}$/.test(hex) ? hex : null}
-                  label={t("explorer_line_field_color")}
-                  onPick={(picked) => set("color", { color: picked })}
-                />
-              ),
-            }}
-            sx={FIELD_SX}
+            onChange={(v) => set("color", { color: v })}
           />
         </Row>
       </Stack>

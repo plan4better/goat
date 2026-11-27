@@ -8,7 +8,7 @@
  * What else an edit changes is the panel's to show, in sections of its own
  * kind (a stop's delete card).
  */
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography, alpha } from "@mui/material";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -43,6 +43,10 @@ export function ApplyBar({
     <Box sx={{ px: PX, pt: titled ? "4px" : "8px", pb: "12px" }}>
       {/* Its title, as the panels' section headers and the edits list's. */}
       {titled && <SectionHeader icon={ICON_NAME.EDIT} label={t("explorer_edit_panel")} px={0} />}
+      {/* The edit as the change list will keep it: its name, and what else
+          it changes. A destructive one on the delete cards' red ground,
+          unless it has a card of its own below. */}
+      {titled && edit.words && <ChangeRow words={edit.words} danger={!!bar?.danger && !impact} />}
       {/* How far an edit on a line reaches, then what it takes with it,
           where it has a card for it. */}
       {scoped && edit.scope && <ScopePicker scope={edit.scope} />}
@@ -105,9 +109,35 @@ export function ApplyBar({
           disabled={!built?.ok || nothing || applying}
           onClick={() => void edit.apply()}
           sx={{ borderRadius: "16px", px: 1.5, fontWeight: 700, textTransform: "none" }}>
-          {bar?.action ?? t("apply")}
+          {bar?.action ?? t("done")}
         </Button>
       </Stack>
+    </Box>
+  );
+}
+
+/** The pending edit as a row of the change list (ChangeList): its name, and
+ * under it what else it changes. */
+function ChangeRow({ words, danger }: { words: NonNullable<DraftEdit["words"]>; danger: boolean }) {
+  return (
+    <Box
+      sx={(theme) => ({
+        mb: "8px",
+        px: "12px",
+        py: "10px",
+        borderRadius: 1.5,
+        border: 1,
+        borderColor: danger ? alpha(theme.palette.error.main, 0.35) : "divider",
+        bgcolor: danger ? alpha(theme.palette.error.main, 0.05) : "transparent",
+      })}>
+      <Typography variant="body2" fontWeight={600} color={danger ? "error.main" : "text.primary"}>
+        {words.label}
+      </Typography>
+      {words.impact && (
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+          {words.impact}
+        </Typography>
+      )}
     </Box>
   );
 }

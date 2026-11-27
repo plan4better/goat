@@ -18,6 +18,12 @@ export const PX = 2.5;
  * headers, labels, links and buttons alike (as MUI's buttons have it). */
 export const ICON_GAP = "8px";
 
+/** A checkbox (small) beside its words, the same everywhere: no padding of
+ * its own (its row makes the click target), and its drawn box, 2.5 px in
+ * from the icon's edge, taken as its edge. Its words then sit ICON_GAP
+ * from the box, as text sits from an icon. */
+export const CHECKBOX_SX = { p: 0, mx: "-2.5px" } as const;
+
 export function SectionHeader({
   icon,
   label,
