@@ -44,6 +44,9 @@ export class SaveRefusedError extends Error {
   }
 }
 
+/** The save ran out of time and was stopped and undone: nothing saved. */
+export class SaveTimeoutError extends Error {}
+
 export async function saveExplorerChanges(
   bundleId: string,
   baseRevision: number,
@@ -63,5 +66,8 @@ export async function saveExplorerChanges(
     throw new SaveConflictError(message, detail.revision ?? null);
   if (res.status === 422 && typeof detail === "object" && detail.notices)
     throw new SaveRefusedError(message, detail.notices);
+  // geoapi's own: it stopped the save and undid it. A proxy's 504 (no
+  // detail of geoapi's) says nothing of whether the save went through.
+  if (res.status === 504 && typeof detail === "string") throw new SaveTimeoutError(message);
   throw new Error(message);
 }

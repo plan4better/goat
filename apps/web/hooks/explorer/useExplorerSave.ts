@@ -10,7 +10,12 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
 
-import { SaveConflictError, SaveRefusedError, saveExplorerChanges } from "@/lib/explorer/edit/api";
+import {
+  SaveConflictError,
+  SaveRefusedError,
+  SaveTimeoutError,
+  saveExplorerChanges,
+} from "@/lib/explorer/edit/api";
 import { takeLeave } from "@/lib/explorer/edit/leave";
 import {
   editsDiscarded,
@@ -56,7 +61,9 @@ export function useExplorerSave() {
             ? t("explorer_save_conflict")
             : error instanceof SaveRefusedError
               ? t("explorer_save_refused")
-              : t("explorer_save_failed", { message: String((error as Error).message ?? error) })
+              : error instanceof SaveTimeoutError
+                ? t("explorer_save_timeout")
+                : t("explorer_save_failed", { message: String((error as Error).message ?? error) })
         )
       );
     }
