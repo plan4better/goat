@@ -351,7 +351,9 @@ export function alongShape(shape: ShapeLine, d: number): [number, number] {
 export function positionsAt(
   window: VehicleWindow,
   t: number,
-  out: VehicleFrame = vehicleFrame()
+  out: VehicleFrame = vehicleFrame(),
+  /** The lines whose vehicles run (a filter on); all where null. */
+  only: Set<number> | null = null
 ): VehicleFrame {
   if (out.run.length < window.runs) {
     const grown = vehicleFrame(Math.max(window.runs, out.run.length * 2));
@@ -365,6 +367,7 @@ export function positionsAt(
     const end = w.first[r + 1];
     while (k < end && !(w.t0[k] <= t && t <= w.t1[k])) k++;
     if (k === end) continue;
+    if (only && !only.has(w.route_idx[k])) continue;
     const f = w.t1[k] > w.t0[k] ? (t - w.t0[k]) / (w.t1[k] - w.t0[k]) : 0;
     const shape = w.shape[k] >= 0 ? w.shapes.get(w.shape[k]) : undefined;
     if (shape) placeAlong(shape, w.d0[k] + (w.d1[k] - w.d0[k]) * f, out, n);
