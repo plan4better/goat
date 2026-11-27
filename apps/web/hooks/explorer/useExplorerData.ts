@@ -20,7 +20,7 @@ import {
 } from "@/lib/explorer/derive/operations";
 import { patternSections, patternTrips } from "@/lib/explorer/derive/patternSections";
 import { routeTrips } from "@/lib/explorer/derive/routeTrips";
-import { type TripRange, routeDayRuns, routeRuns } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange, routeDayRuns, routeRuns } from "@/lib/explorer/derive/runs";
 import { routeCalendar } from "@/lib/explorer/derive/serviceCalendar";
 import {
   type Departure,
@@ -88,6 +88,33 @@ export function useRoutes(db: SqlRunner | undefined) {
         FROM routes r LEFT JOIN agencies a USING (agency_idx)
         WHERE r.trip_lo IS NOT NULL
         ORDER BY r.route_idx`)
+  );
+}
+
+/** The route a trip runs on, by route_idx: for a trip an edit added, which
+ * lies past its route's range (inTripRange). */
+export function useTripRouteIdx(db: SqlRunner | undefined, trip_idx: number | null) {
+  return useQuery(trip_idx === null ? undefined : db, `trip-route:${trip_idx}`, async (d) => {
+    const [row] = await d.all<{ route_idx: number }>(
+      `SELECT route_idx FROM trips WHERE trip_idx = ${trip_idx}`
+    );
+    return row?.route_idx ?? null;
+  });
+}
+
+/** The services a direction's trips run on (its patterns'), for the service
+ * dialog's linked patterns (headway.ts, dayTypeGroups). */
+export function useDirectionServices(db: SqlRunner | undefined, route_idx: number, patterns: number[]) {
+  return useQuery(
+    patterns.length ? db : undefined,
+    `direction-services:${route_idx}:${patterns.join(",")}`,
+    async (d) =>
+      (
+        await d.all<{ service_idx: number }>(
+          `SELECT DISTINCT service_idx FROM trips WHERE route_idx = ${route_idx}
+           AND pattern_idx IN (${patterns.join(",")}) ORDER BY 1`
+        )
+      ).map((r) => r.service_idx)
   );
 }
 
@@ -181,7 +208,7 @@ async function summarize(
   // of trips without one (the snapshot's stop chains).
   const shapes = await db.all<{ shape_id: string; pattern_idx: number }>(`
     SELECT DISTINCT s.shape_id, t.pattern_idx FROM trips t JOIN shapes_meta s USING (shape_idx)
-    WHERE t.trip_idx BETWEEN ${route.trip_lo} AND ${route.trip_hi}`);
+    WHERE ${inTripRange(route, "t.")}`);
   const coord = (idx: number): [number, number] | null => {
     const s = stops.get(idx);
     return s && s.lon != null && s.lat != null ? [s.lon, s.lat] : null;
@@ -440,5 +467,23 @@ export function useChildLocations(db: SqlRunner | undefined, stop_idx: number) {
       `SELECT ${LOCATION_COLUMNS} FROM stops WHERE parent_idx = ${Number(stop_idx)}
        ORDER BY location_type, platform_code NULLS LAST, name, stop_idx`
     )
+  );
+}
+
+/** A trip's stop times as the feed has them (a frequency-based trip's, its
+ * template's), by stop_sequence, for its times dialog. */
+export interface TripCall {
+  stop_sequence: number;
+  name: string;
+  arrival_s: number | null;
+  departure_s: number | null;
+}
+export function useTripCalls(db: SqlRunner | undefined, trip_idx: number) {
+  return useQuery(db, `trip-calls:${trip_idx}`, (d) =>
+    d.all<TripCall>(`
+      SELECT st.stop_sequence, COALESCE(p.name, s.name, s.stop_id) AS name, st.arrival_s, st.departure_s
+      FROM stop_times st JOIN stops s USING (stop_idx) LEFT JOIN stops p ON p.stop_idx = s.parent_idx
+      WHERE st.trip_idx = ${Number(trip_idx)}
+      ORDER BY st.stop_sequence`)
   );
 }

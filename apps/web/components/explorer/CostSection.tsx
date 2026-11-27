@@ -17,7 +17,13 @@ import type { AnnualFigures } from "@/lib/explorer/derive/cost";
 import { clock, compact, money, monthYear } from "@/lib/explorer/format";
 import { openExplorerSettings, panelItem } from "@/lib/store/explorer/slice";
 
-import { useNetworkCost, useRouteSummary, useRoutes, useTripCost } from "@/hooks/explorer/useExplorerData";
+import {
+  useNetworkCost,
+  useRouteSummary,
+  useRoutes,
+  useTripCost,
+  useTripRouteIdx,
+} from "@/hooks/explorer/useExplorerData";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
@@ -164,13 +170,17 @@ function Cost() {
     return item?.kind === "trip" ? item : null;
   });
   const routes = useRoutes(db);
-  // The open trip's own line: a route's trips are one range of trip_idx.
-  const tripLine = trip
+  // The open trip's own line: a route's trips are one range of trip_idx,
+  // but for those an edit added past it, found by their route.
+  const inRange = trip
     ? routes.data?.find(
         (r) =>
           r.trip_lo !== null && r.trip_hi !== null && r.trip_lo <= trip.trip_idx && trip.trip_idx <= r.trip_hi
       )
     : undefined;
+  const tripRoute = useTripRouteIdx(trip && !inRange ? db : undefined, trip?.trip_idx ?? null);
+  // Only for a trip open now: the query keeps its last answer once let go.
+  const tripLine = trip ? (inRange ?? routes.data?.find((r) => r.route_idx === tripRoute.data)) : undefined;
   // The line: the selected one, or the open trip's. The trip is a step only
   // under its own line: a trip left open from another line, when a line is
   // selected in the panel, is not part of it.

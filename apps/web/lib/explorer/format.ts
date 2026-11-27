@@ -10,6 +10,15 @@ export function clock(seconds: number | null | undefined): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** A time of the service day as typed in the edit dialogs, `H:MM` or `H:MM:SS` (past midnight
+ * up to 47:59:59), else null. */
+export function timeOf(text: string): number | null {
+  const m = /^(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?$/.exec(text.trim());
+  if (!m) return null;
+  const [h, min, sec] = [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)];
+  return h < 48 && min < 60 && sec < 60 ? h * 3600 + min * 60 + sec : null;
+}
+
 export function count(value: number, locale: string, digits = 0): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value);
 }

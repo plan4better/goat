@@ -11,7 +11,7 @@
  */
 import type { SqlRunner } from "@/lib/explorer/db/types";
 import { type DailyTrips, serviceDayCounts } from "@/lib/explorer/derive/calendar";
-import type { TripRange } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange } from "@/lib/explorer/derive/runs";
 import { type Rate, defaultRate } from "@/lib/explorer/settings";
 
 export type { Rate };
@@ -115,7 +115,7 @@ export function annualFigures(
   window: [string, string],
   rate: Rate
 ): Promise<AnnualFigures> {
-  return annualFor(db, `trip_idx BETWEEN ${route.trip_lo ?? -1} AND ${route.trip_hi ?? -2}`, window, rate);
+  return annualFor(db, inTripRange(route), window, rate);
 }
 
 /** The whole network's figures for a year, each operator's route types at

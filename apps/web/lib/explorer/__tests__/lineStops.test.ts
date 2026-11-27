@@ -7,6 +7,7 @@ import {
   type LineScope,
   addScopeOptions,
   addToLine,
+  cutLine,
   removeFromLine,
   removeScopeOptions,
 } from "@/lib/explorer/edit/ops/lineStops";
@@ -164,5 +165,77 @@ describe("3.1 add a stop to a line", () => {
     const own = await addToLine(db, s2, s2, s3, scope, "km");
     expect(own.ok).toBe(false);
     if (!own.ok) expect(own.refused.code).toBe("goat_add_neighbour");
+  });
+});
+
+describe("1.4 cut a line back", () => {
+  let db: SqlRunner;
+  let scope: LineScope;
+  beforeEach(async () => {
+    db = await openFixtureDb();
+    scope = { route_idx: 0, level: "variant", pattern_idx: 0, direction: [0, 2] };
+  });
+
+  it("ends the variant's trips at a stop, the stops past it gone from them, and undo puts it all back", async () => {
+    const before = await all(db);
+    const built = await cutLine(db, await idx(db, "S4"), "end", scope, "km");
+    if (!built.ok) throw new Error(built.refused.code);
+    expect(built.facts).toMatchObject({ end: "end", dropped: 1 });
+    expect(built.facts.trips).toBe(built.facts.trip_idxs.length);
+    expect(built.facts.trips).toBeGreaterThan(0);
+    // The path stays; the part past the cut is previewed faint.
+    expect(built.facts.paths.length).toBeGreaterThan(0);
+    for (const p of built.facts.paths) expect(p.old?.replaced.length).toBeGreaterThan(0);
+    const session = new EditSession(db);
+    await session.apply({ id: "c", label: "Cut", ...built.rows });
+    expect(Array.from(await calls(db, "T1"))).toEqual(["S1", "S2", "S3", "S4"]);
+    // The short turn and the other direction as they were.
+    expect(Array.from(await calls(db, "T4"))).toEqual(["S1", "S2", "S3"]);
+    // Its last time now at S4; the stops themselves stay.
+    const [t1] = await db.all<{ last: number; s4: number }>(`
+      SELECT t.last_arr_s AS last, st.arrival_s AS s4 FROM trips t JOIN stop_times st USING (trip_idx)
+      JOIN stops s USING (stop_idx) WHERE t.trip_id = 'T1' AND s.stop_id = 'S4'`);
+    expect(t1.last).toBe(t1.s4);
+    expect(await db.all("SELECT 1 FROM stops WHERE stop_id = 'S5'")).toHaveLength(1);
+    // The bundle loses each trip's stop time at S5, nothing else of the stop.
+    const deleted = built.rows.gtfs.filter((o) => o.role === "stop_times" && o.op === "delete");
+    expect(deleted).toHaveLength(built.facts.trips);
+    expect(built.rows.gtfs.every((o) => o.role !== "stops" && o.op !== "reshape")).toBe(true);
+    await session.undo();
+    expect(await all(db)).toBe(before);
+  });
+
+  it("starts them at a stop, the stops before it gone", async () => {
+    const built = await cutLine(db, await idx(db, "S2"), "start", scope, "km");
+    if (!built.ok) throw new Error(built.refused.code);
+    await new EditSession(db).apply({ id: "c", label: "Cut", ...built.rows });
+    expect(Array.from(await calls(db, "T1"))).toEqual(["S2", "S3", "S4", "S5"]);
+  });
+
+  it("cuts the direction back, its variants merged where they now run the same stops", async () => {
+    const before = await all(db);
+    const built = await cutLine(db, await idx(db, "S2"), "end", { ...scope, level: "direction" }, "km");
+    if (!built.ok) throw new Error(built.refused.code);
+    const session = new EditSession(db);
+    await session.apply({ id: "c", label: "Cut", ...built.rows });
+    expect(Array.from(await calls(db, "T1"))).toEqual(["S1", "S2"]);
+    expect(Array.from(await calls(db, "T4"))).toEqual(["S1", "S2"]);
+    const [p] = await db.all<{ n: number }>(`
+      SELECT CAST(count(DISTINCT pattern_idx) AS INTEGER) AS n FROM trips WHERE trip_id IN ('T1', 'T4')`);
+    expect(p.n).toBe(1);
+    await session.undo();
+    expect(await all(db)).toBe(before);
+  });
+
+  it("refuses a cut that leaves one stop, cuts nothing, or ends a trip where it has no time", async () => {
+    const one = await cutLine(db, await idx(db, "S1"), "end", scope, "km");
+    expect(!one.ok && one.refused.code).toBe("unusable_trip");
+    const none = await cutLine(db, await idx(db, "S5"), "end", scope, "km");
+    expect(!none.ok && none.refused.code).toBe("goat_cut_nothing");
+    await db.exec(`UPDATE stop_times SET arrival_s = NULL, departure_s = NULL
+                   WHERE trip_idx = (SELECT trip_idx FROM trips WHERE trip_id = 'T1')
+                     AND stop_idx = (SELECT stop_idx FROM stops WHERE stop_id = 'S4')`);
+    const untimed = await cutLine(db, await idx(db, "S4"), "end", scope, "km");
+    expect(!untimed.ok && untimed.refused.code).toBe("missing_trip_edge");
   });
 });

@@ -31,6 +31,10 @@ export interface GtfsRowEdit {
   op: "insert" | "update" | "delete";
   key: Record<string, GtfsValue>;
   values?: Record<string, GtfsValue>;
+  /** An insert copying a row of the same table, by its key: the columns
+   * `values` leaves out are the copied row's, as the bundle has them (a trip
+   * copied keeps the fields the snapshot does not hold). */
+  copy_of?: Record<string, GtfsValue>;
 }
 
 /** A stretch of a shape drawn anew: from and to as shares of its length

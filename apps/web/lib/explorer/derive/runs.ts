@@ -13,6 +13,22 @@ import { activeServicesSql } from "@/lib/explorer/derive/calendar";
 export interface TripRange {
   trip_lo: number | null;
   trip_hi: number | null;
+  /** The route the range is: its trips added in the session lie past it. */
+  route_idx?: number;
+}
+
+/** A range's trips, as a condition on `trips` (`t`, its alias with the dot,
+ * or none): its span of trip_idx and, for a route, its trips numbered past
+ * it. The snapshot numbers a route's trips together; a trip an edit adds to
+ * a route (a departure, 4.1) comes after every trip there is, and the next
+ * snapshot numbers it in its route's span again. */
+export function inTripRange(range: TripRange, t = ""): string {
+  const lo = range.trip_lo ?? -1;
+  const hi = range.trip_hi ?? -2;
+  const span = `${t}trip_idx BETWEEN ${lo} AND ${hi}`;
+  return range.route_idx === undefined
+    ? span
+    : `(${span} OR (${t}trip_idx > ${Math.max(hi, -1)} AND ${t}route_idx = ${range.route_idx}))`;
 }
 
 export interface Run {
@@ -35,12 +51,10 @@ export interface Run {
 /** SQL for the runs of `range` on `date`; `tripsIn`, a query of trip_idx,
  * narrows them to those trips (the trips calling at a stop). */
 export function runsSql(range: TripRange, date: string, tripsIn?: string): string {
-  const lo = range.trip_lo ?? -1;
-  const hi = range.trip_hi ?? -2;
   return `
     WITH t AS (
       SELECT * FROM trips
-      WHERE trip_idx BETWEEN ${lo} AND ${hi}
+      WHERE ${inTripRange(range)}
         AND service_idx IN ${activeServicesSql(date)}
         ${tripsIn ? `AND trip_idx IN (${tripsIn})` : ""}
     )

@@ -5,8 +5,24 @@
  * Cancel, Esc or picking something else lets it go with no trace.
  */
 import type { LineEnd } from "@/lib/explorer/edit/ops/extendLine";
-import type { LineScope } from "@/lib/explorer/edit/ops/lineStops";
+import type { DayTypeGroup, HeadwayPeriod } from "@/lib/explorer/edit/ops/headway";
+import type { CutEnd, LineScope } from "@/lib/explorer/edit/ops/lineStops";
 import type { RouteValues } from "@/lib/explorer/edit/ops/routes";
+import type { ServiceSpan } from "@/lib/explorer/edit/ops/span";
+import type { StopTimeInput } from "@/lib/explorer/edit/ops/trips";
+
+/** What a service edit (4.1, 4.2, 5.2) is made on, as the service dialog
+ * picks it: one direction's patterns, on the service patterns picked
+ * (`groups`, whole: patterns sharing a service go together), seen on
+ * `date`. `direction` and `group_names` name them for the Apply bar. */
+export interface ServiceTarget {
+  route_idx: number;
+  direction: { key: number; name: string };
+  patterns: number[];
+  groups: DayTypeGroup[];
+  group_names: string[];
+  date: string;
+}
 
 /** GTFS wheelchair_boarding: 0 unknown (or as its station), 1 accessible,
  * 2 not. */
@@ -72,13 +88,25 @@ export type EditDraft =
   | { kind: "stop-details"; stop_idx: number; values: StopValues }
   /** 2.1: a stop placed with the Stop tool, where it was clicked. */
   /** Its id null until one is drawn for it. */
-  | { kind: "stop-new"; lon: number; lat: number; stop_id: string | null; values: StopValues }
+  | {
+      kind: "stop-new";
+      lon: number;
+      lat: number;
+      stop_id: string | null;
+      values: StopValues;
+      /** Placed on a line in "Edit stops": once created, added to
+       * it between `a` and `b` (the insert's own Apply next). */
+      onLine?: { a: number; b: number; scope: LineScope };
+    }
   /** 2.3: a stop deleted, with all that calls there. */
   | { kind: "stop-delete"; stop_idx: number }
   /** 2.2: a stop dragged to a new place, its paths with it. */
   | { kind: "stop-move"; stop_idx: number; lon: number; lat: number }
   /** 3.2: a stop taken off a line, for the trips its scope takes. */
   | { kind: "line-stop-remove"; stop_idx: number; scope: LineScope }
+  /** 1.4: the line cut back at a stop, for the trips its scope takes:
+   * ending there, or starting there. */
+  | { kind: "line-cut"; stop_idx: number; end: CutEnd; scope: LineScope }
   /** 3.1: a stop added to a line between `a` and `b`, for the trips its
    * scope takes; picked on the map (null until then). */
   | { kind: "line-stop-add"; a: number; b: number; stop_idx: number | null; scope: LineScope }
@@ -100,4 +128,30 @@ export type EditDraft =
   | { kind: "route-details"; route_idx: number; values: RouteValues }
   /** 1.3: the line run on past its terminus `stop_idx` (at its `end`)
    * through `adds`, outward, for the trips its scope takes. */
-  | { kind: "line-extend"; stop_idx: number; end: LineEnd; adds: number[]; scope: LineScope };
+  | { kind: "line-extend"; stop_idx: number; end: LineEnd; adds: number[]; scope: LineScope }
+  /** 4.1: one direction's headways by time period. */
+  | ({ kind: "line-headway"; periods: HeadwayPeriod[] } & ServiceTarget)
+  /** 4.2: its first and last departure (null: as it is). */
+  | ({ kind: "line-span"; span: ServiceSpan } & ServiceTarget)
+  /** 5.2: its running times faster or slower by `percent`, all day or in
+   * one period. */
+  | ({
+      kind: "line-speed";
+      percent: number;
+      period: { key: string; start_s: number; end_s: number } | null;
+    } & ServiceTarget)
+  /** 4.4: trips moved earlier or later by `by_s`. */
+  | { kind: "trip-shift"; trip_idxs: number[]; by_s: number }
+  /** 4.3: a copy of a trip leaving at `dep_s`. */
+  | { kind: "trip-duplicate"; trip_idx: number; dep_s: number }
+  /** 4.3: trips deleted. */
+  | { kind: "trip-delete"; trip_idxs: number[] }
+  /** 5.1: a trip's times as typed, the stops after the last typed one moved
+   * with it if `follow`. */
+  | { kind: "trip-times"; trip_idx: number; times: StopTimeInput[]; follow: boolean };
+
+/** The service dialog's edits: on a direction, for groups of day types. */
+export type ServiceDraft = Extract<EditDraft, { kind: "line-headway" | "line-span" | "line-speed" }>;
+export function isServiceDraft(d: EditDraft | null | undefined): d is ServiceDraft {
+  return d?.kind === "line-headway" || d?.kind === "line-span" || d?.kind === "line-speed";
+}

@@ -12,7 +12,7 @@
  */
 import type { SqlRunner } from "@/lib/explorer/db/types";
 import { type Direction, type StopInfo, routeDirections } from "@/lib/explorer/derive/directions";
-import { type Run, type TripRange, routeRuns, runsSql } from "@/lib/explorer/derive/runs";
+import { type Run, type TripRange, inTripRange, routeRuns, runsSql } from "@/lib/explorer/derive/runs";
 
 /** A direction's main pattern as an axis: its stops in order, and metres
  * along it to each. */
@@ -42,8 +42,6 @@ export async function routeTrips(
   route: TripRange & { route_idx: number },
   date: string
 ): Promise<RouteTrips> {
-  const lo = route.trip_lo ?? -1;
-  const hi = route.trip_hi ?? -2;
   const [{ directions, stops, patterns }, runs, rows] = await Promise.all([
     routeDirections(db, route),
     routeRuns(db, route, date),
@@ -53,7 +51,7 @@ export async function routeTrips(
              CAST(COALESCE(st.departure_s, st.arrival_s, -1) AS DOUBLE) AS dep,
              CAST(t.first_dep_s AS DOUBLE) AS first_dep
       FROM stop_times st JOIN trips t USING (trip_idx)
-      WHERE st.trip_idx BETWEEN ${lo} AND ${hi}
+      WHERE ${inTripRange(route, "t.")}
         AND st.trip_idx IN (SELECT DISTINCT trip_idx FROM (${runsSql(route, date)}))
       ORDER BY st.trip_idx, st.stop_sequence`),
   ]);

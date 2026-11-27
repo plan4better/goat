@@ -107,6 +107,10 @@ export interface RouteDetailsFacts {
   from: RouteValues;
   to: RouteValues;
   changed: RouteField[];
+  /** The line's trips, where its rate changes with it (its mode or its
+   * agency: rates are per operator and kind of vehicle): what the Apply bar
+   * prices before and after. */
+  trip_idxs?: number[];
 }
 
 /** The line's fields, as the draft has them. */
@@ -146,6 +150,10 @@ export async function editRouteDetails(
     gtfs[COLUMNS[k].gtfs] = saved;
   }
   const where = `route_idx = ${sqlNumber(route_idx)}`;
+  if (changed.includes("route_type") || changed.includes("agency_idx"))
+    facts.trip_idxs = (await db.all<{ trip_idx: number }>(`SELECT trip_idx FROM trips WHERE ${where}`)).map(
+      (r) => r.trip_idx
+    );
   return {
     ok: true,
     facts,

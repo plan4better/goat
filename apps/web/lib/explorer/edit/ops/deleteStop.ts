@@ -370,30 +370,7 @@ export async function removeStops(
 
   // Trips: times at their ends, lengths measured from their stops, and the
   // headsign of a trip that was headed for the stop it no longer reaches.
-  const perUnit = shapeDistUnit ? METRES_PER_UNIT[shapeDistUnit] : undefined;
-  sql.push(
-    `UPDATE trips SET first_dep_s = x.f, last_arr_s = x.l,
-       length_m = CASE trips.length_src
-         WHEN 1 THEN ${perUnit ? `CAST(x.dist * ${sqlNumber(perUnit)} AS REAL)` : "trips.length_m"}
-         WHEN 3 THEN CAST(x.chain AS REAL)
-         ELSE trips.length_m END
-     FROM (
-       SELECT trip_idx, arg_min_null(coalesce(departure_s, arrival_s), stop_sequence) AS f,
-              arg_max_null(coalesce(arrival_s, departure_s), stop_sequence) AS l,
-              max(shape_dist) - min(shape_dist) AS dist, coalesce(sum(hop), 0) AS chain
-       FROM (
-         SELECT st.*, ${metresSql(
-           "lag(coalesce(s.lon, p.lon)) OVER w",
-           "lag(coalesce(s.lat, p.lat)) OVER w",
-           "coalesce(s.lon, p.lon)",
-           "coalesce(s.lat, p.lat)"
-         )} AS hop
-         FROM stop_times st JOIN stops s USING (stop_idx) LEFT JOIN stops p ON p.stop_idx = s.parent_idx
-         WHERE st.trip_idx IN (${tripList})
-         WINDOW w AS (PARTITION BY st.trip_idx ORDER BY st.stop_sequence)
-       ) GROUP BY trip_idx
-     ) x WHERE trips.trip_idx = x.trip_idx`
-  );
+  sql.push(tripFiguresSql(tripList, shapeDistUnit));
   const gtfs: GtfsRowOp[] = [];
   // What a trip headed for one of them may be headed for: its name, or its
   // station's.
@@ -550,4 +527,32 @@ async function deleteLocation(
   facts.nodes = under.filter((u) => u.location_type === 3).length;
   const called = under.filter((u) => u.called && !stops.includes(u)).map((u) => u.stop_idx);
   return removeStops(db, [...stops.map((u) => u.stop_idx), ...called, stop_idx], shapeDistUnit, facts);
+}
+
+/** Trips' first and last times, and their length where it is measured from
+ * their stops (the feed's distances, or stop to stop), from the stop times
+ * they have now: after stops were taken off them. */
+export function tripFiguresSql(tripList: string, shapeDistUnit: string | null): string {
+  const perUnit = shapeDistUnit ? METRES_PER_UNIT[shapeDistUnit] : undefined;
+  return `UPDATE trips SET first_dep_s = x.f, last_arr_s = x.l,
+       length_m = CASE trips.length_src
+         WHEN 1 THEN ${perUnit ? `CAST(x.dist * ${sqlNumber(perUnit)} AS REAL)` : "trips.length_m"}
+         WHEN 3 THEN CAST(x.chain AS REAL)
+         ELSE trips.length_m END
+     FROM (
+       SELECT trip_idx, arg_min_null(coalesce(departure_s, arrival_s), stop_sequence) AS f,
+              arg_max_null(coalesce(arrival_s, departure_s), stop_sequence) AS l,
+              max(shape_dist) - min(shape_dist) AS dist, coalesce(sum(hop), 0) AS chain
+       FROM (
+         SELECT st.*, ${metresSql(
+           "lag(coalesce(s.lon, p.lon)) OVER w",
+           "lag(coalesce(s.lat, p.lat)) OVER w",
+           "coalesce(s.lon, p.lon)",
+           "coalesce(s.lat, p.lat)"
+         )} AS hop
+         FROM stop_times st JOIN stops s USING (stop_idx) LEFT JOIN stops p ON p.stop_idx = s.parent_idx
+         WHERE st.trip_idx IN (${tripList})
+         WINDOW w AS (PARTITION BY st.trip_idx ORDER BY st.stop_sequence)
+       ) GROUP BY trip_idx
+     ) x WHERE trips.trip_idx = x.trip_idx`;
 }
