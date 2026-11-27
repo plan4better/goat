@@ -404,6 +404,12 @@ export function ClassificationEditor({ ci: opened, id }: { ci: number; id?: stri
         {c.method !== "manual" && (
           <ChoiceRow<string>
             label={t("style_editor.classes")}
+            // A tool's classes fitted to the data: the count is the most, fewer where the data holds fewer values.
+            note={
+              c.fit === true && c.method === "quantile"
+                ? t("style_editor.count_fitted", { count: Number(count) })
+                : undefined
+            }
             value={count}
             options={[...(byHand ? ["by_hand"] : []), ...counts].map((n) => ({
               value: n,

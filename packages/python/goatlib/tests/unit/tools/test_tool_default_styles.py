@@ -219,6 +219,7 @@ def _expected(
         "field": field,
         "method": "quantile",
         "count": count,
+        "fit": True,
         "palette": palette,
         "title": title,
         "no_data": {PART[geometry]: GREY},
@@ -441,7 +442,10 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert issues(con, relation, doc, geometry) == []
     [c] = doc["classify"]
     assert c["format"] == {
-        "decimals": tool_style.decimals_for(breaks_of(c), c["computed"]["domain"])
+        "decimals": tool_style.decimals_for(
+            breaks_of(c) + list((c["computed"].get("single") or {}).values()),
+            c["computed"]["domain"],
+        )
     }
     assert c["computed"]["no_data"] is True
 
@@ -549,8 +553,8 @@ def test_an_origin_destination_style_handed_in_keeps_its_scale(
 def test_a_plain_origin_destination_point_keeps_the_palette_middle(
     con: duckdb.DuckDBPyConnection,
 ) -> None:
-    """One weight for every point: no classes, and the points take the class
-    ramp's middle color, not the new-layer color."""
+    """One weight for every point: one class, in the class ramp's middle color,
+    which the points also take without a class, not the new-layer color."""
     relation = table(con, "weight", "point", "5", 10)
     runner = runner_for(OriginDestinationToolRunner, con)
     intent = runner.points_style(MagicMock(weight_column="trips"))
@@ -562,12 +566,13 @@ def test_a_plain_origin_destination_point_keeps_the_palette_middle(
         seed="L",
         fit=True,
     )
-    assert "classify" not in doc
+    middle = sample_colors("colorbrewer:OrRd", 1)[0]
+    [c] = doc["classify"]
+    assert [k["marker"]["color"] for k in c["classes"]] == [middle]
     marker = doc["symbol"]["marker"]
-    assert marker["color"] == sample_colors("colorbrewer:OrRd", 1)[0]
+    assert marker["color"] == middle
     assert (marker["size"]["field"], marker["size"]["range"]) == ("weight", [10, 50])
     assert marker["size"]["scale"] == "sqrt"
-    # Left plain by the fit, the points keep the classified default's outline.
     assert doc["symbol"]["outline"] == {"color": "auto", "width": 1}
     assert issues(con, relation, doc, "point") == []
 
@@ -589,14 +594,15 @@ def test_a_tool_part_entry_is_merged_with_the_middle_color() -> None:
 
 
 @pytest.mark.parametrize(
-    ("values", "reverse"),
+    ("values", "reverse", "diverging"),
     [
-        ("-(i + 1)", True),  # all below 0: the value farthest from 0 is darkest
-        ("CASE WHEN i < 5 THEN 0 ELSE -i END", True),
-        ("i - 5", False),  # crosses 0: the sequential palette as it is
-        ("i", False),
-        ("0", False),
-        ("NULL", False),
+        ("-(i + 1)", True, False),  # all below 0: the value farthest from 0 is darkest
+        ("CASE WHEN i < 5 THEN 0 ELSE -i END", True, False),
+        # Crosses 0: red below, blue above, centred at 0 by `fit`.
+        ("i - 5", False, True),
+        ("i", False, False),
+        ("0", False, False),
+        ("NULL", False, False),
     ],
 )
 @pytest.mark.parametrize(
@@ -614,6 +620,7 @@ def test_a_statistic_of_negative_values_turns_the_ramp_around(
     field: str,
     values: str,
     reverse: bool,
+    diverging: bool,
 ) -> None:
     relation = table(con, field, "polygon", values, 10)
     doc = runner_for(runner_class, con).get_layer_style(
@@ -622,6 +629,33 @@ def test_a_statistic_of_negative_values_turns_the_ramp_around(
     [c] = doc["classify"]
     assert c.get("reverse", False) is reverse
     assert ("reverse" in c) is reverse
+    assert (c["palette"] == "colorbrewer:RdBu") is diverging
+
+
+@pytest.mark.parametrize(
+    ("values", "reverse", "diverging"),
+    [
+        # 5 of 100 rows with a value other than 0 below 0: a real share.
+        ("CASE WHEN i < 5 THEN -1 ELSE i END", False, True),
+        # 4 of 100: the tool's own ramp, fitted as any one-signed result.
+        ("CASE WHEN i < 4 THEN -1 ELSE i END", False, False),
+        ("CASE WHEN i = 0 THEN -0.5 ELSE i END", False, False),
+        # Mostly below 0 with one row above: turned around, as all below 0.
+        ("CASE WHEN i = 0 THEN 0.5 ELSE -i END", True, False),
+        # Zeros count on neither side.
+        ("CASE WHEN i < 5 THEN -1 WHEN i < 60 THEN 0 ELSE i END", False, True),
+    ],
+)
+def test_a_statistic_takes_the_diverging_palette_only_with_a_real_share_below_and_above_0(
+    con: duckdb.DuckDBPyConnection, values: str, reverse: bool, diverging: bool
+) -> None:
+    relation = table(con, "value_sum", "polygon", values, 100)
+    doc = runner_for(AggregatePointsToolRunner, con).get_layer_style(
+        _aggregate_points(**_stat("sum")), MagicMock(), "polygon", relation
+    )
+    [c] = doc["classify"]
+    assert ("reverse" in c) is reverse
+    assert (c["palette"] == "colorbrewer:RdBu") is diverging
 
 
 def test_a_result_that_cannot_be_read_keeps_the_ramp(
@@ -797,8 +831,9 @@ def _computed(
     ("values", "field_type", "decimals"),
     [
         ("(i % 7) * 10", "INTEGER", 0),  # seven whole values, ten rows each
-        # Supply per demand of a few cells: breaks 0.0000036 and 0.0000044 need 7.
-        ("(i % 7 + 1) * 0.000001", "DOUBLE", 7),
+        # Supply per demand of a few cells: one class per value, whose breaks
+        # 0.000002 to 0.000007 need 6.
+        ("(i % 7 + 1) * 0.000001", "DOUBLE", 6),
         ("(i % 7 + 1) * 100000000", "DOUBLE", 0),
     ],
 )
@@ -828,14 +863,21 @@ def test_a_format_the_tool_writes_itself_is_kept(
     assert doc["classify"][0]["format"] == {"decimals": 2, "suffix": " x"}
 
 
-@pytest.mark.parametrize("values", ["5", "NULL"])
-def test_without_classes_nothing_is_written(
-    con: duckdb.DuckDBPyConnection, values: str
-) -> None:
-    relation = table(con, "total", "point", values, 10)
+def test_without_classes_nothing_is_written(con: duckdb.DuckDBPyConnection) -> None:
+    relation = table(con, "total", "point", "NULL", 10)
     intent = tool_style.numeric_default("total", ORANGES, "point", "Count")
     doc = _computed(con, intent, relation, "point")
     assert "format" not in json.dumps(doc)
+
+
+def test_one_value_keeps_its_class_with_the_value_s_decimals(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    relation = table(con, "total", "point", "5", 10)
+    intent = tool_style.numeric_default("total", ORANGES, "point", "Count")
+    [c] = _computed(con, intent, relation, "point")["classify"]
+    assert len(c["classes"]) == 1 and c["count"] == 7
+    assert c["format"] == {"decimals": 0}
 
 
 def test_an_empty_result_gets_no_decimals(con: duckdb.DuckDBPyConnection) -> None:
@@ -957,7 +999,7 @@ class TestHandedInStylesComputeAsBefore:
             layer_id="L",
         )
         assert saved is not None
-        assert saved["classify"][0]["format"] == {"decimals": 7}
+        assert saved["classify"][0]["format"] == {"decimals": 6}
         assert same_ignoring_stamps(saved, preview)
 
 
@@ -996,7 +1038,7 @@ def test_the_toolbox_run_stores_the_decimals(
     )
     stored = runner.db_service.create_layer.call_args.kwargs["style"]
     [c] = stored["classify"]
-    assert c["format"] == {"decimals": 7}
+    assert c["format"] == {"decimals": 6}
     assert c["title"] == "Count" and c["no_data"] == {"fill": GREY}
 
 
@@ -1610,9 +1652,8 @@ def test_a_join_statistic_that_varies_is_classified(
     ("values", "classes"),
     [
         ("i % 2", 2),
-        # One feature apart: the fit of the tool's run leaves one class, which
-        # draws in the palette's middle color.
-        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 0),
+        # One feature apart: one class per value all the same.
+        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 2),
     ],
 )
 def test_a_join_statistic_of_two_values_is_fitted_as_any_tool_default(

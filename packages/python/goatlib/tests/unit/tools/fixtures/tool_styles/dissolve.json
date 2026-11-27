@@ -36,7 +36,7 @@
    {
     "field": "sum_value_a",
     "method": "quantile",
-    "count": 4,
+    "count": 7,
     "palette": [
      "#d1eeea",
      "#a8dbd9",
@@ -47,6 +47,7 @@
      "#2a5674"
     ],
     "id": "sum_value_a",
+    "fit": true,
     "title": "Sum of value_a",
     "no_data": {
      "fill": {
@@ -56,30 +57,30 @@
     "classes": [
      {
       "id": "c1",
-      "to": 137.5,
+      "to": 150.0,
       "fill": {
        "color": "#d1eeea"
       }
      },
      {
       "id": "c2",
-      "from": 137.5,
-      "to": 175.0,
+      "from": 150.0,
+      "to": 200.0,
       "fill": {
        "color": "#85c4c9"
       }
      },
      {
       "id": "c3",
-      "from": 175.0,
-      "to": 225.0,
+      "from": 200.0,
+      "to": 300.0,
       "fill": {
        "color": "#4f90a6"
       }
      },
      {
       "id": "c4",
-      "from": 225.0,
+      "from": 300.0,
       "fill": {
        "color": "#2a5674"
       }
@@ -101,6 +102,12 @@
        "c3": "#4f90a6",
        "c4": "#2a5674"
       }
+     },
+     "single": {
+      "c1": 100.0,
+      "c2": 150.0,
+      "c3": 200.0,
+      "c4": 300.0
      },
      "no_data": false
     },

@@ -58,6 +58,7 @@
     "count": 5,
     "palette": "colorbrewer:OrRd",
     "id": "weight",
+    "fit": true,
     "title": "Sum of weight",
     "no_data": {
      "marker": {
@@ -67,38 +68,38 @@
     "classes": [
      {
       "id": "c1",
-      "to": 455.2,
+      "to": 456.0,
       "marker": {
        "color": "#fef0d9"
       }
      },
      {
       "id": "c2",
-      "from": 455.2,
-      "to": 497.4,
+      "from": 456.0,
+      "to": 521.0,
       "marker": {
        "color": "#fdcc8a"
       }
      },
      {
       "id": "c3",
-      "from": 497.4,
-      "to": 542.8,
+      "from": 521.0,
+      "to": 547.0,
       "marker": {
        "color": "#fc8d59"
       }
      },
      {
       "id": "c4",
-      "from": 542.8,
-      "to": 581.8,
+      "from": 547.0,
+      "to": 613.0,
       "marker": {
        "color": "#e34a33"
       }
      },
      {
       "id": "c5",
-      "from": 581.8,
+      "from": 613.0,
       "marker": {
        "color": "#b30000"
       }

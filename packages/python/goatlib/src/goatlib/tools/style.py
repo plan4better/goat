@@ -6,9 +6,11 @@ whose value is a number per feature (`numeric_default`), fixed categories
 (`categories`), bands of a distance or travel cost (`bands`), and the few
 looks tools and bundles always use. Classes of a `classified` style are
 filled from the result data by the tool runner
-(`BaseToolRunner.computed_style`), like any style the server computes, once
-`fit_classes` has fitted the count it asks for to the result; `with_decimals`
-then gives the tool's own classes the decimals they need.
+(`BaseToolRunner.computed_style`), like any style the server computes; a
+numeric default asks for classes fitted to the data (`fit`), which every
+compute fits again, and `with_decimals` then gives the tool's own classes the
+decimals they need. `fit_classes` fits the count of a numeric classification
+without `fit` once, in the run.
 """
 
 import copy
@@ -25,9 +27,9 @@ from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.i18n import DEFAULT_LANGUAGE, get_translator, supported_language
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
-from goatlib.style.compute import Breaks
+from goatlib.style.compute import STABLE_DIGITS, Breaks
 from goatlib.style.context import DataContext
-from goatlib.style.data import compute_stats
+from goatlib.style.data import centred, compute_stats, signed_rows
 from goatlib.style.defaults import default_style
 from goatlib.style.ids import assign_ids
 from goatlib.style.models.classify import NUMERIC_METHODS
@@ -178,10 +180,11 @@ def numeric_default(
     symbol: dict[str, Any] | None = None,
     outline_areas: bool = False,
 ) -> dict[str, Any]:
-    """The default of a result whose value is a number per feature: quantile
-    classes of `field` (`classified`), the ramp turned around with `reverse`,
-    the legend's title and unit, and grey for features without a value. The
-    number format follows from the computed classes (`with_decimals`)."""
+    """The default of a result whose value is a number per feature: at most
+    `count` quantile classes of `field` (`classified`), fitted to the data on
+    every compute (`fit`), the ramp turned around with `reverse`, the legend's
+    title and unit, and grey for features without a value. The number format
+    follows from the computed classes (`with_decimals`)."""
     doc = classified(
         field,
         palette,
@@ -191,6 +194,7 @@ def numeric_default(
         outline_areas=outline_areas,
     )
     c = doc["classify"][0]
+    c["fit"] = True
     if reverse:
         c["reverse"] = True
     c["title"] = title
@@ -223,26 +227,41 @@ def result_columns(runner: Any, relation: str) -> dict[str, str] | None:
         return None
 
 
-def only_negative(
+def read_range(
     runner: Any, relation: str, field: str, columns: Collection[str] | None = None
-) -> bool:
-    """Whether `field` holds a value below 0 and none above, read with the
-    runner's connection (and the result's `columns`, read too when not
-    given); False where the result cannot be read, and without a warning
-    where it has no such column (the run's style check reports that)."""
+) -> tuple[Any, Any]:
+    """The lowest and highest value of `field`, read with the runner's
+    connection (and the result's `columns`, read too when not given); (None,
+    None) where the result cannot be read, and without a warning where it has
+    no such column (the run's style check reports that)."""
     column = quote_identifier(field)
     try:
         if columns is None:
             columns = column_types(runner.duckdb_con, relation)
         if field not in columns:
-            return False
+            return None, None
         low, high = runner.duckdb_con.execute(
             f"SELECT min({column}), max({column}) FROM {relation}"
         ).fetchone()
-        return low is not None and low < 0 and high <= 0
+        return low, high
     except Exception:  # the ramp as it is
         logger.warning("Reading the result's value range failed", exc_info=True)
-        return False
+        return None, None
+
+
+def read_signed_rows(runner: Any, relation: str, field: str) -> tuple[int, int]:
+    """How many rows of `field` lie below 0 and above 0 (`signed_rows`), read
+    with the runner's connection; (0, 0) where the result cannot be read."""
+    try:
+        return signed_rows(runner.duckdb_con, relation, field)
+    except Exception:  # the ramp as it is
+        logger.warning("Reading the result's signed rows failed", exc_info=True)
+        return 0, 0
+
+
+#: The palette of a statistic whose values lie on both sides of 0: red below,
+#: blue above, its middle at 0 (`fit` centres classes on a diverging palette).
+SIGNED_PALETTE = "colorbrewer:RdBu"
 
 
 def statistic_default(
@@ -254,32 +273,42 @@ def statistic_default(
     relation: str,
     *,
     area_weighted: bool = False,
-    negative: bool | None = None,
+    value_range: tuple[Any, Any] | None = None,
     outline_areas: bool = False,
     columns: Collection[str] | None = None,
     language: str | None = None,
 ) -> dict[str, Any]:
     """The default of a statistics tool: its first statistic's column `field`
     (`numeric_default`) in the tool's sequential palette, turned around where
-    the column holds only negative values (`negative`, read from `relation`
-    when not given), so the value farthest from 0 is the darkest. Polygons
-    with `outline_areas` take no outline where the result's `columns` show H3
+    the column holds only negative values, so the value farthest from 0 is the
+    darkest, and in `SIGNED_PALETTE` where both sides of 0 hold a real share
+    of its rows (`centred`; a count never does); with values on both sides but
+    no such share, as the side that holds most rows. The column's lowest and highest value are
+    `value_range`, read from `relation` when not given. Polygons with
+    `outline_areas` take no outline where the result's `columns` show H3
     cells (`on_h3_cells`). The columns are read from `relation` once, where
     either needs them and they are not given. The title is in the run's
     `language`."""
-    signed = stat.operation != StatisticOperation.count and negative is None
-    if columns is None and (signed or (outline_areas and geometry == "polygon")):
+    signed = stat.operation != StatisticOperation.count
+    read = signed and value_range is None
+    if columns is None and (read or (outline_areas and geometry == "polygon")):
         columns = result_columns(runner, relation)
-    reverse = stat.operation != StatisticOperation.count and (
-        only_negative(runner, relation, field, columns)
-        if negative is None
-        else negative
-    )
+    if read:
+        value_range = read_range(runner, relation, field, columns)
+    low, high = value_range if signed and value_range else (None, None)
+    reverse = low is not None and low < 0 and high <= 0
+    crosses = low is not None and low < 0 < high
+    if crosses:
+        # Centred only with a real share on both sides; else as the side that
+        # holds most rows.
+        below, above = read_signed_rows(runner, relation, field)
+        reverse = below > above and not centred(below, above)
+        crosses = centred(below, above)
     if columns is not None and on_h3_cells(columns=columns):
         outline_areas = False
     return numeric_default(
         field,
-        palette,
+        SIGNED_PALETTE if crosses else palette,
         geometry,
         statistic_title(stat, area_weighted=area_weighted, language=language),
         reverse=reverse,
@@ -339,12 +368,47 @@ def _single_value_decimals(value: float) -> int:
     return max(own, decimals_for([value], [value, value]))
 
 
+#: The significant digits a value shown alone (a class's single value) reads.
+SINGLE_VALUE_DIGITS = 3
+
+
+def value_decimals(value: float) -> int:
+    """The decimals a value shown alone reads with: the fewest that show its
+    first `SINGLE_VALUE_DIGITS` significant digits as they round, never more
+    than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789 one, 1234.5
+    none, 0.087 three, 0.00318 five, 30 none)."""
+    if value == 0 or not math.isfinite(value):
+        return 0
+    whole = math.floor(math.log10(abs(value))) + 1
+    wanted = min(MAX_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
+    exact = _rounded(value, wanted)
+    return next(d for d in range(wanted + 1) if _rounded(value, d) == exact)
+
+
+def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
+    """The `values`, each that is one of the `numbers` to 12 significant
+    digits as that number: a class's single value is mostly its own bound, or
+    the data's minimum, stored with another last digit, and the two are one
+    number to tell apart from the others."""
+    known = _finite(numbers)
+    return [
+        next(
+            (k for k in known if abs(v - k) <= abs(k) * 10 ** (1 - STABLE_DIGITS)),
+            v,
+        )
+        for v in values
+    ]
+
+
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
-    that has classes and no format of its own: the decimals its class breaks
-    and its domain's ends need (`decimals_for`); a single class over one value
-    has no break and takes the decimals of that value
-    (`_single_value_decimals`)."""
+    that has classes and no format of its own: the decimals its class breaks,
+    the values of the classes that hold one (`computed.single`, read with
+    `fit` only) and its
+    domain's ends need (`decimals_for`), and at least those each such value
+    reads with when shown alone (`value_decimals`). A single class over one
+    value has no break and takes the decimals of that value: as a value shown
+    alone with `fit`, else `_single_value_decimals`."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -360,11 +424,15 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
         ):
             breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
+            fitted = c.get("fit") is True
+            single = (c.get("computed") or {}).get("single") if fitted else None
+            values = _finite(single.values()) if isinstance(single, dict) else set()
+            breaks += _as_bounds(values, [*breaks, *domain])
             one = _finite(domain)
             decimals = (
-                _single_value_decimals(next(iter(one)))
+                (value_decimals if fitted else _single_value_decimals)(next(iter(one)))
                 if len(c["classes"]) == 1 and len(one) == 1
-                else decimals_for(breaks, domain)
+                else max([decimals_for(breaks, domain), *map(value_decimals, values)])
             )
             c = {**c, "format": {"decimals": decimals}}
             changed = True
@@ -373,15 +441,17 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def _asks_for_classes(c: Any) -> bool:
-    """A numeric classification with a count: what `classified` asks for. Only
-    the style a tool builds in its run is fitted (`BaseToolRunner.computed_style`
-    with `fit`), so this does not tell a tool's style from anyone else's."""
+    """A numeric classification with a count and without `fit` (whose classes
+    every compute fits to the data). Only the style a tool builds in its run is
+    fitted (`BaseToolRunner.computed_style` with `fit`), so this does not tell a
+    tool's style from anyone else's."""
     return (
         isinstance(c, dict)
         and c.get("method") in NUMERIC_METHODS
         and isinstance(c.get("field"), str)
         and isinstance(c.get("count"), int)
         and not isinstance(c.get("count"), bool)
+        and c.get("fit") is not True
     )
 
 

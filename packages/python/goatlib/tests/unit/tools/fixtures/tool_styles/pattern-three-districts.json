@@ -34,9 +34,10 @@
    {
     "field": "sum_value",
     "method": "quantile",
-    "count": 3,
+    "count": 7,
     "palette": "colorbrewer:Oranges",
     "id": "sum_value",
+    "fit": true,
     "title": "Sum of value",
     "no_data": {
      "fill": {
@@ -46,22 +47,22 @@
     "classes": [
      {
       "id": "c1",
-      "to": 340.0,
+      "to": 450.0,
       "fill": {
        "color": "#fee6ce"
       }
      },
      {
       "id": "c2",
-      "from": 340.0,
-      "to": 626.666666667,
+      "from": 450.0,
+      "to": 980.0,
       "fill": {
        "color": "#fdae6b"
       }
      },
      {
       "id": "c3",
-      "from": 626.666666667,
+      "from": 980.0,
       "fill": {
        "color": "#e6550d"
       }
@@ -82,6 +83,11 @@
        "c2": "#fdae6b",
        "c3": "#e6550d"
       }
+     },
+     "single": {
+      "c1": 120.0,
+      "c2": 450.0,
+      "c3": 980.0
      },
      "no_data": false
     },

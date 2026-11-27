@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from goatlib.style.catalog import palettes
 from goatlib.style.check import MAIN_COLOR, as_list, part_values, record_places
 from goatlib.style.colors import (
     DEFAULT_CLASSIFY_PALETTE,
@@ -40,6 +41,11 @@ DEFAULT_COUNT = 5
 
 #: `("breaks", field, method, count)`, `("top", field, count)`, `("range", field)`
 #: (a value form's domain, or the minimum and maximum of manual classes);
+#: quantile classes fitted to the data (`fit`) ask for `("breaks", field,
+#: "quantile", count, "fit")`, on a diverging palette with a sixth part
+#: `"centre"`; their single values, for manual classes with `fit`,
+#: `("single", field, from, to, *breaks)` (the first class's `from` and the last
+#: class's `to`, empty where open, and the classes' inner bounds, as text);
 #: a sqrt or log scale reads its range over the values it can map,
 #: `("range", field, "sqrt")` (from 0) and `("range", field, "log")` (above 0).
 #: A raster's "field" is its band as a formula (`b1`, or the formula's expression),
@@ -53,12 +59,21 @@ StatKey = tuple[str, ...]
 @dataclass(frozen=True)
 class Breaks:
     """Inner breaks over the data's minimum and maximum (None without data);
-    `merged` when equal breaks left fewer than the classes asked for."""
+    `merged` when equal breaks left fewer than the classes asked for. Classes
+    fitted on a diverging palette (`positions`) take, per class, the color at
+    that place of the palette sampled to `steps` colors (centred at 0:
+    `2 * (count // 2) + 1`). Classes fitted to the data know, per class, the one
+    value it holds or None (`singles`)."""
 
     breaks: tuple[float, ...]
     min: float | None
     max: float | None
     merged: bool
+    positions: tuple[int, ...] = ()
+    singles: tuple[float | None, ...] = ()
+    #: The colors the palette is sampled to for `positions`; 0 for
+    #: `2 * (count // 2) + 1`.
+    steps: int = 0
 
 
 @dataclass(frozen=True)
@@ -111,10 +126,69 @@ def _count(c: dict[str, Any]) -> int | None:
     return None
 
 
+def _fitted(c: dict[str, Any]) -> bool:
+    """Quantile classes fitted to the data (5.2); `fit` on another method is ignored."""
+    return c.get("fit") is True and c.get("method") == "quantile"
+
+
+def _diverging(palette: Any) -> bool:
+    entry = palettes().get(palette) if isinstance(palette, str) else None
+    return entry is not None and entry.kind == "diverging"
+
+
 def _breaks_key(c: dict[str, Any]) -> StatKey | None:
     if c.get("method") in NUMERIC_METHODS and isinstance(c.get("field"), str):
-        return ("breaks", c["field"], c["method"], str(_count(c) or DEFAULT_COUNT))
+        key = ("breaks", c["field"], c["method"], str(_count(c) or DEFAULT_COUNT))
+        if _fitted(c):
+            return (*key, "fit", *(("centre",) if _diverging(c.get("palette")) else ()))
+        return key
     return None
+
+
+def _single_key(c: dict[str, Any]) -> StatKey | None:
+    """Manual classes with `fit` (a tool's classes kept as they are, 5.2): the
+    one value each class holds, asked with the first class's `from` and the
+    last class's `to` where they close the classes (else empty) and the
+    classes' inner bounds."""
+    if not (
+        c.get("method") == "manual"
+        and c.get("fit") is True
+        and isinstance(c.get("field"), str)
+    ):
+        return None
+    classes = as_list(c.get("classes"))
+    bounds = [k.get("from") for k in classes[1:] if isinstance(k, dict)]
+    # One class holds the field's every value: a key without bounds.
+    if not classes or not all(_number(b) for b in bounds):
+        return None
+    first, last = classes[0], classes[-1]
+    ends = [
+        k.get(end) if isinstance(k, dict) and _number(k.get(end)) else None
+        for k, end in ((first, "from"), (last, "to"))
+    ]
+    return (
+        "single",
+        c["field"],
+        *("" if e is None else repr(float(e)) for e in ends),
+        *(repr(float(b)) for b in bounds),
+    )
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _singles_by_id(classes: list[Any], singles: Any) -> dict[str, float] | None:
+    """`computed.single`: class id to the one value the class holds, for the
+    classes that hold one; None where none does or the classes do not match."""
+    if not isinstance(singles, tuple) or len(singles) != len(classes):
+        return None
+    found = {
+        k["id"]: v
+        for k, v in zip(classes, singles)
+        if v is not None and isinstance(k, dict) and isinstance(k.get("id"), str)
+    }
+    return found or None
 
 
 def _top_key(c: dict[str, Any]) -> StatKey | None:
@@ -417,7 +491,7 @@ def needed_stats(doc: dict[str, Any]) -> list[StatKey]:
         return [k for k in keys if k is not None]
     keys: list[StatKey] = []
     for _, c in _classifications(doc):
-        for key in (_class_key(c), _presence_key(c)):
+        for key in (_class_key(c), _single_key(c), _presence_key(c)):
             if key is not None:
                 keys.append(key)
     keys.extend(_range_key(v) for v in _value_forms(doc))
@@ -454,10 +528,16 @@ def _put(record: dict[str, Any], target: str, value: Any) -> None:
 
 
 def _target_values(
-    c: dict[str, Any], geometry: str | None, n: int
+    c: dict[str, Any],
+    geometry: str | None,
+    n: int,
+    positions: tuple[int, ...] = (),
+    steps: int = 0,
 ) -> tuple[str | None, list[Any] | None]:
     """The target generated classes fill, and its values for `n` classes: colors
-    from the palette, numbers from the range, nothing for choices (5.4)."""
+    from the palette, numbers from the range, nothing for choices (5.4). Colors
+    of classes fitted on a diverging palette are taken at their `positions` of
+    the palette sampled to `steps` colors (`Breaks`)."""
     target = c.get("target")
     if not isinstance(target, str):
         target = MAIN_COLOR.get(geometry or "")
@@ -470,6 +550,10 @@ def _target_values(
             c.get("palette")
             or DEFAULT_CLASSIFY_PALETTE["categories" if categories else "numeric"]
         )
+        if positions:
+            steps = steps or 2 * ((_count(c) or DEFAULT_COUNT) // 2) + 1
+            spread = sample_colors(palette, steps, reverse=c.get("reverse") is True)
+            return target, [spread[p] for p in positions]
         try:
             colors = sample_colors(
                 palette,
@@ -575,7 +659,7 @@ def _numeric(
     else:
         classes = [{} for _ in range(n)]
     _with_ids(classes, ids, counters)
-    target, values = _target_values(c, geometry, n)
+    target, values = _target_values(c, geometry, n, b.positions, b.steps)
     ours = _ours(classes, c, target)
     written: dict[str, Any] = {}
     for i, k in enumerate(classes):
@@ -698,9 +782,21 @@ def apply_computed(
     counters: dict[str, int] = {}
     for ci, c in _classifications(out):
         if (range_key := _manual_range_key(c)) is not None:
-            # Manual classes stay as they are: only the field's minimum and maximum.
+            # Manual classes stay as they are: only the field's minimum and maximum,
+            # and with `fit` the value of each class that holds one.
+            single = None
+            if (single_key := _single_key(c)) is not None:
+                previous = c.get("computed")
+                single = (
+                    _singles_by_id(as_list(c.get("classes")), stats[single_key])
+                    if single_key in stats
+                    else previous.get("single")
+                    if isinstance(previous, dict)
+                    else None
+                )
             c["computed"] = {
                 **_manual_computed(c, stats.get(range_key), stamp, notes, ci),
+                **({"single": single} if single else {}),
                 **_facts(stats, c),
             }
             continue
@@ -720,9 +816,12 @@ def apply_computed(
         # The data's minimum and maximum of numeric classes: the first and last
         # class are open, and their labels read the data's ends.
         domain: Any = None
+        single = None
         if isinstance(breaks, Breaks) and breaks.min is not None:
             generated = _numeric(c, breaks, geometry, ids, counters)
             domain = [breaks.min, breaks.max]
+            if _fitted(c):
+                single = _singles_by_id(c["classes"], breaks.singles)
             fewer = _fewer_classes(c, breaks, to_pointer(["classify", item_key(c, ci)]))
             if fewer is not None:
                 notes.append(fewer)
@@ -737,10 +836,12 @@ def apply_computed(
                 notes.append(_no_values(["classify", item_key(c, ci)], c["field"]))
             generated = previous.get("generated")
             domain = previous.get("domain") if breaks_key else None
+            single = previous.get("single") if _fitted(c) else None
         c["computed"] = {
             **stamp,
             **({"domain": domain} if domain else {}),
             **({"generated": generated} if generated else {}),
+            **({"single": single} if single else {}),
             **_facts(stats, c),
         }
     for vpath, v in _attribute_forms(out):
@@ -802,7 +903,10 @@ def _fewer_classes(c: dict[str, Any], b: Breaks, pointer: str) -> Issue | None:
     break on another break or on the data's edge would leave a class empty or
     with one value, and it is joined to the next: a quantile's breaks meet only
     where values repeat, those of the other methods (and breaks rounded to
-    whole numbers) also without."""
+    whole numbers) also without. Classes fitted to the data (`fit`) are fewer
+    by design: no note."""
+    if _fitted(c):
+        return None
     asked = _count(c) or DEFAULT_COUNT
     if c.get("method") == "geometric_interval" and b.min is not None and b.min <= 0:
         return make_issue(

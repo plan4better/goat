@@ -114,6 +114,9 @@ export interface Computed {
   generated?: Generated | null;
   no_data?: boolean | null;
   other?: boolean | null;
+  single?: {
+    [k: string]: number;
+  } | null;
 }
 /**
  * What the server wrote into a classification's classes: the target and the
@@ -622,6 +625,7 @@ export interface Classification {
     | "geometric_interval"
     | "manual";
   count?: number | null;
+  fit?: boolean;
   target?:
     | (
         | "arrows.color"

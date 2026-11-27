@@ -1,9 +1,13 @@
-"""A tool's default style fits the result it was made for: no more classes than
-the classified field has values, one color for a field with one value, a point
-style for a point result, distinct colors for cluster ids."""
+"""A tool's default style fits the result it was made for: its numeric
+classes are fitted to the data on every compute (`fit`): no more classes than
+the classified field has values, every class holding a feature, one class for
+a field with one value. A numeric classification without `fit` asked for in a
+tool's run is fitted once (`fit_classes`). A point style for a point result,
+distinct colors for cluster ids."""
 
 import asyncio
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable, Iterator
 from unittest.mock import AsyncMock, MagicMock
@@ -15,7 +19,7 @@ from goatlib.analysis.schemas.catchment_area_v2 import CostType
 from goatlib.analysis.schemas.heatmap_v2 import HeatmapType
 from goatlib.models.io import DatasetMetadata
 from goatlib.style.check import MAIN_COLOR
-from goatlib.style.compute import same_ignoring_stamps
+from goatlib.style.compute import same_ignoring_stamps, stable
 from goatlib.style.data import compute_into, describe
 from goatlib.style.data_check import referenced_fields
 from goatlib.style.validate import validate
@@ -300,6 +304,29 @@ def today(
     return doc
 
 
+def unfitted(
+    con: duckdb.DuckDBPyConnection, relation: str, intent: dict[str, Any], geometry: str
+) -> dict[str, Any]:
+    """The tool's default as a style without `fit` gets it: its intent without
+    the key computed over the data as it is."""
+    plain = {
+        **intent,
+        "classify": [
+            {k: v for k, v in c.items() if k != "fit"} for c in intent["classify"]
+        ],
+    }
+    return today(con, relation, plain, geometry)
+
+
+def values_read(con: duckdb.DuckDBPyConnection, relation: str, field: str) -> int:
+    """The field's finite values, those alike to 12 digits counted once."""
+    rows = con.execute(
+        f'SELECT DISTINCT "{field}"::DOUBLE FROM {relation} '
+        f'WHERE "{field}" IS NOT NULL AND isfinite("{field}")'
+    ).fetchall()
+    return len({stable(v) for (v,) in rows})
+
+
 def tool_default(
     runner: BaseToolRunner,
     intent: dict[str, Any],
@@ -319,9 +346,10 @@ def tool_default(
 
 
 def decimals_for(c: dict[str, Any]) -> int:
-    """The decimals the computed classes need: their domain's ends and breaks
-    apart."""
+    """The decimals the computed classes need: their domain's ends, breaks
+    and single values apart."""
     breaks = [k["from"] for k in c["classes"] if "from" in k]
+    breaks += list((c["computed"].get("single") or {}).values())
     return tool_style.decimals_for(breaks, c["computed"]["domain"])
 
 
@@ -393,6 +421,8 @@ def check_fit(
 ) -> dict[str, Any]:
     """The invariants of a fitted default, against the unchanged behaviour (the
     shared break code at the tool's wish)."""
+    if intent["classify"][0].get("fit") is True:
+        return check_fitted(con, runner, intent, relation, geometry, field)
     wish = intent["classify"][0]["count"]
     doc = tool_default(runner, intent, relation, geometry)
     assert errors(con, relation, doc, geometry) == []
@@ -431,6 +461,44 @@ def check_fit(
         assert {k: c.get(k) for k in asked} == asked
     # The style check computes it again when the data's stamp changes: on the
     # same data it gives the same document.
+    again, _ = compute_into(con, relation, doc, geometry=geometry, fingerprint="f:2")
+    assert same_ignoring_stamps(again, doc)
+    return doc
+
+
+def check_fitted(
+    con: duckdb.DuckDBPyConnection,
+    runner: BaseToolRunner,
+    intent: dict[str, Any],
+    relation: str,
+    geometry: str,
+    field: str,
+) -> dict[str, Any]:
+    """The invariants of a default with `fit`: the stored count is the wish and
+    the classes at most the wish, one class per value where the field has no
+    more, every class holding a feature, one class only for one value, and
+    never fewer classes holding a feature than without the key."""
+    wish = intent["classify"][0]["count"]
+    doc = tool_default(runner, intent, relation, geometry)
+    assert errors(con, relation, doc, geometry) == []
+    [c] = doc["classify"]
+    assert c["count"] == wish and c["fit"] is True
+    values = values_read(con, relation, field)
+    n = len(c.get("classes") or [])
+    if values <= wish:
+        assert n == values
+    else:
+        assert 2 <= n <= wish
+    if n:
+        assert holding(con, relation, field, doc) == n
+        then = holding(con, relation, field, unfitted(con, relation, intent, geometry))
+        assert n >= then
+    if n >= 2:
+        assert c["format"] == {"decimals": decimals_for(c)}
+    if has_rows_without_value(con, relation, field):
+        assert c["computed"]["no_data"] is True
+    asked = intent["classify"][0]
+    assert {k: c.get(k) for k in asked} == asked
     again, _ = compute_into(con, relation, doc, geometry=geometry, fingerprint="f:2")
     assert same_ignoring_stamps(again, doc)
     return doc
@@ -508,17 +576,18 @@ def test_random_small_tied_results_never_draw_fewer_classes(
 
 
 @pytest.mark.parametrize(
-    ("distribution", "before", "after"),
+    ("distribution", "before", "after", "fitted"),
     [
-        # (classes listed, classes holding a feature)
-        ("three_values_tied", (3, 2), (2, 2)),
-        ("four_values_tied", (3, 2), (2, 2)),
-        ("five_values_tied", (3, 3), (3, 3)),
-        ("two_values_in_three_rows", (4, 2), (2, 2)),
-        ("four_values_two_tied", (3, 3), (3, 3)),
-        ("three_values_in_five_rows", (5, 3), (4, 3)),
-        ("three_values", (2, 2), (3, 3)),
-        ("two_rows", (7, 2), (2, 2)),
+        # (classes listed, classes holding a feature): without the key, fitted
+        # once in the run, and with `fit`
+        ("three_values_tied", (3, 2), (2, 2), (3, 3)),
+        ("four_values_tied", (3, 2), (2, 2), (4, 4)),
+        ("five_values_tied", (3, 3), (3, 3), (5, 5)),
+        ("two_values_in_three_rows", (4, 2), (2, 2), (2, 2)),
+        ("four_values_two_tied", (3, 3), (3, 3), (4, 4)),
+        ("three_values_in_five_rows", (5, 3), (4, 3), (3, 3)),
+        ("three_values", (2, 2), (3, 3), (3, 3)),
+        ("two_rows", (7, 2), (2, 2), (2, 2)),
     ],
 )
 def test_fewer_values_than_wished_keep_the_count_that_draws_more(
@@ -526,13 +595,17 @@ def test_fewer_values_than_wished_keep_the_count_that_draws_more(
     distribution: str,
     before: tuple[int, int],
     after: tuple[int, int],
+    fitted: tuple[int, int],
 ) -> None:
     runner = runner_for(TripCountToolRunner, con)
     relation = result_table(con, "total", "point", distribution)
     intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", relation)
+    plain = unfitted(con, relation, intent, "point")
+    asked = tool_style.classified("total", "colorbrewer:BuPu", "point")
     for doc, expected in [
-        (today(con, relation, intent, "point"), before),
-        (tool_default(runner, intent, relation, "point"), after),
+        (plain, before),
+        (tool_default(runner, asked, relation, "point"), after),
+        (tool_default(runner, intent, relation, "point"), fitted),
     ]:
         assert (drawn(doc), holding(con, relation, "total", doc)) == expected
 
@@ -575,11 +648,33 @@ def test_with_many_values_the_default_is_the_one_of_today(
     relation = result_table(con, field, geometry, "many_values")
     intent = build(runner, geometry, relation)
     doc = tool_default(runner, intent, relation, geometry)
-    assert same_ignoring_stamps(
-        without_format(doc), today(con, relation, intent, geometry)
+    plain = unfitted(con, relation, intent, geometry)
+    # The same rows per class, the breaks moved up onto the next value.
+    assert classes_of(doc) == classes_of(plain) == wish
+    assert rows_per_class(con, relation, field, doc) == rows_per_class(
+        con, relation, field, plain
     )
-    assert classes_of(doc) == wish
+    assert [k.get("from") for k in doc["classify"][0]["classes"]] == [
+        None if k.get("from") is None else float(math.ceil(k["from"]))
+        for k in plain["classify"][0]["classes"]
+    ]
     assert doc["classify"][0]["format"] == {"decimals": 0}
+
+
+def rows_per_class(
+    con: duckdb.DuckDBPyConnection, relation: str, field: str, doc: dict[str, Any]
+) -> list[int]:
+    out = []
+    for k in doc["classify"][0]["classes"]:
+        low, high = k.get("from"), k.get("to")
+        out.append(
+            con.execute(
+                f'SELECT count(*) FROM {relation} WHERE (? IS NULL OR "{field}" >= ?) '
+                f'AND (? IS NULL OR "{field}" < ?)',
+                [low, low, high, high],
+            ).fetchone()[0]
+        )
+    return out
 
 
 @pytest.mark.parametrize("tool", list(TOOLS))
@@ -588,7 +683,7 @@ def test_one_value_beside_rows_without_one_keeps_a_class_and_no_data(
 ) -> None:
     """A field with one value and rows without a value: one class for the
     value and the no-data look for the rest, so map and legend show both."""
-    runner_class, build, field, geometry, _ = TOOLS[tool]
+    runner_class, build, field, geometry, wish = TOOLS[tool]
     runner = runner_for(runner_class, con)
     con.execute(
         f"""CREATE OR REPLACE TABLE result AS
@@ -598,7 +693,7 @@ def test_one_value_beside_rows_without_one_keeps_a_class_and_no_data(
     )
     doc = tool_default(runner, build(runner, geometry, "result"), "result", geometry)
     [c] = doc["classify"]
-    assert c["count"] == 1
+    assert c["count"] == wish
     assert len(c["classes"]) == 1
     assert "no_data" in c
     assert c["computed"]["no_data"] is True
@@ -606,14 +701,26 @@ def test_one_value_beside_rows_without_one_keeps_a_class_and_no_data(
 
 
 @pytest.mark.parametrize("tool", list(TOOLS))
-def test_one_value_in_every_row_stays_plain(
+def test_one_value_in_every_row_is_one_class(
     con: duckdb.DuckDBPyConnection, tool: str
 ) -> None:
-    runner_class, build, field, geometry, _ = TOOLS[tool]
+    """With `fit` the classification stays, so the classes grow back when the
+    data gains values."""
+    runner_class, build, field, geometry, wish = TOOLS[tool]
     runner = runner_for(runner_class, con)
     relation = result_table(con, field, geometry, "constant")
     doc = tool_default(runner, build(runner, geometry, relation), relation, geometry)
-    assert "classify" not in doc
+    [c] = doc["classify"]
+    assert c["count"] == wish and len(c["classes"]) == 1
+
+
+def test_a_numeric_classification_without_fit_and_one_value_stays_plain(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    runner = runner_for(TripCountToolRunner, con)
+    relation = result_table(con, "total", "point", "constant")
+    asked = tool_style.classified("total", "colorbrewer:BuPu", "point")
+    assert "classify" not in tool_default(runner, asked, relation, "point")
 
 
 @pytest.mark.parametrize("distribution", ["constant", "all_null"])
@@ -621,14 +728,15 @@ def test_a_size_by_field_on_one_value_still_validates(
     con: duckdb.DuckDBPyConnection, distribution: str
 ) -> None:
     """The origin-destination width and size follow the weight; with one value
-    the plain color stays valid, and with none the lines are listed as no
-    data, also valid."""
+    its one class stays valid, and with none the lines are listed as no data,
+    also valid."""
     runner = runner_for(OriginDestinationToolRunner, con)
     relation = result_table(con, "weight", "line", distribution)
     intent = runner.get_layer_style(_od(), MagicMock(), "line", relation)
     doc = tool_default(runner, intent, relation, "line")
     if distribution == "constant":
-        assert "classify" not in doc
+        [c] = doc["classify"]
+        assert len(c["classes"]) == 1
     else:
         [c] = doc["classify"]
         assert "classes" not in c and c["computed"]["no_data"] is True
@@ -694,7 +802,7 @@ def test_a_fit_that_fails_leaves_the_classes_of_today(
     monkeypatch.setattr("goatlib.tools.base.fit_classes", fail)
     runner = runner_for(TripCountToolRunner, con)
     relation = result_table(con, "total", "point", "three_values")
-    intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", relation)
+    intent = tool_style.classified("total", "colorbrewer:BuPu", "point")
     doc = tool_default(runner, intent, relation, "point")
     assert same_ignoring_stamps(
         without_format(doc), today(con, relation, intent, "point")
@@ -815,6 +923,28 @@ class TestEveryPath:
             "ducklake:9"
         )
         assert same_ignoring_stamps(saved, preview)
+
+    def test_the_export_fits_a_tool_default_again(
+        self, con: duckdb.DuckDBPyConnection
+    ) -> None:
+        """A default with `fit` carries the key: the saved result's classes
+        follow its data, also when it holds more values than the preview."""
+        runner = runner_for(TripCountToolRunner, con)
+        small = result_table(con, "total", "point", "three_values")
+        intent = runner.get_layer_style(MagicMock(), MagicMock(), "point", small)
+        preview = tool_default(runner, intent, small, "point")
+        assert len(preview["classify"][0]["classes"]) == 3
+        many = result_table(con, "total", "point", "many_values", name="many")
+        saved = runner_for(FinalizeLayerRunner, con)._layer_style(
+            preview,
+            geometry_type="POINT",
+            relation=many,
+            data_snapshot=9,
+            layer_id="L",
+        )
+        assert saved is not None
+        [c] = saved["classify"]
+        assert len(c["classes"]) == c["count"] == 7 and c["fit"] is True
 
 
 class TestUserStylesStayAsTheyAre:

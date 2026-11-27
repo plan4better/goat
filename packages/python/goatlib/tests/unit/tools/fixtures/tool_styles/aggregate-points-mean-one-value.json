@@ -37,9 +37,10 @@
    {
     "field": "value_mean",
     "method": "quantile",
-    "count": 1,
+    "count": 7,
     "palette": "colorbrewer:Oranges",
     "id": "value_mean",
+    "fit": true,
     "title": "Mean of value",
     "no_data": {
      "fill": {
@@ -68,10 +69,13 @@
        "c1": "#fd8d3c"
       }
      },
+     "single": {
+      "c1": 99.7892905504
+     },
      "no_data": true
     },
     "format": {
-     "decimals": 2
+     "decimals": 1
     }
    }
   ]

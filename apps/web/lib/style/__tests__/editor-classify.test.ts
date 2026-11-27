@@ -29,12 +29,15 @@ import {
   setClassificationField,
   setManualBound,
   setMethod,
+  settleFit,
   withoutEmptyPart,
 } from "@/lib/style/editor/classify";
-import { getIn } from "@/lib/style/editor/paths";
+import { getIn, setIn } from "@/lib/style/editor/paths";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type SaveResult, StyleSaver, type StyleTransport } from "@/lib/style/save";
+
+import { fitEditCases } from "./fixtures";
 
 const doc = (extra: object = {}) =>
   ({ version: "1.0.0", kind: "vector", symbol: { fill: { color: "#cccccc" } }, ...extra }) as LayerStyle;
@@ -240,6 +243,45 @@ describe("classification edits", () => {
         setManualBound(doc({ classify: [{ ...classify(d)[0], computed: { at: "x", data: "f" } }] }), 0, 2, 4)
       )[0].computed
     ).toBeUndefined();
+  });
+
+  it("a moved break drops the single value of the two classes it touches at once, the others stay", () => {
+    const d = doc({
+      classify: [
+        {
+          id: "c",
+          field: "density",
+          method: "manual",
+          fit: true,
+          classes: [
+            { id: "a", to: 1 },
+            { id: "b", from: 1, to: 2 },
+            { id: "c", from: 2, to: 5 },
+            { id: "d", from: 5 },
+          ],
+          computed: { at: "x", domain: [0, 9], single: { a: 0, b: 1, c: 2, d: 9 } },
+        },
+      ],
+    });
+    expect(classify(setManualBound(d, 0, 2, 3))[0].computed).toEqual({
+      at: "x",
+      domain: [0, 9],
+      single: { a: 0, d: 9 },
+    });
+    // No single value left: the key goes.
+    const two = doc({
+      classify: [
+        {
+          ...classify(d)[0],
+          classes: [
+            { id: "a", to: 1 },
+            { id: "b", from: 1 },
+          ],
+          computed: { at: "x", domain: [0, 9], single: { b: 1 } },
+        },
+      ],
+    });
+    expect(classify(setManualBound(two, 0, 1, 2))[0].computed).toEqual({ at: "x", domain: [0, 9] });
   });
 
   it("removes and moves classifications", () => {
@@ -870,5 +912,60 @@ describe("a reset's emptied part", () => {
     }
     const kept = styled({ outline: { width: 1 } }, { id: "a", outline: { width: 2 } });
     expect(withoutEmptyPart(kept, "classify.0.classes.0", "outline", "polygon")).toBe(kept);
+  });
+});
+
+// The same cases as goatlib's settle_fit (fit_edit_cases.json).
+describe.each(fitEditCases())("settleFit: $name", (c) => {
+  it("settles the edit as goatlib does", () => {
+    const before = structuredClone(c.before);
+    const after = structuredClone(c.after);
+    expect(settleFit(before, after)).toEqual(c.expected);
+    expect([before, after]).toEqual([c.before, c.after]);
+  });
+});
+
+describe.each(fitEditCases())("settleFit without fit: $name", (c) => {
+  it("gives back the very document it was given", () => {
+    const plain = (doc: LayerStyle) =>
+      setIn(
+        doc,
+        "classify",
+        ((doc as unknown as { classify: object[] }).classify ?? []).map((k) => {
+          const { fit: _fit, ...rest } = k as { fit?: boolean };
+          return rest;
+        })
+      );
+    const after = plain(c.after);
+    expect(settleFit(plain(c.before), after)).toBe(after);
+  });
+});
+
+describe("settleFit in the panel's own edits", () => {
+  const [first] = fitEditCases();
+  const fitted = () => structuredClone(first.before) as LayerStyle;
+
+  it("leaves the document as it is where nothing settles", () => {
+    const before = fitted();
+    const after = pickClassPalette(before, 0, "fill.color", "colorbrewer:Greens", false);
+    expect(settleFit(before, after)).toBe(after);
+  });
+
+  it("a count picked removes fit; the method menu's manual keeps it", () => {
+    const before = fitted();
+    const counted = settleFit(before, setIn(before, "classify.0.count", 5));
+    expect(getIn(counted, "classify.0.fit")).toBeUndefined();
+    const manual = settleFit(before, setMethod(before, 0, "manual"));
+    expect(getIn(manual, "classify.0.fit")).toBe(true);
+    expect(getIn(manual, "classify.0.method")).toBe("manual");
+    const field = settleFit(before, setClassificationField(before, 0, { name: "w", type: "number" }));
+    expect(getIn(field, "classify.0.fit")).toBeUndefined();
+  });
+
+  it("a moved break keeps fit on the manual classes", () => {
+    const before = fitted();
+    const moved = settleFit(before, setManualBound(before, 0, 1, 3));
+    expect(getIn(moved, "classify.0.method")).toBe("manual");
+    expect(getIn(moved, "classify.0.fit")).toBe(true);
   });
 });

@@ -1309,6 +1309,52 @@ What the server stores after computing the classes:
   colors, names, `visible`, zooms, part overrides. A new `count` rebuilds the classes from the palette.
 - **Moving a break by hand** turns the method into `manual`, which is never recomputed.
 
+**Fit to the data (`fit`).** Tools set `fit: true` on the quantile classes of their default styles; the panel and the
+AI never set it. `count` is then the most classes, not a fixed number:
+
+> "At most seven quantile classes of density, fitted to the data."
+
+<!-- check: districts -->
+```json
+{
+  "version": "1.0.0",
+  "kind": "vector",
+  "symbol": { "fill": { "color": "#cccccc" } },
+  "classify": [
+    {
+      "title": "Inhabitants per km²",
+      "field": "density",
+      "method": "quantile",
+      "count": 7,
+      "fit": true,
+      "palette": "colorbrewer:OrRd",
+      "no_data": { "fill": { "color": "#cccccc" } }
+    }
+  ]
+}
+```
+
+- **Classes:** a field with at most `count` values gets one class per value. Otherwise every class holds at least one
+  feature: each break lies on a value of the data, a quantile break moved up to the next value. A value on which
+  quantile classes would lose a class (two breaks on the same value, or a break on the lowest or highest value) gets a
+  class of its own, from the value to the next. Where quantile classes lose none, the classes are theirs. Values alike
+  to 12 significant digits count as one value (one class, one break).
+- **Centre at 0:** with a diverging palette (catalogue kind `diverging`) and at least 5% of the rows other than 0 on
+  each side of 0, the values below 0 and from 0 up are fitted apart into at most half of `count` each, 0 is a break,
+  and classes take the colors before the middle (below 0), after it (above 0) or the middle (0 alone). Otherwise they
+  take the half on the side with most rows, the middle only for 0 alone. Switching the palette turns this on or off.
+- **Every compute fits again,** so a result that gains values gets its classes back; `count` stays as written. Fewer
+  classes than `count` are by design and give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on
+  other methods.
+- **Legend:** with `fit`, a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also
+  once a class edit made the classes `manual`: recorded with every compute (a closed first or last class leaves the
+  values beyond it out), so a class that comes to hold two values reads its range again.
+- **Edits:** choosing a field, a count or a method other than `manual` removes `fit`, and the classes compute as asked
+  from then on. A change to one class (its color, name, visibility, zooms or a part, not its bounds) keeps the classes
+  as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes nothing in how
+  manual classes compute. Moving a break or choosing `manual` does the same. A palette, `reverse`, `range`, `target`,
+  title, `unit`, `format`, `no_data`, `other` or `legend` keeps `fit`, as does a key a class loses.
+
 > "Fill by density around its mean (standard deviations, on a diverging palette); outline width by population in
 > natural breaks."
 
@@ -1802,7 +1848,7 @@ rasters and map services do not change.
 |---|---|
 | layer without classifications | one swatch with the layer name |
 | classification | a section titled `title` (default: the field's display name; classifications of one field with the same classes, categories or numeric bounds, are one section whose entries show all they set), one entry per class in list order, then `other`, then `no_data` (these two when the data holds such features, `computed.other` and `computed.no_data`, with the look the style gives them or the base look; while not computed, when the style has a record; never when hidden or left out); none while it has no classes (not computed yet, or the field has no values) |
-| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
+| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text, or for a class that holds a single value (`computed.single`, written for `fit`, 5.2) that value; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
 | rule | its `name`, a swatch of what it changes; a rule that hides its features has no entry; rules that only set zooms need `legend: false` (or show a plain entry); in a layer without classes the features no rule matches follow as "Other features" |
 | value form with `palette` | a color ramp with the domain's ends, formatted |
 | value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain, under the field's name |
@@ -3090,14 +3136,15 @@ to the intent, with the data it came from.
 
 | Intent | Computed | Stored in |
 |---|---|---|
-| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`) and `count` | class `from` and `to`, colors from the palette, sizes from the range | the classification's `classes` + `computed` |
+| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`) and `count` | class `from` and `to`, colors from the palette, sizes from the range, and for `fit` the value of each class that holds one | the classification's `classes` + `computed` |
 | categories with `count` (top N) | the N most frequent values as classes, the rest in `other` | `classes` + `computed` |
 | value form without `domain` | the field's minimum and maximum (over the values a `sqrt` scale can map, from 0, or a `log` scale, above 0) | `computed.domain` on the value form |
 | H3 `classify` or continuous H3 colors | breaks or domain per resolution | `render.computed`, keyed by resolution |
 | raster `continuous` or `hillshade` palette without `domain`; raster classes with a method | the minimum and maximum, and class breaks, of the band or band formula, from a sample of its values (the file's overviews) | `render.computed`; `render.classify.classes` + `computed` |
 
 - **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, on every classification of a field `no_data` and `other` (whether the data has features without a value in the field and, for categories, values no class lists: the legend lists "No data" and "Other" when it has, 7.2; a classification whose classes are the author's is held against the data for these alone; a style that lacks them, one computed before they were recorded or converted from the old format, is not stale for that and gets them with its next computation or when its panel opens, its classes untouched; `no_data: null` says the server looked and could not tell), and on a classification `generated`: the
-  target and the value the server wrote per class id.
+  target and the value the server wrote per class id; with `fit` (5.2), also on `manual` classes, `single`: the value
+  of each class that holds one, by class id (absent where none does).
 - **Fingerprint:** an opaque string the server writes, telling which data the values were computed from:
   - a DuckLake layer: the snapshot of the layer's last data change (`ducklake:455812`). core tracks it per layer from
     DuckLake's change log (inserts and deletes, also inlined ones, and schema changes; not compaction), so every
@@ -3124,7 +3171,8 @@ to the intent, with the data it came from.
   - `from` and `to` are replaced position by position.
   - Everything else a class carries stays when `count` is unchanged: colors and names picked by hand, `visible`,
     zooms, part overrides.
-  - A new `count` rebuilds numeric classes from the palette.
+  - A new `count` rebuilds numeric classes from the palette. With `fit` (5.2) the number of classes follows the data,
+    and a change of the number rebuilds the classes from the palette.
   - A class value still equal to what the server wrote (`computed.generated`) follows the palette, `reverse` and
     `range`, so changing them recolors the classes; a value changed by hand stays. A new `target` removes what the
     server wrote for the old one.
@@ -3717,6 +3765,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `field` | field name | yes (vectors) | |
 | `method` | `categories`, `quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`, `manual` | yes | |
 | `count` | integer 1 to 256 (top N for categories, classes otherwise) | no | categories: the classes as written; 5 |
+| `fit` | boolean: quantile classes fitted to the data, `count` the most (5.2); set by tools | no | `false` |
 | `target` | property path, for example `outline.width` | no | the main color |
 | `palette`, `reverse` | palette, boolean | no | `goat:green` for numeric, `colorbrewer:Set2` for categories |
 | `range` | `[min, max]` for number targets | no | the target's default range |
@@ -3724,7 +3773,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `legend` | `false` | no | shown |
 | `classes` | list of class records (18.5) | no | computed |
 | `other`, `no_data` | class record | no | none |
-| `computed` | `{ at, data, scope, no_data, other, generated }` | server | |
+| `computed` | `{ at, data, scope, no_data, other, generated, single }` | server | |
 
 ### 18.5 Class record
 
@@ -3989,6 +4038,10 @@ lowercase letter followed by up to 31 lowercase letters, digits or `_`. A later 
 new item by its id. `version` and `kind` are not edited. Computed values are never written: an operation on a path under
 `computed`, with a value that contains `computed`, or whose path ends on a class bound or value the server computes
 (5.2) is refused. Bounds written inside a whole class or class list of such a classification are replaced by the server.
+`fit` (5.2) is set by tools for their default styles and never written by hand: an operation that sets it, or adds a
+classification carrying it, is refused; removing it is allowed. After the operations, a classification with `fit` is
+settled as the panel settles it: a new field, count or method removes `fit`, a change to one of its classes keeps the
+classes as they are, `manual`.
 `use_field` replaces a field reference that is there; a key that is not there is refused.
 
 ## 21. Changelog

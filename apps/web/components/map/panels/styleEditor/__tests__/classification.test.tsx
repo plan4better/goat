@@ -203,6 +203,33 @@ describe("classification editor", () => {
     expect(store.get("classify.0.count")).toBe(2);
   });
 
+  it("classes fitted to the data say the count is the most; other classes say nothing", () => {
+    i18n.addResource("en", "common", "style_editor.count_fitted", "Up to {{count}}, fitted");
+    try {
+      shell(doc([{ ...QUANTILE, count: 7, fit: true }]));
+      expect(within(rowOf("style_editor.classes")).getByText("Up to 7, fitted")).toBeDefined();
+    } finally {
+      // Only the key this test added: later tests keep the bundle.
+      delete (i18n.getResourceBundle("en", "common") as { style_editor: Record<string, string> }).style_editor
+        .count_fitted;
+    }
+  });
+
+  it("fit on another method shows no caption", () => {
+    shell(doc([{ ...QUANTILE, method: "natural_breaks", fit: true }]));
+    expect(screen.queryByText("style_editor.count_fitted")).toBeNull();
+  });
+
+  it("a count picked on fitted classes removes fit and the caption", async () => {
+    const { store } = shell(doc([{ ...QUANTILE, count: 7, fit: true }]));
+    expect(screen.getByText("style_editor.count_fitted")).toBeDefined();
+    const { options } = await countMenu();
+    await userEvent.click(options[3]);
+    expect(store.get("classify.0.count")).toBe(5);
+    expect(store.get("classify.0.fit")).toBeUndefined();
+    expect(screen.queryByText("style_editor.count_fitted")).toBeNull();
+  });
+
   it("numeric classes show a stored 10 as picked", async () => {
     shell(doc([{ ...QUANTILE, count: 10 }]));
     const { options, selected } = await countMenu();
@@ -697,6 +724,30 @@ describe("class values", () => {
       const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
       expect(names.map((n) => n.placeholder).at(-1)).toBe("style_editor.range_and_more");
     });
+
+    it("a class that holds one value reads that value after its bound, as the legend does; the others their range", () => {
+      shell(
+        doc([
+          {
+            ...MANUAL,
+            fit: true,
+            classes: [
+              { id: "a", to: 10 },
+              { id: "b", from: 10, to: 20 },
+              { id: "c", from: 20 },
+            ],
+            computed: { ...computed, single: { a: 5, c: 100 } },
+          },
+        ])
+      );
+      const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+      expect(names.map((n) => n.placeholder)).toEqual(["5", "style_editor.range_to 20", "100"]);
+      // The bounds stay to type.
+      const bounds = screen.getAllByRole("textbox", {
+        name: "style_editor.lower_bound",
+      }) as HTMLInputElement[];
+      expect(bounds.map((b) => b.value)).toEqual(["10", "20"]);
+    });
   });
 });
 
@@ -1091,6 +1142,25 @@ describe("categories on a decimal field", () => {
     expect(listed()[0]).toEqual(["7", null]);
     await userEvent.click(screen.getAllByRole("menuitem")[0]);
     expect(store.get("classify.0.classes.3.values")).toEqual([]);
+  });
+});
+
+describe("classLabel of a class that holds a single value", () => {
+  const c = {
+    method: "quantile",
+    fit: true,
+    unit: "min",
+    classes: [
+      { id: "c1", to: 4 },
+      { id: "c2", from: 4 },
+    ],
+    computed: { domain: [0, 13], single: { c2: 13 } },
+  };
+
+  it("reads the value, a name still wins, and a class not in the key reads its range", () => {
+    expect(classLabel(c, c.classes[1], (key) => key, "en")).toBe("13 min");
+    expect(classLabel(c, { ...c.classes[1], name: "Far" }, (key) => key, "en")).toBe("Far");
+    expect(classLabel(c, c.classes[0], (key) => key, "en")).toBe("0 style_editor.range_to 4 min");
   });
 });
 

@@ -151,6 +151,9 @@ class Computed(StyleModel):
     #: entries stand for. Absent where the server could not tell.
     no_data: bool | None = None
     other: bool | None = None
+    #: Classes fitted to the data (`fit`): class id to the one value the class
+    #: holds, for the classes that hold one (spec 7.2).
+    single: dict[str, float] | None = None
 
 
 Scale = Literal["linear", "sqrt", "log"]

@@ -28,6 +28,19 @@ export const specExamples = (): SpecExample[] => read("spec_examples.json");
 export const sampleDatasets = (): Record<string, SampleDataset> => read("sample_datasets.json");
 export const mergeCases = (): MergeCase[] => read("merge_cases.json");
 
+/** How an edit leaves a classification fitted to the data (`fit`): goatlib's `settle_fit` and the panel's `settleFit`
+ * on the same cases. */
+export interface FitEditCase {
+  name: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  before: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  after: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  expected: any;
+}
+export const fitEditCases = (): FitEditCase[] => read("fit_edit_cases.json");
+
 /** The spec's compile examples (section 16): each `maplibre` fixture with the document right before it. */
 export function goldenPairs(): Array<{
   doc: SpecExample["doc"];

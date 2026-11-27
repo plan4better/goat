@@ -206,15 +206,112 @@ function manualComputed(computed: unknown): JsonObject | undefined {
   return rest;
 }
 
+/** `computed` without the single values (`computed.single`, spec 7.2) of the classes `ids`: their bounds moved, so the
+ * values they held are no longer known until the server answers. */
+function withoutSingles(computed: JsonObject | undefined, ids: unknown[]): JsonObject | undefined {
+  if (!computed || !isObject(computed.single)) return computed;
+  const { single, ...rest } = computed;
+  const kept = Object.fromEntries(Object.entries(single).filter(([id]) => !ids.includes(id)));
+  return Object.keys(kept).length ? { ...rest, single: kept } : rest;
+}
+
 /** A break typed by hand: class `k` starts at `value` and class `k - 1` ends there; the method becomes manual, whose
- * classes the server never recomputes (spec 5.2). */
+ * classes the server never recomputes (spec 5.2). The two classes lose their single values. */
 export function setManualBound(doc: LayerStyle, ci: number, k: number, value: number): LayerStyle {
   const base = `classify.${ci}`;
+  const c = classifyOf(doc)[ci];
   let next = setIn(doc, `${base}.classes.${k}.from`, value);
   if (k > 0) next = setIn(next, `${base}.classes.${k - 1}.to`, value);
   next = setIn(next, `${base}.method`, "manual");
   next = setIn(next, `${base}.count`, undefined);
-  return setIn(next, `${base}.computed`, manualComputed(classifyOf(doc)[ci]?.computed));
+  const classes: unknown[] = Array.isArray(c?.classes) ? c.classes : [];
+  const touched = [classes[k - 1], classes[k]].map((record) => (isObject(record) ? record.id : undefined));
+  return setIn(next, `${base}.computed`, withoutSingles(manualComputed(c?.computed), touched));
+}
+
+/** A class record's own content: everything but its id and bounds, and but the value at the server's `target` while it
+ * is still the one the server wrote (`written`), which a palette or range picked clears. */
+function ownContent(k: JsonObject, target: unknown, written: JsonObject): JsonObject {
+  const { id, from: _from, to: _to, ...rest } = k;
+  const wrote = typeof id === "string" && id in written ? written[id] : undefined;
+  if (typeof target !== "string" || wrote === undefined || !deepEqual(getIn(rest, target), wrote))
+    return rest;
+  return dropKey(rest as unknown as LayerStyle, "", target) as unknown as JsonObject;
+}
+
+/** Whether `after` holds a key `before` lacks, or a value other than its. */
+function gains(before: unknown, after: unknown): boolean {
+  if (isObject(after) && isObject(before))
+    return Object.entries(after).some(([key, value]) => !(key in before) || gains(before[key], value));
+  return !deepEqual(before, after);
+}
+
+/** Whether a class in both `before` and `after` (by id) gained a key or changed a key's value in its own content
+ * (`ownContent`). A key removed (a palette or range picked clears the values at the target) is no class edit. A new
+ * `target` moves each class's value from the old one (as the retarget fix does) before the two are compared, so values
+ * it moved are no class edit. */
+function classEdited(before: JsonObject, after: JsonObject): boolean {
+  const generated =
+    isObject(before.computed) && isObject(before.computed.generated) ? before.computed.generated : {};
+  const written = isObject(generated.values) ? generated.values : {};
+  const old = typeof before.target === "string" ? before.target : generated.target;
+  const moved = typeof old === "string" && typeof after.target === "string" && old !== after.target;
+  const at = moved ? after.target : generated.target;
+  const relocated = (k: JsonObject): JsonObject => {
+    const value = moved ? getIn(k, old as string) : undefined;
+    if (value === undefined || value === null) return k;
+    const without = dropKey(k as unknown as LayerStyle, "", old as string) as unknown as JsonObject;
+    return setIn(without as unknown as LayerStyle, after.target as string, value) as unknown as JsonObject;
+  };
+  const earlier = new Map(
+    list(before.classes)
+      .filter((k) => typeof k.id === "string")
+      .map((k) => [k.id, k])
+  );
+  return list(after.classes).some((k) => {
+    const prior = earlier.get(k.id);
+    return (
+      prior !== undefined && gains(ownContent(relocated(prior), at, written), ownContent(k, at, written))
+    );
+  });
+}
+
+/** `c` with its classes as they are, manual: without `count` and the values the server wrote (`manualComputed`). */
+function asManual(c: JsonObject): JsonObject {
+  const { count: _count, computed, ...rest } = c;
+  const kept = manualComputed(computed);
+  return { ...rest, method: "manual", ...(kept ? { computed: kept } : {}) };
+}
+
+/** One classification with `fit` as the edit from `before` leaves it (goatlib's `settle_fit`). */
+function settledFit(before: JsonObject, after: JsonObject): JsonObject {
+  if (after.method === "manual") return before.method === "manual" ? after : asManual(after);
+  if ((["field", "method", "count"] as const).some((key) => !deepEqual(before[key], after[key]))) {
+    const { fit: _fit, ...rest } = after;
+    return rest;
+  }
+  if (after.method !== "quantile" || !classEdited(before, after)) return after;
+  return asManual(after);
+}
+
+/** `after` with each classification fitted to the data (`fit`, set by tools) settled as the edit from `before` leaves
+ * it (spec 5.2), as goatlib's `settle_fit` settles the assistant's edits: a new field, count or method other than manual
+ * ends `fit`, and the classes compute as asked; a class that gains a key or changes a value of its own content
+ * (`classEdited`) keeps the classes as they are, manual (as a moved break does); anything else keeps `fit`. A classification is matched by its id, else by
+ * its place. `after` itself where nothing settles. */
+export function settleFit(before: LayerStyle, after: LayerStyle): LayerStyle {
+  const old = classifyOf(before);
+  const now = classifyOf(after);
+  let changed = false;
+  const settled = now.map((c, ci) => {
+    if (c.fit !== true) return c;
+    const match = typeof c.id === "string" ? old.find((o) => o.id === c.id) : old[ci];
+    if (!match) return c;
+    const next = settledFit(match, c);
+    changed ||= next !== c;
+    return next;
+  });
+  return changed ? setIn(after, "classify", settled) : after;
 }
 
 /** `classify[ci]` as its classes are now, no longer the most frequent values the server computes: categories without

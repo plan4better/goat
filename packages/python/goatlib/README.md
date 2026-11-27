@@ -510,21 +510,25 @@ documents goatlib built or upgraded:
 - **Tool looks** are documents from `tools/style.py` (`classified`,
   `categories`, the bundle role symbols, ...). A tool returns its look from
   `BaseToolRunner.get_layer_style`; the runner fills the classes from the result
-  (`computed_style`) and stamps them with the new table's snapshot. A tool asks
-  for a fixed number of classes whatever its result holds, so the runner first
-  fits the count of the style it asks for in that run to the result
-  (`tools/style.py`, `fit_classes`): with fewer distinct values than classes
-  asked for, it keeps, of every count from the number of values up to the one
-  asked for, the count that gives more classes holding a feature (then fewer
-  empty classes, then the smaller), so no result shows fewer colors than the
-  plain count would; one class or one value gives one color, unless features
-  without a value sit beside it: then the classification stays, with one class
-  or none, so map and legend show them as no data. Where ties make breaks fall together,
-  fewer classes are drawn than the stored count, the same on every recompute. A
-  style handed on from elsewhere (a template's, a filtered copy's) is not
-  fitted. A tool whose result is a number per feature asks for it through
-  `numeric_default`: a ramp and direction by the kind of value, a legend title
-  and unit, and grey for features without a value. A title is stored text,
+  (`computed_style`) and stamps them with the new table's snapshot. A tool whose
+  result is a number per feature asks for it through `numeric_default`: a ramp
+  and direction by the kind of value (values on both sides of 0 on a diverging
+  palette where each side holds a real share of the rows, `centred` in
+  `style/data.py`), a legend title and unit, grey for features without a
+  value, and `fit`. That key is why a tool's classes suit its result: the shared
+  computation fits them to the data on every compute, not once in the run
+  (`style/data.py`, `fitted_breaks`; spec 5.2), so a result that later gains or
+  loses values grows or shrinks its classes. Only tools write it, so a style
+  made by hand computes as it always did; a class edit in the panel or by the
+  assistant turns a fitted classification manual as it is, and an edit of its
+  field, method or count removes the key (`style/edit.py`, `settle_fit`, and
+  the web editor's `settleFit`). The runner's own fit of a run's style
+  (`tools/style.py`, `fit_classes`: the count fitted once to the distinct
+  values, a single class dropped unless features without a value sit beside
+  it) is left for a numeric classification a tool asks for without the key. A
+  style handed on from elsewhere (a template's, a filtered copy's) gets neither
+  that nor the runner's decimals; a `fit` it carries is honoured by the shared
+  computation as anywhere. A title is stored text,
   written once in the run's `language` (`style_title`, from the
   `style_titles` translations; English for a language they do not hold or
   none), so it does not follow whoever looks at the layer later; field names
@@ -534,8 +538,15 @@ documents goatlib built or upgraded:
   format has no mark that tells a tool's default from a hand-made style. The
   domain's ends and the breaks read apart, but an end at or above 0 may read 0,
   so a minimum next to 0 does not push every label to many decimals. A single
-  class over one value has no break and shows the value itself, with up to two
-  decimals and more where fewer would read it as 0.
+  class over one value has no break and shows the value itself: with `fit` as
+  any value shown alone (below), else with up to two decimals and more where
+  fewer would read it as 0. A fitted class that holds
+  one value is labelled with it (`computed.single`, which the legend and the
+  panel read), so the decimals also show each such value with its first three
+  significant digits (0.087 reads 0.087, 99.789 reads 99.8, 1234.5 reads
+  1,235); a value with more digits is rounded.
+  The format is written once, in the run: a later recompute on changed data
+  keeps it.
   Classified and categorized point looks draw each marker with a thin outline
   in a darker shade of its own color (`result_styled`), so a pale class stays
   readable on a light basemap; the cluster summary's overlapping translucent

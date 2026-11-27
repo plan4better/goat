@@ -739,7 +739,8 @@ async def _update_style(env: ToolEnv, args: StyleUpdateInput) -> StyleUpdated:
         # had an error before.
         own = edits.written_pointers(document, args.operations, added)
     elif args.document is not None:
-        document = args.document
+        # Never fit where the stored style has none; settled as an edit is.
+        document = edits.whole(before, args.document)
     else:
         document = base
 
@@ -932,7 +933,10 @@ UPDATE_STYLE: ToolSpec[StyleUpdateInput, StyleUpdated] = ToolSpec(
         "like): write method and count, and the server computes the classes. "
         "Never set the colors of a computed classification class by class: set "
         "its palette (and reverse, count or method); a class's own color only "
-        "when the user names that class. The result is checked "
+        "when the user names that class. Never set fit: a tool sets it on the "
+        "classes of its result; a new field, method or count removes it, and a "
+        "change to one class keeps the classes as they are (manual). The result "
+        "is checked "
         "before it is saved: an error the change adds is not saved and comes "
         "back with its path, the allowed values and its fix; errors the style "
         "had before, at paths the call does not write, do not stop the change. "

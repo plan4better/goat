@@ -23,6 +23,8 @@ from pydantic import (
 )
 
 from goatlib.style.colors import COLOR_KEYS
+from goatlib.style.compute import _drop, _put
+from goatlib.style.compute import _get as _value_at
 from goatlib.style.ids import assign_ids, existing_ids
 from goatlib.style.issues import Fix
 from goatlib.style.merge import _class_skip, _is_id_list
@@ -60,6 +62,11 @@ COMPUTED = (
     "leave it out."
 )
 CLASSES_COMPUTED = "The server computes the classes of this classification. Write its method and count."
+FIT = (
+    "fit is set by tools for the classes of their default styles; an edit never "
+    "sets it. Leave it out; to compute the classes as count, method and field ask, "
+    "remove it (op remove)."
+)
 FIXED = "/version and /kind are not edited: the server stamps the version, and a style keeps its kind."
 ID_KEPT = "An item keeps its id; edit its other keys, or add a new item."
 
@@ -226,9 +233,11 @@ class _RefusalError(Exception):
 
 
 def apply_edits(document: dict[str, Any], edits: Sequence[Edit]) -> Edited:
-    """`document` with every edit applied, in order. Raises EditError, and
+    """`document` with every edit applied, in order, and classes fitted to the
+    data settled as the edits leave them (`settle_fit`). Raises EditError, and
     applies nothing, when one cannot be applied."""
     doc = assign_ids(document)
+    original = copy.deepcopy(doc)
     added: dict[int, str] = {}
     for index, edit in enumerate(edits):
         before = _id_counts(doc)
@@ -240,7 +249,117 @@ def apply_edits(document: dict[str, Any], edits: Sequence[Edit]) -> Edited:
             raise EditError(index, refusal.reason) from None
         if new_id is not None:
             added[index] = _id_at(doc, new_id)
-    return Edited(document=doc, added=added)
+    return Edited(document=settle_fit(original, doc), added=added)
+
+
+def settle_fit(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    """`after` with each classification fitted to the data (`fit`) settled as
+    the edit from `before` leaves it (the specification's 5.2): a new field,
+    count or method other than manual ends `fit`, and the classes compute as
+    asked; a class that gains a key or changes a value (`_class_edited`: not
+    its id and bounds, nor the value the server wrote, nor a key removed, as a
+    palette or range picked clears) keeps the classes as they are, manual;
+    anything else keeps `fit`. A classification
+    is matched by its id, else by its place."""
+    old = before.get("classify") if isinstance(before, dict) else None
+    new = after.get("classify") if isinstance(after, dict) else None
+    if not isinstance(old, list) or not isinstance(new, list):
+        return after
+    settled = list(new)
+    for ci, c in enumerate(new):
+        if not isinstance(c, dict) or c.get("fit") is not True:
+            continue
+        match = (
+            next(
+                (o for o in old if isinstance(o, dict) and o.get("id") == c["id"]),
+                None,
+            )
+            if isinstance(c.get("id"), str)
+            else (old[ci] if ci < len(old) else None)
+        )
+        if isinstance(match, dict):
+            settled[ci] = _settled(match, c)
+    if all(a is b for a, b in zip(settled, new)):
+        return after
+    return {**after, "classify": settled}
+
+
+def _settled(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    if after.get("method") == "manual":
+        return after if before.get("method") == "manual" else _as_manual(after)
+    if any(before.get(k) != after.get(k) for k in ("field", "method", "count")):
+        return {k: v for k, v in after.items() if k != "fit"}
+    if after.get("method") != "quantile" or not _class_edited(before, after):
+        return after
+    return _as_manual(after)
+
+
+def _as_manual(c: dict[str, Any]) -> dict[str, Any]:
+    """`c` with its classes as they are, manual: without `count` and the values
+    the server wrote (`computed.generated`); the rest of `computed` stays where
+    it holds the data's minimum and maximum."""
+    out = {k: v for k, v in c.items() if k not in ("count", "computed")}
+    out["method"] = "manual"
+    computed = c.get("computed")
+    if isinstance(computed, dict) and isinstance(computed.get("domain"), list):
+        out["computed"] = {k: v for k, v in computed.items() if k != "generated"}
+    return out
+
+
+def _class_edited(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """Whether a class in both gained a key or changed a key's value (`_gains`),
+    leaving out its id, from and to, and the server's value at the generated
+    target while it is still what the server wrote. A key removed (a palette
+    or range picked clears the values at the target) is no class edit. A new
+    `target` moves each class's value from the old one (as the retarget fix
+    does) before the two are compared, so values it moved are no class edit."""
+    computed = before.get("computed")
+    generated = computed.get("generated") if isinstance(computed, dict) else None
+    target = generated.get("target") if isinstance(generated, dict) else None
+    values = generated.get("values") if isinstance(generated, dict) else None
+    written = values if isinstance(values, dict) else {}
+    old = before.get("target") if isinstance(before.get("target"), str) else target
+    new = after.get("target")
+    moved = isinstance(old, str) and isinstance(new, str) and old != new
+    at = new if moved else target
+
+    def own(k: dict[str, Any]) -> dict[str, Any]:
+        out = {key: v for key, v in k.items() if key not in ("id", "from", "to")}
+        wrote = written.get(k.get("id"), _UNSET)
+        if isinstance(at, str) and _value_at(out, at) == wrote:
+            out = copy.deepcopy(out)
+            _drop(out, at)
+        return out
+
+    def relocated(k: dict[str, Any]) -> dict[str, Any]:
+        value = _value_at(k, old) if moved else None
+        if value is None:
+            return k
+        out = copy.deepcopy(k)
+        _drop(out, old)
+        _put(out, new, value)
+        return out
+
+    earlier = {
+        k["id"]: k
+        for k in before.get("classes") or []
+        if isinstance(k, dict) and isinstance(k.get("id"), str)
+    }
+    return any(
+        _gains(own(relocated(earlier[k["id"]])), own(k))
+        for k in after.get("classes") or []
+        if isinstance(k, dict) and k.get("id") in earlier
+    )
+
+
+def _gains(before: Any, after: Any) -> bool:
+    """Whether `after` holds a key `before` lacks or a value other than its."""
+    if isinstance(after, dict) and isinstance(before, dict):
+        return any(k not in before or _gains(before[k], v) for k, v in after.items())
+    return after != before
+
+
+_UNSET = object()
 
 
 # One operation. Each works on `doc` in place (it is the call's own copy) and
@@ -251,11 +370,13 @@ def _apply(doc: dict[str, Any], edit: Edit) -> tuple[dict[str, Any], Any]:
     segments = _segments(edit.path)
     if edit.op == "set":
         _no_computed_inside(edit.value)
+        _no_fit(segments, edit.value)
         _set(doc, segments, edit.value)
     elif edit.op == "remove":
         _remove(doc, segments)
     elif edit.op == "add":
         _no_computed_inside(edit.item)
+        _no_fit(segments, edit.item)
         return doc, _add(doc, segments, edit.item or {}, edit.after)
     elif edit.op == "move":
         _move(doc, segments, edit.after)
@@ -584,6 +705,22 @@ def _no_computed_inside(value: Any) -> None:
         if isinstance(n, dict):
             if "computed" in n:
                 raise _RefusalError(COMPUTED)
+            stack.extend(n.values())
+        elif isinstance(n, list):
+            stack.extend(n)
+
+
+def _no_fit(segments: list[str], value: Any) -> None:
+    """Refuses an edit that sets `fit` on a classification: at its path, or in a
+    classification the value carries."""
+    if len(segments) == 3 and segments[0] == "classify" and segments[2] == "fit":
+        raise _RefusalError(FIT)
+    stack = [value]
+    while stack:
+        n = stack.pop()
+        if isinstance(n, dict):
+            if "fit" in n:
+                raise _RefusalError(FIT)
             stack.extend(n.values())
         elif isinstance(n, list):
             stack.extend(n)

@@ -1204,6 +1204,11 @@
      "default": null,
      "title": "Count"
     },
+    "fit": {
+     "default": false,
+     "title": "Fit",
+     "type": "boolean"
+    },
     "target": {
      "anyOf": [
       {
@@ -1971,6 +1976,21 @@
      ],
      "default": null,
      "title": "Other"
+    },
+    "single": {
+     "anyOf": [
+      {
+       "additionalProperties": {
+        "type": "number"
+       },
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Single"
     }
    },
    "required": [

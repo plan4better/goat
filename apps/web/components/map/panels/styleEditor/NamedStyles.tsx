@@ -376,7 +376,7 @@ function StylesPopover({ live }: { live: Live }) {
               group: "edit",
               label: t("style_editor.reset_to_dataset"),
               icon: ICON_NAME.REFRESH,
-              onClick: () => store.update(() => clone(reference)),
+              onClick: () => store.update(() => clone(reference), undefined, { replaces: true }),
             },
           ]
         : []),
@@ -452,7 +452,7 @@ function StylesPopover({ live }: { live: Live }) {
           startIcon={<Icon iconName={ICON_NAME.PASTE} sx={{ fontSize: "13px !important" }} />}
           // One undo step: the whole copied document replaces this one.
           onClick={() => {
-            if (canPaste && clipboard) store?.update(() => clipboard.document);
+            if (canPaste && clipboard) store?.update(() => clipboard.document, undefined, { replaces: true });
           }}>
           {t("style_editor.paste_style")}
         </Button>

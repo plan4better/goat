@@ -14,6 +14,7 @@ from goatlib.style.edit import (
     apply_edits,
     part_at,
     part_key,
+    settle_fit,
 )
 from goatlib.style.ids import assign_ids
 from goatlib.style.issues import Fix
@@ -24,6 +25,9 @@ from pydantic import ValidationError
 from .conftest import load_examples
 
 SPEC = Path(__file__).parents[3] / "docs" / "style-spec.md"
+FIT_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "fit_edit_cases.json").read_text()
+)
 CLASSES_COMPUTED = "The server computes the classes of this classification. Write its method and count."
 
 DOC: dict[str, Any] = {
@@ -850,20 +854,133 @@ def test_edit_error_counts_from_one_and_keeps_the_index() -> None:
 def test_the_spec_names_the_seven_operations_and_no_example_moved() -> None:
     lines = SPEC.read_text().split("\n")
     # The examples above section 20 keep their line numbers: that heading stays on
-    # line 3944 and the paragraph on the AI in 13.1 keeps its three lines.
-    assert lines.index("## 20. For AI authors") + 1 == 3944
-    assert lines[3227].startswith("**The AI**")
-    assert lines[3230] == "" and lines[3231].startswith("**Not used:**")
-    assert all(len(line) <= 120 for line in lines[3227:3230])
+    # line 3993 and the paragraph on the AI in 13.1 keeps its three lines.
+    assert lines.index("## 20. For AI authors") + 1 == 3993
+    assert lines[3275].startswith("**The AI**")
+    assert lines[3278] == "" and lines[3279].startswith("**Not used:**")
+    assert all(len(line) <= 120 for line in lines[3275:3278])
     starts = [
         n + 1
         for n, line in enumerate(lines)
         if line.startswith("```") and re.match(r"<!-- (check|expect):", lines[n - 1])
     ]
     assert len(starts) == len(load_examples())
-    assert max(starts) < 3944
+    assert max(starts) < 3993
     section = "\n".join(lines[3943 : lines.index("## 21. Changelog")])
     assert "**Edit operations.**" in section
     for op in ("set", "remove", "add", "move", "retarget", "use_field", "round"):
         assert f"| `{op}` |" in section, op
     assert "—" not in section and "–" not in section
+
+
+# Classes fitted to the data (`fit`): tools set it, an edit keeps what it shows.
+
+
+@pytest.mark.parametrize("case", FIT_CASES, ids=lambda c: c["name"])
+def test_settle_fit_cases(case: dict) -> None:
+    before = copy.deepcopy(case["before"])
+    after = copy.deepcopy(case["after"])
+    assert settle_fit(before, after) == case["expected"]
+    assert (before, after) == (case["before"], case["after"])
+
+
+@pytest.mark.parametrize("case", FIT_CASES, ids=lambda c: c["name"])
+def test_without_fit_the_document_comes_back_as_the_same_object(case: dict) -> None:
+    def plain(doc: dict) -> dict:
+        return {
+            **doc,
+            "classify": [
+                {k: v for k, v in c.items() if k != "fit"} for c in doc["classify"]
+            ],
+        }
+
+    before, after = plain(case["before"]), plain(case["after"])
+    assert settle_fit(before, after) is after
+    same = copy.deepcopy(DOC)
+    assert settle_fit(DOC, same) is same
+
+
+FITTED = {
+    "version": "1.0.0",
+    "kind": "vector",
+    "symbol": {"fill": {"color": "#cccccc"}},
+    "classify": FIT_CASES[0]["before"]["classify"],
+}
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"op": "set", "path": "/classify/v/fit", "value": True},
+        {"op": "set", "path": "/classify/v/fit", "value": False},
+        {
+            "op": "set",
+            "path": "/classify/v",
+            "value": {"field": "v", "method": "quantile", "count": 5, "fit": True},
+        },
+        {
+            "op": "add",
+            "path": "/classify",
+            "item": {"field": "w", "method": "quantile", "count": 5, "fit": True},
+        },
+        {
+            "op": "set",
+            "path": "/classify",
+            "value": [{"field": "w", "method": "quantile", "fit": True}],
+        },
+    ],
+)
+def test_an_edit_never_sets_fit(raw: dict) -> None:
+    reason = refused(FITTED, raw).reason
+    assert "fit" in reason and "tools" in reason and "remove" in reason
+
+
+def test_fit_can_be_removed() -> None:
+    doc = run(FITTED, {"op": "remove", "path": "/classify/v/fit"}).document
+    assert "fit" not in doc["classify"][0]
+    assert doc["classify"][0]["method"] == "quantile"
+
+
+def test_an_edit_of_the_count_removes_fit() -> None:
+    doc = run(FITTED, {"op": "set", "path": "/classify/v/count", "value": 5}).document
+    assert "fit" not in doc["classify"][0] and doc["classify"][0]["count"] == 5
+
+
+def test_a_class_color_set_by_an_edit_keeps_the_classes_manual() -> None:
+    doc = run(
+        FITTED,
+        {"op": "set", "path": "/classify/v/classes/c1/fill/color", "value": "#ff0000"},
+    ).document
+    c = doc["classify"][0]
+    assert c["method"] == "manual" and "count" not in c and c["fit"] is True
+    assert c["classes"][0]["fill"]["color"] == "#ff0000"
+    assert "generated" not in c["computed"] and c["computed"]["domain"] == [0, 9]
+
+
+def test_the_palette_set_by_an_edit_keeps_fit() -> None:
+    doc = run(
+        FITTED,
+        {"op": "set", "path": "/classify/v/palette", "value": "colorbrewer:Greens"},
+    ).document
+    assert doc["classify"][0]["fit"] is True
+    assert doc["classify"][0]["method"] == "quantile"
+
+
+def test_a_retarget_by_an_edit_keeps_fit_and_the_computed_classes() -> None:
+    doc = run(
+        FITTED, {"op": "retarget", "path": "/classify/v", "target": "outline.color"}
+    ).document
+    c = doc["classify"][0]
+    assert (c["method"], c["count"], c["fit"]) == ("quantile", 7, True)
+    assert c["target"] == "outline.color"
+    assert c["classes"][0]["outline"] == {"color": "#deebf7"}
+
+
+def test_manual_chosen_by_an_edit_drops_count_and_the_values_the_server_wrote() -> None:
+    doc = run(
+        FITTED, {"op": "set", "path": "/classify/v/method", "value": "manual"}
+    ).document
+    c = doc["classify"][0]
+    assert (c["method"], c["fit"], "count" in c) == ("manual", True, False)
+    assert "generated" not in c["computed"] and c["computed"]["domain"] == [0, 9]
+    assert c["classes"] == FITTED["classify"][0]["classes"]

@@ -38,6 +38,7 @@
     "count": 7,
     "palette": "colorbrewer:BuPu",
     "id": "total",
+    "fit": true,
     "title": "Trips in the time window",
     "no_data": {
      "marker": {
@@ -47,54 +48,54 @@
     "classes": [
      {
       "id": "c1",
-      "to": 3.57142857143,
+      "to": 4.0,
       "marker": {
        "color": "#edf8fb"
       }
      },
      {
       "id": "c2",
-      "from": 3.57142857143,
-      "to": 10.2857142857,
+      "from": 4.0,
+      "to": 12.0,
       "marker": {
        "color": "#bfd3e6"
       }
      },
      {
       "id": "c3",
-      "from": 10.2857142857,
-      "to": 22.1428571429,
+      "from": 12.0,
+      "to": 23.0,
       "marker": {
        "color": "#9ebcda"
       }
      },
      {
       "id": "c4",
-      "from": 22.1428571429,
-      "to": 40.1428571429,
+      "from": 23.0,
+      "to": 43.0,
       "marker": {
        "color": "#8c96c6"
       }
      },
      {
       "id": "c5",
-      "from": 40.1428571429,
-      "to": 66.2857142857,
+      "from": 43.0,
+      "to": 67.0,
       "marker": {
        "color": "#8c6bb1"
       }
      },
      {
       "id": "c6",
-      "from": 66.2857142857,
-      "to": 103.0,
+      "from": 67.0,
+      "to": 107.0,
       "marker": {
        "color": "#88419d"
       }
      },
      {
       "id": "c7",
-      "from": 103.0,
+      "from": 107.0,
       "marker": {
        "color": "#6e016b"
       }

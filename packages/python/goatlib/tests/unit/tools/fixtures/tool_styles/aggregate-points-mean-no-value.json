@@ -37,9 +37,10 @@
    {
     "field": "enrollment_mean",
     "method": "quantile",
-    "count": 1,
+    "count": 7,
     "palette": "colorbrewer:Oranges",
     "id": "enrollment_mean",
+    "fit": true,
     "title": "Mean of enrollment",
     "no_data": {
      "fill": {

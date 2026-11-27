@@ -45,6 +45,7 @@
      "#074050"
     ],
     "id": "total_accessibility",
+    "fit": true,
     "reverse": true,
     "title": "Average travel time to the closest destinations",
     "unit": "min",
@@ -56,22 +57,22 @@
     "classes": [
      {
       "id": "c1",
-      "to": 8.66666666667,
+      "to": 8.66666666666,
       "fill": {
        "color": "#074050"
       }
      },
      {
       "id": "c2",
-      "from": 8.66666666667,
-      "to": 11.6666666667,
+      "from": 8.66666666666,
+      "to": 11.6666666666,
       "fill": {
        "color": "#105965"
       }
      },
      {
       "id": "c3",
-      "from": 11.6666666667,
+      "from": 11.6666666666,
       "to": 14.0,
       "fill": {
        "color": "#217a79"
@@ -80,14 +81,14 @@
      {
       "id": "c4",
       "from": 14.0,
-      "to": 15.6666666667,
+      "to": 15.6666666666,
       "fill": {
        "color": "#4c9b82"
       }
      },
      {
       "id": "c5",
-      "from": 15.6666666667,
+      "from": 15.6666666666,
       "to": 17.0,
       "fill": {
        "color": "#6cc08b"

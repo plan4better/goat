@@ -16,6 +16,7 @@ The steps that call core let its refusal through as it is (``ServiceError``):
 the tool puts it in words.
 """
 
+import copy
 import json
 from collections.abc import Iterable, Sequence
 from typing import Any, Literal, cast
@@ -30,6 +31,7 @@ from goatlib.style.edit import (
     apply_edits,
     part_at,
     part_key,
+    settle_fit,
 )
 from goatlib.style.ids import assign_ids
 from goatlib.style.merge import _class_skip, changed_paths, diff
@@ -62,6 +64,13 @@ LOST_ADDED = (
     "not saved. A value for every class goes on the symbol (for example "
     "/symbol/outline/color); one class's own value is set by its id from the "
     "legend in a later call."
+)
+
+#: A whole document that sets `fit` where the stored style has none.
+FIT_ADDED = (
+    "{paths}: fit is set by tools on the classes of their results; a document "
+    "never adds it. Leave it out, and keep it only on a classification of the "
+    "stored style that has it."
 )
 
 Mode = Literal["edit", "new_from", "new_whole", "replace"]
@@ -341,6 +350,93 @@ def edited(document: dict[str, Any], operations: Sequence[Edit]) -> Edited:
         return apply_edits(document, operations)
     except EditError as exc:
         raise InputInvalid(str(exc)) from exc
+
+
+def whole(before: dict[str, Any] | None, document: dict[str, Any]) -> dict[str, Any]:
+    """A whole document as it is written over ``before``, the stored style it
+    replaces (None for a new style). Setting ``fit`` on a classification whose
+    stored counterpart (by id, else by place) lacks it is ``InputInvalid``, and
+    so is any ``fit`` in a new style. Classes fitted to the data are settled
+    against ``before`` as an edit's are (``settle_fit``), after the classes the
+    document lists are laid over the stored ones (``_over_stored``).
+    ``document`` itself where nothing is laid over and nothing settles."""
+    old = before.get("classify") if isinstance(before, dict) else None
+    stored = old if isinstance(old, list) else []
+    new = document.get("classify")
+    added = []
+    laid: list[Any] = []
+    for index, c in enumerate(new if isinstance(new, list) else []):
+        laid.append(c)
+        if not isinstance(c, dict) or c.get("fit") is not True:
+            continue
+        match = (
+            next(
+                (o for o in stored if isinstance(o, dict) and o.get("id") == c["id"]),
+                None,
+            )
+            if isinstance(c.get("id"), str)
+            else (stored[index] if index < len(stored) else None)
+        )
+        if not isinstance(match, dict) or match.get("fit") is not True:
+            added.append(to_pointer(["classify", item_key(c, index), "fit"]))
+        else:
+            laid[-1] = _over_stored(match, c)
+    if added:
+        raise InputInvalid(FIT_ADDED.format(paths=", ".join(added)))
+    if before is None:
+        return document
+    if any(a is not b for a, b in zip(laid, new if isinstance(new, list) else [])):
+        document = {**document, "classify": laid}
+    settled: dict[str, Any] = settle_fit(before, document)
+    return settled
+
+
+def _over_stored(stored: dict[str, Any], c: dict[str, Any]) -> dict[str, Any]:
+    """Classification ``c`` of a whole document with its listed classes laid
+    over the classes of ``stored`` (its fitted counterpart) by id, as an
+    operation edits them: every stored class stays, with its bounds, and a
+    listed class's keys replace its own, part by part; ``computed`` is the
+    stored one where ``c`` has none. ``c`` itself, taken as written, where it
+    lists no class, names a class ``stored`` has not, sets a bound, or asks for
+    another field, or another method or count than manual."""
+    listed = c.get("classes")
+    kept = stored.get("classes")
+    if not isinstance(listed, list) or not listed or not isinstance(kept, list):
+        return c
+    if c.get("field") != stored.get("field"):
+        return c
+    if c.get("method") != "manual" and any(
+        c.get(k) != stored.get(k) for k in ("method", "count")
+    ):
+        return c
+    ids = {k.get("id") for k in kept if isinstance(k, dict)}
+    by_id: dict[str, dict[str, Any]] = {}
+    for k in listed:
+        if (
+            not isinstance(k, dict)
+            or not isinstance(k.get("id"), str)
+            or k["id"] not in ids
+            or "from" in k
+            or "to" in k
+        ):
+            return c
+        by_id[k["id"]] = k
+    classes = [
+        _laid(k, by_id[k["id"]]) if isinstance(k, dict) and k.get("id") in by_id else k
+        for k in kept
+    ]
+    out = {**c, "classes": copy.deepcopy(classes)}
+    if "computed" not in c and isinstance(stored.get("computed"), dict):
+        out["computed"] = copy.deepcopy(stored["computed"])
+    return out
+
+
+def _laid(under: Any, over: Any) -> Any:
+    """``over`` laid on ``under``: objects merge key by key, anything else is
+    ``over``."""
+    if isinstance(under, dict) and isinstance(over, dict):
+        return {**under, **{k: _laid(under.get(k), v) for k, v in over.items()}}
+    return over
 
 
 def lost_items(
