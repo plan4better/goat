@@ -253,6 +253,7 @@
  "Compare.op=>=",
  "Computed.at",
  "Computed.data",
+ "Computed.decimals",
  "Computed.domain",
  "Computed.generated",
  "Computed.no_data",

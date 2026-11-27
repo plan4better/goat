@@ -117,6 +117,7 @@ export interface Computed {
   single?: {
     [k: string]: number;
   } | null;
+  decimals?: number | null;
 }
 /**
  * What the server wrote into a classification's classes: the target and the

@@ -206,11 +206,13 @@ function manualComputed(computed: unknown): JsonObject | undefined {
   return rest;
 }
 
-/** `computed` without the single values (`computed.single`, spec 7.2) of the classes `ids`: their bounds moved, so the
- * values they held are no longer known until the server answers. */
+/** `computed` without the single values (`computed.single`, spec 7.2) of the classes `ids` and without the decimals
+ * recorded with the classes (`computed.decimals`): their bounds moved, so the values they held and the decimals the
+ * labels need are no longer known until the server answers. */
 function withoutSingles(computed: JsonObject | undefined, ids: unknown[]): JsonObject | undefined {
-  if (!computed || !isObject(computed.single)) return computed;
-  const { single, ...rest } = computed;
+  if (!computed) return computed;
+  const { single, decimals: _decimals, ...rest } = computed;
+  if (!isObject(single)) return rest;
   const kept = Object.fromEntries(Object.entries(single).filter(([id]) => !ids.includes(id)));
   return Object.keys(kept).length ? { ...rest, single: kept } : rest;
 }

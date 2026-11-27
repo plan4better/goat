@@ -29,8 +29,8 @@ import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import {
-  type RangeFormat,
   classDomain,
+  classFormat,
   classRange,
   labelRange,
   rangeText,
@@ -462,7 +462,7 @@ const rangeOptions = (c: JsonObject, t: (key: string) => string, locale: string)
   locale,
   words: rangeWords(t),
   unit: typeof c.unit === "string" ? c.unit : undefined,
-  format: isObject(c.format) ? (c.format as RangeFormat) : undefined,
+  format: classFormat(c),
   domain: classDomain(c),
 });
 

@@ -1991,6 +1991,18 @@
      ],
      "default": null,
      "title": "Single"
+    },
+    "decimals": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Decimals"
     }
    },
    "required": [

@@ -72,9 +72,7 @@
      "single": {
       "c1": 99.7892905504
      },
-     "no_data": true
-    },
-    "format": {
+     "no_data": true,
      "decimals": 1
     }
    }

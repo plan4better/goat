@@ -152,4 +152,38 @@ describe("rows for every key of the model", () => {
     await userEvent.click(within(rowOf("style_editor.numbers")).getByRole("button"));
     expect(screen.getByText("style_editor.number_format")).toBeDefined();
   });
+
+  it("the bounds of classes fitted to the data read with the decimals the server recorded", async () => {
+    const numbersRow = async (fit: boolean) => {
+      const view = renderPanel(
+        <PopoverProvider>
+          <LegendSection />
+        </PopoverProvider>,
+        {
+          document: {
+            version: "1.0.0",
+            kind: "vector",
+            symbol: { fill: {} },
+            classify: [
+              {
+                id: "a",
+                field: "traffic",
+                method: "quantile",
+                ...(fit ? { fit: true } : {}),
+                classes: [],
+                computed: { at: "t", data: "f", domain: [0, 9], decimals: 2 },
+              },
+            ],
+          } as unknown as LayerStyle,
+          data: data("polygon"),
+        }
+      );
+      await userEvent.click(within(rowOf("style_editor.contents")).getByRole("button"));
+      const text = rowOf("style_editor.numbers").textContent;
+      view.unmount();
+      return text;
+    };
+    expect(await numbersRow(true)).toContain("style_editor.example");
+    expect(await numbersRow(false)).toContain("style_editor.as_in_dataset");
+  });
 });

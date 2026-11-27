@@ -6,10 +6,10 @@ import math
 from typing import Any
 
 import pytest
-from goatlib.style.compute import needed_stats
+from goatlib.style.compute import class_decimals, needed_stats
 from goatlib.style.data import compute_into, fitted_breaks
 from goatlib.style.edit import settle_fit
-from goatlib.tools.style import value_decimals, with_decimals
+from goatlib.tools.style import value_decimals
 
 from .test_fit_classes import computed, fit_doc, table
 
@@ -161,7 +161,7 @@ def test_a_single_value_near_0_does_not_read_0() -> None:
             }
         ],
     }
-    assert with_decimals(doc)["classify"][0]["format"] == {"decimals": 4}
+    assert class_decimals(doc["classify"][0]) == 4
 
 
 def test_a_single_value_that_is_its_own_bound_asks_only_for_its_own_digits() -> None:
@@ -191,7 +191,7 @@ def test_a_single_value_that_is_its_own_bound_asks_only_for_its_own_digits() -> 
             }
         ],
     }
-    assert with_decimals(doc)["classify"][0]["format"] == {"decimals": 1}
+    assert class_decimals(doc["classify"][0]) == 1
 
 
 def test_a_mean_column_reads_its_single_values_not_their_last_digits() -> None:
@@ -205,7 +205,7 @@ def test_a_mean_column_reads_its_single_values_not_their_last_digits() -> None:
     single = c["computed"]["single"]
     starts = {k["id"]: k.get("from") for k in c["classes"]}
     assert any(starts[i] is not None and starts[i] != v for i, v in single.items())
-    assert with_decimals(out)["classify"][0]["format"] == {"decimals": 1}
+    assert c["computed"]["decimals"] == 1
 
 
 def test_half_minutes_held_alone_read_as_they_are() -> None:
@@ -214,7 +214,7 @@ def test_half_minutes_held_alone_read_as_they_are() -> None:
     out, _ = computed(table([float(v) for v, n in counts for _ in range(n)]), fit_doc())
     single = out["classify"][0]["computed"]["single"]
     assert 10.5 in single.values() and 13.5 in single.values()
-    assert with_decimals(out)["classify"][0]["format"] == {"decimals": 1}
+    assert out["classify"][0]["computed"]["decimals"] == 1
 
 
 def _with_singles(values: dict[str, float], bound: float) -> dict[str, Any]:
@@ -242,8 +242,9 @@ def _with_singles(values: dict[str, float], bound: float) -> dict[str, Any]:
 
 def test_a_single_value_reads_its_first_3_significant_digits() -> None:
     def decimals(values: dict[str, float], bound: float) -> int:
-        doc = with_decimals(_with_singles(values, bound))
-        return doc["classify"][0]["format"]["decimals"]
+        decimals = class_decimals(_with_singles(values, bound)["classify"][0])
+        assert decimals is not None
+        return decimals
 
     assert decimals({"c2": 84.5647078964}, 84.5647078963) == 1
     assert decimals({"c2": 1234.5}, 1234.5) == 0
@@ -276,7 +277,7 @@ def test_the_decimals_of_a_value_shown_alone(value: float, decimals: int) -> Non
 
 def test_a_constant_of_three_decimals_reads_all_three() -> None:
     out, _ = computed(table([0.087] * 6), fit_doc())
-    assert with_decimals(out)["classify"][0]["format"] == {"decimals": 3}
+    assert out["classify"][0]["computed"]["decimals"] == 3
 
 
 # Manual classes with closed ends: values outside them are in no class.
@@ -345,3 +346,91 @@ def test_a_fitted_classification_whose_field_is_gone_keeps_what_it_computed() ->
         before["generated"],
         before["domain"],
     )
+
+
+# The decimals the labels need (`computed.decimals`), recorded with `fit` on
+# every compute.
+
+
+def decimals(doc: dict[str, Any]) -> int | None:
+    return doc["classify"][0]["computed"].get("decimals")
+
+
+def test_the_decimals_follow_the_data() -> None:
+    con = table([float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc())
+    assert decimals(out) == 0
+    # Small values arrive: their class reads them to three significant digits.
+    con.execute("INSERT INTO t SELECT 0.004 FROM range(10)")
+    small, _ = computed(con, out, fingerprint="g")
+    assert singles(small)[ids(small)[0]] == 0.004
+    assert decimals(small) == 3
+    # The values become whole numbers again: no decimals.
+    con.execute("DELETE FROM t WHERE v < 1")
+    whole, _ = computed(con, small, fingerprint="h")
+    assert decimals(whole) == 0
+
+
+def test_a_format_the_style_gives_stays_as_it_is() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc(format={"decimals": 1}))
+    c = out["classify"][0]
+    assert c["format"] == {"decimals": 1}
+    assert c["computed"]["decimals"] == 3
+
+
+def test_without_fit_no_decimals_are_recorded() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    doc = fit_doc()
+    del doc["classify"][0]["fit"]
+    out, _ = computed(con, doc)
+    assert "decimals" not in out["classify"][0]["computed"]
+    manual = copy.deepcopy(MANUAL)
+    del manual["classify"][0]["fit"]
+    out, _ = computed(con, manual)
+    assert "decimals" not in out["classify"][0]["computed"]
+
+
+def test_fit_on_another_method_records_no_decimals() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc(method="equal_interval"))
+    assert "decimals" not in out["classify"][0]["computed"]
+
+
+def test_manual_classes_with_fit_record_their_decimals() -> None:
+    con = table([0.0, 0.0, 1.0, 2.0, 5.0])
+    out, _ = computed(con, MANUAL)
+    assert decimals(out) == 0
+    con.execute("INSERT INTO t VALUES (5.25)")
+    again, _ = computed(con, out, fingerprint="g")
+    # The last class holds 5 and 5.25: its range "5.0 to 5.3" reads to the
+    # domain's end, one decimal apart.
+    assert singles(again) == {"c1": 0.0}
+    assert decimals(again) == 1
+
+
+def test_a_class_edit_on_a_tool_default_keeps_its_decimals() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc())
+    edited = copy.deepcopy(out)
+    edited["classify"][0]["classes"][0]["fill"]["color"] = "#ff0000"
+    frozen = settle_fit(out, edited)
+    assert frozen["classify"][0]["method"] == "manual"
+    assert decimals(frozen) == decimals(out) == 3
+    again, _ = compute_into(con, "t", frozen, geometry="polygon", fingerprint="g")
+    assert decimals(again) == 3
+
+
+def test_a_compute_on_the_same_data_changes_nothing() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc())
+    again, _ = compute_into(con, "t", out, geometry="polygon", fingerprint="f")
+    assert again == out
+
+
+def test_a_field_that_is_gone_keeps_the_decimals() -> None:
+    con = table([0.004] * 10 + [float(i) for i in range(1, 51)])
+    out, _ = computed(con, fit_doc())
+    con.execute("ALTER TABLE t RENAME COLUMN v TO w")
+    again, _ = compute_into(con, "t", out, geometry="polygon", fingerprint="g")
+    assert decimals(again) == decimals(out) == 3

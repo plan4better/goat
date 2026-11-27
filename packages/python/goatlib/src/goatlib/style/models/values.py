@@ -154,6 +154,9 @@ class Computed(StyleModel):
     #: Classes fitted to the data (`fit`): class id to the one value the class
     #: holds, for the classes that hold one (spec 7.2).
     single: dict[str, float] | None = None
+    #: Classes with `fit`: the decimals their labels need, worked out with the
+    #: classes; a `format` with `decimals` wins (spec 5.2).
+    decimals: int | None = None
 
 
 Scale = Literal["linear", "sqrt", "log"]

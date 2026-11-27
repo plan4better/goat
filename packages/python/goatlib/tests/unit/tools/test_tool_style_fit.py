@@ -494,7 +494,8 @@ def check_fitted(
         then = holding(con, relation, field, unfitted(con, relation, intent, geometry))
         assert n >= then
     if n >= 2:
-        assert c["format"] == {"decimals": decimals_for(c)}
+        assert "format" not in c
+        assert c["computed"]["decimals"] == decimals_for(c)
     if has_rows_without_value(con, relation, field):
         assert c["computed"]["no_data"] is True
     asked = intent["classify"][0]
@@ -658,7 +659,8 @@ def test_with_many_values_the_default_is_the_one_of_today(
         None if k.get("from") is None else float(math.ceil(k["from"]))
         for k in plain["classify"][0]["classes"]
     ]
-    assert doc["classify"][0]["format"] == {"decimals": 0}
+    assert "format" not in doc["classify"][0]
+    assert doc["classify"][0]["computed"]["decimals"] == 0
 
 
 def rows_per_class(

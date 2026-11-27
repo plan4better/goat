@@ -1343,9 +1343,9 @@ AI never set it. `count` is then the most classes, not a fixed number:
   each side of 0, the values below 0 and from 0 up are fitted apart into at most half of `count` each, 0 is a break,
   and classes take the colors before the middle (below 0), after it (above 0) or the middle (0 alone). Otherwise they
   take the half on the side with most rows, the middle only for 0 alone. Switching the palette turns this on or off.
-- **Every compute fits again,** so a result that gains values gets its classes back; `count` stays as written. Fewer
-  classes than `count` are by design and give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on
-  other methods.
+- **Every compute fits again,** also the labels' decimals (`computed.decimals`, where `format` sets no `decimals`), so a
+  result that gains values gets its classes back; `count` stays as written. Fewer classes than `count` are by design and
+  give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on other methods.
 - **Legend:** with `fit`, a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also
   once a class edit made the classes `manual`: recorded with every compute (a closed first or last class leaves the
   values beyond it out), so a class that comes to hold two values reads its range again.
@@ -3144,7 +3144,7 @@ to the intent, with the data it came from.
 
 - **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, on every classification of a field `no_data` and `other` (whether the data has features without a value in the field and, for categories, values no class lists: the legend lists "No data" and "Other" when it has, 7.2; a classification whose classes are the author's is held against the data for these alone; a style that lacks them, one computed before they were recorded or converted from the old format, is not stale for that and gets them with its next computation or when its panel opens, its classes untouched; `no_data: null` says the server looked and could not tell), and on a classification `generated`: the
   target and the value the server wrote per class id; with `fit` (5.2), also on `manual` classes, `single`: the value
-  of each class that holds one, by class id (absent where none does).
+  of each class that holds one, by class id (absent where none does), and `decimals`: the decimals its labels need.
 - **Fingerprint:** an opaque string the server writes, telling which data the values were computed from:
   - a DuckLake layer: the snapshot of the layer's last data change (`ducklake:455812`). core tracks it per layer from
     DuckLake's change log (inserts and deletes, also inlined ones, and schema changes; not compaction), so every
@@ -3773,7 +3773,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `legend` | `false` | no | shown |
 | `classes` | list of class records (18.5) | no | computed |
 | `other`, `no_data` | class record | no | none |
-| `computed` | `{ at, data, scope, no_data, other, generated, single }` | server | |
+| `computed` | `{ at, data, scope, no_data, other, generated, single, decimals }` | server | |
 
 ### 18.5 Class record
 

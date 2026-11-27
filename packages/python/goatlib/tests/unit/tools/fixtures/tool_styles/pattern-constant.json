@@ -74,9 +74,7 @@
      "single": {
       "c1": 0.087
      },
-     "no_data": false
-    },
-    "format": {
+     "no_data": false,
      "decimals": 3
     }
    }

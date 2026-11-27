@@ -515,6 +515,27 @@ async def test_a_class_that_holds_a_single_value_is_labelled_with_it() -> None:
     assert " to " in legend["classes"][1]["label"]
 
 
+@pytest.mark.parametrize("fmt", [None, {"decimals": 0}])
+async def test_the_recorded_decimals_leave_the_exact_labels(fmt: Any) -> None:
+    # The labels state the exact values for the model: neither the decimals
+    # the server records with fitted classes nor a format round them.
+    state = MapState()
+    _quantile_districts(state)
+    stored = state.styles[state.active_style_id(31)].document["classify"][0]
+    first = stored["classes"][0]["id"]
+    stored["fit"] = True
+    stored["computed"]["single"] = {first: 12.5}
+    before = (await _get(_Services(state), layer_project_id=31))["legend"]
+    stored["computed"]["decimals"] = 3
+    if fmt is not None:
+        stored["format"] = fmt
+    [legend] = (await _get(_Services(state), layer_project_id=31))["legend"]
+    assert legend["classes"][0]["label"] == number_text(12.5)
+    assert [k["label"] for k in legend["classes"]] == [
+        k["label"] for k in before[0]["classes"]
+    ]
+
+
 async def test_single_values_without_fit_are_not_read() -> None:
     state = MapState()
     _quantile_districts(state)

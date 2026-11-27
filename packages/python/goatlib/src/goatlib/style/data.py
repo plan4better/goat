@@ -9,6 +9,7 @@ by processes; it reads the relation it is given and never filters it (12: scope
 is the whole dataset).
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_FLOOR, Context, Decimal
@@ -22,7 +23,6 @@ from goatlib.analysis.statistics import (
     calculate_feature_count,
     calculate_unique_values,
 )
-from goatlib.analysis.statistics.class_breaks import calculate_class_breaks_by_count
 from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.style.compute import (
     STABLE_DIGITS,
@@ -312,35 +312,105 @@ def _fit(
     column = quote_identifier(field)
     value = f"CAST({column} AS DOUBLE)"
     rows = f"{column} IS NOT NULL AND isfinite({column}) AND ({side})"
-    distinct, low, high, after_low, top = con.execute(
-        f"""WITH f AS (
-                SELECT {value} AS v, count(*) AS n FROM {relation}
-                WHERE {rows} GROUP BY 1)
-            SELECT (SELECT count(*) FROM f), (SELECT min(v) FROM f),
-                   (SELECT max(v) FROM f),
-                   (SELECT min(v) FROM f WHERE v > (SELECT min(v) FROM f)),
-                   (SELECT list(v) FROM (SELECT v FROM f ORDER BY n DESC, v LIMIT ?))""",
+    # The values are read only up to one more than `n`: all of them where
+    # there are at most `n`.
+    low, high, after_low, top = con.execute(
+        f"""SELECT min(v), max(v),
+                   min(v) FILTER (WHERE v > (
+                       SELECT min({value}) FROM {relation} WHERE {rows})),
+                   (SELECT list(v) FROM (
+                       SELECT DISTINCT {value} AS v FROM {relation} WHERE {rows}
+                       LIMIT ?))
+            FROM (SELECT {value} AS v FROM {relation} WHERE {rows})""",
         [n + 1],
     ).fetchone()
-    if not distinct:
+    if low is None:
         return _Fitted((), None, None)
-    if distinct <= n:
+    if len(top) <= n:
         breaks = _cuts(top, low)
         return _Fitted(breaks, low, high, bool(breaks), tuple(top))
-    own = _own_values(con, relation, field, side, n)
+    own, known = _own_values(con, relation, field, side, n)
+    rows_of: dict[float, int] | None = None
     while True:
-        breaks = _fitted_rest(con, relation, field, side, own, n, low, high)
+        breaks = _fitted_rest(con, relation, field, side, own, n, low, high, known)
         if breaks is not None:
             alone = bool(breaks) and breaks[0] == _held(after_low)
             return _Fitted(breaks, low, high, alone)
-        rows_of = dict(
-            con.execute(
-                f"SELECT {value}, count(*) FROM {relation} WHERE {rows} "
-                f"AND {value} IN ({', '.join('?' for _ in own)}) GROUP BY 1",
-                own,
-            ).fetchall()
-        )
-        own.remove(min(own, key=lambda v: (rows_of.get(v, 0), -v)))
+        if rows_of is None:
+            # Each own value's rows, read once: giving a class back changes
+            # none of them.
+            rows_of = dict(
+                con.execute(
+                    f"SELECT {value}, count(*) FROM {relation} WHERE {rows} "
+                    f"AND {value} IN ({', '.join('?' for _ in own)}) GROUP BY 1",
+                    own,
+                ).fetchall()
+            )
+        counts = rows_of
+        own.remove(min(own, key=lambda v: (counts.get(v, 0), -v)))
+        known = None
+
+
+@dataclass(frozen=True)
+class _Quantiles:
+    """Quantiles of one set of rows: their minimum and maximum (None without
+    rows) and the quantile at each fraction asked."""
+
+    min: float | None
+    max: float | None
+    at: dict[float, Any]
+
+    def holds(self, count: int) -> bool:
+        """Whether the quantile breaks of `count` breaks were asked."""
+        return all(p in self.at for p in _fractions(count))
+
+    def breaks(self, count: int) -> list[float]:
+        """The quantile breaks of `count` breaks (`count + 1` classes)."""
+        if self.min is None:
+            return []
+        return [float(self.at[p]) for p in _fractions(count) if self.at[p] is not None]
+
+
+def _fractions(count: int) -> list[float]:
+    """The fractions of `count` quantile breaks: 1/(count + 1) and on."""
+    return [i / (count + 1) for i in range(1, count + 1)]
+
+
+def _quantiles(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    field: str,
+    where: str,
+    params: list[float],
+    counts: Iterable[int],
+    known: _Quantiles | None = None,
+) -> _Quantiles:
+    """The quantile breaks of each number of breaks in `counts` over the
+    field's finite values that meet `where` (its `?` are `params`), and their
+    minimum and maximum: one query, one ordered-set aggregate over every
+    fraction they need and `known` (quantiles of the same rows) lacks. Each
+    fraction is a number literal cast to DOUBLE, read as
+    `calculate_class_breaks` reads a fraction, so every break is the one that
+    function gives."""
+    column = quote_identifier(field)
+    have = known.at if known is not None else {}
+    wanted = sorted({p for c in counts for p in _fractions(c)} - have.keys())
+    if known is not None and not wanted:
+        return known
+    terms = ", ".join(f"{p}::DOUBLE" for p in wanted)
+    low, high, found = con.execute(
+        f"""SELECT min({column}), max({column}),
+                   {f"quantile_cont({column}, [{terms}])" if wanted else "NULL"}
+            FROM {relation}
+            WHERE ({where}) AND {column} IS NOT NULL AND isfinite({column})""",
+        params,
+    ).fetchone()
+    at = {**have, **dict(zip(wanted, found or [None] * len(wanted)))}
+    return _Quantiles(
+        float(low) if low is not None else None,
+        float(high) if high is not None else None,
+        at,
+    )
 
 
 #: A quantile break interpolated between two equal values can miss them in
@@ -357,29 +427,23 @@ def _others(field: str, side: str, own: list[float]) -> str:
 
 def _own_values(
     con: duckdb.DuckDBPyConnection, relation: str, field: str, side: str, n: int
-) -> list[float]:
+) -> tuple[list[float], _Quantiles | None]:
     """The values on which quantile classes would lose a class: with k classes
     left for the values not yet taken, a quantile break on their lowest or
     highest value or two breaks on one value. Each round asks one quantile
     over the values left and takes every such value; the rounds go on while
-    one finds a value and at least 2 classes are left."""
+    one finds a value and at least 2 classes are left. Also the last round's
+    quantiles where they are of the values left beside the values returned."""
     own: list[float] = []
+    last: _Quantiles | None = None
     while (k := n - len(own)) >= 2:
-        result = calculate_class_breaks_by_count(
-            con,
-            relation,
-            field,
-            ClassBreakMethod.quantile,
-            [k - 1],
-            where_clause=_others(field, side, own),
-            params=own or None,
-        )[k - 1]
-        if result.min is None or result.min == result.max:
+        last = _quantiles(con, relation, field, _others(field, side, own), own, [k - 1])
+        if last.min is None or last.min == last.max:
             break
         # A break interpolated between two equal values can miss them in the
         # last digits: breaks compare as `stable` numbers.
-        raw = [stable(float(b)) for b in result.breaks]
-        ends = {stable(float(v)): float(v) for v in (result.min, result.max)}
+        raw = [stable(b) for b in last.breaks(k - 1)]
+        ends = {stable(v): v for v in (last.min, last.max)}
         lost = {ends.get(b, b) for b in raw if b in ends or raw.count(b) > 1}
         inner = sorted(b for b in lost if b not in ends.values())
         if inner:
@@ -401,7 +465,8 @@ def _own_values(
         if not new:
             break
         own.extend(new)
-    return own
+        last = None
+    return own, last
 
 
 def _fitted_rest(
@@ -413,29 +478,68 @@ def _fitted_rest(
     n: int,
     low: float,
     high: float,
+    known: _Quantiles | None = None,
 ) -> tuple[float, ...] | None:
     """The breaks of `_fit` around the `own` values' classes: each own value
     and the value after it, and the quantile breaks of the other values for kk
     classes, moved up onto their next value; of every kk from 1 to `n`, the one
     with the most classes in all that are at most `n`, then the kk nearest to
     the classes left beside the own values, then the smaller. None where no kk
-    gives at most `n`. One call for the quantiles of every count, one query for
-    the values they move onto and the value after each own one."""
+    gives at most `n`.
+
+    The kk of the classes left (`left`) that gives `n` classes in all ranks
+    first, so where `known` (quantiles of the same values) holds that kk's
+    quantiles and they give `n` classes, no other kk is asked. At most one
+    query for the quantiles `known` lacks, every count's in one."""
+    left = n - len(own)
+    where = _others(field, side, own)
+    moved: dict[float, float | None] = {}
+    fixed: set[float] = set()
+
+    def classes(kk: int, quantiles: _Quantiles) -> tuple[float, ...]:
+        cuts = {moved.get(b) for b in quantiles.breaks(kk - 1)} | fixed
+        return _cuts((b for b in cuts if b is not None and b <= high), low)
+
+    shortcut = known is not None and 1 <= left <= n and known.holds(left - 1)
+    if known is not None and shortcut:
+        fixed = _moved(con, relation, field, side, own, known.breaks(left - 1), moved)
+        if len(classes(left, known)) + 1 == n:
+            return classes(left, known)
+    quantiles = _quantiles(con, relation, field, where, own, range(n), known)
+    wanted = {b for kk in range(1, n + 1) for b in quantiles.breaks(kk - 1)}
+    if wanted - moved.keys() or not shortcut:
+        fixed = _moved(
+            con, relation, field, side, own, sorted(wanted - moved.keys()), moved
+        )
+    best: tuple[tuple[int, int, int], tuple[float, ...]] | None = None
+    for kk in range(1, n + 1):
+        breaks = classes(kk, quantiles)
+        if len(breaks) + 1 > n:
+            continue
+        rank = (len(breaks), -abs(kk - left), -kk)
+        if best is None or rank > best[0]:
+            best = (rank, breaks)
+    return best[1] if best is not None else None
+
+
+def _moved(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    field: str,
+    side: str,
+    own: list[float],
+    breaks: list[float],
+    moved: dict[float, float | None],
+) -> set[float]:
+    """Each quantile break of the values beside the `own` values moved onto
+    the next value at or above it (a break within `_NEAR` below a value moves
+    onto it), written into `moved` (None where no value is), and the own
+    values with the value after each: one query over the rows."""
     column = quote_identifier(field)
     value = f"CAST({column} AS DOUBLE)"
-    quantiles = calculate_class_breaks_by_count(
-        con,
-        relation,
-        field,
-        ClassBreakMethod.quantile,
-        [kk - 1 for kk in range(1, n + 1)],
-        where_clause=_others(field, side, own),
-        params=own or None,
-    )
-    wanted = sorted({float(b) for r in quantiles.values() for b in r.breaks})
     found = con.execute(
         f"""WITH v AS (
-                SELECT DISTINCT {value} AS v FROM {relation}
+                SELECT {value} AS v FROM {relation}
                 WHERE {column} IS NOT NULL AND isfinite({column}) AND ({side})),
             b AS (SELECT unnest(?::DOUBLE[]) AS b),
             w AS (SELECT unnest(?::DOUBLE[]) AS w)
@@ -443,21 +547,11 @@ def _fitted_rest(
             WHERE NOT list_contains(?::DOUBLE[], v.v) GROUP BY b.b
             UNION ALL
             SELECT 'w', w.w, min(v.v) FROM w JOIN v ON v.v > w.w GROUP BY w.w""",
-        [wanted, own, _NEAR, own],
+        [breaks, own, _NEAR, own],
     ).fetchall()
-    moved = {at: to for kind, at, to in found if kind == "b"}
-    fixed = {*own, *(to for kind, _, to in found if kind == "w")}
-    left = n - len(own)
-    best: tuple[tuple[int, int, int], tuple[float, ...]] | None = None
-    for kk in range(1, n + 1):
-        cuts = {moved.get(float(b)) for b in quantiles[kk - 1].breaks} | fixed
-        breaks = _cuts((b for b in cuts if b is not None and b <= high), low)
-        if len(breaks) + 1 > n:
-            continue
-        rank = (len(breaks), -abs(kk - left), -kk)
-        if best is None or rank > best[0]:
-            best = (rank, breaks)
-    return best[1] if best is not None else None
+    moved.update(dict.fromkeys(breaks))
+    moved.update({at: to for kind, at, to in found if kind == "b"})
+    return {*own, *(to for kind, _, to in found if kind == "w")}
 
 
 #: The share of the rows with a value other than 0 that each side of 0 holds at

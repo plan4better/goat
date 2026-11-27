@@ -8,16 +8,15 @@ looks tools and bundles always use. Classes of a `classified` style are
 filled from the result data by the tool runner
 (`BaseToolRunner.computed_style`), like any style the server computes; a
 numeric default asks for classes fitted to the data (`fit`), which every
-compute fits again, and `with_decimals` then gives the tool's own classes the
-decimals they need. `fit_classes` fits the count of a numeric classification
-without `fit` once, in the run.
+compute fits again with the decimals their labels need (`computed.decimals`);
+`with_decimals` gives the tool's other numeric classes a number format in the
+run. `fit_classes` fits the count of a numeric classification without `fit`
+once, in the run.
 """
 
 import copy
 import logging
-import math
-from decimal import ROUND_HALF_UP, Context, Decimal
-from typing import Any, Collection, Iterable
+from typing import Any, Collection
 
 import duckdb
 
@@ -27,7 +26,14 @@ from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.i18n import DEFAULT_LANGUAGE, get_translator, supported_language
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
-from goatlib.style.compute import STABLE_DIGITS, Breaks
+from goatlib.style.compute import (
+    Breaks,
+    class_decimals,
+    records_decimals,
+    rounded,
+)
+from goatlib.style.compute import decimals_for as decimals_for
+from goatlib.style.compute import value_decimals as value_decimals
 from goatlib.style.context import DataContext
 from goatlib.style.data import centred, compute_stats, signed_rows
 from goatlib.style.defaults import default_style
@@ -48,9 +54,6 @@ CLASS_COUNT = 7
 #: Features without a value: the grey the style panel gives a new color
 #: classification.
 NO_DATA_GREY = "#cccccc"
-
-#: The most decimals a number format takes.
-MAX_DECIMALS = 10
 
 
 def _part(geometry: str | None) -> str:
@@ -183,8 +186,9 @@ def numeric_default(
     """The default of a result whose value is a number per feature: at most
     `count` quantile classes of `field` (`classified`), fitted to the data on
     every compute (`fit`), the ramp turned around with `reverse`, the legend's
-    title and unit, and grey for features without a value. The number format
-    follows from the computed classes (`with_decimals`)."""
+    title and unit, and grey for features without a value. The decimals of
+    its labels follow the data: every compute records them
+    (`computed.decimals`)."""
     doc = classified(
         field,
         palette,
@@ -316,43 +320,6 @@ def statistic_default(
     )
 
 
-#: Enough digits to round any float to `MAX_DECIMALS` decimals.
-_ROUNDING = Context(prec=400)
-
-
-def _rounded(value: float, decimals: int) -> Decimal:
-    """`value` rounded half away from 0, as the legend prints it."""
-    return Decimal(value).quantize(
-        Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP, context=_ROUNDING
-    )
-
-
-def _finite(values: Iterable[Any]) -> set[float]:
-    return {
-        float(v)
-        for v in values
-        if isinstance(v, (int, float)) and not isinstance(v, bool)
-        if math.isfinite(v)
-    }
-
-
-def decimals_for(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
-    """The fewest decimals, at most `MAX_DECIMALS`, at which the distinct finite
-    class `breaks` and the `domain`'s ends together still read in increasing
-    order and no break other than 0 reads 0. An end of the domain at or above 0
-    may read 0, so a minimum next to 0 does not ask for decimals of its own; a
-    negative end never reads 0 (it would print as "-0")."""
-    cuts = _finite(breaks)
-    values = sorted(cuts | _finite(domain))
-    for decimals in range(MAX_DECIMALS + 1):
-        shown = [_rounded(v, decimals) for v in values]
-        if all(a < b for a, b in zip(shown, shown[1:])) and all(
-            s != 0 for v, s in zip(values, shown) if v < 0 or (v > 0 and v in cuts)
-        ):
-            return decimals
-    return MAX_DECIMALS
-
-
 #: The most decimals a single class shows of its value for the value's sake.
 SINGLE_VALUE_DECIMALS = 2
 
@@ -361,81 +328,39 @@ def _single_value_decimals(value: float) -> int:
     """The decimals the label of a class holding the one value `value` shows:
     the fewest, at most `SINGLE_VALUE_DECIMALS`, that read it as that many
     would, and more where fewer would read a value other than 0 as 0."""
-    exact = _rounded(value, SINGLE_VALUE_DECIMALS)
+    exact = rounded(value, SINGLE_VALUE_DECIMALS)
     own = next(
-        d for d in range(SINGLE_VALUE_DECIMALS + 1) if _rounded(value, d) == exact
+        d for d in range(SINGLE_VALUE_DECIMALS + 1) if rounded(value, d) == exact
     )
     return max(own, decimals_for([value], [value, value]))
 
 
-#: The significant digits a value shown alone (a class's single value) reads.
-SINGLE_VALUE_DIGITS = 3
-
-
-def value_decimals(value: float) -> int:
-    """The decimals a value shown alone reads with: the fewest that show its
-    first `SINGLE_VALUE_DIGITS` significant digits as they round, never more
-    than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789 one, 1234.5
-    none, 0.087 three, 0.00318 five, 30 none)."""
-    if value == 0 or not math.isfinite(value):
-        return 0
-    whole = math.floor(math.log10(abs(value))) + 1
-    wanted = min(MAX_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
-    exact = _rounded(value, wanted)
-    return next(d for d in range(wanted + 1) if _rounded(value, d) == exact)
-
-
-def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
-    """The `values`, each that is one of the `numbers` to 12 significant
-    digits as that number: a class's single value is mostly its own bound, or
-    the data's minimum, stored with another last digit, and the two are one
-    number to tell apart from the others."""
-    known = _finite(numbers)
-    return [
-        next(
-            (k for k in known if abs(v - k) <= abs(k) * 10 ** (1 - STABLE_DIGITS)),
-            v,
-        )
-        for v in values
-    ]
-
-
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
-    that has classes and no format of its own: the decimals its class breaks,
-    the values of the classes that hold one (`computed.single`, read with
-    `fit` only) and its
-    domain's ends need (`decimals_for`), and at least those each such value
-    reads with when shown alone (`value_decimals`). A single class over one
-    value has no break and takes the decimals of that value: as a value shown
-    alone with `fit`, else `_single_value_decimals`."""
+    that has classes and no format of its own, and whose decimals the server
+    does not record (`records_decimals`: those with `fit` read
+    `computed.decimals`, which follows the data): the decimals its classes
+    need (`class_decimals`). A single class over one value takes the decimals
+    of that value: as a value shown alone with `fit`, else
+    `_single_value_decimals`."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
     out, changed = [], False
     for c in classify:
-        domain = (
-            (c.get("computed") or {}).get("domain") if isinstance(c, dict) else None
-        )
         if (
-            domain
+            isinstance(c, dict)
             and c.get("method") in NUMERIC_METHODS
-            and c.get("classes")
             and "format" not in c
+            and not records_decimals(c)
         ):
-            breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
             fitted = c.get("fit") is True
-            single = (c.get("computed") or {}).get("single") if fitted else None
-            values = _finite(single.values()) if isinstance(single, dict) else set()
-            breaks += _as_bounds(values, [*breaks, *domain])
-            one = _finite(domain)
-            decimals = (
-                (value_decimals if fitted else _single_value_decimals)(next(iter(one)))
-                if len(c["classes"]) == 1 and len(one) == 1
-                else max([decimals_for(breaks, domain), *map(value_decimals, values)])
+            decimals = class_decimals(
+                c, value_decimals if fitted else _single_value_decimals
             )
-            c = {**c, "format": {"decimals": decimals}}
-            changed = True
+            if decimals is not None:
+                c = {**c, "format": {"decimals": decimals}}
+                changed = True
         out.append(c)
     return _with_classify(document, out) if changed else document
 

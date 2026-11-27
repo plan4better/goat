@@ -1,7 +1,7 @@
 // A class that holds a single value (`computed.single`, spec 7.2) reads that value in the legend and the class list.
 import { describe, expect, it } from "vitest";
 
-import { type LegendEntry, buildLegend, classRange, rangeText } from "@/lib/style/legend";
+import { type LegendEntry, buildLegend, classFormat, classRange, rangeText } from "@/lib/style/legend";
 
 const classification = (computed: object, names: Record<string, string> = {}) => ({
   id: "v",
@@ -83,5 +83,54 @@ describe("a class that holds a single value", () => {
     expect(classRange(c, c.classes[1])).toEqual({ from: 1, to: 1500.5 });
     expect(classRange(c, c.classes[2])).toEqual({ from: 1500.5, to: 1500.5 });
     expect(classRange(classification({}), c.classes[0])).toEqual({ to: 1 });
+  });
+});
+
+// The decimals the server records for classes fitted to the data (`computed.decimals`, spec 7.2): the labels read them
+// where the classification's own format gives no decimals.
+describe("the decimals the server records", () => {
+  const fitted = (computed: object, format?: object) => {
+    const { format: _format, ...c } = classification({ single: { c1: 0.004 }, ...computed });
+    return format ? { ...c, format } : c;
+  };
+  const section = (c: object) => {
+    const s = buildLegend(doc(c), { geometry: "polygon", zoom: 12 })!.sections[0];
+    if (s.kind !== "entries") throw new Error("not a section of entries");
+    return s;
+  };
+  const labels = (c: object) => {
+    const s = section(c);
+    return s.entries.map((e) =>
+      rangeText(e.range!, { locale: "en", words, unit: s.unit, format: s.format, domain: s.domain })
+    );
+  };
+
+  it("are the format of a fitted classification without one, and follow a recompute", () => {
+    expect(section(fitted({ decimals: 3 })).format).toEqual({ decimals: 3 });
+    expect(labels(fitted({ decimals: 3 }))).toEqual([
+      "0.004 m",
+      "1.000 to 1,500.500 m",
+      "1,500.500 to 2,000.000 m",
+    ]);
+    // The data changed: the server recorded other decimals, and the labels read them.
+    expect(labels(fitted({ single: { c1: 0 }, decimals: 1 }))).toEqual([
+      "0.0 m",
+      "1.0 to 1,500.5 m",
+      "1,500.5 to 2,000.0 m",
+    ]);
+  });
+
+  it("a format's own decimals win, also auto; a format without decimals takes them", () => {
+    expect(section(fitted({ decimals: 3 }, { decimals: 1 })).format).toEqual({ decimals: 1 });
+    expect(section(fitted({ decimals: 3 }, { decimals: "auto" })).format).toEqual({ decimals: "auto" });
+    expect(section(fitted({ decimals: 3 }, { suffix: " x" })).format).toEqual({ suffix: " x", decimals: 3 });
+    expect(classFormat(fitted({}, { suffix: " x" }))).toEqual({ suffix: " x" });
+  });
+
+  it("a classification without fit reads its format alone", () => {
+    const { fit: _fit, ...plain } = fitted({ decimals: 3 });
+    expect(section(plain).format).toBeUndefined();
+    expect(classFormat(plain)).toBeUndefined();
+    expect(classFormat({ ...plain, format: { decimals: 2 } })).toEqual({ decimals: 2 });
   });
 });

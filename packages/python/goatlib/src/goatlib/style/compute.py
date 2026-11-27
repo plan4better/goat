@@ -7,8 +7,9 @@ into a copy of the document next to the intent. No IO here.
 
 import copy
 import math
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Context, Decimal
 from typing import Any
 
 from pydantic import ValidationError
@@ -117,6 +118,109 @@ def breaks_for_classes(
     kept = tuple(sorted({stable(b) for b in raw} - {None}))
     kept = tuple(b for b in kept if minimum < b < maximum)
     return Breaks(kept, minimum, maximum, len(kept) < classes - 1)
+
+
+#: The most decimals a number format takes.
+MAX_DECIMALS = 10
+
+#: Enough digits to round any float to `MAX_DECIMALS` decimals.
+_ROUNDING = Context(prec=400)
+
+
+def rounded(value: float, decimals: int) -> Decimal:
+    """`value` rounded half away from 0, as the legend prints it."""
+    return Decimal(value).quantize(
+        Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP, context=_ROUNDING
+    )
+
+
+def _finite(values: Iterable[Any]) -> set[float]:
+    return {
+        float(v)
+        for v in values
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+        if math.isfinite(v)
+    }
+
+
+def decimals_for(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
+    """The fewest decimals, at most `MAX_DECIMALS`, at which the distinct finite
+    class `breaks` and the `domain`'s ends together still read in increasing
+    order and no break other than 0 reads 0. An end of the domain at or above 0
+    may read 0, so a minimum next to 0 does not ask for decimals of its own; a
+    negative end never reads 0 (it would print as "-0")."""
+    cuts = _finite(breaks)
+    values = sorted(cuts | _finite(domain))
+    for decimals in range(MAX_DECIMALS + 1):
+        shown = [rounded(v, decimals) for v in values]
+        if all(a < b for a, b in zip(shown, shown[1:])) and all(
+            s != 0 for v, s in zip(values, shown) if v < 0 or (v > 0 and v in cuts)
+        ):
+            return decimals
+    return MAX_DECIMALS
+
+
+#: The significant digits a value shown alone (a class's single value) reads.
+SINGLE_VALUE_DIGITS = 3
+
+
+def value_decimals(value: float) -> int:
+    """The decimals a value shown alone reads with: the fewest that show its
+    first `SINGLE_VALUE_DIGITS` significant digits as they round, never more
+    than the value has, at most `MAX_DECIMALS` (12.5 one, 99.789 one, 1234.5
+    none, 0.087 three, 0.00318 five, 30 none)."""
+    if value == 0 or not math.isfinite(value):
+        return 0
+    whole = math.floor(math.log10(abs(value))) + 1
+    wanted = min(MAX_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
+    exact = rounded(value, wanted)
+    return next(d for d in range(wanted + 1) if rounded(value, d) == exact)
+
+
+def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
+    """The `values`, each that is one of the `numbers` to 12 significant
+    digits as that number: a class's single value is mostly its own bound, or
+    the data's minimum, stored with another last digit, and the two are one
+    number to tell apart from the others."""
+    known = _finite(numbers)
+    return [
+        next(
+            (k for k in known if abs(v - k) <= abs(k) * 10 ** (1 - STABLE_DIGITS)),
+            v,
+        )
+        for v in values
+    ]
+
+
+def class_decimals(
+    c: dict[str, Any], alone: Callable[[float], int] = value_decimals
+) -> int | None:
+    """The decimals the labels of a numeric classification's computed classes
+    need: the decimals its class breaks, the values of the classes that hold
+    one (`computed.single`, read with `fit` only) and its domain's ends need
+    (`decimals_for`), and at least those each such value reads with when shown
+    alone (`value_decimals`). A single class over one value has no break and
+    takes the decimals `alone` gives that value. None without classes or a
+    domain."""
+    computed = c.get("computed") if isinstance(c.get("computed"), dict) else {}
+    domain, classes = computed.get("domain"), c.get("classes")
+    if not domain or not classes or not isinstance(classes, list):
+        return None
+    breaks = [k.get("from") for k in classes if isinstance(k, dict)]
+    single = computed.get("single") if c.get("fit") is True else None
+    values = _finite(single.values()) if isinstance(single, dict) else set()
+    breaks += _as_bounds(values, [*breaks, *domain])
+    one = _finite(domain)
+    if len(classes) == 1 and len(one) == 1:
+        return alone(next(iter(one)))
+    return max([decimals_for(breaks, domain), *map(value_decimals, values)])
+
+
+def records_decimals(c: dict[str, Any]) -> bool:
+    """Whether the server records the decimals of a classification's labels
+    (`computed.decimals`) with every compute: quantile classes fitted to the
+    data (`fit`) and manual classes with `fit` (5.2)."""
+    return c.get("fit") is True and c.get("method") in ("quantile", "manual")
 
 
 def _count(c: dict[str, Any]) -> int | None:
@@ -755,6 +859,13 @@ def _manual_computed(
     return {**stamp, **({"domain": domain} if domain else {})}
 
 
+def _record_decimals(c: dict[str, Any]) -> None:
+    """`computed.decimals` of a classification whose decimals the server
+    records (`records_decimals`), from its classes and `computed` as written."""
+    if records_decimals(c) and (decimals := class_decimals(c)) is not None:
+        c["computed"]["decimals"] = decimals
+
+
 def apply_computed(
     doc: dict[str, Any],
     stats: StatResults,
@@ -799,6 +910,7 @@ def apply_computed(
                 **({"single": single} if single else {}),
                 **_facts(stats, c),
             }
+            _record_decimals(c)
             continue
         if _breaks_key(c) is None and _top_key(c) is None:
             # An author's categories (or a classification that lost its count):
@@ -844,6 +956,7 @@ def apply_computed(
             **({"single": single} if single else {}),
             **_facts(stats, c),
         }
+        _record_decimals(c)
     for vpath, v in _attribute_forms(out):
         if v.get("domain") is not None:
             v.pop("computed", None)

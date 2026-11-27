@@ -1009,7 +1009,7 @@ export function buildLegend(
         ...(pending ? { entries: [], pending: Math.min(entries.length, PENDING_ROWS) } : { entries }),
         ...(domain ? { domain } : {}),
         ...(typeof c.unit === "string" && c.unit ? { unit: c.unit } : {}),
-        ...(isObject(c.format) ? { format: c.format as RangeFormat } : {}),
+        ...(classFormat(c) ? { format: classFormat(c) } : {}),
         ...(targets.every((target) => target === "extrude.height") ? { bars: true } : {}),
         ...(targets.some((target) => SIZES.has(target)) ? { sized: true } : {}),
         ...(geometry !== "line" &&
@@ -1368,6 +1368,16 @@ function rangeNumber(opts: { locale: string; format?: RangeFormat }): (v: number
       : {}),
   });
   return (v: number) => `${opts.format?.prefix ?? ""}${formatter.format(v)}${opts.format?.suffix ?? ""}`;
+}
+
+/** The number format a classification's labels read: its `format`, with the decimals the server recorded with classes
+ * fitted to the data (`computed.decimals`, spec 7.2, `fit` only) where the format gives none. */
+export function classFormat(c: JsonObject): RangeFormat | undefined {
+  const format = isObject(c.format) ? (c.format as RangeFormat) : undefined;
+  const recorded = c.fit === true && isObject(c.computed) ? c.computed.decimals : undefined;
+  if (format?.decimals !== undefined || typeof recorded !== "number" || !Number.isInteger(recorded))
+    return format;
+  return { ...format, decimals: recorded };
 }
 
 /** The one value a numeric class holds where the server recorded it (`computed.single`, spec 7.2), for classes fitted

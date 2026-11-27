@@ -259,10 +259,11 @@ describe("classification edits", () => {
             { id: "c", from: 2, to: 5 },
             { id: "d", from: 5 },
           ],
-          computed: { at: "x", domain: [0, 9], single: { a: 0, b: 1, c: 2, d: 9 } },
+          computed: { at: "x", domain: [0, 9], single: { a: 0, b: 1, c: 2, d: 9 }, decimals: 0 },
         },
       ],
     });
+    // The decimals the server recorded were those of the old bounds: they go until it answers.
     expect(classify(setManualBound(d, 0, 2, 3))[0].computed).toEqual({
       at: "x",
       domain: [0, 9],
