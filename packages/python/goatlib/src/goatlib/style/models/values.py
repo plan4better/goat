@@ -129,6 +129,10 @@ def _no_zoom_inside(data: Any) -> Any:
     return data
 
 
+#: The most decimals a number format takes.
+MAX_DECIMALS = 10
+
+
 class Generated(StyleModel):
     """What the server wrote into a classification's classes: the target and the
     value per class id. A class value still equal to it follows the palette or
@@ -151,9 +155,9 @@ class Computed(StyleModel):
     #: entries stand for. Absent where the server could not tell.
     no_data: bool | None = None
     other: bool | None = None
-    #: Classes fitted to the data (`fit`): class id to the one value the class
-    #: holds, for the classes that hold one (spec 7.2).
-    single: dict[str, float] | None = None
+    #: Classes with `fit`: the decimals their labels need, worked out with the
+    #: classes; a `format` with `decimals` wins (spec 5.2).
+    decimals: Annotated[int, Field(ge=0, le=MAX_DECIMALS)] | None = None
 
 
 Scale = Literal["linear", "sqrt", "log"]

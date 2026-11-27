@@ -1977,20 +1977,19 @@
      "default": null,
      "title": "Other"
     },
-    "single": {
+    "decimals": {
      "anyOf": [
       {
-       "additionalProperties": {
-        "type": "number"
-       },
-       "type": "object"
+       "maximum": 10,
+       "minimum": 0,
+       "type": "integer"
       },
       {
        "type": "null"
       }
      ],
      "default": null,
-     "title": "Single"
+     "title": "Decimals"
     }
    },
    "required": [

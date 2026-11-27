@@ -441,12 +441,11 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert issues(con, relation, intent, geometry) == []
     assert issues(con, relation, doc, geometry) == []
     [c] = doc["classify"]
-    assert c["format"] == {
-        "decimals": tool_style.decimals_for(
-            breaks_of(c) + list((c["computed"].get("single") or {}).values()),
-            c["computed"]["domain"],
-        )
-    }
+    # Fitted classes: the compute records their decimals, no format is written.
+    assert "format" not in c
+    assert c["computed"]["decimals"] == tool_style.decimals_for(
+        breaks_of(c), c["computed"]["domain"]
+    )
     assert c["computed"]["no_data"] is True
 
 
@@ -846,7 +845,7 @@ def test_the_tool_default_gets_the_decimals_its_classes_need(
     )
     doc = _computed(con, intent, relation, "point")
     [c] = doc["classify"]
-    assert c["format"] == {"decimals": decimals}
+    assert "format" not in c and c["computed"]["decimals"] == decimals
     assert issues(con, relation, doc, "point") == []
     # Computed again on the same data, the document stays as it is.
     again, _ = compute_into(con, relation, doc, geometry="point", fingerprint="f:2")
@@ -877,7 +876,7 @@ def test_one_value_keeps_its_class_with_the_value_s_decimals(
     intent = tool_style.numeric_default("total", ORANGES, "point", "Count")
     [c] = _computed(con, intent, relation, "point")["classify"]
     assert len(c["classes"]) == 1 and c["count"] == 7
-    assert c["format"] == {"decimals": 0}
+    assert "format" not in c and c["computed"]["decimals"] == 0
 
 
 def test_an_empty_result_gets_no_decimals(con: duckdb.DuckDBPyConnection) -> None:
@@ -999,7 +998,7 @@ class TestHandedInStylesComputeAsBefore:
             layer_id="L",
         )
         assert saved is not None
-        assert saved["classify"][0]["format"] == {"decimals": 6}
+        assert saved["classify"][0]["computed"]["decimals"] == 6
         assert same_ignoring_stamps(saved, preview)
 
 
@@ -1038,7 +1037,7 @@ def test_the_toolbox_run_stores_the_decimals(
     )
     stored = runner.db_service.create_layer.call_args.kwargs["style"]
     [c] = stored["classify"]
-    assert c["format"] == {"decimals": 6}
+    assert "format" not in c and c["computed"]["decimals"] == 6
     assert c["title"] == "Count" and c["no_data"] == {"fill": GREY}
 
 
@@ -1651,9 +1650,9 @@ def test_a_join_statistic_that_varies_is_classified(
 @pytest.mark.parametrize(
     ("values", "classes"),
     [
-        ("i % 2", 2),
-        # One feature apart: one class per value all the same.
-        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 2),
+        # Two values: one class from the one to the other.
+        ("i % 2", 1),
+        ("CASE WHEN i = 0 THEN 5 ELSE 1 END", 1),
     ],
 )
 def test_a_join_statistic_of_two_values_is_fitted_as_any_tool_default(
@@ -2014,7 +2013,7 @@ def test_matrix_destinations_without_a_cost_are_no_data(
     [c] = doc["classify"]
     assert len(c["classes"]) == 7 and c["reverse"] is True
     assert c["computed"]["no_data"] is True
-    assert c["format"] == {"decimals": 0}
+    assert "format" not in c and c["computed"]["decimals"] == 0
     assert issues(con, relation, intent, "point") == []
     assert issues(con, relation, doc, "point") == []
 

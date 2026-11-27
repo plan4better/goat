@@ -14,7 +14,13 @@ import { symbolShown } from "@/lib/style/editor/parts";
 import { type EditorStore, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type LegendClasses, classificationProperty, legendClasses, legendGroups } from "@/lib/style/legend";
+import {
+  type LegendClasses,
+  classFormat,
+  classificationProperty,
+  legendClasses,
+  legendGroups,
+} from "@/lib/style/legend";
 import { rasterColorSpec } from "@/lib/style/raster/color";
 import { MAP_SCOPE } from "@/lib/style/render/viewPresence";
 
@@ -201,11 +207,11 @@ export function LegendEditor() {
                   <NavRow
                     label={t("style_editor.numbers")}
                     value={
-                      isObject(c.format)
+                      classFormat(c)
                         ? t("style_editor.example", {
                             value: formatNumberText(
                               PREVIEW_NUMBER,
-                              c.format as NumberFormatSpec,
+                              classFormat(c) as NumberFormatSpec,
                               i18n.language
                             ),
                             ...PLAIN,

@@ -52,54 +52,54 @@
     "classes": [
      {
       "id": "c1",
-      "to": 6.6,
+      "to": 6.4,
       "fill": {
        "color": "#d3f2a3"
       }
      },
      {
       "id": "c2",
-      "from": 6.6,
-      "to": 7.2,
+      "from": 6.4,
+      "to": 7.0,
       "fill": {
        "color": "#97e196"
       }
      },
      {
       "id": "c3",
-      "from": 7.2,
-      "to": 7.8,
+      "from": 7.0,
+      "to": 7.4,
       "fill": {
        "color": "#6cc08b"
       }
      },
      {
       "id": "c4",
-      "from": 7.8,
-      "to": 8.2,
+      "from": 7.4,
+      "to": 8.0,
       "fill": {
        "color": "#4c9b82"
       }
      },
      {
       "id": "c5",
-      "from": 8.2,
-      "to": 8.8,
+      "from": 8.0,
+      "to": 8.4,
       "fill": {
        "color": "#217a79"
       }
      },
      {
       "id": "c6",
-      "from": 8.8,
-      "to": 12.5,
+      "from": 8.4,
+      "to": 9.0,
       "fill": {
        "color": "#105965"
       }
      },
      {
       "id": "c7",
-      "from": 12.5,
+      "from": 9.0,
       "fill": {
        "color": "#074050"
       }
@@ -125,12 +125,7 @@
        "c7": "#074050"
       }
      },
-     "single": {
-      "c7": 12.5
-     },
-     "no_data": false
-    },
-    "format": {
+     "no_data": false,
      "decimals": 1
     }
    }

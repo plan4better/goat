@@ -20,6 +20,7 @@ from goatlib.style.schema import json_schema
 GOAT_ONLY = {
     "Classification.count",
     "ColorClassification.count",
+    "Computed.decimals",
     "DividerBlock.thickness",
     "FieldListBlock.collapse_after",
     "ImageBlock.height",

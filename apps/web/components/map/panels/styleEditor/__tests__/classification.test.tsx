@@ -725,7 +725,7 @@ describe("class values", () => {
       expect(names.map((n) => n.placeholder).at(-1)).toBe("style_editor.range_and_more");
     });
 
-    it("a class that holds one value reads that value after its bound, as the legend does; the others their range", () => {
+    it("fitted classes read their range after the bound, also with single values a stored document still holds", () => {
       shell(
         doc([
           {
@@ -741,7 +741,11 @@ describe("class values", () => {
         ])
       );
       const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
-      expect(names.map((n) => n.placeholder)).toEqual(["5", "style_editor.range_to 20", "100"]);
+      expect(names.map((n) => n.placeholder)).toEqual([
+        "0.73 style_editor.range_to 10",
+        "style_editor.range_to 20",
+        "style_editor.range_to 100",
+      ]);
       // The bounds stay to type.
       const bounds = screen.getAllByRole("textbox", {
         name: "style_editor.lower_bound",
@@ -1145,7 +1149,7 @@ describe("categories on a decimal field", () => {
   });
 });
 
-describe("classLabel of a class that holds a single value", () => {
+describe("classLabel of fitted classes", () => {
   const c = {
     method: "quantile",
     fit: true,
@@ -1157,10 +1161,32 @@ describe("classLabel of a class that holds a single value", () => {
     computed: { domain: [0, 13], single: { c2: 13 } },
   };
 
-  it("reads the value, a name still wins, and a class not in the key reads its range", () => {
-    expect(classLabel(c, c.classes[1], (key) => key, "en")).toBe("13 min");
+  it("reads ranges, also with single values a stored document still holds; a name still wins", () => {
+    expect(classLabel(c, c.classes[1], (key) => key, "en")).toBe("4 style_editor.range_to 13 min");
     expect(classLabel(c, { ...c.classes[1], name: "Far" }, (key) => key, "en")).toBe("Far");
     expect(classLabel(c, c.classes[0], (key) => key, "en")).toBe("0 style_editor.range_to 4 min");
+  });
+});
+
+describe("classLabel of fitted classes with the decimals the server recorded", () => {
+  const c = {
+    method: "quantile",
+    fit: true,
+    unit: "min",
+    classes: [
+      { id: "c1", to: 4.25 },
+      { id: "c2", from: 4.25 },
+    ],
+    computed: { domain: [0.5, 13], decimals: 2 },
+  };
+
+  it("reads them without a format, a format's decimals win, and without fit they are not read", () => {
+    expect(classLabel(c, c.classes[0], (key) => key, "en")).toBe("0.50 style_editor.range_to 4.25 min");
+    expect(classLabel(c, c.classes[1], (key) => key, "en")).toBe("4.25 style_editor.range_to 13.00 min");
+    const formatted = { ...c, format: { decimals: 0 } };
+    expect(classLabel(formatted, c.classes[1], (key) => key, "en")).toBe("4 style_editor.range_to 13 min");
+    const { fit: _fit, ...plain } = c;
+    expect(classLabel(plain, c.classes[0], (key) => key, "en")).toBe("0.5 style_editor.range_to 4.25 min");
   });
 });
 

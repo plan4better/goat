@@ -967,7 +967,11 @@ export function buildLegend(
       if (typeof k.name === "string") entry.name = k.name;
       const raised = heightOf(k);
       if (raised !== undefined) entry.height = raised;
-      if (numeric) entry.range = classRange(c, k);
+      if (numeric)
+        entry.range = {
+          ...(typeof k.from === "number" ? { from: k.from } : {}),
+          ...(typeof k.to === "number" ? { to: k.to } : {}),
+        };
       else if (Array.isArray(k.values)) entry.values = k.values as LegendEntry["values"];
       entries.push(entry);
     });
@@ -1009,7 +1013,7 @@ export function buildLegend(
         ...(pending ? { entries: [], pending: Math.min(entries.length, PENDING_ROWS) } : { entries }),
         ...(domain ? { domain } : {}),
         ...(typeof c.unit === "string" && c.unit ? { unit: c.unit } : {}),
-        ...(isObject(c.format) ? { format: c.format as RangeFormat } : {}),
+        ...(classFormat(c) ? { format: classFormat(c) } : {}),
         ...(targets.every((target) => target === "extrude.height") ? { bars: true } : {}),
         ...(targets.some((target) => SIZES.has(target)) ? { sized: true } : {}),
         ...(geometry !== "line" &&
@@ -1370,23 +1374,19 @@ function rangeNumber(opts: { locale: string; format?: RangeFormat }): (v: number
   return (v: number) => `${opts.format?.prefix ?? ""}${formatter.format(v)}${opts.format?.suffix ?? ""}`;
 }
 
-/** The one value a numeric class holds where the server recorded it (`computed.single`, spec 7.2), for classes fitted
- * to the data (`fit`) only. */
-export function singleValue(c: JsonObject, k: JsonObject): number | undefined {
-  if (c.fit !== true) return undefined;
-  const single = isObject(c.computed) && isObject(c.computed.single) ? c.computed.single : undefined;
-  const value = single && typeof k.id === "string" ? single[k.id] : undefined;
-  return typeof value === "number" ? value : undefined;
-}
+/** The most decimals a number format takes (`format.decimals`, spec 18.4), and the most the server records. */
+const MAX_DECIMALS = 10;
 
-/** A numeric class's range as its label reads it: the one value it holds (`singleValue`), else its `from` and `to`. */
-export function classRange(c: JsonObject, k: JsonObject): { from?: number; to?: number } {
-  const value = singleValue(c, k);
-  if (value !== undefined) return { from: value, to: value };
-  return {
-    ...(typeof k.from === "number" ? { from: k.from } : {}),
-    ...(typeof k.to === "number" ? { to: k.to } : {}),
-  };
+/** The number format a classification's labels read: its `format`, with the decimals the server recorded with classes
+ * fitted to the data (`computed.decimals`, spec 7.2, `fit` only, a whole number from 0 to `MAX_DECIMALS`) where the
+ * format gives none. */
+export function classFormat(c: JsonObject): RangeFormat | undefined {
+  const format = isObject(c.format) ? (c.format as RangeFormat) : undefined;
+  const recorded = c.fit === true && isObject(c.computed) ? c.computed.decimals : undefined;
+  const valid =
+    typeof recorded === "number" && Number.isInteger(recorded) && recorded >= 0 && recorded <= MAX_DECIMALS;
+  if (format?.decimals !== undefined || !valid) return format;
+  return { ...format, decimals: recorded };
 }
 
 /** A class's range with its open ends closed by the data's minimum and maximum (`opts.domain`) where that reads

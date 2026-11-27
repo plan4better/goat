@@ -206,27 +206,15 @@ function manualComputed(computed: unknown): JsonObject | undefined {
   return rest;
 }
 
-/** `computed` without the single values (`computed.single`, spec 7.2) of the classes `ids`: their bounds moved, so the
- * values they held are no longer known until the server answers. */
-function withoutSingles(computed: JsonObject | undefined, ids: unknown[]): JsonObject | undefined {
-  if (!computed || !isObject(computed.single)) return computed;
-  const { single, ...rest } = computed;
-  const kept = Object.fromEntries(Object.entries(single).filter(([id]) => !ids.includes(id)));
-  return Object.keys(kept).length ? { ...rest, single: kept } : rest;
-}
-
 /** A break typed by hand: class `k` starts at `value` and class `k - 1` ends there; the method becomes manual, whose
- * classes the server never recomputes (spec 5.2). The two classes lose their single values. */
+ * classes the server never recomputes (spec 5.2). */
 export function setManualBound(doc: LayerStyle, ci: number, k: number, value: number): LayerStyle {
   const base = `classify.${ci}`;
-  const c = classifyOf(doc)[ci];
   let next = setIn(doc, `${base}.classes.${k}.from`, value);
   if (k > 0) next = setIn(next, `${base}.classes.${k - 1}.to`, value);
   next = setIn(next, `${base}.method`, "manual");
   next = setIn(next, `${base}.count`, undefined);
-  const classes: unknown[] = Array.isArray(c?.classes) ? c.classes : [];
-  const touched = [classes[k - 1], classes[k]].map((record) => (isObject(record) ? record.id : undefined));
-  return setIn(next, `${base}.computed`, withoutSingles(manualComputed(c?.computed), touched));
+  return setIn(next, `${base}.computed`, manualComputed(classifyOf(doc)[ci]?.computed));
 }
 
 /** A class record's own content: everything but its id and bounds, and but the value at the server's `target` while it
@@ -284,12 +272,23 @@ function asManual(c: JsonObject): JsonObject {
 }
 
 /** One classification with `fit` as the edit from `before` leaves it (goatlib's `settle_fit`). */
+/** `after` without `fit`. The decimals the server recorded with the fitted classes (`computed.decimals`) become the
+ * format's where the format states none, beside its other keys: the next compute records none (goatlib's
+ * `_without_fit`). */
+function withoutFit(before: JsonObject, after: JsonObject): JsonObject {
+  const { fit: _fit, ...rest } = after;
+  const decimals = isObject(before.computed) ? before.computed.decimals : undefined;
+  const format = after.format;
+  if (typeof decimals !== "number" || !Number.isInteger(decimals)) return rest;
+  if (format !== undefined && !isObject(format)) return rest;
+  if (isObject(format) && "decimals" in format) return rest;
+  return { ...rest, format: { ...(format ?? {}), decimals } };
+}
+
 function settledFit(before: JsonObject, after: JsonObject): JsonObject {
   if (after.method === "manual") return before.method === "manual" ? after : asManual(after);
-  if ((["field", "method", "count"] as const).some((key) => !deepEqual(before[key], after[key]))) {
-    const { fit: _fit, ...rest } = after;
-    return rest;
-  }
+  if ((["field", "method", "count"] as const).some((key) => !deepEqual(before[key], after[key])))
+    return withoutFit(before, after);
   if (after.method !== "quantile" || !classEdited(before, after)) return after;
   return asManual(after);
 }

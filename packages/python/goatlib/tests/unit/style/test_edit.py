@@ -885,6 +885,13 @@ def test_settle_fit_cases(case: dict) -> None:
 
 
 @pytest.mark.parametrize("case", FIT_CASES, ids=lambda c: c["name"])
+def test_the_fit_cases_carry_only_keys_the_format_knows(case: dict) -> None:
+    for part in ("before", "after", "expected"):
+        for c in case[part]["classify"]:
+            assert "single" not in (c.get("computed") or {}), (part, c.get("id"))
+
+
+@pytest.mark.parametrize("case", FIT_CASES, ids=lambda c: c["name"])
 def test_without_fit_the_document_comes_back_as_the_same_object(case: dict) -> None:
     def plain(doc: dict) -> dict:
         return {

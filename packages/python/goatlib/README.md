@@ -521,32 +521,35 @@ documents goatlib built or upgraded:
   loses values grows or shrinks its classes. Only tools write it, so a style
   made by hand computes as it always did; a class edit in the panel or by the
   assistant turns a fitted classification manual as it is, and an edit of its
-  field, method or count removes the key (`style/edit.py`, `settle_fit`, and
-  the web editor's `settleFit`). The runner's own fit of a run's style
+  field, method or count removes the key and keeps the recorded decimals as
+  the format's where it states none (`style/edit.py`, `settle_fit`, and the
+  web editor's `settleFit`). The runner's own fit of a run's style
   (`tools/style.py`, `fit_classes`: the count fitted once to the distinct
   values, a single class dropped unless features without a value sit beside
   it) is left for a numeric classification a tool asks for without the key. A
   style handed on from elsewhere (a template's, a filtered copy's) gets neither
   that nor the runner's decimals; a `fit` it carries is honoured by the shared
-  computation as anywhere. A title is stored text,
+  computation as anywhere, decimals included. A title is stored text,
   written once in the run's `language` (`style_title`, from the
   `style_titles` translations; English for a language they do not hold or
   none), so it does not follow whoever looks at the layer later; field names
   and a statistic's own result name are never translated. Its number of decimals
-  depends on the classes, so the runner writes it after computing them
-  (`with_decimals`), on the same style the fit acts on and only there: the
-  format has no mark that tells a tool's default from a hand-made style. The
+  depends on the classes. For a classification with `fit` the shared
+  computation works it out whenever it works out the classes and records it
+  (`computed.decimals`, `class_decimals` in `style/compute.py`; spec 5.2), so
+  the labels follow the data; a `format` with `decimals` wins. For a tool's
+  other numeric classifications the runner writes it as a format after
+  computing them (`with_decimals`), on the same style the fit acts on and only
+  there: the format has no mark that tells a tool's default from a hand-made
+  style. One rule serves both. The
   domain's ends and the breaks read apart, but an end at or above 0 may read 0,
   so a minimum next to 0 does not push every label to many decimals. A single
-  class over one value has no break and shows the value itself: with `fit` as
-  any value shown alone (below), else with up to two decimals and more where
-  fewer would read it as 0. A fitted class that holds
-  one value is labelled with it (`computed.single`, which the legend and the
-  panel read), so the decimals also show each such value with its first three
-  significant digits (0.087 reads 0.087, 99.789 reads 99.8, 1234.5 reads
-  1,235); a value with more digits is rounded.
-  The format is written once, in the run: a later recompute on changed data
-  keeps it.
+  class over one value has no break and shows the value itself: with `fit`
+  with its first three significant digits and never more decimals than it has
+  (`value_decimals`: 0.087, 99.8, 1,235), else with up to two decimals and more
+  where fewer would read it as 0. Every other class reads as a range, a fitted
+  class that holds one value too: the fit puts no break on the maximum, so the
+  last class ends at it and starts below it ("12 to 13 min").
   Classified and categorized point looks draw each marker with a thin outline
   in a darker shade of its own color (`result_styled`), so a pale class stays
   readable on a light basemap; the cluster summary's overlapping translucent

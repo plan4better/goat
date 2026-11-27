@@ -49,22 +49,14 @@
       "id": "c1",
       "to": 450.0,
       "fill": {
-       "color": "#fee6ce"
+       "color": "#fff5eb"
       }
      },
      {
       "id": "c2",
       "from": 450.0,
-      "to": 980.0,
       "fill": {
-       "color": "#fdae6b"
-      }
-     },
-     {
-      "id": "c3",
-      "from": 980.0,
-      "fill": {
-       "color": "#e6550d"
+       "color": "#7f2704"
       }
      }
     ],
@@ -79,19 +71,11 @@
      "generated": {
       "target": "fill.color",
       "values": {
-       "c1": "#fee6ce",
-       "c2": "#fdae6b",
-       "c3": "#e6550d"
+       "c1": "#fff5eb",
+       "c2": "#7f2704"
       }
      },
-     "single": {
-      "c1": 120.0,
-      "c2": 450.0,
-      "c3": 980.0
-     },
-     "no_data": false
-    },
-    "format": {
+     "no_data": false,
      "decimals": 0
     }
    }
