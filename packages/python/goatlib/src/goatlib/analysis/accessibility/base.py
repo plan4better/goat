@@ -652,6 +652,9 @@ class PTToolBase(AnalysisTool):
             WITH active_services AS ({active})
             SELECT
                 st.stop_id,
+                st.trip_id,
+                t.route_id,
+                CAST(st.stop_sequence AS INTEGER) AS call_order,
                 r.route_type,
                 st.arrival_time,
                 true AS is_weekday,

@@ -27,6 +27,12 @@ from goatlib.io.parquet import write_optimized_parquet
 logger = logging.getLogger(__name__)
 
 
+#: How near a call's stop before is to another's stop after for the two to
+#: run opposite ways through a stop, in metres: a stop across the street, not
+#: the next one along.
+OPPOSITE_STOP_M = 150
+
+
 class OevGueteklasseTool(PTToolBase):
     """Public Transport Quality Classes (ÖV-Güteklassen) Tool.
 
@@ -157,12 +163,112 @@ class OevGueteklasseTool(PTToolBase):
             SELECT * FROM (VALUES {groups_values}) AS t(route_type, transport_group)
         """)
 
+        # A line's calls at a stop, and whether it serves the stop one way or
+        # both. Directions are read from the core of GTFS alone (direction_id
+        # is optional, and feeds use it unevenly; the shipped file has none):
+        # from the stops just before and just after each call on its trip
+        # (call_order: the stop sequence, or in the shipped file the arrival
+        # time, its ties in a minute put in order by distance). Two calls
+        # of a line at a stop, or at a station's stops, go opposite ways
+        # where one ends there and another starts there (service arriving and
+        # service leaving), or where one's stop before is another's stop
+        # after, or within OPPOSITE_STOP_M of it (a stop across the street).
+        # A line's service at a stop is its calls (arriving, departing or
+        # passing) over its directions there: every stop of a line running
+        # every 10 minutes each way reads 10 minutes, its termini on one
+        # platform or several too, a turning loop's, and a one-way loop's
+        # stops; short turns keep their way.
+        weekday_col = time_window.weekday_column
+        from_time = time_window.from_time_str
+        to_time = time_window.to_time_str
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE station_line_calls AS
+            WITH calls AS (
+                SELECT
+                    CASE WHEN s.parent_station IS NOT NULL AND s.parent_station != ''
+                         THEN s.parent_station ELSE s.stop_id END AS group_id,
+                    t.route_type, t.route_id, t.trip_id, t.stop_id, t.call_order AS o
+                FROM stations_in_area s
+                JOIN gtfs_stop_times t ON s.stop_id = t.stop_id AND s.h3_3 = t.h3_3
+                WHERE t.{weekday_col} = true
+                  AND t.arrival_time >= '{from_time}'
+                  AND t.arrival_time <= '{to_time}'
+            ),
+            trip_calls AS (
+                SELECT t.trip_id, t.stop_id, t.call_order AS o,
+                       g.stop_lon AS x, g.stop_lat AS y
+                FROM gtfs_stop_times t JOIN gtfs_stops g USING (stop_id)
+                WHERE t.trip_id IN (SELECT trip_id FROM calls)
+            ),
+            -- Stops sharing a call_order (minute times) go in order of
+            -- distance from the trip's stops the minute before (the first
+            -- minute: back from the minute after), which rebuilds the stop order
+            minutes AS (
+                SELECT trip_id, o,
+                       lag(avg(x)) OVER w AS px, lag(avg(y)) OVER w AS py,
+                       lead(avg(x)) OVER w AS nx, lead(avg(y)) OVER w AS ny
+                FROM trip_calls
+                GROUP BY trip_id, o
+                WINDOW w AS (PARTITION BY trip_id ORDER BY o)
+            ),
+            ordered AS (
+                SELECT tc.trip_id, tc.stop_id, tc.o, tc.x, tc.y,
+                       row_number() OVER (
+                           PARTITION BY tc.trip_id
+                           ORDER BY tc.o,
+                               CASE WHEN m.px IS NOT NULL
+                                    THEN power((tc.x - m.px) * cos(radians(tc.y)), 2)
+                                         + power(tc.y - m.py, 2)
+                                    ELSE -(power((tc.x - m.nx) * cos(radians(tc.y)), 2)
+                                           + power(tc.y - m.ny, 2))
+                               END,
+                               tc.stop_id
+                       ) AS seq
+                FROM trip_calls tc JOIN minutes m USING (trip_id, o)
+            ),
+            neighbours AS (
+                SELECT trip_id, stop_id, o,
+                       lag(x) OVER w AS before_x, lag(y) OVER w AS before_y,
+                       lead(x) OVER w AS after_x, lead(y) OVER w AS after_y
+                FROM ordered
+                WINDOW w AS (PARTITION BY trip_id ORDER BY seq)
+            ),
+            bounds AS (
+                SELECT c.group_id, c.route_id, n.before_x, n.before_y, n.after_x, n.after_y
+                FROM calls c JOIN neighbours n USING (trip_id, stop_id, o)
+            ),
+            crossing AS (
+                SELECT DISTINCT p.group_id, p.route_id
+                FROM (SELECT DISTINCT group_id, route_id, before_x AS x, before_y AS y
+                      FROM bounds WHERE before_x IS NOT NULL) p
+                JOIN (SELECT DISTINCT group_id, route_id, after_x AS x, after_y AS y
+                      FROM bounds WHERE after_x IS NOT NULL) q
+                    USING (group_id, route_id)
+                WHERE sqrt(power((p.x - q.x) * cos(radians(p.y)) * 111320, 2)
+                           + power((p.y - q.y) * 111320, 2)) <= {OPPOSITE_STOP_M}
+            ),
+            ending AS (
+                SELECT group_id, route_id
+                FROM bounds
+                GROUP BY group_id, route_id
+                HAVING bool_or(before_x IS NOT NULL AND after_x IS NULL)
+                   AND bool_or(before_x IS NULL AND after_x IS NOT NULL)
+            )
+            SELECT c.group_id, c.route_type, c.route_id,
+                   COUNT(*) AS calls,
+                   CASE WHEN x.route_id IS NULL AND e.route_id IS NULL THEN 1 ELSE 2 END
+                       AS directions
+            FROM calls c
+            LEFT JOIN crossing x USING (group_id, route_id)
+            LEFT JOIN ending e USING (group_id, route_id)
+            GROUP BY c.group_id, c.route_type, c.route_id, x.route_id, e.route_id
+        """)
+
         # Aggregate trip counts by stop, considering parent stations
         # For parent stations, we aggregate all child stop counts
         # The parent station's own coordinate is its geometry; the centroid of
         # its child stops stands in when the feed lacks the station row
-        # Track child_cnt (number of distinct child stops with service) to know
-        # if we should divide trips by 2 later (per Swiss ARE methodology)
+        # child_cnt: the distinct child stops with service, said in the output
         self.con.execute("""
             CREATE OR REPLACE TABLE aggregated_trip_counts AS
             WITH parent_child_counts AS (
@@ -178,29 +284,27 @@ class OevGueteklasseTool(PTToolBase):
                 WHERE parent_station IS NOT NULL AND parent_station != ''
                 GROUP BY parent_station
             ),
-            child_counts AS (
-                -- Stops with parent stations: group by parent
-                -- Include actual child_cnt from parent_child_counts
+            line_service AS (
+                -- Each line's calls at a stop, or at a station's stops
+                -- together, and its calls per direction there.
                 SELECT
-                    s.parent_station AS stop_id,
-                    s.route_type,
-                    SUM(s.trip_count) AS trip_count,
-                    p.child_cnt
-                FROM station_trip_counts s
-                JOIN parent_child_counts p ON s.parent_station = p.parent_station
-                WHERE s.parent_station IS NOT NULL AND s.parent_station != ''
-                GROUP BY s.parent_station, s.route_type, p.child_cnt
-
-                UNION ALL
-
-                -- Stops without parent stations: use their own counts
-                SELECT
-                    stop_id,
+                    group_id AS stop_id,
                     route_type,
-                    trip_count,
-                    1 AS child_cnt  -- Single stop -> child_cnt = 1
-                FROM station_trip_counts
-                WHERE parent_station IS NULL OR parent_station = ''
+                    route_id,
+                    calls,
+                    calls / directions AS per_direction
+                FROM station_line_calls
+            ),
+            child_counts AS (
+                SELECT
+                    l.stop_id,
+                    l.route_type,
+                    SUM(l.calls) AS trip_count,
+                    SUM(l.per_direction) AS trips_per_direction,
+                    COALESCE(ANY_VALUE(p.child_cnt), 1) AS child_cnt
+                FROM line_service l
+                LEFT JOIN parent_child_counts p ON l.stop_id = p.parent_station
+                GROUP BY l.stop_id, l.route_type
             )
             SELECT
                 c.stop_id,
@@ -210,6 +314,7 @@ class OevGueteklasseTool(PTToolBase):
                 COALESCE(orig.geom, sn.geom, pcc.geom) AS geom,
                 c.route_type,
                 c.trip_count,
+                c.trips_per_direction,
                 c.child_cnt
             FROM child_counts c
             LEFT JOIN station_trip_counts orig ON c.stop_id = orig.stop_id
@@ -219,9 +324,7 @@ class OevGueteklasseTool(PTToolBase):
 
         # Calculate station category
         # 1. Get the highest priority transport group (A > B > C, so MIN alphabetically)
-        # 2. Calculate average frequency based on child_cnt:
-        #    - If child_cnt > 1 (parent station): time_window / (total_trips / 2)
-        #    - If child_cnt == 1 (single stop): time_window / total_trips
+        # 2. Calculate average frequency: time_window / trips per direction
         # 3. Find the time_frequency interval
         # 4. Look up the station category from config.categories
         self.con.execute("""
@@ -232,17 +335,15 @@ class OevGueteklasseTool(PTToolBase):
                 ANY_VALUE(a.geom) AS geom,
                 MIN(g.transport_group) AS transport_group,
                 SUM(a.trip_count) AS total_trips,
+                SUM(a.trips_per_direction) AS trips_per_direction,
                 ANY_VALUE(a.child_cnt) AS child_cnt
             FROM aggregated_trip_counts a
             JOIN route_type_groups g ON CAST(a.route_type AS VARCHAR) = g.route_type
             GROUP BY a.stop_id, a.stop_name
         """)
 
-        # Calculate frequency (minutes between services)
-        # Formula depends on whether this is a parent station (multiple child stops)
-        # or a single stop:
-        # - Parent station (child_cnt > 1): time_window / (total_trips / 2)
-        # - Single stop (child_cnt = 1): time_window / total_trips
+        # Calculate frequency (minutes between services): the time window over
+        # the trips per direction, the same on one platform or several.
         self.con.execute(f"""
             CREATE OR REPLACE TABLE station_frequencies AS
             SELECT
@@ -253,8 +354,8 @@ class OevGueteklasseTool(PTToolBase):
                 total_trips,
                 child_cnt,
                 CASE
-                    WHEN total_trips > 0
-                    THEN {time_window_minutes} / (total_trips / (CASE WHEN child_cnt > 1 THEN 2.0 ELSE 1.0 END))
+                    WHEN trips_per_direction > 0
+                    THEN {time_window_minutes} / trips_per_direction
                     ELSE 9999
                 END AS frequency_minutes
             FROM station_services
