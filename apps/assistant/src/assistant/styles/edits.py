@@ -387,7 +387,8 @@ def whole(before: dict[str, Any] | None, document: dict[str, Any]) -> dict[str, 
         return document
     if any(a is not b for a, b in zip(laid, new if isinstance(new, list) else [])):
         document = {**document, "classify": laid}
-    return settle_fit(before, document)
+    settled: dict[str, Any] = settle_fit(before, document)
+    return settled
 
 
 def _over_stored(stored: dict[str, Any], c: dict[str, Any]) -> dict[str, Any]:
