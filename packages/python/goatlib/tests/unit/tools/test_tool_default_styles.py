@@ -442,7 +442,10 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert issues(con, relation, doc, geometry) == []
     [c] = doc["classify"]
     assert c["format"] == {
-        "decimals": tool_style.decimals_for(breaks_of(c), c["computed"]["domain"])
+        "decimals": tool_style.decimals_for(
+            breaks_of(c) + list((c["computed"].get("single") or {}).values()),
+            c["computed"]["domain"],
+        )
     }
     assert c["computed"]["no_data"] is True
 

@@ -1976,6 +1976,21 @@
      ],
      "default": null,
      "title": "Other"
+    },
+    "single": {
+     "anyOf": [
+      {
+       "additionalProperties": {
+        "type": "number"
+       },
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Single"
     }
    },
    "required": [

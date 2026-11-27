@@ -967,11 +967,7 @@ export function buildLegend(
       if (typeof k.name === "string") entry.name = k.name;
       const raised = heightOf(k);
       if (raised !== undefined) entry.height = raised;
-      if (numeric)
-        entry.range = {
-          ...(typeof k.from === "number" ? { from: k.from } : {}),
-          ...(typeof k.to === "number" ? { to: k.to } : {}),
-        };
+      if (numeric) entry.range = classRange(c, k);
       else if (Array.isArray(k.values)) entry.values = k.values as LegendEntry["values"];
       entries.push(entry);
     });
@@ -1372,6 +1368,18 @@ function rangeNumber(opts: { locale: string; format?: RangeFormat }): (v: number
       : {}),
   });
   return (v: number) => `${opts.format?.prefix ?? ""}${formatter.format(v)}${opts.format?.suffix ?? ""}`;
+}
+
+/** A numeric class's range as its label reads it: the one value it holds where the server recorded it
+ * (`computed.single`, spec 7.2), else its `from` and `to`. */
+export function classRange(c: JsonObject, k: JsonObject): { from?: number; to?: number } {
+  const single = isObject(c.computed) && isObject(c.computed.single) ? c.computed.single : undefined;
+  const value = single && typeof k.id === "string" ? single[k.id] : undefined;
+  if (typeof value === "number") return { from: value, to: value };
+  return {
+    ...(typeof k.from === "number" ? { from: k.from } : {}),
+    ...(typeof k.to === "number" ? { to: k.to } : {}),
+  };
 }
 
 /** A class's range with its open ends closed by the data's minimum and maximum (`opts.domain`) where that reads

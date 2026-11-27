@@ -346,9 +346,10 @@ def tool_default(
 
 
 def decimals_for(c: dict[str, Any]) -> int:
-    """The decimals the computed classes need: their domain's ends and breaks
-    apart."""
+    """The decimals the computed classes need: their domain's ends, breaks
+    and single values apart."""
     breaks = [k["from"] for k in c["classes"] if "from" in k]
+    breaks += list((c["computed"].get("single") or {}).values())
     return tool_style.decimals_for(breaks, c["computed"]["domain"])
 
 

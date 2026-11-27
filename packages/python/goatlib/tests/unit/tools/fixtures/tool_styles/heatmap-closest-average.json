@@ -127,10 +127,16 @@
        "c7": "#d3f2a3"
       }
      },
+     "single": {
+      "c2": 10.5,
+      "c3": 12.0,
+      "c4": 13.5,
+      "c5": 15.0
+     },
      "no_data": true
     },
     "format": {
-     "decimals": 0
+     "decimals": 1
     }
    }
   ]

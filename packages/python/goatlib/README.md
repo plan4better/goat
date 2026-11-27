@@ -538,7 +538,11 @@ documents goatlib built or upgraded:
   domain's ends and the breaks read apart, but an end at or above 0 may read 0,
   so a minimum next to 0 does not push every label to many decimals. A single
   class over one value has no break and shows the value itself, with up to two
-  decimals and more where fewer would read it as 0.
+  decimals and more where fewer would read it as 0. A fitted class that holds
+  one value is labelled with it (`computed.single`, which the legend and the
+  panel read), so the decimals also show each such value's first three
+  significant digits, up to two: a single number reads as exact, unlike a
+  range.
   Classified and categorized point looks draw each marker with a thin outline
   in a darker shade of its own color (`result_styled`), so a pale class stays
   readable on a light basemap; the cluster summary's overlapping translucent

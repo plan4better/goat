@@ -160,19 +160,21 @@ def test_no_values_give_no_breaks() -> None:
 
 def test_one_value_gives_one_class() -> None:
     con = table([5.0] * 4 + [None])
-    assert fitted_breaks(con, "t", "v", 7) == Breaks((), 5.0, 5.0, False)
+    assert fitted_breaks(con, "t", "v", 7) == Breaks((), 5.0, 5.0, False, (), (5.0,))
 
 
 def test_few_values_get_one_class_each() -> None:
     con = table([1.0] * 10 + [2.0] * 3 + [3.0])
     b = fitted_breaks(con, "t", "v", 7)
-    assert b == Breaks((2.0, 3.0), 1.0, 3.0, False)
+    assert b == Breaks((2.0, 3.0), 1.0, 3.0, False, (), (1.0, 2.0, 3.0))
     assert held(con, b) == [10, 3, 1]
 
 
 def test_nan_and_infinity_are_no_values() -> None:
     con = table([1.0, 2.0, 3.0, float("nan"), float("inf"), float("-inf"), None])
-    assert fitted_breaks(con, "t", "v", 7) == Breaks((2.0, 3.0), 1.0, 3.0, False)
+    assert fitted_breaks(con, "t", "v", 7) == Breaks(
+        (2.0, 3.0), 1.0, 3.0, False, (), (1.0, 2.0, 3.0)
+    )
 
 
 def test_a_dominant_zero_gets_its_own_class() -> None:
@@ -460,6 +462,16 @@ def test_random_tied_tables(seed: int) -> None:
     assert min(counts) >= 1, (b, counts)
     assert b.merged is False
     assert list(b.breaks) == sorted(set(b.breaks))
+    # A class's single value: the one value it holds, else none.
+    edges = [None, *b.breaks, None]
+    for i, (lo, hi) in enumerate(zip(edges, edges[1:])):
+        held_values = con.execute(
+            "SELECT list(DISTINCT v ORDER BY v) FROM t WHERE isfinite(v) "
+            "AND (? IS NULL OR v >= ?) AND (? IS NULL OR v < ?)",
+            [lo, lo, hi, hi],
+        ).fetchone()[0]
+        one = held_values[0] if len(held_values) == 1 else None
+        assert b.singles[i] == one, (b, i, held_values)
     if centre:
         if b.positions:
             # A class from 0 that holds only zeros takes the middle color.

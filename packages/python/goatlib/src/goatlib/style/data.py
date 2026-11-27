@@ -235,6 +235,8 @@ def compute_stats(
             out[key] = breaks_for_classes(
                 result.breaks, result.min, result.max, expected
             )
+        elif kind == "single" and numeric:
+            out[key] = class_singles(con, relation, field, [float(b) for b in key[2:]])
         elif kind == "top" and ftype is not None:
             uv = calculate_unique_values(
                 con, relation, field, order=SortOrder.descendent, limit=int(key[2])
@@ -280,6 +282,8 @@ class _Fitted:
     min: float | None
     max: float | None
     first_alone: bool = False
+    #: Every value, where the fit read them all (at most `n` values).
+    values: tuple[float, ...] | None = None
 
 
 def _fit(
@@ -313,7 +317,7 @@ def _fit(
         return _Fitted((), None, None)
     if distinct <= n:
         breaks = _cuts(top, low)
-        return _Fitted(breaks, low, high, bool(breaks))
+        return _Fitted(breaks, low, high, bool(breaks), tuple(top))
     own = _own_values(con, relation, field, side, n)
     while True:
         breaks = _fitted_rest(con, relation, field, side, own, n, low, high)
@@ -471,8 +475,9 @@ def fitted_breaks(
             a = len(below.breaks) + 1
             zero = above.min == 0 and above.first_alone
             b = len(above.breaks) + 1 - zero
+            breaks = (*below.breaks, 0.0, *above.breaks)
             return Breaks(
-                (*below.breaks, 0.0, *above.breaks),
+                breaks,
                 stable(below.min),
                 stable(above.max),
                 False,
@@ -481,9 +486,64 @@ def fitted_breaks(
                     *((half,) if zero else ()),
                     *range(half + 1, half + 1 + b),
                 ),
+                class_singles(con, relation, field, breaks),
             )
     whole = _fit(con, relation, field, count)
-    return Breaks(whole.breaks, stable(whole.min), stable(whole.max), False)
+    if whole.min is None:
+        return Breaks((), None, None, False)
+    singles = (
+        _singles(
+            [(_class_of(v, whole.breaks), v, v) for v in whole.values],
+            len(whole.breaks) + 1,
+        )
+        if whole.values is not None
+        else class_singles(con, relation, field, whole.breaks)
+    )
+    return Breaks(
+        whole.breaks, stable(whole.min), stable(whole.max), False, (), singles
+    )
+
+
+def _class_of(value: float, breaks: tuple[float, ...]) -> int:
+    """The class a value falls in: one past every break at or below it."""
+    return sum(1 for b in breaks if b <= value)
+
+
+def _singles(
+    groups: list[tuple[int, float, float]], classes: int
+) -> tuple[float | None, ...]:
+    """Per class, the one value it holds (`stable`), from the lowest and
+    highest value each group of a class holds; none where a class holds values
+    that differ in their first 12 significant digits, or none at all."""
+    lows: dict[int, float] = {}
+    highs: dict[int, float] = {}
+    for index, low, high in groups:
+        lows[index] = min(low, lows.get(index, low))
+        highs[index] = max(high, highs.get(index, high))
+    return tuple(
+        stable(lows[i]) if i in lows and stable(lows[i]) == stable(highs[i]) else None
+        for i in range(classes)
+    )
+
+
+def class_singles(
+    con: duckdb.DuckDBPyConnection,
+    relation: str,
+    field: str,
+    breaks: tuple[float, ...] | list[float],
+) -> tuple[float | None, ...]:
+    """Per class of `breaks` (from inclusive, to exclusive), the one value it
+    holds (`_singles`): one query over the field's finite values."""
+    column = quote_identifier(field)
+    value = f"CAST({column} AS DOUBLE)"
+    rows = con.execute(
+        f"""SELECT len(list_filter(?::DOUBLE[], b -> b <= {value})) AS i,
+                   min({value}), max({value})
+            FROM {relation} WHERE {column} IS NOT NULL AND isfinite({column})
+            GROUP BY i""",
+        [list(breaks)],
+    ).fetchall()
+    return _singles(rows, len(breaks) + 1)
 
 
 def _presence(

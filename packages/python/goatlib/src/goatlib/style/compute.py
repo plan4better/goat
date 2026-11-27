@@ -43,7 +43,8 @@ DEFAULT_COUNT = 5
 #: (a value form's domain, or the minimum and maximum of manual classes);
 #: quantile classes fitted to the data (`fit`) ask for `("breaks", field,
 #: "quantile", count, "fit")`, centred at 0 on a diverging palette with a sixth
-#: part `"centre"`;
+#: part `"centre"`; their single values, for manual classes with `fit`,
+#: `("single", field, *breaks)` (the classes' inner bounds as text);
 #: a sqrt or log scale reads its range over the values it can map,
 #: `("range", field, "sqrt")` (from 0) and `("range", field, "log")` (above 0).
 #: A raster's "field" is its band as a formula (`b1`, or the formula's expression),
@@ -59,13 +60,15 @@ class Breaks:
     """Inner breaks over the data's minimum and maximum (None without data);
     `merged` when equal breaks left fewer than the classes asked for. Classes
     centred at 0 (`positions`) take, per class, the color at that place of the
-    palette sampled to `2 * (count // 2) + 1` colors."""
+    palette sampled to `2 * (count // 2) + 1` colors. Classes fitted to the
+    data know, per class, the one value it holds or None (`singles`)."""
 
     breaks: tuple[float, ...]
     min: float | None
     max: float | None
     merged: bool
     positions: tuple[int, ...] = ()
+    singles: tuple[float | None, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,40 @@ def _breaks_key(c: dict[str, Any]) -> StatKey | None:
             return (*key, "fit", *(("centre",) if _diverging(c.get("palette")) else ()))
         return key
     return None
+
+
+def _single_key(c: dict[str, Any]) -> StatKey | None:
+    """Manual classes with `fit` (a tool's classes kept as they are, 5.2): the
+    one value each class holds, asked with the classes' inner bounds."""
+    if not (
+        c.get("method") == "manual"
+        and c.get("fit") is True
+        and isinstance(c.get("field"), str)
+    ):
+        return None
+    classes = as_list(c.get("classes"))
+    bounds = [k.get("from") for k in classes[1:] if isinstance(k, dict)]
+    # One class holds the field's every value: a key without bounds.
+    if not classes or not all(_number(b) for b in bounds):
+        return None
+    return ("single", c["field"], *(repr(float(b)) for b in bounds))
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _singles_by_id(classes: list[Any], singles: Any) -> dict[str, float] | None:
+    """`computed.single`: class id to the one value the class holds, for the
+    classes that hold one; None where none does or the classes do not match."""
+    if not isinstance(singles, tuple) or len(singles) != len(classes):
+        return None
+    found = {
+        k["id"]: v
+        for k, v in zip(classes, singles)
+        if v is not None and isinstance(k, dict) and isinstance(k.get("id"), str)
+    }
+    return found or None
 
 
 def _top_key(c: dict[str, Any]) -> StatKey | None:
@@ -437,7 +474,7 @@ def needed_stats(doc: dict[str, Any]) -> list[StatKey]:
         return [k for k in keys if k is not None]
     keys: list[StatKey] = []
     for _, c in _classifications(doc):
-        for key in (_class_key(c), _presence_key(c)):
+        for key in (_class_key(c), _single_key(c), _presence_key(c)):
             if key is not None:
                 keys.append(key)
     keys.extend(_range_key(v) for v in _value_forms(doc))
@@ -723,9 +760,21 @@ def apply_computed(
     counters: dict[str, int] = {}
     for ci, c in _classifications(out):
         if (range_key := _manual_range_key(c)) is not None:
-            # Manual classes stay as they are: only the field's minimum and maximum.
+            # Manual classes stay as they are: only the field's minimum and maximum,
+            # and with `fit` the value of each class that holds one.
+            single = None
+            if (single_key := _single_key(c)) is not None:
+                previous = c.get("computed")
+                single = (
+                    _singles_by_id(as_list(c.get("classes")), stats[single_key])
+                    if single_key in stats
+                    else previous.get("single")
+                    if isinstance(previous, dict)
+                    else None
+                )
             c["computed"] = {
                 **_manual_computed(c, stats.get(range_key), stamp, notes, ci),
+                **({"single": single} if single else {}),
                 **_facts(stats, c),
             }
             continue
@@ -745,9 +794,12 @@ def apply_computed(
         # The data's minimum and maximum of numeric classes: the first and last
         # class are open, and their labels read the data's ends.
         domain: Any = None
+        single = None
         if isinstance(breaks, Breaks) and breaks.min is not None:
             generated = _numeric(c, breaks, geometry, ids, counters)
             domain = [breaks.min, breaks.max]
+            if _fitted(c):
+                single = _singles_by_id(c["classes"], breaks.singles)
             fewer = _fewer_classes(c, breaks, to_pointer(["classify", item_key(c, ci)]))
             if fewer is not None:
                 notes.append(fewer)
@@ -766,6 +818,7 @@ def apply_computed(
             **stamp,
             **({"domain": domain} if domain else {}),
             **({"generated": generated} if generated else {}),
+            **({"single": single} if single else {}),
             **_facts(stats, c),
         }
     for vpath, v in _attribute_forms(out):

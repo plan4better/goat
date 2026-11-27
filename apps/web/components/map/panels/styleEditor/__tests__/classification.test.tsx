@@ -1119,6 +1119,25 @@ describe("categories on a decimal field", () => {
   });
 });
 
+describe("classLabel of a class that holds a single value", () => {
+  const c = {
+    method: "quantile",
+    fit: true,
+    unit: "min",
+    classes: [
+      { id: "c1", to: 4 },
+      { id: "c2", from: 4 },
+    ],
+    computed: { domain: [0, 13], single: { c2: 13 } },
+  };
+
+  it("reads the value, a name still wins, and a class not in the key reads its range", () => {
+    expect(classLabel(c, c.classes[1], (key) => key, "en")).toBe("13 min");
+    expect(classLabel(c, { ...c.classes[1], name: "Far" }, (key) => key, "en")).toBe("Far");
+    expect(classLabel(c, c.classes[0], (key) => key, "en")).toBe("0 style_editor.range_to 4 min");
+  });
+});
+
 describe("classLabel", () => {
   it("a category's values read with the classification's unit, as the legend writes them", () => {
     const c = { field: "share", method: "categories", target: "marker.size", unit: "pixels", classes: [] };

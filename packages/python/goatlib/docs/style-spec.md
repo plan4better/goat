@@ -1346,6 +1346,9 @@ AI never set it. `count` is then the most classes, not a fixed number:
 - **Every compute fits again,** so a result that gains values gets its classes back; `count` stays as written. Fewer
   classes than `count` are by design and give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on
   other methods.
+- **Legend:** a class that holds a single value reads as that value (`computed.single`, 7.2 and 12), also once a class
+  edit made the classes `manual`: the server records the value with every compute, so a class that comes to hold two
+  values reads its range again.
 - **Edits:** choosing a field, a count or a method other than `manual` removes `fit`, and the classes compute as asked
   from then on. A change to one class (its color, name, visibility, zooms or a part, not its bounds) keeps the classes
   as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes nothing in how
@@ -1845,7 +1848,7 @@ rasters and map services do not change.
 |---|---|
 | layer without classifications | one swatch with the layer name |
 | classification | a section titled `title` (default: the field's display name; classifications of one field with the same classes, categories or numeric bounds, are one section whose entries show all they set), one entry per class in list order, then `other`, then `no_data` (these two when the data holds such features, `computed.other` and `computed.no_data`, with the look the style gives them or the base look; while not computed, when the style has a record; never when hidden or left out); none while it has no classes (not computed yet, or the field has no values) |
-| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
+| class | its `name` (default: the values joined with ", ", numbers with the unit and the values of a yes/no field as "Yes" and "No", or the range text, or for a class that holds a single value (`computed.single`, written for `fit`, 5.2) that value; a name cut off shows in full on hover), a swatch of the class's parts in a fixed box; classes that set a size are drawn at sizes in the ratio they have to each other (the largest at most 28 px for markers, 12 px for lines, 6 px for outlines); a class of the height alone a bar and its height in metres; classes of the outline's color alone a ring |
 | rule | its `name`, a swatch of what it changes; a rule that hides its features has no entry; rules that only set zooms need `legend: false` (or show a plain entry); in a layer without classes the features no rule matches follow as "Other features" |
 | value form with `palette` | a color ramp with the domain's ends, formatted |
 | value form with `range` (sizes, widths) | three samples at the start, middle and end of the domain, under the field's name |
@@ -3133,14 +3136,15 @@ to the intent, with the data it came from.
 
 | Intent | Computed | Stored in |
 |---|---|---|
-| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`) and `count` | class `from` and `to`, colors from the palette, sizes from the range | the classification's `classes` + `computed` |
+| numeric classification with a method (`quantile`, `equal_interval`, `natural_breaks`, `std_dev`, `heads_and_tails`, `geometric_interval`) and `count` | class `from` and `to`, colors from the palette, sizes from the range, and for `fit` the value of each class that holds one | the classification's `classes` + `computed` |
 | categories with `count` (top N) | the N most frequent values as classes, the rest in `other` | `classes` + `computed` |
 | value form without `domain` | the field's minimum and maximum (over the values a `sqrt` scale can map, from 0, or a `log` scale, above 0) | `computed.domain` on the value form |
 | H3 `classify` or continuous H3 colors | breaks or domain per resolution | `render.computed`, keyed by resolution |
 | raster `continuous` or `hillshade` palette without `domain`; raster classes with a method | the minimum and maximum, and class breaks, of the band or band formula, from a sample of its values (the file's overviews) | `render.computed`; `render.classify.classes` + `computed` |
 
 - **`computed`** holds `at`, `data` (the data fingerprint) and `scope`, on every classification of a field `no_data` and `other` (whether the data has features without a value in the field and, for categories, values no class lists: the legend lists "No data" and "Other" when it has, 7.2; a classification whose classes are the author's is held against the data for these alone; a style that lacks them, one computed before they were recorded or converted from the old format, is not stale for that and gets them with its next computation or when its panel opens, its classes untouched; `no_data: null` says the server looked and could not tell), and on a classification `generated`: the
-  target and the value the server wrote per class id.
+  target and the value the server wrote per class id; with `fit` (5.2), also on `manual` classes, `single`: the value
+  of each class that holds one, by class id (absent where none does).
 - **Fingerprint:** an opaque string the server writes, telling which data the values were computed from:
   - a DuckLake layer: the snapshot of the layer's last data change (`ducklake:455812`). core tracks it per layer from
     DuckLake's change log (inserts and deletes, also inlined ones, and schema changes; not compaction), so every
@@ -3769,7 +3773,7 @@ gets the same color; a point as a circle marker of size 10, a line 2 px wide, a 
 | `legend` | `false` | no | shown |
 | `classes` | list of class records (18.5) | no | computed |
 | `other`, `no_data` | class record | no | none |
-| `computed` | `{ at, data, scope, no_data, other, generated }` | server | |
+| `computed` | `{ at, data, scope, no_data, other, generated, single }` | server | |
 
 ### 18.5 Class record
 

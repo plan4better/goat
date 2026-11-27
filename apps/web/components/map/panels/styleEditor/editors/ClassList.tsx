@@ -28,7 +28,14 @@ import { HATCH, choiceLabel, compoundOptions, plainNumber, swatchOf } from "@/li
 import { CAPABILITIES } from "@/lib/style/generated/capabilities";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
-import { type RangeFormat, classDomain, labelRange, rangeText, valuesText } from "@/lib/style/legend";
+import {
+  type RangeFormat,
+  classDomain,
+  classRange,
+  labelRange,
+  rangeText,
+  valuesText,
+} from "@/lib/style/legend";
 
 import {
   useBasemapTone,
@@ -469,10 +476,7 @@ export function classLabel(
   if (typeof record.name === "string" && record.name) return record.name;
   if (Array.isArray(record.values))
     return valuesText(record.values as Array<string | number | boolean>, rangeOptions(c, t, locale));
-  return rangeText(
-    { from: record.from as number | undefined, to: record.to as number | undefined },
-    rangeOptions(c, t, locale)
-  );
+  return rangeText(classRange(c, record), rangeOptions(c, t, locale));
 }
 
 /** The range of a manual class after its typed bound: "to 14.81"; for the last class "to" the data's maximum, else

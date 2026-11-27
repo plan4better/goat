@@ -27,7 +27,7 @@ from goatlib.analysis.statistics.columns import quote_identifier
 from goatlib.i18n import DEFAULT_LANGUAGE, get_translator, supported_language
 from goatlib.style.check import MAIN_COLOR
 from goatlib.style.colors import sample_colors
-from goatlib.style.compute import Breaks
+from goatlib.style.compute import STABLE_DIGITS, Breaks
 from goatlib.style.context import DataContext
 from goatlib.style.data import compute_stats
 from goatlib.style.defaults import default_style
@@ -351,12 +351,46 @@ def _single_value_decimals(value: float) -> int:
     return max(own, decimals_for([value], [value, value]))
 
 
+#: The significant digits a class's single value shows, within
+#: `SINGLE_VALUE_DECIMALS`: a label of one number states that number.
+SINGLE_VALUE_DIGITS = 3
+
+
+def _value_decimals(value: float) -> int:
+    """The fewest decimals, at most `SINGLE_VALUE_DECIMALS`, that read `value`
+    to its first `SINGLE_VALUE_DIGITS` significant digits (10.5 one, 84.56 one,
+    1234.5 none, 30 none)."""
+    if value == 0:
+        return 0
+    whole = math.floor(math.log10(abs(value))) + 1
+    wanted = min(SINGLE_VALUE_DECIMALS, max(0, SINGLE_VALUE_DIGITS - whole))
+    exact = _rounded(value, wanted)
+    return next(d for d in range(wanted + 1) if _rounded(value, d) == exact)
+
+
+def _as_bounds(values: Iterable[float], numbers: Iterable[Any]) -> list[float]:
+    """The `values`, each that is one of the `numbers` to 12 significant
+    digits as that number: a class's single value is mostly its own bound, or
+    the data's minimum, stored with another last digit, and the two are one
+    number to tell apart from the others."""
+    known = _finite(numbers)
+    return [
+        next(
+            (k for k in known if abs(v - k) <= abs(k) * 10 ** (1 - STABLE_DIGITS)),
+            v,
+        )
+        for v in values
+    ]
+
+
 def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
     """A computed style with a number format on each numeric classification
-    that has classes and no format of its own: the decimals its class breaks
-    and its domain's ends need (`decimals_for`); a single class over one value
-    has no break and takes the decimals of that value
-    (`_single_value_decimals`)."""
+    that has classes and no format of its own: the decimals its class breaks,
+    the values of the classes that hold one (`computed.single`) and its
+    domain's ends need (`decimals_for`), and at least those that read each such
+    value to its first digits (`_value_decimals`): a label of one number
+    states that number. A single class over one value has no break and takes
+    the decimals of that value (`_single_value_decimals`)."""
     classify = document.get("classify")
     if not isinstance(classify, list):
         return document
@@ -372,11 +406,14 @@ def with_decimals(document: dict[str, Any]) -> dict[str, Any]:
             and "format" not in c
         ):
             breaks = [k.get("from") for k in c["classes"] if isinstance(k, dict)]
+            single = (c.get("computed") or {}).get("single")
+            values = _finite(single.values()) if isinstance(single, dict) else set()
+            breaks += _as_bounds(values, [*breaks, *domain])
             one = _finite(domain)
             decimals = (
                 _single_value_decimals(next(iter(one)))
                 if len(c["classes"]) == 1 and len(one) == 1
-                else decimals_for(breaks, domain)
+                else max([decimals_for(breaks, domain), *map(_value_decimals, values)])
             )
             c = {**c, "format": {"decimals": decimals}}
             changed = True
