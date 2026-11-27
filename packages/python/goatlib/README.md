@@ -564,7 +564,10 @@ the trip's later stop times one on; rows named before it keep the numbers they
 had then and are renumbered with the feed's, so a change set stays in the
 order it was made. An optional field a feed left out (a stop's
 code, its station, its platform) gets its column the first time an edit sets one
-(`ADDABLE_COLUMNS`); any other column a table lacks is refused. A stop's
+(`ADDABLE_COLUMNS`); any other column a table lacks is refused. An insert may
+name a row of the same table to copy (`copy_of`): the columns it does not give
+are that row's, as the save finds it, so a trip copied for a new departure keeps
+the fields the browser's snapshot does not hold. A stop's
 location type is checked as the validator does: a parent station where one is
 required and none on a station, a parent of the right type (also for the
 stops of a station whose type changed), stop times only at stops or

@@ -28,8 +28,10 @@ table name (a DuckLake table in geoapi, a plain DuckDB table in tests).
 """
 
 import json
+import logging
 import math
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import (
@@ -51,6 +53,37 @@ from pydantic import BaseModel, Field, model_validator
 
 from goatlib.bundles.importers.pt_network.gtfs_schema import SCHEMA, SQL_TYPE
 from goatlib.bundles.importers.pt_network.stop_chains import STOP_CHAIN_PREFIX
+
+try:
+    import pyarrow as pa
+except ImportError:  # pragma: no cover - goatlib depends on it
+    pa = None
+
+logger = logging.getLogger(__name__)
+
+
+class _Phases:
+    """How long each step of a save took: logged once, so a slow save says
+    where its time went."""
+
+    def __init__(self) -> None:
+        self.start = self.last = time.monotonic()
+        self.took: List[str] = []
+
+    def __call__(self, name: str) -> None:
+        now = time.monotonic()
+        self.took.append(f"{name} {now - self.last:.1f}s")
+        # Each as it ends, too: a save stopped part way says how far it got.
+        logger.info("Change set: %s", self.took[-1])
+        self.last = now
+
+    def log(self) -> None:
+        logger.info(
+            "Change set applied in %.1fs: %s",
+            time.monotonic() - self.start,
+            ", ".join(self.took),
+        )
+
 
 #: The roles a change set may write, each with its GTFS primary key.
 ROLE_KEYS: Dict[str, Tuple[str, ...]] = {
@@ -136,6 +169,15 @@ class RowOp(BaseModel):
     op: Literal["insert", "update", "delete"]
     key: Dict[str, Value]
     values: Dict[str, Value] = Field(default_factory=dict)
+    #: An insert copying a row of the same table: the columns ``values`` does
+    #: not name are taken from it, as the bundle has it when the change is
+    #: saved. The browser holds only the columns the Explorer reads, so a trip
+    #: copied (4.1, a departure added) keeps its stop times' other fields, its
+    #: wheelchair and bike flags and any column of the feed's own. The row is
+    #: read as the save finds it after the change set's updates and before
+    #: its deletes and inserts: one the same change set deletes or replaces is
+    #: copied as it was, one it inserts gives nothing.
+    copy_of: Optional[Dict[str, Value]] = None
 
     @model_validator(mode="after")
     def _shape(self) -> "RowOp":
@@ -144,6 +186,11 @@ class RowOp(BaseModel):
             raise ValueError(f"{self.role} is not a table the Explorer edits")
         if set(self.key) != set(keys):
             raise ValueError(f"a {self.role} row is keyed by {', '.join(keys)}")
+        if self.copy_of is not None:
+            if self.op != "insert":
+                raise ValueError("only an insert copies a row")
+            if set(self.copy_of) != set(keys):
+                raise ValueError(f"a {self.role} row is copied by {', '.join(keys)}")
         if self.op == "delete" and self.values:
             raise ValueError("a delete carries no values")
         if self.op == "update" and not self.values:
@@ -349,23 +396,27 @@ class _Net:
 
     kind: Literal["insert", "update", "delete", "replace"]
     values: Dict[str, Any]
+    #: The row an insert copies its other columns from (``RowOp.copy_of``).
+    copy_of: Optional[Tuple[Any, ...]] = None
 
 
-def _squash(
-    ops: Iterable[Tuple[str, str, Tuple[Any, ...], Dict[str, Any]]],
-) -> Dict[str, Dict[Tuple[Any, ...], _Net]]:
-    """One net write per row, from ``(role, op, key, values)`` in order."""
+#: A row written, as parsed: ``(role, op, key, values, copy_of)``.
+_Parsed = Tuple[str, str, Tuple[Any, ...], Dict[str, Any], Optional[Tuple[Any, ...]]]
+
+
+def _squash(ops: Iterable[_Parsed]) -> Dict[str, Dict[Tuple[Any, ...], _Net]]:
+    """One net write per row, from the rows written in order."""
     out: Dict[str, Dict[Tuple[Any, ...], _Net]] = {}
-    for role, op, key, values in ops:
+    for role, op, key, values, copy_of in ops:
         rows = out.setdefault(role, {})
         prev = rows.get(key)
         where = f"{role} {dict(zip(ROLE_KEYS[role], key))}"
         if prev is None:
-            rows[key] = _Net(op, dict(values))  # type: ignore[arg-type]
+            rows[key] = _Net(op, dict(values), copy_of)  # type: ignore[arg-type]
         elif op == "insert":
             if prev.kind != "delete":
                 raise ChangeSetError(f"{where} is inserted while it exists")
-            rows[key] = _Net("replace", dict(values))
+            rows[key] = _Net("replace", dict(values), copy_of)
         elif op == "update":
             if prev.kind == "delete":
                 raise ChangeSetError(f"{where} is updated after it was deleted")
@@ -429,33 +480,77 @@ def _shift_stop_times(t: _Tables, changeset: ChangeSet) -> ChangeSet:
     if not shifts:
         return changeset
     if t.has("stop_times"):
-        times = t.name("stop_times")
-        for _, trip_id, after in shifts:
-            t.con.execute(
-                f"UPDATE {times} SET stop_sequence = stop_sequence + 1 "
-                "WHERE trip_id = $t AND stop_sequence > $a",
-                {"t": trip_id, "a": after},
-            )
+        _make_room(t, [(trip_id, after) for _, trip_id, after in shifts])
+
+    def renumbered(k: int, key: Dict[str, Value]) -> Dict[str, Value]:
+        trip_id = str(key["trip_id"])
+        seq = int(_typed("stop_times", "stop_sequence", key["stop_sequence"]))
+        # Moved on by every shift after it in the same trip.
+        for at, shifted, after in shifts:
+            if at > k and shifted == trip_id and seq > after:
+                seq += 1
+        return {**key, "stop_sequence": seq}
+
     ops: List[Union[RowOp, ShapeReshape, StopTimesShift]] = []
     for k, op in enumerate(changeset.ops):
         if isinstance(op, StopTimesShift):
             continue
         if isinstance(op, RowOp) and op.role == "stop_times":
-            trip_id = str(op.key["trip_id"])
-            seq = int(_typed("stop_times", "stop_sequence", op.key["stop_sequence"]))
-            # Moved on by every shift after it in the same trip.
-            for at, shifted, after in shifts:
-                if at > k and shifted == trip_id and seq > after:
-                    seq += 1
-            op = op.model_copy(update={"key": {**op.key, "stop_sequence": seq}})
+            # The row it copies is named as it was then, too.
+            update: Dict[str, Any] = {"key": renumbered(k, op.key)}
+            if op.copy_of is not None:
+                update["copy_of"] = renumbered(k, op.copy_of)
+            op = op.model_copy(update=update)
         ops.append(op)
     return ChangeSet.model_construct(ops=ops)
 
 
-def _parse_ops(
-    t: _Tables, changeset: ChangeSet
-) -> List[Tuple[str, str, Tuple[Any, ...], Dict[str, Any]]]:
-    parsed: List[Tuple[str, str, Tuple[Any, ...], Dict[str, Any]]] = []
+def _make_room(t: _Tables, shifts: List[Tuple[str, int]]) -> None:
+    """Each shift, in order, moves the stop times of its trip past ``after``
+    on by one: done in one statement, not one per shift (a scan of the
+    network's stop times each). A shift's ``after`` is in the numbering the
+    shifts before it in its trip left; turned into the trip's numbering as it
+    is (``past``), a stop time moves on by as many shifts as it lies past."""
+    by_trip: Dict[str, List[int]] = {}
+    for trip_id, after in shifts:
+        by_trip.setdefault(trip_id, []).append(int(after))
+    thresholds: List[Tuple[str, int]] = []
+    for trip_id, afters in by_trip.items():
+
+        def moved(seq: int, upto: int) -> int:
+            # Where ``seq`` is after the trip's first ``upto`` shifts.
+            for a in afters[:upto]:
+                if seq > a:
+                    seq += 1
+            return seq
+
+        for k, after in enumerate(afters):
+            # The last sequence the k-th shift leaves where it is, counted
+            # as the trip is numbered now: at most ``after``, at least
+            # ``after - k`` (each shift before it moves a row by one).
+            past = after
+            while past > after - k - 1 and moved(past, k) > after:
+                past -= 1
+            thresholds.append((trip_id, past))
+    times = t.name("stop_times")
+    staged = _stage(t, "stop_times", ("trip_id", "stop_sequence"), thresholds)
+    types = t.types("stop_times")
+    x_seq, p_seq = (_key_sql(types, "stop_times", "stop_sequence", a) for a in "xp")
+    # Counted per numbered place, not per row: a trip with two rows at one
+    # place moves both by the shifts past it, once.
+    t.con.execute(
+        f"UPDATE {times} SET stop_sequence = {times}.stop_sequence + m.n FROM ("
+        f"SELECT x.trip_id, x.stop_sequence, count(*) AS n FROM ("
+        f"SELECT DISTINCT trip_id, stop_sequence FROM {times} "
+        f"WHERE trip_id IN (SELECT trip_id FROM {staged})) x "
+        f"JOIN {staged} p ON p.trip_id = x.trip_id AND {x_seq} > {p_seq} "
+        f"GROUP BY x.trip_id, x.stop_sequence) m "
+        f"WHERE {times}.trip_id = m.trip_id AND {times}.stop_sequence = m.stop_sequence"
+    )
+
+
+def _parse_ops(t: _Tables, changeset: ChangeSet) -> List[_Parsed]:
+    parsed: List[_Parsed] = []
     for op in changeset.ops:
         if isinstance(op, (ShapeReshape, StopTimesShift)):
             continue
@@ -474,7 +569,12 @@ def _parse_ops(
                 _add_column(t, op.role, column)
         if op.op == "update" and not values:
             continue
-        parsed.append((op.role, op.op, key, values))
+        copy_of = (
+            tuple(_typed(op.role, k, op.copy_of[k]) for k in ROLE_KEYS[op.role])
+            if op.copy_of is not None
+            else None
+        )
+        parsed.append((op.role, op.op, key, values, copy_of))
     return parsed
 
 
@@ -489,18 +589,17 @@ def _add_column(t: _Tables, role: str, column: str) -> None:
     t.forget_columns(role)
 
 
+# A row's own statements (``_where``, ``_insert``, ``_update``, ``_delete``)
+# write the stops only (``_ROW_BY_ROW``); every other table is written a
+# statement per kind (``_write_rows``).
+
+
 def _where(role: str, key: Tuple[Any, ...], params: Dict[str, Any]) -> str:
     parts = []
     for i, (col, value) in enumerate(zip(ROLE_KEYS[role], key)):
         params[f"k{i}"] = value
         parts.append(f"{_ident(col)} = $k{i}")
     return " AND ".join(parts)
-
-
-def _exists(t: _Tables, role: str, key: Tuple[Any, ...]) -> bool:
-    params: Dict[str, Any] = {}
-    sql = f"SELECT count(*) FROM {t.name(role)} WHERE {_where(role, key, params)}"
-    return bool(t.con.execute(sql, params).fetchone()[0])
 
 
 def _geometry_sql(role: str, set_exprs: Mapping[str, str]) -> Optional[str]:
@@ -535,9 +634,8 @@ def _insert(
 ) -> None:
     params: Dict[str, Any] = {}
     cols, exprs = [], []
-    for i, (col, value) in enumerate(
-        list(zip(ROLE_KEYS[role], key)) + list(values.items())
-    ):
+    given = list(zip(ROLE_KEYS[role], key)) + list(values.items())
+    for i, (col, value) in enumerate(given):
         params[f"v{i}"] = value
         cols.append(col)
         exprs.append(f"$v{i}")
@@ -622,9 +720,7 @@ class _Touched:
 def _id_table(con: Any, name: str, ids: Iterable[Any]) -> str:
     """A temp table of ``ids`` (text), for joining against."""
     con.execute(f"CREATE OR REPLACE TEMP TABLE {name} (id VARCHAR)")
-    rows = [(str(i),) for i in ids]
-    if rows:
-        con.executemany(f"INSERT INTO {name} VALUES (?)", rows)
+    _ingest(con, name, [(str(i),) for i in ids], 1)
     return name
 
 
@@ -1194,12 +1290,15 @@ def apply_changeset(
     transaction. Raises ``ChangeSetError`` for a malformed change set and
     ``ChangeSetIntegrityError`` when it would bring an ERROR; the caller rolls back
     on either."""
+    phase = _Phases()
     t = _Tables(con, tables)
     changeset = _shift_stop_times(t, changeset)
     net = _squash(_parse_ops(t, changeset))
     touched = _Touched({role: set(rows) for role, rows in net.items() if rows})
+    phase(f"parse {sum(len(r) for r in net.values())} rows")
 
     before = _check(t, touched)
+    phase("check before")
     reach = _chain_trips(t, touched)
     chains_before = (
         {
@@ -1215,38 +1314,22 @@ def apply_changeset(
     # The shapes of the trips it deletes: dropped after, where no trip runs
     # them any more.
     freed = _shapes_of_deleted_trips(t, net)
+    phase("chains and shapes before")
 
     applied = Applied()
     for role, rows in net.items():
         if not rows:
             continue
-        counts = {"inserted": 0, "updated": 0, "deleted": 0}
-        for key, n in rows.items():
-            exists = _exists(t, role, key)
-            where = f"{role} {dict(zip(ROLE_KEYS[role], (_jsonable(k) for k in key)))}"
-            if n.kind == "insert" and exists:
-                raise ChangeSetError(f"{where} already exists")
-            if n.kind in ("update", "delete", "replace") and not exists:
-                raise ChangeSetError(f"{where} is not there")
-        # Deletes first, then updates, then inserts: a replace is a delete
-        # and an insert, never an update of a row just inserted.
-        for key, n in rows.items():
-            if n.kind in ("delete", "replace"):
-                _delete(t, role, key)
-                counts["deleted" if n.kind == "delete" else "updated"] += 1
-        for key, n in rows.items():
-            if n.kind == "update":
-                _update(t, role, key, n.values, derived)
-                counts["updated"] += 1
-        for key, n in rows.items():
-            if n.kind in ("insert", "replace"):
-                _insert(t, role, key, n.values, derived)
-                if n.kind == "insert":
-                    counts["inserted"] += 1
-        applied.rows[role] = counts
+        applied.rows[role] = (
+            _write_rows_one_by_one(t, role, rows, derived)
+            if role in _ROW_BY_ROW
+            else _write_rows(t, role, rows)
+        )
+        phase(f"write {role}")
 
     _cascade_references(t, net, applied)
     unused = _drop_unused_shapes(t, freed, applied)
+    phase("references and shapes")
     reshaped: Set[str] = set()
     for op in changeset.ops:
         if isinstance(op, ShapeReshape):
@@ -1259,15 +1342,294 @@ def apply_changeset(
         counts["updated"] += len(reshaped)
     _real_lines(t, touched.ids("shapes", "shape_id") | reshaped | unused, derived)
     _chain_lines(t, chains_before, reach, derived)
+    phase("lines")
 
     after = _check(t, touched)
+    phase("check after")
     new = sorted(after - before, key=lambda n: (n.severity, n.code, n.role, str(n.key)))
     errors = [n for n in new if n.severity == "ERROR"]
     if errors:
         raise ChangeSetIntegrityError(errors)
     applied.warnings = [n for n in new if n.severity == "WARNING"]
     _drop_scratch(con)
+    phase.log()
     return applied
+
+
+# --------------------------------------------------------------------------
+# Writing the rows
+
+#: Written a row at a time: a stop's geometry, and the columns the layer
+#: derives from it, are spelled from its own coordinates. A change set has
+#: few of them; the trips and stop times are the many.
+_ROW_BY_ROW = frozenset({"stops"})
+
+_staged = 0
+
+
+def _scratch(prefix: str) -> str:
+    """A fresh name for a scratch table or view; ``_cs_`` ones are dropped by
+    ``_drop_scratch``."""
+    global _staged
+    _staged += 1
+    return f"{prefix}{_staged}"
+
+
+def _arrow_rows(rows: Sequence[Tuple[Any, ...]], width: int) -> Any:
+    """``rows`` as an Arrow table of ``width`` columns (``c0``, ...), or None
+    where Arrow cannot hold them as a parameter would: a column of more than
+    one Python type, say."""
+    if pa is None:
+        return None
+    columns: Dict[str, Any] = {}
+    try:
+        for i in range(width):
+            values = [row[i] for row in rows]
+            if len({type(v) for v in values if v is not None}) > 1:
+                return None
+            if any(isinstance(v, timedelta) for v in values):
+                # As DuckDB takes a timedelta parameter: its whole days apart
+                # from the rest, so 25:10:00 is held, and printed, alike.
+                columns[f"c{i}"] = pa.array(
+                    [
+                        None
+                        if v is None
+                        else (
+                            0,
+                            v.days,
+                            (v.seconds * 1_000_000 + v.microseconds) * 1000,
+                        )
+                        for v in values
+                    ],
+                    pa.month_day_nano_interval(),
+                )
+            else:
+                columns[f"c{i}"] = pa.array(values)
+    except (pa.ArrowException, TypeError, ValueError, OverflowError):
+        return None
+    return pa.table(columns)
+
+
+def _ingest(con: Any, name: str, rows: Sequence[Tuple[Any, ...]], width: int) -> None:
+    """Put ``rows`` into the scratch table ``name``, each value cast to its
+    column's type as a parameter is. Through Arrow, in one statement:
+    ``executemany`` runs a statement per row, some 7 s for 20,000 of them."""
+    if not rows:
+        return
+    table = _arrow_rows(rows, width)
+    if table is None:
+        con.executemany(f"INSERT INTO {name} VALUES ({', '.join('?' * width)})", rows)
+        return
+    view = _scratch("_cs_arrow_")
+    con.register(view, table)
+    try:
+        con.execute(f"INSERT INTO {name} SELECT * FROM {view}")
+    finally:
+        con.unregister(view)
+
+
+def _stage(
+    t: _Tables,
+    role: str,
+    columns: Sequence[str],
+    rows: List[Tuple[Any, ...]],
+    extra: Sequence[Tuple[str, str]] = (),
+) -> str:
+    """A scratch table of ``columns``, typed as ``role``'s table types them,
+    and of ``extra`` columns (name, SQL type), holding ``rows``: what one
+    statement then writes for all of them."""
+    name = _scratch("_cs_w_")
+    picks = [_ident(c) for c in columns] + [
+        f"CAST(NULL AS {ty}) AS {c}" for c, ty in extra
+    ]
+    t.con.execute(
+        f"CREATE TEMP TABLE {name} AS SELECT {', '.join(picks)} FROM {t.name(role)} LIMIT 0"
+    )
+    _ingest(t.con, name, rows, len(columns) + len(extra))
+    return name
+
+
+def _key_sql(types: Mapping[str, str], role: str, column: str, alias: str) -> str:
+    """``alias.column`` as a key is compared. A bundle imported before typing
+    holds a time, date or number as text: compared in the type GTFS gives it
+    (``6:00:00`` is ``06:00:00``), as a row's own statement against a typed
+    value compares it."""
+    col = f"{alias}.{_ident(column)}"
+    spec = SCHEMA.get(role, {}).get(column)
+    if spec is not None and types.get(column) == "VARCHAR":
+        return f"CAST({col} AS {SQL_TYPE[spec.kind]})"
+    return col
+
+
+def _matches(t: _Tables, role: str, a: str, b: str) -> str:
+    """``a``'s row and ``b``'s are the same row: their keys are equal."""
+    types = t.types(role)
+    return " AND ".join(
+        f"{_key_sql(types, role, k, a)} = {_key_sql(types, role, k, b)}"
+        for k in ROLE_KEYS[role]
+    )
+
+
+def _existing(t: _Tables, role: str, keys: List[Tuple[Any, ...]]) -> Set[int]:
+    """Which of ``keys`` (by their place) ``role``'s table has, in one query;
+    compared as a row's own statement compares them (``_key_sql``)."""
+    staged = _stage(
+        t,
+        role,
+        ROLE_KEYS[role],
+        [k + (i,) for i, k in enumerate(keys)],
+        [("_i", "INTEGER")],
+    )
+    return {
+        int(r[0])
+        for r in t.con.execute(
+            f"SELECT DISTINCT k._i FROM {staged} k JOIN {t.name(role)} x ON {_matches(t, role, 'x', 'k')}"
+        ).fetchall()
+    }
+
+
+def _check_exists(
+    role: str, rows: Mapping[Tuple[Any, ...], Any], existing: Set[int]
+) -> None:
+    for i, (key, n) in enumerate(rows.items()):
+        where = f"{role} {dict(zip(ROLE_KEYS[role], (_jsonable(k) for k in key)))}"
+        if n.kind == "insert" and i in existing:
+            raise ChangeSetError(f"{where} already exists")
+        if n.kind in ("update", "delete", "replace") and i not in existing:
+            raise ChangeSetError(f"{where} is not there")
+
+
+def _copy_sources(t: _Tables, role: str, sources: List[Tuple[Any, ...]]) -> str:
+    """A scratch table of the rows ``sources`` name, as the table has them
+    now: one per source (the first found, where a key names two rows), by its
+    place in ``sources`` (``_cs_k``), with the columns a copy may take."""
+    staged = _stage(
+        t,
+        role,
+        ROLE_KEYS[role],
+        [k + (i,) for i, k in enumerate(sources)],
+        [("_cs_k", "INTEGER")],
+    )
+    name = _scratch("_cs_src_")
+    cols = ", ".join(
+        f"x.{_ident(c)}" for c in t.columns(role) if c not in DERIVED_COLUMNS
+    )
+    t.con.execute(
+        f"CREATE TEMP TABLE {name} AS SELECT k._cs_k, {cols} FROM {staged} k "
+        f"JOIN {t.name(role)} x ON {_matches(t, role, 'x', 'k')} "
+        "QUALIFY row_number() OVER (PARTITION BY k._cs_k) = 1"
+    )
+    return name
+
+
+def _write_rows(
+    t: _Tables, role: str, rows: Mapping[Tuple[Any, ...], Any]
+) -> Dict[str, int]:
+    """``role``'s rows written a statement per kind, not per row: on a
+    network of millions of stop times, a row's own statement scans its table
+    each time, and an edit of many trips took minutes. Updates and deletes
+    first (never of the same row), then inserts: a replace is a delete and an
+    insert, never an update of a row just inserted. The rows copied from are
+    read between the updates and the deletes (``RowOp.copy_of``)."""
+    keys = ROLE_KEYS[role]
+    table = t.name(role)
+    _check_exists(role, rows, _existing(t, role, list(rows)))
+    counts = {"inserted": 0, "updated": 0, "deleted": 0}
+
+    # Updates, by the columns they set.
+    updates: Dict[Tuple[str, ...], List[Tuple[Any, ...]]] = {}
+    for key, n in rows.items():
+        if n.kind == "update":
+            cols = tuple(n.values)
+            updates.setdefault(cols, []).append(key + tuple(n.values[c] for c in cols))
+            counts["updated"] += 1
+    for cols, values in updates.items():
+        staged = _stage(t, role, keys + cols, values)
+        sets = ", ".join(f"{_ident(c)} = s.{_ident(c)}" for c in cols)
+        t.con.execute(
+            f"UPDATE {table} SET {sets} FROM {staged} s WHERE {_matches(t, role, 's', table)}"
+        )
+
+    # The rows copied from, before a delete takes one: each once.
+    sources: Dict[Tuple[Any, ...], int] = {}
+    for n in rows.values():
+        if n.kind in ("insert", "replace") and n.copy_of is not None:
+            sources.setdefault(n.copy_of, len(sources))
+    copied_from = _copy_sources(t, role, list(sources)) if sources else None
+
+    gone = [key for key, n in rows.items() if n.kind in ("delete", "replace")]
+    if gone:
+        staged = _stage(t, role, keys, gone)
+        t.con.execute(
+            f"DELETE FROM {table} WHERE EXISTS "
+            f"(SELECT 1 FROM {staged} k WHERE {_matches(t, role, 'k', table)})"
+        )
+        for key in gone:
+            counts["deleted" if rows[key].kind == "delete" else "updated"] += 1
+
+    # Inserts, by the columns they give, and copies by the row they copy:
+    # its columns the insert leaves out, but those the layer derives.
+    plain: Dict[Tuple[str, ...], List[Tuple[Any, ...]]] = {}
+    copies: Dict[Tuple[str, ...], List[Tuple[Any, ...]]] = {}
+    for key, n in rows.items():
+        if n.kind not in ("insert", "replace"):
+            continue
+        cols = tuple(c for c in n.values if c not in keys)
+        values = key + tuple(n.values[c] for c in cols)
+        if n.copy_of is None:
+            plain.setdefault(cols, []).append(values)
+        else:
+            copies.setdefault(cols, []).append(values + (sources[n.copy_of],))
+        if n.kind == "insert":
+            counts["inserted"] += 1
+    for cols, values in plain.items():
+        staged = _stage(t, role, keys + cols, values)
+        names = ", ".join(_ident(c) for c in keys + cols)
+        t.con.execute(f"INSERT INTO {table} ({names}) SELECT {names} FROM {staged}")
+    for cols, values in copies.items():
+        given = keys + cols
+        staged = _stage(t, role, given, values, [("_cs_k", "INTEGER")])
+        copied = [
+            c for c in t.columns(role) if c not in given and c not in DERIVED_COLUMNS
+        ]
+        names = ", ".join(_ident(c) for c in given + tuple(copied))
+        picks = ", ".join(
+            [f"s.{_ident(c)}" for c in given] + [f"x.{_ident(c)}" for c in copied]
+        )
+        t.con.execute(
+            f"INSERT INTO {table} ({names}) SELECT {picks} FROM {staged} s "
+            f"LEFT JOIN {copied_from} x ON x._cs_k = s._cs_k"
+        )
+    return counts
+
+
+def _write_rows_one_by_one(
+    t: _Tables,
+    role: str,
+    rows: Mapping[Tuple[Any, ...], Any],
+    derived: Optional[Derived],
+) -> Dict[str, int]:
+    """``role``'s rows a statement each (``_ROW_BY_ROW``): deletes, then
+    updates, then inserts. None of them is a copy: the Explorer copies trips
+    and their stop times, never a stop."""
+    if any(n.copy_of is not None for n in rows.values()):
+        raise ChangeSetError(f"a {role} row is not copied")
+    _check_exists(role, rows, _existing(t, role, list(rows)))
+    counts = {"inserted": 0, "updated": 0, "deleted": 0}
+    for key, n in rows.items():
+        if n.kind in ("delete", "replace"):
+            _delete(t, role, key)
+            counts["deleted" if n.kind == "delete" else "updated"] += 1
+    for key, n in rows.items():
+        if n.kind == "update":
+            _update(t, role, key, n.values, derived)
+            counts["updated"] += 1
+    for key, n in rows.items():
+        if n.kind in ("insert", "replace"):
+            _insert(t, role, key, n.values, derived)
+            if n.kind == "insert":
+                counts["inserted"] += 1
+    return counts
 
 
 _EARTH_M = 6371008.8

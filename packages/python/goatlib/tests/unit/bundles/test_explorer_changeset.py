@@ -554,6 +554,87 @@ def test_a_trip_goes_with_its_stop_times(con: duckdb.DuckDBPyConnection) -> None
     assert one(con, "SELECT count(*) FROM stop_times WHERE trip_id = 'T2'") == (0,)
 
 
+def test_many_rows_are_written_a_statement_per_kind(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """Stop times of two trips at once, as an edit of many trips sends them:
+    updates setting different columns, a row deleted and written again (a
+    replace), a delete and an insert, each landing as a row's own statement
+    would land it."""
+    t1 = {"trip_id": "T1"}
+    applied = apply(
+        con,
+        [
+            {
+                "role": "stop_times",
+                "op": "update",
+                "key": {**t1, "stop_sequence": 2},
+                "values": {"arrival_time": "08:01:00", "departure_time": "08:01:30"},
+            },
+            {
+                "role": "stop_times",
+                "op": "update",
+                "key": {**t1, "stop_sequence": 3},
+                "values": {"departure_time": "08:04:30"},
+            },
+            {"role": "stop_times", "op": "delete", "key": {**t1, "stop_sequence": 4}},
+            {
+                "role": "stop_times",
+                "op": "insert",
+                "key": {**t1, "stop_sequence": 4},
+                "values": {
+                    "stop_id": "S4",
+                    "arrival_time": "08:06:00",
+                    "departure_time": "08:06:30",
+                    "shape_dist_traveled": 2.04,
+                },
+            },
+            {
+                "role": "stop_times",
+                "op": "delete",
+                "key": {"trip_id": "T3", "stop_sequence": 5},
+            },
+            {
+                "role": "stop_times",
+                "op": "insert",
+                "key": {"trip_id": "T3", "stop_sequence": 6},
+                "values": {
+                    "stop_id": "S1",
+                    "arrival_time": "08:30:00",
+                    "departure_time": "08:30:00",
+                },
+            },
+        ],
+    )
+    assert applied.rows["stop_times"] == {"inserted": 1, "updated": 3, "deleted": 1}
+    times = con.execute(
+        "SELECT trip_id, stop_sequence, stop_id, epoch(arrival_time), epoch(departure_time) "
+        "FROM stop_times WHERE trip_id IN ('T1', 'T3') ORDER BY trip_id, stop_sequence"
+    ).fetchall()
+
+    def hms(seconds: float) -> str:
+        s = int(seconds)
+        return f"{s // 3600:02d}:{s // 60 % 60:02d}:{s % 60:02d}"
+
+    as_text = [(r[0], r[1], r[2], hms(r[3]), hms(r[4])) for r in times]
+    assert as_text == [
+        ("T1", 1, "S1", "08:00:00", "08:00:00"),
+        ("T1", 2, "S2", "08:01:00", "08:01:30"),
+        ("T1", 3, "S3", "08:04:00", "08:04:30"),
+        ("T1", 4, "S4", "08:06:00", "08:06:30"),
+        ("T1", 5, "S5", "08:08:00", "08:08:00"),
+        ("T3", 1, "S5", "08:20:00", "08:20:00"),
+        ("T3", 2, "S4", "08:22:00", "08:22:00"),
+        ("T3", 3, "S3", "08:24:00", "08:24:00"),
+        ("T3", 4, "S2", "08:26:00", "08:26:00"),
+        ("T3", 6, "S1", "08:30:00", "08:30:00"),
+    ]
+    # The scratch tables it wrote through are gone.
+    assert not con.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE temporary AND starts_with(table_name, '_cs_')"
+    ).fetchall()
+
+
 def test_a_trip_without_its_stop_times_is_refused(
     con: duckdb.DuckDBPyConnection,
 ) -> None:
@@ -1147,3 +1228,346 @@ def test_a_stop_added_between_two_numbered_one_apart_makes_room_for_itself(
     assert after[2][2] is None
     assert [r[2] for r in after if r[1] != "X"] == [r[2] for r in before]
     assert all(x[0] < y[0] for x, y in zip(after, after[1:]))
+
+
+def test_a_copied_trip_keeps_the_columns_it_does_not_name(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """A departure added by a headway edit (4.1) copies a trip: the Explorer
+    sends what it holds (ids, times, the block taken off), and the rest of the
+    row (here a bike flag and a stop's pickup type) comes from the trip
+    copied."""
+    con.execute("ALTER TABLE trips ADD COLUMN bikes_allowed INTEGER")
+    con.execute(
+        "UPDATE trips SET bikes_allowed = 1, block_id = 'B9' WHERE trip_id = 'T1'"
+    )
+    con.execute("ALTER TABLE stop_times ADD COLUMN pickup_type INTEGER")
+    con.execute(
+        "UPDATE stop_times SET pickup_type = 1 WHERE trip_id = 'T1' AND stop_sequence = 2"
+    )
+    times = con.execute(
+        "SELECT stop_sequence, stop_id FROM stop_times WHERE trip_id = 'T1' "
+        "ORDER BY stop_sequence"
+    ).fetchall()
+    ops: List[Dict[str, Any]] = [
+        {
+            "role": "trips",
+            "op": "insert",
+            "key": {"trip_id": "goat_t1"},
+            "values": {"route_id": "R1", "service_id": "WK", "block_id": None},
+            "copy_of": {"trip_id": "T1"},
+        }
+    ] + [
+        {
+            "role": "stop_times",
+            "op": "insert",
+            "key": {"trip_id": "goat_t1", "stop_sequence": seq},
+            "values": {
+                "stop_id": stop_id,
+                "arrival_time": f"09:0{2 * k}:00",
+                "departure_time": f"09:0{2 * k}:00",
+            },
+            "copy_of": {"trip_id": "T1", "stop_sequence": seq},
+        }
+        for k, (seq, stop_id) in enumerate(times)
+    ]
+    apply(con, ops)
+    assert one(
+        con,
+        "SELECT route_id, service_id, shape_id, trip_headsign, bikes_allowed, block_id "
+        "FROM trips WHERE trip_id = 'goat_t1'",
+    ) == ("R1", "WK", "SH1", "Fifth", 1, None)
+    copied = con.execute(
+        "SELECT stop_sequence, CAST(departure_time AS VARCHAR), pickup_type, "
+        "shape_dist_traveled FROM stop_times WHERE trip_id = 'goat_t1' "
+        "ORDER BY stop_sequence"
+    ).fetchall()
+    assert [r[1] for r in copied][:2] == ["09:00:00", "09:02:00"]
+    assert [r[2] for r in copied] == [None, 1, None, None, None]
+    assert [r[3] for r in copied] == pytest.approx([0, 0.68, 1.36, 2.04, 2.72])
+
+
+def _copies_of_t1(new: str) -> List[Dict[str, Any]]:
+    """Trip T1 copied as ``new``, its stop times with it, an hour later."""
+    return [
+        {
+            "role": "trips",
+            "op": "insert",
+            "key": {"trip_id": new},
+            "values": {"route_id": "R1", "service_id": "WK"},
+            "copy_of": {"trip_id": "T1"},
+        }
+    ] + [
+        {
+            "role": "stop_times",
+            "op": "insert",
+            "key": {"trip_id": new, "stop_sequence": seq},
+            "values": {
+                "stop_id": f"S{seq}",
+                "arrival_time": f"09:0{2 * (seq - 1)}:00",
+                "departure_time": f"09:0{2 * (seq - 1)}:00",
+            },
+            "copy_of": {"trip_id": "T1", "stop_sequence": seq},
+        }
+        for seq in range(1, 6)
+    ]
+
+
+def test_a_row_copied_and_deleted_in_one_change_set_is_copied_as_it_was(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """A departure moved by a headway edit: the trip it copies is deleted in
+    the same change set, and the rows a change set deletes go first. The copy
+    still takes what it does not name from the trip as it was; so does a row
+    replaced by a copy of itself."""
+    con.execute("ALTER TABLE trips ADD COLUMN bikes_allowed INTEGER")
+    con.execute("UPDATE trips SET bikes_allowed = 1 WHERE trip_id = 'T1'")
+    con.execute("ALTER TABLE stop_times ADD COLUMN pickup_type INTEGER")
+    con.execute(
+        "UPDATE stop_times SET pickup_type = stop_sequence WHERE trip_id = 'T1'"
+    )
+    con.execute(
+        "UPDATE stop_times SET pickup_type = 7 WHERE trip_id = 'T2' AND stop_sequence = 2"
+    )
+    t2 = {"trip_id": "T2", "stop_sequence": 2}
+    applied = apply(
+        con,
+        _copies_of_t1("goat_t1")
+        + [{"role": "trips", "op": "delete", "key": {"trip_id": "T1"}}]
+        + [
+            {
+                "role": "stop_times",
+                "op": "delete",
+                "key": {"trip_id": "T1", "stop_sequence": seq},
+            }
+            for seq in range(1, 6)
+        ]
+        + [
+            {"role": "stop_times", "op": "delete", "key": t2},
+            {
+                "role": "stop_times",
+                "op": "insert",
+                "key": t2,
+                "values": {
+                    "stop_id": "S2",
+                    "arrival_time": "08:12:30",
+                    "departure_time": "08:12:30",
+                },
+                "copy_of": t2,
+            },
+        ],
+    )
+    assert applied.rows["trips"] == {"inserted": 1, "updated": 0, "deleted": 1}
+    assert one(
+        con,
+        "SELECT shape_id, trip_headsign, bikes_allowed FROM trips "
+        "WHERE trip_id = 'goat_t1'",
+    ) == ("SH1", "Fifth", 1)
+    copied = con.execute(
+        "SELECT pickup_type, shape_dist_traveled FROM stop_times "
+        "WHERE trip_id = 'goat_t1' ORDER BY stop_sequence"
+    ).fetchall()
+    assert [r[0] for r in copied] == [1, 2, 3, 4, 5]
+    assert [r[1] for r in copied] == pytest.approx([0, 0.68, 1.36, 2.04, 2.72])
+    assert one(con, "SELECT count(*) FROM stop_times WHERE trip_id = 'T1'") == (0,)
+    assert one(
+        con,
+        "SELECT count(*), any_value(pickup_type), any_value(shape_dist_traveled), "
+        "CAST(any_value(departure_time) AS VARCHAR) FROM stop_times "
+        "WHERE trip_id = 'T2' AND stop_sequence = 2",
+    ) == (1, 7, pytest.approx(0.68), "08:12:30")
+
+
+def test_a_copy_named_before_a_shift_copies_the_row_it_named(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """Stop times copied, then a stop added to the trip they copy: the rows
+    they copy are named as they were numbered then, and renumbered with the
+    rest."""
+    con.execute("ALTER TABLE stop_times ADD COLUMN pickup_type INTEGER")
+    con.execute(
+        "UPDATE stop_times SET pickup_type = stop_sequence WHERE trip_id = 'T1'"
+    )
+    apply(
+        con,
+        _copies_of_t1("goat_t1")
+        + [
+            {"role": "stop_times", "op": "shift", "key": {"trip_id": "T1"}, "after": 1},
+            {
+                "role": "stop_times",
+                "op": "insert",
+                "key": {"trip_id": "T1", "stop_sequence": 2},
+                "values": {"stop_id": "S3"},
+            },
+        ],
+    )
+    assert [
+        r[0]
+        for r in con.execute(
+            "SELECT pickup_type FROM stop_times WHERE trip_id = 'goat_t1' "
+            "ORDER BY stop_sequence"
+        ).fetchall()
+    ] == [1, 2, 3, 4, 5]
+    assert [
+        r[0]
+        for r in con.execute(
+            "SELECT pickup_type FROM stop_times WHERE trip_id = 'T1' "
+            "ORDER BY stop_sequence"
+        ).fetchall()
+    ] == [1, None, 2, 3, 4, 5]
+
+
+def test_a_frequency_keyed_by_a_time_held_as_text_is_found(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    """A bundle imported before typing holds a frequency's start_time as
+    text, its leading zero left out: the change set names it ``06:00:00``,
+    and the save finds it, as a row's own statement against a typed value
+    found it."""
+    con.execute(
+        "CREATE OR REPLACE TABLE frequencies AS SELECT trip_id, "
+        "'6:00:00' AS start_time, CAST(end_time AS VARCHAR) AS end_time, "
+        "headway_secs, exact_times FROM frequencies"
+    )
+    f1 = {"trip_id": "F1", "start_time": "06:00:00"}
+    applied = apply(
+        con,
+        [
+            {
+                "role": "frequencies",
+                "op": "update",
+                "key": f1,
+                "values": {"headway_secs": 300},
+            }
+        ],
+    )
+    assert applied.rows["frequencies"] == {"inserted": 0, "updated": 1, "deleted": 0}
+    assert one(con, "SELECT start_time, headway_secs FROM frequencies") == (
+        "6:00:00",
+        300,
+    )
+    applied = apply(
+        con,
+        [
+            {"role": "frequencies", "op": "delete", "key": f1},
+            {
+                "role": "frequencies",
+                "op": "insert",
+                "key": f1,
+                "values": {"end_time": "10:00:00", "headway_secs": 900},
+            },
+        ],
+    )
+    assert applied.rows["frequencies"] == {"inserted": 0, "updated": 1, "deleted": 0}
+    assert con.execute(
+        "SELECT trip_id, start_time, end_time, headway_secs FROM frequencies"
+    ).fetchall() == [("F1", "06:00:00", "10:00:00", 900)]
+
+
+def test_rows_staged_through_arrow_land_as_parameters_land(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The scratch tables a write goes through are filled through Arrow, in
+    one statement. Each value lands as ``executemany`` landed it: a time past
+    midnight, a date and a number in a text column included."""
+    from datetime import date, timedelta
+
+    from goatlib.bundles.explorer import changeset as cs
+
+    columns = {
+        "n": "INTEGER",
+        "t_text": "VARCHAR",
+        "t_time": "INTERVAL",
+        "d_text": "VARCHAR",
+        "d_date": "DATE",
+        "i_text": "VARCHAR",
+        "i_int": "INTEGER",
+        "f_text": "VARCHAR",
+        "f_double": "DOUBLE",
+        "s": "VARCHAR",
+    }
+    late = timedelta(hours=25, minutes=10, seconds=5)
+    day = date(2026, 10, 12)
+    rows = [
+        (0, late, late, day, day, 7, 7, 1.5, 1.5, "x"),
+        (1, timedelta(hours=6), timedelta(0), None, None, None, -3, 2.0, None, ""),
+        (2, None, None, None, None, None, None, None, None, None),
+    ]
+    assert cs._arrow_rows(rows, len(columns)) is not None
+
+    def staged() -> list:
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE src ("
+            + ", ".join(f"{c} {ty}" for c, ty in columns.items())
+            + ")"
+        )
+        t = cs._Tables(con, {"stop_times": "src"})
+        name = cs._stage(t, "stop_times", list(columns), rows)
+        picks = ", ".join(f"typeof({c}), CAST({c} AS VARCHAR)" for c in columns)
+        return con.execute(f"SELECT {picks} FROM {name} ORDER BY n").fetchall()
+
+    through_arrow = staged()
+    monkeypatch.setattr(cs, "pa", None)
+    assert through_arrow == staged()
+    assert through_arrow[0][3] == "1 day 01:10:05"
+
+
+def test_only_an_insert_copies_a_row() -> None:
+    with pytest.raises(ValidationError):
+        ChangeSet(
+            ops=[
+                {
+                    "role": "trips",
+                    "op": "update",
+                    "key": {"trip_id": "T1"},
+                    "values": {"trip_headsign": "X"},
+                    "copy_of": {"trip_id": "T2"},
+                }
+            ]
+        )
+
+
+def test_room_made_at_once_is_room_made_shift_by_shift() -> None:
+    """Shifts made in one statement number a trip's stop times as the same
+    shifts made one by one, in order, do: several in a trip included."""
+    import random
+
+    from goatlib.bundles.explorer.changeset import _make_room, _Tables
+
+    rng = random.Random(7)
+    for _ in range(50):
+        trips = {f"T{i}": rng.randint(2, 12) for i in range(3)}
+        shifts = [
+            (trip, rng.randint(0, n + 3))
+            for trip, n in trips.items()
+            for _ in range(rng.randint(0, 4))
+        ]
+        rng.shuffle(shifts)
+        rows = [(trip, s) for trip, n in trips.items() for s in range(1, n + 1)]
+        # A feed may hold two rows at one place of a trip: both move, once.
+        rows += rng.sample(rows, rng.randint(0, 3))
+
+        def numbered(con: duckdb.DuckDBPyConnection) -> list:
+            return con.execute(
+                "SELECT trip_id, stop_sequence, tag FROM stop_times ORDER BY tag"
+            ).fetchall()
+
+        one_by_one = duckdb.connect()
+        at_once = duckdb.connect()
+        for c in (one_by_one, at_once):
+            c.execute(
+                "CREATE TABLE stop_times (trip_id VARCHAR, stop_sequence INTEGER, tag VARCHAR)"
+            )
+            c.executemany(
+                "INSERT INTO stop_times VALUES (?, ?, ?)",
+                [(trip, s, f"{trip}:{s}:{k:02d}") for k, (trip, s) in enumerate(rows)],
+            )
+        for trip, after in shifts:
+            one_by_one.execute(
+                "UPDATE stop_times SET stop_sequence = stop_sequence + 1 "
+                "WHERE trip_id = ? AND stop_sequence > ?",
+                [trip, after],
+            )
+        _make_room(_Tables(at_once, {"stop_times": "stop_times"}), shifts)
+        assert numbered(at_once) == numbered(one_by_one), shifts
