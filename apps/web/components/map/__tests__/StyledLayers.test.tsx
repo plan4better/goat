@@ -1,6 +1,7 @@
 import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CompiledScene } from "@/lib/scene/compile";
 import { compileLayer } from "@/lib/style/compile";
 import { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
@@ -17,10 +18,7 @@ const { syncMock, useMapMock, valuesMock } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/style/render/mapLayers", async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  syncMapLayers: (...args: unknown[]) => {
-    syncMock(...args);
-    return { placed: new Map(), order: [] };
-  },
+  syncMapLayers: (...args: unknown[]) => syncMock(...args) ?? { placed: new Map(), order: [] },
 }));
 vi.mock("react-map-gl/maplibre", () => ({ useMap: () => useMapMock() }));
 vi.mock("@/lib/api/rasters", () => ({
@@ -33,6 +31,7 @@ const fakeMap = {
   on: vi.fn(),
   off: vi.fn(),
   getStyle: () => ({ layers: [] }),
+  getZoom: () => 12,
   isStyleLoaded: () => true,
 };
 const style = (color: string) =>
@@ -225,6 +224,141 @@ describe("StyledLayers", () => {
     await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
     expect(drawnSource()).toMatchObject({ type: "raster", tileset, image });
     expect(compiled().sources["src-r"]).toMatchObject({ maxzoom: 16, bounds: image.bounds });
+  });
+
+  /**
+   * A map whose camera is at `zoom` (`zoomTo` moves it without an event, `fire` fires one), with the renderer
+   * answering that the buildings draw from zoom 14 and whether the layers on top went below them.
+   */
+  const withBuildingsFrom14 = (start: number) => {
+    let zoom = start;
+    const listeners = new Map<string, () => void>();
+    const map = {
+      ...fakeMap,
+      getZoom: () => zoom,
+      on: (type: string, listener: () => void) => listeners.set(type, listener),
+      off: vi.fn(),
+    };
+    useMapMock.mockReturnValue({ current: { getMap: () => map } });
+    syncMock.mockImplementation(() => ({
+      placed: new Map(),
+      order: [],
+      buildingsFrom: 14,
+      underBuildings: zoom >= 14,
+    }));
+    return {
+      zoomTo: (next: number) => {
+        zoom = next;
+      },
+      fire: (type: string) => listeners.get(type)?.(),
+    };
+  };
+
+  it("places the layers again at once when the camera crosses the zoom at which the buildings draw, only then", async () => {
+    const camera = withBuildingsFrom14(12);
+    render(
+      <StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" ground="goat-buildings" />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    expect((syncMock.mock.calls.at(-1) as unknown[])[3]).toMatchObject({ ground: "goat-buildings" });
+    // Every frame of a movement fires `move`, a zoom's frames too.
+    const zoomTo = (next: number) => {
+      camera.zoomTo(next);
+      camera.fire("move");
+    };
+    zoomTo(13.5);
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    // Across it: placed in the same event, before the map draws the frame.
+    zoomTo(14.1);
+    expect(syncMock).toHaveBeenCalledTimes(2);
+    zoomTo(17);
+    expect(syncMock).toHaveBeenCalledTimes(2);
+    zoomTo(13.9);
+    expect(syncMock).toHaveBeenCalledTimes(3);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(syncMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("a camera landing exactly on that zoom (zoom buttons, setZoom) counts as at it", async () => {
+    const camera = withBuildingsFrom14(13);
+    render(
+      <StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" ground="goat-buildings" />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    camera.zoomTo(14);
+    camera.fire("move");
+    expect(syncMock).toHaveBeenCalledTimes(2);
+    camera.fire("move");
+    expect(syncMock).toHaveBeenCalledTimes(2);
+    camera.zoomTo(13.999);
+    camera.fire("move");
+    expect(syncMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("a zoom changed with only `move` events (the inertia of a drag over terrain) is caught", async () => {
+    const camera = withBuildingsFrom14(13.8);
+    render(
+      <StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" ground="goat-buildings" />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    // The drag's end puts the center back onto the terrain with the camera in place, which changes the zoom; the
+    // inertia that follows moves the camera without a zoom axis.
+    camera.zoomTo(14.05);
+    camera.fire("move");
+    expect(syncMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("a zoom changed without any frame event is caught at the movement's end", async () => {
+    const camera = withBuildingsFrom14(13.8);
+    render(
+      <StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" ground="goat-buildings" />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    camera.fire("moveend");
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    camera.zoomTo(14.05);
+    camera.fire("moveend");
+    expect(syncMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("draws once more when the scene was applied again, so a changed building layer is read again", async () => {
+    const layers = [layer("1", "#aaaaaa")];
+    const scene = { layers: [] } as unknown as CompiledScene;
+    const { rerender } = render(
+      <StyledLayers layers={layers} locale="en" tone="light" ground="goat-buildings" scene={scene} />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    // The same building layer with another zoom range or opacity: the same `ground`, a new applied scene.
+    rerender(
+      <StyledLayers
+        layers={layers}
+        locale="en"
+        tone="light"
+        ground="goat-buildings"
+        scene={{ layers: [] } as unknown as CompiledScene}
+      />
+    );
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(2));
+    expect((syncMock.mock.calls.at(-1) as unknown[])[2]).toEqual((syncMock.mock.calls[0] as unknown[])[2]);
+  });
+
+  it("a map without buildings does not place the layers again on a move", async () => {
+    let zoom = 12;
+    const listeners = new Map<string, () => void>();
+    const zoomingMap = {
+      ...fakeMap,
+      getZoom: () => zoom,
+      on: (type: string, listener: () => void) => listeners.set(type, listener),
+      off: vi.fn(),
+    };
+    useMapMock.mockReturnValue({ current: { getMap: () => zoomingMap } });
+    syncMock.mockImplementation(() => ({ placed: new Map(), order: [], underBuildings: false }));
+    render(<StyledLayers layers={[layer("1", "#aaaaaa")]} locale="en" tone="light" />);
+    await waitFor(() => expect(syncMock).toHaveBeenCalledTimes(1));
+    zoom = 16;
+    listeners.get("move")?.();
+    listeners.get("moveend")?.();
+    expect(syncMock).toHaveBeenCalledTimes(1);
   });
 
   it("popups follow the edited style: a layer's document comes from its open store", () => {

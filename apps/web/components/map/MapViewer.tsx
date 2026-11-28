@@ -1268,6 +1268,7 @@ const MapViewer: React.FC<MapProps> = ({
             locale={locale || i18n.language}
             tone={layerTone}
             ground={buildingsAnchor(appliedScene)}
+            scene={appliedScene}
             onLayersChange={setDrawnLayerIds}
             presenceScope={MAP_SCOPE}
           />

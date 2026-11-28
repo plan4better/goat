@@ -351,6 +351,22 @@ export const reachedOpacity = (opacity: number, reach: Reach | undefined): numbe
   reach ? ["step", ["zoom"], 0, reach.shows, opacity] : opacity;
 
 /**
+ * The camera zoom from which an extrusion layer draws: its `minzoom` (MapLibre hides a layer below it by the camera's
+ * zoom), or where its opacity is none until a zoom (`reachedOpacity`: MapLibre draws no extrusion layer at opacity 0),
+ * that zoom where it is higher. An opacity by zoom of any other shape counts from the `minzoom`.
+ */
+export function drawnFrom(layer: { minzoom?: number; paint?: object }): number {
+  const minzoom = layer.minzoom ?? 0;
+  const opacity = (layer.paint as { "fill-extrusion-opacity"?: unknown } | undefined)?.[
+    "fill-extrusion-opacity"
+  ];
+  if (!Array.isArray(opacity) || opacity[0] !== "step" || opacity[2] !== 0) return minzoom;
+  const [, input, , from] = opacity as unknown[];
+  const byZoom = Array.isArray(input) && input.length === 1 && input[0] === "zoom";
+  return byZoom && typeof from === "number" ? Math.max(minzoom, from) : minzoom;
+}
+
+/**
  * GOAT's extrusion of OpenMapTiles buildings by their `render_height` and `render_min_height`; with a `reach`, built
  * from the basemap's footprint tiles on and shown from `BUILDINGS_MINZOOM`.
  */

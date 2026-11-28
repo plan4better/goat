@@ -7,7 +7,9 @@ import {
   buildingsLayer,
   buildingsPlan,
   buildingsSetting,
+  drawnFrom,
   ownPaint,
+  reachedOpacity,
   withBuildings,
 } from "@/lib/scene/buildings";
 import { basemapAnchors } from "@/lib/style/render/mapLayers";
@@ -474,6 +476,30 @@ describe("3D buildings per basemap", () => {
     expect(
       maplibreErrors([layer], { openmaptiles: { type: "vector", url: "https://tiles.example/planet" } })
     ).toEqual([]);
+  });
+
+  it("an extrusion draws from its minzoom, or from the zoom its reached opacity shows from where that is higher", () => {
+    expect(drawnFrom(buildingsLayer("openmaptiles", "#d6d6d6", 0.6))).toBe(14);
+    // Its tiles reach down to zoom 12, but it draws nothing before the camera's zoom 14.
+    const reached = buildingsLayer("openmaptiles", "#d6d6d6", 0.6, "building", { minzoom: 12, shows: 14 });
+    expect(drawnFrom(reached)).toBe(14);
+    // A basemap's own building layer as the scene sets it: its `minzoom` lowered, its opacity reached.
+    const own = {
+      minzoom: 12,
+      paint: { "fill-extrusion-opacity": reachedOpacity(0.6, { minzoom: 12, shows: 16 }) },
+    };
+    expect(drawnFrom(own)).toBe(16);
+    expect(drawnFrom({ minzoom: 15, paint: { "fill-extrusion-opacity": 0.6 } })).toBe(15);
+    expect(drawnFrom({})).toBe(0);
+    // Any other opacity by zoom, or a step that starts visible, counts from the minzoom.
+    const fading = ["interpolate", ["linear"], ["zoom"], 13, 0, 15, 0.6];
+    expect(drawnFrom({ minzoom: 12, paint: { "fill-extrusion-opacity": fading } })).toBe(12);
+    const visible = ["step", ["zoom"], 0.2, 16, 0.6];
+    expect(drawnFrom({ minzoom: 12, paint: { "fill-extrusion-opacity": visible } })).toBe(12);
+    // A step to 0 below the minzoom changes nothing.
+    expect(
+      drawnFrom({ minzoom: 15, paint: { "fill-extrusion-opacity": ["step", ["zoom"], 0, 13, 1] } })
+    ).toBe(15);
   });
 
   it("reads buildings from true, false or the object, with the default opacity", () => {
