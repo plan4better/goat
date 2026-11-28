@@ -1,6 +1,7 @@
 // Legend data of a layer style (spec 7.2): sections of entries with swatches, ramps for palettes by attribute,
 // size samples for ranges. Swatches hold fixed values at a zoom; the legend components draw them.
 import { classTexts } from "@/lib/style/categoryTexts";
+import { isNone } from "@/lib/style/colors";
 import { cascade, perLayer } from "@/lib/style/compile/cascade";
 import { derivedColor, followedKey, isDerivedWord, ruleOf } from "@/lib/style/compile/derived";
 import { markersAsImages } from "@/lib/style/compile/points";
@@ -31,6 +32,10 @@ export interface Swatch {
   /** A cluster's number on a badge at the marker's upper right (spec 8.2 `count: badge`): its fill, number and ring
    * colors. */
   badge?: { color: string; text: string; ring: string };
+  /** A layer's icon whose main color comes from classes (`iconSwatch`): the colors that differ between the classes, by
+   * `part.key` (`fill.color`, `outline.color`), each in the classes' values side by side, in place of the part's one
+   * color. */
+  stripes?: Record<string, string[]>;
 }
 
 /** How an H3 cell's or a cluster's value is computed from its points (spec 8.2, 8.3). */
@@ -165,7 +170,10 @@ export function legendClasses(style: JsonObject): LegendClasses {
 export const itemKey = (item: JsonObject, index: number): string =>
   typeof item.id === "string" ? item.id : String(index);
 
-const PARTS: Record<Geometry, Array<keyof Omit<Swatch, "geometry" | "badge">>> = {
+/** The parts a swatch draws. */
+type PartName = keyof Omit<Swatch, "geometry" | "badge" | "stripes">;
+
+const PARTS: Record<Geometry, PartName[]> = {
   point: ["marker", "outline"],
   // A marker on a line or a polygon draws in its middle (spec 3.3).
   line: ["casing", "line", "marker"],
@@ -559,7 +567,7 @@ function renderOpacity(form: unknown, fallback: number, zoom: number): number {
 
 /** The opacity a part's color by attribute is drawn at, as the base swatch shows the part: a pattern draws at full
  * strength whatever the fill's opacity, and a hollow marker is not faded by its own. */
-function partOpacity(base: Swatch, part: keyof Omit<Swatch, "geometry" | "badge">, key: string): number {
+function partOpacity(base: Swatch, part: PartName, key: string): number {
   const own = base[part];
   if (key === "pattern_color" || !own || (part === "marker" && own.fill === false)) return 1;
   return typeof own.opacity === "number" ? own.opacity : 1;
@@ -904,6 +912,15 @@ export const PRESENCE_PENDING = "pending";
 /** The most placeholder rows a classification shows while its classes are counted. */
 const PENDING_ROWS = 3;
 
+/** Whether the map draws the layer's own symbol at `zoom`: a heatmap or H3 layer draws its points from a zoom on
+ * (`points_from_zoom`), or never; below that zoom the map shows the density alone, from it the points alone. The
+ * legend lists what is on the map. */
+function drawsPoints(style: JsonObject, zoom: number): boolean {
+  const render = isObject(style.render) ? style.render : null;
+  if (render?.type !== "heatmap" && render?.type !== "h3") return true;
+  return typeof render.points_from_zoom === "number" && zoom >= render.points_from_zoom;
+}
+
 export function buildLegend(
   style: JsonObject,
   ctx: {
@@ -940,12 +957,9 @@ export function buildLegend(
   const images = imageColors(style, geometry);
   const sections: LegendSection[] = [];
   const blocks: Array<{ section: Extract<LegendSection, { kind: "entries" }>; targets: string[] }> = [];
-  // A heatmap or H3 layer draws its points from a zoom on (`points_from_zoom`), or never: below that zoom the map
-  // shows the density alone, from it the points alone. The legend lists what is on the map.
   const render = isObject(style.render) ? style.render : null;
   const density = render?.type === "heatmap" || render?.type === "h3";
-  const points =
-    !density || (typeof render?.points_from_zoom === "number" && ctx.zoom >= render.points_from_zoom);
+  const points = drawsPoints(style, ctx.zoom);
   const counts = legendClasses(style) === "all" ? undefined : ctx.present;
   const pending = counts === PRESENCE_PENDING;
   // A class or Other or No data the count left out: when nothing else is left, the legend says so.
@@ -1286,6 +1300,87 @@ export function legendDependsOnZoom(style: JsonObject): boolean {
 /** A layer's base look as one swatch (the layer list's icon). */
 export function baseSwatch(style: JsonObject, ctx: { geometry: Geometry; zoom: number }): Swatch {
   return swatch(style, ctx.geometry, ctx.zoom);
+}
+
+/** The most stripes a layer's icon draws its classes' colors in. */
+const STRIPES = 4;
+
+/** The positions of at most `max` of `n` items, spread evenly, the first and the last among them. */
+function evenly(n: number, max: number): number[] {
+  if (n <= max) return Array.from({ length: n }, (_, i) => i);
+  return Array.from({ length: max }, (_, i) => Math.round((i * (n - 1)) / (max - 1)));
+}
+
+/** The swatches the legend draws for the classes of the part that gives a layer's icon its main color (`part.color`),
+ * up to `STRIPES` of them in the legend's order: the classes it lists, else its Other and No data, else the classes
+ * the map draws that it leaves out. The classification is the last one the legend shows that sets that color (the map
+ * draws the later one where it has a value), else the last one that sets it; none where the map does not draw the
+ * layer's own symbol at `zoom` (a heatmap's or H3 layer's density) or no classification sets that color. */
+function classSwatches(style: JsonObject, geometry: Geometry, zoom: number, part: PartName): Swatch[] {
+  if (!drawsPoints(style, zoom)) return [];
+  const key = `${part}.color`;
+  const shown = legendClassifications(style, geometry).filter(({ targets }) => targets.includes(key));
+  const all = list(style.classify).filter((o) => targetOf(o, geometry) === key);
+  const c = shown.length ? shown[shown.length - 1].c : all[all.length - 1];
+  if (!c) return [];
+  const listed = list(c.classes).filter((k) => classListed(style, c, k));
+  const extras = (["other", "no_data"] as const)
+    .filter((extra) => extraListed(style, c, extra))
+    .map((extra) => (isObject(c[extra]) ? (c[extra] as JsonObject) : {}));
+  const drawn = list(c.classes).filter((k) => k.visible !== false);
+  const records = listed.length ? listed : extras.length ? extras : drawn;
+  const images = imageColors(style, geometry);
+  // The block sets the main color, so its swatches are never neutral.
+  return evenly(records.length, STRIPES).map((i) => swatch(style, geometry, zoom, records[i], false, images));
+}
+
+/** The colors a swatch draws, by part and key: the main colors and those that follow them (an outline, a casing, a
+ * pattern, an icon, the arrows). */
+const SWATCH_COLORS: Array<[PartName, string]> = [
+  ["fill", "color"],
+  ["fill", "pattern_color"],
+  ["outline", "color"],
+  ["line", "color"],
+  ["casing", "color"],
+  ["marker", "color"],
+  ["marker", "icon_color"],
+  ["arrows", "color"],
+];
+
+/** The base swatch with the classes' colors: a color the same in every class in that color, one that differs in
+ * stripes of the classes' own values (`stripes`, by `part.key`). Everything that is not a color stays the base's. */
+function withClassColors(base: Swatch, classes: Swatch[]): Swatch {
+  const out: Swatch = { ...base };
+  const stripes: Record<string, string[]> = {};
+  for (const [part, key] of SWATCH_COLORS) {
+    const own = base[part];
+    const values = classes.map((s) => s[part]?.[key]);
+    if (!own || !values.every((v): v is string => typeof v === "string")) continue;
+    if (values.some((v) => v !== values[0])) stripes[`${part}.${key}`] = values as string[];
+    else if (own[key] !== values[0]) out[part] = { ...out[part], [key]: values[0] };
+  }
+  if (Object.keys(stripes).length) out.stripes = stripes;
+  return out;
+}
+
+/** The last icon swatch of each style, with the geometry and zoom it is for: lists draw it for every layer. */
+const icons = new WeakMap<JsonObject, { key: string; swatch: Swatch }>();
+
+/** A layer's icon (the layer list's, the style panel's title): its base look, where a classification sets its main color
+ * the picked classes' swatches side by side (`withClassColors`), as the legend draws them. An area whose fill draws
+ * nothing (none, or None without a pattern) takes its main color from its outline. */
+export function iconSwatch(style: JsonObject, ctx: { geometry: Geometry; zoom: number }): Swatch {
+  const key = `${ctx.geometry} ${ctx.zoom}`;
+  const known = icons.get(style);
+  if (known?.key === key) return known.swatch;
+  const base = baseSwatch(style, ctx);
+  const fill = base.fill;
+  const unfilled = !fill || (isNone(fill.color) && (fill.pattern ?? "none") === "none");
+  const part = (ctx.geometry === "polygon" && unfilled ? "outline" : MAIN[ctx.geometry]) as PartName;
+  const classes = base[part] ? classSwatches(style, ctx.geometry, ctx.zoom, part) : [];
+  const out = classes.length ? withClassColors(base, classes) : base;
+  icons.set(style, { key, swatch: out });
+  return out;
 }
 
 /** The class of a classification a feature's value falls in: its position in `classes`, `other` for a value no class

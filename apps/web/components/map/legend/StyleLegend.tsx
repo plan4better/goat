@@ -24,8 +24,8 @@ import {
   type LegendEntry,
   type LegendSection,
   type Swatch,
-  baseSwatch,
   classOf,
+  iconSwatch,
   rangeText,
   valuesText,
 } from "@/lib/style/legend";
@@ -33,14 +33,33 @@ import { MARKER_SHAPES, markerShapeOf } from "@/lib/style/markerShapes";
 
 import { CheckerPattern } from "@/components/map/common/CheckerPattern";
 
-import { rampGradient } from "./rampGradient";
+import { rampGradient, rampStops } from "./rampGradient";
 
 const str = (value: unknown, fallback: string) => (typeof value === "string" ? value : fallback);
 const num = (value: unknown, fallback: number) => (typeof value === "number" ? value : fallback);
 
+/** Stripes an icon draws in place of its tint: across the icon, or across `span` px starting `offset` px left of the
+ * icon (the marker the icon sits on), so they line up with the marker's stripes. */
+interface IconStripes {
+  colors: string[];
+  span?: number;
+  offset?: number;
+}
+
 /** An icon at `side` px: a library icon in `tint` (a mask over the color), emoji and uploads as they are, loaded as
  * CORS requests like the map's icons. */
-function MarkerIcon({ icon, tint, side }: { icon: string; tint: string; side: number }) {
+function MarkerIcon({
+  icon,
+  tint,
+  side,
+  stripes,
+}: {
+  icon: string;
+  tint: string;
+  side: number;
+  /** A layer icon's stripes, in place of the tint. */
+  stripes?: IconStripes;
+}) {
   const image = defaultResolveIcon(icon);
   if (!image) return null;
   if (!image.sdf)
@@ -58,11 +77,23 @@ function MarkerIcon({ icon, tint, side }: { icon: string; tint: string; side: nu
   return (
     <span
       data-marker-icon={image.url}
+      data-stripes={stripes?.colors.join(" ")}
       style={{
         display: "block",
         width: side,
         height: side,
-        background: checkered(tint),
+        background: stripes
+          ? stripes.span === undefined
+            ? checkered(rampGradient(stripeRamp(stripes.colors)))
+            : rampGradient(stripeRamp(stripes.colors))
+          : checkered(tint),
+        ...(stripes?.span !== undefined
+          ? {
+              backgroundSize: `${stripes.span}px 100%`,
+              backgroundPosition: `${-(stripes.offset ?? 0)}px 0`,
+              backgroundRepeat: "no-repeat",
+            }
+          : {}),
         maskImage: mask,
         WebkitMaskImage: mask,
         maskSize: "contain",
@@ -117,6 +148,73 @@ function dashOf(dash: unknown, width: number): string | undefined {
   return pattern?.map((part) => Math.max(part * Math.max(width, 1), 1)).join(" ");
 }
 
+/** A layer icon's stripes (`Swatch.stripes`) as a ramp of hard steps, each color an equal share from left to right. */
+function stripeRamp(colors: string[]): Extract<LegendSection, { kind: "ramp" }> {
+  const n = colors.length;
+  return {
+    kind: "ramp",
+    id: "stripes",
+    colors: colors.flatMap((color) => [color, color]),
+    positions: colors.flatMap((_, i) => [i / n, (i + 1) / n]),
+    domain: [0, 1],
+  };
+}
+
+/** The stripes as an SVG gradient across the shape it paints, from its left edge to its right; with `x1` and `x2`,
+ * from `x1` to `x2` in the drawing's own units: a line has no height, so a gradient over its bounding box would paint
+ * nothing. */
+function StripesGradient({
+  id,
+  of,
+  colors,
+  x1,
+  x2,
+}: {
+  id: string;
+  of: string;
+  colors: string[];
+  x1?: number;
+  x2?: number;
+}) {
+  const span = x1 !== undefined && x2 !== undefined;
+  return (
+    <linearGradient
+      id={id}
+      data-stripes={colors.join(" ")}
+      data-stripes-of={of}
+      {...(span ? { gradientUnits: "userSpaceOnUse", x1, x2, y1: 0, y2: 0 } : {})}>
+      {rampStops(stripeRamp(colors)).map((stop, i) => (
+        <stop key={i} offset={stop.at} stopColor={stop.color} />
+      ))}
+    </linearGradient>
+  );
+}
+
+/** The stripes one SVG drawing paints of a layer icon's colors (`Swatch.stripes`), the colors `keys` names (`part.key`,
+ * the main color first): their gradients, all over the same width so they line up, from `span` in the drawing's own
+ * units where given; and the paint of a color, its gradient where it has stripes, else its one color. */
+function striping(swatch: Swatch, id: string, keys: string[], span?: readonly [number, number]) {
+  const striped = keys.filter((key) => swatch.stripes?.[key]);
+  const gradientId = (key: string) => `${id}-${key.replace(".", "-")}`;
+  return {
+    defs: striped.length ? (
+      <defs>
+        {striped.map((key) => (
+          <StripesGradient
+            key={key}
+            id={gradientId(key)}
+            of={key}
+            colors={swatch.stripes![key]}
+            x1={span?.[0]}
+            x2={span?.[1]}
+          />
+        ))}
+      </defs>
+    ) : null,
+    paint: (key: string, color: string) => (swatch.stripes?.[key] ? `url(#${gradientId(key)})` : color),
+  };
+}
+
 interface SwatchProps {
   swatch: Swatch;
   /** In a block of sizes: the block's scale (`sizeScale`); the symbol is drawn at its size times it. */
@@ -162,13 +260,17 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
   const checker = useId();
   // A None fill draws nothing; one that is not opaque lies over the checkerboard.
   const fillColor = str(marker.color, "#2bb381");
-  const filled = !hollow && !isNone(fillColor);
+  // A layer icon's stripes stand in for the fill, the stroke (a hollow marker's ring) and the icon color.
+  const stripes = swatch.stripes?.["marker.color"];
+  const filled = !hollow && (stripes !== undefined || !isNone(fillColor));
   // The marker opacity is the fill's: a hollow marker's outline and icon are not faded by it, as on the map.
   const opacity = hollow ? 1 : num(marker.opacity, 1);
   const stroke = swatch.outline && num(swatch.outline.opacity, 1) > 0 ? swatch.outline : undefined;
+  const ringStripes = stroke ? swatch.stripes?.["outline.color"] : undefined;
+  const iconStripes = swatch.stripes?.["marker.icon_color"];
   // A None marker with nothing else to draw shows the checkerboard alone, as the panel shows a None color.
-  const alone = !hollow && isNone(fillColor) && !stroke && !icon;
-  const clear = (filled && seeThrough(fillColor)) || alone;
+  const alone = !hollow && !stripes && isNone(fillColor) && !stroke && !icon;
+  const clear = (filled && seeThrough(stripes ? stripes.join(" ") : fillColor)) || alone;
   const strokeWidth = stroke ? (ring ? 2 : Math.min(num(stroke.width, 1), 2)) : 0;
   const shape = markerShapeOf(marker.shape);
   const round = shape === "circle" || shape === "square";
@@ -189,14 +291,51 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
   if (marker.shape === "icon")
     return (
       <span aria-hidden={hidden} style={{ ...box, opacity }}>
-        <MarkerIcon icon={icon ?? "goat:marker"} tint={str(marker.color, "#2bb381")} side={side} />
+        <MarkerIcon
+          icon={icon ?? "goat:marker"}
+          tint={str(marker.color, "#2bb381")}
+          side={side}
+          stripes={stripes && { colors: stripes }}
+        />
         {badge}
       </span>
     );
-  if (!round) {
-    // The other shapes and the pins as their outline, the icon in the shape's head.
+  if (!round || ringStripes) {
+    // The other shapes and the pins as their outline, the icon in the shape's head. A circle or a square whose ring has
+    // stripes is drawn here too, as SVG paints a stroke with a gradient; its stroke inside its side, as a border is.
     const spec = MARKER_SHAPES[shape];
     const iconSide = Math.round(side * spec.icon.share);
+    const [left, right] = spec.x;
+    const paints = striping(
+      swatch,
+      checker,
+      [...(filled ? ["marker.color"] : []), ...(stroke ? ["outline.color"] : [])],
+      spec.x
+    );
+    const inset = (strokeWidth * (24 / side)) / 2;
+    const outline = (props: { fill: string; stroke?: string; strokeWidth?: number; under?: boolean }) =>
+      round ? (
+        <rect
+          data-checker-under={props.under || undefined}
+          x={inset}
+          y={inset}
+          width={24 - 2 * inset}
+          height={24 - 2 * inset}
+          rx={shape === "square" ? Math.max(24 * SQUARE_RADIUS - inset, 0) : 12 - inset}
+          fill={props.fill}
+          stroke={props.stroke}
+          strokeWidth={props.strokeWidth}
+        />
+      ) : (
+        <path
+          data-checker-under={props.under || undefined}
+          d={spec.path}
+          fill={props.fill}
+          stroke={props.stroke}
+          strokeWidth={props.strokeWidth}
+          strokeLinejoin={props.under ? undefined : "round"}
+        />
+      );
     return (
       <span aria-hidden={hidden} style={{ ...box, opacity }}>
         <svg
@@ -210,14 +349,13 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
               <CheckerPattern id={checker} />
             </defs>
           )}
-          {clear && <path data-checker-under d={spec.path} fill={`url(#${checker})`} />}
-          <path
-            d={spec.path}
-            fill={filled ? fillColor : "none"}
-            stroke={stroke ? str(stroke.color, "#000000") : undefined}
-            strokeWidth={strokeWidth * (24 / side)}
-            strokeLinejoin="round"
-          />
+          {paints.defs}
+          {clear && outline({ fill: `url(#${checker})`, under: true })}
+          {outline({
+            fill: filled ? paints.paint("marker.color", fillColor) : "none",
+            stroke: stroke ? paints.paint("outline.color", str(stroke.color, "#000000")) : undefined,
+            strokeWidth: strokeWidth * (24 / side),
+          })}
         </svg>
         {icon && (
           <span
@@ -226,7 +364,18 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
               left: (box.width - side) / 2 + (spec.icon.cx / 24) * side - iconSide / 2,
               top: (box.height - side) / 2 + (spec.icon.cy / 24) * side - iconSide / 2,
             }}>
-            <MarkerIcon icon={icon} tint={str(marker.icon_color, "#ffffff")} side={iconSide} />
+            <MarkerIcon
+              icon={icon}
+              tint={str(marker.icon_color, "#ffffff")}
+              side={iconSide}
+              stripes={
+                iconStripes && {
+                  colors: iconStripes,
+                  span: ((right - left) / 24) * side,
+                  offset: ((spec.icon.cx - left) / 24) * side - iconSide / 2,
+                }
+              }
+            />
           </span>
         )}
         {badge}
@@ -237,12 +386,18 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
     <span aria-hidden={hidden} style={{ ...box, opacity }}>
       <span
         data-marker-shape={marker.shape === "square" ? "square" : "circle"}
+        data-stripes={filled && stripes ? stripes.join(" ") : undefined}
         style={{
           boxSizing: "border-box",
           width: side,
           height: side,
           borderRadius: marker.shape === "square" ? side * SQUARE_RADIUS : "50%",
-          background: filled || alone ? checkered(fillColor) : "transparent",
+          background:
+            filled && stripes
+              ? checkered(rampGradient(stripeRamp(stripes)))
+              : filled || alone
+                ? checkered(fillColor)
+                : "transparent",
           border: stroke ? `${strokeWidth}px solid ${str(stroke.color, "#000000")}` : undefined,
           display: "flex",
           alignItems: "center",
@@ -253,6 +408,14 @@ function MarkerSwatch({ swatch, sized, width, ring, cap, nested }: SwatchProps) 
             icon={icon}
             tint={str(marker.icon_color, "#ffffff")}
             side={Math.round(side * MARKER_SHAPES[shape].icon.share)}
+            stripes={
+              // The marker's stripes span the area inside its border: so do the icon's.
+              iconStripes && {
+                colors: iconStripes,
+                span: side - 2 * strokeWidth,
+                offset: (side - Math.round(side * MARKER_SHAPES[shape].icon.share)) / 2 - strokeWidth,
+              }
+            }
           />
         )}
       </span>
@@ -275,9 +438,18 @@ function LineSwatch({ swatch, sized, nested }: SwatchProps) {
   const checker = useId();
   // A color that is not opaque shows the checkerboard where nothing of the layer lies under it; a None line on no casing
   // shows it alone, as the panel shows a None color.
-  const casingShows = casing !== undefined && !isNone(casing.color);
-  const casingClear = casingShows && seeThrough(casing.color);
-  const lineClear = !casingShows && seeThrough(line.color);
+  // A layer icon's stripes stand in for the line's and the casing's colors.
+  const stripes = swatch.stripes?.["line.color"];
+  const casingStripes = casing ? swatch.stripes?.["casing.color"] : undefined;
+  const casingShows = casing !== undefined && (casingStripes !== undefined || !isNone(casing.color));
+  const casingClear = casingShows && seeThrough(casingStripes ? casingStripes.join(" ") : casing.color);
+  const lineClear = !casingShows && seeThrough(stripes ? stripes.join(" ") : line.color);
+  const paints = striping(
+    swatch,
+    checker,
+    ["line.color", ...(casing ? ["casing.color"] : [])],
+    [1, width - 1]
+  );
   const under = (strokeWidth: number) => (
     <line
       data-checker-under
@@ -296,6 +468,7 @@ function LineSwatch({ swatch, sized, nested }: SwatchProps) {
           <CheckerPattern id={checker} />
         </defs>
       )}
+      {paints.defs}
       {casingClear && under(around)}
       {lineClear && under(stroke)}
       {casing && (
@@ -305,7 +478,7 @@ function LineSwatch({ swatch, sized, nested }: SwatchProps) {
           y1={height / 2}
           x2={width - 1}
           y2={height / 2}
-          stroke={str(casing.color, "#ffffff")}
+          stroke={paints.paint("casing.color", str(casing.color, "#ffffff"))}
           strokeWidth={around}
           strokeOpacity={num(casing.opacity, 1)}
         />
@@ -315,7 +488,7 @@ function LineSwatch({ swatch, sized, nested }: SwatchProps) {
         y1={height / 2}
         x2={width - 1}
         y2={height / 2}
-        stroke={str(line.color, "#2166ac")}
+        stroke={paints.paint("line.color", str(line.color, "#2166ac"))}
         strokeWidth={stroke}
         strokeOpacity={num(line.opacity, 1)}
         strokeDasharray={dashOf(line.dash, stroke)}
@@ -330,7 +503,7 @@ const MARKER_ON_AREA = 10;
 /** The icon a line's arrows draw (spec 3.2 `arrows.icon`), as the map draws it: its top along the line in the
  * drawing direction (left to right here), against it, or both ways, or upright where it does not turn with the line;
  * in the middle, or at the ends it is placed at. */
-function ArrowIcons({ arrows }: { arrows: Record<string, unknown> }) {
+function ArrowIcons({ arrows, stripes }: { arrows: Record<string, unknown>; stripes?: string[] }) {
   const turns =
     arrows.turn_with_line === false
       ? [0]
@@ -346,6 +519,17 @@ function ArrowIcons({ arrows }: { arrows: Record<string, unknown> }) {
           ? "space-between"
           : "center";
   const places = arrows.placement === "both_ends" ? ["start", "end"] : ["one"];
+  // A layer icon whose arrows differ between its classes: each arrow in the color of the stripe it sits on.
+  const tint = (place: string) => {
+    if (!stripes) return str(arrows.color, "#2166ac");
+    const at =
+      place === "start" || arrows.placement === "start"
+        ? 0
+        : place === "end" || arrows.placement === "end"
+          ? 1
+          : 0.5;
+    return stripes[Math.min(Math.floor(at * stripes.length), stripes.length - 1)];
+  };
   return (
     <span
       style={{
@@ -364,17 +548,25 @@ function ArrowIcons({ arrows }: { arrows: Record<string, unknown> }) {
               key={turn}
               data-arrow-icon
               style={{ position: "absolute", inset: 0, transform: `rotate(${turn}deg)` }}>
-              <MarkerIcon
-                icon={str(arrows.icon, "")}
-                tint={str(arrows.color, "#2166ac")}
-                side={MARKER_ON_AREA}
-              />
+              <MarkerIcon icon={str(arrows.icon, "")} tint={tint(place)} side={MARKER_ON_AREA} />
             </span>
           ))}
         </span>
       ))}
     </span>
   );
+}
+
+/** The marker on an area or a line as a swatch of its own, with a layer icon's stripes of the marker's colors. */
+function nestedMarker(swatch: Swatch): Swatch {
+  const stripes = Object.fromEntries(
+    Object.entries(swatch.stripes ?? {}).filter(([key]) => key.startsWith("marker."))
+  );
+  return {
+    geometry: "point",
+    marker: swatch.marker,
+    ...(Object.keys(stripes).length ? { stripes } : {}),
+  };
 }
 
 /** One swatch: a line, a marker (its icon where it draws one, a cluster's badge) or an area, 20 by 14 px. A line or an
@@ -401,10 +593,10 @@ export function SwatchIcon({ swatch, sized, width, ring }: SwatchProps) {
         height: BOX.height,
       }}>
       {shape}
-      {swatch.arrows && <ArrowIcons arrows={swatch.arrows} />}
+      {swatch.arrows && <ArrowIcons arrows={swatch.arrows} stripes={swatch.stripes?.["arrows.color"]} />}
       {swatch.marker && (
         <span style={{ position: "absolute", inset: 0, display: "flex" }}>
-          <MarkerSwatch swatch={{ geometry: "point", marker: swatch.marker }} cap={MARKER_ON_AREA} nested />
+          <MarkerSwatch swatch={nestedMarker(swatch)} cap={MARKER_ON_AREA} nested />
         </span>
       )}
     </span>
@@ -425,10 +617,20 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
   // A None fill draws nothing (an outline alone); one that is not opaque lies over the checkerboard, and a None fill
   // with nothing else to draw shows the checkerboard alone, as the panel shows a None color.
   const fillColor = str(fill.color, "#2bb381");
-  const drawn = swatch.fill !== undefined && !ring && !isNone(fillColor);
-  const outlined = swatch.outline !== undefined && !isNone(swatch.outline.color);
+  // A layer icon's stripes stand in for the fill's, the outline's and the pattern's colors.
+  const stripes = swatch.stripes?.["fill.color"];
+  const inked = tile ? swatch.stripes?.["fill.pattern_color"] : undefined;
+  const drawn = swatch.fill !== undefined && !ring && (stripes !== undefined || !isNone(fillColor));
+  const outlined =
+    swatch.outline !== undefined &&
+    (swatch.stripes?.["outline.color"] !== undefined || !isNone(swatch.outline.color));
   const alone = swatch.fill !== undefined && !ring && !drawn && !outlined && !tile;
-  const clear = (drawn && seeThrough(fillColor)) || alone;
+  const clear = (drawn && seeThrough(stripes ? stripes.join(" ") : fillColor)) || alone;
+  const paints = striping(swatch, checker, [
+    ...(drawn ? ["fill.color"] : []),
+    ...(swatch.outline ? ["outline.color"] : []),
+    ...(inked ? ["fill.pattern_color"] : []),
+  ]);
   const stroke =
     sized !== undefined
       ? Math.min(Math.max(num(swatch.outline?.width, 1) * sized, 0.5), CAPS.outline)
@@ -448,6 +650,7 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
           <CheckerPattern id={checker} />
         </defs>
       )}
+      {paints.defs}
       {clear && <rect data-checker-under {...rect} fill={`url(#${checker})`} />}
       {tile && (
         <defs>
@@ -455,23 +658,36 @@ function AreaSwatch({ swatch, sized, ring, nested }: SwatchProps) {
             <path
               d={tile.path}
               data-pattern={kind ?? undefined}
-              fill={tile.dots ? ink : "none"}
-              stroke={tile.dots ? "none" : ink}
+              fill={tile.dots ? (inked ? "#ffffff" : ink) : "none"}
+              stroke={tile.dots ? "none" : inked ? "#ffffff" : ink}
               strokeWidth={width}
             />
           </pattern>
+          {/* Stripes of the pattern's color: the pattern in white masks a drawing of them, so each line takes the
+              color of the stripe it crosses. */}
+          {inked && (
+            <mask id={`${id}-mask`}>
+              <rect {...rect} fill={`url(#${id})`} />
+            </mask>
+          )}
         </defs>
       )}
       <rect
         {...rect}
-        fill={drawn ? fillColor : "none"}
+        fill={drawn ? paints.paint("fill.color", fillColor) : "none"}
         fillOpacity={num(fill.opacity, 1)}
-        stroke={str(swatch.outline?.color, "none")}
+        stroke={paints.paint("outline.color", str(swatch.outline?.color, "none"))}
         strokeWidth={edge}
         strokeOpacity={num(swatch.outline?.opacity, 1)}
         strokeDasharray={dashOf(swatch.outline?.dash, edge)}
       />
-      {tile && !ring && <rect {...rect} fill={`url(#${id})`} />}
+      {tile &&
+        !ring &&
+        (inked ? (
+          <rect {...rect} fill={paints.paint("fill.pattern_color", ink)} mask={`url(#${id}-mask)`} />
+        ) : (
+          <rect {...rect} fill={`url(#${id})`} />
+        ))}
     </svg>
   );
 }
@@ -489,7 +705,8 @@ function HeightBar({ height, tallest }: { height: number; tallest: number }) {
 const GEOMETRIES = new Set(["point", "line", "polygon"]);
 
 /** A layer's icon, as the layer list shows it beside its name: a table's and a raster layer's (file or map service)
- * icon, else the swatch of its style's base look (an area while its geometry is unknown); none without a style. */
+ * icon, else the swatch of its style's base look (an area while its geometry is unknown), its main color from its
+ * classes where they give it (`iconSwatch`); none without a style. */
 export function layerSwatchIcon(
   layer:
     | {
@@ -505,7 +722,7 @@ export function layerSwatchIcon(
   if (!layer?.style) return undefined;
   const type = layer.feature_layer_geometry_type?.toLowerCase();
   const geometry = (type && GEOMETRIES.has(type) ? type : "polygon") as Geometry;
-  return <SwatchIcon swatch={baseSwatch(layer.style.document as JsonObject, { geometry, zoom })} />;
+  return <SwatchIcon swatch={iconSwatch(layer.style.document as JsonObject, { geometry, zoom })} />;
 }
 
 /** A raster layer's icon, as the layer list shows it beside its name. */

@@ -36,18 +36,18 @@ vi.mock("@/lib/api/fetcher", () => ({
   },
 }));
 vi.mock("@/hooks/style/useStyleData", () => ({ useStyleData: () => EMPTY_DATA }));
-// Each swatch drawn from a layer's base look, with the geometry it is drawn as.
+// Each layer icon drawn from a layer's style, with the geometry it is drawn as.
 const { swatches } = vi.hoisted(() => ({ swatches: [] as Array<{ document: unknown; geometry: string }> }));
 vi.mock("@/lib/style/legend", async (original) => {
   const legend = await original<typeof import("@/lib/style/legend")>();
   return {
     ...legend,
-    baseSwatch: (
-      document: Parameters<typeof legend.baseSwatch>[0],
-      ctx: Parameters<typeof legend.baseSwatch>[1]
+    iconSwatch: (
+      document: Parameters<typeof legend.iconSwatch>[0],
+      ctx: Parameters<typeof legend.iconSwatch>[1]
     ) => {
       swatches.push({ document, geometry: ctx.geometry });
-      return legend.baseSwatch(document, ctx);
+      return legend.iconSwatch(document, ctx);
     },
   };
 });
@@ -151,7 +151,11 @@ describe("the layer settings panel", () => {
     const area = header.querySelector("svg rect:not([data-checker-under])");
     expect(area?.getAttribute("fill-opacity")).toBe("0.8");
     expect(area?.getAttribute("stroke")).toBe("none");
-    expect(header.querySelector("svg")?.outerHTML).toBe(shared.container.querySelector("svg")?.outerHTML);
+    // Its classes' colors side by side, as the map draws the areas.
+    expect(header.querySelector("[data-stripes]")?.getAttribute("data-stripes")).toBe("#006837 #ffffcc");
+    // The same drawing; only the ids of its gradient differ between the two renders.
+    const withoutIds = (svg: Element | null | undefined) => svg?.outerHTML.replace(/_r_\w+_/g, "id");
+    expect(withoutIds(header.querySelector("svg"))).toBe(withoutIds(shared.container.querySelector("svg")));
   });
 
   it("switching to a line layer never draws the polygon layer's style as its swatch", async () => {
