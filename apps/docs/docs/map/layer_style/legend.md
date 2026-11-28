@@ -47,6 +47,7 @@ The legend lists what the map draws:
 - Colors that change with the zoom follow the map. Symbol sizes do not: every symbol keeps one size in the legend, so the legend does not move while you zoom. Only classes by size are drawn at different sizes, in proportion to each other. A size that follows a field and grows with the zoom shows its samples at the sizes the map draws halfway between its first and last stop.
 - A name too long for its row is cut. Hover it to read it in full.
 - In the layer list and a dashboard's <code>Layers</code> widget, a section of more than 12 entries shows its first 10 and <code>Show N more</code>. A print layout lists every entry.
+- The swatch beside a layer's name, for example in the layer list and the style panel, shows the layer's symbol. Where its color comes from classes, it shows up to four of the classes side by side, each in its own colors (a hollow marker on its outline), and a layer drawn as <code>Heatmap</code> or <code>H3 hexagons</code> shows them at the zoom levels where the map draws its points.
 
 In <code>Contents</code>, each classification has these settings:
 

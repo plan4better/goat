@@ -47,6 +47,7 @@ Die Legende führt auf, was die Karte zeichnet:
 - Farben, die sich mit dem Zoom ändern, folgen der Karte. Symbolgrößen nicht: Jedes Symbol behält in der Legende eine Größe, damit sich die Legende beim Zoomen nicht verschiebt. Nur Klassen nach Größe werden in verschiedenen Größen gezeichnet, im Verhältnis zueinander. Eine Größe, die einem Feld folgt und mit dem Zoom wächst, zeigt ihre Beispiele in den Größen, die die Karte in der Mitte zwischen ihrem ersten und letzten Stopp zeichnet.
 - Ein Name, der zu lang für seine Zeile ist, wird gekürzt. Halten Sie den Mauszeiger darüber, um ihn ganz zu lesen.
 - In der Layerliste und im <code>Layer</code>-Widget eines Dashboards zeigt ein Abschnitt mit mehr als 12 Einträgen die ersten 10 und <code>N weitere anzeigen</code>. Ein Drucklayout führt jeden Eintrag auf.
+- Das Farbfeld neben dem Namen eines Layers, zum Beispiel in der Layerliste und im Stil-Panel, zeigt das Symbol des Layers. Kommt seine Farbe aus Klassen, zeigt es bis zu vier der Klassen nebeneinander, jede in ihren eigenen Farben (ein hohler Marker auf seinem Umriss), und ein als <code>Heatmap</code> oder <code>H3-Sechsecke</code> dargestellter Layer zeigt sie in den Zoomstufen, in denen die Karte seine Punkte zeichnet.
 
 Unter <code>Inhalt</code> hat jede Klassifizierung diese Einstellungen:
 

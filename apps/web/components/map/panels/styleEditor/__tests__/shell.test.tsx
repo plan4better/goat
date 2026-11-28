@@ -129,6 +129,38 @@ describe("style editor shell", () => {
     expect(listed.container.innerHTML).toContain("marker");
   });
 
+  it("the header of a layer colored by classes shows their colors, not the base color the map never draws", () => {
+    // Hexagons classified by ranges in five blues over the default orange.
+    const blues = ["#eff3ff", "#bdd7e7", "#6baed6", "#3182bd", "#08519c"];
+    const hexagons = {
+      version: "1.0.0",
+      kind: "vector",
+      symbol: { fill: { color: "#f28e2b" } },
+      classify: [
+        {
+          field: "accessibility",
+          method: "quantile",
+          classes: blues.map((color, i) => ({ from: i, to: i + 1, fill: { color } })),
+        },
+      ],
+    } as LayerStyle;
+    const store = new EditorStore({
+      saver: new StyleSaver({ transport: echoTransport(), document: hexagons, revision: 1 }),
+    });
+    renderWithProviders(
+      <StyleHeader
+        layer={{ id: "l4", name: "Hexagons", geometry: "polygon", kind: "vector" }}
+        store={store}
+        zoom={12}
+      />
+    );
+    const header = screen.getByTestId("layer-settings-header");
+    expect(header.querySelector("[data-stripes]")?.getAttribute("data-stripes")).toBe(
+      [blues[0], blues[1], blues[3], blues[4]].join(" ")
+    );
+    expect(header.innerHTML).not.toContain("#f28e2b");
+  });
+
   it("the header shows the raster icon for a raster file and a map service, and the table icon for a table", () => {
     for (const kind of ["raster", "service"] as const) {
       const { unmount } = renderWithProviders(
