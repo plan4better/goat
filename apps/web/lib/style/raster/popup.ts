@@ -11,7 +11,7 @@ import { RASTER_POPUP_ON_BY_DEFAULT } from "@/lib/style/generated/defaults";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { type SourceLayer, coverageUrl, imageTilesetUrl, sourceOf } from "@/lib/style/layerSource";
-import { rangeText, valuesText } from "@/lib/style/legend";
+import { rangeText, rasterClassFormat, valuesText } from "@/lib/style/legend";
 import { fromPopupConfig, toPopupConfig } from "@/lib/style/popup";
 import { classEnds, rasterColorSpec, tableColorSpec } from "@/lib/style/raster/color";
 import {
@@ -261,7 +261,8 @@ function nameClasses(
   };
   if (spec.kind === "classes") {
     const written = objects(isObject(render.classify) ? render.classify.classes : undefined);
-    const options = rangeOptions(style, texts);
+    const format = rasterClassFormat(render);
+    const options = { ...rangeOptions(style, texts), ...(format ? { format } : {}) };
     const classes = {
       ...spec,
       classes: spec.classes.map((c, i) => {
@@ -324,7 +325,11 @@ function reachingName(
   if (!below && !above) return undefined;
   const own = below ? first : last;
   const domain: [number, number] = [Math.min(ends[0], value), Math.max(ends[1], value)];
-  return rangeText({ from: own.from, to: own.to }, { ...rangeOptions(style, texts), domain });
+  const format = rasterClassFormat(renderOf(style));
+  return rangeText(
+    { from: own.from, to: own.to },
+    { ...rangeOptions(style, texts), domain, ...(format ? { format } : {}) }
+  );
 }
 
 /** Whether the map draws a cell of `value` (the raster service colors it the same, goatlib.raster.color): not in a

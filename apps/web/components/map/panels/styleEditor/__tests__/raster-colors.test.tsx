@@ -563,6 +563,30 @@ describe("raster classes and categories on the shared grid", () => {
     expect(ends()).toEqual(["32 style_editor.range_to 49.4", "101.6 style_editor.range_to 119"]);
   });
 
+  it("classes whose two ends read the same number read with the decimals the legend reads them with", async () => {
+    const tiny: RasterInfo = { ...INFO, stats: stats(0.00003, 0.00012) };
+    setup(
+      {
+        type: "continuous",
+        palette: "goat:elevation",
+        classify: {
+          method: "quantile",
+          count: 3,
+          classes: [{ to: 0.00005 }, { from: 0.00005, to: 0.00007 }, { from: 0.00007 }],
+        },
+      },
+      {},
+      tiny
+    );
+    await openColors();
+    const names = screen.getAllByRole("textbox", { name: "style_editor.class_name" }) as HTMLInputElement[];
+    expect(names.map((n) => n.placeholder)).toEqual([
+      "0.00003 style_editor.range_to 0.00005",
+      "0.00005 style_editor.range_to 0.00007",
+      "0.00007 style_editor.range_to 0.00012",
+    ]);
+  });
+
   it("class colors, the strip and the bars take a classification's own palette, as the map draws them", async () => {
     const render = {
       type: "continuous",

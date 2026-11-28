@@ -692,8 +692,18 @@ function rasterSections(
     // The band's minimum and maximum close an open first or last class, as the data's do a classification's; with
     // values outside left out, where the drawing stops (`classEnds`).
     const domain = classEnds(render, { range: valueRange });
+    const format = rasterClassFormat(render);
     return entries.length
-      ? [{ kind: "entries", id: "raster", entries, ...(domain ? { domain } : {}), ...(unit ? { unit } : {}) }]
+      ? [
+          {
+            kind: "entries",
+            id: "raster",
+            entries,
+            ...(domain ? { domain } : {}),
+            ...(unit ? { unit } : {}),
+            ...(format ? { format } : {}),
+          },
+        ]
       : [];
   }
   if (spec.kind === "categories") {
@@ -1243,20 +1253,19 @@ function h3Sections(render: JsonObject, zoom: number): LegendSection[] {
     ];
   if (scale.kind !== "classes") return [];
   const n = scale.colors.length;
+  const ranges = scale.colors.map((_, i) => ({
+    ...(i > 0 ? { from: scale.breaks[i - 1] } : {}),
+    ...(i < n - 1 ? { to: scale.breaks[i] } : {}),
+  }));
+  const decimals = apartDecimals(ranges);
   return [
     {
       kind: "entries",
       id: "h3",
       ...field,
-      entries: scale.colors.map((color, i) => ({
-        id: String(i),
-        range: {
-          ...(i > 0 ? { from: scale.breaks[i - 1] } : {}),
-          ...(i < n - 1 ? { to: scale.breaks[i] } : {}),
-        },
-        swatch: cell(color),
-      })),
+      entries: scale.colors.map((color, i) => ({ id: String(i), range: ranges[i], swatch: cell(color) })),
       ...(scale.domain ? { domain: scale.domain } : {}),
+      ...(decimals !== undefined ? { format: { decimals } } : {}),
     },
   ];
 }
@@ -1379,14 +1388,78 @@ const MAX_DECIMALS = 10;
 
 /** The number format a classification's labels read: its `format`, with the decimals the server recorded with classes
  * fitted to the data (`computed.decimals`, spec 7.2, `fit` only, a whole number from 0 to `MAX_DECIMALS`) where the
- * format gives none. */
+ * format gives none; else, where a class reads the same number on both ends, the decimals that read its bounds apart
+ * (`apartDecimals`). */
 export function classFormat(c: JsonObject): RangeFormat | undefined {
   const format = isObject(c.format) ? (c.format as RangeFormat) : undefined;
   const recorded = c.fit === true && isObject(c.computed) ? c.computed.decimals : undefined;
   const valid =
     typeof recorded === "number" && Number.isInteger(recorded) && recorded >= 0 && recorded <= MAX_DECIMALS;
-  if (format?.decimals !== undefined || !valid) return format;
-  return { ...format, decimals: recorded };
+  if (format?.decimals !== undefined) return format;
+  const classes = Array.isArray(c.classes) ? c.classes : [];
+  const decimals = valid ? recorded : c.method === "categories" ? undefined : apartDecimals(classes, classes);
+  return decimals === undefined ? format : { ...format, decimals };
+}
+
+/** The number format range labels read without decimals of their own (at most three). */
+const DEFAULT_NUMBER = new Intl.NumberFormat("en");
+
+/** The fewest decimals `apartDecimals` gives: one more than the default number format shows, so no row reads coarser. */
+const MIN_APART_DECIMALS = 4;
+
+/** Ungrouped formatters of 0 to `MAX_DECIMALS` fixed decimals, by their decimals; made once. */
+let fixedNumbers: Intl.NumberFormat[] | undefined;
+
+/** The decimals `apartDecimals` found, by the classes array (or the raster render) they were found for: the editor's
+ * store copies an array or object it changes, so one that is the same holds the same bounds. */
+const apartFound = new WeakMap<object, number | undefined>();
+
+/** The decimals numeric classes read with when one of them reads the same number on both ends with the default number
+ * format ("0 to 0" for 0.00005 to 0.00007): the fewest, from `MIN_APART_DECIMALS` to `MAX_DECIMALS`, at which all their
+ * distinct bounds read in increasing order and none but 0 reads 0, rounded as the legend's number formatter rounds
+ * them; none when every class reads apart, or when even `MAX_DECIMALS` do not read its bounds apart. Kept by `key`. */
+function apartDecimals(classes: readonly unknown[], key?: object): number | undefined {
+  if (key && apartFound.has(key)) return apartFound.get(key);
+  const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  const objects = classes.filter(isObject);
+  const plain = DEFAULT_NUMBER.format;
+  const same = objects.some(
+    ({ from, to }) => finite(from) && finite(to) && from !== to && plain(from) === plain(to)
+  );
+  let found: number | undefined;
+  if (same) {
+    const bounds = [...new Set(objects.flatMap((k) => [k.from, k.to]).filter(finite))].sort((a, b) => a - b);
+    fixedNumbers ??= Array.from(
+      { length: MAX_DECIMALS + 1 },
+      (_, decimals) =>
+        new Intl.NumberFormat("en", {
+          useGrouping: false,
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        })
+    );
+    for (let decimals = MIN_APART_DECIMALS; decimals <= MAX_DECIMALS && found === undefined; decimals++) {
+      const fixed = fixedNumbers[decimals].format;
+      // The rounded values as whole numbers of the last decimal: exact, and -0 equals 0.
+      const shown = bounds.map((v) => BigInt(fixed(v).replace(".", "")));
+      if (shown.every((s, i) => (i === 0 || shown[i - 1] < s) && (s !== BigInt(0) || bounds[i] === 0)))
+        found = decimals;
+    }
+  }
+  if (key) apartFound.set(key, found);
+  return found;
+}
+
+/** The number format a raster's classes read (spec 9.4): the decimals that read their bounds apart where a class reads
+ * the same number on both ends (`apartDecimals`, the bounds the map draws them with), else none. */
+export function rasterClassFormat(render: JsonObject): RangeFormat | undefined {
+  let decimals = apartFound.get(render);
+  if (!apartFound.has(render)) {
+    const spec = rasterColorSpec(render);
+    decimals = spec?.kind === "classes" ? apartDecimals(spec.classes) : undefined;
+    apartFound.set(render, decimals);
+  }
+  return decimals === undefined ? undefined : { decimals };
 }
 
 /** A class's range with its open ends closed by the data's minimum and maximum (`opts.domain`) where that reads
