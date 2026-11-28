@@ -4590,7 +4590,7 @@
   }
  },
  {
-  "name": "a count chosen removes fit and keeps the recorded decimals as the format",
+  "name": "a count chosen removes fit and writes no decimals",
   "before": {
    "version": "1.0.0",
    "kind": "vector",
@@ -4762,9 +4762,6 @@
        }
       },
       "no_data": false,
-      "decimals": 2
-     },
-     "format": {
       "decimals": 2
      }
     }
@@ -4772,7 +4769,7 @@
   }
  },
  {
-  "name": "a field chosen removes fit and adds the recorded decimals to the format",
+  "name": "a field chosen removes fit and keeps the format as it is",
   "before": {
    "version": "1.0.0",
    "kind": "vector",
@@ -4953,8 +4950,7 @@
       "decimals": 2
      },
      "format": {
-      "suffix": " min",
-      "decimals": 2
+      "suffix": " min"
      }
     }
    ]

@@ -1,7 +1,7 @@
 """Classes fitted to the data (`fit`) over seeded random columns, against
 recorded results: the breaks and the places in the palette of every case stay
 exactly as recorded, to the last digit, and the compute records the decimals
-their bounds need.
+that show their bounds as they are.
 
 Rewrite the recorded results only when the fitted classes are meant to change:
 
@@ -13,6 +13,7 @@ import json
 import math
 import os
 import random
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -178,15 +179,34 @@ def test_the_fitted_classes_are_the_recorded_ones(seed: int) -> None:
     assert json.dumps(fitted(seed)) == json.dumps(_recorded()[seed])
 
 
+def _digits_after_point(value: float) -> int:
+    """The decimals `value` has, written to 12 significant digits."""
+    mantissa, _, exponent = f"{value:.12g}".partition("e")
+    after = mantissa.partition(".")[2].rstrip("0")
+    return max(0, len(after) - int(exponent or 0))
+
+
 def bound_decimals(case: dict[str, Any]) -> int | None:
-    """The decimals the recorded classes' bounds and domain need; one class over
-    one value those of the value."""
+    """The decimals of the recorded classes' labels: the fewest at which bounds
+    and domain read apart, raised until half a unit of the last decimal is at
+    most a quarter of their narrowest step (read to 6 significant digits),
+    never above the most decimals one of them has; one class over one value
+    those of the value."""
     low, high, breaks = case["min"], case["max"], case["breaks"]
     if low is None:
         return None
     if not breaks and low == high:
         return value_decimals(low)
-    return decimals_for(breaks, [low, high])
+    apart = decimals_for(breaks, [low, high])
+    values = sorted({Fraction(f"{v:.12g}") for v in [low, *breaks, high]})
+    step = min((b - a for a, b in zip(values, values[1:])), default=None)
+    more = 0
+    if step:
+        quarter = Fraction(f"{float(step):.6g}") / 4
+        while more < 10 and Fraction(1, 2 * 10**more) > quarter:
+            more += 1
+    most = max(apart, *map(_digits_after_point, [low, *breaks, high]))
+    return min(10, most, max(apart, more))
 
 
 @pytest.mark.parametrize("seed", range(CASES))
