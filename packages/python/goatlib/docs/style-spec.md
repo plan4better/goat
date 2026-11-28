@@ -1864,7 +1864,7 @@ rasters and map services do not change.
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
 - **Range text** uses the classification's `format` (with `fit` and no `format.decimals`, `computed.decimals`) and
-  `unit`: "2,800 to 3,600"; the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more".
+  `unit`: "2,800 to 3,600"; the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more". Without `format.decimals` (and, with `fit`, without `computed.decimals`), where a class would read the same number on both ends with the default format ("0 to 0"), the rows of that classification, of a raster's classes (9.4) and of H3 classes read the fewest fixed decimals from 4 to 10 at which all class bounds read in order and none but 0 reads 0; where even 10 do not, they keep the default format.
 - **Only what a swatch draws:** a classification shows in the legend when it sets what a swatch draws: the color,
   size, opacity, width, dash, shape, icon, icon color, hollow fill or pattern of a part, the arrows' color or the
   height. One that sets only a label's text, color or font, a marker's rotation, offset or anchor, a line's offset,

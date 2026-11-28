@@ -16,7 +16,7 @@ import { getIn, setIn } from "@/lib/style/editor/store";
 import { DEFAULTS } from "@/lib/style/generated/defaults";
 import { type JsonObject, isObject } from "@/lib/style/json";
 import { coverageUrl } from "@/lib/style/layerSource";
-import { rangeText, valuesText } from "@/lib/style/legend";
+import { rangeText, rasterClassFormat, valuesText } from "@/lib/style/legend";
 import { paletteColors } from "@/lib/style/palettes";
 import { classColors, classEnds, classReach } from "@/lib/style/raster/color";
 import { bandOrFormula } from "@/lib/style/raster/formula";
@@ -511,6 +511,7 @@ export function RasterClassList({ kind }: { kind: "classes" | "categories" }) {
     locale: i18n.language,
     words: rangeWords(t),
     unit: typeof unit === "string" && unit ? unit : undefined,
+    format: rasterClassFormat(render),
     domain,
   };
   const classify = isObject(render.classify) ? render.classify : {};
