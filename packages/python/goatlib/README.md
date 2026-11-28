@@ -521,8 +521,8 @@ documents goatlib built or upgraded:
   loses values grows or shrinks its classes. Only tools write it, so a style
   made by hand computes as it always did; a class edit in the panel or by the
   assistant turns a fitted classification manual as it is, and an edit of its
-  field, method or count removes the key and keeps the recorded decimals as
-  the format's where it states none (`style/edit.py`, `settle_fit`, and the
+  field, method or count removes the key, writes no decimals and leaves a
+  format the style states as it is (`style/edit.py`, `settle_fit`, and the
   web editor's `settleFit`). The runner's own fit of a run's style
   (`tools/style.py`, `fit_classes`: the count fitted once to the distinct
   values, a single class dropped unless features without a value sit beside
@@ -541,9 +541,13 @@ documents goatlib built or upgraded:
   other numeric classifications the runner writes it as a format after
   computing them (`with_decimals`), on the same style the fit acts on and only
   there: the format has no mark that tells a tool's default from a hand-made
-  style. One rule serves both. The
-  domain's ends and the breaks read apart, but an end at or above 0 may read 0,
-  so a minimum next to 0 does not push every label to many decimals. A single
+  style. Both start from one rule: the domain's ends and the breaks read
+  apart, but an end at or above 0 may read 0, so a minimum next to 0 does not
+  push every label to many decimals. With `fit` the breaks are values of the
+  data and read as they are: with as many decimals as keep rounding from
+  moving any bound by more than a quarter of the narrowest class, never more
+  than they have (`shown_decimals`), so half minutes read "10.5", means
+  "78.8 to 79.9", and sums whose classes are 2 or more wide stay whole. A single
   class over one value has no break and shows the value itself: with `fit`
   with its first three significant digits and never more decimals than it has
   (`value_decimals`: 0.087, 99.8, 1,235), else with up to two decimals and more

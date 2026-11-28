@@ -441,11 +441,13 @@ def test_the_default_and_its_computed_style_pass_the_check_without_a_note(
     assert issues(con, relation, intent, geometry) == []
     assert issues(con, relation, doc, geometry) == []
     [c] = doc["classify"]
-    # Fitted classes: the compute records their decimals, no format is written.
+    # Fitted classes: the compute records the decimals that show their bounds
+    # as they are, at least as many as read them apart and no more than the
+    # bounds and the domain's ends have; no format is written.
     assert "format" not in c
-    assert c["computed"]["decimals"] == tool_style.decimals_for(
-        breaks_of(c), c["computed"]["domain"]
-    )
+    apart = tool_style.decimals_for(breaks_of(c), c["computed"]["domain"])
+    most = most_decimals([*breaks_of(c), *c["computed"]["domain"]])
+    assert apart <= c["computed"]["decimals"] <= max(apart, most)
     assert c["computed"]["no_data"] is True
 
 
@@ -703,6 +705,17 @@ def test_the_huff_docstrings_name_percent() -> None:
 
 
 # --- Decimals from the computed classes --------------------------------------
+
+
+def most_decimals(values: list[float]) -> int:
+    """The most decimals one of `values` has, each written to 12 significant
+    digits."""
+    most = 0
+    for v in values:
+        mantissa, _, exponent = f"{v:.12g}".partition("e")
+        after = mantissa.partition(".")[2].rstrip("0")
+        most = max(most, len(after) - int(exponent or 0))
+    return most
 
 
 def breaks_of(c: dict[str, Any]) -> list[float]:

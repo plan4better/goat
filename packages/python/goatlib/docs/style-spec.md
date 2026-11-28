@@ -1335,7 +1335,7 @@ AI never set it. `count` is then the most classes, not a fixed number:
 ```
 
 - **Classes:** every class holds a feature and each break lies on a value of the data (a quantile break moved up to the
-  next value); no break lies on the maximum, which shares the last class with a smaller value ("12 to 13"). A field with
+  next value); no break lies on the maximum: the last class ends at it and starts below it ("12 to 13"). A field with
   at most `count` values gets a class per value, the highest in the class of the one below. A value on which quantile
   classes would lose a class (two breaks on one value, or a break on the lowest or highest) gets a class from it to the
   next (the maximum none). Where quantile loses none, the classes are its. Values alike to 12 digits are one value.
@@ -1347,10 +1347,10 @@ AI never set it. `count` is then the most classes, not a fixed number:
   result that gains values gets its classes back; `count` stays as written. Fewer classes than `count` are by design and
   give no `classes_merged` note. `fit` acts on `quantile` only and is ignored on other methods.
 - **Legend:** every class reads as a range with the bounds the classes share (7.2), the last one up to the maximum, a
-  class of one value too; a single class over one value reads it to 3 significant digits, else the bounds read apart.
-  A stored style's `single` in `computed` is read without it.
-- **Edits:** a field, count or method other than `manual` removes `fit` (`computed.decimals` become `format.decimals`
-  where none is set); the classes compute as asked. A change to one class (color, name, visibility, zooms, a part) keeps
+  class of one value too; a single class over one value reads it to 3 significant digits. The bounds read as they are:
+  rounding moves none by more than a quarter of the narrowest class, never beyond their decimals. `single` is ignored.
+- **Edits:** a field, count or method other than `manual` removes `fit` and writes no decimals (a `format` stays as
+  it is); the classes compute as asked. A change to one class (color, name, visibility, zooms, a part) keeps
   the classes as they are: the method becomes `manual`, `count` and `computed.generated` go, `fit` stays and changes
   nothing in how manual classes compute. Moving a break or choosing `manual` does the same. A palette, `reverse`,
   `range`, `target`, title, `unit`, `format`, `no_data`, `other` or `legend` keeps `fit`, as does a key a class loses.
@@ -1863,8 +1863,8 @@ rasters and map services do not change.
 | raster `hillshade` | none, or the ramp when it has a palette |
 | map service | the service's legend image for the chosen `service_style`, when it has one |
 
-- **Range text** uses the classification's `format` (with `fit` and no `format.decimals`, `computed.decimals`) and
-  `unit`: "2,800 to 3,600"; the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more". Without `format.decimals` (and, with `fit`, without `computed.decimals`), where a class would read the same number on both ends with the default format ("0 to 0"), the rows of that classification, of a raster's classes (9.4) and of H3 classes read the fewest fixed decimals from 4 to 10 at which all class bounds read in order and none but 0 reads 0; where even 10 do not, they keep the default format.
+- **Range text** uses the classification's `format` (with `fit` and no `format.decimals`, `computed.decimals`) and `unit`:
+  "under 2,800", "2,800 to 3,600", "6,300 and more"; the unit goes with the last number: "under 49.4 m", "49.4 to 101.6 m", "101.6 m and more". Without `format.decimals` (and, with `fit`, without `computed.decimals`), where a class would read the same number on both ends with the default format ("0 to 0"), the rows of that classification, of a raster's classes (9.4) and of H3 classes read the fewest fixed decimals from 4 to 10 at which all class bounds read in order and none but 0 reads 0; where even 10 do not, they keep the default format.
 - **Only what a swatch draws:** a classification shows in the legend when it sets what a swatch draws: the color,
   size, opacity, width, dash, shape, icon, icon color, hollow fill or pattern of a part, the arrows' color or the
   height. One that sets only a label's text, color or font, a marker's rotation, offset or anchor, a line's offset,
