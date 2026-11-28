@@ -203,9 +203,9 @@ class OevGueteklasseTool(PTToolBase):
         # platform or several too, a turning loop's, and a one-way loop's
         # stops; short turns keep their way.
         # Worked on numbered ids, and each step on the rows it needs: a
-        # country's weekday is 20 million calls, and following every one
-        # along its trip with its ids as text took 6 GB. The ids are numbered,
-        # not hashed: hash() gives some pairs of ids the same value.
+        # country's weekday is millions of calls, each followed along its
+        # trip. The ids are numbered, not hashed: hash() gives some pairs of
+        # ids the same value.
         weekday_col = time_window.weekday_column
         from_time = time_window.from_time_str
         to_time = time_window.to_time_str
@@ -252,7 +252,9 @@ class OevGueteklasseTool(PTToolBase):
             JOIN window_trips w ON w.trip_id = t.trip_id AND w.route_id = t.route_id
             WHERE {in_window}
         """)
-        # And all calls of the trips: the stop order is read from them
+        # And all calls of the trips the tables hold (the default network's
+        # cut holds each call in the area and the calls around it): the stop
+        # order is read from them
         self.con.execute("""
             CREATE OR REPLACE TABLE trip_calls AS
             SELECT w.trip, g.stop, t.call_order AS o
@@ -260,13 +262,14 @@ class OevGueteklasseTool(PTToolBase):
             JOIN (SELECT DISTINCT trip_id, trip FROM window_trips) w USING (trip_id)
             JOIN stop_places g USING (stop_id)
         """)
-        # Trips calling at the same stops at the same times from their start
-        # pass every stop the same way, so one of them stands for all: a
-        # country's 1.2 million weekday trips are 280,000 such patterns.
-        # A trip's pattern is a fingerprint of its calls: each call's stop
-        # and time from the start as one number, hashed (a number's hash is
-        # well mixed, unlike a text's or a pair's), and over the trip the
-        # count, the xor and the two halves' sums of those hashes.
+        # Trips calling at the same stops at the same call_orders counted
+        # from their first call in these tables pass every stop the same
+        # way, so one of them stands for all: most trips share their pattern
+        # with others of their line. A trip's pattern is a fingerprint of
+        # its calls: each call's stop and call_order from the first as one
+        # number, hashed (a number's hash is well mixed, unlike a text's or
+        # a pair's), and over the trip the count, the xor and the two
+        # halves' sums of those hashes.
         self.con.execute("""
             CREATE OR REPLACE TABLE trip_patterns AS
             SELECT trip, first_o,

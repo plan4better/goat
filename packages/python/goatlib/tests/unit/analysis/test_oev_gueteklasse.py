@@ -366,8 +366,8 @@ def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> No
     either side of this one as it goes (outside the area): what its direction
     is read from. An eighth value puts those stops that many degrees north,
     on another street. ``tie``: the stop before shares the stop's call_order
-    (the seconds into the day, in the same minute), and the stop before that
-    has the call_order a minute earlier."""
+    (a stop_sequence, here the call's seconds into the day), and the stop
+    before that has a call_order before theirs."""
     tool.con.execute("""
         CREATE OR REPLACE TABLE gtfs_stop_times (
             stop_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, call_order INTEGER,
@@ -626,7 +626,7 @@ class TestOevGueteklasseDirections:
             tool.cleanup()
         assert station == [(48, pytest.approx(5.0))]
 
-    def test_stops_in_the_same_minute(self) -> None:
+    def test_calls_sharing_a_stop_sequence(self) -> None:
         """Calls sharing a call_order, the stop before with the stop's own:
         the directions read from the stops at the call_order either side."""
         f = self.frequencies(

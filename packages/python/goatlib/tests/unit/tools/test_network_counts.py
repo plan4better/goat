@@ -253,10 +253,11 @@ def test_a_bundle_is_counted_from_its_own_tables_on_the_date_picked(
 # The area's edge. Lines in the area (lon 11.0-11.2, lat 48.0-48.2) whose
 # trips come from or go on to stops outside it, each running every 10 minutes
 # each way it runs: ÖV-Güteklassen reads a line's directions at a stop from
-# the stops just before and just after each call, so every stop of each line
-# reads 10 minutes, from the whole feed and from the cut alike.
+# the stops just before and just after each call (whether they cross, head
+# against each other, or mirror another line's), so every stop of each line
+# reads 10 minutes unless stated otherwise, from the whole feed and from the cut alike.
 EDGE_STOPS = {
-    # name: (lon, lat); "+" marks a stop in the area
+    # name: (lon, lat); "+" marks a stop in the area, "#" a station
     # Line E1, both ways through M, whose stops either side are outside.
     "A": (10.95, 48.10),
     "M+": (11.10, 48.10),
@@ -275,40 +276,76 @@ EDGE_STOPS = {
     # Line E5 only ends at L, coming from outside.
     "LO": (10.95, 48.18),
     "L+": (11.02, 48.18),
-    # Line E6, both ways through N, the stops either side of it outside and
-    # untimed (no arrival time), the timed ones beyond.
+    # Line E6, both ways through N, turning there from the west to the
+    # north, the stops either side of it outside and untimed (no arrival
+    # time), the timed ones beyond: read from one side only, the two ways
+    # would neither cross nor head against each other.
     "W2": (10.90, 48.08),
     "W1": (10.95, 48.08),
     "N+": (11.10, 48.08),
-    "U": (11.25, 48.08),
-    "V": (11.30, 48.08),
-    # Line E7, both ways through Q, the stops either side of it outside and
-    # stations ("#"), which no vehicle stops at, the stops beyond them.
-    "Y2": (10.90, 48.02),
-    "Y1#": (10.95, 48.02),
-    "Q+": (11.10, 48.02),
-    "Z1#": (11.25, 48.02),
-    "Z2": (11.30, 48.02),
-    # Line E8, one way through S, three stops before it and two after.
+    "U": (11.10, 48.21),
+    "V": (11.10, 48.25),
+    # Line E7, both ways through Q, turning there from the west to the
+    # south, the stops either side of it outside and stations ("#"), which
+    # no vehicle stops at, the stops beyond them.
+    "Y2": (10.90, 48.03),
+    "Y1#": (10.95, 48.03),
+    "Q+": (11.10, 48.03),
+    "Z1#": (11.10, 47.98),
+    "Z2": (11.10, 47.95),
+    # Line E8, one way through S, three stops before it and two after, and
+    # as often short trips from O2 to O4: trips the whole tables tell apart
+    # but whose calls in the cut are alike. One direction, 24 trips.
     "O3": (10.80, 48.165),
     "O2": (10.88, 48.165),
     "O1": (10.95, 48.165),
     "S+": (11.10, 48.165),
     "O4": (11.25, 48.165),
     "O5": (11.32, 48.165),
-    # Line E9, through TM one way after two stops sharing a stop_sequence
-    # (T1A and T1B), the rule putting T1A first as the nearer to T0, the stop
-    # before them; and back, its stop after TM, XB, across the street from
-    # T1A. The way into TM comes from T1B, so the two do not cross: one
-    # direction.
-    "T0": (10.90, 48.04),
-    "T1A": (10.95, 48.04),
-    "T1B": (10.98, 48.12),
-    "TM+": (11.10, 48.04),
-    "T2": (11.30, 48.04),
-    "T3": (11.30, 48.06),
-    "XB": (10.9505, 48.0401),
+    # Line E9, through TM north-westwards on two branches, all its other
+    # stops outside. One comes from T1B, after two stops sharing a
+    # stop_sequence (T1A and T1B), the rule putting T1A first as the nearer
+    # to T0, the stop before them; the other comes from T3, and its stop
+    # after TM, XB, is across the street from T1A. The branches neither
+    # cross nor head against each other: one direction, 24 trips, 5 minutes.
+    # With T1A read as the stop before TM (the pair ordered without T0, by
+    # distance from TM) XB would be across the street from it: two.
+    "T0": (10.96, 48.01),
+    "T1A": (10.984, 48.02),
+    "T1B": (11.02, 47.98),
+    "TM+": (11.02, 48.02),
+    "T2": (10.96, 48.04),
+    "T3": (11.065, 47.98),
+    "XB": (10.9841, 48.0201),
+    # Line E10, both ways through station D, whose two platforms are on
+    # different streets about 450 m apart, as are the stops either side, outside:
+    # no stop is across the street from another, but the two ways head
+    # against each other.
+    "DWN": (10.95, 48.115),
+    "DN+": (11.10, 48.115),
+    "DEN": (11.25, 48.115),
+    "DES": (11.25, 48.111),
+    "DS+": (11.10, 48.111),
+    "DWS": (10.95, 48.111),
+    "D#": (11.10, 48.113),
+    # Lines E11 and E12, one number per direction: each runs one way, as
+    # often, over the same stops, so at R1 and R they are one line both
+    # ways. E11 leaves the area after R, E12 enters it there.
+    "R0": (10.95, 48.135),
+    "R1+": (11.10, 48.135),
+    "R+": (11.18, 48.135),
+    "R2": (11.25, 48.135),
+    # Bus line E13 both ways and tram line E14 one way through BT, a stop
+    # without a station, its stops either side outside: each call counted
+    # once, 36 trips, 24 per direction, 5 minutes.
+    "BW": (10.95, 48.065),
+    "BT+": (11.10, 48.065),
+    "BE": (11.25, 48.065),
 }
+#: A stop's station, where it has one.
+EDGE_PARENTS = {"DN": "D", "DS": "D"}
+#: Each line's kind (GTFS route_type) where it is not a bus.
+EDGE_ROUTE_TYPES = {"E14": 0}
 #: Each line's ways, each as the stops its trips call at in order; "~" marks
 #: an untimed call, "@n" a call's stop_sequence where it is not its place.
 EDGE_LINES = {
@@ -319,13 +356,18 @@ EDGE_LINES = {
     "E5": [["LO", "L"]],
     "E6": [["W2", "~W1", "N", "~U", "V"], ["V", "~U", "N", "~W1", "W2"]],
     "E7": [["Y2", "Y1", "Q", "Z1", "Z2"], ["Z2", "Z1", "Q", "Y1", "Y2"]],
-    "E8": [["O3", "O2", "O1", "S", "O4", "O5"]],
-    "E9": [["T0", "T1A", "T1B@2", "TM", "T2"], ["T3", "TM", "XB", "T0"]],
+    "E8": [["O3", "O2", "O1", "S", "O4", "O5"], ["O2", "O1", "S", "O4"]],
+    "E9": [["T0", "T1A", "T1B@2", "TM", "T2"], ["T3", "TM", "XB"]],
+    "E10": [["DWN", "DN", "DEN"], ["DES", "DS", "DWS"]],
+    "E11": [["R0", "R1", "R", "R2"]],
+    "E12": [["R2", "R", "R1", "R0"]],
+    "E13": [["BW", "BT", "BE"], ["BE", "BT", "BW"]],
+    "E14": [["BW", "BT", "BE"]],
 }
 EDGE_CONFIG = {
-    "groups": {"3": "C"},
+    "groups": {"0": "B", "3": "C"},
     "time_frequency": [5, 10, 20],
-    "categories": [{"C": 1}, {"C": 2}, {"C": 3}],
+    "categories": [{"B": 1, "C": 1}, {"B": 2, "C": 2}, {"B": 3, "C": 3}],
     "classification": {"1": {300: "1"}, "2": {300: "2"}, "3": {300: "3"}},
 }
 
@@ -335,6 +377,7 @@ def _edge_feed() -> dict:
     stop in the area at 07:05, 07:15, ... and every 3 minutes on."""
     stops = "\n".join(
         f"{name.rstrip('+#')},{name.rstrip('+#')},{lat},{lon},{int(name[-1] == '#')},"
+        f"{EDGE_PARENTS.get(name.rstrip('+#'), '')}"
         for name, (lon, lat) in EDGE_STOPS.items()
     )
     trips, stop_times = [], []
@@ -366,7 +409,9 @@ def _edge_feed() -> dict:
         + stops
         + "\n",
         "routes.txt": "route_id,route_short_name,route_type\n"
-        + "".join(f"{line},{line},3\n" for line in EDGE_LINES),
+        + "".join(
+            f"{line},{line},{EDGE_ROUTE_TYPES.get(line, 3)}\n" for line in EDGE_LINES
+        ),
         "trips.txt": "route_id,service_id,trip_id\n" + "\n".join(trips) + "\n",
         "stop_times.txt": "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
         + "\n".join(stop_times)
@@ -441,7 +486,8 @@ def test_the_cut_counts_directions_at_the_areas_edge_as_the_whole_feed(
     }
     (tmp_path / "whole").mkdir()
     expected = _classes(whole, area, tmp_path / "whole")
-    # Every stop of every line reads 10 minutes, its two directions or one.
+    # Every stop of every line reads 10 minutes, its two directions or one,
+    # but where trips add up in one direction: 5.
     assert expected == {
         "M": (10.0, 24),
         "C": (10.0, 24),
@@ -452,9 +498,14 @@ def test_the_cut_counts_directions_at_the_areas_edge_as_the_whole_feed(
         "L": (10.0, 12),
         "N": (10.0, 24),
         "Q": (10.0, 24),
-        "S": (10.0, 12),
-        # One direction at TM, 24 trips: 5 minutes.
+        # Long and short trips one way at S, and two branches one way at TM.
+        "S": (5.0, 24),
         "TM": (5.0, 24),
+        "D": (10.0, 24),
+        "R1": (10.0, 24),
+        "R": (10.0, 24),
+        # A bus line both ways and a tram line one way at BT.
+        "BT": (5.0, 36),
     }
     cut = cut_network_tables(edge_tables[layout], area, TUESDAY, tmp_path / "cut")
     # Not whole trips: the calls in the area and those the rule reads around
