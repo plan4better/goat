@@ -12,6 +12,7 @@ the share of the place a footprint covers times the share of it inside the
 place, kept to its first digit. No threshold hides anything: it is ordered.
 """
 
+import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,13 @@ from catalog.services.search import (
 )
 from catalog.store import CatalogStore
 
-from .fixtures.gen_catalog import Row, write_catalog, write_nuts
+from .fixtures.gen_catalog import (
+    Row,
+    _bbox_from_geojson,
+    _union_bbox,
+    write_catalog,
+    write_nuts,
+)
 
 #: A box around one city; small enough that a country-sized row dwarfs it.
 CITY = [11.36, 48.06, 11.72, 48.25]
@@ -249,7 +256,10 @@ def _scaled(box: list[float], factor: float) -> list[list[float]]:
 
 def test_the_fit_to_the_place(tmp_path: Path) -> None:
     """The place's own size leads, then a tenth of it (fit 0.1), then ten times
-    it (0.01), whatever the score, the date or the size say."""
+    it (0.01), then a single point inside it (its smallest-place share), whatever
+    the score, the date or the size say. A rectangle stretched by a far piece
+    counts only the share of its footprint inside, and one stretched by a far
+    island is sized by its main piece."""
 
     def dataset(row_id: str, factor: float, idx: int, month: int) -> Row:
         ring = _scaled(CITY, factor)
@@ -260,7 +270,43 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
     same = dataset("fit-same", 1, 3, 1)  # lowest score, oldest
     small = dataset("fit-small", 1 / 10, 1, 2)  # score 5
     big = dataset("fit-big", 10, 0, 9)  # score 7, newest and larger
-    write_catalog(tmp_path, n=20, extra_rows=[same, small, big])
+    point = replace(
+        _row(
+            "fit-point",
+            "Datensatz fit-point",
+            _box(11.5, 48.15, 11.5, 48.15),
+            datetime(2026, 12, 1, tzinfo=timezone.utc),
+        ),
+        type="collection",
+        idx=0,
+    )  # score 7, newest
+    # Layers keep their own footprint: a strip inside, a ten times larger piece
+    # east of the city. Its rectangle fits like 0.4, its footprint like 0.05.
+    june = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    piece = "[[{0}, 48.06], [{1}, 48.06], [{1}, 48.25], [{0}, 48.25], [{0}, 48.06]]"
+    scattered = replace(
+        _row("layer-scattered", "Ebene", _box(11.40, 48.06, 11.90, 48.25), june),
+        geometry_geojson={
+            "type": "MultiPolygon",
+            "coordinates": [
+                [json.loads(piece.format(11.40, 11.41))],
+                [json.loads(piece.format(11.80, 11.90))],
+            ],
+        },
+    )
+    layer_small = _row("layer-small", "Ebene", _scaled(CITY, 1 / 10), june)
+    island = replace(
+        _row("layer-island", "Ebene", _box(11.36, 48.06, 30.01, 48.25), june),
+        geometry_geojson={
+            "type": "MultiPolygon",
+            "coordinates": [[_box(*CITY)], [_box(30.0, 48.06, 30.01, 48.07)]],
+        },
+    )
+    write_catalog(
+        tmp_path,
+        n=20,
+        extra_rows=[same, small, big, point, scattered, layer_small, island],
+    )
     write_nuts(tmp_path)
     fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
     fresh.ensure_current()
@@ -269,6 +315,189 @@ def test_the_fit_to_the_place(tmp_path: Path) -> None:
         rows, _ = search_collections(fresh, SearchParams(limit=50, **spatial))
         ids = [r["id"] for r in rows]
         assert ids.index("fit-same") < ids.index("fit-small") < ids.index("fit-big")
+        assert ids.index("fit-big") < ids.index("fit-point")
+
+    layers = _ids(fresh, bbox_boost=CITY)
+    assert layers.index("layer-island") < layers.index("layer-small")
+    assert layers.index("layer-small") < layers.index("layer-scattered")
+
+
+#: A view across the date line, as two halves of 1 x 2 degrees each.
+DATE_LINE = [179.0, -45.0, -179.0, -43.0]
+
+
+def _shaped(row: Row, geometry: dict) -> Row:
+    return replace(row, geometry_geojson=geometry)
+
+
+def _broken_rows(frame: list[float], place_area: float) -> list[Row]:
+    """Rows inside ``frame``, a part of the place sharing its north edge, sized
+    against the place's area: valid neighbours fitting like 0.3, 0.1 and 0.05,
+    and footprints whose rectangle fits like 0.2 (a third of the place's size,
+    half of it inside): a bow-tie, which belongs to a dataset, a shell with its
+    hole outside it, pieces that overlap, and a line across the rectangle."""
+    w, s, e, n = frame
+    width, height = e - w, n - s
+
+    def strip(share: float) -> list[list[float]]:
+        return _box(w, s, w + width * share * place_area / (width * height), n)
+
+    def month(m: int) -> datetime:
+        return datetime(2026, m, 1, tzinfo=timezone.utc)
+
+    # Twice the place's height, as wide as half the place's area needs.
+    x0, x1, y0, y1 = w, w + place_area / (2 * height), s, s + 2 * height
+    # Two lobes of unequal size, so the footprint has an area to divide by.
+    bowtie = [[x0, y0], [x1, y1], [x1, y0], [x0, y0 + (y1 - y0) / 5], [x0, y0]]
+    rect = _box(x0, y0, x1, y1)
+    return [
+        _row("fit-3", "Ebene", strip(0.3), month(1)),
+        _shaped(
+            replace(_row("bowtie", "Ebene", rect, month(3)), collection="ds-bowtie"),
+            {"type": "Polygon", "coordinates": [bowtie]},
+        ),
+        replace(
+            _row("ds-bowtie", "Datensatz", rect, month(3)), type="collection", idx=0
+        ),
+        # The shell crosses the place's edge, the hole lies outside the place
+        # and outside the shell. Its area is the shell's less the hole's, but
+        # the cut keeps the whole shell inside: more than the footprint's area.
+        _shaped(
+            _row("outer-hole", "Ebene", rect, month(3)),
+            {
+                "type": "Polygon",
+                "coordinates": [
+                    _box(x0, y0, x1, y0 + 1.2 * height),
+                    _box(x0, y0 + 1.5 * height, x1, y1),
+                ],
+            },
+        ),
+        # The whole rectangle and its half outside the place, overlapping: the
+        # pieces' summed share is 1/3 (fit 0.1), the rectangle's 1/2 (fit 0.2).
+        _shaped(
+            _row("overlapping", "Ebene", rect, month(3)),
+            {
+                "type": "MultiPolygon",
+                "coordinates": [[rect], [_box(x0, n, x1, y1)]],
+            },
+        ),
+        _shaped(
+            _row("line", "Ebene", rect, month(3)),
+            {"type": "LineString", "coordinates": [[x0, y0], [x1, y1]]},
+        ),
+        _row("fit-1", "Ebene", strip(0.1), month(5)),
+        _row("fit-05", "Ebene", strip(0.05), month(4)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("place", "frame", "place_area"),
+    [
+        (CITY, CITY, (CITY[2] - CITY[0]) * (CITY[3] - CITY[1])),
+        (DATE_LINE, [179.0, -45.0, 180.0, -43.0], 4.0),
+    ],
+    ids=["city", "date line"],
+)
+@pytest.mark.parametrize("spatial", ["bbox_boost", "bbox"])
+def test_an_invalid_footprint_ranks_by_its_rectangle(
+    tmp_path: Path, place, frame, place_area, spatial
+) -> None:
+    """Harvested footprints are not all valid: a bow-tie cannot be cut, and the
+    search must not fail on it. It ranks by its rectangle's share inside the
+    place, after the dataset fitting better and before the one fitting worse,
+    not as a perfect fit (which would put it first among equals, being newer)
+    and not as no fit. So does a footprint whose cut comes out larger than its
+    area (a hole outside its shell), which is no share. A line has no area to
+    share and ranks by its rectangle too."""
+    write_catalog(tmp_path, n=20, extra_rows=_broken_rows(frame, place_area))
+    write_nuts(tmp_path)
+    fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
+    fresh.ensure_current()
+
+    ids = _ids(fresh, **{spatial: place})
+    assert ids.index("fit-3") < ids.index("bowtie") < ids.index("fit-1")
+    assert ids.index("fit-3") < ids.index("outer-hole") < ids.index("fit-1")
+    assert ids.index("fit-3") < ids.index("line") < ids.index("fit-1")
+    # Pieces that overlap but can each be cut count by the summed share of the
+    # pieces (fit 0.1, after the newer dataset of that fit), not by the
+    # rectangle (0.2) and not as no fit (after 0.05).
+    assert ids.index("fit-1") < ids.index("overlapping") < ids.index("fit-05")
+
+    datasets, _ = search_collections(fresh, SearchParams(limit=50, **{spatial: place}))
+    assert "ds-bowtie" in [r["id"] for r in datasets]
+
+
+def test_the_relevant_filter_judges_an_uncut_footprint_by_its_rectangle(
+    tmp_path: Path,
+) -> None:
+    """`bbox_mode=relevant` keeps a footprint holding a fair part of the box
+    and drops a sliver. A footprint that cannot be cut is judged the same way
+    by its rectangle: half of it inside is kept, a sliver is dropped, and the
+    search does not fail."""
+    w, s, e, n = CITY
+    height, x1 = n - s, w + (e - w) / 2
+    lo, hi = n - 0.1 * height, n + 3 * height
+    sliver = _shaped(
+        _row(
+            "bowtie-sliver",
+            "Ebene",
+            _box(w, lo, x1, hi),
+            datetime(2026, 3, 1, tzinfo=timezone.utc),
+        ),
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [[w, lo], [x1, hi], [x1, lo], [w, lo + (hi - lo) / 5], [w, lo]]
+            ],
+        },
+    )
+    area = (e - w) * (n - s)
+    write_catalog(tmp_path, n=20, extra_rows=[*_broken_rows(CITY, area), sliver])
+    write_nuts(tmp_path)
+    fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
+    fresh.ensure_current()
+
+    ids = _ids(fresh, bbox=CITY, bbox_mode="relevant")
+    assert "bowtie" in ids and "overlapping" in ids
+    assert "bowtie-sliver" not in ids
+    assert "bowtie-sliver" in _ids(fresh, bbox=CITY)
+
+
+@pytest.mark.parametrize("place", [CITY, DATE_LINE], ids=["city", "date line"])
+@pytest.mark.parametrize("spatial", ["bbox_boost", "bbox"])
+def test_footprints_without_area_rank_without_failing(
+    tmp_path: Path, place, spatial
+) -> None:
+    """No footprint, an empty one, and footprints without area (a point, a
+    line, points, a collection of them, a ring collapsed to one point) still
+    rank; a search returns them wherever its filter keeps them."""
+    w, s, e, n = place
+    x, y = (w + 0.1, s + 0.1) if w <= e else (179.5, s + 0.5)
+    june = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    near = _box(x, y, x + 0.05, y + 0.05)
+    point = {"type": "Point", "coordinates": [x, y]}
+    line = {"type": "LineString", "coordinates": [[x, y], [x + 0.05, y + 0.05]]}
+    shapes = {
+        "point": point,
+        "line": line,
+        "points": {"type": "MultiPoint", "coordinates": [[x, y], [x + 0.05, y]]},
+        "mixed": {"type": "GeometryCollection", "geometries": [point, line]},
+        "collapsed": {"type": "Polygon", "coordinates": [[[x, y]] * 5]},
+        "empty": {"type": "Polygon", "coordinates": []},
+    }
+    rows = [_shaped(_row(k, "Ebene", near, june), g) for k, g in shapes.items()]
+    rows.append(_row("no-footprint", "Ebene", near, june, footprint=False))
+    write_catalog(tmp_path, n=20, extra_rows=rows)
+    write_nuts(tmp_path)
+    fresh = CatalogStore(CatalogSettings(data_dir=tmp_path))
+    fresh.ensure_current()
+
+    ids = _ids(fresh, **{spatial: place})
+    for kept in ("point", "line", "points", "mixed", "collapsed"):
+        assert kept in ids
+    if spatial == "bbox_boost":
+        assert "no-footprint" in ids and "empty" in ids
+    search_collections(fresh, SearchParams(limit=50, **{spatial: place}))
 
 
 def test_the_reader_language_decides_within_a_topic_score(tmp_path: Path) -> None:
@@ -397,3 +626,19 @@ def test_the_collections_default_order_ends_in_a_unique_key(store) -> None:
 
     assert "goat:topicRelevanceScore" in clause
     assert clause.endswith("updated DESC, id")
+
+
+def test_fixture_extents_of_any_geometry() -> None:
+    """The fixture writer derives document extents from the footprint, for
+    nested collections too, and a member without bounds widens nothing."""
+    point = {"type": "Point", "coordinates": [1.0, 2.0]}
+    line = {"type": "LineString", "coordinates": [[3.0, -1.0], [4.0, 5.0]]}
+    nested = {
+        "type": "GeometryCollection",
+        "geometries": [point, {"type": "GeometryCollection", "geometries": [line]}],
+    }
+    assert _bbox_from_geojson(nested) == [1.0, -1.0, 4.0, 5.0]
+    empty = _bbox_from_geojson({"type": "Polygon", "coordinates": []})
+    assert empty is None
+    assert _union_bbox([[0.0, 0.0, 1.0, 1.0], empty]) == [0.0, 0.0, 1.0, 1.0]
+    assert _union_bbox([empty]) is None

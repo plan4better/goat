@@ -379,9 +379,27 @@ def _rfc3339(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def _bbox_from_geojson(geojson: dict[str, Any]) -> list[float]:
-    lons = [pt[0] for pt in geojson["coordinates"][0]]
-    lats = [pt[1] for pt in geojson["coordinates"][0]]
+def _bbox_from_geojson(geojson: dict[str, Any]) -> list[float] | None:
+    """The extent of any GeoJSON geometry, None for an empty one."""
+    points: list[list[float]] = []
+
+    def walk(node: Any) -> None:
+        if node and isinstance(node[0], (int, float)):
+            points.append(node)
+            return
+        for child in node:
+            walk(child)
+
+    def geometry(part: dict[str, Any]) -> None:
+        for member in part.get("geometries", []):
+            geometry(member)
+        walk(part.get("coordinates", []))
+
+    geometry(geojson)
+    if not points:
+        return None
+    lons = [pt[0] for pt in points]
+    lats = [pt[1] for pt in points]
     return [min(lons), min(lats), max(lons), max(lats)]
 
 
@@ -527,17 +545,21 @@ def _build_item_document(row: Row) -> dict[str, Any]:
     return doc
 
 
-def _union_bbox(bboxes: list[list[float]]) -> list[float]:
+def _union_bbox(bboxes: list[list[float] | None]) -> list[float] | None:
+    """The extent covering every bbox; one without bounds widens nothing."""
+    known = [b for b in bboxes if b is not None]
+    if not known:
+        return None
     return [
-        min(b[0] for b in bboxes),
-        min(b[1] for b in bboxes),
-        max(b[2] for b in bboxes),
-        max(b[3] for b in bboxes),
+        min(b[0] for b in known),
+        min(b[1] for b in known),
+        max(b[2] for b in known),
+        max(b[3] for b in known),
     ]
 
 
 def _build_collection_document(
-    row: Row, member_bboxes: list[list[float]] | None = None
+    row: Row, member_bboxes: list[list[float] | None] | None = None
 ) -> dict[str, Any]:
     # A Collection's spatial extent must cover its members, so it is the union
     # of their bboxes rather than the collection row's own random geometry.
@@ -588,7 +610,7 @@ _TOPIC_TIERS = ("base", "statutory", "nice_to_have", "low_priority")
 
 
 def build_document(
-    row: Row, member_bboxes: list[list[float]] | None = None
+    row: Row, member_bboxes: list[list[float] | None] | None = None
 ) -> dict[str, Any]:
     """Build the native-STAC ``document`` JSON for one catalog row.
 
@@ -651,7 +673,7 @@ def _build_rows(n: int) -> list[Row]:
 def _write_published(
     con: duckdb.DuckDBPyConnection,
     rows: list[Row],
-    members: dict[str, list[list[float]]],
+    members: dict[str, list[list[float] | None]],
     items_path: Path,
     collections_path: Path,
 ) -> None:
@@ -769,7 +791,7 @@ def write_catalog(
         rows = [*rows, *extra_rows]
     # Member bboxes per collection id, so each Collection document's spatial
     # extent covers the items that claim it (see _build_collection_document).
-    members: dict[str, list[list[float]]] = {}
+    members: dict[str, list[list[float] | None]] = {}
     for row in rows:
         if row.collection:
             members.setdefault(row.collection, []).append(

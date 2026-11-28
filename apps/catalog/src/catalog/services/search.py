@@ -413,14 +413,25 @@ def build_filters(
             env1 = f"ST_MakeEnvelope({add(w)}, {add(s)}, {add(e)}, {add(n)})"
             env2 = f"ST_MakeEnvelope({add(w)}, {add(s)}, {add(e)}, {add(n)})"
             env3 = f"ST_MakeEnvelope({add(w)}, {add(s)}, {add(e)}, {add(n)})"
+            # A footprint that cannot be cut (not a valid geometry) is judged
+            # by its rectangle instead, by the same rule.
+            x0, y0 = f"{env_prefix}_xmin", f"{env_prefix}_ymin"
+            x1, y1 = f"{env_prefix}_xmax", f"{env_prefix}_ymax"
+            rect_inside = (
+                f"GREATEST(0, LEAST({x1}, {add(e)}) - GREATEST({x0}, {add(w)})) "
+                f"* GREATEST(0, LEAST({y1}, {add(n)}) - GREATEST({y0}, {add(s)}))"
+            )
+            rect_area = f"({x1} - {x0}) * ({y1} - {y0})"
+            box_area = add((e - w) * (n - s))
             # `&&` is a cheap bbox-overlap pre-filter; the area-ratio test on
             # top of it is the opt-in "drop a mere edge sliver" heuristic --
             # the spec-conformant default (bbox_mode == "strict") is the
             # plain ST_Intersects branch below.
             filters.append(
-                f"({overlaps} AND {geom} && {env1} AND "
-                f"ST_Area(ST_Intersection({geom}, {env2})) >= "
-                f"0.3 * LEAST(ST_Area({geom}), ST_Area({env3})))"
+                f"({overlaps} AND {geom} && {env1} AND COALESCE("
+                f"TRY(ST_Area(ST_Intersection({geom}, {env2}))) >= "
+                f"0.3 * LEAST(ST_Area({geom}), ST_Area({env3})), "
+                f"{rect_inside} >= 0.3 * LEAST({rect_area}, {box_area})))"
             )
         else:
             overlaps = envelope_overlaps(w, s, e, n)
@@ -656,6 +667,9 @@ Box = tuple[float, float, float, float]
 #: Smallest place area (about 100 m square), so a point has an area to divide by.
 _MIN_PLACE_AREA = 1e-6
 
+#: The share of a footprint's area one piece must hold to stand for its size.
+_MAIN_PIECE_SHARE = 0.9
+
 
 def _place(
     p: SearchParams,
@@ -672,7 +686,13 @@ def _place(
         return _validate_bbox(p.bbox), False
     if p.intersects is not None:
         envelope = _geojson_envelope(p.intersects)
-        return (envelope, False) if envelope else None
+        if envelope is None:
+            return None
+        w, s, e, n = envelope
+        # The fit divides by the place's area and takes its logarithm.
+        if not math.isfinite((e - w) * (n - s)):
+            raise ApiError(400, "intersects must have finite coordinates")
+        return envelope, False
     codes = [code.strip() for code in p.nuts or [] if code.strip()]
     if codes:
         placeholders = ", ".join("?" for _ in codes)
@@ -719,23 +739,82 @@ def _touches_sql(box: Box, geom: str) -> str:
     return f"CASE WHEN {near} THEN COALESCE({hits}, FALSE) ELSE FALSE END"
 
 
-def _fit_sql(box: Box) -> str:
-    """How well a row's extent rectangle fits the place: overlap over union
-    times the share inside, rounded to its first digit so similar fits tie and
-    the score decides. A zero-extent row counts as fitting. The rectangle, since
-    a footprint of scattered cells makes nationwide data look regional."""
+def _fit_sql(box: Box, geom: str) -> str:
+    """How well a row fits the place, higher first: how close its rectangle is
+    to the place's size, times how much of its footprint lies inside. First
+    digit only, so the score decides ties. A point counts as the smallest place.
+    The size is that of the main piece where it reaches the place, so far
+    islands do not make a dataset look larger than it is."""
     halves = _halves(box)
     area = max(sum((e - w) * (n - s) for w, s, e, n in halves), _MIN_PLACE_AREA)
-    overlap = " + ".join(
-        f"GREATEST(0, LEAST(bbox_xmax, {e}) - GREATEST(bbox_xmin, {w})) "
-        f"* GREATEST(0, LEAST(bbox_ymax, {n}) - GREATEST(bbox_ymin, {s}))"
+
+    def overlap_of(xmin: str, ymin: str, xmax: str, ymax: str) -> str:
+        return " + ".join(
+            f"GREATEST(0, LEAST({xmax}, {e}) - GREATEST({xmin}, {w})) "
+            f"* GREATEST(0, LEAST({ymax}, {n}) - GREATEST({ymin}, {s}))"
+            for w, s, e, n in halves
+        )
+
+    overlap = overlap_of("bbox_xmin", "bbox_ymin", "bbox_xmax", "bbox_ymax")
+    own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
+    # The one piece holding most of the footprint, NULL when none does. The
+    # whole area is taken once, not per piece, which costs several times more.
+    main_box = (
+        f"CASE WHEN ST_NumGeometries({geom}) > 1 THEN "
+        f"list_transform([ST_Area({geom})], lambda a: ST_Extent(list_filter("
+        f"ST_Dump({geom}), lambda p: a > 0 AND ST_Area(p.geom) >= "
+        f"{_MAIN_PIECE_SHARE} * a)[1].geom))[1] END"
+    )
+    main = overlap_of("ST_XMin(b)", "ST_YMin(b)", "ST_XMax(b)", "ST_YMax(b)")
+    main_own = "(ST_XMax(b) - ST_XMin(b)) * (ST_YMax(b) - ST_YMin(b))"
+    # The footprint's area inside the place, piece by piece. Only a piece
+    # crossing the place's edge is cut; one inside or outside is exact without
+    # it, which keeps a footprint of many pieces cheap.
+    piece_inside = " + ".join(
+        f"CASE WHEN ST_XMin(r) >= {w} AND ST_XMax(r) <= {e} AND ST_YMin(r) >= {s} "
+        f"AND ST_YMax(r) <= {n} THEN ST_Area(p.geom) "
+        f"WHEN ST_XMax(r) <= {w} OR ST_XMin(r) >= {e} OR ST_YMax(r) <= {s} "
+        f"OR ST_YMin(r) >= {n} THEN 0 "
+        f"ELSE ST_Area(ST_Intersection(p.geom, ST_MakeEnvelope({w}, {s}, {e}, {n}))) END"
         for w, s, e, n in halves
     )
-    own = "(bbox_xmax - bbox_xmin) * (bbox_ymax - bbox_ymin)"
-    fit = f"GREATEST(o * o / (({own} + {area} - o) * {own}), 1e-12)"
+    inside = (
+        f"list_sum(list_transform(ST_Dump({geom}), lambda p: "
+        f"list_transform([ST_Extent(p.geom)], lambda r: {piece_inside})[1]))"
+    )
+    # A rectangle inside the place holds all of its footprint: no spatial call.
+    within = " OR ".join(
+        f"(bbox_xmin >= {w} AND bbox_xmax <= {e} AND bbox_ymin >= {s} "
+        f"AND bbox_ymax <= {n})"
+        for w, s, e, n in halves
+    )
+    # A footprint that cannot be cut (not a valid geometry, a bow-tie say)
+    # counts by its rectangle's share, like one without area. So does one whose
+    # cut comes out larger than its area (a hole outside its shell): that is no
+    # share. Rounding may lift a true share a hair above 1.
+    rect_share = f"({overlap}) / ({own})"
+    share = (
+        f"CASE WHEN {within} THEN 1 "
+        f"WHEN ST_Area({geom}) > 0 "
+        f"THEN list_transform([TRY({inside}) / ST_Area({geom})], lambda v: "
+        f"CASE WHEN v <= 1 + 1e-9 THEN LEAST(v, 1) ELSE {rect_share} END)[1] "
+        f"ELSE {rect_share} END"
+    )
+    # GREATEST and LEAST skip a NULL, so a missing main piece is asked first.
+    reached = f"b IS NOT NULL AND ({main}) > 0"
+    sized = (
+        f"list_transform([{main_box}], lambda b: {{"
+        f"'o': CASE WHEN {reached} THEN {main} ELSE {overlap} END, "
+        f"'a': CASE WHEN {reached} THEN {main_own} ELSE {own} END, "
+        f"'s': {share}}})[1]"
+    )
+    fit = f"GREATEST(x.o / (x.a + {area} - x.o) * x.s, 1e-12)"
+    point = _MIN_PLACE_AREA / area
+    point = round(point, -math.floor(math.log10(point)))
     return (
-        f"CASE WHEN COALESCE({own}, 0) = 0 THEN 1 "
-        f"ELSE list_transform([{overlap}], lambda o: CASE WHEN o > 0 "
+        f"CASE WHEN COALESCE({own}, 0) = 0 THEN {point} "
+        f"ELSE list_transform([{sized}], lambda x: "
+        f"CASE WHEN x.o > 0 "
         f"THEN ROUND({fit}, CAST(-FLOOR(LOG10({fit})) AS INT)) ELSE 0 END)[1] END"
     )
 
@@ -775,7 +854,7 @@ def _build_order_by(
 
     # Under a map view a row elsewhere fits 0, whatever its rectangle claims.
     if place is not None:
-        fit = _fit_sql(place[0])
+        fit = _fit_sql(place[0], geom)
         if place[1]:
             fit = f"CASE WHEN {_touches_sql(place[0], geom)} THEN {fit} ELSE 0 END"
         prefix += fit + " DESC, "
