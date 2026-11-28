@@ -449,6 +449,29 @@ def test_search_get_intersects_missing_coordinates_400(client: TestClient) -> No
     assert r.status_code == 400
 
 
+#: Areas with an infinite or undefined size: an infinite coordinate, huge
+#: coordinates whose area overflows, and a NaN.
+_NON_FINITE_AREAS = {
+    "infinite": [[0, 40], [1e999, 40], [0, 50], [0, 40]],
+    "huge": [[-1e200, -1e200], [1e200, -1e200], [1e200, 1e200], [-1e200, -1e200]],
+    "near-max": [[-1e308, 40], [1e308, 40], [0, 50], [-1e308, 40]],
+    "nan": [[float("nan"), 40], [1, 40], [0, 50], [float("nan"), 40]],
+}
+
+
+@pytest.mark.parametrize("shape", list(_NON_FINITE_AREAS))
+@pytest.mark.parametrize("route", ["/stac/search", "/stac/collections"])
+def test_intersects_without_a_finite_area_400(
+    client: TestClient, shape: str, route: str
+) -> None:
+    """The place ranks by its area, so one without a finite area is the
+    caller's mistake, not a server error."""
+    ring = _NON_FINITE_AREAS[shape]
+    geometry = json.dumps({"type": "Polygon", "coordinates": [ring]}, allow_nan=True)
+    r = client.get(route, params={"intersects": geometry})
+    assert r.status_code == 400
+
+
 def test_search_post_intersects_missing_coordinates_400(client: TestClient) -> None:
     r = client.post("/stac/search", json={"intersects": {"type": "Point"}})
     assert r.status_code == 400
