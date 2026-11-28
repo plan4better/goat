@@ -32,6 +32,24 @@ logger = logging.getLogger(__name__)
 #: the next one along.
 OPPOSITE_STOP_M = 150
 
+#: Two calls of a line head against each other when the cosine between their
+#: headings (stop before to stop after) is below this: more than 120 degrees
+#: apart, so a fork or a turn at the stop stays one way.
+OPPOSITE_HEADING_COS = -0.5
+
+#: How evenly two lines run for one to be the other's way back: the rarer
+#: has at least this share of the other's calls. A ring's two ways under two
+#: numbers run alike; a school trip against a one-way line is not its way back.
+MIRRORED_LINE_SHARE = 0.5
+
+
+def _metres(ax: str, ay: str, bx: str, by: str) -> str:
+    """SQL for the distance in metres between two lon/lat points."""
+    return (
+        f"sqrt(power(({ax} - {bx}) * cos(radians({ay})) * 111320, 2)"
+        f" + power(({ay} - {by}) * 111320, 2))"
+    )
+
 
 class OevGueteklasseTool(PTToolBase):
     """Public Transport Quality Classes (ÖV-Güteklassen) Tool.
@@ -189,7 +207,14 @@ class OevGueteklasseTool(PTToolBase):
         # of a line at a stop, or at a station's stops, go opposite ways
         # where one ends there and another starts there (service arriving and
         # service leaving), or where one's stop before is another's stop
-        # after, or within OPPOSITE_STOP_M of it (a stop across the street).
+        # after, or within OPPOSITE_STOP_M of it (a stop across the street),
+        # or where the two head against each other (OPPOSITE_HEADING_COS:
+        # the stops of the other way lie on another street, at a bus station
+        # or in a one-way system). Two lines of a kind that each run one way
+        # there, about as often (MIRRORED_LINE_SHARE), and mirror each other,
+        # the stop before one being the stop after the other on both sides,
+        # are one line both ways: a ring's two ways under two numbers, or a
+        # feed with a route per direction.
         # A line's service at a stop is its calls (arriving, departing or
         # passing) over its directions there: every stop of a line running
         # every 10 minutes each way reads 10 minutes, its termini on one
@@ -245,14 +270,15 @@ class OevGueteklasseTool(PTToolBase):
                 FROM trip_calls tc JOIN minutes m USING (trip_id, o)
             ),
             neighbours AS (
-                SELECT trip_id, stop_id, o,
+                SELECT trip_id, stop_id, o, x, y,
                        lag(x) OVER w AS before_x, lag(y) OVER w AS before_y,
                        lead(x) OVER w AS after_x, lead(y) OVER w AS after_y
                 FROM ordered
                 WINDOW w AS (PARTITION BY trip_id ORDER BY seq)
             ),
             bounds AS (
-                SELECT c.group_id, c.route_id, n.before_x, n.before_y, n.after_x, n.after_y
+                SELECT c.group_id, c.route_type, c.route_id, n.x, n.y,
+                       n.before_x, n.before_y, n.after_x, n.after_y
                 FROM calls c JOIN neighbours n USING (trip_id, stop_id, o)
             ),
             crossing AS (
@@ -262,8 +288,7 @@ class OevGueteklasseTool(PTToolBase):
                 JOIN (SELECT DISTINCT group_id, route_id, after_x AS x, after_y AS y
                       FROM bounds WHERE after_x IS NOT NULL) q
                     USING (group_id, route_id)
-                WHERE sqrt(power((p.x - q.x) * cos(radians(p.y)) * 111320, 2)
-                           + power((p.y - q.y) * 111320, 2)) <= {OPPOSITE_STOP_M}
+                WHERE {_metres("p.x", "p.y", "q.x", "q.y")} <= {OPPOSITE_STOP_M}
             ),
             ending AS (
                 SELECT group_id, route_id
@@ -271,15 +296,62 @@ class OevGueteklasseTool(PTToolBase):
                 GROUP BY group_id, route_id
                 HAVING bool_or(before_x IS NOT NULL AND after_x IS NULL)
                    AND bool_or(before_x IS NULL AND after_x IS NOT NULL)
+            ),
+            -- Where a call heads: from the stop before to the stop after, or
+            -- into the stop when the trip ends there, out of it when it starts
+            headings AS (
+                SELECT DISTINCT group_id, route_id,
+                       (coalesce(after_x, x) - coalesce(before_x, x)) * cos(radians(y)) AS dx,
+                       coalesce(after_y, y) - coalesce(before_y, y) AS dy
+                FROM bounds
+            ),
+            opposed AS (
+                SELECT DISTINCT a.group_id, a.route_id
+                FROM headings a JOIN headings b USING (group_id, route_id)
+                WHERE a.dx * b.dx + a.dy * b.dy
+                      < {OPPOSITE_HEADING_COS} * sqrt(a.dx * a.dx + a.dy * a.dy)
+                                               * sqrt(b.dx * b.dx + b.dy * b.dy)
+            ),
+            line_ways AS (
+                SELECT c.group_id, c.route_type, c.route_id,
+                       COUNT(*) AS calls,
+                       (x.route_id IS NOT NULL OR e.route_id IS NOT NULL
+                        OR h.route_id IS NOT NULL) AS both_ways
+                FROM calls c
+                LEFT JOIN crossing x USING (group_id, route_id)
+                LEFT JOIN ending e USING (group_id, route_id)
+                LEFT JOIN opposed h USING (group_id, route_id)
+                GROUP BY c.group_id, c.route_type, c.route_id,
+                         x.route_id, e.route_id, h.route_id
+            ),
+            -- Lines running one way through the station, and the pairs of
+            -- them that are each other's way back
+            one_way AS (
+                SELECT DISTINCT b.group_id, b.route_type, b.route_id, l.calls,
+                       b.before_x, b.before_y, b.after_x, b.after_y
+                FROM bounds b
+                JOIN line_ways l USING (group_id, route_type, route_id)
+                WHERE NOT l.both_ways
+                  AND b.before_x IS NOT NULL AND b.after_x IS NOT NULL
+            ),
+            mirrored AS (
+                SELECT DISTINCT p.group_id, p.route_type, p.route_id
+                FROM one_way p
+                JOIN one_way q
+                  ON p.group_id = q.group_id AND p.route_type = q.route_type
+                 AND p.route_id != q.route_id
+                WHERE least(p.calls, q.calls)
+                          >= {MIRRORED_LINE_SHARE} * greatest(p.calls, q.calls)
+                  AND {_metres("p.before_x", "p.before_y", "q.after_x", "q.after_y")}
+                          <= {OPPOSITE_STOP_M}
+                  AND {_metres("p.after_x", "p.after_y", "q.before_x", "q.before_y")}
+                          <= {OPPOSITE_STOP_M}
             )
-            SELECT c.group_id, c.route_type, c.route_id,
-                   COUNT(*) AS calls,
-                   CASE WHEN x.route_id IS NULL AND e.route_id IS NULL THEN 1 ELSE 2 END
+            SELECT l.group_id, l.route_type, l.route_id, l.calls,
+                   CASE WHEN l.both_ways OR m.route_id IS NOT NULL THEN 2 ELSE 1 END
                        AS directions
-            FROM calls c
-            LEFT JOIN crossing x USING (group_id, route_id)
-            LEFT JOIN ending e USING (group_id, route_id)
-            GROUP BY c.group_id, c.route_type, c.route_id, x.route_id, e.route_id
+            FROM line_ways l
+            LEFT JOIN mirrored m USING (group_id, route_type, route_id)
         """)
 
         # Aggregate trip counts by stop, considering parent stations

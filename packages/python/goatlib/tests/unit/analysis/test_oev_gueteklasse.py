@@ -343,9 +343,10 @@ def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> No
     seconds into the day, and whether it passes the stop, "through", or
     "ends" or "starts" there). Each call is a trip of its own, with stops
     either side of this one as it goes (outside the area): what its direction
-    is read from. ``tie``: the stop before is in the same minute as the stop,
-    as the shipped feed's minute times often have it, and the stop before
-    that a minute earlier."""
+    is read from. An eighth value puts those stops that many degrees north,
+    on another street. ``tie``: the stop before is in the same minute as the
+    stop, as the shipped feed's minute times often have it, and the stop
+    before that a minute earlier."""
     tool.con.execute("""
         CREATE OR REPLACE TABLE gtfs_stop_times (
             stop_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, call_order INTEGER,
@@ -359,16 +360,20 @@ def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> No
             geom GEOMETRY)
     """)
     rows, stops, places = [], {}, {}
-    for k, (stop, parent, line, way, route_type, at, kind) in enumerate(calls):
+    for k, (stop, parent, line, way, route_type, at, kind, *rest) in enumerate(calls):
         trip = f"t{k}"
+        aside = rest[0] if rest else 0.0
+        street = f"@{aside}" if aside else ""
         step = 0.01 if way == "east" else -0.01
-        before = [(f"{stop}:{-step}", 11.5 - step, at - 60 if tie else at - 120)]
+        before = [
+            (f"{stop}:{-step}{street}", 11.5 - step, at - 60 if tie else at - 120)
+        ]
         if tie:
-            before = [(f"{stop}:{-2 * step}", 11.5 - 2 * step, at - 60)] + [
-                (f"{stop}:{-step}", 11.5 - step, at)
+            before = [(f"{stop}:{-2 * step}{street}", 11.5 - 2 * step, at - 60)] + [
+                (f"{stop}:{-step}{street}", 11.5 - step, at)
             ]
         here = [(stop, 11.5, at)]
-        after = [(f"{stop}:{step}", 11.5 + step, at + 120)]
+        after = [(f"{stop}:{step}{street}", 11.5 + step, at + 120)]
         legs = {
             "through": before + here + after,
             "ends": before + here,
@@ -377,15 +382,15 @@ def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> No
         for sid, lon, t in legs:
             order = t if tie else len([r for r in rows if r[1] == trip])
             rows.append((sid, trip, line, order, route_type, _clock(t)))
-            places[sid] = lon
+            places[sid] = (lon, 48.1 if sid == stop else 48.1 + aside)
         stops[stop] = parent
     tool.con.executemany(
         "INSERT INTO gtfs_stop_times VALUES (?, ?, ?, ?, ?, ?, true, true, true, 1)",
         rows,
     )
     tool.con.executemany(
-        "INSERT INTO gtfs_stops VALUES (?, ?, 48.1, ?, '0', NULL, 1, ST_Point(?, 48.1))",
-        [(sid, sid, lon, lon) for sid, lon in places.items()],
+        "INSERT INTO gtfs_stops VALUES (?, ?, ?, ?, '0', NULL, 1, ST_Point(?, ?))",
+        [(sid, sid, lat, lon, lon, lat) for sid, (lon, lat) in places.items()],
     )
     tool.con.execute("""
         CREATE OR REPLACE TABLE stations_in_area (
@@ -431,10 +436,10 @@ class TestOevGueteklasseDirections:
             tool.cleanup()
 
     @staticmethod
-    def every_10(stop, parent, line, way, kind="through", offset=0):
+    def every_10(stop, parent, line, way, kind="through", offset=0, aside=0.0):
         """A line's 12 trips in two hours at a stop, one way."""
         return [
-            (stop, parent, line, way, 3, offset + 300 + k * 600, kind)
+            (stop, parent, line, way, 3, offset + 300 + k * 600, kind, aside)
             for k in range(12)
         ]
 
@@ -491,6 +496,52 @@ class TestOevGueteklasseDirections:
             for call in self.every_10("mid", None, line, way)
         ]
         assert self.frequencies(both)["mid"] == pytest.approx(5.0)
+
+    def test_opposite_stops_on_another_street(self) -> None:
+        """One way's stops before and after lie on a parallel street 330 m
+        away (one-way streets, a bus station): the trips still head against
+        each other, two directions (Menden Bahnhof)."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L1", "west", aside=0.003)
+        )
+        assert f["mid"] == pytest.approx(10.0)
+
+    def test_a_line_numbered_apart_per_direction(self) -> None:
+        """A ring's two ways under two numbers, or a feed with a route per
+        direction: one line both ways, every 10 minutes (Munich's 58 and 68
+        at Beethovenplatz)."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L58", "east")
+            + self.every_10("mid", None, "L68", "west")
+        )
+        assert f["mid"] == pytest.approx(10.0)
+
+    def test_a_line_numbered_apart_on_two_platforms(self) -> None:
+        f = self.frequencies(
+            self.every_10("mid_a", "MID", "L58", "east")
+            + self.every_10("mid_b", "MID", "L68", "west")
+        )
+        assert f["MID"] == pytest.approx(10.0)
+
+    def test_a_rare_line_the_other_way_is_no_way_back(self) -> None:
+        """A one-way line, and two trips of another line running against
+        it over the same stops (a school trip): the line still runs one way,
+        and the two trips add to it rather than halve it."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L2", "west")[:2]
+        )
+        assert f["mid"] == pytest.approx(120 / 14)
+
+    def test_one_way_lines_on_different_streets_add_up(self) -> None:
+        """Two one-way lines heading against each other whose stops either
+        side are not each other's: two lines, not one line both ways."""
+        f = self.frequencies(
+            self.every_10("mid", None, "L1", "east")
+            + self.every_10("mid", None, "L2", "west", aside=0.003)
+        )
+        assert f["mid"] == pytest.approx(5.0)
 
     def test_stops_in_the_same_minute(self) -> None:
         """Minute times, the stop before in the stop's own minute: the
