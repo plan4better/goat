@@ -493,7 +493,12 @@ class OevGueteklasseTool(PTToolBase):
                 c.trips_per_direction,
                 c.child_cnt
             FROM child_counts c
-            LEFT JOIN station_trip_counts orig ON c.stop_id = orig.stop_id
+            LEFT JOIN (
+                -- A stop's name and place once, whatever kinds of line serve it
+                SELECT stop_id, ANY_VALUE(stop_name) AS stop_name, ANY_VALUE(geom) AS geom
+                FROM station_trip_counts
+                GROUP BY stop_id
+            ) orig ON c.stop_id = orig.stop_id
             LEFT JOIN parent_child_counts pcc ON c.stop_id = pcc.parent_station
             LEFT JOIN gtfs_stations sn ON c.stop_id = sn.stop_id
         """)
