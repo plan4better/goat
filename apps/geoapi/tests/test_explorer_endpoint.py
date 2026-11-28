@@ -114,6 +114,29 @@ def test_first_request_builds_and_later_ones_get_the_files(client, builds) -> No
     )
 
 
+def test_the_manifest_says_whether_the_caller_may_edit(
+    client, builds, explorer
+) -> None:
+    from geoapi import main
+    from geoapi.deps.auth import get_optional_user_id
+
+    # Anonymous: never.
+    assert _until_ready(client)["body"]["can_edit"] is False
+    user = UUID("11111111-1111-1111-1111-111111111111")
+    main.app.dependency_overrides[get_optional_user_id] = lambda: user
+    try:
+        for allowed in (True, False):
+            with patch.object(
+                explorer.layer_service,
+                "user_can_write_bundle",
+                AsyncMock(return_value=allowed),
+            ) as check:
+                assert client.get(MANIFEST_URL).json()["can_edit"] is allowed
+                check.assert_awaited_once_with(UUID(BUNDLE), user)
+    finally:
+        main.app.dependency_overrides.pop(get_optional_user_id, None)
+
+
 def test_files_are_cached_for_good_and_never_gzipped(client, builds) -> None:
     _until_ready(client)
     response = client.get(

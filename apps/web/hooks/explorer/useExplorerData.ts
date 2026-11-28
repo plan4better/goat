@@ -20,7 +20,7 @@ import {
 } from "@/lib/explorer/derive/operations";
 import { patternSections, patternTrips } from "@/lib/explorer/derive/patternSections";
 import { routeTrips } from "@/lib/explorer/derive/routeTrips";
-import { type TripRange, routeDayRuns, routeRuns } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange, routeDayRuns, routeRuns } from "@/lib/explorer/derive/runs";
 import { routeCalendar } from "@/lib/explorer/derive/serviceCalendar";
 import {
   type Departure,
@@ -31,8 +31,12 @@ import {
 import { places } from "@/lib/explorer/derive/stops";
 import { stopsLine } from "@/lib/explorer/derive/stopsLine";
 import { tripDetail } from "@/lib/explorer/derive/trip";
+import { routeRecord } from "@/lib/explorer/edit/ops/routes";
+import { stopRecord } from "@/lib/explorer/edit/ops/stops";
 import { type ExplorerSettings, type Period, type Rate, rateFor, settingsKey } from "@/lib/explorer/settings";
 import type { ExplorerRouteDrawing } from "@/lib/store/explorer/slice";
+
+import { useEdition } from "@/hooks/explorer/useEdition";
 
 export interface RouteRow {
   route_idx: number;
@@ -53,6 +57,8 @@ export interface RouteRow {
 /** Run `query` against `db` for `key`; the answer for the latest key wins. */
 function useQuery<T>(db: SqlRunner | undefined, key: string, query: (db: SqlRunner) => Promise<T>) {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true });
+  // An edit, its undo or redo changed the tables: ask again.
+  const edition = useEdition(db);
   useEffect(() => {
     if (!db) return;
     let current = true;
@@ -68,9 +74,9 @@ function useQuery<T>(db: SqlRunner | undefined, key: string, query: (db: SqlRunn
     return () => {
       current = false;
     };
-    // The key names everything the query depends on.
+    // The key and the edition name everything the query depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, key]);
+  }, [db, key, edition]);
   return state;
 }
 
@@ -85,6 +91,33 @@ export function useRoutes(db: SqlRunner | undefined) {
   );
 }
 
+/** The route a trip runs on, by route_idx: for a trip an edit added, which
+ * lies past its route's range (inTripRange). */
+export function useTripRouteIdx(db: SqlRunner | undefined, trip_idx: number | null) {
+  return useQuery(trip_idx === null ? undefined : db, `trip-route:${trip_idx}`, async (d) => {
+    const [row] = await d.all<{ route_idx: number }>(
+      `SELECT route_idx FROM trips WHERE trip_idx = ${trip_idx}`
+    );
+    return row?.route_idx ?? null;
+  });
+}
+
+/** The services a direction's trips run on (its patterns'), for the service
+ * dialog's linked patterns (headway.ts, dayTypeGroups). */
+export function useDirectionServices(db: SqlRunner | undefined, route_idx: number, patterns: number[]) {
+  return useQuery(
+    patterns.length ? db : undefined,
+    `direction-services:${route_idx}:${patterns.join(",")}`,
+    async (d) =>
+      (
+        await d.all<{ service_idx: number }>(
+          `SELECT DISTINCT service_idx FROM trips WHERE route_idx = ${route_idx}
+           AND pattern_idx IN (${patterns.join(",")}) ORDER BY 1`
+        )
+      ).map((r) => r.service_idx)
+  );
+}
+
 /** Stations and stops on their own, with the routes calling there. */
 export function useStops(db: SqlRunner | undefined) {
   return useQuery(db, "places", places);
@@ -93,6 +126,30 @@ export function useStops(db: SqlRunner | undefined) {
 export interface AgencyRow {
   agency_idx: number;
   name: string | null;
+}
+
+/** A line's own fields, for its Properties tab. */
+export function useRouteRecord(db: SqlRunner | undefined, route_idx: number) {
+  return useQuery(db, `route-record:${route_idx}`, (d) => routeRecord(d, route_idx));
+}
+
+/** The feed's services, for a new line's days: with their weekdays (Mon=1
+ * … Sun=64), none for one that only calendar_dates gives. */
+export interface ServiceRow {
+  service_idx: number;
+  service_id: string;
+  days: number | null;
+  /** How many trips run on it. */
+  trips: number;
+}
+export function useServices(db: SqlRunner | undefined) {
+  return useQuery(db, "services", (d) =>
+    // Most used first: the days most lines run, at the top.
+    d.all<ServiceRow>(`
+      SELECT s.service_idx, s.service_id, s.days, CAST(count(t.trip_idx) AS INTEGER) AS trips
+      FROM services s LEFT JOIN trips t USING (service_idx)
+      GROUP BY ALL ORDER BY trips DESC, s.service_id`)
+  );
 }
 
 export function useAgencies(db: SqlRunner | undefined) {
@@ -151,7 +208,7 @@ async function summarize(
   // of trips without one (the snapshot's stop chains).
   const shapes = await db.all<{ shape_id: string; pattern_idx: number }>(`
     SELECT DISTINCT s.shape_id, t.pattern_idx FROM trips t JOIN shapes_meta s USING (shape_idx)
-    WHERE t.trip_idx BETWEEN ${route.trip_lo} AND ${route.trip_hi}`);
+    WHERE ${inTripRange(route, "t.")}`);
   const coord = (idx: number): [number, number] | null => {
     const s = stops.get(idx);
     return s && s.lon != null && s.lat != null ? [s.lon, s.lat] : null;
@@ -183,6 +240,10 @@ async function summarize(
         key: d.key,
         patterns: d.patterns.map((p) => p.pattern_idx),
         name: d.name,
+        // Its variants as the direction picker names them.
+        variants: d.patterns
+          .filter((p) => p.kind !== "main")
+          .map((p) => ({ pattern_idx: p.pattern_idx, kind: p.kind, destination: p.destination })),
       })),
       patternShapes: shapes.reduce<Record<number, string[]>>((acc, s) => {
         (acc[s.pattern_idx] ??= []).push(s.shape_id);
@@ -368,5 +429,61 @@ export function useRouteDayRuns(db: SqlRunner | undefined, date: string | null) 
 export function useRouteTrips(db: SqlRunner | undefined, route: RouteRow | undefined, date: string | null) {
   return useQuery(route && date ? db : undefined, `route-trips:${route?.route_idx}:${date}`, (d) =>
     routeTrips(d, route as RouteRow, date as string)
+  );
+}
+
+/** A stop's own details as the snapshot holds them, for the Details tab. */
+export function useStopRecord(db: SqlRunner | undefined, stop_idx: number) {
+  return useQuery(db, `stop-record:${stop_idx}`, (d) => stopRecord(d, stop_idx));
+}
+
+/** A location as a parent to pick, or as one of a station's own. */
+export interface LocationRow {
+  stop_idx: number;
+  stop_id: string;
+  name: string;
+  location_type: number;
+  platform_code: string | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+const LOCATION_COLUMNS = `stop_idx, stop_id, COALESCE(name, stop_id) AS name,
+  CAST(COALESCE(location_type, 0) AS INTEGER) AS location_type, platform_code, lat, lon`;
+
+/** Every location of one type: the stations a stop may belong to. */
+export function useLocationsOfType(db: SqlRunner | undefined, location_type: number) {
+  return useQuery(db, `locations-of-type:${location_type}`, (d) =>
+    d.all<LocationRow>(
+      `SELECT ${LOCATION_COLUMNS} FROM stops WHERE COALESCE(location_type, 0) = ${Number(location_type)} ORDER BY name`
+    )
+  );
+}
+
+/** What belongs to a station: its stops and platforms, then its entrances. */
+export function useChildLocations(db: SqlRunner | undefined, stop_idx: number) {
+  return useQuery(db, `child-locations:${stop_idx}`, (d) =>
+    d.all<LocationRow>(
+      `SELECT ${LOCATION_COLUMNS} FROM stops WHERE parent_idx = ${Number(stop_idx)}
+       ORDER BY location_type, platform_code NULLS LAST, name, stop_idx`
+    )
+  );
+}
+
+/** A trip's stop times as the feed has them (a frequency-based trip's, its
+ * template's), by stop_sequence, for its times dialog. */
+export interface TripCall {
+  stop_sequence: number;
+  name: string;
+  arrival_s: number | null;
+  departure_s: number | null;
+}
+export function useTripCalls(db: SqlRunner | undefined, trip_idx: number) {
+  return useQuery(db, `trip-calls:${trip_idx}`, (d) =>
+    d.all<TripCall>(`
+      SELECT st.stop_sequence, COALESCE(p.name, s.name, s.stop_id) AS name, st.arrival_s, st.departure_s
+      FROM stop_times st JOIN stops s USING (stop_idx) LEFT JOIN stops p ON p.stop_idx = s.parent_idx
+      WHERE st.trip_idx = ${Number(trip_idx)}
+      ORDER BY st.stop_sequence`)
   );
 }

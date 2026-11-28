@@ -578,6 +578,24 @@ class LayerService:
         )
         return bool(row and row["can_edit"])
 
+    async def user_can_write_bundle(self, bundle_id: UUID | str, user_id: UUID) -> bool:
+        """Check whether a user may change a bundle's data.
+
+        ``customer.can('bundle', ..., 'write')``, the rule the bundle's
+        artifact rebuild already asks: changing the bundle's tables changes
+        what everyone reading or routing through it gets.
+        """
+        if not self._pool:
+            raise RuntimeError("LayerService not initialized")
+
+        row = await self._execute_with_retry(
+            "SELECT customer.can('bundle', $1::uuid, $2::uuid, 'write') AS ok",
+            str(bundle_id),
+            str(user_id),
+            fetch_one=True,
+        )
+        return bool(row and row["ok"])
+
     async def list_layers(
         self,
         user_id: Optional[str] = None,

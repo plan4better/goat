@@ -100,19 +100,22 @@ export function useDirectionChoice(directions: Direction[]): {
   };
 }
 
-/** The strip header's picker: the route's badge and where the choice goes;
- * `compact`, the destination alone. */
+/** The strip header's picker (and the edit bar's, in a line mode):
+ * the route's badge and where the choice goes; `compact`, the destination
+ * alone. Its menu opens above it, at the foot of the map, or `below`. */
 export function DirectionPicker({
   route,
   directions,
   dayTrips,
   compact = false,
+  below = false,
 }: {
   route: RouteRow;
   directions: Direction[];
   /** The day's trips by pattern (`tripsByPattern`). */
   dayTrips: Map<number, number> | null;
   compact?: boolean;
+  below?: boolean;
 }) {
   const { t } = useTranslation("common");
   const { resolved, pick } = useDirectionChoice(directions);
@@ -163,10 +166,17 @@ export function DirectionPicker({
         },
         "& .MuiSelect-icon": { right: "8px" },
       }}
-      MenuProps={{
-        anchorOrigin: { vertical: "top", horizontal: "left" },
-        transformOrigin: { vertical: "bottom", horizontal: "left" },
-      }}>
+      MenuProps={
+        below
+          ? {
+              anchorOrigin: { vertical: "bottom", horizontal: "left" },
+              transformOrigin: { vertical: "top", horizontal: "left" },
+            }
+          : {
+              anchorOrigin: { vertical: "top", horizontal: "left" },
+              transformOrigin: { vertical: "bottom", horizontal: "left" },
+            }
+      }>
       {items.map((it) => (
         <MenuItem key={String(it.value)} value={String(it.value)} sx={{ gap: 1, fontSize: 14 }}>
           {it.iconNode}

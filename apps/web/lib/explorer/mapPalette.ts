@@ -14,24 +14,24 @@ export interface MapPalette {
   ground: string;
   /** The network's lines while a route is selected. */
   faded: string;
-  /** A line the Explorer tab's filter leaves out: faded and see-through, as
-   * the faded layer draws it (0.35 opacity under the layer's 0.9). */
-  filtered: string;
   /** A stop's dot and the ring round it; a station's area. */
   stop: string;
   stopRing: string;
   /** The selected route's end names: GOAT's text colour for that ground. */
   label: string;
+  /** How much of a route's colour the rest of it keeps while one direction
+   * or a path is highlighted: faded into the ground, still clearly the line. */
+  fadedShare: number;
 }
 
 export const LIGHT_MAP: MapPalette = {
   dark: false,
   ground: "#FFFFFF",
   faded: "#9E9E9E",
-  filtered: "rgba(158, 158, 158, 0.4)",
   stop: "#717171",
   stopRing: "#FFFFFF",
   label: "rgba(58, 53, 65, 0.87)",
+  fadedShare: 0.45,
 };
 
 export const DARK_MAP: MapPalette = {
@@ -39,10 +39,11 @@ export const DARK_MAP: MapPalette = {
   // The background of GOAT's Dark basemap (OpenFreeMap's "dark" style).
   ground: "#0C0C0C",
   faded: "#9E9E9E",
-  filtered: "rgba(158, 158, 158, 0.4)",
   stop: "#8A8A8A",
   stopRing: "#0C0C0C",
   label: "rgba(231, 227, 252, 0.87)",
+  // Faded into near-black, a colour needs more of itself to stay legible.
+  fadedShare: 0.55,
 };
 
 /** The palette for the basemap shown, by its value in GOAT's basemaps. */

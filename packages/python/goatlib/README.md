@@ -621,6 +621,42 @@ every trip without a usable one, a line through its stops
 Explorer's snapshot gives those trips the same line as their shape. Like any
 derived member it is never written back to the feed.
 
+The Explorer saves its edits as a change set of GTFS rows, keyed by GTFS ids
+(`bundles/explorer/changeset.py`, applied by geoapi in its own transaction).
+Values come as GTFS text and are typed by the import's rules; consecutive
+writes to one row are squashed into one, since updating a row inserted in the
+same DuckLake transaction breaks its tile id; a stop's geometry and
+`shape_lines` are redrawn for what the change touches. Integrity is checked on
+the touched rows and the rows referring to them, with the MobilityData
+validator's notice codes, and only problems the change brings count: a feed's
+own old faults do not block an unrelated edit.
+
+What the browser cannot hold the change set does on the server. A stop deleted
+takes the transfers, pathways and stop areas naming it (the snapshot has none
+of those tables); a route or trip deleted likewise takes the fare rules,
+attributions and transfers naming it, and a shape its trips ran that no trip
+runs any more. A stop moved sends each path through it as a `reshape`: the
+stretches the browser redrew, as shares of the path's length, which the server
+cuts into the feed's full-resolution shape (the snapshot's is simplified),
+keeping `shape_dist_traveled` in the feed's unit on the shape and on the stop
+times of the trips that run it (the trips it names, as they were on the shape
+when redrawn: a later edit may move some onto a copy). A path rerouted between
+two stops sends the same `reshape` without a stop drawn through: each stop time
+past a stretch moves on by as far as the shape did there. A stop added to a line
+between two stop times numbered one apart sends a `shift` first, which numbers
+the trip's later stop times one on; rows named before it keep the numbers they
+had then and are renumbered with the feed's, so a change set stays in the
+order it was made. An optional field a feed left out (a stop's
+code, its station, its platform) gets its column the first time an edit sets one
+(`ADDABLE_COLUMNS`); any other column a table lacks is refused. An insert may
+name a row of the same table to copy (`copy_of`): the columns it does not give
+are that row's, as the save finds it, so a trip copied for a new departure keeps
+the fields the browser's snapshot does not hold. A stop's
+location type is checked as the validator does: a parent station where one is
+required and none on a station, a parent of the right type (also for the
+stops of a station whose type changed), stop times only at stops or
+platforms.
+
 ## XPlan bundles are decoded at import
 
 An XPlanGML file states codes and links, not meanings: `besondereArtDerBaulNutzung

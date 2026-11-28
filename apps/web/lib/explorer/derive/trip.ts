@@ -35,6 +35,8 @@ export interface TripDetail extends RunRef {
   headsign: string | null;
   /** The direction's destination, as the route's directions name it. */
   destination: string | null;
+  /** Its direction (the direction's key): the line opens in it. */
+  direction: number | null;
   stops: TripStop[];
   /** The runs before and after in the same direction on the date. */
   prev: RunRef | null;
@@ -91,6 +93,7 @@ export async function tripDetail(
     pattern_idx: trip.pattern_idx,
     headsign: trip.headsign,
     destination: direction?.patterns.find((p) => p.pattern_idx === trip.pattern_idx)?.destination ?? null,
+    direction: direction?.key ?? null,
     stops: rows.map((r) => ({ ...r, transfers: transfers.get(r.stop_idx) ?? [] })),
     prev: ref(at - 1),
     next: ref(at + 1),

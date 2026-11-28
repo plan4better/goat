@@ -8,7 +8,7 @@
  * Frames go to the playback clock (lib/explorer/playback.ts); the store keeps
  * whether it plays, how fast, and where it stopped.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "react-redux";
 
 import type { SqlRunner } from "@/lib/explorer/db/types";
@@ -21,12 +21,14 @@ import {
   vehicleFrame,
   vehicleWindow,
 } from "@/lib/explorer/derive/vehicles";
+import { matchingRouteIdxs } from "@/lib/explorer/filters";
 import { type MemoryVerdict, checkMemory } from "@/lib/explorer/memory";
 import { modeOf, routeColor, routeTextColor } from "@/lib/explorer/modes";
 import { type PlaybackFrame, type VehicleStyle, playbackClock } from "@/lib/explorer/playback";
 import type { RootState } from "@/lib/store";
 import { setPlaybackTime, setPlaying } from "@/lib/store/explorer/slice";
 
+import { useEdition } from "@/hooks/explorer/useEdition";
 import type { RouteRow } from "@/hooks/explorer/useExplorerData";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -103,12 +105,16 @@ export function usePlayback(db: SqlRunner | undefined, routes: RouteRow[] | unde
     });
   }, [routes]);
 
-  // A day's runs, once per date; playback starts at 08:00 or the day's first
-  // departure, or stays at the time it was at on the day before, if the new
-  // day's service runs then.
+  // A day's runs, once per date and again after every edit, undo, redo or
+  // save (trips moved, a line run onto a new stretch): playback starts at
+  // 08:00 or the day's first departure, or stays at the time it was at on the
+  // day before, if the new day's service runs then.
+  const edition = useEdition(db);
   useEffect(() => {
     if (!db || !date) return;
     windows.current = new Map();
+    // Its shapes as they are now, not as playback first read them.
+    dropShapeCache(db);
     const ready = prepareDay(db, date).then(() => serviceSpan(db));
     day.current = { date, ready };
     let current = true;
@@ -124,7 +130,7 @@ export function usePlayback(db: SqlRunner | undefined, routes: RouteRow[] | unde
     return () => {
       current = false;
     };
-  }, [db, date, dispatch, store]);
+  }, [db, date, edition, dispatch, store]);
 
   useEffect(() => () => playbackClock.reset(), []);
 
@@ -154,8 +160,17 @@ export function usePlayback(db: SqlRunner | undefined, routes: RouteRow[] | unde
     if (!w) return;
     const window = await w;
     if (live.current !== t) return; // a later frame is on its way
-    playbackClock.publish({ time_s: t, vehicles: positionsAt(window, t, frame.current) });
+    playbackClock.publish({
+      time_s: t,
+      vehicles: positionsAt(window, t, frame.current, onlyLines.current),
+    });
   };
+
+  // With a filter on, only the lines it keeps run (the map hides the rest).
+  const filters = useAppSelector((s) => s.explorer.filters);
+  const only = useMemo(() => matchingRouteIdxs(routes ?? [], filters), [routes, filters]);
+  const onlyLines = useRef<Set<number> | null>(null);
+  onlyLines.current = only;
 
   // Paused: show the time the store holds.
   useEffect(() => {
@@ -163,7 +178,7 @@ export function usePlayback(db: SqlRunner | undefined, routes: RouteRow[] | unde
     live.current = time_s;
     void draw(time_s);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing, time_s, db, date]);
+  }, [playing, time_s, db, date, edition, only]);
 
   // Playing: advance the clock, `speed` seconds of the day each second.
   useEffect(() => {

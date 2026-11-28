@@ -4,7 +4,7 @@
  * Selecting a route turns the tab into its summary; picking a station or
  * platform shows it on the map. The operating cost sits below, in CostSection.
  */
-import { Box, InputAdornment, List, ListItemButton, Stack, TextField, Typography } from "@mui/material";
+import { Box, InputAdornment, List, Stack, TextField, Typography } from "@mui/material";
 import { type ReactNode, memo, useDeferredValue, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -19,8 +19,6 @@ import {
   shows,
 } from "@/lib/explorer/filters";
 import { compact, count } from "@/lib/explorer/format";
-import { modeOf } from "@/lib/explorer/modes";
-import { selectExplorerRoute } from "@/lib/store/explorer/slice";
 
 import {
   type RouteRow,
@@ -29,22 +27,18 @@ import {
   useRoutes,
   useStops,
 } from "@/hooks/explorer/useExplorerData";
-import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
+import { useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { ExplorerFilterButton, ExplorerFilterChips } from "@/components/explorer/ExplorerFilter";
-import { RouteBadge } from "@/components/explorer/RouteBadge";
+import { RouteListItem } from "@/components/explorer/RouteListItem";
 import { RouteSummary } from "@/components/explorer/RouteSummary";
-import { PX, SectionHeader } from "@/components/explorer/SectionHeader";
+import { ICON_GAP, PX, SectionHeader } from "@/components/explorer/SectionHeader";
 import { StationsList } from "@/components/explorer/StationsList";
 import { StopMarker } from "@/components/explorer/StopMarker";
-import { modeIcon } from "@/components/explorer/modeIcon";
 
 /** A list longer than this is cut short: narrowing the search finds the rest. */
 const SHOWN = 200;
-
-/** A row's height, routes and stops alike. */
-const ROW_HEIGHT = 36;
 
 /** "8 of 89" once something narrows the list, else the plain count. */
 function useAmount(shown: number, total: number | undefined, narrowed: boolean): string {
@@ -90,32 +84,15 @@ const RouteRows = memo(function RouteRows({
   /** Each route's runs on the date, once known: one making none is dimmed. */
   dayRuns: Map<number, number> | null;
 }) {
-  const { t } = useTranslation("common");
-  const dispatch = useAppDispatch();
   return (
     <>
-      {routes.map((route) => {
-        const idle = !!dayRuns && !dayRuns.has(route.route_idx);
-        return (
-          <ListItemButton
-            key={route.route_idx}
-            onClick={() => dispatch(selectExplorerRoute(route.route_id))}
-            title={idle ? t("explorer_route_no_trips_on_date") : undefined}
-            sx={{ px: PX, py: 0.75, gap: 1.5, minHeight: ROW_HEIGHT, opacity: idle ? 0.5 : 1 }}>
-            <RouteBadge route={route} />
-            <Typography variant="body2" noWrap title={route.long_name ?? undefined} sx={{ flex: 1 }}>
-              {route.long_name || route.short_name || route.route_id}
-            </Typography>
-            <Box sx={{ color: "text.disabled", display: "flex" }}>
-              <Icon
-                iconName={modeIcon(modeOf(route.route_type))}
-                style={{ fontSize: 13 }}
-                htmlColor="inherit"
-              />
-            </Box>
-          </ListItemButton>
-        );
-      })}
+      {routes.map((route) => (
+        <RouteListItem
+          key={route.route_idx}
+          route={route}
+          idle={!!dayRuns && !dayRuns.has(route.route_idx)}
+        />
+      ))}
     </>
   );
 });
@@ -203,7 +180,7 @@ export function ExplorerTab() {
     <Stack sx={{ height: "100%", minHeight: 0 }}>
       {/* No title of its own: the tab bar above already says Explorer. */}
       <Box sx={{ px: PX, pt: 2, pb: 1.5 }}>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ color: "text.secondary" }}>
+        <Stack direction="row" spacing={ICON_GAP} alignItems="center" sx={{ color: "text.secondary" }}>
           <Icon iconName={ICON_NAME.CUBE} style={{ fontSize: 13 }} htmlColor="inherit" />
           <Typography variant="body2" fontWeight="bold" color="text.primary" noWrap>
             {bundleName}

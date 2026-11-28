@@ -2,14 +2,23 @@
  * The Explorer's bottom bar (boards 3, 6, 8; 02-panel-behaviour-spec ›
  * Playback): one row that plays the network through its day — play/pause,
  * the speed, the date, the time, a scrubber over the day's service, how many
- * vehicles are out. With the trip strip open, its top edge drags it taller or
- * shorter. Exit Explorer left the bar until editing brings it back as a
- * save-and-exit showing the changes (20 Oct 2026); the tab's × and the
- * bundle's menu leave the Explorer meanwhile.
+ * vehicles are out — and, for a user who may edit the bundle, Save and exit
+ * with the count of unsaved changes. With the trip strip open, its top edge
+ * drags it taller or shorter.
  */
 import PauseIcon from "@mui/icons-material/Pause";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import { Box, ButtonBase, Divider, IconButton, Slider, Stack, Tooltip, Typography } from "@mui/material";
+import {
+  Box,
+  ButtonBase,
+  Divider,
+  IconButton,
+  InputBase,
+  Slider,
+  Stack,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -230,11 +239,16 @@ function BottomBar({ compact = false }: { compact?: boolean }) {
         <AnalysisDate compact={tight} />
         {/* The time the scrubber beside it stands at; past midnight the clock
             counts on, as a timetable does (24:48). */}
-        <Typography
-          fontWeight={700}
-          sx={{ fontSize: 18, fontVariantNumeric: "tabular-nums", width: 52, flexShrink: 0 }}>
-          {time !== null ? clock(time) : "--:--"}
-        </Typography>
+        <ClockField
+          time={time}
+          disabled={!ready}
+          onEnter={(t) => {
+            // Within the day's service, as the scrubber reaches.
+            const at = span ? Math.min(span.last_s, Math.max(span.first_s, t)) : t;
+            setDrag({ t: at, let_go: true });
+            dispatch(setPlaybackTime(at));
+          }}
+        />
         {stripOpen ? (
           <Box sx={{ flex: 1, minWidth: 0 }} />
         ) : (
@@ -417,6 +431,75 @@ function VehicleCount({ ready, route }: { ready: boolean; route: RouteRow | unde
           {t("explorer_vehicles_out", { count: n })}
         </Typography>
       </Stack>
+    </Tooltip>
+  );
+}
+
+/** "8:05", "08:05", "0805", "24:48" (past midnight, as a timetable counts):
+ * seconds into the service day; null for anything else. */
+function parseClock(text: string): number | null {
+  const m = /^\s*(\d{1,2})\s*[:.h]?\s*(\d{2})\s*$/.exec(text);
+  if (!m) return null;
+  const [h, min] = [Number(m[1]), Number(m[2])];
+  if (h > 47 || min > 59) return null;
+  return h * HOUR + min * 60;
+}
+
+/** The time the scrubber stands at; a double click types one in (Enter
+ * goes there, Esc or a time that is none leaves it). */
+function ClockField({
+  time,
+  disabled,
+  onEnter,
+}: {
+  time: number | null;
+  disabled: boolean;
+  onEnter: (seconds: number) => void;
+}) {
+  const { t } = useTranslation("common");
+  const [typing, setTyping] = useState<string | null>(null);
+  const sx = { fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums", width: 52, flexShrink: 0 };
+  if (typing !== null)
+    return (
+      <InputBase
+        autoFocus
+        value={typing}
+        onChange={(e) => setTyping(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onBlur={() => setTyping(null)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            setTyping(null);
+          } else if (e.key === "Enter") {
+            const at = parseClock(typing);
+            if (at !== null) onEnter(at);
+            setTyping(null);
+          }
+        }}
+        inputProps={{ "aria-label": t("explorer_playback_time"), maxLength: 5 }}
+        // Typed into, it looks like the field it is: outlined as GOAT's
+        // inputs are, the theme's colour round it while focused.
+        sx={{
+          ...sx,
+          width: 64,
+          px: 0.75,
+          borderRadius: 1,
+          border: 1,
+          borderColor: "primary.main",
+          boxShadow: (theme) => `0 0 0 1px ${theme.palette.primary.main}`,
+          bgcolor: "background.paper",
+          "& input": { p: 0, py: 0.25 },
+        }}
+      />
+    );
+  return (
+    <Tooltip title={disabled ? "" : t("explorer_type_time")}>
+      <Typography
+        onDoubleClick={() => !disabled && time !== null && setTyping(clock(time))}
+        sx={{ ...sx, cursor: disabled ? "default" : "text", userSelect: "none" }}>
+        {time !== null ? clock(time) : "--:--"}
+      </Typography>
     </Tooltip>
   );
 }

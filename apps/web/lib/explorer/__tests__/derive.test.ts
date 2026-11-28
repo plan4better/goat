@@ -885,6 +885,34 @@ describe("vehicles", () => {
     expect(positionsAt(window, 25, frame).lon[0]).toBe(1.5);
     expect(positionsAt(window, 40, frame).n).toBe(0);
   });
+
+  it("runs only the lines a filter keeps", () => {
+    // One run of line 3, on the way from (1, 1) to (2, 1) between 0 and 10.
+    const window: VehicleWindow = {
+      date: "2026-10-14",
+      from_s: 0,
+      to_s: 100,
+      runs: 1,
+      first: Int32Array.from([0, 1]),
+      run: Int32Array.from([1]),
+      route_idx: Int32Array.from([3]),
+      trip_idx: Int32Array.from([0]),
+      run_dep_s: Float64Array.from([0]),
+      t0: Float64Array.from([0]),
+      t1: Float64Array.from([10]),
+      ax: Float64Array.from([1]),
+      ay: Float64Array.from([1]),
+      bx: Float64Array.from([2]),
+      by: Float64Array.from([1]),
+      shape: Int32Array.from([-1]),
+      d0: Float64Array.from([0]),
+      d1: Float64Array.from([0]),
+      shapes: new Map(),
+    };
+    expect(positionsAt(window, 5).n).toBe(1);
+    expect(positionsAt(window, 5, undefined, new Set([3])).n).toBe(1);
+    expect(positionsAt(window, 5, undefined, new Set([4])).n).toBe(0);
+  });
 });
 
 describe("stop timetable", () => {
@@ -982,9 +1010,18 @@ describe("network shapes", () => {
 });
 
 describe("network stops", () => {
-  it("draws every stop vehicles call at, by its station's name, and no others", async () => {
-    const names = (await networkStops(db)).features.map((f) => f.properties.name);
-    expect(names.sort()).toEqual(["Fifth", "Fourth", "Main Station", "Second", "Sixth", "Third"]);
+  it("draws every stop by its station's name, those no route calls at marked", async () => {
+    const stops = (await networkStops(db)).features.map((f) => f.properties);
+    expect(stops.map((p) => p.name).sort()).toEqual([
+      "Fifth",
+      "Fourth",
+      "Main Station",
+      "Second",
+      "Sixth",
+      "Third",
+      "Unused",
+    ]);
+    expect(stops.filter((p) => !p.served).map((p) => p.name)).toEqual(["Unused"]);
   });
 });
 

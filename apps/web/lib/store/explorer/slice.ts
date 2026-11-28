@@ -7,8 +7,10 @@
  */
 import { type PayloadAction, createSlice } from "@reduxjs/toolkit";
 
-import type { DirectionName } from "@/lib/explorer/derive/directions";
+import type { DirectionName, VariantKind } from "@/lib/explorer/derive/directions";
 import { directionsOnShapes } from "@/lib/explorer/directionChoice";
+import { type EditDraft, NO_LINE_VALUES, NO_STOP_VALUES } from "@/lib/explorer/edit/drafts";
+import type { ChangeSummary } from "@/lib/explorer/edit/types";
 import type { ModeKey } from "@/lib/explorer/modes";
 import { setMapMode } from "@/lib/store/map/slice";
 
@@ -25,6 +27,9 @@ export interface ExplorerFilters {
 export type ExplorerRouteTab = "stops" | "service" | "calendar";
 /** The trip panel's tabs: its stops, or the days it runs. */
 export type ExplorerTripTab = "stops" | "calendar";
+/** The stop panel's tabs: its schedule for the date, the next departures,
+ * and its details (fields, lines, station). */
+export type ExplorerStopTab = "schedule" | "departures" | "details";
 
 /** The destination picker's choice: all directions, or a direction (by its
  * key, its main pattern's index) whole, or one of its patterns
@@ -33,6 +38,22 @@ export interface ExplorerPatternChoice {
   direction: number;
   /** A variant; null for the whole direction. */
   pattern_idx: number | null;
+}
+
+/** A path: the stretch of a pattern between two of its stops in a row
+ * (board 21), selected below a direction; its line is the selection
+ * store's (lib/explorer/selectionStore.ts). */
+export interface ExplorerPath {
+  pattern_idx: number;
+  /** The two stops, by their place in the pattern and name. */
+  from_i: number;
+  to_i: number;
+  from_name: string;
+  to_name: string;
+  /** The two stops' stop_idx, and the pattern's line. */
+  from_stop: number;
+  to_stop: number;
+  route_idx: number;
 }
 
 /** The trip strip, under a selected route (02-panel-behaviour-spec ›
@@ -48,6 +69,55 @@ export interface ExplorerStrip {
 
 /** The settings dialog's tabs (settings.ts). */
 export type ExplorerSettingsTab = "data" | "rates" | "periods" | "vehicles";
+
+/** The edit bar's tools (board 17): Select, and the two that create. */
+export type ExplorerEditTool = "select" | "stop" | "route";
+
+/** A line edited on the map until Done: its stops, or its path. */
+export type ExplorerEditMode = "stops" | "path";
+
+/** The dialog an edit is made in, from a selection's actions. */
+export type ExplorerEditDialog =
+  | { kind: "line"; route_idx: number }
+  | { kind: "stop"; stop_idx: number }
+  | { kind: "trip-times"; trip_idx: number }
+  | { kind: "trip-shift"; trip_idx: number }
+  | { kind: "trip-duplicate"; trip_idx: number; dep_s: number };
+
+/** Editing, for a user who may write the bundle. The changes themselves are
+ * the session's (lib/explorer/edit/session.ts); this mirrors their summaries
+ * for the bar, the change list and the exit dialog. */
+export interface ExplorerEdit {
+  tool: ExplorerEditTool;
+  /** Route paths follow streets (stops are placed where clicked); kept for
+   * the session. */
+  snap: boolean;
+  /** The applied changes, oldest first, and those undone that redo brings
+   * back, the latest undone last. */
+  changes: ChangeSummary[];
+  redo: ChangeSummary[];
+  /** The change list, under the bar's count. */
+  listOpen: boolean;
+  /** The "Save changes to …?" dialog: asking, or saving. */
+  exit: "asking" | "saving" | null;
+  /** Why the last save did not go through, shown in the dialog. */
+  saveProblem: string | null;
+  /** The edit being made, not yet applied (lib/explorer/edit/drafts.ts). */
+  draft: EditDraft | null;
+  /** The service dialog (4.1), open for a line and the direction it opened
+   * on (Direction.key); it fills itself from a headway draft of that line. */
+  service: { route_idx: number; direction: number | null } | null;
+  /** The dialog an edit is made in, opened from a selection's actions (its
+   * tab only shows what it edits): a line's properties, a stop's, a trip's
+   * times or its shift. */
+  dialog: ExplorerEditDialog | null;
+  /** A line edited on the map until Done (the modes): its stops added,
+   * removed and cut back ("stops"), or its path dragged ("path"). */
+  mode: { route_idx: number; kind: ExplorerEditMode } | null;
+  /** This user edits the open bundle (its session is ready): what the map,
+   * outside the Explorer's data, needs to know to let a stop be dragged. */
+  enabled: boolean;
+}
 
 /** Playback speeds: how many seconds of the day pass in one second. */
 export const PLAYBACK_SPEEDS = [1, 10, 60] as const;
@@ -70,7 +140,14 @@ export interface ExplorerRouteDrawing {
   /** The route's directions, each with its patterns (its main one first)
    * and its name: which pattern the map highlights for the picker's choice,
    * and how the map offers a direction to pick. */
-  directions: { key: number; patterns: number[]; name: DirectionName }[];
+  directions: {
+    key: number;
+    patterns: number[];
+    name: DirectionName;
+    /** Its patterns other than the main one, as the direction picker names
+     * them (a short turn, an express, a branch, to where). */
+    variants: { pattern_idx: number; kind: VariantKind; destination: string }[];
+  }[];
   /** Each pattern's extent from its stops, `[west, south, east, north]`: the
    * map fits it when the Stops tab switches to it. */
   patternBounds: Record<number, [number, number, number, number]>;
@@ -123,12 +200,24 @@ export interface ExplorerState {
   routeTab: ExplorerRouteTab;
   /** Kept as trips are stepped through, each its own panel. */
   tripTab: ExplorerTripTab;
+  stopTab: ExplorerStopTab;
   /** One picker for the trip strip, the Stops tab and the stop timetable
    * (02-panel-behaviour-spec › Direction); null is the first direction. */
   pattern: ExplorerPatternChoice | null;
   strip: ExplorerStrip;
   /** The settings dialog, open on a tab, or closed. */
   settingsTab: ExplorerSettingsTab | null;
+  /** A right click on the selected line, while editing: where (on the
+   * page, and on the map), and on which stop, if one. */
+  lineMenu: {
+    x: number;
+    y: number;
+    lon: number;
+    lat: number;
+    stop_idx: number | null;
+    /** Out of a line mode: the selection's actions. */
+    selection?: boolean;
+  } | null;
   /** The network's extent, `[west, south, east, north]`: the map fits it
    * once on opening. */
   bounds: [number, number, number, number] | null;
@@ -152,15 +241,22 @@ export interface ExplorerState {
    * drawing is in, the direction they are of is picked (setExplorerDrawing),
    * so the route opens the way it was clicked, not in its first direction. */
   clickedShapes: { routeId: string; shapeIds: string[] } | null;
+  /** The path being rerouted, from "Edit path": named in the
+   * reroute's panel. */
+  path: ExplorerPath | null;
+  edit: ExplorerEdit;
 }
 
-/** Select a route (or none): another route starts on its Overview tab, in
+/** Select a route (or none): another route starts on its Service tab, in
  * its own first direction; what the right panel opened from the route it
  * leaves goes with it. */
 function selectRoute(state: ExplorerState, routeId: string | null): void {
   if (routeId !== state.selectedRouteId) {
     state.routeTab = "service";
     state.pattern = null;
+    state.path = null;
+    // The mode is on the line left.
+    state.edit.mode = null;
     if (state.panel.fromRoute !== null && state.panel.fromRoute === state.selectedRouteId)
       state.panel = { ...state.panel, stack: [], fromRoute: null };
   }
@@ -169,6 +265,27 @@ function selectRoute(state: ExplorerState, routeId: string | null): void {
 }
 
 /** What the strip keeps for the session, the Explorer closed or not. */
+const NO_EDITS: ExplorerEdit = {
+  tool: "select",
+  snap: true,
+  changes: [],
+  redo: [],
+  listOpen: false,
+  exit: null,
+  saveProblem: null,
+  draft: null,
+  service: null,
+  dialog: null,
+  mode: null,
+  enabled: false,
+};
+
+/** Editing as a new session starts: nothing changed, Select, the snap as
+ * the user left it. */
+function freshEdit(edit: ExplorerEdit): ExplorerEdit {
+  return { ...NO_EDITS, snap: edit.snap, enabled: edit.enabled };
+}
+
 function stickyStrip(strip: ExplorerStrip): ExplorerStrip {
   return {
     ...initialState.strip,
@@ -192,7 +309,9 @@ const initialState: ExplorerState = {
   panel: { stack: [], fromRoute: null },
   routeTab: "service",
   tripTab: "stops",
+  stopTab: "schedule",
   pattern: null,
+  lineMenu: null,
   strip: {
     collapsed: false,
     view: "chart",
@@ -207,6 +326,8 @@ const initialState: ExplorerState = {
   scrub: null,
   focus: null,
   clickedShapes: null,
+  path: null,
+  edit: NO_EDITS,
 };
 
 const explorerSlice = createSlice({
@@ -229,6 +350,7 @@ const explorerSlice = createSlice({
         ...initialState,
         leftTab: state.active && !same ? "explorer" : state.leftTab,
         strip: stickyStrip(state.strip),
+        edit: freshEdit(state.edit),
         active: true,
         bundleId: action.payload.bundleId,
         bundleName: action.payload.bundleName,
@@ -242,6 +364,7 @@ const explorerSlice = createSlice({
       ...initialState,
       leftTab: state.leftTab,
       strip: stickyStrip(state.strip),
+      edit: freshEdit(state.edit),
       restoreGroupId: state.hiddenGroupId,
     }),
     /** The layer tree has shown the group again. */
@@ -264,11 +387,31 @@ const explorerSlice = createSlice({
     setExplorerTripTab: (state, action: PayloadAction<ExplorerTripTab>) => {
       state.tripTab = action.payload;
     },
+    setExplorerStopTab: (state, action: PayloadAction<ExplorerStopTab>) => {
+      state.stopTab = action.payload;
+    },
     setExplorerRouteTab: (state, action: PayloadAction<ExplorerRouteTab>) => {
       state.routeTab = action.payload;
     },
     pickExplorerPattern: (state, action: PayloadAction<ExplorerPatternChoice | null>) => {
       state.pattern = action.payload;
+      state.path = null;
+    },
+    /** The path a reroute starts on (none: let go). A path, a trip and a
+     * stop are one level, one at a time. */
+    setExplorerPath: (state, action: PayloadAction<ExplorerPath | null>) => {
+      state.path = action.payload;
+      if (action.payload) {
+        state.panel = { stack: [], fromRoute: null };
+        state.edit.draft = null;
+      }
+    },
+    /** Esc with Select (board 17): nothing selected. */
+    clearExplorerSelection: (state) => {
+      selectRoute(state, null);
+      state.panel = { stack: [], fromRoute: null };
+      state.path = null;
+      state.edit.draft = null;
     },
     openExplorerSettings: (state, action: PayloadAction<ExplorerSettingsTab | null>) => {
       state.settingsTab = action.payload;
@@ -332,6 +475,8 @@ const explorerSlice = createSlice({
       }>
     ) => {
       const { item, push, step, fromRoute } = action.payload;
+      state.path = null;
+      state.edit.draft = null;
       // A trip opened afresh starts on its stops; stepping to the trip before
       // or after keeps the tab.
       if (item.kind === "trip" && !step) state.tripTab = "stops";
@@ -345,10 +490,12 @@ const explorerSlice = createSlice({
     },
     explorerPanelBack: (state) => {
       state.panel.stack = state.panel.stack.slice(0, -1);
+      state.edit.draft = null;
       if (!state.panel.stack.length) state.panel.fromRoute = null;
     },
     closeExplorerPanel: (state) => {
       state.panel.stack = [];
+      state.edit.draft = null;
       state.panel.fromRoute = null;
     },
     setStripCollapsed: (state, action: PayloadAction<boolean>) => {
@@ -362,6 +509,113 @@ const explorerSlice = createSlice({
     setStripHeight: (state, action: PayloadAction<number>) => {
       state.strip.height = Math.round(action.payload);
     },
+    setEditTool: (state, action: PayloadAction<ExplorerEditTool>) => {
+      state.edit.tool = action.payload;
+      state.edit.listOpen = false;
+      // A tool that creates leaves the mode.
+      if (action.payload !== "select") state.edit.mode = null;
+      // The Route tool draws a new line (1.1): its panel open from the start.
+      state.edit.draft =
+        action.payload === "route" ? { kind: "line-new", stops: [], values: NO_LINE_VALUES } : null;
+      if (action.payload === "route") {
+        state.panel = { stack: [], fromRoute: null };
+        state.path = null;
+      }
+    },
+    setEditEnabled: (state, action: PayloadAction<boolean>) => {
+      state.edit.enabled = action.payload;
+    },
+    /** The edit being made, or none: Cancel, or applied. */
+    openExplorerLineMenu: (state, action: PayloadAction<NonNullable<ExplorerState["lineMenu"]>>) => {
+      state.lineMenu = action.payload;
+    },
+    closeExplorerLineMenu: (state) => {
+      state.lineMenu = null;
+    },
+    setEditDraft: (state, action: PayloadAction<EditDraft | null>) => {
+      state.edit.draft = action.payload;
+    },
+    /** A click with the Stop tool (board 18): a new stop there, never
+     * snapped, in the right panel to name; a second click moves it, keeping
+     * what was typed. */
+    placeStop: (state, action: PayloadAction<{ lon: number; lat: number }>) => {
+      const draft = state.edit.draft;
+      state.edit.draft = {
+        kind: "stop-new",
+        ...action.payload,
+        // Its id is drawn by the panel, from the snapshot; kept on a move.
+        stop_id: draft?.kind === "stop-new" ? draft.stop_id : null,
+        values: draft?.kind === "stop-new" ? draft.values : NO_STOP_VALUES,
+      };
+      state.panel = { stack: [], fromRoute: null };
+      state.path = null;
+    },
+    /** A new stop's id, drawn once it was placed; not over one typed. */
+    presetNewStopId: (state, action: PayloadAction<string>) => {
+      const draft = state.edit.draft;
+      if (draft?.kind === "stop-new" && draft.stop_id === null) draft.stop_id = action.payload;
+    },
+    setEditSnap: (state, action: PayloadAction<boolean>) => {
+      state.edit.snap = action.payload;
+    },
+    /** A change applied: it joins the list, and what was undone and its draft
+     * are gone. */
+    editApplied: (state, action: PayloadAction<ChangeSummary>) => {
+      state.edit.changes.push(action.payload);
+      state.edit.redo = [];
+      state.edit.draft = null;
+    },
+    /** Saved into the bundle: the changes are its own now, with no undo. */
+    editsSaved: (state) => {
+      state.edit.changes = [];
+      state.edit.redo = [];
+    },
+    /** Every change undone and forgotten, with the draft. */
+    editsDiscarded: (state) => {
+      state.edit.changes = [];
+      state.edit.redo = [];
+      state.edit.draft = null;
+    },
+    editUndone: (state) => {
+      const last = state.edit.changes.pop();
+      if (last) state.edit.redo.push(last);
+    },
+    editRedone: (state) => {
+      const next = state.edit.redo.pop();
+      if (next) state.edit.changes.push(next);
+    },
+    setChangeListOpen: (state, action: PayloadAction<boolean>) => {
+      state.edit.listOpen = action.payload;
+    },
+    setServiceDialog: (state, action: PayloadAction<ExplorerEdit["service"]>) => {
+      state.edit.service = action.payload;
+    },
+    setEditDialog: (state, action: PayloadAction<ExplorerEdit["dialog"]>) => {
+      state.edit.dialog = action.payload;
+    },
+    /** Into "Edit stops" or "Edit path" on a line, or out of it: in it,
+     * Select, and no draft but the mode's own. The map stays where it is. */
+    setEditMode: (state, action: PayloadAction<ExplorerEdit["mode"]>) => {
+      state.edit.mode = action.payload;
+      state.edit.tool = "select";
+      state.edit.draft = null;
+      state.path = null;
+      state.lineMenu = null;
+    },
+    /** Leaving with changes: the dialog asks what to do with them. */
+    askToLeave: (state) => {
+      state.edit.exit = "asking";
+      state.edit.listOpen = false;
+    },
+    setExitState: (state, action: PayloadAction<ExplorerEdit["exit"]>) => {
+      state.edit.exit = action.payload;
+      if (action.payload === null) state.edit.saveProblem = null;
+    },
+    /** A save that did not go through: the dialog asks again, saying why. */
+    saveFailed: (state, action: PayloadAction<string>) => {
+      state.edit.exit = "asking";
+      state.edit.saveProblem = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // The Explorer lives in the data view; leaving it ends the session.
@@ -371,6 +625,7 @@ const explorerSlice = createSlice({
         : {
             ...initialState,
             leftTab: state.leftTab,
+            edit: freshEdit(state.edit),
             restoreGroupId: state.hiddenGroupId,
           }
     );
@@ -394,6 +649,7 @@ export const {
   setStripHeight,
   setExplorerRouteTab,
   setExplorerTripTab,
+  setExplorerStopTab,
   pickExplorerPattern,
   openExplorerSettings,
   setExplorerBounds,
@@ -403,6 +659,28 @@ export const {
   setScrub,
   focusExplorerRun,
   selectExplorerRouteAt,
+  setEditTool,
+  setEditSnap,
+  setEditDraft,
+  openExplorerLineMenu,
+  closeExplorerLineMenu,
+  setEditEnabled,
+  placeStop,
+  presetNewStopId,
+  editApplied,
+  editsSaved,
+  editsDiscarded,
+  editUndone,
+  editRedone,
+  setChangeListOpen,
+  setServiceDialog,
+  setEditDialog,
+  setEditMode,
+  askToLeave,
+  setExitState,
+  saveFailed,
+  setExplorerPath,
+  clearExplorerSelection,
 } = explorerSlice.actions;
 
 export const explorerReducer = explorerSlice.reducer;
@@ -412,8 +690,33 @@ export function panelItem(state: ExplorerState): ExplorerPanelItem | null {
   return state.panel.stack[state.panel.stack.length - 1] ?? null;
 }
 
+/** Whether the right panel is open: an item in it, or a stop being placed
+ * or added to a line (its draft fills the panel, board 18). */
+export function rightPanelOpen(state: ExplorerState): boolean {
+  const kind = state.edit.draft?.kind;
+  return (
+    state.active &&
+    (state.panel.stack.length > 0 ||
+      kind === "stop-new" ||
+      kind === "line-stop-add" ||
+      kind === "line-reroute" ||
+      kind === "line-delete" ||
+      kind === "line-extend" ||
+      kind === "route-details" ||
+      kind === "line-new" ||
+      kind === "line-headway" ||
+      kind === "line-span" ||
+      kind === "line-speed")
+  );
+}
+
 /** The stop the right panel shows, highlighted on the map. */
 export function pickedStop(state: ExplorerState): ExplorerPickedStop | null {
   const item = panelItem(state);
   return item?.kind === "stop" ? item.stop : null;
+}
+
+/** Changes made and not saved: leaving asks first. */
+export function hasUnsavedEdits(state: ExplorerState): boolean {
+  return state.active && state.edit.changes.length > 0;
 }

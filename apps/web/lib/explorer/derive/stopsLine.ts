@@ -12,7 +12,7 @@
 import type { SqlRunner } from "@/lib/explorer/db/types";
 import { activeServicesSql } from "@/lib/explorer/derive/calendar";
 import type { Direction } from "@/lib/explorer/derive/directions";
-import type { TripRange } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange } from "@/lib/explorer/derive/runs";
 import { DEFAULT_SETTINGS, type Period } from "@/lib/explorer/settings";
 
 /** Metres per `shape_dist_traveled` unit, by the manifest's unit. */
@@ -91,7 +91,7 @@ export async function stopsLine(
   shapeDistUnit: string | null,
   periods: Period[] = DEFAULT_SETTINGS.periods
 ): Promise<StopsLine> {
-  const range = `trip_idx BETWEEN ${route.trip_lo ?? -1} AND ${route.trip_hi ?? -2}`;
+  const range = inTripRange(route);
   const onDate = `${range} AND service_idx IN ${activeServicesSql(date)}`;
   const trips = (where: string, pattern: number) =>
     `SELECT trip_idx FROM trips WHERE ${where} AND pattern_idx = ${pattern}`;

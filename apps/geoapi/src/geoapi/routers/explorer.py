@@ -334,7 +334,14 @@ async def get_explorer_manifest(
         manifest = json.loads(manifest_path.read_text())
         for f in manifest["files"]:
             f["url"] = _file_url(bid, revision, f["name"])
-        return JSONResponse({"status": "ready", **manifest}, headers=headers)
+        # Whether this caller may save edits (``routers/pt_edits.py``): the
+        # Explorer shows its edit bar only then.
+        can_edit = user_id is not None and await layer_service.user_can_write_bundle(
+            bundle_id, user_id
+        )
+        return JSONResponse(
+            {"status": "ready", **manifest, "can_edit": can_edit}, headers=headers
+        )
 
     failure = None if retry else _failures.get((bid, revision))
     if failure and time.time() - failure[0] < _FAILURE_TTL_SECONDS:

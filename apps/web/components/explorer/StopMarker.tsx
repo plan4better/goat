@@ -9,7 +9,17 @@ import { Box } from "@mui/material";
 export const STOP_FILL = "#717171";
 const RING = "#FFFFFF";
 
-export function StopMarker({ station = false, size = 12 }: { station?: boolean; size?: number }) {
+export function StopMarker({
+  station = false,
+  size = 12,
+  fill = STOP_FILL,
+}: {
+  station?: boolean;
+  size?: number;
+  /** Its dot's colour: the map's grey, or `currentColor` where it marks a
+   * control that colours its icon (the edit bar's Stop tool, chosen). */
+  fill?: string;
+}) {
   const d = station ? size + 2 : size;
   return (
     <Box
@@ -21,9 +31,12 @@ export function StopMarker({ station = false, size = 12 }: { station?: boolean; 
         justifyContent: "center",
         width: d,
         height: d,
+        // Its ring inside its size, wherever it is put (a select's value
+        // passes content-box down).
+        boxSizing: "border-box",
         flexShrink: 0,
         borderRadius: "50%",
-        bgcolor: STOP_FILL,
+        bgcolor: fill,
         border: `2px solid ${RING}`,
         // The white ring needs an edge of its own on a white panel.
         boxShadow: (theme) => `0 0 0 1px ${theme.palette.divider}`,

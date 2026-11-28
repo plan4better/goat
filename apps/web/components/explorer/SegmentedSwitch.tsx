@@ -10,6 +10,8 @@ import type { ReactNode } from "react";
 import type { ICON_NAME } from "@p4b/ui/components/Icon";
 import { Icon } from "@p4b/ui/components/Icon";
 
+import { ICON_GAP } from "@/components/explorer/SectionHeader";
+
 export function SegmentedSwitch<V extends string>({
   options,
   value,
@@ -40,7 +42,7 @@ export function SegmentedSwitch<V extends string>({
               height: 28,
               minWidth: 72,
               px: "12px",
-              gap: "6px",
+              gap: ICON_GAP,
               borderRadius: "14px",
               fontSize: 12,
               fontWeight: 700,

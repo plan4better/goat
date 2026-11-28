@@ -1,18 +1,28 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  askToLeave,
   clearRestoreGroup,
   closeExplorer,
   closeExplorerPanel,
+  editApplied,
+  editRedone,
+  editUndone,
   explorerPanelBack,
   explorerReducer,
+  hasUnsavedEdits,
   openExplorer,
   openExplorerPanel,
   panelItem,
   pickExplorerPattern,
   pickedStop,
+  saveFailed,
   selectExplorerRoute,
   selectExplorerRouteAt,
+  setChangeListOpen,
+  setEditSnap,
+  setEditTool,
+  setExitState,
   setExplorerDate,
   setExplorerDrawing,
   setExplorerFilters,
@@ -197,8 +207,8 @@ describe("explorer slice", () => {
       // Direction 10 runs "out", direction 20 "back"; both run "both".
       patternShapes: { 10: ["out", "both"], 20: ["back", "both"] },
       directions: [
-        { key: 10, patterns: [10], name: { kind: "to" as const, place: "A", via: null } },
-        { key: 20, patterns: [20], name: { kind: "to" as const, place: "B", via: null } },
+        { key: 10, patterns: [10], name: { kind: "to" as const, place: "A", via: null }, variants: [] },
+        { key: 20, patterns: [20], name: { kind: "to" as const, place: "B", via: null }, variants: [] },
       ],
       patternBounds: {},
       patternEnds: {},
@@ -211,5 +221,61 @@ describe("explorer slice", () => {
     state = explorerReducer(state, selectExplorerRouteAt({ routeId: "R2", shapeIds: ["both"] }));
     state = explorerReducer(state, setExplorerDrawing(drawing("R2")));
     expect(state.pattern).toBeNull();
+  });
+
+  it("mirrors the session's changes, and undo and redo in order", () => {
+    const change = (id: string) => ({ id, kind: "stop_rename", label: id });
+    let state = explorerReducer(open(), editApplied(change("a")));
+    state = explorerReducer(state, editApplied(change("b")));
+    state = explorerReducer(state, editUndone());
+    expect(state.edit.changes.map((c) => c.id)).toEqual(["a"]);
+    expect(state.edit.redo.map((c) => c.id)).toEqual(["b"]);
+    state = explorerReducer(state, editRedone());
+    expect(state.edit.changes.map((c) => c.id)).toEqual(["a", "b"]);
+    // A new change forgets what was undone.
+    state = explorerReducer(state, editUndone());
+    state = explorerReducer(state, editApplied(change("c")));
+    expect(state.edit.redo).toEqual([]);
+    expect(hasUnsavedEdits(state)).toBe(true);
+  });
+
+  it("starts each session with nothing changed and Select, the snap as left", () => {
+    let state = explorerReducer(open(), setEditTool("stop"));
+    state = explorerReducer(state, setEditSnap(false));
+    state = explorerReducer(state, editApplied({ id: "a", kind: "k", label: "a" }));
+    state = explorerReducer(state, setChangeListOpen(true));
+    for (const next of [
+      explorerReducer(state, closeExplorer()),
+      explorerReducer(state, openExplorer({ bundleId: "b2", bundleName: "Other" })),
+      explorerReducer(state, setMapMode("builder")),
+    ]) {
+      expect(next.edit).toMatchObject({
+        tool: "select",
+        snap: false,
+        changes: [],
+        listOpen: false,
+        exit: null,
+      });
+      expect(hasUnsavedEdits(next)).toBe(false);
+    }
+  });
+
+  it("asks again, saying why, when a save does not go through", () => {
+    let state = explorerReducer(open(), setExitState("saving"));
+    state = explorerReducer(state, saveFailed("Someone else saved first"));
+    expect(state.edit).toMatchObject({ exit: "asking", saveProblem: "Someone else saved first" });
+    // Answered (kept editing, discarded, saved), the reason goes.
+    expect(explorerReducer(state, setExitState(null)).edit.saveProblem).toBeNull();
+  });
+
+  it("asks before leaving, with the change list put away", () => {
+    let state = explorerReducer(open(), setChangeListOpen(true));
+    state = explorerReducer(state, askToLeave());
+    expect(state.edit).toMatchObject({ exit: "asking", listOpen: false });
+    state = explorerReducer(state, setExitState("saving"));
+    expect(state.edit.exit).toBe("saving");
+    // A tool chosen puts the list away too.
+    state = explorerReducer(explorerReducer(state, setChangeListOpen(true)), setEditTool("select"));
+    expect(state.edit.listOpen).toBe(false);
   });
 });

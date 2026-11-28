@@ -50,6 +50,8 @@ export interface StopDetail {
   /** GTFS wheelchair_boarding: 1 possible, 2 not, null or 0 unknown. */
   wheelchair: number | null;
   is_station: boolean;
+  /** An entrance or exit to its station. */
+  is_entrance: boolean;
   /** A station's stops (platforms); 0 for a stop. */
   n_stops: number;
   lat: number | null;
@@ -64,7 +66,7 @@ const covered = (stop_idx: number) =>
 
 export async function stopDetail(db: SqlRunner, stop_idx: number): Promise<StopDetail | null> {
   const [[row], [served]] = await Promise.all([
-    db.all<Omit<StopDetail, "routes" | "is_station"> & { location_type: number }>(`
+    db.all<Omit<StopDetail, "routes" | "is_station" | "is_entrance"> & { location_type: number }>(`
       SELECT s.stop_idx, s.stop_id, s.name, p.name AS station, s.platform_code, s.wheelchair,
              s.location_type, s.lat, s.lon,
              CAST((SELECT count(*) FROM stops c
@@ -81,6 +83,7 @@ export async function stopDetail(db: SqlRunner, stop_idx: number): Promise<StopD
   return {
     ...rest,
     is_station: location_type === 1,
+    is_entrance: location_type === 2,
     routes: served?.routes ? Array.from(served.routes) : [],
   };
 }

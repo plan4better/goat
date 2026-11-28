@@ -15,6 +15,9 @@ export interface SqlRunner {
   columns<K extends string>(sql: string): Promise<Record<K, ArrayLike<number>>>;
   /** A statement whose result is not needed. */
   exec(sql: string): Promise<void>;
+  /** A second connection to the same tables: what it does inside a
+   * transaction no other query sees (an edit's preview, rolled back). */
+  fork?(): Promise<SqlRunner & { close(): Promise<void> }>;
 }
 
 /** One snapshot file, as the manifest lists it. */
@@ -37,6 +40,9 @@ export interface SnapshotManifest {
    * older import's `shapes`, or none. */
   shape_lines_role?: string | null;
   service_window: [string | null, string | null];
+  /** Whether the caller may save edits to the bundle: the edit bar shows
+   * only then. */
+  can_edit?: boolean;
 }
 
 /** The answer while the snapshot is being built, or after it failed. */

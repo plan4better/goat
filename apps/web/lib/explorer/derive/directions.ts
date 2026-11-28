@@ -17,7 +17,7 @@
  *    the reader's language (`directionLabel`).
  */
 import type { SqlRunner } from "@/lib/explorer/db/types";
-import type { TripRange } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange } from "@/lib/explorer/derive/runs";
 
 export type VariantKind = "main" | "short_turn" | "express" | "branch";
 
@@ -265,7 +265,7 @@ export async function routeDirections(db: SqlRunner, route: TripRange & { route_
     ),
     db.all<PatternTrips>(`
       SELECT pattern_idx, direction_id, headsign, CAST(count(*) AS INTEGER) AS n
-      FROM trips WHERE trip_idx BETWEEN ${route.trip_lo ?? -1} AND ${route.trip_hi ?? -2}
+      FROM trips WHERE ${inTripRange(route)}
       GROUP BY ALL`),
   ]);
   // Lists arrive as Arrow vectors; make them plain arrays.

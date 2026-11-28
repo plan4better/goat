@@ -37,6 +37,7 @@ from geoapi.routers import (
     features_router,
     features_write_router,
     metadata_router,
+    pt_edits_router,
     rasters_router,
     tiles_router,
 )
@@ -58,6 +59,11 @@ class TimeoutMiddleware(BaseHTTPMiddleware):
         """Process request with timeout based on path."""
         # Determine timeout based on endpoint
         path = request.url.path
+
+        # Saving the Explorer's edits keeps its own time (pt_edits): stopped
+        # here, its write would run on unseen, holding the bundle's lock.
+        if request.method == "POST" and path.endswith("/changes"):
+            return await call_next(request)
 
         if "/tiles/" in path:
             timeout = settings.TILE_TIMEOUT
@@ -245,6 +251,7 @@ app.include_router(rasters_router)
 app.include_router(expressions_router)
 app.include_router(download_router)
 app.include_router(explorer_router)
+app.include_router(pt_edits_router)
 
 
 @app.get(

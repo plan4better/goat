@@ -116,11 +116,16 @@ const HopRow = memo(function HopRow({ stop, color, last }: { stop: LineStop; col
         </Stack>
       ))}
       {!last && (
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ position: "relative", minHeight: 22 }}>
+        <Stack
+          className="hop"
+          direction="row"
+          alignItems="center"
+          spacing={1.5}
+          sx={{ position: "relative", minHeight: 22 }}>
           <Box sx={{ position: "relative", width: RAIL, alignSelf: "stretch", flexShrink: 0 }}>
             <Rail color={color} top bottom />
           </Box>
-          <Typography variant="caption" color="text.disabled">
+          <Typography variant="caption" color="text.disabled" sx={{ flex: 1, minWidth: 0 }} noWrap>
             {hop}
           </Typography>
         </Stack>
@@ -132,6 +137,7 @@ const HopRow = memo(function HopRow({ stop, color, last }: { stop: LineStop; col
 export function RouteStops({ route, directions }: { route: RouteRow; directions: Direction[] }) {
   const { t, i18n } = useTranslation("common");
   const dispatch = useAppDispatch();
+
   const { db, complete, shapeDistUnit, settings } = useExplorer();
   const date = useAppSelector((s) => s.explorer.date);
   const picked = useAppSelector((s) => pickedStop(s.explorer));

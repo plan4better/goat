@@ -67,6 +67,22 @@ export class ExplorerDb implements SqlRunner {
     await this.conn.query(sql);
   }
 
+  async fork(): Promise<SqlRunner & { close(): Promise<void> }> {
+    const conn = await this.db.connect();
+    await conn.query(`USE ${SNAPSHOT_DB}`);
+    return {
+      all: async <T>(sql: string) => rowsOf<T>(await conn.query(sql)),
+      columns: async <K extends string>(sql: string) => {
+        const table = await conn.query(sql);
+        return Object.fromEntries(
+          table.schema.fields.map((f) => [f.name, table.getChild(f.name)?.toArray() ?? []])
+        ) as Record<K, ArrayLike<number>>;
+      },
+      exec: async (sql: string) => void (await conn.query(sql)),
+      close: () => conn.close(),
+    };
+  }
+
   /** Load one snapshot file as the table of its name, compressed, a chunk
    * of rows at a time. The buffer is released once the table holds the data. */
   async loadParquet(name: string, bytes: Uint8Array): Promise<void> {

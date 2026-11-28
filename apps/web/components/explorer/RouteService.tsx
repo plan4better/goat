@@ -1,9 +1,8 @@
 /**
- * A route's Overview tab (board 22), read-only for now: per direction how
- * often it runs in each time period, vehicles in service through the day,
- * how long a trip takes, and its first and last departure. In the editing
- * phase these become the fields that change service; the layout is theirs
- * already.
+ * A route's Service tab (board 22): per direction how often it runs in each
+ * time period, vehicles in service through the day, how long a trip takes,
+ * and its first and last departure. Changed in the service dialog, from the
+ * line's action bar (4.1, 4.2, 5.2).
  */
 import { Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { Fragment, type ReactNode } from "react";

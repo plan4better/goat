@@ -8,6 +8,14 @@ body {
   background-color: black;
 }
 
+/* A button's text in the page's type: browsers give buttons their own font
+   (Arial) and letter-spacing, and the theme's fontFamily is "inherit", so
+   whatever sat in a clickable chip or row came out in Arial. */
+button {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   opacity: 0;

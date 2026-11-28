@@ -1,4 +1,4 @@
-import { Box, Stack } from "@mui/material";
+import { Box, Stack, useMediaQuery } from "@mui/material";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "react-toastify";
@@ -35,6 +35,7 @@ import { FloatingPanel } from "@/components/common/FloatingPanel";
 import { ExplorerBottomBar } from "@/components/explorer/ExplorerBottomBar";
 import { ExplorerProvider } from "@/components/explorer/ExplorerContext";
 import { EXPLORER_PANEL_WIDTH, ExplorerLeftPanel } from "@/components/explorer/ExplorerLeftPanel";
+import { ExplorerEditing } from "@/components/explorer/edit/ExplorerEditing";
 import { ExplorerRightPanel } from "@/components/explorer/right/ExplorerRightPanel";
 import { EXPLORER_RIGHT_PANEL_WIDTH, useRightPanelWidth } from "@/components/explorer/right/panelSize";
 import { STRIP_TOP } from "@/components/explorer/strip/stripLayout";
@@ -145,6 +146,10 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
   // map controls and the bottom bar move left of it.
   const explorerRight = useRightPanelWidth();
   const explorerRightRoom = explorerRight ? explorerRight + GAP_SIZE : 0;
+  // The edit bar shows its tools as icons only on a map under 1000 px wide.
+  const editBarCompact = useMediaQuery(
+    `(max-width: ${1000 + leftWidth + GAP_SIZE + 10 + MAP_CONTROLS_WIDTH + 20 + explorerRightRoom}px)`
+  );
   const featureEditorActive = useAppSelector((state) => state.featureEditor.activeLayerId);
   const selectedBundleId = useAppSelector((state) => state.layers.selectedBundleId);
   const featureEditorActiveFeature = useAppSelector((state) => state.featureEditor.activeFeatureId);
@@ -423,6 +428,18 @@ const DataProjectLayout = ({ project, onProjectUpdate }: DataProjectLayoutProps)
             </>
           )}
         </Box>
+        {/* The Explorer's edit bar, right of the round buttons (board 17). */}
+        {explorerActive && (
+          <Box
+            sx={{
+              position: "absolute",
+              left: `${leftWidth + GAP_SIZE + 10 + MAP_CONTROLS_WIDTH + 12}px`,
+              top: 10,
+              zIndex: (theme) => theme.zIndex.drawer + 1,
+            }}>
+            <ExplorerEditing compact={editBarCompact} barHidden={searchExpanded} />
+          </Box>
+        )}
       </Box>
 
       {/* RIGHT OVERLAY */}

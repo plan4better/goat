@@ -16,6 +16,9 @@ export function RouteBadge({ route, small }: { route: RouteRow; small?: boolean 
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
+        // Its size inside its padding, wherever it is put: a select's value
+        // passes content-box down, and the badge came out 6 px wider there.
+        boxSizing: "border-box",
         minWidth: small ? 28 : 36,
         height: small ? 18 : 22,
         px: 0.75,

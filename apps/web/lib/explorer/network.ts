@@ -6,7 +6,7 @@
  * snapshot. Kept outside Redux, as the playback clock is: thousands of shapes,
  * read by the map from outside the Explorer's provider.
  */
-import type { FeatureCollection, Point, Polygon } from "geojson";
+import type { FeatureCollection, LineString, Point, Polygon } from "geojson";
 
 import type { SqlRunner } from "@/lib/explorer/db/types";
 import { modeOf, routeColor } from "@/lib/explorer/modes";
@@ -34,6 +34,10 @@ export interface NetworkRoute {
 export interface NetworkDrawing {
   /** The bundle's shape_lines layer, which the map draws shapes from. */
   shapeLinesLayerId: string | null;
+  /** The bundle's revision its tiles are asked for at: a save moves it on,
+   * so the map asks for them again rather than keep those it loaded before
+   * (the lines as they were, where it had looked). */
+  tilesRevision: number | null;
   /** By `shape_id`, as the tiles carry it. */
   shapes: Map<string, NetworkShape>;
   /** A route's shapes, for highlighting it. */
@@ -44,23 +48,40 @@ export interface NetworkDrawing {
   /** Each station as a faint area around its stops, to click for the
    * timetable of them all. */
   stations: FeatureCollection<Polygon, NetworkStopProps>;
+  /** Paths an edit redrew, from the snapshot: drawn in place of their tiles,
+   * which show the bundle as saved. */
+  redrawn: FeatureCollection<LineString, { shape_id: string }>;
+  /** Paths an edit took out (shape_id): left out of the tiles. */
+  dropped: string[];
 }
 
 export interface NetworkStopProps {
   stop_idx: number;
   name: string;
+  /** Some route calls here (stops only; a station is its stops'). */
+  served?: boolean;
+  /** What the point is: a stop or platform; a station drawn as a point, as
+   * none of its stops is served yet; an entrance or exit. */
+  kind?: "stop" | "station" | "entrance";
 }
 
 const NO_STOPS: FeatureCollection<Point, NetworkStopProps> = { type: "FeatureCollection", features: [] };
 const NO_STATIONS: FeatureCollection<Polygon, NetworkStopProps> = { type: "FeatureCollection", features: [] };
+export const NO_REDRAWN: FeatureCollection<LineString, { shape_id: string }> = {
+  type: "FeatureCollection",
+  features: [],
+};
 
 const EMPTY: NetworkDrawing = {
   shapeLinesLayerId: null,
+  tilesRevision: null,
   shapes: new Map(),
   byRoute: new Map(),
   routes: new Map(),
   stops: NO_STOPS,
   stations: NO_STATIONS,
+  redrawn: NO_REDRAWN,
+  dropped: [],
 };
 
 let drawing: NetworkDrawing = EMPTY;
@@ -116,21 +137,42 @@ export async function networkShapes(
   return { shapes, byRoute, routes };
 }
 
-/** Every stop vehicles call at, as points: platforms and stops on their own
- * (location_type 0), each known by its station's name where it has one.
- * Stops no route calls at are left out. */
+/** Every stop as a point: platforms and stops on their own (location_type
+ * 0), each known by its station's name where it has one. Stops no route
+ * calls at are drawn too, marked: a stop just placed is one, and a feed may
+ * keep stops for service yet to come (decided 28 Oct 2026). So are the
+ * places a station is reached by (entrances and exits, 2), and a station
+ * with no area yet, none of its stops served (`networkStations`): each to
+ * click and edit. */
 export async function networkStops(db: SqlRunner): Promise<FeatureCollection<Point, NetworkStopProps>> {
-  const rows = await db.all<{ stop_idx: number; name: string; lon: number; lat: number }>(`
-    WITH served AS (SELECT DISTINCT UNNEST(stops) AS stop_idx FROM patterns)
-    SELECT s.stop_idx, COALESCE(p.name, s.name, s.stop_id) AS name, s.lon, s.lat
-    FROM stops s JOIN served USING (stop_idx) LEFT JOIN stops p ON p.stop_idx = s.parent_idx
-    WHERE COALESCE(s.location_type, 0) = 0 AND s.lon IS NOT NULL AND s.lat IS NOT NULL`);
+  const rows = await db.all<{
+    stop_idx: number;
+    name: string;
+    lon: number;
+    lat: number;
+    served: boolean;
+    kind: "stop" | "station" | "entrance";
+  }>(`
+    WITH served AS (SELECT DISTINCT UNNEST(stops) AS stop_idx FROM patterns),
+    areas AS (
+      SELECT DISTINCT c.parent_idx AS stop_idx FROM stops c JOIN served USING (stop_idx)
+      WHERE c.parent_idx IS NOT NULL
+    )
+    SELECT s.stop_idx, s.lon, s.lat,
+           CASE COALESCE(s.location_type, 0) WHEN 0 THEN COALESCE(p.name, s.name, s.stop_id)
+                ELSE COALESCE(s.name, s.stop_id) END AS name,
+           s.stop_idx IN (SELECT stop_idx FROM served) AS served,
+           CASE COALESCE(s.location_type, 0) WHEN 0 THEN 'stop' WHEN 1 THEN 'station' ELSE 'entrance' END AS kind
+    FROM stops s LEFT JOIN stops p ON p.stop_idx = s.parent_idx
+    WHERE s.lon IS NOT NULL AND s.lat IS NOT NULL
+      AND (COALESCE(s.location_type, 0) IN (0, 2)
+           OR (s.location_type = 1 AND s.stop_idx NOT IN (SELECT stop_idx FROM areas)))`);
   return {
     type: "FeatureCollection",
     features: rows.map((r) => ({
       type: "Feature",
       geometry: { type: "Point", coordinates: [r.lon, r.lat] },
-      properties: { stop_idx: r.stop_idx, name: r.name },
+      properties: { stop_idx: r.stop_idx, name: r.name, served: !!r.served, kind: r.kind },
     })),
   };
 }
@@ -225,4 +267,29 @@ export function shapeColorExpression(
   if (!byColor.size) return fallback;
   const branches = [...byColor].flatMap(([color, ids]) => [ids, color]);
   return ["match", ["to-string", ["get", "shape_id"]], ...branches, fallback];
+}
+
+/** The paths of `shapeIdxs` as the snapshot has them now: what an edit
+ * redrew, before a save redraws the bundle's lines. */
+export async function redrawnLines(
+  db: SqlRunner,
+  shapeIdxs: number[]
+): Promise<FeatureCollection<LineString, { shape_id: string }>> {
+  if (!shapeIdxs.length) return NO_REDRAWN;
+  const rows = await db.all<{ shape_id: string; lon: ArrayLike<number>; lat: ArrayLike<number> }>(`
+    SELECT m.shape_id, list(p.lon ORDER BY p.i) AS lon, list(p.lat ORDER BY p.i) AS lat
+    FROM shapes_meta m JOIN shape_points p USING (shape_idx)
+    WHERE m.shape_idx IN (${shapeIdxs.join(", ")}) GROUP BY m.shape_id`);
+  return {
+    type: "FeatureCollection",
+    features: rows.map((r) => {
+      // Lists come back as Arrow vectors, which read by iterating, not by index.
+      const lat = Array.from(r.lat);
+      return {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: Array.from(r.lon, (lon, k) => [lon, lat[k]]) },
+        properties: { shape_id: r.shape_id },
+      };
+    }),
+  };
 }

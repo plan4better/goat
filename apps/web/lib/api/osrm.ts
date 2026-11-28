@@ -135,14 +135,11 @@ async function fetchOSRMRoute(waypoints: [number, number][], mode: "WALK" | "CAR
     return cached;
   }
 
-  // Wait for rate limit
-  if (pendingRequest) {
-    await pendingRequest;
-  }
-  const rateLimitPromise = waitForRateLimit();
-  pendingRequest = rateLimitPromise;
-  await rateLimitPromise;
-  pendingRequest = null;
+  // Wait for rate limit: each caller after the one before it, so callers at
+  // the same moment do not both find the last request a second old.
+  const turn = (pendingRequest ?? Promise.resolve()).then(waitForRateLimit);
+  pendingRequest = turn;
+  await turn;
 
   // Get the profile for this mode
   const profile = PROFILE_MAP[mode];

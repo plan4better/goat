@@ -31,6 +31,10 @@ vi.mock("@/components/assistant/dockLoader", () => ({
   prefetchAssistant: vi.fn(),
   whenIdle: () => () => undefined,
 }));
+// Leaving the Explorer asks only with unsaved edits; there are none here.
+vi.mock("@/hooks/explorer/useExplorerLeave", () => ({
+  useExplorerLeave: () => (proceed: () => void) => proceed(),
+}));
 vi.mock("@/components/UserInfoMenu", () => ({ default: () => null }));
 vi.mock("@/components/support/SupportMenu", () => ({ default: () => null }));
 vi.mock("@/components/header/OnboardingTray", () => ({ default: () => null }));

@@ -20,6 +20,11 @@ export const PER_ITEM_KEPT = 40;
 
 const answers = new WeakMap<SqlRunner, Map<string, Promise<unknown>>>();
 
+/** Forget every answer about `db`: its tables changed (an edit, its undo). */
+export function forget(db: SqlRunner): void {
+  answers.delete(db);
+}
+
 export function remembered<T>(db: SqlRunner, key: string, query: (db: SqlRunner) => Promise<T>): Promise<T> {
   let byKey = answers.get(db);
   if (!byKey) answers.set(db, (byKey = new Map()));

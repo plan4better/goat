@@ -15,7 +15,13 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import type { TripStop } from "@/lib/explorer/derive/trip";
 import { clock, shortDate } from "@/lib/explorer/format";
 import { modeOf, routeColor } from "@/lib/explorer/modes";
-import { type ExplorerTripTab, openExplorerPanel, setExplorerTripTab } from "@/lib/store/explorer/slice";
+import {
+  type ExplorerTripTab,
+  openExplorerPanel,
+  pickExplorerPattern,
+  selectExplorerRoute,
+  setExplorerTripTab,
+} from "@/lib/store/explorer/slice";
 
 import { useRoutes, useTripDetail } from "@/hooks/explorer/useExplorerData";
 import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
@@ -25,6 +31,7 @@ import { RAIL, Rail, StopDot } from "@/components/explorer/LineDiagram";
 import { RouteBadge } from "@/components/explorer/RouteBadge";
 import { RouteCalendar } from "@/components/explorer/RouteCalendar";
 import { PX, TAB_SX } from "@/components/explorer/SectionHeader";
+import { directionLabel } from "@/components/explorer/directionWords";
 import { PanelKind } from "@/components/explorer/right/PanelKind";
 import { usePlaybackMinute } from "@/components/explorer/right/usePlaybackMinute";
 
@@ -87,6 +94,8 @@ export function TripPanel({ trip_idx, run_dep_s }: { trip_idx: number; run_dep_s
   const meta = [from && to ? `${from} – ${to}` : null, date ? shortDate(date, i18n.language) : null].filter(
     Boolean
   );
+  // Where it goes, as its line's directions name it; else its last stop.
+  const destination = data.destination ?? to;
   const minutes = first !== null && last !== null ? Math.round((last - first) / 60) : null;
 
   return (
@@ -94,9 +103,32 @@ export function TripPanel({ trip_idx, run_dep_s }: { trip_idx: number; run_dep_s
       <Box sx={{ px: PX, pt: 0.5, pb: 1.5 }}>
         <PanelKind kind="trip" />
         <Stack direction="row" spacing={1.25} alignItems="center">
-          <RouteBadge route={route} />
-          {/* The trip as its line and its time: "Trip" is said above. */}
-          <Typography variant="h6" fontWeight="bold" noWrap sx={{ fontSize: 17 }}>
+          {/* The trip as its line and where it goes ("→ place", as every
+              direction is named after its badge), the way to its line: the
+              line's summary, in this direction, as a stop timetable's
+              heading opens it. Then its time: "Trip" is said above. */}
+          <ButtonBase
+            onClick={() => {
+              dispatch(selectExplorerRoute(route.route_id));
+              if (data.direction !== null)
+                dispatch(pickExplorerPattern({ direction: data.direction, pattern_idx: null }));
+            }}
+            title={t("explorer_open_line")}
+            sx={{
+              gap: 1.25,
+              minWidth: 0,
+              justifyContent: "flex-start",
+              borderRadius: 1,
+              "&:hover": { bgcolor: "action.hover" },
+            }}>
+            <RouteBadge route={route} />
+            {destination && (
+              <Typography variant="h6" fontWeight="bold" noWrap sx={{ fontSize: 17, minWidth: 0 }}>
+                {directionLabel({ kind: "to", place: destination, via: null }, t)}
+              </Typography>
+            )}
+          </ButtonBase>
+          <Typography variant="h6" fontWeight="bold" noWrap sx={{ fontSize: 17, flexShrink: 0 }}>
             {clock(first)}
           </Typography>
         </Stack>
@@ -162,7 +194,8 @@ export function TripPanel({ trip_idx, run_dep_s }: { trip_idx: number; run_dep_s
       <Tabs
         value={tab}
         onChange={(_e, v: ExplorerTripTab) => setTab(v)}
-        sx={{ minHeight: 36, px: PX, flexShrink: 0, borderBottom: 1, borderColor: "divider" }}>
+        // Edge to edge, as the line panel's.
+        sx={{ minHeight: 36, flexShrink: 0, borderBottom: 1, borderColor: "divider" }}>
         <Tab value="stops" label={t("explorer_tab_stops")} sx={TAB_SX} />
         <Tab value="calendar" label={t("explorer_schedule_tab")} sx={TAB_SX} />
       </Tabs>

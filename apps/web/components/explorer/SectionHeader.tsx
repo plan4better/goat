@@ -14,6 +14,16 @@ import { shortDate } from "@/lib/explorer/format";
 /** Side padding of the panel's rows (board 3). */
 export const PX = 2.5;
 
+/** The gap between a leading icon and its text, everywhere in the Explorer:
+ * headers, labels, links and buttons alike (as MUI's buttons have it). */
+export const ICON_GAP = "8px";
+
+/** A checkbox (small) beside its words, the same everywhere: no padding of
+ * its own (its row makes the click target), and its drawn box, 2.5 px in
+ * from the icon's edge, taken as its edge. Its words then sit ICON_GAP
+ * from the box, as text sits from an icon. */
+export const CHECKBOX_SX = { p: 0, mx: "-2.5px" } as const;
+
 export function SectionHeader({
   icon,
   label,
@@ -91,7 +101,7 @@ export function SectionHeader({
           px,
           minHeight: 40,
           width: "100%",
-          gap: 1.25,
+          gap: ICON_GAP,
           justifyContent: "flex-start",
           flexShrink: 0,
           "&:hover": { bgcolor: "action.hover" },
@@ -100,7 +110,7 @@ export function SectionHeader({
       </ButtonBase>
     );
   return (
-    <Stack direction="row" alignItems="center" spacing={1.25} sx={{ px, minHeight: 40 }}>
+    <Stack direction="row" alignItems="center" spacing={ICON_GAP} sx={{ px, minHeight: 40 }}>
       {row}
     </Stack>
   );
@@ -113,7 +123,11 @@ export function DateChip({ date }: { date: string }) {
   return (
     // A label, not a control: grey text with no ground or edge, so it is not
     // taken for a button (the date is set in the bottom bar).
-    <Stack direction="row" alignItems="center" spacing={0.5} sx={{ color: "text.secondary", flexShrink: 0 }}>
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={ICON_GAP}
+      sx={{ color: "text.secondary", flexShrink: 0 }}>
       <Icon iconName={ICON_NAME.CALENDAR} style={{ fontSize: 11 }} htmlColor="inherit" />
       <Typography variant="caption" noWrap>
         {shortDate(date, i18n.language)}

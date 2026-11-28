@@ -65,6 +65,7 @@ import type {
 import { ContentActions, MapLayerActions } from "@/types/common";
 import { MapSidebarItemID } from "@/types/map/common";
 
+import { useExplorerLeave } from "@/hooks/explorer/useExplorerLeave";
 import { useLayerSettingsMoreMenu } from "@/hooks/map/LayerPanelHooks";
 import { useBundleMemberGates } from "@/hooks/map/useBundleMemberGates";
 import type { GroupStateChange, LayerStateChange, LayerTimeChange } from "@/hooks/map/useLayerTreeState";
@@ -523,6 +524,7 @@ export const ProjectLayerTree = ({
   const mapMode = useAppSelector((state) => state.map.mapMode);
   // The bundle the Explorer has open: marked in the tree (board 5), and no
   // layers are added meanwhile.
+  const leaveExplorer = useExplorerLeave();
   const exploredBundleId = useAppSelector((state) =>
     state.explorer.active ? state.explorer.bundleId : null
   );
@@ -1222,22 +1224,27 @@ export const ProjectLayerTree = ({
                     }
                   } else {
                     if (menuItem.id === MapLayerActions.EXIT_EXPLORER) {
-                      dispatch(closeExplorer());
+                      leaveExplorer(() => dispatch(closeExplorer()));
                     } else if (menuItem.id === MapLayerActions.OPEN_EXPLORER && node.bundle_id) {
-                      dispatch(setIsDataPanelOpen(false));
-                      dispatch(setActiveRightPanel(undefined));
-                      // The Explorer draws the bundle itself: its own layers
-                      // are switched off, as the row's eye would, and back on
-                      // when the Explorer closes.
-                      const wasVisible = node.visible !== false;
-                      if (wasVisible) void handleVisibilityToggle(node, SYNTHETIC_CLICK);
-                      dispatch(
-                        openExplorer({
-                          bundleId: node.bundle_id,
-                          bundleName: node.name,
-                          hiddenGroupId: wasVisible ? node.id : null,
-                        })
-                      );
+                      const bundleId = node.bundle_id;
+                      // Over another bundle's Explorer with unsaved changes:
+                      // asked first, then opened.
+                      leaveExplorer(() => {
+                        dispatch(setIsDataPanelOpen(false));
+                        dispatch(setActiveRightPanel(undefined));
+                        // The Explorer draws the bundle itself: its own layers
+                        // are switched off, as the row's eye would, and back on
+                        // when the Explorer closes.
+                        const wasVisible = node.visible !== false;
+                        if (wasVisible) void handleVisibilityToggle(node, SYNTHETIC_CLICK);
+                        dispatch(
+                          openExplorer({
+                            bundleId,
+                            bundleName: node.name,
+                            hiddenGroupId: wasVisible ? node.id : null,
+                          })
+                        );
+                      });
                     } else if (menuItem.id === MapLayerActions.RENAME && node.type === "group") {
                       setGroupModal({ open: true, mode: "rename", group: node });
                     } else if (menuItem.id === ContentActions.DELETE && node.type === "group") {
@@ -1284,6 +1291,7 @@ export const ProjectLayerTree = ({
       getLayerMoreMenuOptions,
       openMoreMenu,
       handleVisibilityToggle,
+      leaveExplorer,
       handleProperties,
       handleStyle,
       handleDuplicate,

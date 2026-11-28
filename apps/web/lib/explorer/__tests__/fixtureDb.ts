@@ -31,6 +31,23 @@ export async function openFixtureDb(): Promise<SqlRunner> {
   await db.instantiate();
   db.open({ query: { castBigIntToDouble: true } });
   const conn = db.connect();
+  const runner = (c: typeof conn) => ({
+    async all<T>(sql: string): Promise<T[]> {
+      return c
+        .query(sql)
+        .toArray()
+        .map((row) => row.toJSON() as T);
+    },
+    async columns<K extends string>(sql: string): Promise<Record<K, ArrayLike<number>>> {
+      const table = c.query(sql);
+      return Object.fromEntries(
+        table.schema.fields.map((f) => [f.name, table.getChild(f.name)?.toArray() ?? []])
+      ) as Record<K, ArrayLike<number>>;
+    },
+    async exec(sql: string): Promise<void> {
+      c.query(sql);
+    },
+  });
   for (const file of readdirSync(FIXTURE).filter((f) => f.endsWith(".parquet"))) {
     const name = file.replace(/\.parquet$/, "");
     db.registerFileBuffer(file, new Uint8Array(readFileSync(join(FIXTURE, file))));
@@ -38,20 +55,10 @@ export async function openFixtureDb(): Promise<SqlRunner> {
     db.dropFile(file);
   }
   return {
-    async all<T>(sql: string): Promise<T[]> {
-      return conn
-        .query(sql)
-        .toArray()
-        .map((row) => row.toJSON() as T);
-    },
-    async columns<K extends string>(sql: string): Promise<Record<K, ArrayLike<number>>> {
-      const table = conn.query(sql);
-      return Object.fromEntries(
-        table.schema.fields.map((f) => [f.name, table.getChild(f.name)?.toArray() ?? []])
-      ) as Record<K, ArrayLike<number>>;
-    },
-    async exec(sql: string): Promise<void> {
-      conn.query(sql);
+    ...runner(conn),
+    async fork() {
+      const other = db.connect();
+      return { ...runner(other), close: async () => other.close() };
     },
   };
 }

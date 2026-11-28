@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import type { Run } from "@/lib/explorer/derive/runs";
+import { shortDate, todayIso } from "@/lib/explorer/format";
 import { modeOf, routeColor } from "@/lib/explorer/modes";
 import {
   focusExplorerRun,
@@ -57,7 +58,8 @@ function useStripData(route: RouteRow) {
 
 /** `height`: the whole bottom panel's, playback row included. */
 export function TripStrip({ route, height: panelHeight }: { route: RouteRow; height: number }) {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const date = useAppSelector((s) => s.explorer.date);
   const dispatch = useAppDispatch();
   const strip = useAppSelector((s) => s.explorer.strip);
   const open = useAppSelector((s) => {
@@ -87,7 +89,12 @@ export function TripStrip({ route, height: panelHeight }: { route: RouteRow; hei
   useEffect(() => setZoom(null), [route.route_id, picked]);
   useEffect(() => {
     if (!zoom) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setZoom(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Used here: the edit bar's Esc (clear the selection) waits for the next.
+      e.preventDefault();
+      setZoom(null);
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [zoom]);
@@ -180,7 +187,14 @@ export function TripStrip({ route, height: panelHeight }: { route: RouteRow; hei
           color="text.secondary"
           sx={{ flex: 1, pr: 0.75, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
           noWrap>
-          {trips.data && t("explorer_trips", { count: rows.length })}
+          {/* The strip's day: today, or the date it shows. */}
+          {trips.data &&
+            (date === todayIso()
+              ? t("explorer_trips_today", { count: rows.length })
+              : t("explorer_trips_on", {
+                  count: rows.length,
+                  date: date ? shortDate(date, i18n.language) : "",
+                }))}
         </Typography>
       </Stack>
     </Stack>

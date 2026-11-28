@@ -10,7 +10,7 @@
  */
 import type { SqlRunner } from "@/lib/explorer/db/types";
 import { sqlDate } from "@/lib/explorer/derive/calendar";
-import type { TripRange } from "@/lib/explorer/derive/runs";
+import { type TripRange, inTripRange } from "@/lib/explorer/derive/runs";
 
 export interface CalendarDay {
   /** `YYYY-MM-DD`. */
@@ -133,7 +133,7 @@ export async function routeCalendar(
   route: TripRange,
   window: [string, string]
 ): Promise<RouteCalendar> {
-  const range = `trip_idx BETWEEN ${route.trip_lo ?? -1} AND ${route.trip_hi ?? -2}`;
+  const range = inTripRange(route);
   const [start, end] = [sqlDate(window[0]), sqlDate(window[1])];
   const mine = `(SELECT service_idx, CAST(count(*) AS INTEGER) AS trips FROM trips WHERE ${range} GROUP BY 1)`;
   const rows = await db.all<{
@@ -170,7 +170,7 @@ export async function routeCalendar(
       timetable AS (
         SELECT a.date, CAST(sum(COALESCE(f.runs, 1)) AS INTEGER) AS trips,
                sum(hash(t.pattern_idx, t.first_dep_s, f.h) % 1000000007) AS sig
-        FROM active a JOIN trips t ON t.service_idx = a.service_idx AND t.${range}
+        FROM active a JOIN trips t ON t.service_idx = a.service_idx AND ${inTripRange(route, "t.")}
         LEFT JOIN freq f ON f.trip_idx = t.trip_idx
         GROUP BY a.date
       ),

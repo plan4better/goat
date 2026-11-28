@@ -1,18 +1,19 @@
 /**
  * A stop's timetable in the right panel (board 13) — a station's, when a
  * station is picked in the list, is that of all its stops together. The
- * stop, the Explorer's date, its lines to pick one from, and either that
- * line's hour × minute timetable per direction — the next departure after
- * the playback time highlighted; short turns not set apart (an "s" was
- * tried and dropped, 22 Oct 2026: unclear, and little use here) — or the next
- * departures of every line. A departure opens its trip, which goes back here.
- */
+ * stop, the Explorer's date, and its tabs (Schedule | Departures, 28 Oct
+ * 2026; Properties for an editor, board 23). Schedule: its lines to pick one
+ * from and that line's hour × minute timetable per direction, the next
+ * departure after the playback time highlighted; short turns not set apart
+ * (an "s" was tried and dropped, 22 Oct 2026: unclear, and little use here).
+ * Departures: the next departures of every line. A departure opens its
+ * trip, which goes back here. */
 import AccessibleIcon from "@mui/icons-material/Accessible";
-import { Box, ButtonBase, Skeleton, Stack, Typography } from "@mui/material";
+import { Box, ButtonBase, Skeleton, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ICON_NAME } from "@p4b/ui/components/Icon";
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
 import type { Direction } from "@/lib/explorer/derive/directions";
 import {
@@ -22,13 +23,14 @@ import {
   byDirection,
   byHour,
 } from "@/lib/explorer/derive/stopTimetable";
-import { resolveChoice } from "@/lib/explorer/directionChoice";
 import { clock } from "@/lib/explorer/format";
 import {
   type ExplorerPickedStop,
+  type ExplorerStopTab,
   openExplorerPanel,
   pickExplorerPattern,
   selectExplorerRoute,
+  setExplorerStopTab,
 } from "@/lib/store/explorer/slice";
 
 import { type RouteRow, useRoutes, useStopTimetable } from "@/hooks/explorer/useExplorerData";
@@ -36,15 +38,13 @@ import { useAppDispatch, useAppSelector } from "@/hooks/store/ContextHooks";
 
 import { useExplorer } from "@/components/explorer/ExplorerContext";
 import { RouteBadge, distinctLines, lineKey } from "@/components/explorer/RouteBadge";
-import { DateChip, PX, SectionHeader } from "@/components/explorer/SectionHeader";
-import { SegmentedSwitch } from "@/components/explorer/SegmentedSwitch";
+import { DateChip, ICON_GAP, PX, SectionHeader, TAB_SX } from "@/components/explorer/SectionHeader";
 import { platformLabel } from "@/components/explorer/StationsList";
 import { StopMarker } from "@/components/explorer/StopMarker";
 import { directionLabel } from "@/components/explorer/directionWords";
+import { StopDetails } from "@/components/explorer/edit/StopDetails";
 import { PanelKind } from "@/components/explorer/right/PanelKind";
 import { usePlaybackMinute } from "@/components/explorer/right/usePlaybackMinute";
-
-type View = "timetable" | "next";
 
 /** How many departures the Next view lists. */
 const NEXT_COUNT = 12;
@@ -68,22 +68,6 @@ function untimedTitle(
     untilStop: e.until_stop ?? "",
     interpolation: { escapeValue: false },
   });
-}
-
-/** A segmented switch on the panel's tinted ground, as the bottom bar's speed. */
-function ViewSwitch({ value, onChange }: { value: View; onChange: (v: View) => void }) {
-  const { t } = useTranslation("common");
-  return (
-    <SegmentedSwitch
-      options={(["timetable", "next"] as const).map((v) => ({
-        value: v,
-        label: t(`explorer_stop_view_${v}`),
-        icon: v === "timetable" ? ICON_NAME.TABLE : ICON_NAME.CLOCK,
-      }))}
-      value={value}
-      onChange={onChange}
-    />
-  );
 }
 
 /** A row of choices beside a quiet label. */
@@ -135,11 +119,12 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
   const { t } = useTranslation("common");
   const dispatch = useAppDispatch();
   const { db, complete } = useExplorer();
+  // Schedule | Departures | Details (its fields, lines, station; board 23).
+  const tab = useAppSelector((s) => s.explorer.stopTab);
   const date = useAppSelector((s) => s.explorer.date);
   const now = usePlaybackMinute();
   const routes = useRoutes(db);
   const data = useStopTimetable(complete ? db : undefined, stop.stop_idx, date);
-  const [view, setView] = useState<View>("timetable");
   const [picked, setPicked] = useState<string | null>(null);
 
   const routeByIdx = useMemo(() => new Map((routes.data ?? []).map((r) => [r.route_idx, r])), [routes.data]);
@@ -166,14 +151,12 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
     lines.find((l) => lineKey(l.route) === picked) ??
     lines.find((l) => [...l.idxs].some((i) => routeByIdx.get(i)?.route_id === preferred)) ??
     lines[0];
-  // Its directions, those of its routes with the same name taken as one.
-  // On the selected route's line, the direction picked for the route (the
-  // strip's and the Stops tab's) is the one shown — all, when all are.
-  const selectedRouteId = useAppSelector((s) => s.explorer.selectedRouteId);
-  const selectedIdx = (routes.data ?? []).find((r) => r.route_id === selectedRouteId)?.route_idx;
-  const choice = useAppSelector((s) => s.explorer.pattern);
+  // Its directions, those of its routes with the same name taken as one:
+  // every direction calling here, whatever is picked on an open line (a
+  // stop's timetable is the stop's, decided 29 Oct 2026).
   const directions = useMemo(() => {
     if (!line || !data.data) return [];
+    // Each keeps where it came from, so its heading opens its line in it.
     const merged = new Map<string, TimetableDirection & { sources: Set<string> }>();
     for (const idx of line.idxs)
       for (const d of byDirection(
@@ -194,19 +177,8 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
           });
       }
     for (const d of merged.values()) d.departures.sort((x, y) => x.dep_s - y.dep_s);
-    const all = [...merged.values()];
-    if (selectedIdx === undefined || !line.idxs.has(selectedIdx)) return all;
-    const picked = resolveChoice(choice, data.data.directions.get(selectedIdx) ?? []);
-    if (!picked.direction) return all;
-    const source = `${selectedIdx}:${picked.direction.key}`;
-    return all
-      .filter((d) => d.sources.has(source))
-      .map((d) =>
-        picked.pattern_idx === null
-          ? d
-          : { ...d, departures: d.departures.filter((x) => x.pattern_idx === picked.pattern_idx) }
-      );
-  }, [line, departures, data.data, selectedIdx, choice]);
+    return [...merged.values()];
+  }, [line, departures, data.data]);
 
   const openTrip = (e: { trip_idx: number; run_dep_s: number }) =>
     dispatch(
@@ -217,8 +189,8 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
   const detail = data.data?.stop;
   const station = detail?.is_station ?? false;
   const title = detail?.station ?? detail?.name ?? stop.name;
-  // A station; one of a station's platforms; else a stop of its own.
-  const kind = station ? "station" : detail?.station ? "platform" : "stop";
+  // A station; its entrance; one of its platforms; else a stop of its own.
+  const kind = station ? "station" : detail?.is_entrance ? "entrance" : detail?.station ? "platform" : "stop";
   // The platform's own code or name, where it has one: the kind is said above.
   const own = detail?.station ? platformLabel({ name: detail.station }, detail, t).label : null;
   const meta = [
@@ -226,11 +198,81 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
     // A station counts its platforms: the stops it is made of.
     station && detail ? t("explorer_platforms", { count: detail.n_stops }) : null,
     detail
-      ? t("explorer_lines_count", {
-          count: distinctLines(detail.routes.map((i) => routeByIdx.get(i))).length,
-        })
+      ? detail.routes.length
+        ? t("explorer_lines_count", {
+            count: distinctLines(detail.routes.map((i) => routeByIdx.get(i))).length,
+          })
+        : t("explorer_not_served")
       : null,
   ].filter(Boolean);
+
+  // The date; on Departures the time they are listed from (the playback
+  // time), on Schedule the lines to pick from.
+  const controls = (
+    <Box sx={{ px: PX, pb: 1.5 }}>
+      <Stack direction="row" alignItems="center" spacing="20px" sx={{ mt: 1.5 }}>
+        {date && <DateChip date={date} />}
+        {tab === "departures" && (
+          <Stack direction="row" alignItems="center" spacing={ICON_GAP} sx={{ color: "text.secondary" }}>
+            <Icon iconName={ICON_NAME.CLOCK} style={{ fontSize: 11 }} htmlColor="inherit" />
+            <Typography variant="caption" noWrap>
+              {clock(now ?? 0)}
+            </Typography>
+          </Stack>
+        )}
+      </Stack>
+      {tab === "schedule" && lines.length > 1 && (
+        <ChipRow label={t("explorer_lines")}>
+          {lines.map(({ route: r }) => (
+            <LineChoice
+              key={r.route_idx}
+              route={r}
+              chosen={r.route_idx === line?.route.route_idx}
+              onClick={() => setPicked(lineKey(r))}
+            />
+          ))}
+        </ChipRow>
+      )}
+    </Box>
+  );
+  const timetable = (
+    <Box
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        overflowY: "auto",
+        px: PX,
+        pb: 2,
+        borderTop: 1,
+        borderColor: "divider",
+      }}>
+      {!data.data && !data.error && <Skeleton variant="rounded" height={240} sx={{ mt: 1.5 }} />}
+      {data.error && (
+        <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+          {data.error}
+        </Typography>
+      )}
+      {data.data && !departures.length && (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+          {t("explorer_no_departures")}
+        </Typography>
+      )}
+      {data.data && tab === "schedule" && line && (
+        <Timetable route={line.route} directions={directions} now={now} onOpen={openTrip} />
+      )}
+      {data.data && tab === "departures" && departures.length > 0 && (
+        <NextDepartures
+          departures={departures}
+          directions={data.data.directions}
+          routeByIdx={routeByIdx}
+          now={now}
+          onOpen={openTrip}
+        />
+      )}
+    </Box>
+  );
+  // The lines calling here, in the route list's order.
+  const servedBy = (detail?.routes ?? []).flatMap((i) => routeByIdx.get(i) ?? []);
 
   return (
     <Stack sx={{ flex: 1, minHeight: 0 }}>
@@ -250,58 +292,24 @@ export function StopPanel({ stop }: { stop: ExplorerPickedStop }) {
             <AccessibleIcon sx={{ fontSize: 15 }} titleAccess={t("explorer_wheelchair_boarding")} />
           )}
         </Stack>
-        <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1.5 }}>
-          {date && <DateChip date={date} />}
-          <Box sx={{ flex: 1 }} />
-          <ViewSwitch value={view} onChange={setView} />
-        </Stack>
-        {view === "timetable" && lines.length > 1 && (
-          <ChipRow label={t("explorer_lines")}>
-            {lines.map(({ route: r }) => (
-              <LineChoice
-                key={r.route_idx}
-                route={r}
-                chosen={r.route_idx === line?.route.route_idx}
-                onClick={() => setPicked(lineKey(r))}
-              />
-            ))}
-          </ChipRow>
-        )}
       </Box>
-      <Box
-        sx={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: "auto",
-          px: PX,
-          pb: 2,
-          borderTop: 1,
-          borderColor: "divider",
-        }}>
-        {!data.data && !data.error && <Skeleton variant="rounded" height={240} sx={{ mt: 1.5 }} />}
-        {data.error && (
-          <Typography variant="body2" color="error" sx={{ mt: 2 }}>
-            {data.error}
-          </Typography>
-        )}
-        {data.data && !departures.length && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            {t("explorer_no_departures")}
-          </Typography>
-        )}
-        {data.data && view === "timetable" && line && (
-          <Timetable route={line.route} directions={directions} now={now} onOpen={openTrip} />
-        )}
-        {data.data && view === "next" && departures.length > 0 && (
-          <NextDepartures
-            departures={departures}
-            directions={data.data.directions}
-            routeByIdx={routeByIdx}
-            now={now}
-            onOpen={openTrip}
-          />
-        )}
-      </Box>
+      <Tabs
+        value={tab}
+        onChange={(_e, v: ExplorerStopTab) => dispatch(setExplorerStopTab(v))}
+        // Edge to edge, as the line panel's.
+        sx={{ minHeight: 36, flexShrink: 0, borderBottom: 1, borderColor: "divider" }}>
+        <Tab value="schedule" label={t("explorer_stop_tab_schedule")} sx={TAB_SX} />
+        <Tab value="departures" label={t("explorer_stop_tab_departures")} sx={TAB_SX} />
+        <Tab value="details" label={t("explorer_stop_tab_details")} sx={TAB_SX} />
+      </Tabs>
+      {tab === "details" ? (
+        <StopDetails stop_idx={stop.stop_idx} lines={servedBy} />
+      ) : (
+        <>
+          {controls}
+          {timetable}
+        </>
+      )}
     </Stack>
   );
 }
