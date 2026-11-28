@@ -352,6 +352,17 @@ def decimals_for(c: dict[str, Any]) -> int:
     return tool_style.decimals_for(breaks, c["computed"]["domain"])
 
 
+def most_decimals(values: list[float]) -> int:
+    """The most decimals one of `values` has, each written to 12 significant
+    digits."""
+    most = 0
+    for v in values:
+        mantissa, _, exponent = f"{v:.12g}".partition("e")
+        after = mantissa.partition(".")[2].rstrip("0")
+        most = max(most, len(after) - int(exponent or 0))
+    return most
+
+
 def without_format(doc: dict[str, Any]) -> dict[str, Any]:
     """The style without the number format the tool's own run writes."""
     return {
@@ -516,7 +527,13 @@ def check_fitted(
             assert not top_alone(con, relation, field, doc)
     if n >= 2:
         assert "format" not in c
-        assert c["computed"]["decimals"] == decimals_for(c)
+        # At least as many decimals as read the bounds apart, no more than the
+        # bounds and the domain's ends have.
+        bounds = [k["from"] for k in c["classes"] if "from" in k]
+        most = most_decimals([*bounds, *c["computed"]["domain"]])
+        assert (
+            decimals_for(c) <= c["computed"]["decimals"] <= max(decimals_for(c), most)
+        )
     if has_rows_without_value(con, relation, field):
         assert c["computed"]["no_data"] is True
     asked = intent["classify"][0]

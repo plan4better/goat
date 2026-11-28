@@ -288,28 +288,10 @@ def _settled(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
     if after.get("method") == "manual":
         return after if before.get("method") == "manual" else _as_manual(after)
     if any(before.get(k) != after.get(k) for k in ("field", "method", "count")):
-        return _without_fit(before, after)
+        return {k: v for k, v in after.items() if k != "fit"}
     if after.get("method") != "quantile" or not _class_edited(before, after):
         return after
     return _as_manual(after)
-
-
-def _without_fit(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
-    """`after` without `fit`. The decimals the server recorded with the fitted
-    classes (`computed.decimals`) become the format's where the format states
-    none, beside its other keys: the next compute records none."""
-    out = {k: v for k, v in after.items() if k != "fit"}
-    computed = before.get("computed")
-    decimals = computed.get("decimals") if isinstance(computed, dict) else None
-    fmt = after.get("format")
-    if not isinstance(decimals, int) or isinstance(decimals, bool):
-        return out
-    if fmt is not None and not isinstance(fmt, dict):
-        return out
-    if isinstance(fmt, dict) and "decimals" in fmt:
-        return out
-    out["format"] = {**(fmt or {}), "decimals": decimals}
-    return out
 
 
 def _as_manual(c: dict[str, Any]) -> dict[str, Any]:

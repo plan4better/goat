@@ -272,23 +272,12 @@ function asManual(c: JsonObject): JsonObject {
 }
 
 /** One classification with `fit` as the edit from `before` leaves it (goatlib's `settle_fit`). */
-/** `after` without `fit`. The decimals the server recorded with the fitted classes (`computed.decimals`) become the
- * format's where the format states none, beside its other keys: the next compute records none (goatlib's
- * `_without_fit`). */
-function withoutFit(before: JsonObject, after: JsonObject): JsonObject {
-  const { fit: _fit, ...rest } = after;
-  const decimals = isObject(before.computed) ? before.computed.decimals : undefined;
-  const format = after.format;
-  if (typeof decimals !== "number" || !Number.isInteger(decimals)) return rest;
-  if (format !== undefined && !isObject(format)) return rest;
-  if (isObject(format) && "decimals" in format) return rest;
-  return { ...rest, format: { ...(format ?? {}), decimals } };
-}
-
 function settledFit(before: JsonObject, after: JsonObject): JsonObject {
   if (after.method === "manual") return before.method === "manual" ? after : asManual(after);
-  if ((["field", "method", "count"] as const).some((key) => !deepEqual(before[key], after[key])))
-    return withoutFit(before, after);
+  if ((["field", "method", "count"] as const).some((key) => !deepEqual(before[key], after[key]))) {
+    const { fit: _fit, ...rest } = after;
+    return rest;
+  }
   if (after.method !== "quantile" || !classEdited(before, after)) return after;
   return asManual(after);
 }

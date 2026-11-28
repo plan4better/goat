@@ -9,7 +9,7 @@ import copy
 import math
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Context, Decimal
+from decimal import ROUND_HALF_UP, Context, Decimal, localcontext
 from typing import Any
 
 from pydantic import ValidationError
@@ -188,13 +188,48 @@ def value_decimals(value: float) -> int:
     return next(d for d in range(wanted + 1) if rounded(value, d) == exact)
 
 
+def _stored(value: float) -> Decimal:
+    """`value` as a decimal number to `STABLE_DIGITS` significant digits."""
+    return Decimal(f"{value:.{STABLE_DIGITS}g}")
+
+
+#: The significant digits a step between bounds is read with, so a step of
+#: stored repeating fractions (0.1999999999997) counts as its true size.
+_STEP_DIGITS = Context(prec=6)
+
+
+def shown_decimals(breaks: Iterable[Any], domain: Iterable[Any] = ()) -> int:
+    """The decimals at which class bounds that lie on values of the data read
+    as they are: `decimals_for`, raised until rounding moves no bound by more
+    than a quarter of the narrowest step between neighbouring bounds and
+    domain ends (half of a unit of the last decimal at most a quarter of the
+    step), but never above the most decimals one of those values has (nor
+    below `decimals_for`), at most `MAX_DECIMALS`. Whole numbers stay whole,
+    10.5 reads one decimal, and a narrowest step of 2 or more adds none."""
+    apart = decimals_for(breaks, domain)
+    values = sorted({_stored(v) for v in _finite(breaks) | _finite(domain)})
+    step = 0
+    # Exact, whatever decimal context the caller has set.
+    with localcontext(_ROUNDING):
+        steps = [b - a for a, b in zip(values, values[1:]) if b > a]
+        if steps:
+            narrowest = _STEP_DIGITS.plus(min(steps))
+            while step < MAX_DECIMALS and Decimal(1).scaleb(-step) / 2 > narrowest / 4:
+                step += 1
+        own = max(
+            [apart, *(max(0, -v.normalize().as_tuple().exponent) for v in values)]
+        )
+    return max(0, min(MAX_DECIMALS, own, max(apart, step)))
+
+
 def class_decimals(c: dict[str, Any]) -> int | None:
     """The decimals the labels of a numeric classification's computed classes
     need: the decimals its class breaks and its domain's ends need
-    (`decimals_for`). A single class over one value has no break and takes the
-    decimals of that value: with `fit` its first three significant digits
-    (`value_decimals`), else `single_value_decimals`. None without classes or
-    a domain."""
+    (`decimals_for`); where the server records them (`records_decimals`), the
+    decimals that show those bounds as they are (`shown_decimals`). A single
+    class over one value has no break and takes the decimals of that value:
+    with `fit` its first three significant digits (`value_decimals`), else
+    `single_value_decimals`. None without classes or a domain."""
     computed = c.get("computed") if isinstance(c.get("computed"), dict) else {}
     domain, classes = computed.get("domain"), c.get("classes")
     if not domain or not classes or not isinstance(classes, list):
@@ -208,6 +243,8 @@ def class_decimals(c: dict[str, Any]) -> int | None:
             if c.get("fit") is True
             else (single_value_decimals(value))
         )
+    if records_decimals(c):
+        return shown_decimals(breaks, domain)
     return decimals_for(breaks, domain)
 
 
