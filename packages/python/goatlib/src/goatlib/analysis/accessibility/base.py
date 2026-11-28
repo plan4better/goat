@@ -644,6 +644,10 @@ class PTToolBase(AnalysisTool):
 
         Either calendar file may be absent; which services run is
         ``active_services_sql``'s answer.
+
+        ``call_order`` is the call's ``stop_sequence``, which places it on its
+        trip: ÖV-Güteklassen reads the way a line serves a stop from the
+        trip's calls just before and just after.
         """
         active = active_services_sql(service_date, calendar_path, calendar_dates_path)
 
@@ -652,6 +656,9 @@ class PTToolBase(AnalysisTool):
             WITH active_services AS ({active})
             SELECT
                 st.stop_id,
+                st.trip_id,
+                t.route_id,
+                CAST(st.stop_sequence AS INTEGER) AS call_order,
                 r.route_type,
                 st.arrival_time,
                 true AS is_weekday,

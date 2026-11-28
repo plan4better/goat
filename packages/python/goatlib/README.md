@@ -714,6 +714,11 @@ date of the kind of day picked (`analysis/pt_time.py`). The default network is
 cut to the area and the date first (`cut_network_tables` in
 `tools/pt_network.py`), as a count joined across a continent's stop times
 would not fit a worker; indexed tables are read only in the area's lines.
+The cut keeps each call in the area with the calls around it on its trip,
+inside the area or not (two stop sequences before, one after): ÖV-Güteklassen
+reads the way a line serves a stop from the calls just before and just after
+it, and puts calls sharing a stop sequence in order by the calls before them,
+so a stop at the area's edge counts as it does in the whole feed.
 
 ## Copies behind a project entry
 

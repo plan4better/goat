@@ -156,11 +156,13 @@ def cut_network_tables(
     The network is a continent's: read whole, the count joins hundreds of
     millions of stop times to every trip and route. So the cut goes first,
     smallest table first: the area's stops (and their stations) and the date's
-    services, then only their stop times, and only the trips and routes those
-    name. Services are resolved to the date here, so what is returned states
-    them as added on it (``calendar_dates``), whichever calendar file the
-    network used. Indexed tables (``store.index_store``) are read only in the
-    row groups of the area's lines.
+    services, then only their stop times, each with the calls around it on its
+    trip that ÖV-Güteklassen reads (and those calls' stops), and only the
+    trips and routes those name. Services are resolved to the date here, so
+    what is returned states them as added on it (``calendar_dates``),
+    whichever calendar file the network used. Indexed tables
+    (``store.index_store``) are read only in the row groups of the area's
+    lines.
     """
     info = read_store(tables)
     src = {t["role"]: t["path"].replace("'", "''") for t in info["tables"]}
@@ -180,6 +182,17 @@ def cut_network_tables(
     )
     con = bound_duckdb(duckdb.connect(), str(out))
     try:
+        stop_time_columns = {
+            r[0]
+            for r in con.execute(
+                f"DESCRIBE SELECT * FROM read_parquet('{src['stop_times']}')"
+            ).fetchall()
+        }
+        if "stop_sequence" not in stop_time_columns:
+            raise ValueError(
+                "This server's public transport network lacks stop_sequence in "
+                "its stop times. Its base data needs updating (sync_base_data)."
+            )
         con.execute("INSTALL spatial; LOAD spatial;")
         # The area's geometry column, by type: GeoParquet reads as GEOMETRY,
         # a plain parquet holds it as WKB.
@@ -244,18 +257,53 @@ def cut_network_tables(
                 index,
             )
         con.execute(f"""
-            CREATE TEMP TABLE area_stop_times AS
-            SELECT trip_id, stop_id, arrival_time
-            FROM {stop_times}
-            WHERE stop_id IN (SELECT stop_id FROM area_stops)
-              AND trip_id IN (SELECT trip_id FROM day_trips)
+            CREATE TEMP TABLE kept_trips AS SELECT * FROM day_trips
+            WHERE trip_id IN (
+                SELECT trip_id FROM {stop_times}
+                WHERE stop_id IN (SELECT stop_id FROM area_stops))
+        """)
+        # Their calls in the area, and the calls around each on its trip,
+        # inside the area or not: ÖV-Güteklassen reads the way a line serves
+        # a stop from the calls just before and just after it. Calls as the
+        # count's `gtfs_stop_times` has them: with an arrival time, at a stop
+        # a vehicle stops at, in stop_sequence order. A feed can give calls
+        # the same stop_sequence, which the rule puts in order by distance
+        # from the calls at the sequence before; so the calls kept are whole
+        # sequences (r, their rank), from two before a call in the area to
+        # one after it.
+        con.execute(f"""
+            CREATE TEMP TABLE trip_calls AS
+            SELECT trip_id, stop_id, arrival_time, stop_sequence FROM {stop_times}
+            WHERE trip_id IN (SELECT trip_id FROM kept_trips)
+              AND arrival_time IS NOT NULL
+        """)
+        con.execute(f"""
+            CREATE TEMP TABLE call_stops AS
+            SELECT * FROM read_parquet('{src["stops"]}')
+            WHERE stop_id IN (SELECT stop_id FROM trip_calls)
+              AND stop_lat IS NOT NULL AND stop_lon IS NOT NULL
+              AND (location_type IS NULL
+                   OR CAST(location_type AS VARCHAR) IN ('0', ''))
         """)
         con.execute("""
-            CREATE TEMP TABLE kept_trips AS SELECT * FROM day_trips
-            WHERE trip_id IN (SELECT DISTINCT trip_id FROM area_stop_times)
+            CREATE TEMP TABLE area_stop_times AS
+            SELECT trip_id, stop_id, arrival_time, stop_sequence FROM (
+                SELECT *, bool_or(here) OVER (
+                    PARTITION BY trip_id ORDER BY r
+                    RANGE BETWEEN 1 PRECEDING AND 2 FOLLOWING) AS kept
+                FROM (SELECT c.*,
+                             c.stop_id IN (SELECT stop_id FROM area_stops) AS here,
+                             dense_rank() OVER (
+                                 PARTITION BY trip_id ORDER BY stop_sequence) AS r
+                      FROM trip_calls c SEMI JOIN call_stops s USING (stop_id))
+            )
+            WHERE kept
         """)
         written = {
-            "stops": "SELECT * FROM area_stops",
+            "stops": """SELECT * FROM area_stops UNION ALL
+                        SELECT * FROM call_stops
+                        WHERE stop_id IN (SELECT stop_id FROM area_stop_times)
+                          AND stop_id NOT IN (SELECT stop_id FROM area_stops)""",
             "stop_times": "SELECT * FROM area_stop_times",
             "trips": "SELECT * FROM kept_trips",
             "routes": f"""SELECT route_id, route_type FROM read_parquet('{src["routes"]}')

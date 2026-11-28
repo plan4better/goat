@@ -115,12 +115,12 @@ The institutionalization of the indicator in German-speaking countries, as well 
 In the Swiss version of the indicator, the calculation of the quality classes is usually carried out for departures on weekdays between 6 AM and 8 PM. For the use in GOAT, the **calculation period** was made more flexible so that the indicator can be calculated **for any day of the week and time of day**. 
 
 The calculations are carried out based on **GTFS data** (see [Network Datasets](../../data/builtin_datasets)): 
-First, the number of departures per public transport mode (train, metro, tram, and bus) is dynamically calculated for each station. The sum of the departures is divided by two to calculate the frequency, to eliminate the outward and return directions. In the next step, the **average frequency** for the selected time interval is calculated. The higher-value service is selected as the **station type** in the case of service by several means of transport. For example, in the case of buses and trains, this is the train. With the help of the table below, as well as the station type and the frequency, the station category can now be determined. 
+First, the number of departures per public transport mode (train, metro, tram, and bus) is dynamically calculated for each station. Each line's departures are divided by the number of directions it serves the station in (one or two), so outward and return trips are not counted twice. Which way a trip passes a station is read from the stops it calls at before and after it, so this works for any feed, including one with a single stop or platform for both directions, a terminus, or a one-way loop. In the next step, the **average frequency** for the selected time interval is calculated. The higher-value service is selected as the **station type** in the case of service by several means of transport. For example, in the case of buses and trains, this is the train. With the help of the table below, as well as the station type and the frequency, the station category can now be determined. 
 
 ### Calculation steps
 
 1. **Departures per station**: Calculate the number of departures per mode (train, metro, tram, bus) for each station using **GTFS data** (see [Network Datasets](../../data/builtin_datasets)).
-2. **Frequency**: The sum of the departures is divided by two to eliminate the outward and return directions.
+2. **Frequency**: Each line's departures are divided by the number of directions it serves the station in, to eliminate the outward and return directions.
 3. **Station type**: For each station, determine the highest-ranking mode of transport served (e.g., if both bus and train are available, the station is classified as a train station).
 4. **Category assignment**: Use the station type and frequency to determine the category (see table below).
 5. **Catchment areas**: Create buffers for each station category.
