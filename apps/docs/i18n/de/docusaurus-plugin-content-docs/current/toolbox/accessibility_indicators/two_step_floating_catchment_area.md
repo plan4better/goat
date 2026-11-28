@@ -218,7 +218,7 @@ Optional können Sie <code>Erweiterte Optionen</code> aktivieren, um weitere Ein
   <div class="content">
   Wählen Sie einen <code>Potenzialtyp</code>, um festzulegen, wie die Kapazität jeder Einrichtung bestimmt wird:
     <ul>
-      <li><b>Constant</b>: alle Einrichtungen haben die gleiche Kapazität. Geben Sie einen numerischen Wert ein (Standard: 1.0).</li>
+      <li><b>Constant</b>: alle Einrichtungen haben die gleiche Kapazität. Geben Sie einen numerischen Wert ein (Standard: 1000).</li>
       <li><b>Field</b>: verwenden Sie ein numerisches Feld aus dem <i>Eingabe-Layer</i> als Kapazität (z. B. Anzahl der Betten, Sitze oder Quadratmeter).</li>
     </ul>
   </div>
