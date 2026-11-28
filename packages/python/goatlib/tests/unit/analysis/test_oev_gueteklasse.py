@@ -364,9 +364,9 @@ def _feed(tool: OevGueteklasseTool, calls: list[tuple], tie: bool = False) -> No
     seconds into the day, and whether it passes the stop, "through", or
     "ends" or "starts" there). Each call is a trip of its own, with stops
     either side of this one as it goes (outside the area): what its direction
-    is read from. ``tie``: the stop before is in the same minute as the stop,
-    as the shipped feed's minute times often have it, and the stop before
-    that a minute earlier."""
+    is read from. ``tie``: the stop before shares the stop's call_order (the
+    seconds into the day, in the same minute), and the stop before that has
+    the call_order a minute earlier."""
     tool.con.execute("""
         CREATE OR REPLACE TABLE gtfs_stop_times (
             stop_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, call_order INTEGER,
@@ -514,8 +514,8 @@ class TestOevGueteklasseDirections:
         assert self.frequencies(both)["mid"] == pytest.approx(5.0)
 
     def test_stops_in_the_same_minute(self) -> None:
-        """Minute times, the stop before in the stop's own minute: the
-        directions read from the stops a minute away."""
+        """Calls sharing a call_order, the stop before with the stop's own:
+        the directions read from the stops at the call_order either side."""
         f = self.frequencies(
             self.every_10("mid", None, "L1", "east")
             + self.every_10("mid", None, "L1", "west"),

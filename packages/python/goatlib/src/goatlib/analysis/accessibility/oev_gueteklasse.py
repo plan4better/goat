@@ -165,10 +165,9 @@ class OevGueteklasseTool(PTToolBase):
 
         # A line's calls at a stop, and whether it serves the stop one way or
         # both. Directions are read from the core of GTFS alone (direction_id
-        # is optional, and feeds use it unevenly; the shipped file has none):
-        # from the stops just before and just after each call on its trip
-        # (call_order: the stop sequence, or in the shipped file the arrival
-        # time, its ties in a minute put in order by distance). Two calls
+        # is optional, and feeds use it unevenly): from the stops just before
+        # and just after each call on its trip (call_order: the stop sequence;
+        # calls sharing one are put in order by distance). Two calls
         # of a line at a stop, or at a station's stops, go opposite ways
         # where one ends there and another starts there (service arriving and
         # service leaving), or where one's stop before is another's stop
@@ -201,9 +200,9 @@ class OevGueteklasseTool(PTToolBase):
                 FROM gtfs_stop_times t JOIN gtfs_stops g USING (stop_id)
                 WHERE hash(t.trip_id) IN (SELECT trip_id FROM calls)
             ),
-            -- Stops sharing a call_order (minute times) go in order of
-            -- distance from the trip's stops the minute before (the first
-            -- minute: back from the minute after), which rebuilds the stop order
+            -- Stops sharing a call_order go in order of distance from the
+            -- trip's stops at the call_order before (the first: back from
+            -- those at the call_order after)
             minutes AS (
                 SELECT trip_id, o,
                        lag(avg(x)) OVER w AS px, lag(avg(y)) OVER w AS py,
