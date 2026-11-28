@@ -543,6 +543,40 @@ class TestOevGueteklasseDirections:
         )
         assert f["mid"] == pytest.approx(5.0)
 
+    def test_trips_whose_ids_hash_alike_are_two_trips(self) -> None:
+        """Two trips one way, with ids that DuckDB's hash() gives the same
+        value, as it does for some real ids: two trips passing the stop one
+        way, not one trip passing it twice."""
+        alike = (
+            "46f9cec0_de:16064:900576::90057600",
+            "46f9cec0_de:16064:900571::90057100",
+        )
+        tool = OevGueteklasseTool()
+        try:
+            assert tool.con.execute("SELECT hash(?) = hash(?)", alike).fetchone()[0]
+            _feed(
+                tool,
+                [
+                    ("mid", None, "L1", "east", 3, 300, "through"),
+                    ("mid", None, "L1", "east", 3, 360, "through"),
+                ],
+            )
+            tool.con.execute(
+                "UPDATE gtfs_stop_times "
+                "SET trip_id = CASE trip_id WHEN 't0' THEN ? ELSE ? END",
+                alike,
+            )
+            tool._count_pt_services(self.WINDOW)
+            tool._calculate_station_categories(self.CONFIG, self.WINDOW)
+            minutes = dict(
+                tool.con.execute(
+                    "SELECT stop_id, frequency_minutes FROM station_frequencies"
+                ).fetchall()
+            )
+        finally:
+            tool.cleanup()
+        assert minutes["mid"] == pytest.approx(60.0)
+
     def test_stops_in_the_same_minute(self) -> None:
         """Minute times, the stop before in the stop's own minute: the
         directions read from the stops a minute away."""
