@@ -1,14 +1,16 @@
 "use client";
 
 // The map's project layers: renders nothing, puts the layers on the map with one `syncMapLayers` per
-// animation frame. A layer whose style panel is open is drawn from its editor store through a child subscribed to
-// that store only, so an edit compiles and applies that layer and renders nothing else. A raster layer whose style
-// colors values draws once the description of its value tiles has loaded.
+// animation frame, and at once where the camera crosses the zoom at which the map's buildings draw. A layer whose
+// style panel is open is drawn from its editor store through a child subscribed to that store only, so an edit
+// compiles and applies that layer and renders nothing else. A raster layer whose style colors values draws once the
+// description of its value tiles has loaded.
 import type { Map as MaplibreMap } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMap } from "react-map-gl/maplibre";
 
 import { loadRasterValues } from "@/lib/api/rasters";
+import type { CompiledScene } from "@/lib/scene/compile";
 import type { EditorStore } from "@/lib/style/editor/store";
 import type { LayerStyle } from "@/lib/style/generated/types";
 import type { JsonObject } from "@/lib/style/json";
@@ -50,6 +52,9 @@ interface StyledLayersProps {
   /** The scene's lowest 3D building layer (`buildingsAnchor`): the layers' ground parts go below the building layer
    * the renderer derives from it (`syncMapLayers`), or where they go without buildings. */
   ground?: string;
+  /** The scene as applied last (`useScene`): a new one draws again, so the building layers are read again (the zoom
+   * from which they draw) without compiling a layer. */
+  scene?: CompiledScene | null;
   /** Every MapLibre layer id the renderer drew, after each change (interactive layers, snapping). */
   onLayersChange?: (ids: string[]) => void;
   /** Counts the classes in view for legends that list those (spec 7.2 `legend.classes: view`), kept under this name
@@ -65,6 +70,7 @@ type StyleMap = RendererMap & {
   off(type: string, listener: () => void): unknown;
   once(type: string, listener: () => void): unknown;
   getStyle(): { layers?: Array<{ id: string; type: string; "source-layer"?: string }> } | undefined;
+  getZoom(): number;
 };
 
 const nextFrame = (callback: () => void): number =>
@@ -130,6 +136,7 @@ export function StyledLayers({
   tone,
   overlay,
   ground,
+  scene,
   onLayersChange,
   presenceScope,
   onValuesPending,
@@ -160,56 +167,62 @@ export function StyledLayers({
     };
   }, []);
 
+  // One draw: the layers as they are now put on the map.
+  const sync = useCallback(() => {
+    if (!map || unmounted.current) return;
+    if (!ready.current && !map.getStyle()) {
+      map.once("styledata", () => redraw.current());
+      return;
+    }
+    ready.current = true;
+    const {
+      layers: next,
+      locale: nextLocale,
+      tone: nextTone,
+      overlay: nextOverlay,
+      ground: nextGround,
+    } = latest.current;
+    anchors.current ??= basemapAnchorsOf(map);
+    const edits = next.map((layer) => {
+      const document = edited.current.get(layer.key);
+      return document ? { ...layer, style: document, version: undefined } : layer;
+    });
+    const { layers: drawn, pending } = rasterValues.attach(edits);
+    try {
+      state.current = syncMapLayers(map, state.current, drawn, {
+        locale: nextLocale,
+        anchors: anchors.current,
+        // The map's overlays (drawing, measuring, a filter's area) stay above the project layers.
+        overlay: nextOverlay ?? lowestOverlayId(map.getStyle()?.layers),
+        ground: nextGround,
+        tone: nextTone,
+      });
+    } catch (error) {
+      if (!String(error).includes("Style is not done loading")) throw error;
+      ready.current = false;
+      map.once("styledata", () => redraw.current());
+      return;
+    }
+    const ids = rendererLayerIds(map);
+    if (ids.join("|") !== drawnIds.current) {
+      drawnIds.current = ids.join("|");
+      latest.current.onLayersChange?.(ids);
+    }
+    if (pending !== valuesPending.current) {
+      valuesPending.current = pending;
+      latest.current.onValuesPending?.(pending);
+    }
+    // A class edited, another filter or time: the classes in view may have changed without a move.
+    presence.current?.refresh();
+  }, [map, rasterValues]);
+
   const draw = useCallback(() => {
     if (!map || unmounted.current || frame.current !== null) return;
     frame.current = nextFrame(() => {
       frame.current = null;
-      if (!ready.current && !map.getStyle()) {
-        map.once("styledata", draw);
-        return;
-      }
-      ready.current = true;
-      const {
-        layers: next,
-        locale: nextLocale,
-        tone: nextTone,
-        overlay: nextOverlay,
-        ground: nextGround,
-      } = latest.current;
-      anchors.current ??= basemapAnchorsOf(map);
-      const edits = next.map((layer) => {
-        const document = edited.current.get(layer.key);
-        return document ? { ...layer, style: document, version: undefined } : layer;
-      });
-      const { layers: drawn, pending } = rasterValues.attach(edits);
-      try {
-        state.current = syncMapLayers(map, state.current, drawn, {
-          locale: nextLocale,
-          anchors: anchors.current,
-          // The map's overlays (drawing, measuring, a filter's area) stay above the project layers.
-          overlay: nextOverlay ?? lowestOverlayId(map.getStyle()?.layers),
-          ground: nextGround,
-          tone: nextTone,
-        });
-      } catch (error) {
-        if (!String(error).includes("Style is not done loading")) throw error;
-        ready.current = false;
-        map.once("styledata", draw);
-        return;
-      }
-      const ids = rendererLayerIds(map);
-      if (ids.join("|") !== drawnIds.current) {
-        drawnIds.current = ids.join("|");
-        latest.current.onLayersChange?.(ids);
-      }
-      if (pending !== valuesPending.current) {
-        valuesPending.current = pending;
-        latest.current.onValuesPending?.(pending);
-      }
-      // A class edited, another filter or time: the classes in view may have changed without a move.
-      presence.current?.refresh();
+      sync();
     });
-  }, [map, rasterValues]);
+  }, [map, sync]);
   redraw.current = draw;
 
   const onDocument = useCallback(
@@ -221,13 +234,35 @@ export function StyledLayers({
     [draw]
   );
 
-  useEffect(() => draw(), [layers, locale, tone, overlay, ground, draw]);
+  useEffect(() => draw(), [layers, locale, tone, overlay, ground, scene, draw]);
 
   const stacked = useMemo(
     () => layers.map((layer) => layer.key).filter((key) => !key.startsWith(PENDING_KEY)),
     [layers]
   );
   useBasemapStacking(map as unknown as MaplibreMap | undefined, stacked);
+
+  // From the camera zoom at which the map's buildings draw, the layers on top go below them (`syncMapLayers`): a
+  // camera across it draws at once, in the event, so the map draws its next frame with them placed; any other event
+  // compares two numbers. Every frame of a movement fires `move`, also where the zoom changes without a zoom axis (over
+  // terrain the end of a drag puts the center back onto the ground with the camera in place, which changes the zoom,
+  // and its inertia then moves without zooming); `moveend` closes a movement whose end changed the zoom that way.
+  useEffect(() => {
+    if (!map) return;
+    const onMove = () => {
+      const from = state.current?.buildingsFrom;
+      if (from === undefined || map.getZoom() >= from === state.current?.underBuildings) return;
+      if (frame.current !== null) cancelFrame(frame.current);
+      frame.current = null;
+      sync();
+    };
+    map.on("move", onMove);
+    map.on("moveend", onMove);
+    return () => {
+      map.off("move", onMove);
+      map.off("moveend", onMove);
+    };
+  }, [map, sync]);
 
   // A new style (a basemap switch) replaces the global state and maybe the layers: put both back.
   useEffect(() => {

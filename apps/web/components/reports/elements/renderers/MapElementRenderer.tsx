@@ -432,6 +432,7 @@ const MapElementRenderer: React.FC<MapElementRendererProps> = ({
                 // The locked basemap's tone where it draws one, else the project's basemap's.
                 tone={mapElementTone((element.config ?? {}) as Record<string, unknown>, basemap)}
                 ground={buildingsAnchor(appliedScene)}
+                scene={appliedScene}
                 presenceScope={printScope(element.id)}
                 onValuesPending={setValuesPending}
               />

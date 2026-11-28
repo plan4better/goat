@@ -687,4 +687,37 @@ describe("useScene", () => {
     rerender(inputs({ basemap: own, mode: "2d" }));
     expect(look()).toEqual(flat);
   });
+
+  it("a reached opacity hides a shown building layer below its zoom at once, without the default fade", () => {
+    const own: Basemap = { ...LIGHT, value: "basemap_de_gry", buildings: "own" };
+    const map = fakeMap([
+      ...BASE_LAYERS.filter((l) => l.id !== "building"),
+      {
+        id: "flat",
+        type: "fill",
+        source: "openmaptiles",
+        "source-layer": "building",
+        minzoom: 12,
+        paint: { "fill-opacity": 1 },
+      },
+      {
+        id: "tall",
+        type: "fill-extrusion",
+        source: "openmaptiles",
+        "source-layer": "building",
+        minzoom: 16,
+        paint: { "fill-extrusion-opacity": 0.8, "fill-extrusion-height": ["get", "h"] },
+      },
+    ]);
+    renderHook((props: UseSceneInputs) => useScene(map as unknown as MaplibreMap, props), {
+      initialProps: inputs({ basemap: own }),
+    });
+    const set = named(map.calls, "setPaintProperty").filter((c) => c[1] === "tall");
+    const transition = set.findIndex((c) => c[2] === "fill-extrusion-opacity-transition");
+    const opacity = set.findIndex((c) => c[2] === "fill-extrusion-opacity");
+    expect(set[opacity]?.[3]).toEqual(["step", ["zoom"], 0, 16, 0.6]);
+    expect(set[transition]?.[3]).toEqual({ duration: 0, delay: 0 });
+    expect(transition).toBeGreaterThanOrEqual(0);
+    expect(transition).toBeLessThan(opacity);
+  });
 });

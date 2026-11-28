@@ -213,8 +213,12 @@ function applyScene(map: MaplibreMap, prev: Applied | null, next: CompiledScene,
     for (const prop of new Set([...propsOf(own), ...propsOf(wanted)])) {
       if (!(prop in own)) own[prop] = map.getPaintProperty(id, prop);
       const want = prop in wanted ? wanted[prop] : own[prop];
-      if (!deepEqual(map.getPaintProperty(id, prop), want))
-        map.setPaintProperty(id, prop, want as number | undefined);
+      if (deepEqual(map.getPaintProperty(id, prop), want)) continue;
+      // A reached opacity (`reachedOpacity`) hides the buildings at once below the zoom they show from, where the
+      // layers on top then draw above them: MapLibre's default fade would leave them showing under those.
+      if (prop === "fill-extrusion-opacity" && Array.isArray(want))
+        map.setPaintProperty(id, `${prop}-transition`, { duration: 0, delay: 0 });
+      map.setPaintProperty(id, prop, want as number | undefined);
     }
   }
 

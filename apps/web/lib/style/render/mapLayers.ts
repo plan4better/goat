@@ -5,6 +5,7 @@
 // clicks, the feature editor and measuring use instead of id conventions.
 import type { FilterSpecification, LayerSpecification, StyleSpecification } from "maplibre-gl";
 
+import { drawnFrom } from "@/lib/scene/buildings";
 import { TERRAIN_HILLSHADE_LAYER } from "@/lib/scene/compile";
 import { compileLayer } from "@/lib/style/compile";
 import { usesTone } from "@/lib/style/compile/derived";
@@ -58,7 +59,7 @@ export interface SyncOptions {
   /** The lowest layer that stays above every project layer (the popup highlight, drawing tools). */
   overlay?: string;
   /** The scene's lowest 3D building layer: the project layers' parts drawn on the ground go below the building layer
-   * `groundAnchor` derives from it (`GROUND`). */
+   * `groundAnchor` derives from it (`GROUND`); those on top only from the zoom at which a building draws. */
   ground?: string;
   /** The tone of the basemap the layers draw on (`basemapTone`), for their automatic colors; light by default. */
   tone?: Tone;
@@ -77,6 +78,11 @@ export interface MapLayersState {
   overlay?: string;
   /** The building layer the ground parts went below: `groundAnchor` of `ground` while that is on the map. */
   ground?: string;
+  /** With a building layer: the camera zoom from which one of the map's buildings draws (`groundAnchor`). */
+  buildingsFrom?: number;
+  /** Whether the ground parts of the layers on top went below the buildings: the camera was at `buildingsFrom` or
+   * above, or the map gave no zoom. A camera crossing `buildingsFrom` needs a sync to place them again. */
+  underBuildings?: boolean;
   /** The basemap's tone the layers were compiled for. */
   tone?: Tone;
 }
@@ -86,6 +92,8 @@ export type RendererMap = PreviewMap & {
     target: { source: string; sourceLayer?: string; id: number | string },
     state: object
   ): unknown;
+  /** The camera's zoom; a map without it has the layers on top below the buildings at every zoom. */
+  getZoom?(): number;
 };
 
 /**
@@ -149,6 +157,7 @@ export function basemapAnchors(layers: BasemapLayer[] | undefined): Anchors {
 interface BasemapLayer {
   id: string;
   type: string;
+  minzoom?: number;
   source?: unknown;
   "source-layer"?: string;
   layout?: { visibility?: unknown };
@@ -208,20 +217,26 @@ function basemapLayersOf(map: object, style: ReturnType<StyledMap["getStyle"]>) 
  * but the renderer's own (its registry), those on a GeoJSON source (the mask, the drawing and measuring tools, the
  * popup highlight, drawn on top) and the scene's translucent terrain shading. The scene's other layers need no
  * exception: its building layer covers no area, and a footprint's copy sits right above the basemap footprint it
- * copies, which counts in its place.
+ * copies, which counts in its place. `from` is the lowest camera zoom from which a shown building layer among those
+ * draws (`drawnFrom`), 0 where the style cannot be read.
  */
-function groundAnchor(map: Partial<StyledMap>, ground: string | undefined): string | undefined {
+function groundAnchor(
+  map: Partial<StyledMap>,
+  ground: string | undefined
+): { anchor: string | undefined; from: number } | undefined {
   if (ground === undefined) return undefined;
   const style = map.getStyle?.();
-  if (!style?.layers) return ground;
+  if (!style?.layers) return { anchor: ground, from: 0 };
   const list = style.layers.filter(
     (l) => !projectLayerOf(map, l.id) && !onGeojson(style, l.source) && l.id !== TERRAIN_HILLSHADE_LAYER
   );
+  const shown = list.filter((l) => l.type === "fill-extrusion" && visible(l));
+  const from = shown.length ? Math.min(...shown.map(drawnFrom)) : 0;
   const at = list.findIndex((l) => l.id === ground);
-  if (at < 0) return ground;
+  if (at < 0) return { anchor: ground, from };
   const covered = lastCovering(list);
-  if (at > covered) return ground;
-  return list.find((l, i) => i > covered && l.type === "fill-extrusion" && visible(l))?.id;
+  if (at > covered) return { anchor: ground, from };
+  return { anchor: list.find((l, i) => i > covered && l.type === "fill-extrusion" && visible(l))?.id, from };
 }
 
 /** Layer types that take a filter (rasters and hillshades do not). */
@@ -342,10 +357,18 @@ export function syncMapLayers(
   // A new basemap tone compiles again only the layers whose automatic colors follow it.
   const retoned = (layer: RenderLayer) =>
     prev !== null && (prev.tone ?? "light") !== tone && usesTone(layer.style as unknown as JsonObject);
-  const ground = groundAnchor(
+  const found = groundAnchor(
     map as unknown as Partial<StyledMap>,
     opts.ground && map.getLayer(opts.ground) ? opts.ground : undefined
   );
+  const ground = found?.anchor;
+  // The ground parts on top go below the buildings only from the camera zoom at which a building draws: below it no
+  // building is drawn, and they draw on top as without buildings. Without a zoom they stay below the buildings.
+  const zoom = map.getZoom?.();
+  const buildingsFrom = ground !== undefined ? (found?.from ?? 0) : undefined;
+  const underBuildings = buildingsFrom !== undefined && !(zoom !== undefined && zoom < buildingsFrom);
+  // A camera crossing that zoom places every layer again, so that the stacks below the buildings keep the order a
+  // fresh placement gives them.
   const reorder =
     !prev ||
     !deepEqual(
@@ -355,6 +378,7 @@ export function syncMapLayers(
     !deepEqual(prev.anchors ?? {}, anchors) ||
     prev.overlay !== opts.overlay ||
     prev.ground !== ground ||
+    (prev.underBuildings ?? false) !== underBuildings ||
     next.some((layer) => {
       const old = prev.placed.get(layer.key);
       return old !== undefined && positionOf(old.layer) !== positionOf(layer);
@@ -377,7 +401,8 @@ export function syncMapLayers(
   };
   const groundAnchorFor = (position: Position) => {
     const anchor = anchorFor(position);
-    if (!ground || position === "top" || anchor === undefined) return ground ?? anchor;
+    if (position === "top") return underBuildings ? ground : anchor;
+    if (!ground || anchor === undefined) return ground ?? anchor;
     return below(ground, anchor) ? ground : anchor;
   };
   const splits = (position: Position) => groundAnchorFor(position) !== anchorFor(position);
@@ -437,7 +462,17 @@ export function syncMapLayers(
   }
   registries.set(map, registry);
 
-  return { placed, order: nextKeys, locale: opts.locale, anchors, overlay: opts.overlay, ground, tone };
+  return {
+    placed,
+    order: nextKeys,
+    locale: opts.locale,
+    anchors,
+    overlay: opts.overlay,
+    ground,
+    ...(buildingsFrom !== undefined ? { buildingsFrom } : {}),
+    underBuildings,
+    tone,
+  };
 }
 
 /** Sets the global state again (the locale, every time slider's value) after a new style replaced it. */

@@ -272,6 +272,7 @@ export default function ThumbnailPage() {
               locale="en"
               tone={basemapTone(basemap)}
               ground={buildingsAnchor(appliedScene)}
+              scene={appliedScene}
               onValuesPending={setValuesPending}
             />
           )}

@@ -820,6 +820,316 @@ describe("syncMapLayers", () => {
       });
     });
 
+    describe("on top: below the buildings only from the camera zoom at which a building can draw", () => {
+      type Layer = Record<string, unknown> & { id: string; type: string };
+      const streets: Layer[] = [
+        { id: "base-bg", type: "background" },
+        { id: "base-road", type: "line", "source-layer": "transportation" },
+        { id: "goat-buildings", type: "fill-extrusion", minzoom: 14 },
+        { id: "base-label", type: "symbol" },
+      ];
+      const anchors = basemapAnchors(streets);
+      /** A map whose camera is at `zoom`, `zoomTo` moves it. */
+      const atZoom = (basemap: Layer[], zoom: number) => {
+        let at = zoom;
+        return Object.assign(orderedMap(basemap), {
+          getZoom: () => at,
+          zoomTo: (next: number) => {
+            at = next;
+          },
+        });
+      };
+      const hexagons = polygon("1");
+      const top = [hexagons, labelled];
+      const onTop = [
+        "base-bg",
+        "base-road",
+        "goat-buildings",
+        "base-label",
+        "2-fill",
+        "2-outline",
+        "2-label",
+        "1-fill",
+        "1-outline",
+      ];
+      const under = [
+        "base-bg",
+        "base-road",
+        "2-fill",
+        "2-outline",
+        "1-fill",
+        "1-outline",
+        "goat-buildings",
+        "base-label",
+        "2-label",
+      ];
+
+      it("below that zoom a fill on top goes above the labels, as with the buildings off", () => {
+        const off = atZoom(streets, 12);
+        syncMapLayers(off, null, top, { locale: "en", anchors });
+        const map = atZoom(streets, 12);
+        syncMapLayers(map, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(map.order).toEqual(off.order);
+        expect(map.order).toEqual(onTop);
+      });
+
+      it("from that zoom on it goes below the buildings as it does without a known zoom", () => {
+        for (const zoom of [14, 16.5]) {
+          const map = atZoom(streets, zoom);
+          syncMapLayers(map, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+          expect(map.order).toEqual(under);
+        }
+        const unknown = orderedMap(streets);
+        syncMapLayers(unknown, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(unknown.order).toEqual(under);
+      });
+
+      it("a still map (print, thumbnail) placed once follows the same rule for its zoom", () => {
+        const low = atZoom(streets, 13.99);
+        const lowState = syncMapLayers(low, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(low.order).toEqual(onTop);
+        const high = atZoom(streets, 15);
+        const highState = syncMapLayers(high, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(high.order).toEqual(under);
+        // What the renderer's owner watches the camera with.
+        expect(lowState).toMatchObject({ buildingsFrom: 14, underBuildings: false });
+        expect(highState).toMatchObject({ buildingsFrom: 14, underBuildings: true });
+        const off = syncMapLayers(atZoom(streets, 15), null, top, { locale: "en", anchors });
+        expect(off.buildingsFrom).toBeUndefined();
+      });
+
+      /** The order a fresh placement of `layers` at `zoom` gives. */
+      const freshAt = (basemap: Layer[], zoom: number, layers: RenderLayer[]) => {
+        const map = atZoom(basemap, zoom);
+        syncMapLayers(map, null, layers, {
+          locale: "en",
+          anchors: basemapAnchors(basemap),
+          ground: "goat-buildings",
+        });
+        return map.order;
+      };
+
+      it("crossing the zoom places the layers once each way as a fresh placement there does; a zoom on one side moves nothing", () => {
+        const layers = [
+          hexagons,
+          labelled,
+          polygon("3", { entry: { position: "below_labels" } }),
+          polygon("4", { entry: { position: "below_roads" } }),
+        ];
+        const map = atZoom(streets, 12);
+        const moves: string[] = [];
+        const move = map.moveLayer;
+        map.moveLayer = (id: string, before?: string) => {
+          moves.push(id);
+          move(id, before);
+        };
+        const sync = (prev: ReturnType<typeof syncMapLayers> | null) =>
+          syncMapLayers(map, prev, layers, { locale: "en", anchors, ground: "goat-buildings" });
+        const every = [
+          "1-fill",
+          "1-outline",
+          "2-fill",
+          "2-label",
+          "2-outline",
+          "3-fill",
+          "3-outline",
+          "4-fill",
+          "4-outline",
+        ];
+        let state = sync(null);
+        const low = [...map.order];
+        expect(low.slice(-5)).toEqual(["2-fill", "2-outline", "2-label", "1-fill", "1-outline"]);
+        const compiles = vi.mocked(compileModule.compileLayer).mock.calls.length;
+
+        map.zoomTo(13.5);
+        state = sync(state);
+        expect(moves).toEqual([]);
+
+        // Across it every layer is placed again, as a reorder places them: the layers on top go below the buildings
+        // under the ground parts of the layers below the labels, as a fresh placement at that zoom stacks them.
+        map.zoomTo(14.2);
+        state = sync(state);
+        expect(vi.mocked(compileModule.compileLayer).mock.calls.length).toBe(compiles);
+        expect([...moves].sort()).toEqual(every);
+        expect(map.order).toEqual(freshAt(streets, 14.2, layers));
+        expect(map.order).toEqual([
+          "base-bg",
+          "4-fill",
+          "4-outline",
+          "base-road",
+          "2-fill",
+          "2-outline",
+          "1-fill",
+          "1-outline",
+          "3-fill",
+          "3-outline",
+          "goat-buildings",
+          "base-label",
+          "2-label",
+        ]);
+
+        moves.length = 0;
+        map.zoomTo(18);
+        state = sync(state);
+        expect(moves).toEqual([]);
+
+        const before = vi.mocked(compileModule.compileLayer).mock.calls.length;
+        map.zoomTo(13.9);
+        sync(state);
+        expect(vi.mocked(compileModule.compileLayer).mock.calls.length).toBe(before);
+        expect([...moves].sort()).toEqual(every);
+        expect(map.order).toEqual(low);
+        expect(map.order).toEqual(freshAt(streets, 13.9, layers));
+      });
+
+      it("positions mixed in the map document: the order after a crossing either way is that of a fresh placement", () => {
+        const image: RenderLayer = {
+          key: "5",
+          style: { version: "1.0.0", kind: "raster", render: { type: "image" } } as LayerStyle,
+          entry: {},
+          source: {
+            type: "raster",
+            id: "src-5",
+            tiles: "https://geo/r/{z}/{x}/{y}.webp",
+            coverage: "https://geo/c",
+          },
+        };
+        const at = (layer: RenderLayer, position?: "below_labels" | "below_roads"): RenderLayer => ({
+          ...layer,
+          entry: position ? { position } : {},
+        });
+        const layers = [
+          at(polygon("1")),
+          at(polygon("2", { style: labelled.style }), "below_labels"),
+          at(image),
+          at(polygon("3", { style: line.style, geometry: "line" }), "below_roads"),
+          at(polygon("4", { style: labelled.style })),
+          at(polygon("6"), "below_labels"),
+          at({ ...point, key: "7", source: tiles("7") }),
+        ];
+        const map = atZoom(streets, 12);
+        let state = syncMapLayers(map, null, layers, { locale: "en", anchors, ground: "goat-buildings" });
+        for (const zoom of [15, 13, 14, 2, 16.5, 13.99]) {
+          map.zoomTo(zoom);
+          state = syncMapLayers(map, state, layers, { locale: "en", anchors, ground: "goat-buildings" });
+          expect([zoom, map.order]).toEqual([zoom, freshAt(streets, zoom, layers)]);
+        }
+      });
+
+      it("a sync with the same layers reads the building layer again: another zoom range places them again, compiles nothing", () => {
+        const map = atZoom(streets, 13);
+        let state = syncMapLayers(map, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(map.order).toEqual(onTop);
+        const compiles = vi.mocked(compileModule.compileLayer).mock.calls.length;
+        // The scene lowers the same layer's zoom range (its buildings now draw from 12).
+        map.specs.set("goat-buildings", { id: "goat-buildings", type: "fill-extrusion", minzoom: 12 });
+        state = syncMapLayers(map, state, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(state).toMatchObject({ buildingsFrom: 12, underBuildings: true });
+        expect(map.order).toEqual(under);
+        expect(vi.mocked(compileModule.compileLayer).mock.calls.length).toBe(compiles);
+      });
+
+      it("below the labels and below the roads place the same at every zoom", () => {
+        const layers = [
+          polygon("3", { entry: { position: "below_labels" } }),
+          polygon("4", { entry: { position: "below_roads" } }),
+        ];
+        const orders = [12, 14, 17].map((zoom) => {
+          const map = atZoom(streets, zoom);
+          syncMapLayers(map, null, layers, { locale: "en", anchors, ground: "goat-buildings" });
+          return map.order;
+        });
+        expect(orders[0]).toEqual([
+          "base-bg",
+          "4-fill",
+          "4-outline",
+          "base-road",
+          "3-fill",
+          "3-outline",
+          "goat-buildings",
+          "base-label",
+        ]);
+        expect(orders[1]).toEqual(orders[0]);
+        expect(orders[2]).toEqual(orders[0]);
+      });
+
+      it("a tilted view: buildings built in far tiles below the camera's zoom draw only from the zoom their opacity shows", () => {
+        // The scene's building layer reaching down to the footprints' tiles (`Reach`): built from zoom 12, drawn from
+        // the camera's zoom 14.
+        const reached = streets.map((l) =>
+          l.id === "goat-buildings"
+            ? { ...l, minzoom: 12, paint: { "fill-extrusion-opacity": ["step", ["zoom"], 0, 14, 0.6] } }
+            : l
+        );
+        const placed = (zoom: number) => {
+          const map = atZoom(reached, zoom);
+          syncMapLayers(map, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+          return map.order;
+        };
+        expect(placed(13.5)).toEqual(onTop);
+        expect(placed(14)).toEqual(under);
+        // Drawn from zoom 12 on, by its minzoom alone: below the buildings from there.
+        const drawn = streets.map((l) => (l.id === "goat-buildings" ? { ...l, minzoom: 12 } : l));
+        const map = atZoom(drawn, 12.5);
+        syncMapLayers(map, null, top, { locale: "en", anchors, ground: "goat-buildings" });
+        expect(map.order).toEqual(under);
+      });
+
+      it("a basemap's own building layers: the lowest zoom any shown one draws from counts, a hidden one does not", () => {
+        const own: Layer[] = [
+          { id: "base-bg", type: "background" },
+          { id: "base-road", type: "line", "source-layer": "transportation" },
+          { id: "own-tall", type: "fill-extrusion", minzoom: 16 },
+          { id: "own-low", type: "fill-extrusion", minzoom: 15 },
+          { id: "own-hidden", type: "fill-extrusion", minzoom: 12, layout: { visibility: "none" } },
+          { id: "base-label", type: "symbol" },
+        ];
+        const placed = (zoom: number) => {
+          const map = atZoom(own, zoom);
+          syncMapLayers(map, null, [hexagons], {
+            locale: "en",
+            anchors: basemapAnchors(own),
+            ground: "own-tall",
+          });
+          return map.order;
+        };
+        expect(placed(14.9).slice(-2)).toEqual(["1-fill", "1-outline"]);
+        expect(placed(15).indexOf("1-outline")).toBeLessThan(placed(15).indexOf("own-tall"));
+      });
+
+      it("a basemap of two blocks: below the zoom on top over everything, from it on above the upper land as before", () => {
+        const twoBlocks: Layer[] = [
+          { id: "base-bg", type: "background" },
+          { id: "low-road", type: "line", "source-layer": "transportation" },
+          { id: "low-buildings", type: "fill-extrusion", minzoom: 14 },
+          { id: "low-label", type: "symbol" },
+          { id: "high-land", type: "fill" },
+          { id: "high-road", type: "line", "source-layer": "transportation" },
+          { id: "high-buildings", type: "fill-extrusion", minzoom: 14 },
+          { id: "high-label", type: "symbol" },
+        ];
+        const placed = (zoom: number) => {
+          const map = atZoom(twoBlocks, zoom);
+          syncMapLayers(map, null, [labelled], {
+            locale: "en",
+            anchors: basemapAnchors(twoBlocks),
+            ground: "low-buildings",
+          });
+          return map.order;
+        };
+        const ids = twoBlocks.map((l) => l.id);
+        expect(placed(12)).toEqual([...ids, "2-fill", "2-outline", "2-label"]);
+        expect(placed(14)).toEqual([
+          ...ids.slice(0, 6),
+          "2-fill",
+          "2-outline",
+          "high-buildings",
+          "high-label",
+          "2-label",
+        ]);
+      });
+    });
+
     it("a building layer not on the map yet changes nothing", () => {
       const map = orderedMap([{ id: "base-bg", type: "background" }]);
       syncMapLayers(map, null, [labelled], { locale: "en", ground: "goat-buildings" });
