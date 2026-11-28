@@ -598,6 +598,34 @@ class TestOevGueteklasseDirections:
             tool.cleanup()
         assert minutes["mid"] == pytest.approx(60.0)
 
+    def test_a_stop_without_a_station_served_by_two_kinds_of_line(self) -> None:
+        """A bus line and a tram line at a stop that has no station, each
+        every 10 minutes both ways: every 5 minutes together, each line's
+        calls counted once."""
+        config = OevGueteklasseStationConfig(
+            groups={"0": "B", "3": "C"},
+            time_frequency=[5, 10, 20],
+            categories=[{"B": 1, "C": 1}, {"B": 2, "C": 2}, {"B": 3, "C": 3}],
+            classification={"1": {300: "1"}, "2": {300: "2"}, "3": {300: "3"}},
+        )
+        calls = [
+            ("mid", None, line, way, kind, 300 + k * 600, "through")
+            for line, kind in (("BUS", 3), ("TRAM", 0))
+            for way in ("east", "west")
+            for k in range(12)
+        ]
+        tool = OevGueteklasseTool()
+        try:
+            _feed(tool, calls)
+            tool._count_pt_services(self.WINDOW)
+            tool._calculate_station_categories(config, self.WINDOW)
+            station = tool.con.execute(
+                "SELECT total_trips, frequency_minutes FROM station_frequencies"
+            ).fetchall()
+        finally:
+            tool.cleanup()
+        assert station == [(48, pytest.approx(5.0))]
+
     def test_stops_in_the_same_minute(self) -> None:
         """Calls sharing a call_order, the stop before with the stop's own:
         the directions read from the stops at the call_order either side."""
