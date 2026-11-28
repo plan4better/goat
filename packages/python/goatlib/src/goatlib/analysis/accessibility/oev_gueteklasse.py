@@ -32,6 +32,24 @@ logger = logging.getLogger(__name__)
 #: the next one along.
 OPPOSITE_STOP_M = 150
 
+#: Two calls of a line head against each other when the cosine between their
+#: headings (stop before to stop after) is below this: more than 120 degrees
+#: apart, so a fork or a turn at the stop stays one way.
+OPPOSITE_HEADING_COS = -0.5
+
+#: How evenly two lines run for one to be the other's way back: the rarer
+#: has at least this share of the other's calls. A ring's two ways under two
+#: numbers run alike; a school trip against a one-way line is not its way back.
+MIRRORED_LINE_SHARE = 0.5
+
+
+def _metres(ax: str, ay: str, bx: str, by: str) -> str:
+    """SQL for the distance in metres between two lon/lat points."""
+    return (
+        f"sqrt(power(({ax} - {bx}) * cos(radians({ay})) * 111320, 2)"
+        f" + power(({ay} - {by}) * 111320, 2))"
+    )
+
 
 class OevGueteklasseTool(PTToolBase):
     """Public Transport Quality Classes (ÖV-Güteklassen) Tool.
@@ -189,98 +207,238 @@ class OevGueteklasseTool(PTToolBase):
         # of a line at a stop, or at a station's stops, go opposite ways
         # where one ends there and another starts there (service arriving and
         # service leaving), or where one's stop before is another's stop
-        # after, or within OPPOSITE_STOP_M of it (a stop across the street).
+        # after, or within OPPOSITE_STOP_M of it (a stop across the street),
+        # or where the two head against each other (OPPOSITE_HEADING_COS:
+        # the stops of the other way lie on another street, at a bus station
+        # or in a one-way system). Two lines of a kind that each run one way
+        # there, about as often (MIRRORED_LINE_SHARE), and mirror each other,
+        # the stop before one being the stop after the other on both sides,
+        # are one line both ways: a ring's two ways under two numbers, or a
+        # feed with a route per direction.
         # A line's service at a stop is its calls (arriving, departing or
         # passing) over its directions there: every stop of a line running
         # every 10 minutes each way reads 10 minutes, its termini on one
         # platform or several too, a turning loop's, and a one-way loop's
         # stops; short turns keep their way.
+        # Worked on numbered ids, and each step on the rows it needs: a
+        # country's weekday is 20 million calls, and following every one
+        # along its trip with its ids as text took 6 GB. The ids are numbered,
+        # not hashed: hash() gives some pairs of ids the same value.
         weekday_col = time_window.weekday_column
         from_time = time_window.from_time_str
         to_time = time_window.to_time_str
+        in_window = (
+            f"t.{weekday_col} = true AND t.arrival_time >= '{from_time}' "
+            f"AND t.arrival_time <= '{to_time}'"
+        )
+        self.con.execute("""
+            CREATE OR REPLACE TABLE stop_places AS
+            SELECT stop_id, row_number() OVER (ORDER BY stop_id) AS stop,
+                   CAST(stop_lon AS FLOAT) AS x, CAST(stop_lat AS FLOAT) AS y
+            FROM gtfs_stops
+        """)
+        self.con.execute("""
+            CREATE OR REPLACE TABLE area_stops AS
+            SELECT stop_id, h3_3, stop, group_id,
+                   dense_rank() OVER (ORDER BY group_id) AS station
+            FROM (
+                SELECT s.stop_id, s.h3_3, g.stop,
+                       CASE WHEN s.parent_station IS NOT NULL AND s.parent_station != ''
+                            THEN s.parent_station ELSE s.stop_id END AS group_id
+                FROM stations_in_area s JOIN stop_places g USING (stop_id)
+            )
+        """)
+        # The trips and lines calling in the window at the area's stops
         self.con.execute(f"""
-            CREATE OR REPLACE TABLE station_line_calls AS
-            WITH calls AS (
-                SELECT
-                    CASE WHEN s.parent_station IS NOT NULL AND s.parent_station != ''
-                         THEN s.parent_station ELSE s.stop_id END AS group_id,
-                    t.route_type, t.route_id, hash(t.trip_id) AS trip_id, hash(t.stop_id) AS stop_id, t.call_order AS o
-                FROM stations_in_area s
+            CREATE OR REPLACE TABLE window_trips AS
+            SELECT trip_id, route_id,
+                   dense_rank() OVER (ORDER BY trip_id) AS trip,
+                   dense_rank() OVER (ORDER BY route_id) AS line
+            FROM (
+                SELECT DISTINCT t.trip_id, t.route_id
+                FROM area_stops s
                 JOIN gtfs_stop_times t ON s.stop_id = t.stop_id AND s.h3_3 = t.h3_3
-                WHERE t.{weekday_col} = true
-                  AND t.arrival_time >= '{from_time}'
-                  AND t.arrival_time <= '{to_time}'
-            ),
-            trip_calls AS (
-                SELECT hash(t.trip_id) AS trip_id, hash(t.stop_id) AS stop_id,
-                       t.call_order AS o,
-                       CAST(g.stop_lon AS FLOAT) AS x, CAST(g.stop_lat AS FLOAT) AS y
-                FROM gtfs_stop_times t JOIN gtfs_stops g USING (stop_id)
-                WHERE hash(t.trip_id) IN (SELECT trip_id FROM calls)
+                WHERE {in_window}
+            )
+        """)
+        # Their calls there
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE window_calls AS
+            SELECT s.station, t.route_type, w.line, w.trip, s.stop, t.call_order AS o
+            FROM area_stops s
+            JOIN gtfs_stop_times t ON s.stop_id = t.stop_id AND s.h3_3 = t.h3_3
+            JOIN window_trips w ON w.trip_id = t.trip_id AND w.route_id = t.route_id
+            WHERE {in_window}
+        """)
+        # And all calls of the trips: the stop order is read from them
+        self.con.execute("""
+            CREATE OR REPLACE TABLE trip_calls AS
+            SELECT w.trip, g.stop, t.call_order AS o
+            FROM gtfs_stop_times t
+            JOIN (SELECT DISTINCT trip_id, trip FROM window_trips) w USING (trip_id)
+            JOIN stop_places g USING (stop_id)
+        """)
+        # Trips calling at the same stops at the same times from their start
+        # pass every stop the same way, so one of them stands for all: a
+        # country's 1.2 million weekday trips are 280,000 such patterns.
+        # A trip's pattern is a fingerprint of its calls: each call's stop
+        # and time from the start as one number, hashed (a number's hash is
+        # well mixed, unlike a text's or a pair's), and over the trip the
+        # count, the xor and the two halves' sums of those hashes.
+        self.con.execute("""
+            CREATE OR REPLACE TABLE trip_patterns AS
+            SELECT trip, first_o,
+                   dense_rank() OVER (ORDER BY calls, mixed, low, high) AS pattern
+            FROM (
+                SELECT trip, any_value(first_o) AS first_o, count(*) AS calls,
+                       bit_xor(h) AS mixed,
+                       sum(h & 4294967295) AS low, sum(h >> 32) AS high
+                FROM (
+                    SELECT c.trip, f.first_o,
+                           hash(c.stop * 4294967296 + (c.o - f.first_o)) AS h
+                    FROM trip_calls c
+                    JOIN (SELECT trip, min(o) AS first_o FROM trip_calls GROUP BY trip) f
+                        USING (trip)
+                )
+                GROUP BY trip
+            )
+        """)
+        self.con.execute("""
+            CREATE OR REPLACE TABLE pattern_neighbours AS
+            WITH pattern_calls AS (
+                SELECT p.pattern, c.stop, c.o - p.first_o AS o, g.x, g.y
+                FROM trip_calls c
+                JOIN trip_patterns p USING (trip)
+                JOIN stop_places g USING (stop)
+                WHERE c.trip IN (SELECT min(trip) FROM trip_patterns GROUP BY pattern)
             ),
             -- Stops sharing a call_order (minute times) go in order of
             -- distance from the trip's stops the minute before (the first
             -- minute: back from the minute after), which rebuilds the stop order
             minutes AS (
-                SELECT trip_id, o,
+                SELECT pattern, o,
                        lag(avg(x)) OVER w AS px, lag(avg(y)) OVER w AS py,
                        lead(avg(x)) OVER w AS nx, lead(avg(y)) OVER w AS ny
-                FROM trip_calls
-                GROUP BY trip_id, o
-                WINDOW w AS (PARTITION BY trip_id ORDER BY o)
+                FROM pattern_calls
+                GROUP BY pattern, o
+                WINDOW w AS (PARTITION BY pattern ORDER BY o)
             ),
             ordered AS (
-                SELECT tc.trip_id, tc.stop_id, tc.o, tc.x, tc.y,
+                SELECT pc.pattern, pc.stop, pc.o, pc.x, pc.y,
                        row_number() OVER (
-                           PARTITION BY tc.trip_id
-                           ORDER BY tc.o,
+                           PARTITION BY pc.pattern
+                           ORDER BY pc.o,
                                CASE WHEN m.px IS NOT NULL
-                                    THEN power((tc.x - m.px) * cos(radians(tc.y)), 2)
-                                         + power(tc.y - m.py, 2)
-                                    ELSE -(power((tc.x - m.nx) * cos(radians(tc.y)), 2)
-                                           + power(tc.y - m.ny, 2))
+                                    THEN power((pc.x - m.px) * cos(radians(pc.y)), 2)
+                                         + power(pc.y - m.py, 2)
+                                    ELSE -(power((pc.x - m.nx) * cos(radians(pc.y)), 2)
+                                           + power(pc.y - m.ny, 2))
                                END,
-                               tc.stop_id
+                               pc.stop
                        ) AS seq
-                FROM trip_calls tc JOIN minutes m USING (trip_id, o)
-            ),
-            neighbours AS (
-                SELECT trip_id, stop_id, o,
-                       lag(x) OVER w AS before_x, lag(y) OVER w AS before_y,
-                       lead(x) OVER w AS after_x, lead(y) OVER w AS after_y
-                FROM ordered
-                WINDOW w AS (PARTITION BY trip_id ORDER BY seq)
-            ),
-            bounds AS (
-                SELECT c.group_id, c.route_id, n.before_x, n.before_y, n.after_x, n.after_y
-                FROM calls c JOIN neighbours n USING (trip_id, stop_id, o)
-            ),
-            crossing AS (
-                SELECT DISTINCT p.group_id, p.route_id
-                FROM (SELECT DISTINCT group_id, route_id, before_x AS x, before_y AS y
-                      FROM bounds WHERE before_x IS NOT NULL) p
-                JOIN (SELECT DISTINCT group_id, route_id, after_x AS x, after_y AS y
-                      FROM bounds WHERE after_x IS NOT NULL) q
-                    USING (group_id, route_id)
-                WHERE sqrt(power((p.x - q.x) * cos(radians(p.y)) * 111320, 2)
-                           + power((p.y - q.y) * 111320, 2)) <= {OPPOSITE_STOP_M}
+                FROM pattern_calls pc JOIN minutes m USING (pattern, o)
+            )
+            SELECT pattern, stop, o, x, y,
+                   lag(x) OVER w AS before_x, lag(y) OVER w AS before_y,
+                   lead(x) OVER w AS after_x, lead(y) OVER w AS after_y
+            FROM ordered
+            WINDOW w AS (PARTITION BY pattern ORDER BY seq)
+        """)
+        self.con.execute("DROP TABLE trip_calls")
+        # The ways each line passes each station: its stops before and after
+        self.con.execute("""
+            CREATE OR REPLACE TABLE line_passes AS
+            SELECT DISTINCT c.station, c.route_type, c.line, n.x, n.y,
+                   n.before_x, n.before_y, n.after_x, n.after_y
+            FROM window_calls c
+            JOIN trip_patterns p USING (trip)
+            JOIN pattern_neighbours n
+              ON n.pattern = p.pattern AND n.stop = c.stop AND n.o = c.o - p.first_o
+        """)
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE station_line_calls AS
+            WITH crossing AS (
+                SELECT DISTINCT p.station, p.line
+                FROM (SELECT DISTINCT station, line, before_x AS x, before_y AS y
+                      FROM line_passes WHERE before_x IS NOT NULL) p
+                JOIN (SELECT DISTINCT station, line, after_x AS x, after_y AS y
+                      FROM line_passes WHERE after_x IS NOT NULL) q
+                    USING (station, line)
+                WHERE {_metres("p.x", "p.y", "q.x", "q.y")} <= {OPPOSITE_STOP_M}
             ),
             ending AS (
-                SELECT group_id, route_id
-                FROM bounds
-                GROUP BY group_id, route_id
+                SELECT station, line
+                FROM line_passes
+                GROUP BY station, line
                 HAVING bool_or(before_x IS NOT NULL AND after_x IS NULL)
                    AND bool_or(before_x IS NULL AND after_x IS NOT NULL)
+            ),
+            -- Where a call heads: from the stop before to the stop after, or
+            -- into the stop when the trip ends there, out of it when it starts
+            headings AS (
+                SELECT DISTINCT station, line,
+                       (coalesce(after_x, x) - coalesce(before_x, x)) * cos(radians(y)) AS dx,
+                       coalesce(after_y, y) - coalesce(before_y, y) AS dy
+                FROM line_passes
+            ),
+            opposed AS (
+                SELECT DISTINCT a.station, a.line
+                FROM headings a JOIN headings b USING (station, line)
+                WHERE a.dx * b.dx + a.dy * b.dy
+                      < {OPPOSITE_HEADING_COS} * sqrt(a.dx * a.dx + a.dy * a.dy)
+                                               * sqrt(b.dx * b.dx + b.dy * b.dy)
+            ),
+            line_ways AS (
+                SELECT c.station, c.route_type, c.line, c.calls,
+                       (x.line IS NOT NULL OR e.line IS NOT NULL
+                        OR h.line IS NOT NULL) AS both_ways
+                FROM (SELECT station, route_type, line, COUNT(*) AS calls
+                      FROM window_calls GROUP BY station, route_type, line) c
+                LEFT JOIN crossing x USING (station, line)
+                LEFT JOIN ending e USING (station, line)
+                LEFT JOIN opposed h USING (station, line)
+            ),
+            -- Lines running one way through the station, and the pairs of
+            -- them that are each other's way back
+            one_way AS (
+                SELECT DISTINCT b.station, b.route_type, b.line, l.calls,
+                       b.before_x, b.before_y, b.after_x, b.after_y
+                FROM line_passes b
+                JOIN line_ways l USING (station, route_type, line)
+                WHERE NOT l.both_ways
+                  AND b.before_x IS NOT NULL AND b.after_x IS NOT NULL
+            ),
+            mirrored AS (
+                SELECT DISTINCT p.station, p.route_type, p.line
+                FROM one_way p
+                JOIN one_way q
+                  ON p.station = q.station AND p.route_type = q.route_type
+                 AND p.line != q.line
+                WHERE least(p.calls, q.calls)
+                          >= {MIRRORED_LINE_SHARE} * greatest(p.calls, q.calls)
+                  AND {_metres("p.before_x", "p.before_y", "q.after_x", "q.after_y")}
+                          <= {OPPOSITE_STOP_M}
+                  AND {_metres("p.after_x", "p.after_y", "q.before_x", "q.before_y")}
+                          <= {OPPOSITE_STOP_M}
             )
-            SELECT c.group_id, c.route_type, c.route_id,
-                   COUNT(*) AS calls,
-                   CASE WHEN x.route_id IS NULL AND e.route_id IS NULL THEN 1 ELSE 2 END
+            SELECT g.group_id, l.route_type, r.route_id, l.calls,
+                   CASE WHEN l.both_ways OR m.line IS NOT NULL THEN 2 ELSE 1 END
                        AS directions
-            FROM calls c
-            LEFT JOIN crossing x USING (group_id, route_id)
-            LEFT JOIN ending e USING (group_id, route_id)
-            GROUP BY c.group_id, c.route_type, c.route_id, x.route_id, e.route_id
+            FROM line_ways l
+            LEFT JOIN mirrored m USING (station, route_type, line)
+            JOIN (SELECT DISTINCT station, group_id FROM area_stops) g USING (station)
+            JOIN (SELECT DISTINCT line, route_id FROM window_trips) r USING (line)
         """)
+        for table in (
+            "stop_places",
+            "area_stops",
+            "window_trips",
+            "window_calls",
+            "trip_patterns",
+            "pattern_neighbours",
+            "line_passes",
+        ):
+            self.con.execute(f"DROP TABLE {table}")
 
         # Aggregate trip counts by stop, considering parent stations
         # For parent stations, we aggregate all child stop counts
@@ -335,7 +493,12 @@ class OevGueteklasseTool(PTToolBase):
                 c.trips_per_direction,
                 c.child_cnt
             FROM child_counts c
-            LEFT JOIN station_trip_counts orig ON c.stop_id = orig.stop_id
+            LEFT JOIN (
+                -- A stop's name and place once, whatever kinds of line serve it
+                SELECT stop_id, ANY_VALUE(stop_name) AS stop_name, ANY_VALUE(geom) AS geom
+                FROM station_trip_counts
+                GROUP BY stop_id
+            ) orig ON c.stop_id = orig.stop_id
             LEFT JOIN parent_child_counts pcc ON c.stop_id = pcc.parent_station
             LEFT JOIN gtfs_stations sn ON c.stop_id = sn.stop_id
         """)
